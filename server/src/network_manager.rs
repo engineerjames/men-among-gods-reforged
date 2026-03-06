@@ -2,26 +2,17 @@ use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
-use crate::{enums, game_state::GameState, player, server::Server};
+use crate::{enums, game_state::GameState, player};
 
-static NETWORK_MANAGER: OnceLock<RwLock<NetworkManager>> = OnceLock::new();
 static PACKET_STATS: OnceLock<RwLock<PacketStats>> = OnceLock::new();
 
-/// Basic packet transmission statistics tracker.
-///
-/// Mirrors the original code's packet counters used to gather per-packet
-/// type byte counts and special counters for map/light packet classes.
 struct PacketStats {
-    /// Per-packet-id byte counters
     cnt: [usize; 256],
-    /// Accumulated bytes for short map packets
     pkt_mapshort: usize,
-    /// Accumulated bytes for light-related packets
     pkt_light: usize,
 }
 
 impl PacketStats {
-    /// Create a new PacketStats instance with counters zeroed.
     fn new() -> Self {
         PacketStats {
             cnt: [0usize; 256],
@@ -31,196 +22,124 @@ impl PacketStats {
     }
 }
 
-/// Central network manager singleton responsible for buffering and sending
-/// packets to players and tracking outgoing statistics.
-pub struct NetworkManager {
-    // Network management fields and methods would go here.
+pub fn initialize_packet_stats() -> Result<(), String> {
+    PACKET_STATS
+        .set(RwLock::new(PacketStats::new()))
+        .map_err(|_| "PacketStats already initialized".to_string())
 }
 
-impl NetworkManager {
-    /// Create a new `NetworkManager` instance.
-    ///
-    /// This constructs the manager but does not register it as the global
-    /// instance. Use `initialize()` to install the global singleton.
-    pub fn new() -> Self {
-        Self {
-            // Initialize fields here.
+/// Send bytes to a player's tick buffer.
+///
+/// Copies up to `length` bytes from `data` into the player's `tbuf`.
+/// If the buffer overflows the player is disconnected.
+pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
+    let send_len = std::cmp::min(length as usize, data.len());
+
+    if player_id < 1 || player_id >= gs.players.len() {
+        log::warn!("xsend: invalid player id {}", player_id);
+        return;
+    }
+
+    if gs.players[player_id].sock.is_none() {
+        log::warn!("xsend: no socket for player {}", player_id);
+        return;
+    }
+
+    if gs.players[player_id].tptr + send_len >= gs.players[player_id].tbuf.len() {
+        log::error!(
+            "#INTERNAL ERROR# ticksize too large for player {}, terminating connection",
+            player_id
+        );
+        let cn = gs.players[player_id].usnr;
+        player::plr_logout(gs, cn, player_id, enums::LogoutReason::Unknown);
+        if let Some(s) = gs.players[player_id].sock.take() {
+            let _ = s.shutdown(Shutdown::Both);
         }
+        gs.players[player_id].ltick = 0;
+        gs.players[player_id].rtick = 0;
+        if let Some(z) = gs.players[player_id].zs.take().as_mut() {
+            let _ = z.try_finish();
+        }
+        return;
     }
 
-    /// Initialize the global NetworkManager and PacketStats singletons.
-    ///
-    /// Returns an error string if the manager or stats were already
-    /// initialized.
-    pub fn initialize() -> Result<(), String> {
-        let manager = NetworkManager::new();
-        NETWORK_MANAGER
-            .set(RwLock::new(manager))
-            .map_err(|_| "NetworkManager already initialized".to_string())?;
-        // Initialize packet stats
-        PACKET_STATS
-            .set(RwLock::new(PacketStats::new()))
-            .map_err(|_| "PacketStats already initialized".to_string())?;
-        Ok(())
-    }
+    let start = gs.players[player_id].tptr;
+    let end = start + send_len;
+    if end <= gs.players[player_id].tbuf.len() {
+        gs.players[player_id].tbuf[start..end].copy_from_slice(&data[..send_len]);
+        gs.players[player_id].tptr = end;
 
-    /// Execute a read-only closure with the global `NetworkManager`.
-    ///
-    /// # Arguments
-    /// * `f` - Closure that receives a reference to the manager
-    pub fn with<F, R>(f: F) -> R
-    where
-        F: FnOnce(&NetworkManager) -> R,
-    {
-        let manager = NETWORK_MANAGER
-            .get()
-            .expect("NetworkManager not initialized")
-            .read()
-            .unwrap();
-        f(&manager)
-    }
-
-    /// Send bytes to a player's tick buffer using an explicit `GameState`.
-    ///
-    /// This is the non-singleton send path used by refactored callers that
-    /// already own `&mut GameState`.
-    ///
-    /// # Arguments
-    /// * `gs` - Active game state used for disconnect cleanup
-    /// * `player_id` - Target player index
-    /// * `data` - Source byte slice
-    /// * `length` - Number of bytes to copy
-    pub fn xsend(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
-        // Determine number of bytes to send (don't exceed provided slice)
-        let send_len = std::cmp::min(length as usize, data.len());
-
-        Server::with_players_mut(|players| {
-            // Bounds check: valid player slots are 1..players.len()-1
-            if player_id < 1 || player_id >= players.len() {
-                log::warn!("xsend: invalid player id {}", player_id);
-                return;
-            }
-
-            let p = &mut players[player_id];
-
-            // If no socket, nothing to do
-            if p.sock.is_none() {
-                log::warn!("xsend: no socket for player {}", player_id);
-                return;
-            }
-
-            // Check tick buffer space
-            if p.tptr + send_len >= p.tbuf.len() {
-                log::error!(
-                    "#INTERNAL ERROR# ticksize too large for player {}, terminating connection",
-                    player_id
-                );
-                // Attempt to log out the associated character and clean up
-                let cn = p.usnr;
-                player::plr_logout(gs, cn, player_id, enums::LogoutReason::Unknown);
-                if let Some(s) = p.sock.take() {
-                    let _ = s.shutdown(Shutdown::Both);
-                }
-                p.ltick = 0;
-                p.rtick = 0;
-                // Ensure any pending compressed output is flushed (mirror deflateEnd)
-                if let Some(z) = p.zs.take().as_mut() {
-                    let _ = z.try_finish();
-                }
-                return;
-            }
-
-            // Copy data into tick buffer
-            let start = p.tptr;
-            let end = start + send_len;
-            if end <= p.tbuf.len() {
-                p.tbuf[start..end].copy_from_slice(&data[..send_len]);
-                p.tptr = end;
-
-                // Update packet counters similar to C++ pkt_cnt logic
-                if let Some(stats_lock) = PACKET_STATS.get() {
-                    let mut stats = stats_lock.write().unwrap();
-                    let pnr = if data.len() > 0 { data[0] as usize } else { 0 };
-                    if pnr < stats.cnt.len() {
-                        stats.cnt[pnr] = stats.cnt[pnr].saturating_add(send_len);
-                        if pnr > 128 {
-                            stats.pkt_mapshort = stats.pkt_mapshort.saturating_add(send_len);
-                        } else if pnr == SV_SETMAP3 as usize
-                            || pnr == SV_SETMAP4 as usize
-                            || pnr == SV_SETMAP5 as usize
-                            || pnr == SV_SETMAP6 as usize
-                        {
-                            stats.pkt_light = stats.pkt_light.saturating_add(send_len);
-                        }
-                    }
-                }
+        if let Some(stats_lock) = PACKET_STATS.get() {
+            let mut stats = stats_lock.write().unwrap();
+            let pnr = if !data.is_empty() {
+                data[0] as usize
             } else {
-                log::warn!(
-                    "xsend: computed end {} out of bounds for player {} tbuf len {}",
-                    end,
-                    player_id,
-                    p.tbuf.len()
-                );
+                0
+            };
+            if pnr < stats.cnt.len() {
+                stats.cnt[pnr] = stats.cnt[pnr].saturating_add(send_len);
+                if pnr > 128 {
+                    stats.pkt_mapshort = stats.pkt_mapshort.saturating_add(send_len);
+                } else if pnr == SV_SETMAP3 as usize
+                    || pnr == SV_SETMAP4 as usize
+                    || pnr == SV_SETMAP5 as usize
+                    || pnr == SV_SETMAP6 as usize
+                {
+                    stats.pkt_light = stats.pkt_light.saturating_add(send_len);
+                }
             }
-        });
+        }
+    } else {
+        log::warn!(
+            "xsend: computed end {} out of bounds for player {} tbuf len {}",
+            end,
+            player_id,
+            gs.players[player_id].tbuf.len()
+        );
+    }
+}
+
+/// Send bytes into the player's circular output buffer.
+///
+/// Enqueues up to `length` bytes from `data` into the player's `obuf`.
+/// If the buffer is full the player is disconnected (client too slow).
+pub fn csend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
+    let send_len = std::cmp::min(length as usize, data.len());
+
+    if player_id < 1 || player_id >= gs.players.len() {
+        log::warn!("csend: invalid player id {}", player_id);
+        return;
     }
 
-    /// Send bytes into the player's circular output buffer using an explicit
-    /// `GameState` for cleanup.
-    ///
-    /// # Arguments
-    /// * `gs` - Active game state used for disconnect cleanup
-    /// * `player_id` - Target player index
-    /// * `data` - Source byte slice
-    /// * `length` - Number of bytes to enqueue
-    pub fn csend(&self, gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
-        let send_len = std::cmp::min(length as usize, data.len());
-
-        Server::with_players_mut(|players| {
-            if player_id < 1 || player_id >= players.len() {
-                log::warn!("csend: invalid player id {}", player_id);
-                return;
-            }
-
-            let p = &mut players[player_id];
-
-            if p.sock.is_none() {
-                // Too noisy on shutdown to log anything here.
-                return;
-            }
-
-            // Write bytes into circular output buffer one by one
-            let mut written = 0usize;
-            while written < send_len {
-                let mut tmp = p.iptr + 1;
-                if tmp == p.obuf.len() {
-                    tmp = 0;
-                }
-
-                if tmp == p.optr {
-                    // Connection too slow, terminate
-                    log::warn!("Connection too slow for player {}, terminating", player_id);
-                    let cn = p.usnr;
-                    player::plr_logout(gs, cn, player_id, enums::LogoutReason::ClientTooSlow);
-                    if let Some(s) = p.sock.take() {
-                        let _ = s.shutdown(Shutdown::Both);
-                    }
-                    p.ltick = 0;
-                    p.rtick = 0;
-                    // Ensure any pending compressed output is flushed (mirror deflateEnd)
-                    if let Some(z) = p.zs.take().as_mut() {
-                        let _ = z.try_finish();
-                    }
-                    p.zs = None;
-                    return;
-                }
-
-                p.obuf[p.iptr] = data[written];
-                p.iptr = tmp;
-                written += 1;
-            }
-        });
+    if gs.players[player_id].sock.is_none() {
+        return;
     }
 
-    // Additional methods for network management would go here.
+    let mut written = 0usize;
+    while written < send_len {
+        let mut tmp = gs.players[player_id].iptr + 1;
+        if tmp == gs.players[player_id].obuf.len() {
+            tmp = 0;
+        }
+
+        if tmp == gs.players[player_id].optr {
+            log::warn!("Connection too slow for player {}, terminating", player_id);
+            let cn = gs.players[player_id].usnr;
+            player::plr_logout(gs, cn, player_id, enums::LogoutReason::ClientTooSlow);
+            if let Some(s) = gs.players[player_id].sock.take() {
+                let _ = s.shutdown(Shutdown::Both);
+            }
+            gs.players[player_id].ltick = 0;
+            gs.players[player_id].rtick = 0;
+            if let Some(z) = gs.players[player_id].zs.take().as_mut() {
+                let _ = z.try_finish();
+            }
+            gs.players[player_id].zs = None;
+            return;
+        }
+
+        gs.players[player_id].obuf[gs.players[player_id].iptr] = data[written];
+        gs.players[player_id].iptr = tmp;
+        written += 1;
+    }
 }

@@ -9,7 +9,7 @@ use core::{
 
 use crate::{
     area, chlog, driver, effect::EffectManager, enums::LogoutReason, game_state::GameState,
-    helpers, player, populate, server::Server,
+    helpers, player, populate,
 };
 
 pub struct God {}
@@ -4304,11 +4304,9 @@ impl God {
         gs.characters[co].flags |= CharacterFlags::Usurp.bits();
         gs.characters[co].player = nr;
 
-        Server::with_players_mut(|players| {
-            if let Some(player) = players.get_mut(nr as usize) {
-                player.usnr = co;
-            }
-        });
+        if let Some(player) = gs.players.get_mut(nr as usize) {
+            player.usnr = co;
+        }
 
         if was_already_usurping {
             gs.characters[co].data[97] = gs.characters[cn].data[97];
@@ -4352,11 +4350,9 @@ impl God {
             let nr = gs.characters[cn].player;
             gs.characters[co].player = nr;
 
-            Server::with_players_mut(|players| {
-                if let Some(player) = players.get_mut(nr as usize) {
-                    player.usnr = co;
-                }
-            });
+            if let Some(player) = gs.players.get_mut(nr as usize) {
+                player.usnr = co;
+            }
 
             God::transfer_char(gs, co, 512, 512);
             gs.do_afk(co, "");
@@ -4897,8 +4893,7 @@ impl God {
         // Get timing counters from the player slot.
         // - `ltick` is server-maintained (increments each server tick)
         // - `rtick` is client-maintained (sent via CL_CMD_CTICK)
-        let (ltick, rtick) =
-            Server::with_players(|players| (players[player_id].ltick, players[player_id].rtick));
+        let (ltick, rtick) = (gs.players[player_id].ltick, gs.players[player_id].rtick);
 
         // `rtick` starts at 0 and only updates when we receive CTICK.
         // Until then, we can't compute a meaningful lag.
@@ -4944,25 +4939,25 @@ impl God {
         // Snapshot active player slots first, then resolve character names.
         // We treat a slot as "connected" when it has an open socket and a
         // sane controlled character (`usnr`).
-        let connected: Vec<(usize, usize, u32, u32)> = Server::with_players(|players| {
+        let connected: Vec<(usize, usize, u32, u32)> = {
             let mut v = Vec::new();
             for player_id in 1..core::constants::MAXPLAYER {
-                if players[player_id].sock.is_none() {
+                if gs.players[player_id].sock.is_none() {
                     continue;
                 }
-                let usnr = players[player_id].usnr;
+                let usnr = gs.players[player_id].usnr;
                 if usnr == 0 || !Character::is_sane_character(usnr) {
                     continue;
                 }
                 v.push((
                     player_id,
                     usnr,
-                    players[player_id].ltick,
-                    players[player_id].rtick,
+                    gs.players[player_id].ltick,
+                    gs.players[player_id].rtick,
                 ));
             }
             v
-        });
+        };
 
         let rows: Vec<(String, Option<f64>)> = {
             let mut out = Vec::new();

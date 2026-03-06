@@ -1,32 +1,23 @@
 use chrono::Timelike;
-use core::constants::{CharacterFlags, MAXPLAYER, TILEX, TILEY};
+use core::constants::{CharacterFlags, TILEX, TILEY};
 use core::stat_buffer::StatisticsBuffer;
 use core::types::Map;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::background_saver::{self, BackgroundSaver, SaveJob};
 use crate::effect::EffectManager;
 use crate::game_state::{GameState, StorageBackend};
 use crate::god::God;
-use crate::network_manager::NetworkManager;
-use crate::single_thread_cell::SingleThreadCell;
 use crate::tls::{self, GameStream};
 use crate::types::cmap::CMap;
 use crate::types::server_player::ServerPlayer;
 use crate::{driver, player, populate};
 use flate2::write::ZlibEncoder;
 use flate2::Compression;
-
-/// Global array of server player slots protected by a reentrant mutex.
-///
-/// Stored in a `OnceLock` and containing `MAXPLAYER` `ServerPlayer` entries.
-/// Accessors `Server::with_players` and `Server::with_players_mut` provide
-/// thread-safe read or mutable access via closures.
-static PLAYERS: OnceLock<SingleThreadCell<Box<[ServerPlayer; MAXPLAYER]>>> = OnceLock::new();
 
 /// Per-character scheduling hints used by `game_tick`.
 ///
@@ -87,50 +78,6 @@ impl Server {
             background_saver: None,
             save_tick_counter: 0,
         }
-    }
-
-    /// Allocate and initialize the global player slot array.
-    ///
-    /// Creates `MAXPLAYER` `ServerPlayer` entries and stores them inside the
-    /// `PLAYERS` `OnceLock`, wrapped with a `ReentrantMutex`. Returns an error
-    /// if the players array is already initialized or conversion fails.
-    pub fn initialize_players() -> Result<(), String> {
-        let players: Vec<ServerPlayer> = (1..=MAXPLAYER).map(|_x| ServerPlayer::new()).collect();
-        let players: Box<[ServerPlayer; MAXPLAYER]> = players
-            .into_boxed_slice()
-            .try_into()
-            .map_err(|_| "Failed to convert Vec to Box<[ServerPlayer; MAXPLAYER]>")?;
-
-        PLAYERS
-            .set(SingleThreadCell::new(players))
-            .map_err(|_| "Players already initialized".to_string())?;
-        Ok(())
-    }
-
-    /// Execute `f` with a read-only view of the player slots.
-    ///
-    /// This helper acquires the `PLAYERS` mutex and provides a shared slice of
-    /// `ServerPlayer` to the closure while the lock is held. Use this to
-    /// safely read player fields.
-    pub fn with_players<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[ServerPlayer]) -> R,
-    {
-        let players = PLAYERS.get().expect("Players not initialized");
-        players.with(|boxed| f(&boxed[..]))
-    }
-
-    /// Execute `f` with a mutable view of the player slots.
-    ///
-    /// Provides exclusive mutable access to the player array while the
-    /// repository mutex is held. Use this to initialize or update player
-    /// connection state.
-    pub fn with_players_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [ServerPlayer]) -> R,
-    {
-        let players = PLAYERS.get().expect("Players not initialized");
-        players.with_mut(|boxed| f(&mut boxed[..]))
     }
 
     /// Check whether an item carried by a player is a 'labyrinth' item and
@@ -216,9 +163,7 @@ impl Server {
             }
         }
 
-        // Repository is already initialized at this point (currently)
-        Server::initialize_players()?;
-        NetworkManager::initialize()?;
+        crate::network_manager::initialize_packet_stats()?;
 
         // Mark data as dirty (in use) only for legacy `.dat` mode.
         //
@@ -437,21 +382,15 @@ impl Server {
 
         // Send tick to players and count online
         let mut online = 0;
-        for n in 1..MAXPLAYER {
-            let (has_socket, is_normal_or_exit, is_normal) = Self::with_players(|players| {
-                if players[n].sock.is_none() {
-                    return (false, false, false);
-                }
-                let state = players[n].state;
-                let is_normal_or_exit =
-                    state == core::constants::ST_NORMAL || state == core::constants::ST_EXIT;
-                let is_normal = state == core::constants::ST_NORMAL;
-                (true, is_normal_or_exit, is_normal)
-            });
-
-            if !has_socket {
+        for n in 1..gs.players.len() {
+            if gs.players[n].sock.is_none() {
                 continue;
             }
+            let state = gs.players[n].state;
+            let is_normal_or_exit =
+                state == core::constants::ST_NORMAL || state == core::constants::ST_EXIT;
+            let is_normal = state == core::constants::ST_NORMAL;
+
             if !is_normal_or_exit {
                 continue;
             }
@@ -472,41 +411,32 @@ impl Server {
         }
 
         // Check for player commands and translate to character commands
-        for n in 1..MAXPLAYER {
-            let has_socket = Self::with_players(|players| players[n].sock.is_some());
-            if !has_socket {
+        for n in 1..gs.players.len() {
+            if gs.players[n].sock.is_none() {
                 continue;
             }
 
             // Process all pending commands (16 bytes each)
             loop {
-                let in_len = Self::with_players(|players| players[n].in_len);
-                if in_len < 16 {
+                if gs.players[n].in_len < 16 {
                     break;
                 }
 
                 player::plr_cmd(gs, n);
 
-                Self::with_players_mut(|players| {
-                    players[n].in_len -= 16;
-                    // Shift buffer: memmove(inbuf, inbuf + 16, 240)
-                    players[n].inbuf.copy_within(16..256, 0);
-                });
+                gs.players[n].in_len -= 16;
+                gs.players[n].inbuf.copy_within(16..256, 0);
             }
 
             player::plr_idle(gs, n);
         }
 
         // Do login stuff for players not in normal state
-        for n in 1..MAXPLAYER {
-            let (has_socket, is_normal) = Self::with_players(|players| {
-                if players[n].sock.is_none() {
-                    return (false, true);
-                }
-                (true, players[n].state == core::constants::ST_NORMAL)
-            });
-
-            if !has_socket || is_normal {
+        for n in 1..gs.players.len() {
+            if gs.players[n].sock.is_none() {
+                continue;
+            }
+            if gs.players[n].state == core::constants::ST_NORMAL {
                 continue;
             }
 
@@ -514,15 +444,11 @@ impl Server {
         }
 
         // Send changes to players in normal state
-        for n in 1..MAXPLAYER {
-            let (has_socket, is_normal) = Self::with_players(|players| {
-                if players[n].sock.is_none() {
-                    return (false, false);
-                }
-                (true, players[n].state == core::constants::ST_NORMAL)
-            });
-
-            if !has_socket || !is_normal {
+        for n in 1..gs.players.len() {
+            if gs.players[n].sock.is_none() {
+                continue;
+            }
+            if gs.players[n].state != core::constants::ST_NORMAL {
                 continue;
             }
 
@@ -1145,160 +1071,116 @@ impl Server {
     ///
     /// * `gs` - Mutable reference to the unified game state.
     fn compress_ticks(&mut self, gs: &mut GameState) {
-        // For each connected player, compress their tick buffer (`tbuf`) if worthwhile.
-        // This is intended to match the original C++ `compress_ticks()` logic closely.
-        Server::with_players_mut(|players| {
-            let header_from_int = |v: i32| {
-                // C++ does: csend(n, reinterpret_cast<unsigned char*>(&olen), 2)
-                // where `olen` is an `int`. That sends the first two bytes of the native-endian
-                // `int` representation (not explicitly little-endian).
-                let b = v.to_ne_bytes();
-                [b[0], b[1]]
+        let header_from_int = |v: i32| {
+            let b = v.to_ne_bytes();
+            [b[0], b[1]]
+        };
+
+        let ring_free_space = |iptr: usize, optr: usize, cap: usize| -> usize {
+            let used = if iptr >= optr {
+                iptr - optr
+            } else {
+                cap - optr + iptr
+            };
+            cap.saturating_sub(used + 1)
+        };
+
+        for n in 1..gs.players.len() {
+            if gs.players[n].sock.is_none() {
+                continue;
+            }
+            if gs.players[n].ticker_started == 0 {
+                continue;
+            }
+
+            let p = &mut gs.players[n];
+
+            if p.usnr >= core::constants::MAXCHARS {
+                p.usnr = 0;
+            }
+
+            let ilen = p.tptr;
+            let olen_uncompressed_i32: i32 = (ilen + 2) as i32;
+
+            let tbuf_data: Vec<u8> = if ilen > 0 {
+                p.tbuf[..ilen].to_vec()
+            } else {
+                Vec::new()
             };
 
-            let ring_free_space = |iptr: usize, optr: usize, cap: usize| -> usize {
-                // Keep one byte empty to distinguish full vs empty.
-                let used = if iptr >= optr {
-                    iptr - optr
-                } else {
-                    cap - optr + iptr
-                };
-                cap.saturating_sub(used + 1)
-            };
+            let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) = if olen_uncompressed_i32 > 16
+            {
+                if let Some(zs) = p.zs.as_mut() {
+                    let before = zs.get_ref().len();
+                    let _ = zs.write_all(&tbuf_data);
+                    let _ = zs.flush();
 
-            for n in 1..players.len() {
-                if players[n].sock.is_none() {
-                    continue;
-                }
-                if players[n].ticker_started == 0 {
-                    continue;
-                }
+                    let after = zs.get_ref().len();
+                    let produced = after.saturating_sub(before);
+                    let csize = produced.min(core::constants::OBUFSIZE);
 
-                // Work on a single player slot.
-                let p = &mut players[n];
-
-                if p.usnr >= core::constants::MAXCHARS {
-                    p.usnr = 0;
-                }
-
-                let ilen = p.tptr;
-                let olen_uncompressed_i32: i32 = (ilen + 2) as i32;
-
-                // Snapshot tick data (so we can freely borrow `zs` / `obuf` later).
-                let tbuf_data: Vec<u8> = if ilen > 0 {
-                    p.tbuf[..ilen].to_vec()
-                } else {
-                    Vec::new()
-                };
-
-                // Build packet contents first, then write into the output ring.
-                let (olen_i32, header, payload): (i32, [u8; 2], Vec<u8>) = if olen_uncompressed_i32
-                    > 16
-                {
-                    if let Some(zs) = p.zs.as_mut() {
-                        let before = zs.get_ref().len();
-                        let _ = zs.write_all(&tbuf_data);
-                        let _ = zs.flush();
-
-                        let after = zs.get_ref().len();
-                        let produced = after.saturating_sub(before);
-                        let csize = produced.min(core::constants::OBUFSIZE);
-
-                        // C++ truncates to OBUFSIZE (fixed `obuf`)
-                        if produced > csize {
-                            log::warn!(
-                                    "compress_ticks: compressed output truncated for player {} (produced {}, capped {}, ilen {}, usnr {})",
-                                    n,
-                                    produced,
-                                    csize,
-                                    ilen,
-                                    p.usnr
-                                );
-                            zs.get_mut().truncate(before + csize);
-                        }
-
-                        // The protocol uses the 0x8000 bit as a compression flag.
-                        // If (csize + 2) reaches or exceeds 0x8000, clients which mask
-                        // the flag bit to obtain length will desync.
-                        if csize + 2 >= 0x8000 {
-                            log::error!(
-                                    "compress_ticks: compressed packet length too large for player {} (csize {}, len_with_header {}, ilen {}, usnr {})",
-                                    n,
-                                    csize,
-                                    csize + 2,
-                                    ilen,
-                                    p.usnr
-                                );
-                        }
-
-                        let olen_i32 = ((csize + 2) as i32) | 0x8000;
-                        let header = header_from_int(olen_i32);
-                        let payload = zs.get_ref()[before..before + csize].to_vec();
-                        (olen_i32, header, payload)
-                    } else {
-                        // If compression state is missing, fall back to uncompressed.
-                        let header = header_from_int(olen_uncompressed_i32);
-                        (olen_uncompressed_i32, header, tbuf_data)
+                    if produced > csize {
+                        log::warn!(
+                            "compress_ticks: compressed output truncated for player {} (produced {}, capped {}, ilen {}, usnr {})",
+                            n, produced, csize, ilen, p.usnr
+                        );
+                        zs.get_mut().truncate(before + csize);
                     }
+
+                    if csize + 2 >= 0x8000 {
+                        log::error!(
+                            "compress_ticks: compressed packet length too large for player {} (csize {}, len_with_header {}, ilen {}, usnr {})",
+                            n, csize, csize + 2, ilen, p.usnr
+                        );
+                    }
+
+                    let olen_i32 = ((csize + 2) as i32) | 0x8000;
+                    let header = header_from_int(olen_i32);
+                    let payload = zs.get_ref()[before..before + csize].to_vec();
+                    (olen_i32, header, payload)
                 } else {
-                    // Uncompressed path: always send the 2-byte header, even if ilen == 0.
                     let header = header_from_int(olen_uncompressed_i32);
                     (olen_uncompressed_i32, header, tbuf_data)
-                };
-
-                // Write header and payload into the ring buffer.
-                let needed = 2usize + payload.len();
-                let free = ring_free_space(p.iptr, p.optr, p.obuf.len());
-                if needed > free {
-                    log::warn!(
-                        "compress_ticks: obuf overflow risk for player {} (need {}, free {}, iptr {}, optr {}, ilen {}, olen_i32 {}, usnr {})",
-                        n,
-                        needed,
-                        free,
-                        p.iptr,
-                        p.optr,
-                        ilen,
-                        olen_i32,
-                        p.usnr
-                    );
-                    // Don't overwrite unsent bytes; drop this tick packet.
-                    p.tptr = 0;
-                    continue;
                 }
+            } else {
+                let header = header_from_int(olen_uncompressed_i32);
+                (olen_uncompressed_i32, header, tbuf_data)
+            };
 
-                let mut iptr = p.iptr;
-                let obuf_len = p.obuf.len();
-                let mut write_into = |data: &[u8]| {
-                    for &b in data {
-                        p.obuf[iptr] = b;
-                        iptr += 1;
-                        if iptr >= obuf_len {
-                            iptr = 0;
-                        }
-                    }
-                };
-
-                write_into(&header);
-                if !payload.is_empty() {
-                    write_into(&payload);
-                }
-
-                p.iptr = iptr;
-
-                // Stats update (C++ does this unconditionally, with `olen` including 0x8000
-                // in the compressed case).
-                let usnr = p.usnr;
-                if usnr < core::constants::MAXCHARS {
-                    gs.characters[usnr].comp_volume = gs.characters[usnr]
-                        .comp_volume
-                        .wrapping_add(olen_i32 as u32);
-                    gs.characters[usnr].raw_volume =
-                        gs.characters[usnr].raw_volume.wrapping_add(ilen as u32);
-                }
-
+            let needed = 2usize + payload.len();
+            let free = ring_free_space(p.iptr, p.optr, p.obuf.len());
+            if needed > free {
+                log::warn!(
+                    "compress_ticks: obuf overflow risk for player {} (need {}, free {}, iptr {}, optr {}, ilen {}, olen_i32 {}, usnr {})",
+                    n, needed, free, p.iptr, p.optr, ilen, olen_i32, p.usnr
+                );
                 p.tptr = 0;
+                continue;
             }
-        });
+
+            let mut iptr = p.iptr;
+            let obuf_len = p.obuf.len();
+            for &b in header.iter().chain(payload.iter()) {
+                p.obuf[iptr] = b;
+                iptr += 1;
+                if iptr >= obuf_len {
+                    iptr = 0;
+                }
+            }
+
+            p.iptr = iptr;
+
+            let usnr = p.usnr;
+            if usnr < core::constants::MAXCHARS {
+                gs.characters[usnr].comp_volume = gs.characters[usnr]
+                    .comp_volume
+                    .wrapping_add(olen_i32 as u32);
+                gs.characters[usnr].raw_volume =
+                    gs.characters[usnr].raw_volume.wrapping_add(ilen as u32);
+            }
+
+            p.tptr = 0;
+        }
     }
 
     /// Accept new connections and perform per-player network IO.
@@ -1343,10 +1225,8 @@ impl Server {
         }
 
         // Handle existing player connections
-        for player_idx in 1..MAXPLAYER {
-            let has_socket = Self::with_players(|players| !players[player_idx].sock.is_none());
-
-            if !has_socket {
+        for player_idx in 1..gs.players.len() {
+            if gs.players[player_idx].sock.is_none() {
                 continue;
             }
 
@@ -1367,72 +1247,59 @@ impl Server {
     /// * `gs` - Reference to the unified game state (for reading ticker).
     /// * `stream` - The accepted game stream (plain or TLS).
     /// * `addr` - The peer IP address.
-    fn new_player(&mut self, gs: &GameState, stream: GameStream, addr: std::net::IpAddr) {
-        // Accept and initialize a new player slot. Mirrors server.cpp::new_player
-
-        // Set non-blocking mode on the socket
+    fn new_player(&mut self, gs: &mut GameState, stream: GameStream, addr: std::net::IpAddr) {
         let _ = stream.set_nonblocking(true);
 
-        // Convert IPv4 address to u32 (use 0 for IPv6)
         let addr_u32: u32 = match addr {
             std::net::IpAddr::V4(a) => u32::from_be_bytes(a.octets()),
             _ => 0,
         };
 
-        // Read ticker before entering the PLAYERS closure
         let ticker = gs.globals.ticker as u32;
 
-        // Prepare a fresh ServerPlayer and find a free slot
         let mut slot: Option<usize> = None;
-        Server::with_players_mut(move |players| {
-            for n in 1..players.len() {
-                if players[n].sock.is_none() {
-                    slot = Some(n);
-                    break;
-                }
+        for n in 1..gs.players.len() {
+            if gs.players[n].sock.is_none() {
+                slot = Some(n);
+                break;
             }
+        }
 
-            if slot.is_none() {
-                // No free slot; drop the socket and return
-                log::warn!("new_player: MAXPLAYER reached");
-                return;
-            }
+        let Some(n) = slot else {
+            log::warn!("new_player: MAXPLAYER reached");
+            return;
+        };
 
-            let n = slot.unwrap();
+        gs.players[n] = ServerPlayer::new();
+        gs.players[n].sock = Some(stream);
+        gs.players[n].addr = addr_u32;
+        gs.players[n].zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
+        gs.players[n].state = core::constants::ST_CONNECT;
+        gs.players[n].lasttick = ticker;
+        gs.players[n].lasttick2 = ticker;
+        gs.players[n].prio = 0;
+        gs.players[n].ticker_started = 0;
+        gs.players[n].inbuf[0] = 0;
+        gs.players[n].in_len = 0;
+        gs.players[n].iptr = 0;
+        gs.players[n].optr = 0;
+        gs.players[n].tptr = 0;
+        gs.players[n].challenge = 0;
+        gs.players[n].usnr = 0;
+        gs.players[n].pass1 = 0;
+        gs.players[n].pass2 = 0;
 
-            // Set initial state values
-            players[n] = ServerPlayer::new();
-            players[n].sock = Some(stream);
-            players[n].addr = addr_u32;
-            // Initialize compression (deflateInit level 9 equivalent)
-            players[n].zs = Some(ZlibEncoder::new(Vec::new(), Compression::best()));
-            players[n].state = core::constants::ST_CONNECT;
-            players[n].lasttick = ticker;
-            players[n].lasttick2 = ticker;
-            players[n].prio = 0;
-            players[n].ticker_started = 0;
-            players[n].inbuf[0] = 0;
-            players[n].in_len = 0;
-            players[n].iptr = 0;
-            players[n].optr = 0;
-            players[n].tptr = 0;
-            players[n].challenge = 0;
-            players[n].usnr = 0;
-            players[n].pass1 = 0;
-            players[n].pass2 = 0;
+        gs.players[n].cmap.fill(CMap::default());
+        gs.players[n].smap.fill(CMap::default());
+        gs.players[n].xmap.fill(Map::default());
+        gs.players[n].passwd.fill(0);
 
-            players[n].cmap.fill(CMap::default());
-            players[n].smap.fill(CMap::default());
-            players[n].xmap.fill(Map::default());
-            players[n].passwd.fill(0);
+        for m in 0..(TILEX * TILEY) {
+            gs.players[n].cmap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
+            gs.players[n].smap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
+        }
 
-            for m in 0..(TILEX * TILEY) {
-                players[n].cmap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
-                players[n].smap[m].ba_sprite = core::constants::SPR_EMPTY as i16;
-            }
-
-            log::info!("New connection assigned to slot {}", n);
-        });
+        log::info!("New connection assigned to slot {}", n);
     }
 
     /// Read available bytes from a player's socket into their input buffer.
@@ -1445,59 +1312,49 @@ impl Server {
     ///
     /// * `gs` - Mutable reference to the unified game state.
     /// * `_player_idx` - The player slot index.
-    fn rec_player(&self, gs: &mut GameState, _player_idx: usize) {
-        // Receive incoming bytes from a connected player's socket.
-        let idx = _player_idx;
-        Server::with_players_mut(|players| {
-            if idx >= players.len() {
-                log::error!("rec_player: invalid player index {}", idx);
-                return;
-            }
+    fn rec_player(&self, gs: &mut GameState, player_idx: usize) {
+        if player_idx >= gs.players.len() {
+            log::error!("rec_player: invalid player index {}", player_idx);
+            return;
+        }
 
-            // Ensure socket exists
-            if players[idx].sock.is_none() {
-                log::error!("rec_player: no socket for player index {}", idx);
-                return;
-            }
+        if gs.players[player_idx].sock.is_none() {
+            log::error!("rec_player: no socket for player index {}", player_idx);
+            return;
+        }
 
-            // Prepare slice for reading
-            let in_len = players[idx].in_len;
-            if in_len >= players[idx].inbuf.len() {
-                return;
-            }
+        let in_len = gs.players[player_idx].in_len;
+        if in_len >= gs.players[player_idx].inbuf.len() {
+            return;
+        }
 
-            // Borrow socket mutably and read into available buffer
-            if let Some(ref mut sock) = players[idx].sock {
-                match sock.read(&mut players[idx].inbuf[in_len..]) {
-                    Ok(0) => {
-                        // Connection closed by peer
-                        log::info!("Connection closed (recv)");
-                        let cn = players[idx].usnr;
-                        players[idx].sock = None;
-                        players[idx].ltick = 0;
-                        players[idx].rtick = 0;
-                        players[idx].zs = None;
-                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
-                    }
-                    Ok(len) => {
-                        players[idx].in_len += len;
-                        gs.globals.recv += len as i64;
-                    }
-                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                        // No data to read now
-                    }
-                    Err(e) => {
-                        log::error!("Connection closed (recv error): {}", e);
-                        let cn = players[idx].usnr;
-                        players[idx].sock = None;
-                        players[idx].ltick = 0;
-                        players[idx].rtick = 0;
-                        players[idx].zs = None;
-                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
-                    }
+        if let Some(ref mut sock) = gs.players[player_idx].sock {
+            match sock.read(&mut gs.players[player_idx].inbuf[in_len..]) {
+                Ok(0) => {
+                    log::info!("Connection closed (recv)");
+                    let cn = gs.players[player_idx].usnr;
+                    gs.players[player_idx].sock = None;
+                    gs.players[player_idx].ltick = 0;
+                    gs.players[player_idx].rtick = 0;
+                    gs.players[player_idx].zs = None;
+                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
+                }
+                Ok(len) => {
+                    gs.players[player_idx].in_len += len;
+                    gs.globals.recv += len as i64;
+                }
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) => {
+                    log::error!("Connection closed (recv error): {}", e);
+                    let cn = gs.players[player_idx].usnr;
+                    gs.players[player_idx].sock = None;
+                    gs.players[player_idx].ltick = 0;
+                    gs.players[player_idx].rtick = 0;
+                    gs.players[player_idx].zs = None;
+                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
                 }
             }
-        });
+        }
     }
 
     /// Flush pending output bytes from `obuf` to the player's TCP socket.
@@ -1510,69 +1367,63 @@ impl Server {
     /// * `gs` - Mutable reference to the unified game state.
     /// * `player_idx` - The player slot index.
     fn send_player(&self, gs: &mut GameState, player_idx: usize) {
-        // Send pending data from player's output buffer to their socket.
-        let idx = player_idx;
-        Server::with_players_mut(|players| {
-            if idx >= players.len() {
-                log::error!("send_player: invalid player index {}", idx);
-                return;
-            }
-            if players[idx].sock.is_none() {
-                log::error!("send_player: no socket for player index {}", idx);
-                return;
-            }
+        if player_idx >= gs.players.len() {
+            log::error!("send_player: invalid player index {}", player_idx);
+            return;
+        }
+        if gs.players[player_idx].sock.is_none() {
+            log::error!("send_player: no socket for player index {}", player_idx);
+            return;
+        }
 
-            let iptr = players[idx].iptr;
-            let optr = players[idx].optr;
-            let obuf_len = players[idx].obuf.len();
+        let iptr = gs.players[player_idx].iptr;
+        let optr = gs.players[player_idx].optr;
+        let obuf_len = gs.players[player_idx].obuf.len();
 
-            let (len, slice_start) = if iptr < optr {
-                (obuf_len - optr, optr)
-            } else {
-                (iptr - optr, optr)
-            };
+        let (len, slice_start) = if iptr < optr {
+            (obuf_len - optr, optr)
+        } else {
+            (iptr - optr, optr)
+        };
 
-            if len == 0 {
-                return;
-            }
+        if len == 0 {
+            return;
+        }
 
-            if let Some(ref mut sock) = players[idx].sock {
-                // Write the available contiguous slice
-                let end = slice_start + len;
-                let to_send = &players[idx].obuf[slice_start..end.min(players[idx].obuf.len())];
+        if let Some(ref mut sock) = gs.players[player_idx].sock {
+            let end = slice_start + len;
+            let to_send = &gs.players[player_idx].obuf
+                [slice_start..end.min(gs.players[player_idx].obuf.len())];
 
-                match sock.write(to_send) {
-                    Ok(0) => {
-                        log::error!("Connection closed (send, wrote 0)");
-                        let cn = players[idx].usnr;
-                        players[idx].sock = None;
-                        players[idx].ltick = 0;
-                        players[idx].rtick = 0;
-                        players[idx].zs = None;
-                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
-                    }
-                    Ok(ret) => {
-                        gs.globals.send += ret as i64;
-                        players[idx].optr += ret;
-                        if players[idx].optr >= players[idx].obuf.len() {
-                            players[idx].optr = 0;
-                        }
-                    }
-                    Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
-                        // socket not ready for writing
-                    }
-                    Err(e) => {
-                        log::error!("Connection closed (send error): {}", e);
-                        let cn = players[idx].usnr;
-                        players[idx].sock = None;
-                        players[idx].ltick = 0;
-                        players[idx].rtick = 0;
-                        players[idx].zs = None;
-                        player::plr_logout(gs, cn, idx, crate::enums::LogoutReason::Unknown);
+            match sock.write(to_send) {
+                Ok(0) => {
+                    log::error!("Connection closed (send, wrote 0)");
+                    let cn = gs.players[player_idx].usnr;
+                    gs.players[player_idx].sock = None;
+                    gs.players[player_idx].ltick = 0;
+                    gs.players[player_idx].rtick = 0;
+                    gs.players[player_idx].zs = None;
+                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
+                }
+                Ok(ret) => {
+                    gs.globals.send += ret as i64;
+                    gs.players[player_idx].optr += ret;
+                    if gs.players[player_idx].optr >= gs.players[player_idx].obuf.len() {
+                        gs.players[player_idx].optr = 0;
                     }
                 }
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(e) => {
+                    log::error!("Connection closed (send error): {}", e);
+                    let cn = gs.players[player_idx].usnr;
+                    gs.players[player_idx].sock = None;
+                    gs.players[player_idx].ltick = 0;
+                    gs.players[player_idx].rtick = 0;
+                    gs.players[player_idx].zs = None;
+                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
+                }
             }
-        });
+        }
     }
 }
 

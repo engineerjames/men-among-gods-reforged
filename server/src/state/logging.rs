@@ -3,8 +3,6 @@ use std::cmp;
 use std::sync::OnceLock;
 
 use crate::game_state::GameState;
-use crate::network_manager::NetworkManager;
-use crate::server::Server;
 use crate::talk::npc_hear;
 use crate::types::server_player::ServerPlayer;
 
@@ -73,7 +71,7 @@ impl GameState {
             return;
         }
 
-        if Server::with_players(|players| players[player_number].usnr) != cn {
+        if self.players[player_number].usnr != cn {
             self.characters[cn].player = 0;
             return;
         }
@@ -94,9 +92,7 @@ impl GameState {
                 *b = 0;
             }
 
-            NetworkManager::with(|network| {
-                network.xsend(self, player_number, &buffer, 16);
-            });
+            crate::network_manager::xsend(self, player_number, &buffer, 16);
 
             pos += take;
             if pos >= len {
@@ -215,9 +211,7 @@ impl GameState {
         vol: i32,
         pan: i32,
     ) {
-        let matching_player_id = Server::with_players(|players| {
-            (0..MAXPLAYER).find(|&i| players[i].usnr == character_id)
-        });
+        let matching_player_id = (0..MAXPLAYER).find(|&i| gs.players[i].usnr == character_id);
 
         let Some(player_id) = matching_player_id else {
             log::debug!(
@@ -233,9 +227,7 @@ impl GameState {
         buf[5..9].copy_from_slice(&vol.to_le_bytes());
         buf[9..13].copy_from_slice(&pan.to_le_bytes());
 
-        NetworkManager::with(|network| {
-            network.xsend(gs, player_id, &buf, 13);
-        });
+        crate::network_manager::xsend(gs, player_id, &buf, 13);
     }
 
     /// Port of `do_area_sound(cn, co, xs, ys, nr)` from the original server.

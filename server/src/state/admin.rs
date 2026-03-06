@@ -1,6 +1,6 @@
 use core::{constants::CharacterFlags, string_operations::c_string_to_str, types::FontColor};
 
-use crate::{game_state::GameState, god::God, helpers, network_manager::NetworkManager};
+use crate::{game_state::GameState, god::God, helpers, network_manager};
 
 impl GameState {
     /// Port of `do_look_depot(int cn, int co)` from `svr_do.cpp`
@@ -63,9 +63,7 @@ impl GameState {
         }
         buf[15] = 0;
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK2 packet
         buf[0] = core::constants::SV_LOOK2;
@@ -88,9 +86,7 @@ impl GameState {
         let hp_bytes = (hp5 as u32).to_le_bytes();
         buf[9..13].copy_from_slice(&hp_bytes);
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK3 packet
         buf[0] = core::constants::SV_LOOK3;
@@ -129,9 +125,7 @@ impl GameState {
         buf[13] = (amana_display & 0xFF) as u8;
         buf[14] = (amana_display >> 8) as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK4 packet
         buf[0] = core::constants::SV_LOOK4;
@@ -163,9 +157,7 @@ impl GameState {
         let cost_bytes = deposit_cost.to_le_bytes();
         buf[6..10].copy_from_slice(&cost_bytes);
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK5 packet (character name)
         buf[0] = core::constants::SV_LOOK5;
@@ -175,9 +167,7 @@ impl GameState {
 
         buf[1..16].copy_from_slice(&co_name);
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK6 packets for all 62 depot slots in pairs
         for n in (0..62).step_by(2) {

@@ -3,7 +3,6 @@ use core::types::{Character, FontColor};
 
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::server::Server;
 use crate::{helpers, player};
 
 use crate::game_state::GameState;
@@ -562,9 +561,7 @@ impl GameState {
         if let Some((player_nr, c2)) = usurp_info {
             if Character::is_sane_character(c2) {
                 self.characters[c2].player = player_nr as i32;
-                Server::with_players_mut(|players| {
-                    players[player_nr].usnr = c2;
-                });
+                self.players[player_nr].usnr = c2;
                 self.characters[c2].flags &= !CharacterFlags::ComputerControlledPlayer.bits();
             } else {
                 player::player_exit(self, player_nr);

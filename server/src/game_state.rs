@@ -23,6 +23,7 @@ use bincode::{Decode, Encode};
 use crate::keydb;
 use crate::keydb_store;
 use crate::path_finding::PathFinder;
+use crate::types::server_player::ServerPlayer;
 
 /// Persistence backend used for loading and saving game data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +92,10 @@ pub struct GameState {
     pub message_of_the_day: String,
     /// Runtime ban list.
     pub ban_list: Vec<core::types::Ban>,
+
+    // -- Network player slots --
+    /// Per-connection player data (sockets, buffers, client-side caches).
+    pub players: Vec<ServerPlayer>,
 
     // -- Counters (formerly Repository fields) --
     /// Tick at which the last population reset occurred.
@@ -214,6 +219,9 @@ impl GameState {
             bad_words: Vec::new(),
             message_of_the_day: String::new(),
             ban_list: Vec::new(),
+            players: (0..core::constants::MAXPLAYER)
+                .map(|_| ServerPlayer::new())
+                .collect(),
             last_population_reset_tick: 0,
             ice_cloak_clock: 0,
             item_tick_gc_off: 0,

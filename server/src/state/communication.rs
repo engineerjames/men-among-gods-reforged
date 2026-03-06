@@ -1,6 +1,6 @@
 use crate::game_state::GameState;
 use crate::god::God;
-use crate::network_manager::NetworkManager;
+use crate::network_manager;
 use crate::{driver, helpers};
 use core::constants::{CharacterFlags, CT_LGUARD};
 use core::string_operations::c_string_to_str;
@@ -436,9 +436,7 @@ impl GameState {
         }
         buf[15] = autoflag as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK2 packet
         buf[0] = core::constants::SV_LOOK2;
@@ -492,9 +490,7 @@ impl GameState {
             buf[14] = 0;
         }
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK3 packet
         buf[0] = core::constants::SV_LOOK3;
@@ -536,9 +532,7 @@ impl GameState {
         buf[13] = (amana_display & 0xFF) as u8;
         buf[14] = (amana_display >> 8) as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK4 packet
         buf[0] = core::constants::SV_LOOK4;
@@ -616,9 +610,7 @@ impl GameState {
             buf[5] = 0;
         }
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK5 packet (character name)
         buf[0] = core::constants::SV_LOOK5;
@@ -631,9 +623,7 @@ impl GameState {
 
         buf[1..16].copy_from_slice(&co_name);
 
-        NetworkManager::with(|network| {
-            network.xsend(self, player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK6 packets (shop inventory) if merchant or corpse
         if (is_merchant || is_body) && autoflag == 0 {

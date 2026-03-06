@@ -11,8 +11,8 @@ use core::{
 };
 
 use crate::{
-    driver, enums, game_state::GameState, god::God, helpers, keydb,
-    network_manager::NetworkManager, server::Server, types::cmap::CMap,
+    driver, enums, game_state::GameState, god::God, helpers, keydb, network_manager,
+    types::cmap::CMap,
 };
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -276,16 +276,12 @@ pub fn plr_logout(
             buffer[0] = core::constants::SV_EXIT;
             buffer[1] = reason as u8;
 
-            let player_state = Server::with_players(|players| players[player_id].state);
+            let player_state = gs.players[player_id].state;
 
             if player_state == core::constants::ST_NORMAL {
-                NetworkManager::with(|network| {
-                    network.xsend(gs, player_id, &buffer, 2);
-                });
+                network_manager::xsend(gs, player_id, &buffer, 2);
             } else {
-                NetworkManager::with(|network| {
-                    network.csend(gs, player_id, &buffer, 2);
-                });
+                network_manager::csend(gs, player_id, &buffer, 2);
             }
         }
 
@@ -309,25 +305,23 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
 
     let ticker = gs.globals.ticker as u32;
 
-    Server::with_players_mut(|players| {
-        players[player_id].state = core::constants::ST_EXIT;
-        players[player_id].lasttick = ticker;
+    gs.players[player_id].state = core::constants::ST_EXIT;
+    gs.players[player_id].lasttick = ticker;
 
-        let maybe_char = gs
-            .characters
-            .iter_mut()
-            .find(|ch| ch.player as usize == player_id);
+    let maybe_char = gs
+        .characters
+        .iter_mut()
+        .find(|ch| ch.player as usize == player_id);
 
-        if let Some(char) = maybe_char {
-            log::info!(
-                "Player {} exiting for character '{}'",
-                player_id,
-                char.get_name()
-            );
+    if let Some(char) = maybe_char {
+        log::info!(
+            "Player {} exiting for character '{}'",
+            player_id,
+            char.get_name()
+        );
 
-            char.player = 0;
-        }
-    });
+        char.player = 0;
+    }
 }
 
 /// Port of `plr_map_remove` from `svr_act.cpp`
@@ -1985,13 +1979,11 @@ pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
 
 /// Clear the saved small map for all players to force a full resend
 #[allow(dead_code)]
-pub fn plr_clear_map() {
-    Server::with_players_mut(|players| {
-        for n in 1..players.len() {
-            players[n].smap = std::array::from_fn(|_| CMap::default());
-            players[n].vx = 0; // force do_all in map generation
-        }
-    });
+pub fn plr_clear_map(gs: &mut GameState) {
+    for n in 1..gs.players.len() {
+        gs.players[n].smap = std::array::from_fn(|_| CMap::default());
+        gs.players[n].vx = 0; // force do_all in map generation
+    }
 }
 
 /// Choose and dispatch the appropriate map update implementation.
@@ -2008,10 +2000,10 @@ pub fn plr_getmap(gs: &mut GameState, nr: usize) {
 }
 
 pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
 
     // We copy it out here so we HAVE to write it back.
-    let mut smap = Server::with_players(|players| players[nr].smap);
+    let mut smap = gs.players[nr].smap;
 
     const YSCUT: i32 = 3;
     const YECUT: i32 = 1;
@@ -2034,9 +2026,9 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         16,
     );
 
-    let player_vx = Server::with_players(|players| players[nr].vx);
-    let player_vy = Server::with_players(|players| players[nr].vy);
-    let player_visi = Server::with_players(|players| players[nr].visi);
+    let player_vx = gs.players[nr].vx;
+    let player_vy = gs.players[nr].vy;
+    let player_visi = gs.players[nr].visi;
 
     let see_x = gs.see_map[cn].x;
     let see_y = gs.see_map[cn].y;
@@ -2045,11 +2037,9 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     let mut do_all = false;
     if player_vx != see_x || player_vy != see_y || player_visi != see_vis || player_visi != see_vis
     {
-        Server::with_players_mut(|players| {
-            players[nr].vx = see_x;
-            players[nr].vy = see_y;
-            players[nr].visi = see_vis;
-        });
+        gs.players[nr].vx = see_x;
+        gs.players[nr].vy = see_y;
+        gs.players[nr].visi = see_vis;
         do_all = true;
     }
 
@@ -2082,13 +2072,11 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 || y >= core::constants::SERVER_MAPY
             {
                 let needs_update = do_all
-                    || Server::with_players(|players| players[nr].xmap[n]) != empty_map
-                    || Server::with_players(|players| players[nr].smap[n]) != empty_cmap;
+                    || gs.players[nr].xmap[n] != empty_map
+                    || gs.players[nr].smap[n] != empty_cmap;
                 if needs_update {
-                    Server::with_players_mut(|players| {
-                        players[nr].xmap[n] = empty_map;
-                        players[nr].smap[n] = empty_cmap;
-                    });
+                    gs.players[nr].xmap[n] = empty_map;
+                    gs.players[nr].smap[n] = empty_cmap;
                 }
 
                 x += 1;
@@ -2099,12 +2087,9 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
             let mi = (x + y * core::constants::SERVER_MAPX) as usize;
 
             let map_m = gs.map[mi];
-            if do_all
-                || map_m.it != 0
-                || map_m.ch as usize != 0
-                || Server::with_players(|player| player[nr].xmap[n]) != map_m
+            if do_all || map_m.it != 0 || map_m.ch as usize != 0 || gs.players[nr].xmap[n] != map_m
             {
-                Server::with_players_mut(|player| player[nr].xmap[n] = map_m)
+                gs.players[nr].xmap[n] = map_m;
             } else {
                 // Still need to advance indices
                 x += 1;
@@ -2130,9 +2115,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
             // no light, nothing visible
             if light == 0 {
-                Server::with_players_mut(|players| {
-                    players[nr].smap[n] = empty_cmap;
-                });
+                gs.players[nr].smap[n] = empty_cmap;
                 x += 1;
                 n += 1;
                 continue;
@@ -2348,7 +2331,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 }
             }
 
-            Server::with_players_mut(|players| players[nr].smap[n] = smap[n]);
+            gs.players[nr].smap[n] = smap[n];
 
             x += 1;
             n += 1;
@@ -2358,28 +2341,22 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         n += (XSCUT + XECUT) as usize;
     }
 
-    Server::with_players_mut(|player| {
-        player[nr].vx = gs.see_map[cn].x;
-        player[nr].vy = gs.see_map[cn].y;
-    });
+    gs.players[nr].vx = gs.see_map[cn].x;
+    gs.players[nr].vy = gs.see_map[cn].y;
 }
 
 /// Port of `plr_state` from `svr_tick.cpp`
 /// Handles player state transitions (login, exit, timeouts)
 pub fn plr_state(gs: &mut GameState, nr: usize) {
     let ticker = gs.globals.ticker;
-    let (lasttick, state) =
-        Server::with_players(|players| (players[nr].lasttick as i32, players[nr].state));
+    let (lasttick, state) = (gs.players[nr].lasttick as i32, gs.players[nr].state);
 
     // Handle ST_EXIT timeout - close connection after 15 seconds
     if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 15
         && state == core::constants::ST_EXIT
     {
-        Server::with_players_mut(|players| {
-            log::info!("Connection closed (ST_EXIT) for player {}", nr);
-            // Close socket - the actual close happens in network layer
-            players[nr].sock = None;
-        });
+        log::info!("Connection closed (ST_EXIT) for player {}", nr);
+        gs.players[nr].sock = None;
         return;
     }
 
@@ -2400,17 +2377,13 @@ pub fn plr_state(gs: &mut GameState, nr: usize) {
         state if state == core::constants::ST_NEWCAP => {
             // Timeout after 10 seconds, go back to NEWLOGIN
             if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 10 {
-                Server::with_players_mut(|players| {
-                    players[nr].state = core::constants::ST_NEWLOGIN;
-                });
+                gs.players[nr].state = core::constants::ST_NEWLOGIN;
             }
         }
         state if state == core::constants::ST_CAP => {
             // Timeout after 10 seconds, go back to LOGIN
             if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 10 {
-                Server::with_players_mut(|players| {
-                    players[nr].state = core::constants::ST_LOGIN;
-                });
+                gs.players[nr].state = core::constants::ST_LOGIN;
             }
         }
         state if state == core::constants::ST_NEW_CHALLENGE => {
@@ -2437,7 +2410,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     // Port of C++ `plr_newlogin` from `svr_tick.cpp`.
 
     // version check
-    let version = Server::with_players(|players| players[nr].version as u32);
+    let version = gs.players[nr].version as u32;
     if version < core::constants::MINVERSION {
         log::warn!("Client too old ({}). Logout demanded", version);
         plr_logout(gs, 0, nr, enums::LogoutReason::VersionMismatch);
@@ -2445,7 +2418,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     }
 
     // ban check
-    let addr = Server::with_players(|players| players[nr].addr);
+    let addr = gs.players[nr].addr;
     if God::is_banned(gs, addr as i32) {
         log::info!("Banned, sent away");
         plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
@@ -2455,7 +2428,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     // TODO: `cap()` handling (player cap/queue) not implemented yet.
 
     // sanitize race
-    let mut temp = Server::with_players(|players| players[nr].race);
+    let mut temp = gs.players[nr].race;
     if temp != 2 && temp != 3 && temp != 4 && temp != 76 && temp != 77 && temp != 78 {
         temp = 2;
     }
@@ -2521,7 +2494,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     ch.creation_date = now;
     ch.login_date = now;
     ch.flags |= CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
-    ch.addr = Server::with_players(|players| players[nr].addr);
+    ch.addr = gs.players[nr].addr;
 
     // char_add_net behaviour: shift data[80..89] and insert lower 24 bits of addr
     let net = (ch.addr & 0x00ffffff) as i32;
@@ -2546,11 +2519,9 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     let pass1 = gs.characters[cn].pass1;
     let pass2 = gs.characters[cn].pass2;
 
-    Server::with_players_mut(|players| {
-        players[nr].usnr = cn;
-        players[nr].pass1 = pass1;
-        players[nr].pass2 = pass2;
-    });
+    gs.players[nr].usnr = cn;
+    gs.players[nr].pass1 = pass1;
+    gs.players[nr].pass2 = pass2;
 
     log::info!(
         "New player logged in as character index={} (players index={})",
@@ -2568,26 +2539,20 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     buf[14] = ver_bytes[1];
     buf[15] = ver_bytes[2];
 
-    NetworkManager::with(|network| {
-        network.csend(gs, nr, &buf, 16);
-    });
+    network_manager::csend(gs, nr, &buf, 16);
 
     // finalize player state
     let ticker = gs.globals.ticker as u32;
-    Server::with_players_mut(|players| {
-        players[nr].state = core::constants::ST_NORMAL;
-        players[nr].lasttick = ticker;
-        players[nr].ltick = 0;
-        players[nr].ticker_started = 1;
-    });
+    gs.players[nr].state = core::constants::ST_NORMAL;
+    gs.players[nr].lasttick = ticker;
+    gs.players[nr].ltick = 0;
+    gs.players[nr].ticker_started = 1;
 
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
     tbuf[1] = (gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
-    NetworkManager::with(|network| {
-        network.xsend(gs, nr, &tbuf, 2);
-    });
+    network_manager::xsend(gs, nr, &tbuf, 2);
 
     log::info!("Created new character");
 
@@ -2605,12 +2570,10 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
 
     // change password if client provided one and character has no CF_PASSWD
-    let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
+    let needs_pass = gs.players[nr].passwd[0] != 0;
     if needs_pass {
         if (gs.characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
-            // extract password string
-            let pass =
-                Server::with_players(|players| c_string_to_str(&players[nr].passwd).to_string());
+            let pass = c_string_to_str(&gs.players[nr].passwd).to_string();
             God::change_pass(gs, cn, cn, &pass);
         }
     }
@@ -2623,14 +2586,14 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
 /// Handles existing player login (stub - to be implemented)
 fn plr_login(gs: &mut GameState, nr: usize) {
     // version check
-    let version = Server::with_players(|players| players[nr].version as u32);
+    let version = gs.players[nr].version as u32;
     if version < core::constants::MINVERSION {
         log::warn!("Client too old ({}). Logout demanded", version);
         plr_logout(gs, 0, nr, enums::LogoutReason::VersionMismatch);
         return;
     }
 
-    let login_ticket = Server::with_players(|players| players[nr].login_ticket);
+    let login_ticket = gs.players[nr].login_ticket;
     let mut is_api_login = false;
     if login_ticket != 0 {
         is_api_login = true;
@@ -2645,16 +2608,14 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
         let (pass1, pass2) = (gs.characters[cn].pass1, gs.characters[cn].pass2);
 
-        Server::with_players_mut(|players| {
-            players[nr].usnr = cn;
-            players[nr].pass1 = pass1;
-            players[nr].pass2 = pass2;
-            players[nr].login_ticket = 0;
-        });
+        gs.players[nr].usnr = cn;
+        gs.players[nr].pass1 = pass1;
+        gs.players[nr].pass2 = pass2;
+        gs.players[nr].login_ticket = 0;
     }
 
     // get character number requested by player
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("Login as {} denied (illegal cn)", cn);
@@ -2668,8 +2629,8 @@ fn plr_login(gs: &mut GameState, nr: usize) {
             let ch = gs.characters[cn];
             let p1 = ch.pass1;
             let p2 = ch.pass2;
-            let player_p1 = Server::with_players(|players| players[nr].pass1);
-            let player_p2 = Server::with_players(|players| players[nr].pass2);
+            let player_p1 = gs.players[nr].pass1;
+            let player_p2 = gs.players[nr].pass2;
             p1 == player_p1 && p2 == player_p2
         };
 
@@ -2684,7 +2645,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
             let ch = gs.characters[cn];
             if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
                 let stored = ch.passwd;
-                let client = Server::with_players(|players| players[nr].passwd);
+                let client = gs.players[nr].passwd;
                 stored != client
             } else {
                 false
@@ -2722,7 +2683,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
         let should_kick = active_player != 0
             && active_player != nr
             && active_player < core::constants::MAXPLAYER
-            && Server::with_players(|players| players[active_player].sock.is_some());
+            && gs.players[active_player].sock.is_some();
         if should_kick {
             plr_logout(gs, cn, active_player, enums::LogoutReason::IdleTooLong);
         } else {
@@ -2744,7 +2705,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // Ban check (skip golden/god)
-    let banned = Server::with_players(|players| players[nr].addr);
+    let banned = gs.players[nr].addr;
     let exempt = (gs.characters[cn].flags
         & (CharacterFlags::Golden.bits() | CharacterFlags::God.bits()))
         != 0;
@@ -2771,28 +2732,22 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
     // finalize player state
     let ticker = gs.globals.ticker as u32;
-    Server::with_players_mut(|players| {
-        players[nr].state = core::constants::ST_NORMAL;
-        players[nr].lasttick = ticker;
-        players[nr].ltick = 0;
-        players[nr].ticker_started = 1;
-    });
+    gs.players[nr].state = core::constants::ST_NORMAL;
+    gs.players[nr].lasttick = ticker;
+    gs.players[nr].ltick = 0;
+    gs.players[nr].ticker_started = 1;
 
     // send LOGIN_OK
     let mut buf: [u8; 16] = [0; 16];
     buf[0] = core::constants::SV_LOGIN_OK;
     buf[1..5].copy_from_slice(&core::constants::VERSION.to_le_bytes());
-    NetworkManager::with(|network| {
-        network.csend(gs, nr, &buf, 16);
-    });
+    network_manager::csend(gs, nr, &buf, 16);
 
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
     tbuf[1] = (gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
-    NetworkManager::with(|network| {
-        network.xsend(gs, nr, &tbuf, 2);
-    });
+    network_manager::xsend(gs, nr, &tbuf, 2);
 
     // mark active and set login date, addr, add net history
     let now = std::time::SystemTime::now()
@@ -2803,7 +2758,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     let ch = &mut gs.characters[cn];
     ch.used = core::constants::USE_ACTIVE;
     ch.login_date = now;
-    ch.addr = Server::with_players(|players| players[nr].addr);
+    ch.addr = gs.players[nr].addr;
     ch.current_online_time = 0;
 
     // char_add_net behaviour: shift data[80..89] and insert lower 24 bits
@@ -2821,7 +2776,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     ch.data[80] = net;
 
     // ensure client player mode default
-    Server::with_players_mut(|players| players[nr].cpl.mode = -1);
+    gs.players[nr].cpl.mode = -1;
 
     // Try to drop character at tavern/nearby
     let tav_x = gs.characters[cn].tavern_x as usize;
@@ -2882,12 +2837,10 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
     if !is_api_login {
         // do password change if provided
-        let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
+        let needs_pass = gs.players[nr].passwd[0] != 0;
         if needs_pass {
             if (gs.characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
-                let pass = Server::with_players(|players| {
-                    c_string_to_str(&players[nr].passwd).to_string()
-                });
+                let pass = c_string_to_str(&gs.players[nr].passwd).to_string();
                 God::change_pass(gs, cn, cn, &pass);
             }
         }
@@ -3030,7 +2983,7 @@ fn resolve_api_login_character(
 /// Port of `plr_change` from `svr_tick.cpp`
 /// Sends changed player data to the client
 pub fn plr_change(gs: &mut GameState, nr: usize) {
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::error!("plr_change: invalid character number {}", cn);
@@ -3076,10 +3029,7 @@ pub fn plr_change(gs: &mut GameState, nr: usize) {
 /// Send full stats update to player
 fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
     // Send name in three parts if changed
-    let name_changed = Server::with_players(|players| {
-        let ch = gs.characters[cn];
-        players[nr].cpl.name[..] != ch.name[..]
-    });
+    let name_changed = gs.players[nr].cpl.name[..] != gs.characters[cn].name[..];
 
     if name_changed {
         let ch = gs.characters[cn];
@@ -3087,13 +3037,13 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_SETCHAR_NAME1;
         buf[1..16].copy_from_slice(&ch.name[0..15]);
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 16));
+        network_manager::xsend(gs, nr, &buf, 16);
 
         // part2: next 15 bytes
         let mut buf2: [u8; 16] = [0; 16];
         buf2[0] = core::constants::SV_SETCHAR_NAME2;
         buf2[1..16].copy_from_slice(&ch.name[15..30]);
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf2, 16));
+        network_manager::xsend(gs, nr, &buf2, 16);
 
         // part3: last 10 bytes + temp (u16 -> u32 slot)
         let mut buf3: [u8; 16] = [0; 16];
@@ -3101,40 +3051,37 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         buf3[1..11].copy_from_slice(&ch.name[30..40]);
         let temp_bytes = (ch.temp as u32).to_le_bytes();
         buf3[11..15].copy_from_slice(&temp_bytes[0..4]);
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf3, 16));
+        network_manager::xsend(gs, nr, &buf3, 16);
 
-        // copy into cpl
-        Server::with_players_mut(|players| players[nr].cpl.name.copy_from_slice(&ch.name));
+        gs.players[nr]
+            .cpl
+            .name
+            .copy_from_slice(&gs.characters[cn].name);
     }
 
     // send mode if different
-    let need_mode = {
-        let mode = gs.characters[cn].mode as i32;
-        Server::with_players(|players| players[nr].cpl.mode != mode)
-    };
-    if need_mode {
+    let mode = gs.characters[cn].mode as i32;
+    if gs.players[nr].cpl.mode != mode {
         let mode = gs.characters[cn].mode;
         let mut buf: [u8; 2] = [0; 2];
         buf[0] = core::constants::SV_SETCHAR_MODE;
         buf[1] = mode;
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 2));
-        Server::with_players_mut(|players| players[nr].cpl.mode = mode as i32);
+        network_manager::xsend(gs, nr, &buf, 2);
+        gs.players[nr].cpl.mode = mode as i32;
     }
 
     // attribs (5 x 6 bytes)
     for a in 0..5usize {
-        let changed = {
-            let chv = gs.characters[cn].attrib[a];
-            Server::with_players(|players| players[nr].cpl.attrib[a] != chv)
-        };
+        let chv = gs.characters[cn].attrib[a];
+        let changed = gs.players[nr].cpl.attrib[a] != chv;
         if changed {
             let bytes = gs.characters[cn].attrib[a];
             let mut buf: [u8; 8] = [0; 8];
             buf[0] = core::constants::SV_SETCHAR_ATTRIB;
             buf[1] = a as u8;
             buf[2..8].copy_from_slice(&bytes);
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 8));
-            Server::with_players_mut(|players| players[nr].cpl.attrib[a] = bytes);
+            network_manager::xsend(gs, nr, &buf, 8);
+            gs.players[nr].cpl.attrib[a] = bytes;
         }
     }
 
@@ -3146,12 +3093,12 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
     ];
     for (idx, code) in powers.iter().enumerate() {
         let ch = gs.characters[cn];
-        let different = Server::with_players(|players| match idx {
-            0 => players[nr].cpl.hp != ch.hp,
-            1 => players[nr].cpl.end != ch.end,
-            2 => players[nr].cpl.mana != ch.mana,
+        let different = match idx {
+            0 => gs.players[nr].cpl.hp != ch.hp,
+            1 => gs.players[nr].cpl.end != ch.end,
+            2 => gs.players[nr].cpl.mana != ch.mana,
             _ => false,
-        });
+        };
         if different {
             let mut buf: [u8; 13] = [0; 13];
             buf[0] = *code;
@@ -3167,31 +3114,28 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[off] = (v & 0xff) as u8;
                 buf[off + 1] = (v >> 8) as u8;
             }
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 13));
-            // copy into cpl
-            Server::with_players_mut(|players| match idx {
-                0 => players[nr].cpl.hp = ch.hp,
-                1 => players[nr].cpl.end = ch.end,
-                2 => players[nr].cpl.mana = ch.mana,
+            network_manager::xsend(gs, nr, &buf, 13);
+            match idx {
+                0 => gs.players[nr].cpl.hp = ch.hp,
+                1 => gs.players[nr].cpl.end = ch.end,
+                2 => gs.players[nr].cpl.mana = ch.mana,
                 _ => {}
-            });
+            }
         }
     }
 
     // skills (0..50)
     for s in 0..50usize {
-        let changed = {
-            let chv = gs.characters[cn].skill[s];
-            Server::with_players(|players| players[nr].cpl.skill[s] != chv)
-        };
+        let chv = gs.characters[cn].skill[s];
+        let changed = gs.players[nr].cpl.skill[s] != chv;
         if changed {
             let bytes = gs.characters[cn].skill[s];
             let mut buf: [u8; 8] = [0; 8];
             buf[0] = core::constants::SV_SETCHAR_SKILL;
             buf[1] = s as u8;
             buf[2..8].copy_from_slice(&bytes);
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 8));
-            Server::with_players_mut(|players| players[nr].cpl.skill[s] = bytes);
+            network_manager::xsend(gs, nr, &buf, 8);
+            gs.players[nr].cpl.skill[s] = bytes;
         }
     }
 
@@ -3199,7 +3143,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
     for i in 0..40usize {
         let is_building = gs.characters[cn].is_building();
         let in_idx = gs.characters[cn].item[i] as usize;
-        let cpl_item = Server::with_players(|players| players[nr].cpl.item[i]);
+        let cpl_item = gs.players[nr].cpl.item[i];
 
         // Check if changed OR if IF_UPDATE is set (but not for building mode)
         let needs_update = if in_idx != 0 && !is_building {
@@ -3280,15 +3224,15 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[8] = 0;
             }
 
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 9));
-            Server::with_players_mut(|players| players[nr].cpl.item[i] = in_idx as i32);
+            network_manager::xsend(gs, nr, &buf, 9);
+            gs.players[nr].cpl.item[i] = in_idx as i32;
         }
     }
 
     // worn (20)
     for i in 0..20usize {
         let in_idx = gs.characters[cn].worn[i] as usize;
-        let cpl_worn = Server::with_players(|players| players[nr].cpl.worn[i]);
+        let cpl_worn = gs.players[nr].cpl.worn[i];
 
         // Check if changed OR if IF_UPDATE is set
         let needs_update = if in_idx != 0 {
@@ -3327,16 +3271,16 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 buf[8] = 0;
             }
 
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 9));
-            Server::with_players_mut(|players| players[nr].cpl.worn[i] = in_idx as i32);
+            network_manager::xsend(gs, nr, &buf, 9);
+            gs.players[nr].cpl.worn[i] = in_idx as i32;
         }
     }
 
     // spells (20)
     for i in 0..20usize {
         let in_idx = gs.characters[cn].spell[i] as usize;
-        let cpl_spell = Server::with_players(|players| players[nr].cpl.spell[i]);
-        let cpl_active = Server::with_players(|players| players[nr].cpl.active[i]);
+        let cpl_spell = gs.players[nr].cpl.spell[i];
+        let cpl_active = gs.players[nr].cpl.active[i];
 
         // Calculate current active fraction
         let (current_active_frac, has_update_flag) = if in_idx != 0 {
@@ -3374,29 +3318,25 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 }
                 // Clear IF_UPDATE flag
                 gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
-                Server::with_players_mut(|players| {
-                    players[nr].cpl.spell[i] = in_idx as i32;
-                    players[nr].cpl.active[i] = current_active_frac as i8;
-                });
+                gs.players[nr].cpl.spell[i] = in_idx as i32;
+                gs.players[nr].cpl.active[i] = current_active_frac as i8;
             } else {
                 buf[5] = 0;
                 buf[6] = 0;
                 buf[7] = 0;
                 buf[8] = 0;
-                Server::with_players_mut(|players| {
-                    players[nr].cpl.spell[i] = 0;
-                    players[nr].cpl.active[i] = 0;
-                });
+                gs.players[nr].cpl.spell[i] = 0;
+                gs.players[nr].cpl.active[i] = 0;
             }
 
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 9));
+            network_manager::xsend(gs, nr, &buf, 9);
         }
     }
 
     // citem (cursor item)
     let is_building = gs.characters[cn].is_building();
     let in_idx = gs.characters[cn].citem as usize;
-    let cpl_citem = Server::with_players(|players| players[nr].cpl.citem);
+    let cpl_citem = gs.players[nr].cpl.citem;
 
     // Check if changed OR if IF_UPDATE is set (but not for building mode or gold amounts)
     let needs_update = if in_idx != 0 && !is_building && (in_idx & 0x80000000) == 0 {
@@ -3465,15 +3405,15 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             buf[4] = 0;
         }
 
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 5));
-        Server::with_players_mut(|players| players[nr].cpl.citem = in_idx as i32);
+        network_manager::xsend(gs, nr, &buf, 5);
+        gs.players[nr].cpl.citem = in_idx as i32;
     }
 }
 
 /// Send HP change to player
 fn plr_change_hp(gs: &mut GameState, nr: usize, cn: usize) {
     let current_hp = (gs.characters[cn].a_hp + 500) / 1000;
-    let player_hp = Server::with_players(|players| players[nr].cpl.a_hp);
+    let player_hp = gs.players[nr].cpl.a_hp;
 
     if current_hp != player_hp {
         let mut buf: [u8; 16] = [0; 16];
@@ -3481,20 +3421,15 @@ fn plr_change_hp(gs: &mut GameState, nr: usize, cn: usize) {
         buf[1] = current_hp as u8;
         buf[2] = (current_hp >> 8) as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(gs, nr, &buf, 3);
-        });
-
-        Server::with_players_mut(|players| {
-            players[nr].cpl.a_hp = current_hp;
-        });
+        network_manager::xsend(gs, nr, &buf, 3);
+        gs.players[nr].cpl.a_hp = current_hp;
     }
 }
 
 /// Send endurance change to player
 fn plr_change_end(gs: &mut GameState, nr: usize, cn: usize) {
     let current_end = (gs.characters[cn].a_end + 500) / 1000;
-    let player_end = Server::with_players(|players| players[nr].cpl.a_end);
+    let player_end = gs.players[nr].cpl.a_end;
 
     if current_end != player_end {
         let mut buf: [u8; 16] = [0; 16];
@@ -3502,20 +3437,15 @@ fn plr_change_end(gs: &mut GameState, nr: usize, cn: usize) {
         buf[1] = current_end as u8;
         buf[2] = (current_end >> 8) as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(gs, nr, &buf, 3);
-        });
-
-        Server::with_players_mut(|players| {
-            players[nr].cpl.a_end = current_end;
-        });
+        network_manager::xsend(gs, nr, &buf, 3);
+        gs.players[nr].cpl.a_end = current_end;
     }
 }
 
 /// Send mana change to player
 fn plr_change_mana(gs: &mut GameState, nr: usize, cn: usize) {
     let current_mana = (gs.characters[cn].a_mana + 500) / 1000;
-    let player_mana = Server::with_players(|players| players[nr].cpl.a_mana);
+    let player_mana = gs.players[nr].cpl.a_mana;
 
     if current_mana != player_mana {
         let mut buf: [u8; 16] = [0; 16];
@@ -3523,31 +3453,23 @@ fn plr_change_mana(gs: &mut GameState, nr: usize, cn: usize) {
         buf[1] = current_mana as u8;
         buf[2] = (current_mana >> 8) as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(gs, nr, &buf, 3);
-        });
-
-        Server::with_players_mut(|players| {
-            players[nr].cpl.a_mana = current_mana;
-        });
+        network_manager::xsend(gs, nr, &buf, 3);
+        gs.players[nr].cpl.a_mana = current_mana;
     }
 }
 
 /// Send direction change to player
 fn plr_change_dir(gs: &mut GameState, nr: usize, cn: usize) {
     let current_dir = gs.characters[cn].dir;
-    let player_dir = Server::with_players(|players| players[nr].cpl.dir);
+    let player_dir = gs.players[nr].cpl.dir;
 
     if current_dir as i32 != player_dir {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_SETCHAR_DIR;
         buf[1] = current_dir;
 
-        NetworkManager::with(|network| {
-            network.xsend(gs, nr, &buf, 2);
-        });
-
-        Server::with_players_mut(|players| players[nr].cpl.dir = current_dir as i32);
+        network_manager::xsend(gs, nr, &buf, 2);
+        gs.players[nr].cpl.dir = current_dir as i32;
     }
 }
 
@@ -3556,29 +3478,22 @@ fn plr_change_points(gs: &mut GameState, nr: usize, cn: usize) {
     let points = gs.characters[cn].points;
     let points_tot = gs.characters[cn].points_tot;
     let kindred = gs.characters[cn].kindred;
-    let (cpl_points, cpl_points_tot, cpl_kindred) = Server::with_players(|players| {
-        (
-            players[nr].cpl.points,
-            players[nr].cpl.points_tot,
-            players[nr].cpl.kindred,
-        )
-    });
+    let cpl_points = gs.players[nr].cpl.points;
+    let cpl_points_tot = gs.players[nr].cpl.points_tot;
+    let cpl_kindred = gs.players[nr].cpl.kindred;
 
     if points != cpl_points || points_tot != cpl_points_tot || kindred != cpl_kindred {
-        // Match C++: SV_SETCHAR_PTS + points(u32) + points_tot(u32) + kindred(u32) => 13 bytes
         let mut buf: [u8; 13] = [0; 13];
         buf[0] = core::constants::SV_SETCHAR_PTS;
         buf[1..5].copy_from_slice(&points.to_le_bytes());
         buf[5..9].copy_from_slice(&points_tot.to_le_bytes());
         buf[9..13].copy_from_slice(&kindred.to_le_bytes());
 
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 13));
+        network_manager::xsend(gs, nr, &buf, 13);
 
-        Server::with_players_mut(|players| {
-            players[nr].cpl.points = points;
-            players[nr].cpl.points_tot = points_tot;
-            players[nr].cpl.kindred = kindred;
-        });
+        gs.players[nr].cpl.points = points;
+        gs.players[nr].cpl.points_tot = points_tot;
+        gs.players[nr].cpl.kindred = kindred;
     }
 }
 
@@ -3587,16 +3502,11 @@ fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
     let gold = gs.characters[cn].gold;
     let armor = gs.characters[cn].armor;
     let weapon = gs.characters[cn].weapon;
-    let (cpl_gold, cpl_armor, cpl_weapon) = Server::with_players(|players| {
-        (
-            players[nr].cpl.gold,
-            players[nr].cpl.armor,
-            players[nr].cpl.weapon,
-        )
-    });
+    let cpl_gold = gs.players[nr].cpl.gold;
+    let cpl_armor = gs.players[nr].cpl.armor;
+    let cpl_weapon = gs.players[nr].cpl.weapon;
 
     if gold != cpl_gold || armor as i32 != cpl_armor || weapon as i32 != cpl_weapon {
-        // Match C++: SV_SETCHAR_GOLD + gold(u32) + armor(u32) + weapon(u32) => 13 bytes
         let armor32: i32 = armor as i32;
         let weapon32: i32 = weapon as i32;
 
@@ -3606,13 +3516,11 @@ fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
         buf[5..9].copy_from_slice(&armor32.to_le_bytes());
         buf[9..13].copy_from_slice(&weapon32.to_le_bytes());
 
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 13));
+        network_manager::xsend(gs, nr, &buf, 13);
 
-        Server::with_players_mut(|players| {
-            players[nr].cpl.gold = gold;
-            players[nr].cpl.armor = armor as i32;
-            players[nr].cpl.weapon = weapon as i32;
-        });
+        gs.players[nr].cpl.gold = gold;
+        gs.players[nr].cpl.armor = armor as i32;
+        gs.players[nr].cpl.weapon = weapon as i32;
     }
 }
 
@@ -3625,7 +3533,7 @@ fn plr_change_load(gs: &mut GameState, nr: usize, cn: usize, ticker: i32) {
         let mut buf: [u8; 5] = [0; 5];
         buf[0] = core::constants::SV_LOAD;
         buf[1..5].copy_from_slice(&load.to_le_bytes());
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 5));
+        network_manager::xsend(gs, nr, &buf, 5);
     }
 }
 
@@ -3638,153 +3546,133 @@ fn cl_light_one(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) 
         return 50 / 3;
     }
 
-    Server::with_players_mut(|players| {
-        let smap_light = players[dosend].smap[n].light;
-        players[dosend].cmap[n].light = smap_light;
+    let smap_light = gs.players[dosend].smap[n].light;
+    gs.players[dosend].cmap[n].light = smap_light;
 
-        let mut buf: [u8; 3] = [0; 3];
-        buf[0] = core::constants::SV_SETMAP4;
-        let encoded = (n as u16) | ((smap_light as u16) << 12);
-        buf[1] = (encoded & 0xff) as u8;
-        buf[2] = ((encoded >> 8) & 0xff) as u8;
+    let mut buf: [u8; 3] = [0; 3];
+    buf[0] = core::constants::SV_SETMAP4;
+    let encoded = (n as u16) | ((smap_light as u16) << 12);
+    buf[1] = (encoded & 0xff) as u8;
+    buf[2] = ((encoded >> 8) & 0xff) as u8;
 
-        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 3));
-    });
+    network_manager::xsend(gs, dosend, &buf, 3);
     1
 }
 
 /// Updates three light tiles
 fn cl_light_three(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
-        // Count differences and return efficiency
-        let l = Server::with_players(|players| {
-            let mut count = 0;
-            let total = core::constants::TILEX * core::constants::TILEY;
-            for m in n..std::cmp::min(n + 3, total) {
-                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
-                    count += 1;
-                }
+        let mut count = 0;
+        let total = core::constants::TILEX * core::constants::TILEY;
+        for m in n..std::cmp::min(n + 3, total) {
+            if gs.players[dosend].cmap[m].light != gs.players[dosend].smap[m].light {
+                count += 1;
             }
-            count
-        });
-        return 50 * l / 4;
+        }
+        return 50 * count / 4;
     }
 
-    Server::with_players_mut(|players| {
-        let mut buf: [u8; 4] = [0; 4];
-        buf[0] = core::constants::SV_SETMAP5;
+    let mut buf: [u8; 4] = [0; 4];
+    buf[0] = core::constants::SV_SETMAP5;
 
-        let smap_light = players[dosend].smap[n].light;
-        players[dosend].cmap[n].light = smap_light;
-        let encoded = (n as u16) | ((smap_light as u16) << 12);
-        buf[1] = (encoded & 0xff) as u8;
-        buf[2] = ((encoded >> 8) & 0xff) as u8;
+    let smap_light = gs.players[dosend].smap[n].light;
+    gs.players[dosend].cmap[n].light = smap_light;
+    let encoded = (n as u16) | ((smap_light as u16) << 12);
+    buf[1] = (encoded & 0xff) as u8;
+    buf[2] = ((encoded >> 8) & 0xff) as u8;
 
-        let total = core::constants::TILEX * core::constants::TILEY;
-        let mut p = 3;
-        let mut m = n + 2;
-        while m < std::cmp::min(n + 2 + 2, total) {
-            let light_m = players[dosend].smap[m].light;
-            let light_m1 = players[dosend].smap[m - 1].light;
-            buf[p] = light_m | (light_m1 << 4);
-            players[dosend].cmap[m].light = light_m;
-            players[dosend].cmap[m - 1].light = light_m1;
-            m += 2;
-            p += 1;
-        }
+    let total = core::constants::TILEX * core::constants::TILEY;
+    let mut p = 3;
+    let mut m = n + 2;
+    while m < std::cmp::min(n + 2 + 2, total) {
+        let light_m = gs.players[dosend].smap[m].light;
+        let light_m1 = gs.players[dosend].smap[m - 1].light;
+        buf[p] = light_m | (light_m1 << 4);
+        gs.players[dosend].cmap[m].light = light_m;
+        gs.players[dosend].cmap[m - 1].light = light_m1;
+        m += 2;
+        p += 1;
+    }
 
-        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 4));
-    });
+    network_manager::xsend(gs, dosend, &buf, 4);
     1
 }
 
 /// Updates seven light tiles
 fn cl_light_seven(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
-        // Count differences and return efficiency
-        let l = Server::with_players(|players| {
-            let mut count = 0;
-            let total = core::constants::TILEX * core::constants::TILEY;
-            for m in n..std::cmp::min(n + 7, total) {
-                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
-                    count += 1;
-                }
+        let mut count = 0;
+        let total = core::constants::TILEX * core::constants::TILEY;
+        for m in n..std::cmp::min(n + 7, total) {
+            if gs.players[dosend].cmap[m].light != gs.players[dosend].smap[m].light {
+                count += 1;
             }
-            count
-        });
-        return 50 * l / 6;
+        }
+        return 50 * count / 6;
     }
 
-    Server::with_players_mut(|players| {
-        let mut buf: [u8; 6] = [0; 6];
-        buf[0] = core::constants::SV_SETMAP6;
+    let mut buf: [u8; 6] = [0; 6];
+    buf[0] = core::constants::SV_SETMAP6;
 
-        let smap_light = players[dosend].smap[n].light;
-        players[dosend].cmap[n].light = smap_light;
-        let encoded = (n as u16) | ((smap_light as u16) << 12);
-        buf[1] = (encoded & 0xff) as u8;
-        buf[2] = ((encoded >> 8) & 0xff) as u8;
+    let smap_light = gs.players[dosend].smap[n].light;
+    gs.players[dosend].cmap[n].light = smap_light;
+    let encoded = (n as u16) | ((smap_light as u16) << 12);
+    buf[1] = (encoded & 0xff) as u8;
+    buf[2] = ((encoded >> 8) & 0xff) as u8;
 
-        let total = core::constants::TILEX * core::constants::TILEY;
-        let mut p = 3;
-        let mut m = n + 2;
-        while m < std::cmp::min(n + 6 + 2, total) {
-            let light_m = players[dosend].smap[m].light;
-            let light_m1 = players[dosend].smap[m - 1].light;
-            buf[p] = light_m | (light_m1 << 4);
-            players[dosend].cmap[m].light = light_m;
-            players[dosend].cmap[m - 1].light = light_m1;
-            m += 2;
-            p += 1;
-        }
+    let total = core::constants::TILEX * core::constants::TILEY;
+    let mut p = 3;
+    let mut m = n + 2;
+    while m < std::cmp::min(n + 6 + 2, total) {
+        let light_m = gs.players[dosend].smap[m].light;
+        let light_m1 = gs.players[dosend].smap[m - 1].light;
+        buf[p] = light_m | (light_m1 << 4);
+        gs.players[dosend].cmap[m].light = light_m;
+        gs.players[dosend].cmap[m - 1].light = light_m1;
+        m += 2;
+        p += 1;
+    }
 
-        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 6));
-    });
+    network_manager::xsend(gs, dosend, &buf, 6);
     1
 }
 
 /// Updates 27 light tiles (most efficient for large batches)
 fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
-        // Count differences and return efficiency
-        let l = Server::with_players(|players| {
-            let mut count = 0;
-            let total = core::constants::TILEX * core::constants::TILEY;
-            for m in n..std::cmp::min(n + 27, total) {
-                if players[dosend].cmap[m].light != players[dosend].smap[m].light {
-                    count += 1;
-                }
+        let mut count = 0;
+        let total = core::constants::TILEX * core::constants::TILEY;
+        for m in n..std::cmp::min(n + 27, total) {
+            if gs.players[dosend].cmap[m].light != gs.players[dosend].smap[m].light {
+                count += 1;
             }
-            count
-        });
-        return 50 * l / 16;
+        }
+        return 50 * count / 16;
     }
 
-    Server::with_players_mut(|players| {
-        let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_SETMAP3;
+    let mut buf: [u8; 16] = [0; 16];
+    buf[0] = core::constants::SV_SETMAP3;
 
-        let smap_light = players[dosend].smap[n].light;
-        players[dosend].cmap[n].light = smap_light;
-        let encoded = (n as u16) | ((smap_light as u16) << 12);
-        buf[1] = (encoded & 0xff) as u8;
-        buf[2] = ((encoded >> 8) & 0xff) as u8;
+    let smap_light = gs.players[dosend].smap[n].light;
+    gs.players[dosend].cmap[n].light = smap_light;
+    let encoded = (n as u16) | ((smap_light as u16) << 12);
+    buf[1] = (encoded & 0xff) as u8;
+    buf[2] = ((encoded >> 8) & 0xff) as u8;
 
-        let total = core::constants::TILEX * core::constants::TILEY;
-        let mut p = 3;
-        let mut m = n + 2;
-        while m < std::cmp::min(n + 26 + 2, total) {
-            let light_m = players[dosend].smap[m].light;
-            let light_m1 = players[dosend].smap[m - 1].light;
-            buf[p] = light_m | (light_m1 << 4);
-            players[dosend].cmap[m].light = light_m;
-            players[dosend].cmap[m - 1].light = light_m1;
-            m += 2;
-            p += 1;
-        }
+    let total = core::constants::TILEX * core::constants::TILEY;
+    let mut p = 3;
+    let mut m = n + 2;
+    while m < std::cmp::min(n + 26 + 2, total) {
+        let light_m = gs.players[dosend].smap[m].light;
+        let light_m1 = gs.players[dosend].smap[m - 1].light;
+        buf[p] = light_m | (light_m1 << 4);
+        gs.players[dosend].cmap[m].light = light_m;
+        gs.players[dosend].cmap[m - 1].light = light_m1;
+        m += 2;
+        p += 1;
+    }
 
-        NetworkManager::with(|network| network.xsend(gs, dosend, &buf, 16));
-    });
+    network_manager::xsend(gs, dosend, &buf, 16);
     1
 }
 
@@ -3793,8 +3681,7 @@ fn plr_change_light(gs: &mut GameState, nr: usize) {
     let total = core::constants::TILEX * core::constants::TILEY;
 
     for n in 0..total {
-        let light_changed =
-            Server::with_players(|players| players[nr].cmap[n].light != players[nr].smap[n].light);
+        let light_changed = gs.players[nr].cmap[n].light != gs.players[nr].smap[n].light;
 
         if light_changed {
             // Try each light update function and pick the most efficient
@@ -3826,14 +3713,10 @@ fn plr_change_map(gs: &mut GameState, nr: usize) {
 
     while n < total {
         // Find next difference (matching C++ fdiff behavior)
-        let next_diff = Server::with_players(|players| {
-            let cmap_slice = &players[nr].cmap[n..];
-            let smap_slice = &players[nr].smap[n..];
-            cmap_slice
-                .iter()
-                .zip(smap_slice.iter())
-                .position(|(c, s)| c != s)
-        });
+        let next_diff = gs.players[nr].cmap[n..]
+            .iter()
+            .zip(gs.players[nr].smap[n..].iter())
+            .position(|(c, s)| c != s);
 
         match next_diff {
             Some(offset) => {
@@ -3845,11 +3728,10 @@ fn plr_change_map(gs: &mut GameState, nr: usize) {
         }
 
         // Build update packet and modify player data
-        let updated = Server::with_players_mut(|players| {
+        let updated = {
             let mut buf: [u8; 256] = [0; 256];
             let mut p: usize;
 
-            // Encode tile index efficiently (matching C++ logic)
             if lastn >= 0 && (n as i32 - lastn) < 127 && n as i32 > lastn {
                 buf[0] = core::constants::SV_SETMAP | ((n as i32 - lastn) as u8);
                 buf[1] = 0;
@@ -3863,8 +3745,8 @@ fn plr_change_map(gs: &mut GameState, nr: usize) {
                 p = 4;
             }
 
-            let cmap = &players[nr].cmap[n];
-            let smap = &players[nr].smap[n];
+            let cmap = &gs.players[nr].cmap[n];
+            let smap = &gs.players[nr].smap[n];
 
             // Check each field and add to update if changed
             if cmap.ba_sprite != smap.ba_sprite {
@@ -3949,14 +3831,13 @@ fn plr_change_map(gs: &mut GameState, nr: usize) {
             // Only send if we actually found changes (matching C++ if (buf[1]))
             let did_update = buf[1] != 0;
             if did_update {
-                NetworkManager::with(|network| network.xsend(gs, nr, &buf, p as u8));
+                network_manager::xsend(gs, nr, &buf, p as u8);
             }
 
-            // Copy smap to cmap for this tile (matching C++ mcpy)
-            players[nr].cmap[n] = players[nr].smap[n];
+            gs.players[nr].cmap[n] = gs.players[nr].smap[n];
 
             did_update
-        });
+        };
 
         // Update lastn after the modification (matching C++ behavior)
         if updated {
@@ -3971,116 +3852,59 @@ fn plr_change_map(gs: &mut GameState, nr: usize) {
 fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
     let x = gs.characters[cn].x;
     let y = gs.characters[cn].y;
-    let (cpl_x, cpl_y) = Server::with_players(|players| (players[nr].cpl.x, players[nr].cpl.y));
+    let cpl_x = gs.players[nr].cpl.x;
+    let cpl_y = gs.players[nr].cpl.y;
 
     if x as i32 != cpl_x || y as i32 != cpl_y {
         let mut buf: [u8; 16] = [0; 16];
+        let tilex = core::constants::TILEX;
+        let total = core::constants::TILEX * core::constants::TILEY;
 
-        // Handle scrolling cases to optimize map updates
         if cpl_x == (x as i32 - 1) && cpl_y == y as i32 {
-            // Scroll right
             buf[0] = core::constants::SV_SCROLL_RIGHT;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            // Shift cmap left (moving right means old data shifts left)
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                cmap.copy_within(1..total, 0);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            gs.players[nr].cmap.copy_within(1..total, 0);
         } else if cpl_x == (x as i32 + 1) && cpl_y == y as i32 {
-            // Scroll left
             buf[0] = core::constants::SV_SCROLL_LEFT;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            // Shift cmap right (moving left means old data shifts right)
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                cmap.copy_within(0..(total - 1), 1);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            gs.players[nr].cmap.copy_within(0..(total - 1), 1);
         } else if cpl_x == x as i32 && cpl_y == (y as i32 - 1) {
-            // Scroll down
             buf[0] = core::constants::SV_SCROLL_DOWN;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            // Shift cmap up (moving down means old data shifts up)
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let tilex = core::constants::TILEX;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                cmap.copy_within(tilex..total, 0);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            gs.players[nr].cmap.copy_within(tilex..total, 0);
         } else if cpl_x == x as i32 && cpl_y == (y as i32 + 1) {
-            // Scroll up
             buf[0] = core::constants::SV_SCROLL_UP;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            // Shift cmap down (moving up means old data shifts down)
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let tilex = core::constants::TILEX;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                cmap.copy_within(0..(total - tilex), tilex);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            gs.players[nr].cmap.copy_within(0..(total - tilex), tilex);
         } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 + 1) {
-            // Scroll left-up
             buf[0] = core::constants::SV_SCROLL_LEFTUP;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let tilex = core::constants::TILEX;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                cmap.copy_within(0..(total - tilex - 1), tilex + 1);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            gs.players[nr]
+                .cmap
+                .copy_within(0..(total - tilex - 1), tilex + 1);
         } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 - 1) {
-            // Scroll left-down
             buf[0] = core::constants::SV_SCROLL_LEFTDOWN;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            // C++: memmove(cmap, cmap + TILEX - 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let tilex = core::constants::TILEX;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                cmap.copy_within((tilex - 1)..total, 0);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            gs.players[nr].cmap.copy_within((tilex - 1)..total, 0);
         } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 + 1) {
-            // Scroll right-up
             buf[0] = core::constants::SV_SCROLL_RIGHTUP;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            // C++: memmove(cmap + TILEX - 1, cmap, sizeof(struct cmap) * (TILEX * TILEY - TILEX + 1))
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let tilex = core::constants::TILEX;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                cmap.copy_within(0..(total - tilex + 1), tilex - 1);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            gs.players[nr]
+                .cmap
+                .copy_within(0..(total - tilex + 1), tilex - 1);
         } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 - 1) {
-            // Scroll right-down
             buf[0] = core::constants::SV_SCROLL_RIGHTDOWN;
-            NetworkManager::with(|network| network.xsend(gs, nr, &buf, 1));
-
-            // C++: memmove(cmap, cmap + TILEX + 1, sizeof(struct cmap) * (TILEX * TILEY - TILEX - 1))
-            Server::with_players_mut(|players| {
-                let cmap = &mut players[nr].cmap;
-                let tilex = core::constants::TILEX;
-                let total = core::constants::TILEX * core::constants::TILEY;
-                let src_start = tilex + 1;
-                let count = total - tilex - 1;
-                cmap.copy_within(src_start..(src_start + count), 0);
-            });
+            network_manager::xsend(gs, nr, &buf, 1);
+            let src_start = tilex + 1;
+            let count = total - tilex - 1;
+            gs.players[nr]
+                .cmap
+                .copy_within(src_start..(src_start + count), 0);
         }
 
-        // Update position in cpl
-        Server::with_players_mut(|players| {
-            players[nr].cpl.x = x as i32;
-            players[nr].cpl.y = y as i32;
-        });
+        gs.players[nr].cpl.x = x as i32;
+        gs.players[nr].cpl.y = y as i32;
 
-        // Send origin update
         buf[0] = core::constants::SV_SETORIGIN;
         let ox: i16 = (x as i32 - (core::constants::TILEX as i32 / 2)) as i16;
         let oy: i16 = (y as i32 - (core::constants::TILEY as i32 / 2)) as i16;
@@ -4090,7 +3914,7 @@ fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         buf[2] = ox_b[1];
         buf[3] = oy_b[0];
         buf[4] = oy_b[1];
-        NetworkManager::with(|network| network.xsend(gs, nr, &buf, 5));
+        network_manager::xsend(gs, nr, &buf, 5);
     }
 }
 
@@ -4112,16 +3936,14 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
         cpl_misc_action,
         cpl_misc_target1,
         cpl_misc_target2,
-    ) = Server::with_players(|players| {
-        (
-            players[nr].cpl.attack_cn,
-            players[nr].cpl.goto_x,
-            players[nr].cpl.goto_y,
-            players[nr].cpl.misc_action,
-            players[nr].cpl.misc_target1,
-            players[nr].cpl.misc_target2,
-        )
-    });
+    ) = (
+        gs.players[nr].cpl.attack_cn,
+        gs.players[nr].cpl.goto_x,
+        gs.players[nr].cpl.goto_y,
+        gs.players[nr].cpl.misc_action,
+        gs.players[nr].cpl.misc_target1,
+        gs.players[nr].cpl.misc_target2,
+    );
 
     if attack_cn as i32 != cpl_attack_cn
         || goto_x as i32 != cpl_goto_x
@@ -4157,18 +3979,14 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
         buf[11] = misc_target2 as u8;
         buf[12] = (misc_target2 >> 8) as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(gs, nr, &buf, 13);
-        });
+        network_manager::xsend(gs, nr, &buf, 13);
 
-        Server::with_players_mut(|players| {
-            players[nr].cpl.attack_cn = attack_cn as i32;
-            players[nr].cpl.goto_x = goto_x as i32;
-            players[nr].cpl.goto_y = goto_y as i32;
-            players[nr].cpl.misc_action = misc_action as i32;
-            players[nr].cpl.misc_target1 = misc_target1 as i32;
-            players[nr].cpl.misc_target2 = misc_target2 as i32;
-        });
+        gs.players[nr].cpl.attack_cn = attack_cn as i32;
+        gs.players[nr].cpl.goto_x = goto_x as i32;
+        gs.players[nr].cpl.goto_y = goto_y as i32;
+        gs.players[nr].cpl.misc_action = misc_action as i32;
+        gs.players[nr].cpl.misc_target1 = misc_target1 as i32;
+        gs.players[nr].cpl.misc_target2 = misc_target2 as i32;
 
         log::debug!("plr_change_target: misc_action={}", misc_action);
     }
@@ -4178,11 +3996,9 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
 /// Handles player tick processing (lag detection and stoning)
 pub fn plr_tick(gs: &mut GameState, nr: usize) {
     // Increment local tick counter
-    Server::with_players_mut(|players| {
-        players[nr].ltick = players[nr].ltick.wrapping_add(1);
-    });
+    gs.players[nr].ltick = gs.players[nr].ltick.wrapping_add(1);
 
-    let (state, cn) = Server::with_players(|players| (players[nr].state, players[nr].usnr));
+    let (state, cn) = (gs.players[nr].state, gs.players[nr].usnr);
 
     if state != core::constants::ST_NORMAL {
         return;
@@ -4202,7 +4018,7 @@ pub fn plr_tick(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let (ltick, rtick) = Server::with_players(|players| (players[nr].ltick, players[nr].rtick));
+    let (ltick, rtick) = (gs.players[nr].ltick, gs.players[nr].rtick);
 
     // Check if player should be stoned due to lag
     if ltick > rtick.wrapping_add(data_19 as u32) && !is_stoned {
@@ -4263,14 +4079,12 @@ fn stone_gc(gs: &mut GameState, cn: usize, mode: bool) {
 /// Handles idle timeout checking for players
 pub fn plr_idle(gs: &mut GameState, nr: usize) {
     let ticker = gs.globals.ticker as u32;
-    let (lasttick, lasttick2, state, usnr) = Server::with_players(|players| {
-        (
-            players[nr].lasttick,
-            players[nr].lasttick2,
-            players[nr].state,
-            players[nr].usnr,
-        )
-    });
+    let (lasttick, lasttick2, state, usnr) = (
+        gs.players[nr].lasttick,
+        gs.players[nr].lasttick2,
+        gs.players[nr].state,
+        gs.players[nr].usnr,
+    );
 
     // Check protocol level idle (60 seconds)
     if ticker.wrapping_sub(lasttick) > (core::constants::TICKS * 60) as u32 {
@@ -4292,7 +4106,7 @@ pub fn plr_idle(gs: &mut GameState, nr: usize) {
 /// Port of `plr_cmd` from `svr_tick.cpp`
 /// Dispatches player commands from inbuf
 pub fn plr_cmd(gs: &mut GameState, nr: usize) {
-    let cmd = Server::with_players(|players| players[nr].inbuf[0]);
+    let cmd = gs.players[nr].inbuf[0];
 
     // Handle pre-login commands (mirrors the initial switch in the original C++).
     // These generally transition connection state; only `CL_CMD_UNIQUE` returns
@@ -4315,7 +4129,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
             return;
         }
         core::constants::CL_PASSWD => {
-            plr_passwd(nr);
+            plr_passwd(gs, nr);
         }
         _ => {
             // No need to log other commands here; they are logged in their handlers.
@@ -4323,7 +4137,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     }
 
     // Game state may have changed in the handlers above.
-    let state = Server::with_players(|players| players[nr].state);
+    let state = gs.players[nr].state;
 
     // Only process other commands if in normal state
     if state != core::constants::ST_NORMAL {
@@ -4337,9 +4151,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         && cmd != core::constants::CL_PING
     {
         let ticker = gs.globals.ticker as u32;
-        Server::with_players_mut(|players| {
-            players[nr].lasttick2 = ticker;
-        });
+        gs.players[nr].lasttick2 = ticker;
     }
 
     // Handle commands that don't require stun check
@@ -4411,7 +4223,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         _ => {}
     }
 
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
     let is_stunned = gs.characters[cn].stunned > 0;
 
     if is_stunned {
@@ -4532,9 +4344,7 @@ fn send_mod(gs: &mut GameState, nr: usize) {
         // Copy 15 bytes of mod data (placeholder zeros for now)
         // buf[1..16].copy_from_slice(&mod_data[(n as usize * 15)..((n as usize + 1) * 15)]);
 
-        NetworkManager::with(|network| {
-            network.csend(gs, nr, &buf, 16);
-        });
+        network_manager::csend(gs, nr, &buf, 16);
     }
 }
 
@@ -4556,20 +4366,15 @@ fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
 
     let ticker = gs.globals.ticker as u32;
 
-    Server::with_players_mut(|players| {
-        players[nr].challenge = tmp;
-        players[nr].state = core::constants::ST_NEW_CHALLENGE;
-        players[nr].lasttick = ticker;
-    });
+    gs.players[nr].challenge = tmp;
+    gs.players[nr].state = core::constants::ST_NEW_CHALLENGE;
+    gs.players[nr].lasttick = ticker;
 
-    // Send challenge to client
     let mut buf: [u8; 16] = [0; 16];
     buf[0] = core::constants::SV_CHALLENGE;
     buf[1..5].copy_from_slice(&tmp.to_le_bytes());
 
-    NetworkManager::with(|network| {
-        network.csend(gs, nr, &buf, 16);
-    });
+    network_manager::csend(gs, nr, &buf, 16);
 
     log::debug!(
         "Player {} challenge_newlogin: sent challenge {:08X}",
@@ -4591,37 +4396,29 @@ fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index handling the challenge response
 fn plr_challenge(gs: &mut GameState, nr: usize) {
-    let (challenge, state) =
-        Server::with_players(|players| (players[nr].challenge, players[nr].state));
+    let (challenge, state) = (gs.players[nr].challenge, gs.players[nr].state);
 
-    // Read challenge response, version, and race from inbuf
-    let (response, version, race) = Server::with_players(|players| {
-        let response = u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-        ]);
-        let version = i32::from_le_bytes([
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-            players[nr].inbuf[7],
-            players[nr].inbuf[8],
-        ]);
-        let race = i32::from_le_bytes([
-            players[nr].inbuf[9],
-            players[nr].inbuf[10],
-            players[nr].inbuf[11],
-            players[nr].inbuf[12],
-        ]);
-        (response, version, race)
-    });
+    let response = u32::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]);
+    let version = i32::from_le_bytes([
+        gs.players[nr].inbuf[5],
+        gs.players[nr].inbuf[6],
+        gs.players[nr].inbuf[7],
+        gs.players[nr].inbuf[8],
+    ]);
+    let race = i32::from_le_bytes([
+        gs.players[nr].inbuf[9],
+        gs.players[nr].inbuf[10],
+        gs.players[nr].inbuf[11],
+        gs.players[nr].inbuf[12],
+    ]);
 
-    // Store version and race
-    Server::with_players_mut(|players| {
-        players[nr].version = version;
-        players[nr].race = race;
-    });
+    gs.players[nr].version = version;
+    gs.players[nr].race = race;
 
     log::info!(
         "Player {} challenge: response={:08X}, version={}, race={}",
@@ -4634,7 +4431,7 @@ fn plr_challenge(gs: &mut GameState, nr: usize) {
     // Verify the challenge response
     if response != xcrypt(challenge) {
         log::warn!("Player {} challenge failed", nr);
-        let usnr = Server::with_players(|players| players[nr].usnr);
+        let usnr = gs.players[nr].usnr;
         plr_logout(gs, usnr, nr, enums::LogoutReason::ChallengeFailed);
         return;
     }
@@ -4644,25 +4441,19 @@ fn plr_challenge(gs: &mut GameState, nr: usize) {
     // Update state based on current state
     match state {
         state if state == core::constants::ST_NEW_CHALLENGE => {
-            Server::with_players_mut(|players| {
-                players[nr].state = core::constants::ST_NEWLOGIN;
-                players[nr].lasttick = ticker;
-                log::info!("Player {} login challenge passed for new characters", nr);
-            });
+            gs.players[nr].state = core::constants::ST_NEWLOGIN;
+            gs.players[nr].lasttick = ticker;
+            log::info!("Player {} login challenge passed for new characters", nr);
         }
         state if state == core::constants::ST_LOGIN_CHALLENGE => {
-            Server::with_players_mut(|players| {
-                players[nr].state = core::constants::ST_LOGIN;
-                players[nr].lasttick = ticker;
-            });
+            gs.players[nr].state = core::constants::ST_LOGIN;
+            gs.players[nr].lasttick = ticker;
             log::info!("Player {} login challenge passed", nr);
         }
         state if state == core::constants::ST_CHALLENGE => {
-            Server::with_players_mut(|players| {
-                players[nr].state = core::constants::ST_NORMAL;
-                players[nr].lasttick = ticker;
-                players[nr].ltick = 0;
-            });
+            gs.players[nr].state = core::constants::ST_NORMAL;
+            gs.players[nr].lasttick = ticker;
+            gs.players[nr].ltick = 0;
             log::info!("Player {} logged in successfully", nr);
         }
         _ => {
@@ -4694,32 +4485,24 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
 
     let ticker = gs.globals.ticker as u32;
 
-    Server::with_players_mut(|players| {
-        players[nr].challenge = tmp;
-        players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
-        players[nr].lasttick = ticker;
-    });
+    gs.players[nr].challenge = tmp;
+    gs.players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
+    gs.players[nr].lasttick = ticker;
 
-    // Send challenge to client
     let mut buf: [u8; 16] = [0; 16];
     buf[0] = core::constants::SV_CHALLENGE;
     buf[1..5].copy_from_slice(&tmp.to_le_bytes());
 
-    NetworkManager::with(|network| {
-        network.csend(gs, nr, &buf, 16);
-    });
+    network_manager::csend(gs, nr, &buf, 16);
 
     log::debug!("Player {} challenge_login: sent challenge {:08X}", nr, tmp);
 
-    // Read desired character number and pass fragments from client's inbuf
-    let cn = Server::with_players(|players| {
-        u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-        ]) as usize
-    });
+    let cn = u32::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]) as usize;
 
     if !(1..core::constants::MAXCHARS).contains(&cn) {
         log::warn!("Player {} sent wrong cn {} in challenge login", nr, cn);
@@ -4728,28 +4511,22 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
     }
 
     // Store chosen character and pass fragments
-    let (pass1, pass2) = Server::with_players(|players| {
-        (
-            u32::from_le_bytes([
-                players[nr].inbuf[5],
-                players[nr].inbuf[6],
-                players[nr].inbuf[7],
-                players[nr].inbuf[8],
-            ]),
-            u32::from_le_bytes([
-                players[nr].inbuf[9],
-                players[nr].inbuf[10],
-                players[nr].inbuf[11],
-                players[nr].inbuf[12],
-            ]),
-        )
-    });
+    let pass1 = u32::from_le_bytes([
+        gs.players[nr].inbuf[5],
+        gs.players[nr].inbuf[6],
+        gs.players[nr].inbuf[7],
+        gs.players[nr].inbuf[8],
+    ]);
+    let pass2 = u32::from_le_bytes([
+        gs.players[nr].inbuf[9],
+        gs.players[nr].inbuf[10],
+        gs.players[nr].inbuf[11],
+        gs.players[nr].inbuf[12],
+    ]);
 
-    Server::with_players_mut(|players| {
-        players[nr].usnr = cn;
-        players[nr].pass1 = pass1;
-        players[nr].pass2 = pass2;
-    });
+    gs.players[nr].usnr = cn;
+    gs.players[nr].pass1 = pass1;
+    gs.players[nr].pass2 = pass2;
 
     log::info!(
         "Player logged in as character index={} (players index={})",
@@ -4774,38 +4551,30 @@ fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
         tmp = 42;
     }
 
-    let ticket = Server::with_players(|players| {
-        u64::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-            players[nr].inbuf[7],
-            players[nr].inbuf[8],
-        ])
-    });
+    let ticket = u64::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+        gs.players[nr].inbuf[5],
+        gs.players[nr].inbuf[6],
+        gs.players[nr].inbuf[7],
+        gs.players[nr].inbuf[8],
+    ]);
 
     let ticker = gs.globals.ticker as u32;
-    Server::with_players_mut(|players| {
-        players[nr].challenge = tmp;
-        players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
-        players[nr].lasttick = ticker;
-        players[nr].login_ticket = ticket;
-        // Clear legacy credential fragments.
-        players[nr].usnr = 0;
-        players[nr].pass1 = 0;
-        players[nr].pass2 = 0;
-    });
+    gs.players[nr].challenge = tmp;
+    gs.players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
+    gs.players[nr].lasttick = ticker;
+    gs.players[nr].login_ticket = ticket;
+    gs.players[nr].usnr = 0;
+    gs.players[nr].pass1 = 0;
+    gs.players[nr].pass2 = 0;
 
-    // Send challenge to client
     let mut buf: [u8; 16] = [0; 16];
     buf[0] = core::constants::SV_CHALLENGE;
     buf[1..5].copy_from_slice(&tmp.to_le_bytes());
-    NetworkManager::with(|network| {
-        network.csend(gs, nr, &buf, 16);
-    });
+    network_manager::csend(gs, nr, &buf, 16);
 
     log::info!("Player {} api login challenge issued", nr);
 
@@ -4822,22 +4591,18 @@ fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
 /// * `nr` - Player slot index sending the unique
 fn plr_unique(gs: &mut GameState, nr: usize) {
     // Read unique ID from inbuf (8 bytes as u64)
-    let unique = Server::with_players(|players| {
-        u64::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-            players[nr].inbuf[7],
-            players[nr].inbuf[8],
-        ])
-    });
+    let unique = u64::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+        gs.players[nr].inbuf[5],
+        gs.players[nr].inbuf[6],
+        gs.players[nr].inbuf[7],
+        gs.players[nr].inbuf[8],
+    ]);
 
-    Server::with_players_mut(|players| {
-        players[nr].unique = unique;
-    });
+    gs.players[nr].unique = unique;
 
     log::debug!("Player {} received unique {:016X}", nr, unique);
 
@@ -4846,18 +4611,14 @@ fn plr_unique(gs: &mut GameState, nr: usize) {
         gs.globals.unique = gs.globals.unique.wrapping_add(1);
         let new_unique = gs.globals.unique;
 
-        Server::with_players_mut(|players| {
-            players[nr].unique = new_unique;
-        });
+        gs.players[nr].unique = new_unique;
 
         // Send the new unique ID back to the client
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_UNIQUE;
         buf[1..9].copy_from_slice(&new_unique.to_le_bytes());
 
-        NetworkManager::with(|network| {
-            network.xsend(gs, nr, &buf, 9);
-        });
+        network_manager::xsend(gs, nr, &buf, 9);
 
         log::debug!("Player {} sent unique {:016X}", nr, new_unique);
     }
@@ -4871,24 +4632,17 @@ fn plr_unique(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the password fragment
-fn plr_passwd(nr: usize) {
-    // Copy 15 bytes of password from inbuf to player passwd
-    Server::with_players_mut(|players| {
-        players[nr].passwd[..15].copy_from_slice(&players[nr].inbuf[1..16]);
-        players[nr].passwd[15] = 0; // null terminate
-    });
+fn plr_passwd(gs: &mut GameState, nr: usize) {
+    gs.players[nr].passwd[..15].copy_from_slice(&gs.players[nr].inbuf[1..16].try_into().unwrap());
+    gs.players[nr].passwd[15] = 0;
 
-    // Calculate hash for logging (same algorithm as original)
-    let hash = Server::with_players(|players| {
-        let mut hash: u32 = 0;
-        for n in 0..15 {
-            if players[nr].passwd[n] == 0 {
-                break;
-            }
-            hash ^= (players[nr].passwd[n] as u32) << (n * 2);
+    let mut hash: u32 = 0;
+    for n in 0..15 {
+        if gs.players[nr].passwd[n] == 0 {
+            break;
         }
-        hash
-    });
+        hash ^= (gs.players[nr].passwd[n] as u32) << (n * 2);
+    }
 
     log::debug!("Player {} received passwd hash {}", nr, hash);
 }
@@ -4903,18 +4657,12 @@ fn plr_passwd(nr: usize) {
 /// * `nr` - Player slot index reporting performance
 fn plr_perf_report(gs: &mut GameState, nr: usize) {
     // Read performance metrics from inbuf (unused but parsed for completeness)
-    let (_ticksize, _skip, _idle) = Server::with_players(|players| {
-        let ticksize = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
-        let skip = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
-        let idle = u16::from_le_bytes([players[nr].inbuf[5], players[nr].inbuf[6]]);
-        (ticksize, skip, idle)
-    });
+    let _ticksize = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
+    let _skip = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]);
+    let _idle = u16::from_le_bytes([gs.players[nr].inbuf[5], gs.players[nr].inbuf[6]]);
 
-    // Update timeout - this is the important part
     let ticker = gs.globals.ticker as u32;
-    Server::with_players_mut(|players| {
-        players[nr].lasttick = ticker;
-    });
+    gs.players[nr].lasttick = ticker;
 
     // Optional: log performance metrics (commented out in original)
     // log::trace!("Player {} perf: ticksize={}, skip={}%, idle={}%", nr, ticksize, skip, idle);
@@ -4931,10 +4679,8 @@ fn plr_perf_report(gs: &mut GameState, nr: usize) {
 /// * `nr` - Player slot index issuing the look
 /// * `autoflag` - When true, treat the request as an automatic look
 fn plr_cmd_look(gs: &mut GameState, nr: usize, autoflag: bool) {
-    let (cn, co) = Server::with_players(|players| {
-        let co = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
-        (players[nr].usnr, co)
-    });
+    let co = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
+    let cn = gs.players[nr].usnr;
 
     // Check if looking at depot (high bit set) or character
     if (co & 0x8000) != 0 {
@@ -4961,21 +4707,17 @@ fn plr_cmd_look(gs: &mut GameState, nr: usize, autoflag: bool) {
 fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
     // Implementation based on original svr_tick.cpp
     // Read subtype, position and 13 bytes of data from player's inbuf
-    let (nr, subtype, pos, chunk): (usize, u8, usize, [u8; 13]) = Server::with_players(|players| {
-        let nr = _nr;
-        let subtype = players[nr].inbuf[1];
-        let pos = players[nr].inbuf[2] as usize;
-        let mut chunk = [0u8; 13];
-        chunk.copy_from_slice(&players[nr].inbuf[3..(13 + 3)]);
-        (nr, subtype, pos, chunk)
-    });
+    let nr = _nr;
+    let subtype = gs.players[nr].inbuf[1];
+    let pos = gs.players[nr].inbuf[2] as usize;
+    let mut chunk = [0u8; 13];
+    chunk.copy_from_slice(&gs.players[nr].inbuf[3..(13 + 3)]);
 
     if pos > 65 {
         return;
     }
 
-    // Get character index for this player
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
 
     match subtype {
         0 | 1 => {
@@ -5265,12 +5007,9 @@ fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
 /// * `_nr` - Player slot index issuing the stat change
 fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
     // Read stat index and value from inbuf and apply raises
-    let (cn, n, v) = Server::with_players(|players| {
-        let cn = players[_nr].usnr;
-        let n = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as usize;
-        let v = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as usize;
-        (cn, n, v)
-    });
+    let cn = gs.players[_nr].usnr;
+    let n = u16::from_le_bytes([gs.players[_nr].inbuf[1], gs.players[_nr].inbuf[2]]) as usize;
+    let v = u16::from_le_bytes([gs.players[_nr].inbuf[3], gs.players[_nr].inbuf[4]]) as usize;
 
     // sanity checks
     if n > 107 || v > 99 {
@@ -5317,23 +5056,15 @@ fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
 fn plr_cmd_input(gs: &mut GameState, nr: usize, part: u8) {
     // Copy 15 bytes of input from inbuf to player input buffer
     let offset = ((part - 1) as usize) * 15;
-    Server::with_players_mut(|players| {
-        for n in 0..15 {
-            players[nr].input[offset + n] = players[nr].inbuf[1 + n];
-        }
-    });
+    for n in 0..15 {
+        gs.players[nr].input[offset + n] = gs.players[nr].inbuf[1 + n];
+    }
 
-    // If this is input8, process the complete message (do_say)
     if part == 8 {
-        // Ensure the input buffer is NUL-terminated at the last byte (matches C behaviour)
-        Server::with_players_mut(|players| {
-            // 8 * 15 == 120, last index is 119
-            players[nr].input[105 + 14] = 0;
-        });
+        gs.players[nr].input[105 + 14] = 0;
 
-        // Copy the player's input buffer out so we can convert it to a Rust string
-        let (cn, raw) =
-            Server::with_players(|players| (players[nr].usnr, players[nr].input.to_vec()));
+        let cn = gs.players[nr].usnr;
+        let raw = gs.players[nr].input.to_vec();
 
         let text = c_string_to_str(&raw);
 
@@ -5352,17 +5083,14 @@ fn plr_cmd_input(gs: &mut GameState, nr: usize, part: u8) {
 /// * `nr` - Player slot index sending the tick
 fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
     let ticker = gs.globals.ticker as u32;
-    Server::with_players_mut(|players| {
-        // Read rtick from inbuf (4 bytes at offset 1)
-        let rtick = u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-        ]);
-        players[nr].rtick = rtick;
-        players[nr].lasttick = ticker;
-    });
+    let rtick = u32::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]);
+    gs.players[nr].rtick = rtick;
+    gs.players[nr].lasttick = ticker;
 }
 
 /// Handle client ping request.
@@ -5370,28 +5098,25 @@ fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
 /// Reads `seq` and `client_time_ms` from the client's inbuf and replies with
 /// `SV_PONG`, echoing both values back to the client so it can compute RTT.
 fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
-    let (seq, client_time_ms) = Server::with_players(|players| {
-        let seq = u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-        ]);
-        let client_time_ms = u32::from_le_bytes([
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-            players[nr].inbuf[7],
-            players[nr].inbuf[8],
-        ]);
-        (seq, client_time_ms)
-    });
+    let seq = u32::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]);
+    let client_time_ms = u32::from_le_bytes([
+        gs.players[nr].inbuf[5],
+        gs.players[nr].inbuf[6],
+        gs.players[nr].inbuf[7],
+        gs.players[nr].inbuf[8],
+    ]);
 
     let mut buf = [0u8; 16];
     buf[0] = core::constants::SV_PONG;
     buf[1..5].copy_from_slice(&seq.to_le_bytes());
     buf[5..9].copy_from_slice(&client_time_ms.to_le_bytes());
 
-    NetworkManager::with(|network| network.xsend(gs, nr, &buf, 16));
+    network_manager::xsend(gs, nr, &buf, 16);
 }
 
 /// Handle look at item on ground
@@ -5403,12 +5128,9 @@ fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the request
 fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
-    // Read x,y from inbuf and call do_look_item
-    let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
-        (x, y, players[nr].usnr)
-    });
+    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
+    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let cn = gs.players[nr].usnr;
 
     if !(0..core::constants::SERVER_MAPX).contains(&x)
         || !(0..core::constants::SERVER_MAPY).contains(&y)
@@ -5431,22 +5153,19 @@ fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the give
 fn plr_cmd_give(gs: &mut GameState, nr: usize) {
-    // Read target character id (4 bytes) and set give action
-    let co = Server::with_players(|players| {
-        u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-        ]) as usize
-    });
+    let co = u32::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]) as usize;
 
     if co >= core::constants::MAXCHARS {
         log::error!("plr_cmd_give: invalid target cn {}", co);
         return;
     }
 
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
     let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
     gs.characters[cn].goto_x = 0;
@@ -5465,12 +5184,9 @@ fn plr_cmd_give(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the turn
 fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
-    // Read x,y and set turn action
-    let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
-        (x, y, players[nr].usnr)
-    });
+    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
+    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let cn = gs.players[nr].usnr;
 
     log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
 
@@ -5501,11 +5217,9 @@ fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `_nr` - Player slot index performing the drop
 fn plr_cmd_drop(gs: &mut GameState, _nr: usize) {
-    let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[_nr].inbuf[1], players[_nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[_nr].inbuf[3], players[_nr].inbuf[4]]) as i32;
-        (x, y, players[_nr].usnr)
-    });
+    let x = u16::from_le_bytes([gs.players[_nr].inbuf[1], gs.players[_nr].inbuf[2]]) as i32;
+    let y = u16::from_le_bytes([gs.players[_nr].inbuf[3], gs.players[_nr].inbuf[4]]) as i32;
+    let cn = gs.players[_nr].usnr;
 
     // Building-mode special handling
     let is_building = gs.characters[cn].is_building();
@@ -5570,11 +5284,9 @@ fn plr_cmd_drop(gs: &mut GameState, _nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the pickup
 fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
-    let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
-        (x, y, players[nr].usnr)
-    });
+    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
+    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let cn = gs.players[nr].usnr;
 
     // Building-mode: removal in build mode should remove the temporary build object
     let is_building = gs.characters[cn].is_building();
@@ -5604,20 +5316,18 @@ fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the attack
 fn plr_cmd_attack(gs: &mut GameState, nr: usize) {
-    let co = Server::with_players(|players| {
-        u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-        ])
-    });
+    let co = u32::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]);
 
     if co as usize >= core::constants::MAXCHARS {
         return;
     }
 
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
     let ticker = gs.globals.ticker;
 
     gs.characters[cn].attack_cn = co as u16;
@@ -5646,16 +5356,14 @@ fn plr_cmd_attack(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index setting the mode
 fn plr_cmd_mode(gs: &mut GameState, nr: usize) {
-    let mode = Server::with_players(|players| {
-        u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]])
-    });
+    let mode = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
 
     if mode > 2 {
         log::error!("plr_cmd_mode: invalid mode {}", mode);
         return;
     }
 
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
 
     gs.characters[cn].mode = mode as u8;
 
@@ -5673,11 +5381,9 @@ fn plr_cmd_mode(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the movement target
 fn plr_cmd_move(gs: &mut GameState, nr: usize) {
-    let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]);
-        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]);
-        (x, y, players[nr].usnr)
-    });
+    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
+    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]);
+    let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
 
@@ -5703,7 +5409,7 @@ fn plr_cmd_move(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index requesting the reset
 fn plr_cmd_reset(gs: &mut GameState, nr: usize) {
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
     let ticker = gs.globals.ticker;
     gs.characters[cn].use_nr = 0;
     gs.characters[cn].skill_nr = 0;
@@ -5724,21 +5430,21 @@ fn plr_cmd_reset(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index invoking the skill
 fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
-    let (n, co, cn) = Server::with_players(|players| {
+    let (n, co, cn) = {
         let n = u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
+            gs.players[nr].inbuf[1],
+            gs.players[nr].inbuf[2],
+            gs.players[nr].inbuf[3],
+            gs.players[nr].inbuf[4],
         ]) as usize;
         let co = u32::from_le_bytes([
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-            players[nr].inbuf[7],
-            players[nr].inbuf[8],
+            gs.players[nr].inbuf[5],
+            gs.players[nr].inbuf[6],
+            gs.players[nr].inbuf[7],
+            gs.players[nr].inbuf[8],
         ]) as usize;
-        (n, co, players[nr].usnr)
-    });
+        (n, co, gs.players[nr].usnr)
+    };
 
     // sanity checks: skill index must be within available skill table
     if n >= core::types::Character::default().skill.len() {
@@ -5767,10 +5473,8 @@ fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the command
 fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
-    let (n, cn) = Server::with_players(|players| {
-        let n = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
-        (n, players[nr].usnr)
-    });
+    let n = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
+    let cn = gs.players[nr].usnr;
 
     if n > 39 {
         return;
@@ -5800,11 +5504,9 @@ fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the use
 fn plr_cmd_use(gs: &mut GameState, nr: usize) {
-    let (x, y, cn) = Server::with_players(|players| {
-        let x = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as i32;
-        let y = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
-        (x, y, players[nr].usnr)
-    });
+    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
+    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
@@ -5826,27 +5528,25 @@ fn plr_cmd_use(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the inventory command
 fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
-    let (what, n, mut co, cn) = Server::with_players(|players| {
-        let what = u32::from_le_bytes([
-            players[nr].inbuf[1],
-            players[nr].inbuf[2],
-            players[nr].inbuf[3],
-            players[nr].inbuf[4],
-        ]) as usize;
-        let n = u32::from_le_bytes([
-            players[nr].inbuf[5],
-            players[nr].inbuf[6],
-            players[nr].inbuf[7],
-            players[nr].inbuf[8],
-        ]) as usize;
-        let co = u32::from_le_bytes([
-            players[nr].inbuf[9],
-            players[nr].inbuf[10],
-            players[nr].inbuf[11],
-            players[nr].inbuf[12],
-        ]) as usize;
-        (what, n, co, players[nr].usnr)
-    });
+    let what = u32::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]) as usize;
+    let n = u32::from_le_bytes([
+        gs.players[nr].inbuf[5],
+        gs.players[nr].inbuf[6],
+        gs.players[nr].inbuf[7],
+        gs.players[nr].inbuf[8],
+    ]) as usize;
+    let mut co = u32::from_le_bytes([
+        gs.players[nr].inbuf[9],
+        gs.players[nr].inbuf[10],
+        gs.players[nr].inbuf[11],
+        gs.players[nr].inbuf[12],
+    ]) as usize;
+    let cn = gs.players[nr].usnr;
 
     if !(1..core::constants::MAXCHARS).contains(&co) {
         co = 0;
@@ -6002,7 +5702,7 @@ fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
 /// * `nr` - Player slot index pressing F12
 fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
     log::info!("Player {} pressed F12", nr);
-    let cn = Server::with_players(|players| players[nr].usnr);
+    let cn = gs.players[nr].usnr;
     plr_logout(gs, cn, nr, enums::LogoutReason::Exit);
 }
 
@@ -6015,11 +5715,9 @@ fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the shop command
 fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
-    let (co, n, cn) = Server::with_players(|players| {
-        let co = u16::from_le_bytes([players[nr].inbuf[1], players[nr].inbuf[2]]) as usize;
-        let n = u16::from_le_bytes([players[nr].inbuf[3], players[nr].inbuf[4]]) as i32;
-        (co, n, players[nr].usnr)
-    });
+    let co = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
+    let n = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let cn = gs.players[nr].usnr;
 
     if (co & 0x8000) != 0 {
         let idx = co & 0x7fff;
