@@ -2878,17 +2878,26 @@ impl God {
     /// * `start_index` - Index to start the search from
     /// * `spec1`, `spec2` - Match specifications
     pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {
+        Self::find_next_char_impl(Repository::global_mut(), start_index, spec1, spec2)
+    }
+
+    fn find_next_char_impl(
+        gs: &mut GameState,
+        start_index: usize,
+        spec1: &str,
+        spec2: &str,
+    ) -> i32 {
+        let spec1_lower = spec1.to_lowercase();
+        let spec2_lower = spec2.to_lowercase();
+
         for i in start_index..core::constants::MAXCHARS {
-            let c = &Repository::global_mut().characters[i];
+            let c = &gs.characters[i];
             if !c.is_living_character(i) {
                 continue;
             }
 
             let name = c.get_name().to_lowercase();
             let reference = &c.get_reference().to_lowercase();
-
-            let spec1_lower = spec1.to_lowercase();
-            let spec2_lower = spec2.to_lowercase();
 
             if !spec1.is_empty()
                 && !name.contains(&spec1_lower)
@@ -2918,12 +2927,16 @@ impl God {
     /// * `looker` - Character performing the check
     /// * `target` - Target character
     pub fn invis(looker: usize, target: usize) -> i32 {
+        Self::invis_impl(Repository::global_mut(), looker, target)
+    }
+
+    fn invis_impl(gs: &mut GameState, looker: usize, target: usize) -> i32 {
         if !Character::is_sane_character(looker) || !Character::is_sane_character(target) {
             return 1;
         }
 
-        let looker_char = &Repository::global_mut().characters[looker];
-        let target_char = &Repository::global_mut().characters[target];
+        let looker_char = &gs.characters[looker];
+        let target_char = &gs.characters[target];
 
         // Check if target is invisible
         if target_char.flags & CharacterFlags::Invisible.bits() != 0 {
@@ -2944,16 +2957,16 @@ impl God {
     /// * `cn` - Summoning character
     /// * `spec1`, `spec2`, `spec3` - Summon parameters
     pub fn summon(cn: usize, spec1: &str, spec2: &str, spec3: &str) {
+        Self::summon_impl(Repository::global_mut(), cn, spec1, spec2, spec3)
+    }
+
+    fn summon_impl(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str, spec3: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
 
         if spec1.is_empty() {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "summon whom?\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Red, "summon whom?\n");
             return;
         }
 
@@ -2964,27 +2977,20 @@ impl God {
             // single-arg: treat spec1 as character number
             co = spec1.parse::<usize>().unwrap_or(0);
 
-            if co == 0 || !Character::is_sane_character(co) || Self::invis(cn, co) != 0 {
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "No such character.\n",
-                );
+            if co == 0 || !Character::is_sane_character(co) || Self::invis_impl(gs, cn, co) != 0 {
+                gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 return;
             }
 
             // check for recently-dead/corpse
-            let corpse_owner = if (Repository::global_mut().characters[co].flags
-                & CharacterFlags::Body.bits())
-                != 0
-            {
-                Some(Repository::global_mut().characters[co].data[core::constants::CHD_CORPSEOWNER])
+            let corpse_owner = if (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0 {
+                Some(gs.characters[co].data[core::constants::CHD_CORPSEOWNER])
             } else {
                 None
             };
 
             if let Some(owner) = corpse_owner {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Character recently deceased; try {}.\n", owner),
@@ -2993,7 +2999,7 @@ impl God {
             }
 
             if co == cn {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "You can't summon yourself!\n",
@@ -3013,7 +3019,7 @@ impl God {
             {
                 if let Ok(rank) = spec2.parse::<usize>() {
                     if rank >= core::constants::RANKS {
-                        Repository::global_mut().do_character_log(
+                        gs.do_character_log(
                             cn,
                             core::types::FontColor::Red,
                             &format!("No such rank: {}\n", spec2),
@@ -3026,7 +3032,7 @@ impl God {
             let which = spec3.parse::<usize>().unwrap_or(1).max(1);
 
             while count < which {
-                let found = Self::find_next_char(co, spec1, spec2) as usize;
+                let found = Self::find_next_char_impl(gs, co, spec1, spec2) as usize;
                 if found == 0 {
                     break;
                 }
@@ -3038,22 +3044,20 @@ impl God {
                 }
 
                 // ignore bodies
-                let is_body = (Repository::global_mut().characters[co].flags
-                    & CharacterFlags::Body.bits())
-                    != 0;
+                let is_body = (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0;
                 if is_body {
                     continue;
                 }
 
                 // ignore sleeping players
-                let skip_sleeping = Repository::global_mut().characters[co].is_player()
-                    && Repository::global_mut().characters[co].used != core::constants::USE_ACTIVE;
+                let skip_sleeping = gs.characters[co].is_player()
+                    && gs.characters[co].used != core::constants::USE_ACTIVE;
                 if skip_sleeping {
                     continue;
                 }
 
                 // invisibility check: ignore whom we can't see
-                if Self::invis(cn, co) != 0 {
+                if Self::invis_impl(gs, cn, co) != 0 {
                     continue;
                 }
 
@@ -3062,7 +3066,7 @@ impl God {
 
             if co == 0 {
                 // Not found — produce message similar to original C++ but simpler here
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Couldn't find a {} {}.\n", spec1, spec2),
@@ -3073,7 +3077,7 @@ impl God {
 
         // At this point we have a target `co` to summon
         let (x, y, xo, yo) = {
-            let summoner = &Repository::global_mut().characters[cn];
+            let summoner = &gs.characters[cn];
             let mut target_x = summoner.x as i32;
             let mut target_y = summoner.y as i32;
 
@@ -3105,14 +3109,14 @@ impl God {
             let tx = (target_x).clamp(1, core::constants::SERVER_MAPX - 2) as usize;
             let ty = (target_y).clamp(1, core::constants::SERVER_MAPY - 2) as usize;
 
-            let xo = Repository::global_mut().characters[co].x as i32;
-            let yo = Repository::global_mut().characters[co].y as i32;
+            let xo = gs.characters[co].x as i32;
+            let yo = gs.characters[co].y as i32;
 
             (tx, ty, xo, yo)
         };
 
-        if !Self::transfer_char(co, x, y) {
-            Repository::global_mut().do_character_log(
+        if !Self::transfer_char_impl(gs, co, x, y) {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "god_transfer_char() failed.\n",
@@ -3125,10 +3129,8 @@ impl God {
             return;
         }
 
-        let character_name = Repository::global_mut().characters[co]
-            .get_name()
-            .to_string();
-        Repository::global_mut().do_character_log(
+        let character_name = gs.characters[co].get_name().to_string();
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!("{} was summoned.\n", character_name),
@@ -3145,6 +3147,10 @@ impl God {
     /// * `cn` - Requesting character
     /// * `spec1`, `spec2` - Mirror parameters
     pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
+        Self::mirror_impl(Repository::global_mut(), cn, spec1, spec2)
+    }
+
+    fn mirror_impl(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -3158,7 +3164,7 @@ impl God {
 
         // Parse character number or find by name
         let co = if spec1.is_empty() {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "create mirror-enemy of whom?\n",
@@ -3167,20 +3173,16 @@ impl God {
         } else if spec1.chars().all(|c| c.is_ascii_digit()) {
             spec1.parse::<usize>().unwrap_or(0)
         } else {
-            Self::find_next_char(1, spec1, "") as usize
+            Self::find_next_char_impl(gs, 1, spec1, "") as usize
         };
 
         if !Character::is_sane_character(co) {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "No such character.\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
-        if Repository::global_mut().characters[co].flags & CharacterFlags::Body.bits() != 0 {
-            Repository::global_mut().do_character_log(
+        if gs.characters[co].flags & CharacterFlags::Body.bits() != 0 {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "Character recently deceased.\n",
@@ -3188,20 +3190,21 @@ impl God {
             return;
         }
 
-        if !Repository::global_mut().characters[co].is_player() {
-            Repository::global_mut().do_character_log(
+        if !gs.characters[co].is_player() {
+            let target_name = gs.characters[co].get_name().to_string();
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!(
                     "{} is not a player, and you can't mirror monsters!\n",
-                    Repository::global_mut().characters[co].get_name()
+                    target_name
                 ),
             );
             return;
         }
 
         if co == cn {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 "You want an enemy? Here it is...!\n",
@@ -3209,10 +3212,10 @@ impl God {
         }
 
         // Create mirror character with template 968
-        let cc = match Self::create_char(968, false) {
+        let cc = match Self::create_char_impl(gs, 968, false) {
             Some(cc) => cc as usize,
             None => {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "god_create_char() failed.\n",
@@ -3223,7 +3226,6 @@ impl God {
 
         // Copy attributes from target to mirror
         {
-            let gs = Repository::global_mut();
             let target_name_bytes = gs.characters[co].name;
             let target_sprite = gs.characters[co].sprite;
             let target_attrib = gs.characters[co].attrib;
@@ -3292,13 +3294,13 @@ impl God {
             mirror.set_do_update_flags();
 
             // Drop the mirror at caster's position
-            Self::drop_char_fuzzy(cc, caster_x as usize, caster_y as usize);
+            Self::drop_char_fuzzy_impl(gs, cc, caster_x as usize, caster_y as usize);
 
             // Add target as enemy
             driver::npc_add_enemy(cc, co, true);
 
             let target_name = c_string_to_str(&target_name_bytes);
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Mirror of {} active (bonus: {})\n", target_name, bonus),
@@ -3314,17 +3316,17 @@ impl God {
     /// * `cn` - Requesting character
     /// * `spec1`, `spec2` - Target and options
     pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {
+        Self::thrall_impl(Repository::global_mut(), cn, spec1, spec2)
+    }
+
+    fn thrall_impl(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) -> i32 {
         if !Character::is_sane_character(cn) {
             return 0;
         }
 
         // Check for arguments
         if spec1.is_empty() {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "enthrall whom?\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Red, "enthrall whom?\n");
             return 0;
         }
 
@@ -3333,18 +3335,13 @@ impl God {
             let co = spec1.parse::<usize>().unwrap_or(0);
 
             if !Character::is_sane_character(co) {
-                Repository::global_mut().do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "No such character.\n",
-                );
+                gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 return 0;
             }
 
-            if Repository::global_mut().characters[co].flags & CharacterFlags::Body.bits() != 0 {
-                let corpse_owner =
-                    Repository::global_mut().characters[co].data[core::constants::CHD_COMPANION];
-                Repository::global_mut().do_character_log(
+            if gs.characters[co].flags & CharacterFlags::Body.bits() != 0 {
+                let corpse_owner = gs.characters[co].data[core::constants::CHD_COMPANION];
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Character recently deceased; try {}.\n", corpse_owner),
@@ -3353,7 +3350,7 @@ impl God {
             }
 
             if co == cn {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "You can't enthrall yourself!\n",
@@ -3366,16 +3363,14 @@ impl God {
             // At least 2 arguments - find character by name/rank
             let mut co = 0usize;
             loop {
-                co = Self::find_next_char(co, spec1, spec2) as usize;
+                co = Self::find_next_char_impl(gs, co, spec1, spec2) as usize;
                 if co == 0 {
                     break;
                 }
                 if co == cn {
                     continue; // ignore self
                 }
-                let should_continue = Repository::global_mut().characters[co].flags
-                    & CharacterFlags::Body.bits()
-                    != 0;
+                let should_continue = gs.characters[co].flags & CharacterFlags::Body.bits() != 0;
                 if should_continue {
                     continue; // ignore bodies
                 }
@@ -3383,7 +3378,7 @@ impl God {
             }
 
             if co == 0 {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Couldn't find a {} {}.\n", spec1, spec2),
@@ -3395,24 +3390,26 @@ impl God {
 
         // Validate target
         let validation_failed = {
-            if Repository::global_mut().characters[co].is_player() {
-                Repository::global_mut().do_character_log(
+            if gs.characters[co].is_player() {
+                let target_name = gs.characters[co].get_name().to_string();
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!(
                         "{} is a player, and you can't enthrall players!\n",
-                        Repository::global_mut().characters[co].get_name()
+                        target_name
                     ),
                 );
                 true
-            } else if Repository::global_mut().characters[co].data[42] > 65536 {
+            } else if gs.characters[co].data[42] > 65536 {
                 // Check if already a companion/thrall (data[42] is group, companions have group 65536+cn)
-                Repository::global_mut().do_character_log(
+                let target_name = gs.characters[co].get_name().to_string();
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!(
                         "{} is a companion/thrall, and you can't enthrall them!\n",
-                        Repository::global_mut().characters[co].get_name()
+                        target_name
                     ),
                 );
                 true
@@ -3427,7 +3424,7 @@ impl God {
 
         // Calculate position in front of summoner
         let (x, y) = {
-            let summoner = &Repository::global_mut().characters[cn];
+            let summoner = &gs.characters[cn];
             let mut x = summoner.x as i32;
             let mut y = summoner.y as i32;
 
@@ -3459,12 +3456,12 @@ impl God {
         };
 
         // Get target template and create thrall
-        let target_template = Repository::global_mut().characters[co].temp;
+        let target_template = gs.characters[co].temp;
 
-        let ct = match Self::create_char(target_template as usize, true) {
+        let ct = match Self::create_char_impl(gs, target_template as usize, true) {
             Some(ct) => ct as usize,
             None => {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "god_create_char() failed.\n",
@@ -3475,7 +3472,6 @@ impl God {
 
         // Configure the thrall
         {
-            let gs = Repository::global_mut();
             let target_name_bytes = gs.characters[co].name;
             let target_reference = gs.characters[co].reference;
             let target_description = gs.characters[co].description;
@@ -3538,20 +3534,20 @@ impl God {
         };
 
         // Drop thrall at calculated position
-        if !Self::drop_char_fuzzy(ct, x, y) {
-            Repository::global_mut().do_character_log(
+        if !Self::drop_char_fuzzy_impl(gs, ct, x, y) {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "god_drop_char_fuzzy() called from god_thrall() failed.\n",
             );
-            Self::destroy_items(ct);
-            Repository::global_mut().characters[ct].used = core::constants::USE_EMPTY;
+            Self::destroy_items_impl(gs, ct);
+            gs.characters[ct].used = core::constants::USE_EMPTY;
             return 0;
         }
 
-        let target_name_bytes = Repository::global_mut().characters[ct].name;
+        let target_name_bytes = gs.characters[ct].name;
         let target_name = c_string_to_str(&target_name_bytes);
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!("{} was enthralled.\n", target_name),
@@ -3565,13 +3561,17 @@ impl God {
     /// # Arguments
     /// * `cn` - Target character
     pub fn tavern(cn: usize) {
+        Self::tavern_impl(Repository::global_mut(), cn)
+    }
+
+    fn tavern_impl(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             log::error!("god_tavern() called with invalid character number: {}", cn);
             return;
         }
 
-        if Repository::global_mut().characters[cn].is_usurp_or_thrall() {
-            Repository::global_mut().do_character_log(
+        if gs.characters[cn].is_usurp_or_thrall() {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "NPCs cannot use the tavern.\n",
@@ -3579,25 +3579,17 @@ impl God {
             return;
         }
 
-        if Repository::global_mut().characters[cn].is_building() {
+        if gs.characters[cn].is_building() {
             log::info!("god_tavern() called for building character: {}", cn);
-            God::build_stop(cn);
+            God::build_stop_impl(gs, cn);
         }
 
-        let player_id = {
-            let gs = Repository::global_mut();
-            gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
-            gs.characters[cn].tavern_y = gs.characters[cn].y as u16;
-            gs.characters[cn].player as usize
-        };
+        gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
+        gs.characters[cn].tavern_y = gs.characters[cn].y as u16;
+        let player_id = gs.characters[cn].player as usize;
 
         chlog!(cn, "Entered tavern and will be logged out.");
-        player::plr_logout(
-            Repository::global_mut(),
-            cn,
-            player_id,
-            LogoutReason::Tavern,
-        );
+        player::plr_logout(gs, cn, player_id, LogoutReason::Tavern);
     }
 
     /// Admin command used to adjust a character's experience. Only
@@ -3608,6 +3600,10 @@ impl God {
     /// * `arg1` - Target character or can be the amount if arg2 is empty (apply to self)
     /// * `arg2` - Increase amount
     pub fn raise_char(cn: usize, arg1: &str, arg2: &str) {
+        Self::raise_char_impl(Repository::global_mut(), cn, arg1, arg2)
+    }
+
+    fn raise_char_impl(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
         log::debug!(
             "god_raise_char() called with arg1='{}', arg2='{}'",
             arg1,
@@ -3627,14 +3623,14 @@ impl God {
                 "god_raise_char(): single-argument mode, applying to self: {}",
                 cn
             );
-            Self::raise_char(cn, cn.to_string().as_str(), arg1);
+            Self::raise_char_impl(gs, cn, cn.to_string().as_str(), arg1);
             return;
         }
 
         let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
             (co, name)
         } else {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("No such character: {}\n", arg1),
@@ -3645,7 +3641,7 @@ impl God {
         let value = match arg2.parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid raise value: {}\n", arg2),
@@ -3655,7 +3651,7 @@ impl God {
         };
 
         if !Character::is_sane_character(co) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Invalid character number: {}\n", co),
@@ -3664,7 +3660,7 @@ impl God {
         }
 
         if value < 0 {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Invalid raise value - must be positive: {}\n", value),
@@ -3672,16 +3668,13 @@ impl God {
             return;
         }
 
-        {
-            let gs = Repository::global_mut();
-            gs.characters[co].points += value;
-            gs.characters[co].points_tot += value;
-        }
+        gs.characters[co].points += value;
+        gs.characters[co].points_tot += value;
 
         chlog!(cn, "Raised character {} experience by {}\n", name, value);
 
-        Repository::global_mut().do_check_new_level(co);
-        Repository::global_mut().do_character_log(
+        gs.do_check_new_level(co);
+        gs.do_character_log(
             co,
             core::types::FontColor::Green,
             format!(
@@ -3699,6 +3692,10 @@ impl God {
     /// * `arg1` - Target character or can be the amount of arg2 isn't provided.
     /// * `arg2` - Decrease amount
     pub fn lower_char(cn: usize, arg1: &str, arg2: &str) {
+        Self::lower_char_impl(Repository::global_mut(), cn, arg1, arg2)
+    }
+
+    fn lower_char_impl(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
         log::debug!(
             "god_lower_char() called with arg1='{}', arg2='{}'",
             arg1,
@@ -3718,14 +3715,14 @@ impl God {
                 "god_lower_char(): single-argument mode, applying to self: {}",
                 cn
             );
-            Self::lower_char(cn, cn.to_string().as_str(), arg1);
+            Self::lower_char_impl(gs, cn, cn.to_string().as_str(), arg1);
             return;
         }
 
         let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg1) {
             (co, name)
         } else {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("No such character: {}\n", arg1),
@@ -3736,7 +3733,7 @@ impl God {
         let value = match arg2.parse::<i32>() {
             Ok(v) => v,
             Err(_) => {
-                Repository::global_mut().do_character_log(
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     &format!("Invalid lower value: {}\n", arg2),
@@ -3746,7 +3743,7 @@ impl God {
         };
 
         if !Character::is_sane_character(co) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Invalid character number: {}\n", co),
@@ -3755,7 +3752,7 @@ impl God {
         }
 
         if value < 0 {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Invalid lower value - must be positive: {}\n", value),
@@ -3763,15 +3760,12 @@ impl God {
             return;
         }
 
-        {
-            let gs = Repository::global_mut();
-            gs.characters[co].points -= value;
-            gs.characters[co].points_tot -= value;
-        }
+        gs.characters[co].points -= value;
+        gs.characters[co].points_tot -= value;
 
         chlog!(cn, "Lowered character {} experience by {}\n", name, value);
 
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             co,
             core::types::FontColor::Red,
             format!(
@@ -3792,6 +3786,10 @@ impl God {
     /// * `value` - Gold amount
     /// * `silver` - Silver amount
     pub fn gold_char(cn: usize, arg: &str, gold: u32, silver: u32) {
+        Self::gold_char_impl(Repository::global_mut(), cn, arg, gold, silver)
+    }
+
+    fn gold_char_impl(gs: &mut GameState, cn: usize, arg: &str, gold: u32, silver: u32) {
         log::debug!(
             "gold_char() called with arg='{}', gold='{}', silver='{}'",
             arg,
@@ -3811,14 +3809,14 @@ impl God {
                 "gold_char(): single-argument mode, applying to self: {}",
                 cn
             );
-            Self::gold_char(cn, cn.to_string().as_str(), gold, silver);
+            Self::gold_char_impl(gs, cn, cn.to_string().as_str(), gold, silver);
             return;
         }
 
         let (co, name) = if let Some((co, name)) = Self::find_character_by_name_or_id(arg) {
             (co, name)
         } else {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("No such character: {}\n", arg),
@@ -3826,16 +3824,10 @@ impl God {
             return;
         };
 
-        let target_name = Repository::global_mut().characters[co]
-            .get_name()
-            .to_string();
-        {
-            let gs = Repository::global_mut();
-            let target = &mut gs.characters[co];
-            target.gold = (target.gold + total_silver as i32).max(0);
-            target.set_do_update_flags();
-        }
-        Repository::global_mut().do_character_log(
+        let target = &mut gs.characters[co];
+        target.gold = (target.gold + total_silver as i32).max(0);
+        target.set_do_update_flags();
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!("Gave {} silver to character {}\n", total_silver, name),
@@ -3852,18 +3844,16 @@ impl God {
     /// * `co` - Target character
     /// * `erase_player` - If non-zero, allow player erasure
     pub fn erase(cn: usize, co: usize, erase_player: i32) {
+        let gs = Repository::global_mut();
+
         if co == 0 {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "No such character.\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
         // Check if character is sane
         if !Character::is_sane_character(co) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Bad character number: {}\n", co),
@@ -3872,14 +3862,14 @@ impl God {
         }
 
         // Check if character is used
-        let is_used = Repository::global_mut().characters[co].used != core::constants::USE_EMPTY;
-        let is_player_or_usurp = (Repository::global_mut().characters[co].flags
+        let is_used = gs.characters[co].used != core::constants::USE_EMPTY;
+        let is_player_or_usurp = (gs.characters[co].flags
             & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
             != 0;
-        let character_name = Repository::global_mut().characters[co].name;
+        let character_name = gs.characters[co].name;
 
         if !is_used {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Character {} is unused anyway.\n", co),
@@ -3890,7 +3880,7 @@ impl God {
         // Check if player/QM but erase_player is false
         if is_player_or_usurp && erase_player == 0 {
             let name_str = c_string_to_str(&character_name);
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!(
@@ -3904,7 +3894,7 @@ impl God {
         // Check if erase_player is true but character is not player/usurp
         if erase_player != 0 && !is_player_or_usurp {
             let name_str = c_string_to_str(&character_name);
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("{} is not a player; use #ERASE for NPCs.\n", name_str),
@@ -3915,19 +3905,15 @@ impl God {
         if erase_player != 0 {
             // Erasing a player
             let name_str = c_string_to_str(&character_name);
+            let player_id = gs.characters[co].player as usize;
 
-            player::plr_logout(
-                Repository::global_mut(),
-                co,
-                Repository::global_mut().characters[co].player as usize,
-                LogoutReason::Shutdown,
-            );
+            player::plr_logout(gs, co, player_id, LogoutReason::Shutdown);
 
-            Repository::global_mut().characters[co].used = core::constants::USE_EMPTY;
+            gs.characters[co].used = core::constants::USE_EMPTY;
 
             chlog!(cn, "IMP: Erased player {} ({}).", co, name_str);
 
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("Player {} ({}) is no more.\n", co, name_str),
@@ -3937,9 +3923,9 @@ impl God {
             let name_str = c_string_to_str(&character_name);
 
             // Call do_char_killed(0, co)
-            Repository::global_mut().do_character_killed(co, 0, false);
+            gs.do_character_killed(co, 0, false);
 
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
                 &format!("NPC {} ({}) is no more.\n", co, name_str),
@@ -3956,19 +3942,17 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character to kick
     pub fn kick(cn: usize, co: usize) {
+        let gs = Repository::global_mut();
+
         // Check co == 0
         if co == 0 {
-            Repository::global_mut().do_character_log(
-                cn,
-                core::types::FontColor::Red,
-                "No such character.\n",
-            );
+            gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
             return;
         }
 
         // Check if character is sane and used
         if !Character::is_sane_character(co) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Bad character number: {}\n", co),
@@ -3976,11 +3960,11 @@ impl God {
             return;
         }
 
-        let is_used = Repository::global_mut().characters[co].used != core::constants::USE_EMPTY;
-        let character_name = Repository::global_mut().characters[co].name;
+        let is_used = gs.characters[co].used != core::constants::USE_EMPTY;
+        let character_name = gs.characters[co].name;
 
         if !is_used {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Character {} is unused anyway.\n", co),
@@ -3989,15 +3973,11 @@ impl God {
         }
 
         let name_str = c_string_to_str(&character_name);
+        let player_id = gs.characters[co].player as usize;
 
-        player::plr_logout(
-            Repository::global_mut(),
-            co,
-            Repository::global_mut().characters[co].player as usize,
-            LogoutReason::IdleTooLong,
-        );
+        player::plr_logout(gs, co, player_id, LogoutReason::IdleTooLong);
 
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             &format!("Kicked {}.\n", name_str),
@@ -4006,7 +3986,7 @@ impl God {
         chlog!(cn, "IMP: Kicked {} ({}).", name_str, co);
 
         // Set CF_KICKED flag
-        Repository::global_mut().characters[co].flags |= CharacterFlags::Kicked.bits();
+        gs.characters[co].flags |= CharacterFlags::Kicked.bits();
     }
 
     /// Set a specific skill value for target character `co`.
@@ -4019,12 +3999,14 @@ impl God {
     /// * `n` - Skill index
     /// * `val` - New skill value
     pub fn skill(cn: usize, co: usize, n: i32, val: i32) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
         }
 
         if !(0..50).contains(&n) {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("Invalid skill number: {}\n", n),
@@ -4036,17 +4018,12 @@ impl God {
 
         let skill_name = core::types::skilltab::get_skill_name(n as usize);
 
-        let target_name = Repository::global_mut().characters[co]
-            .get_name()
-            .to_string();
-        {
-            let gs = Repository::global_mut();
-            let target = &mut gs.characters[co];
-            target.skill[n as usize][0] = val as u8;
-            target.skill[n as usize][1] = val as u8;
-            target.set_do_update_flags();
-        }
-        Repository::global_mut().do_character_log(
+        let target_name = gs.characters[co].get_name().to_string();
+        let target = &mut gs.characters[co];
+        target.skill[n as usize][0] = val as u8;
+        target.skill[n as usize][1] = val as u8;
+        target.set_do_update_flags();
+        gs.do_character_log(
             cn,
             core::types::FontColor::Green,
             &format!(
@@ -4070,6 +4047,7 @@ impl God {
         // Temple of the Purple One: (560, 542)
         const DON_X: [usize; 2] = [497, 560];
         const DON_Y: [usize; 2] = [512, 542];
+        let gs = Repository::global_mut();
 
         if !core::types::Item::is_sane_item(item_id) {
             log::warn!("Attempt to god_donate_item {}", item_id);
@@ -4090,13 +4068,10 @@ impl God {
         if !Self::drop_item_fuzzy(item_id, x, y) {
             // If drop fails, destroy the item. Clear carried field to prevent
             // stale references (though drop_item_fuzzy should have already done this).
-            {
-                let gs = Repository::global_mut();
-                gs.items[item_id].carried = 0;
-                gs.items[item_id].x = 0;
-                gs.items[item_id].y = 0;
-                gs.items[item_id].used = core::constants::USE_EMPTY;
-            }
+            gs.items[item_id].carried = 0;
+            gs.items[item_id].x = 0;
+            gs.items[item_id].y = 0;
+            gs.items[item_id].used = core::constants::USE_EMPTY;
         }
     }
 
@@ -4111,6 +4086,7 @@ impl God {
             arg1,
             flag
         );
+        let gs = Repository::global_mut();
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -4125,9 +4101,9 @@ impl God {
 
         if let Some((co, name)) = Self::find_character_by_name_or_id(&query) {
             // Toggle the flag
-            if Repository::global_mut().characters[co].flags & flag != 0 {
-                Repository::global_mut().characters[co].flags &= !flag;
-                Repository::global_mut().do_character_log(
+            if gs.characters[co].flags & flag != 0 {
+                gs.characters[co].flags &= !flag;
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
@@ -4138,8 +4114,8 @@ impl God {
                     ),
                 );
             } else {
-                Repository::global_mut().characters[co].flags |= flag;
-                Repository::global_mut().do_character_log(
+                gs.characters[co].flags |= flag;
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Green,
                     &format!(
@@ -4151,17 +4127,15 @@ impl God {
                 );
             }
 
-            Repository::global_mut().characters[co].set_do_update_flags();
+            gs.characters[co].set_do_update_flags();
 
             if flag == CharacterFlags::Invisible.bits() {
-                let (x, y) = {
-                    let gs = Repository::global_mut();
-                    (gs.characters[co].x as i32, gs.characters[co].y as i32)
-                };
+                let x = gs.characters[co].x as i32;
+                let y = gs.characters[co].y as i32;
                 EffectManager::fx_add_effect(12, 0, x, y, 0);
             }
         } else {
-            Repository::global_mut().do_character_log(
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 &format!("No such character (id or name): '{}'\n", arg1),
@@ -4173,29 +4147,27 @@ impl God {
     ///
     /// Returns the character index and name string if found, or None if not.
     fn find_character_by_name_or_id(arg: &str) -> Option<(usize, String)> {
+        let gs = Repository::global_mut();
+
         if arg.chars().all(|c| c.is_numeric()) {
             // Search by character number
             let co = arg.parse::<usize>().unwrap_or(0);
             if Character::is_sane_character(co) {
-                {
-                    let name_str = c_string_to_str(&Repository::global_mut().characters[co].name);
-                    Some((co, name_str.to_string()))
-                }
+                let name_str = c_string_to_str(&gs.characters[co].name);
+                Some((co, name_str.to_string()))
             } else {
                 None
             }
         } else {
             // Search by name
             let arg_lower = arg.to_lowercase();
-            {
-                for (i, character) in Repository::global_mut().characters.iter().enumerate() {
-                    let name_str = c_string_to_str(&character.name);
-                    if name_str.to_lowercase() == arg_lower {
-                        return Some((i, name_str.to_string()));
-                    }
+            for (i, character) in gs.characters.iter().enumerate() {
+                let name_str = c_string_to_str(&character.name);
+                if name_str.to_lowercase() == arg_lower {
+                    return Some((i, name_str.to_string()));
                 }
-                None
             }
+            None
         }
     }
 
@@ -4203,21 +4175,23 @@ impl God {
     ///
     /// Modifies server-level flags used to enable or disable features.
     pub fn set_gflag(cn: usize, flag: i32) {
+        let gs = Repository::global_mut();
+
         if !Character::is_sane_character(cn) {
             return;
         }
 
         let flag_bit = 1i32 << flag;
-        if Repository::global_mut().globals.flags & flag_bit != 0 {
-            Repository::global_mut().globals.flags &= !flag_bit;
-            Repository::global_mut().do_character_log(
+        if gs.globals.flags & flag_bit != 0 {
+            gs.globals.flags &= !flag_bit;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Removed global flag {}\n", flag),
             );
         } else {
-            Repository::global_mut().globals.flags |= flag_bit;
-            Repository::global_mut().do_character_log(
+            gs.globals.flags |= flag_bit;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("Added global flag {}\n", flag),
