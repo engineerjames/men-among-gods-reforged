@@ -100,7 +100,8 @@ pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> 
     }
 
     let ticker = gs.globals.ticker;
-    gs.characters[cn].data[76] = gs.characters[co].x as i32 + gs.characters[co].y as i32 * SERVER_MAPX;
+    gs.characters[cn].data[76] =
+        gs.characters[co].x as i32 + gs.characters[co].y as i32 * SERVER_MAPX;
     gs.characters[cn].data[77] = ticker;
 
     let cc = gs.characters[cn].attack_cn;
@@ -252,7 +253,13 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
         && gs.characters[cn].data[70] < ticker
     {
         gs.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
-        EffectManager::fx_add_effect(6, 0, gs.characters[cn].x as i32, gs.characters[cn].y as i32, 0);
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            gs.characters[cn].x as i32,
+            gs.characters[cn].y as i32,
+            0,
+        );
         gs.characters[cn].data[70] = ticker + (TICKS * 60);
 
         let cc = God::create_char(80, true);
@@ -274,7 +281,11 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
             gs.characters[cc].set_reference("Shadow of Peace");
             gs.characters[cc].set_description("You see a Shadow of Peace.");
 
-            if !God::drop_char_fuzzy(cc, gs.characters[co].x as usize, gs.characters[co].y as usize) {
+            if !God::drop_char_fuzzy(
+                cc,
+                gs.characters[co].x as usize,
+                gs.characters[co].y as usize,
+            ) {
                 God::destroy_items(cc);
                 gs.characters[cc].used = 0;
             }
@@ -289,11 +300,19 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> i32
         gs.do_sayx(cn, "Skua! Help me!");
         gs.characters[cn].data[70] = ticker + (TICKS * 60 * 2);
         gs.characters[cn].a_mana = (gs.characters[cn].mana[5] * 1000) as i32;
-        EffectManager::fx_add_effect(6, 0, gs.characters[cn].x as i32, gs.characters[cn].y as i32, 0);
+        EffectManager::fx_add_effect(
+            6,
+            0,
+            gs.characters[cn].x as i32,
+            gs.characters[cn].y as i32,
+            0,
+        );
     }
 
     // Shout for help
-    if gs.characters[cn].data[52] != 0 && gs.characters[cn].a_hp < gs.characters[cn].hp[5] as i32 * 666 {
+    if gs.characters[cn].data[52] != 0
+        && gs.characters[cn].a_hp < gs.characters[cn].hp[5] as i32 * 666
+    {
         if gs.characters[cn].data[55] + (TICKS * 60) < ticker {
             gs.characters[cn].data[54] = 0;
             gs.characters[cn].data[55] = ticker;
@@ -701,7 +720,13 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
 
                 let give_exp = gs.characters[cn].data[51];
                 if give_exp != 0 {
-                    gs.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}.", gs.characters[co].get_name()));
+                    gs.do_sayx(
+                        cn,
+                        &format!(
+                            "Now I'll teach you a bit about life, the world and everything, {}.",
+                            gs.characters[co].get_name()
+                        ),
+                    );
                     gs.do_give_exp(co, give_exp, 0, -1);
                 }
 
@@ -952,8 +977,7 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
     }
 
     let map_item = map_item.unwrap();
-    if gs.map[m].flags
-        & (core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_NOMONST as u64)
+    if gs.map[m].flags & (core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_NOMONST as u64)
         != 0
         || gs.map[m].ch != 0
         || gs.map[m].to_ch != 0
@@ -968,9 +992,7 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
 pub fn npc_is_stunned(gs: &GameState, cn: usize) -> bool {
     for n in 0..20 {
         let active_spell = gs.characters[cn].spell[n];
-        if active_spell != 0
-            && gs.items[active_spell as usize].temp == SK_STUN as u16
-        {
+        if active_spell != 0 && gs.items[active_spell as usize].temp == SK_STUN as u16 {
             return true;
         }
     }
@@ -982,9 +1004,7 @@ pub fn npc_is_stunned(gs: &GameState, cn: usize) -> bool {
 pub fn npc_is_blessed(gs: &GameState, cn: usize) -> bool {
     for n in 0..20 {
         let active_spell = gs.characters[cn].spell[n];
-        if active_spell != 0
-            && gs.items[active_spell as usize].temp == SK_BLESS as u16
-        {
+        if active_spell != 0 && gs.items[active_spell as usize].temp == SK_BLESS as u16 {
             return true;
         }
     }
@@ -1015,7 +1035,8 @@ pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> 
 
     // Don't blast if the enemies armor is too high
     if spell == core::constants::SK_BLAST
-        && (gs.characters[cn].skill[core::constants::SK_BLAST][5] as i16 - gs.characters[co].armor) < 10
+        && (gs.characters[cn].skill[core::constants::SK_BLAST][5] as i16 - gs.characters[co].armor)
+            < 10
     {
         return false;
     }
@@ -1169,7 +1190,13 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
 }
 
 pub fn die_companion(gs: &mut GameState, cn: usize) {
-    EffectManager::fx_add_effect(7, 0, gs.characters[cn].x as i32, gs.characters[cn].y as i32, 0);
+    EffectManager::fx_add_effect(
+        7,
+        0,
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        0,
+    );
     God::destroy_items(cn);
     gs.characters[cn].gold = 0;
 
@@ -1237,7 +1264,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                 if co_usize >= gs.characters.len() {
                     false
                 } else {
-                    gs.characters[co_usize].used != USE_EMPTY && gs.characters[co_usize].data[64] == cn as i32
+                    gs.characters[co_usize].used != USE_EMPTY
+                        && gs.characters[co_usize].data[64] == cn as i32
                 }
             };
             if !master_ok {
@@ -1469,20 +1497,15 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                 }
             }
 
-            if co != 0
-                && gs.globals.ticker > gs.characters[cn].data[75]
-            {
+            if co != 0 && gs.globals.ticker > gs.characters[cn].data[75] {
                 if npc_try_spell(gs, cn, co, SK_STUN) {
-                    gs.characters[cn].data[75] = gs.globals.ticker
-                        + gs.characters[cn].skill[SK_STUN][5] as i32
-                        + TICKS * 8;
+                    gs.characters[cn].data[75] =
+                        gs.globals.ticker + gs.characters[cn].skill[SK_STUN][5] as i32 + TICKS * 8;
                     return 1;
                 }
             }
 
-            if gs.characters[cn].a_mana > 75000
-                && npc_try_spell(gs, cn, cn, SK_BLESS)
-            {
+            if gs.characters[cn].a_mana > 75000 && npc_try_spell(gs, cn, cn, SK_BLESS) {
                 return 1;
             }
             if npc_try_spell(cn, cn, SK_PROTECT) {
@@ -1541,8 +1564,11 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
         let co = gs.characters[cn].data[69] as usize;
         if gs.characters[cn].attack_cn == 0 && co != 0 {
             if driver::follow_driver(gs, cn, co) {
-                let (cn_x, cn_y, co_y) =
-                    (gs.characters[cn].x, gs.characters[cn].y, gs.characters[co].y);
+                let (cn_x, cn_y, co_y) = (
+                    gs.characters[cn].x,
+                    gs.characters[cn].y,
+                    gs.characters[co].y,
+                );
                 let dist = (cn_x - co_y).abs() + (cn_y - co_y).abs();
                 gs.characters[cn].data[58] = if dist > 6 { 2 } else { 1 };
                 return 1;
@@ -1614,8 +1640,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
             if gs.characters[cn].data[47] != 0 && indoor1 == indoor2 {
                 let flags = gs.items[map_it].flags;
                 if flags & ItemFlags::IF_TAKE.bits() != 0 {
-                    let (ch_x, ch_y) =
-                        (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+                    let (ch_x, ch_y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
                     let can_reach = gs.can_go(ch_x, ch_y, x as i32, y as i32) != 0;
                     let can_see = gs.do_char_can_see_item(cn, map_it) != 0;
 
@@ -1629,8 +1654,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> i32 {
                     }
                 }
                 if gs.items[map_it].driver == 7 {
-                    let (ch_x, ch_y) =
-                        (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+                    let (ch_x, ch_y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
                     let can_reach = gs.can_go(ch_x, ch_y, x as i32, y as i32) != 0;
                     let can_see = gs.do_char_can_see_item(cn, map_it) != 0;
 
@@ -2156,19 +2180,19 @@ pub fn npc_check_placement(gs: &GameState, in_idx: usize, n: usize) -> bool {
     let placement = gs.items[in_idx].placement;
 
     match n {
-            WN_HEAD => (placement & PL_HEAD) != 0,
-            WN_NECK => (placement & PL_NECK) != 0,
-            WN_BODY => (placement & PL_BODY) != 0,
-            WN_ARMS => (placement & PL_ARMS) != 0,
-            WN_BELT => (placement & PL_BELT) != 0,
-            WN_LEGS => (placement & PL_LEGS) != 0,
-            WN_FEET => (placement & PL_FEET) != 0,
-            WN_LHAND => (placement & PL_SHIELD) != 0,
-            WN_RHAND => (placement & PL_WEAPON) != 0,
-            WN_CLOAK => (placement & PL_CLOAK) != 0,
-            WN_LRING | WN_RRING => (placement & PL_RING) != 0,
-            _ => false,
-        }
+        WN_HEAD => (placement & PL_HEAD) != 0,
+        WN_NECK => (placement & PL_NECK) != 0,
+        WN_BODY => (placement & PL_BODY) != 0,
+        WN_ARMS => (placement & PL_ARMS) != 0,
+        WN_BELT => (placement & PL_BELT) != 0,
+        WN_LEGS => (placement & PL_LEGS) != 0,
+        WN_FEET => (placement & PL_FEET) != 0,
+        WN_LHAND => (placement & PL_SHIELD) != 0,
+        WN_RHAND => (placement & PL_WEAPON) != 0,
+        WN_CLOAK => (placement & PL_CLOAK) != 0,
+        WN_LRING | WN_RRING => (placement & PL_RING) != 0,
+        _ => false,
+    }
 }
 
 pub fn npc_can_wear_item(gs: &GameState, cn: usize, in_idx: usize) -> bool {
