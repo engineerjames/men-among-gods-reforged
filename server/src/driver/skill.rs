@@ -3388,7 +3388,7 @@ pub fn skill_ghost(cn: usize) {
     }
 
     // Create companion
-    let cc_opt = populate::pop_create_char(CT_COMPANION as usize, true);
+    let cc_opt = populate::pop_create_char(Repository::global_mut(), CT_COMPANION as usize, true);
     if cc_opt.is_none() {
         Repository::global_mut().do_character_log(
             cn,

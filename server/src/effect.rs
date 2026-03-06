@@ -332,7 +332,7 @@ impl EffectManager {
                 // Port of `svr_effect.c`: only reschedule the respawn timer if spawning
                 // failed (e.g., tile became blocked again). If spawning succeeded, let
                 // the mist animation finish and then expire normally.
-                let spawned = populate::pop_create_char(char_template_idx, true).is_some();
+                let spawned = populate::pop_create_char(gs, char_template_idx, true).is_some();
 
                 if !spawned {
                     let respawn_flag = (gs.character_templates[char_template_idx].flags
@@ -373,7 +373,7 @@ impl EffectManager {
 
             let spawn_template = gs.effects[n].data[1];
             if spawn_template != 0 {
-                if let Some(cn) = populate::pop_create_char(spawn_template as usize, false) {
+                if let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
                     God::drop_char(cn, x as usize, y as usize);
                     gs.characters[cn].dir = core::constants::DX_RIGHTUP;
                     player::plr_reset_status(cn);

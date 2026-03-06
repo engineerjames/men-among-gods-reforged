@@ -81,7 +81,7 @@ impl God {
     }
 
     /// Create an item using an explicit game-state borrow.
-    fn create_item_gs(gs: &mut GameState, template_id: usize) -> Option<usize> {
+    pub(crate) fn create_item_gs(gs: &mut GameState, template_id: usize) -> Option<usize> {
         if !core::types::Item::is_sane_item_template(template_id) {
             return None;
         }
@@ -294,11 +294,6 @@ impl God {
     /// # Arguments
     /// * `character_id` - Character index
     /// * `build_type` - Equipment variant
-    pub fn build_equip(character_id: usize, build_type: u32) {
-        Self::build_equip_gs(Repository::global_mut(), character_id, build_type)
-    }
-
-    /// Equip build-mode inventory using an explicit game-state borrow.
     fn build_equip_gs(gs: &mut GameState, character_id: usize, build_type: u32) {
         let mut m = 0;
         let char_name = {
@@ -605,11 +600,6 @@ impl God {
     ///
     /// # Arguments
     /// * `character_id` - Character entering build mode
-    pub fn build_start(character_id: usize) -> bool {
-        Self::build_start_gs(Repository::global_mut(), character_id)
-    }
-
-    /// Start build mode using an explicit game-state borrow.
     fn build_start_gs(gs: &mut GameState, character_id: usize) -> bool {
         let companion = {
             let character = &gs.characters[character_id];
@@ -684,11 +674,6 @@ impl God {
     ///
     /// # Arguments
     /// * `character_id` - Character exiting build mode
-    pub fn build_stop(character_id: usize) {
-        Self::build_stop_gs(Repository::global_mut(), character_id)
-    }
-
-    /// Stop build mode using an explicit game-state borrow.
     fn build_stop_gs(gs: &mut GameState, character_id: usize) {
         if !core::types::Character::is_sane_character(character_id) {
             log::error!("Invalid character ID {} in build_stop", character_id);
@@ -1275,7 +1260,12 @@ impl God {
     }
 
     /// Place a character using an explicit game-state borrow.
-    fn drop_char_gs(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
+    pub(crate) fn drop_char_gs(
+        gs: &mut GameState,
+        character_id: usize,
+        x: usize,
+        y: usize,
+    ) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
         }
@@ -1316,10 +1306,11 @@ impl God {
     /// * `co` - Target character
     /// * `pass` - New password string
     pub fn change_pass(cn: usize, co: usize, pass: &str) -> i32 {
-        Self::change_pass_impl(Repository::global_mut(), cn, co, pass)
+        Self::change_pass_gs(Repository::global_mut(), cn, co, pass)
     }
 
-    fn change_pass_impl(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> i32 {
+    /// Change a character password using an explicit game-state borrow.
+    fn change_pass_gs(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> i32 {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return 0;
         }
@@ -1362,10 +1353,11 @@ impl God {
     /// * `cn` - Character index
     /// * `item_id` - Item index to remove
     pub fn remove_item(cn: usize, item_id: usize) -> i32 {
-        Self::remove_item_impl(Repository::global_mut(), cn, item_id)
+        Self::remove_item_gs(Repository::global_mut(), cn, item_id)
     }
 
-    fn remove_item_impl(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
+    /// Remove an item using an explicit game-state borrow.
+    fn remove_item_gs(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
             return 0;
         }
@@ -1401,10 +1393,11 @@ impl God {
     /// * `nr` - Item id
     /// * `x`, `y` - Central coordinates
     pub fn drop_item_fuzzy(nr: usize, x: usize, y: usize) -> bool {
-        Self::drop_item_fuzzy_impl(Repository::global_mut(), nr, x, y)
+        Self::drop_item_fuzzy_gs(Repository::global_mut(), nr, x, y)
     }
 
-    fn drop_item_fuzzy_impl(gs: &mut GameState, nr: usize, x: usize, y: usize) -> bool {
+    /// Drop an item near a tile using an explicit game-state borrow.
+    fn drop_item_fuzzy_gs(gs: &mut GameState, nr: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
@@ -1452,10 +1445,11 @@ impl God {
     /// * `co` - Target character
     /// * `cx`, `cy` - Coordinate strings
     pub fn goto(cn: usize, co: usize, cx: &str, cy: &str) {
-        Self::goto_impl(Repository::global_mut(), cn, co, cx, cy)
+        Self::goto_gs(Repository::global_mut(), cn, co, cx, cy)
     }
 
-    fn goto_impl(gs: &mut GameState, cn: usize, co: usize, cx: &str, cy: &str) {
+    /// Execute goto using an explicit game-state borrow.
+    fn goto_gs(gs: &mut GameState, cn: usize, co: usize, cx: &str, cy: &str) {
         log::debug!(
             "goto() called by character {} to move character {} to '{},{}'",
             cn,
@@ -1481,11 +1475,11 @@ impl God {
         }
 
         let goto_functions = [
-            Self::goto_cardinal_length_impl
+            Self::goto_cardinal_length_gs
                 as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
-            Self::goto_target_coordinates_impl
+            Self::goto_target_coordinates_gs
                 as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
-            Self::goto_character_by_name_impl
+            Self::goto_character_by_name_gs
                 as fn(&mut GameState, usize, &str, &str) -> Option<(usize, usize)>,
         ];
 
@@ -1575,7 +1569,7 @@ impl God {
         Some((target_x, target_y))
     }
 
-    fn goto_target_coordinates_impl(
+    fn goto_target_coordinates_gs(
         _gs: &mut GameState,
         cn: usize,
         cx: &str,
@@ -1584,7 +1578,7 @@ impl God {
         Self::goto_target_coordinates(cn, cx, cy)
     }
 
-    fn goto_cardinal_length_impl(
+    fn goto_cardinal_length_gs(
         gs: &mut GameState,
         cn: usize,
         cx: &str,
@@ -1693,7 +1687,7 @@ impl God {
         Some((target_x, target_y))
     }
 
-    fn goto_character_by_name_impl(
+    fn goto_character_by_name_gs(
         gs: &mut GameState,
         cn: usize,
         cx: &str,
@@ -1737,10 +1731,11 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character
     pub fn info(cn: usize, co: usize) {
-        Self::info_impl(Repository::global_mut(), cn, co)
+        Self::info_gs(Repository::global_mut(), cn, co)
     }
 
-    fn info_impl(gs: &mut GameState, cn: usize, co: usize) {
+    /// Show character info using an explicit game-state borrow.
+    fn info_gs(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2086,10 +2081,11 @@ impl God {
     /// * `cn` - Requesting character
     /// * `item_index` - Item instance index
     pub fn iinfo(cn: usize, item_index: usize) {
-        Self::iinfo_impl(Repository::global_mut(), cn, item_index)
+        Self::iinfo_gs(Repository::global_mut(), cn, item_index)
     }
 
-    fn iinfo_impl(gs: &mut GameState, cn: usize, item_index: usize) {
+    /// Show item-instance info using an explicit game-state borrow.
+    fn iinfo_gs(gs: &mut GameState, cn: usize, item_index: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_index) {
             return;
         }
@@ -2115,10 +2111,11 @@ impl God {
     /// * `cn` - Requesting character
     /// * `template` - Item template id
     pub fn tinfo(cn: usize, template: usize) {
-        Self::tinfo_impl(Repository::global_mut(), cn, template)
+        Self::tinfo_gs(Repository::global_mut(), cn, template)
     }
 
-    fn tinfo_impl(gs: &mut GameState, cn: usize, template: usize) {
+    /// Show item-template info using an explicit game-state borrow.
+    fn tinfo_gs(gs: &mut GameState, cn: usize, template: usize) {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item_template(template)
         {
             return;
@@ -2143,10 +2140,11 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn unique(cn: usize) {
-        Self::unique_impl(Repository::global_mut(), cn)
+        Self::unique_gs(Repository::global_mut(), cn)
     }
 
-    fn unique_impl(gs: &mut GameState, cn: usize) {
+    /// List unique items using an explicit game-state borrow.
+    fn unique_gs(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2176,10 +2174,11 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn who(cn: usize) {
-        Self::who_impl(Repository::global_mut(), cn)
+        Self::who_gs(Repository::global_mut(), cn)
     }
 
-    fn who_impl(gs: &mut GameState, cn: usize) {
+    /// Produce a who listing using an explicit game-state borrow.
+    fn who_gs(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2334,10 +2333,11 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn implist(cn: usize) {
-        Self::implist_impl(Repository::global_mut(), cn)
+        Self::implist_gs(Repository::global_mut(), cn)
     }
 
-    fn implist_impl(gs: &mut GameState, cn: usize) {
+    /// Show implemented admin commands using an explicit game-state borrow.
+    fn implist_gs(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2427,10 +2427,11 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn user_who(cn: usize) {
-        Self::user_who_impl(Repository::global_mut(), cn)
+        Self::user_who_gs(Repository::global_mut(), cn)
     }
 
-    fn user_who_impl(gs: &mut GameState, cn: usize) {
+    /// Show a compact user-who listing using an explicit game-state borrow.
+    fn user_who_gs(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2548,10 +2549,11 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     pub fn top(cn: usize) {
-        Self::top_impl(Repository::global_mut(), cn)
+        Self::top_gs(Repository::global_mut(), cn)
     }
 
-    fn top_impl(gs: &mut GameState, cn: usize) {
+    /// Display the top players using an explicit game-state borrow.
+    fn top_gs(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2583,10 +2585,11 @@ impl God {
     /// * `cn` - Requesting character
     /// * `x` - Template id
     pub fn create(cn: usize, x: i32) {
-        Self::create_impl(Repository::global_mut(), cn, x)
+        Self::create_gs(Repository::global_mut(), cn, x)
     }
 
-    fn create_impl(gs: &mut GameState, cn: usize, x: i32) {
+    /// Create an item from an admin command using an explicit game-state borrow.
+    fn create_gs(gs: &mut GameState, cn: usize, x: i32) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2654,10 +2657,11 @@ impl God {
     /// * `animal` - Animal type (Bear, Lion, etc.)
     /// * `godly` - 'godly' or not provided
     pub fn create_special(cn: usize, armor: &str, animal: &str, godly: &str) {
-        Self::create_special_impl(Repository::global_mut(), cn, armor, animal, godly)
+        Self::create_special_gs(Repository::global_mut(), cn, armor, animal, godly)
     }
 
-    fn create_special_impl(gs: &mut GameState, cn: usize, armor: &str, animal: &str, godly: &str) {
+    /// Create special armor items using an explicit game-state borrow.
+    fn create_special_gs(gs: &mut GameState, cn: usize, armor: &str, animal: &str, godly: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2802,7 +2806,7 @@ impl God {
         }
         if !Self::give_character_item_gs(gs, cn, created[1]) {
             // Remove the first item again to keep behavior consistent (we create a pair).
-            let _ = Self::remove_item_impl(gs, cn, created[0]);
+            let _ = Self::remove_item_gs(gs, cn, created[0]);
             gs.items[created[0]].used = core::constants::USE_EMPTY;
             gs.items[created[1]].used = core::constants::USE_EMPTY;
             gs.do_character_log(cn, core::types::FontColor::Red, "Your inventory is full!\n");
@@ -2834,15 +2838,11 @@ impl God {
     /// * `start_index` - Index to start the search from
     /// * `spec1`, `spec2` - Match specifications
     pub fn find_next_char(start_index: usize, spec1: &str, spec2: &str) -> i32 {
-        Self::find_next_char_impl(Repository::global_mut(), start_index, spec1, spec2)
+        Self::find_next_char_gs(Repository::global_mut(), start_index, spec1, spec2)
     }
 
-    fn find_next_char_impl(
-        gs: &mut GameState,
-        start_index: usize,
-        spec1: &str,
-        spec2: &str,
-    ) -> i32 {
+    /// Find the next matching character using an explicit game-state borrow.
+    fn find_next_char_gs(gs: &mut GameState, start_index: usize, spec1: &str, spec2: &str) -> i32 {
         let spec1_lower = spec1.to_lowercase();
         let spec2_lower = spec2.to_lowercase();
 
@@ -2882,11 +2882,7 @@ impl God {
     /// # Arguments
     /// * `looker` - Character performing the check
     /// * `target` - Target character
-    pub fn invis(looker: usize, target: usize) -> i32 {
-        Self::invis_impl(Repository::global_mut(), looker, target)
-    }
-
-    fn invis_impl(gs: &mut GameState, looker: usize, target: usize) -> i32 {
+    fn invis_gs(gs: &mut GameState, looker: usize, target: usize) -> i32 {
         if !Character::is_sane_character(looker) || !Character::is_sane_character(target) {
             return 1;
         }
@@ -2913,10 +2909,11 @@ impl God {
     /// * `cn` - Summoning character
     /// * `spec1`, `spec2`, `spec3` - Summon parameters
     pub fn summon(cn: usize, spec1: &str, spec2: &str, spec3: &str) {
-        Self::summon_impl(Repository::global_mut(), cn, spec1, spec2, spec3)
+        Self::summon_gs(Repository::global_mut(), cn, spec1, spec2, spec3)
     }
 
-    fn summon_impl(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str, spec3: &str) {
+    /// Summon a character using an explicit game-state borrow.
+    fn summon_gs(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str, spec3: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -2933,7 +2930,7 @@ impl God {
             // single-arg: treat spec1 as character number
             co = spec1.parse::<usize>().unwrap_or(0);
 
-            if co == 0 || !Character::is_sane_character(co) || Self::invis_impl(gs, cn, co) != 0 {
+            if co == 0 || !Character::is_sane_character(co) || Self::invis_gs(gs, cn, co) != 0 {
                 gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 return;
             }
@@ -2988,7 +2985,7 @@ impl God {
             let which = spec3.parse::<usize>().unwrap_or(1).max(1);
 
             while count < which {
-                let found = Self::find_next_char_impl(gs, co, spec1, spec2) as usize;
+                let found = Self::find_next_char_gs(gs, co, spec1, spec2) as usize;
                 if found == 0 {
                     break;
                 }
@@ -3013,7 +3010,7 @@ impl God {
                 }
 
                 // invisibility check: ignore whom we can't see
-                if Self::invis_impl(gs, cn, co) != 0 {
+                if Self::invis_gs(gs, cn, co) != 0 {
                     continue;
                 }
 
@@ -3103,10 +3100,11 @@ impl God {
     /// * `cn` - Requesting character
     /// * `spec1`, `spec2` - Mirror parameters
     pub fn mirror(cn: usize, spec1: &str, spec2: &str) {
-        Self::mirror_impl(Repository::global_mut(), cn, spec1, spec2)
+        Self::mirror_gs(Repository::global_mut(), cn, spec1, spec2)
     }
 
-    fn mirror_impl(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) {
+    /// Create a mirror using an explicit game-state borrow.
+    fn mirror_gs(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) {
         if !Character::is_sane_character(cn) {
             return;
         }
@@ -3129,7 +3127,7 @@ impl God {
         } else if spec1.chars().all(|c| c.is_ascii_digit()) {
             spec1.parse::<usize>().unwrap_or(0)
         } else {
-            Self::find_next_char_impl(gs, 1, spec1, "") as usize
+            Self::find_next_char_gs(gs, 1, spec1, "") as usize
         };
 
         if !Character::is_sane_character(co) {
@@ -3272,10 +3270,11 @@ impl God {
     /// * `cn` - Requesting character
     /// * `spec1`, `spec2` - Target and options
     pub fn thrall(cn: usize, spec1: &str, spec2: &str) -> i32 {
-        Self::thrall_impl(Repository::global_mut(), cn, spec1, spec2)
+        Self::thrall_gs(Repository::global_mut(), cn, spec1, spec2)
     }
 
-    fn thrall_impl(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) -> i32 {
+    /// Create a thrall using an explicit game-state borrow.
+    fn thrall_gs(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) -> i32 {
         if !Character::is_sane_character(cn) {
             return 0;
         }
@@ -3319,7 +3318,7 @@ impl God {
             // At least 2 arguments - find character by name/rank
             let mut co = 0usize;
             loop {
-                co = Self::find_next_char_impl(gs, co, spec1, spec2) as usize;
+                co = Self::find_next_char_gs(gs, co, spec1, spec2) as usize;
                 if co == 0 {
                     break;
                 }
@@ -3517,10 +3516,11 @@ impl God {
     /// # Arguments
     /// * `cn` - Target character
     pub fn tavern(cn: usize) {
-        Self::tavern_impl(Repository::global_mut(), cn)
+        Self::tavern_gs(Repository::global_mut(), cn)
     }
 
-    fn tavern_impl(gs: &mut GameState, cn: usize) {
+    /// Process tavern logout using an explicit game-state borrow.
+    fn tavern_gs(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             log::error!("god_tavern() called with invalid character number: {}", cn);
             return;
@@ -3556,10 +3556,11 @@ impl God {
     /// * `arg1` - Target character or can be the amount if arg2 is empty (apply to self)
     /// * `arg2` - Increase amount
     pub fn raise_char(cn: usize, arg1: &str, arg2: &str) {
-        Self::raise_char_impl(Repository::global_mut(), cn, arg1, arg2)
+        Self::raise_char_gs(Repository::global_mut(), cn, arg1, arg2)
     }
 
-    fn raise_char_impl(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
+    /// Raise character experience using an explicit game-state borrow.
+    fn raise_char_gs(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
         log::debug!(
             "god_raise_char() called with arg1='{}', arg2='{}'",
             arg1,
@@ -3579,7 +3580,7 @@ impl God {
                 "god_raise_char(): single-argument mode, applying to self: {}",
                 cn
             );
-            Self::raise_char_impl(gs, cn, cn.to_string().as_str(), arg1);
+            Self::raise_char_gs(gs, cn, cn.to_string().as_str(), arg1);
             return;
         }
 
@@ -3648,10 +3649,11 @@ impl God {
     /// * `arg1` - Target character or can be the amount of arg2 isn't provided.
     /// * `arg2` - Decrease amount
     pub fn lower_char(cn: usize, arg1: &str, arg2: &str) {
-        Self::lower_char_impl(Repository::global_mut(), cn, arg1, arg2)
+        Self::lower_char_gs(Repository::global_mut(), cn, arg1, arg2)
     }
 
-    fn lower_char_impl(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
+    /// Lower character experience using an explicit game-state borrow.
+    fn lower_char_gs(gs: &mut GameState, cn: usize, arg1: &str, arg2: &str) {
         log::debug!(
             "god_lower_char() called with arg1='{}', arg2='{}'",
             arg1,
@@ -3671,7 +3673,7 @@ impl God {
                 "god_lower_char(): single-argument mode, applying to self: {}",
                 cn
             );
-            Self::lower_char_impl(gs, cn, cn.to_string().as_str(), arg1);
+            Self::lower_char_gs(gs, cn, cn.to_string().as_str(), arg1);
             return;
         }
 
@@ -3742,10 +3744,11 @@ impl God {
     /// * `value` - Gold amount
     /// * `silver` - Silver amount
     pub fn gold_char(cn: usize, arg: &str, gold: u32, silver: u32) {
-        Self::gold_char_impl(Repository::global_mut(), cn, arg, gold, silver)
+        Self::gold_char_gs(Repository::global_mut(), cn, arg, gold, silver)
     }
 
-    fn gold_char_impl(gs: &mut GameState, cn: usize, arg: &str, gold: u32, silver: u32) {
+    /// Add gold using an explicit game-state borrow.
+    fn gold_char_gs(gs: &mut GameState, cn: usize, arg: &str, gold: u32, silver: u32) {
         log::debug!(
             "gold_char() called with arg='{}', gold='{}', silver='{}'",
             arg,
@@ -3765,7 +3768,7 @@ impl God {
                 "gold_char(): single-argument mode, applying to self: {}",
                 cn
             );
-            Self::gold_char_impl(gs, cn, cn.to_string().as_str(), gold, silver);
+            Self::gold_char_gs(gs, cn, cn.to_string().as_str(), gold, silver);
             return;
         }
 
@@ -4689,7 +4692,7 @@ impl God {
         }
 
         // Create character from template 386 with items
-        if let Some(co) = populate::pop_create_char(386, true) {
+        if let Some(co) = populate::pop_create_char(Repository::global_mut(), 386, true) {
             let character_name = Repository::global_mut().characters[co].name;
 
             let name_str = c_string_to_str(&character_name);
@@ -4817,7 +4820,7 @@ impl God {
         }
 
         // Create character from template 495 with items
-        if let Some(co) = populate::pop_create_char(495, true) {
+        if let Some(co) = populate::pop_create_char(Repository::global_mut(), 495, true) {
             let character_name = Repository::global_mut().characters[co].name;
 
             let name_str = c_string_to_str(&character_name);

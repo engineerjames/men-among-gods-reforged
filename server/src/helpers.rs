@@ -239,7 +239,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
     };
 
     // pop_create_char(template, 0): create the enemy character (assume function exists)
-    let co = match populate::pop_create_char(template, false) {
+    let co = match populate::pop_create_char(gs, template, false) {
         Some(co) => co,
         None => {
             chlog!(cn, "Sorry, could not create your enemy.");

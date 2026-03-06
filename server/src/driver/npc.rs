@@ -2324,7 +2324,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
 
             if n > 0 {
                 for m_idx in 0..n {
-                    let co = match populate::pop_create_char(503 + m_idx, false) {
+                    let co = match populate::pop_create_char(Repository::global_mut(), 503 + m_idx, false) {
                         Some(co) => co,
                         None => {
                             Repository::global_mut()

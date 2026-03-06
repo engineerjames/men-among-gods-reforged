@@ -13,7 +13,6 @@ use crate::{
     driver::{self, use_item},
     effect::EffectManager,
     game_state::GameState,
-    game_state::GameState as Repository,
     god::God,
     helpers, player,
 };
@@ -74,28 +73,34 @@ pub fn init_lights(gs: &mut GameState) {
     log::info!("Initialized lights: {} items, {} indoor tiles", cnt1, cnt2);
 }
 
-pub fn pop_create_item(temp: usize, cn: usize) -> usize {
+/// Create an item for a character using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `temp` - Item template id.
+/// * `cn` - Character receiving or influencing the item roll.
+pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
     let mut in_id = 0;
-    let alignment = Repository::global_mut().characters[cn].alignment;
+    let alignment = gs.characters[cn].alignment;
 
     // First check: Gorn uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(542),  // bronze dagger
-            28 => God::create_item(543),  // steel dagger
-            29 => God::create_item(544),  // gold dagger
-            30 => God::create_item(545),  // crystal dagger
-            523 => God::create_item(546), // titan dagger
-            31 => God::create_item(547),  // bronze sword
-            32 => God::create_item(548),  // steel sword
-            33 => God::create_item(549),  // gold sword
-            34 => God::create_item(550),  // crystal sword
-            524 => God::create_item(551), // titan sword
-            35 => God::create_item(552),  // bronze two
-            36 => God::create_item(553),  // steel two
-            37 => God::create_item(554),  // gold two
-            38 => God::create_item(555),  // crystal two
-            125 => God::create_item(556), // titan two
+            27 => God::create_item_gs(gs, 542),  // bronze dagger
+            28 => God::create_item_gs(gs, 543),  // steel dagger
+            29 => God::create_item_gs(gs, 544),  // gold dagger
+            30 => God::create_item_gs(gs, 545),  // crystal dagger
+            523 => God::create_item_gs(gs, 546), // titan dagger
+            31 => God::create_item_gs(gs, 547),  // bronze sword
+            32 => God::create_item_gs(gs, 548),  // steel sword
+            33 => God::create_item_gs(gs, 549),  // gold sword
+            34 => God::create_item_gs(gs, 550),  // crystal sword
+            524 => God::create_item_gs(gs, 551), // titan sword
+            35 => God::create_item_gs(gs, 552),  // bronze two
+            36 => God::create_item_gs(gs, 553),  // steel two
+            37 => God::create_item_gs(gs, 554),  // gold two
+            38 => God::create_item_gs(gs, 555),  // crystal two
+            125 => God::create_item_gs(gs, 556), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -104,21 +109,21 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     // Second check: Kwai uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(527),  // bronze dagger
-            28 => God::create_item(528),  // steel dagger
-            29 => God::create_item(529),  // gold dagger
-            30 => God::create_item(530),  // crystal dagger
-            523 => God::create_item(531), // titan dagger
-            31 => God::create_item(532),  // bronze sword
-            32 => God::create_item(533),  // steel sword
-            33 => God::create_item(534),  // gold sword
-            34 => God::create_item(535),  // crystal sword
-            524 => God::create_item(536), // titan sword
-            35 => God::create_item(537),  // bronze two
-            36 => God::create_item(538),  // steel two
-            37 => God::create_item(539),  // gold two
-            38 => God::create_item(540),  // crystal two
-            125 => God::create_item(541), // titan two
+            27 => God::create_item_gs(gs, 527),  // bronze dagger
+            28 => God::create_item_gs(gs, 528),  // steel dagger
+            29 => God::create_item_gs(gs, 529),  // gold dagger
+            30 => God::create_item_gs(gs, 530),  // crystal dagger
+            523 => God::create_item_gs(gs, 531), // titan dagger
+            31 => God::create_item_gs(gs, 532),  // bronze sword
+            32 => God::create_item_gs(gs, 533),  // steel sword
+            33 => God::create_item_gs(gs, 534),  // gold sword
+            34 => God::create_item_gs(gs, 535),  // crystal sword
+            524 => God::create_item_gs(gs, 536), // titan sword
+            35 => God::create_item_gs(gs, 537),  // bronze two
+            36 => God::create_item_gs(gs, 538),  // steel two
+            37 => God::create_item_gs(gs, 539),  // gold two
+            38 => God::create_item_gs(gs, 540),  // crystal two
+            125 => God::create_item_gs(gs, 541), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -127,21 +132,21 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     // Third check: Purple One uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(572),  // bronze dagger
-            28 => God::create_item(573),  // steel dagger
-            29 => God::create_item(574),  // gold dagger
-            30 => God::create_item(575),  // crystal dagger
-            523 => God::create_item(576), // titan dagger
-            31 => God::create_item(577),  // bronze sword
-            32 => God::create_item(578),  // steel sword
-            33 => God::create_item(579),  // gold sword
-            34 => God::create_item(580),  // crystal sword
-            524 => God::create_item(581), // titan sword
-            35 => God::create_item(582),  // bronze two
-            36 => God::create_item(583),  // steel two
-            37 => God::create_item(584),  // gold two
-            38 => God::create_item(585),  // crystal two
-            125 => God::create_item(586), // titan two
+            27 => God::create_item_gs(gs, 572),  // bronze dagger
+            28 => God::create_item_gs(gs, 573),  // steel dagger
+            29 => God::create_item_gs(gs, 574),  // gold dagger
+            30 => God::create_item_gs(gs, 575),  // crystal dagger
+            523 => God::create_item_gs(gs, 576), // titan dagger
+            31 => God::create_item_gs(gs, 577),  // bronze sword
+            32 => God::create_item_gs(gs, 578),  // steel sword
+            33 => God::create_item_gs(gs, 579),  // gold sword
+            34 => God::create_item_gs(gs, 580),  // crystal sword
+            524 => God::create_item_gs(gs, 581), // titan sword
+            35 => God::create_item_gs(gs, 582),  // bronze two
+            36 => God::create_item_gs(gs, 583),  // steel two
+            37 => God::create_item_gs(gs, 584),  // gold two
+            38 => God::create_item_gs(gs, 585),  // crystal two
+            125 => God::create_item_gs(gs, 586), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -150,21 +155,21 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     // Fourth check: Skua uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(280),  // bronze dagger
-            28 => God::create_item(281),  // steel dagger
-            29 => God::create_item(282),  // gold dagger
-            30 => God::create_item(283),  // crystal dagger
-            523 => God::create_item(525), // titan dagger
-            31 => God::create_item(284),  // bronze sword
-            32 => God::create_item(285),  // steel sword
-            33 => God::create_item(286),  // gold sword
-            34 => God::create_item(287),  // crystal sword
-            524 => God::create_item(526), // titan sword
-            35 => God::create_item(288),  // bronze two
-            36 => God::create_item(289),  // steel two
-            37 => God::create_item(290),  // gold two
-            38 => God::create_item(291),  // crystal two
-            125 => God::create_item(292), // titan two
+            27 => God::create_item_gs(gs, 280),  // bronze dagger
+            28 => God::create_item_gs(gs, 281),  // steel dagger
+            29 => God::create_item_gs(gs, 282),  // gold dagger
+            30 => God::create_item_gs(gs, 283),  // crystal dagger
+            523 => God::create_item_gs(gs, 525), // titan dagger
+            31 => God::create_item_gs(gs, 284),  // bronze sword
+            32 => God::create_item_gs(gs, 285),  // steel sword
+            33 => God::create_item_gs(gs, 286),  // gold sword
+            34 => God::create_item_gs(gs, 287),  // crystal sword
+            524 => God::create_item_gs(gs, 526), // titan sword
+            35 => God::create_item_gs(gs, 288),  // bronze two
+            36 => God::create_item_gs(gs, 289),  // steel two
+            37 => God::create_item_gs(gs, 290),  // gold two
+            38 => God::create_item_gs(gs, 291),  // crystal two
+            125 => God::create_item_gs(gs, 292), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -172,27 +177,24 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 
     // Default: create item from template
     if in_id == 0 {
-        in_id = God::create_item(temp).unwrap_or(0);
+        in_id = God::create_item_gs(gs, temp).unwrap_or(0);
 
         // Apply item damage for regular items
         if in_id != 0 {
-            let max_damage = Repository::global_mut().items[in_id].max_damage;
+            let max_damage = gs.items[in_id].max_damage;
             if max_damage > 0 {
                 // 50% chance to age the item first
                 if helpers::random_mod(2) == 0 {
-                    Repository::global_mut().items[in_id].current_damage = max_damage + 1;
+                    gs.items[in_id].current_damage = max_damage + 1;
                     use_item::item_age(in_id);
                 }
                 // Set random damage
-                Repository::global_mut().items[in_id].current_damage =
-                    helpers::random_mod(max_damage);
+                gs.items[in_id].current_damage = helpers::random_mod(max_damage);
             }
         }
     } else {
-        let char_name = Repository::global_mut().characters[cn]
-            .get_name()
-            .to_string();
-        let item_name = Repository::global_mut().items[in_id].get_name().to_string();
+        let char_name = gs.characters[cn].get_name().to_string();
+        let item_name = gs.items[in_id].get_name().to_string();
         log::info!("{} got unique item {}.", char_name, item_name);
     }
 
@@ -201,8 +203,14 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 
 /// Port of `pop_create_bonus` from `populate.c`
 /// Creates bonus items based on character rank (points_tot)
-pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
-    let points_tot = Repository::global_mut().characters[cn].points_tot;
+/// Create a bonus item using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `cn` - Character receiving the bonus.
+/// * `_chance` - Legacy chance parameter retained for parity.
+pub fn pop_create_bonus(gs: &mut GameState, cn: usize, _chance: i32) -> i32 {
+    let points_tot = gs.characters[cn].points_tot;
 
     let template = if points_tot > 20000000 {
         // Very high rank items
@@ -270,13 +278,11 @@ pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
         }
     };
 
-    let in_id = God::create_item(template);
+    let in_id = God::create_item_gs(gs, template);
 
     if let Some(in_id) = in_id {
-        let char_name = Repository::global_mut().characters[cn]
-            .get_name()
-            .to_string();
-        let item_name = Repository::global_mut().items[in_id].get_name().to_string();
+        let char_name = gs.characters[cn].get_name().to_string();
+        let item_name = gs.items[in_id].get_name().to_string();
         log::info!("{} got {} (template={})", char_name, item_name, template);
         in_id as i32
     } else {
@@ -286,8 +292,13 @@ pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
 
 /// Port of `pop_create_bonus_belt` from `populate.cpp`
 /// Creates special rainbow belts with random skills
-pub fn pop_create_bonus_belt(cn: usize) -> i32 {
-    let points_tot = Repository::global_mut().characters[cn].points_tot;
+/// Create a randomized rainbow belt using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `cn` - Character receiving the belt.
+pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
+    let points_tot = gs.characters[cn].points_tot;
 
     // Calculate rank (from points2rank - needs to be implemented elsewhere)
     let rank = if points_tot < 1000 {
@@ -300,7 +311,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
         return 0;
     }
 
-    let in_id = God::create_item(1106); // Rainbow belt template
+    let in_id = God::create_item_gs(gs, 1106); // Rainbow belt template
     if in_id.is_none() {
         return 0;
     }
@@ -308,7 +319,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
     // Customize the belt item (clear template and set sprite/name/description)
     {
-        let item = &mut Repository::global_mut().items[in_id];
+        let item = &mut gs.items[in_id];
         item.temp = 0; // Clear template
         item.sprite[0] = 16964;
         let name_bytes = b"Rainbow Belt";
@@ -336,7 +347,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
     // Update item properties
     {
-        let item = &mut Repository::global_mut().items[in_id];
+        let item = &mut gs.items[in_id];
         item.power += 5 * num_skills;
         item.value += 10000 * num_skills;
     }
@@ -351,7 +362,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
         }
 
         {
-            let item = &mut Repository::global_mut().items[in_id];
+            let item = &mut gs.items[in_id];
             match skill_number {
                 // Attributes
                 0 => {
@@ -692,10 +703,15 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
 /// Port of `pop_create_char` from `populate.cpp`
 /// Creates a character from a template
-pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
+/// Create a character from a template using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `template_id` - Character template id.
+/// * `drop` - Whether to place the character on the map immediately.
+pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Option<usize> {
     // Find a free character slot.
-    let cn = match (1..MAXCHARS).find(|&i| Repository::global_mut().characters[i].used == USE_EMPTY)
-    {
+    let cn = match (1..MAXCHARS).find(|&i| gs.characters[i].used == USE_EMPTY) {
         Some(index) => index,
         None => {
             log::error!("MAXCHARS reached!");
@@ -705,11 +721,10 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     // Copy template and set initial fields (matches C++: ch[cn] = ch_temp[n]).
     {
-        Repository::global_mut().characters[cn] =
-            Repository::global_mut().character_templates[template_id];
-        Repository::global_mut().characters[cn].pass1 = helpers::random_mod(0x3fffffff);
-        Repository::global_mut().characters[cn].pass2 = helpers::random_mod(0x3fffffff);
-        Repository::global_mut().characters[cn].temp = template_id as u16;
+        gs.characters[cn] = gs.character_templates[template_id];
+        gs.characters[cn].pass1 = helpers::random_mod(0x3fffffff);
+        gs.characters[cn].pass2 = helpers::random_mod(0x3fffffff);
+        gs.characters[cn].temp = template_id as u16;
     }
 
     let mut flag = false;
@@ -717,69 +732,69 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     // Create inventory items from template.
     for m in 0..40usize {
-        let tmp_template = Repository::global_mut().characters[cn].item[m];
+        let tmp_template = gs.characters[cn].item[m];
         if tmp_template == 0 {
             continue;
         }
 
-        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        let tmp_instance = God::create_item_gs(gs, tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
-            Repository::global_mut().characters[cn].item[m] = 0;
+            gs.characters[cn].item[m] = 0;
         } else {
-            Repository::global_mut().items[tmp_instance].carried = cn as u16;
-            Repository::global_mut().characters[cn].item[m] = tmp_instance as u32;
+            gs.items[tmp_instance].carried = cn as u16;
+            gs.characters[cn].item[m] = tmp_instance as u32;
             hasitems = true;
         }
     }
 
     // Create worn items from template (uses pop_create_item to preserve unique logic).
     for m in 0..20usize {
-        let tmp_template = Repository::global_mut().characters[cn].worn[m];
+        let tmp_template = gs.characters[cn].worn[m];
         if tmp_template == 0 {
             continue;
         }
 
-        let tmp_instance = pop_create_item(tmp_template as usize, cn);
+        let tmp_instance = pop_create_item(gs, tmp_template as usize, cn);
         if tmp_instance == 0 {
             flag = true;
-            Repository::global_mut().characters[cn].worn[m] = 0;
+            gs.characters[cn].worn[m] = 0;
         } else {
-            Repository::global_mut().items[tmp_instance].carried = cn as u16;
-            Repository::global_mut().characters[cn].worn[m] = tmp_instance as u32;
+            gs.items[tmp_instance].carried = cn as u16;
+            gs.characters[cn].worn[m] = tmp_instance as u32;
             hasitems = true;
         }
     }
 
     // Clear spells from template.
     for m in 0..20usize {
-        Repository::global_mut().characters[cn].spell[m] = 0;
+        gs.characters[cn].spell[m] = 0;
     }
 
     // Create carried item (citem) from template.
-    let tmp_template = Repository::global_mut().characters[cn].citem;
+    let tmp_template = gs.characters[cn].citem;
     if tmp_template != 0 {
-        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        let tmp_instance = God::create_item_gs(gs, tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
-            Repository::global_mut().characters[cn].citem = 0;
+            gs.characters[cn].citem = 0;
         } else {
-            Repository::global_mut().items[tmp_instance].carried = cn as u16;
-            Repository::global_mut().characters[cn].citem = tmp_instance as u32;
+            gs.items[tmp_instance].carried = cn as u16;
+            gs.characters[cn].citem = tmp_instance as u32;
             hasitems = true;
         }
     }
 
     // Roll back if any item creation failed.
     if flag {
-        God::destroy_items(cn);
-        Repository::global_mut().characters[cn].used = USE_EMPTY;
+        God::destroy_items_gs(gs, cn);
+        gs.characters[cn].used = USE_EMPTY;
         return None;
     }
 
     // Finalize stats (mana logic matches C++).
     {
-        let characters = &mut Repository::global_mut().characters;
+        let characters = &mut gs.characters;
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
@@ -798,9 +813,9 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     }
 
     // Bonus item / belt logic (matches C++: only if evil and hasitems; only first free slot).
-    let has_meditation = Repository::global_mut().characters[cn].skill[SK_MEDIT][0] != 0;
-    let a_mana = Repository::global_mut().characters[cn].a_mana;
-    let alignment = Repository::global_mut().characters[cn].alignment;
+    let has_meditation = gs.characters[cn].skill[SK_MEDIT][0] != 0;
+    let a_mana = gs.characters[cn].a_mana;
+    let alignment = gs.characters[cn].alignment;
 
     let mut chance: i32 = 25;
     if !has_meditation && a_mana > 15 * 100 {
@@ -816,32 +831,32 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     if alignment < 0 && hasitems {
         // Bonus item: at most one, attempt on first empty slot.
         let first_empty_slot = {
-            let items = Repository::global_mut().characters[cn].item;
+            let items = gs.characters[cn].item;
             items.iter().position(|&it| it == 0)
         };
         if let Some(slot) = first_empty_slot {
             if chance > 0 && helpers::random_mod(chance as u32) == 0 {
-                let tmp = pop_create_bonus(cn, chance);
+                let tmp = pop_create_bonus(gs, cn, chance);
                 if tmp != 0 {
                     let tmp = tmp as usize;
-                    Repository::global_mut().items[tmp].carried = cn as u16;
-                    Repository::global_mut().characters[cn].item[slot] = tmp as u32;
+                    gs.items[tmp].carried = cn as u16;
+                    gs.characters[cn].item[slot] = tmp as u32;
                 }
             }
         }
 
         // Rainbow belt: at most one, attempt on (new) first empty slot.
         let first_empty_slot = {
-            let items = Repository::global_mut().characters[cn].item;
+            let items = gs.characters[cn].item;
             items.iter().position(|&it| it == 0)
         };
         if let Some(slot) = first_empty_slot {
             if helpers::random_mod(10000) == 0 {
-                let tmp = pop_create_bonus_belt(cn);
+                let tmp = pop_create_bonus_belt(gs, cn);
                 if tmp != 0 {
                     let tmp = tmp as usize;
-                    Repository::global_mut().items[tmp].carried = cn as u16;
-                    Repository::global_mut().characters[cn].item[slot] = tmp as u32;
+                    gs.items[tmp].carried = cn as u16;
+                    gs.characters[cn].item[slot] = tmp as u32;
                 }
             }
         }
@@ -850,20 +865,20 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     // Drop character on map if requested (matches C++: exact coords, cleanup on failure).
     if drop {
         let (x, y) = {
-            let ch = Repository::global_mut().characters[cn];
+            let ch = gs.characters[cn];
             (ch.x, ch.y)
         };
 
-        if x < 0 || y < 0 || !God::drop_char(cn, x as usize, y as usize) {
+        if x < 0 || y < 0 || !God::drop_char_gs(gs, cn, x as usize, y as usize) {
             log::error!("Could not drop char template {}", template_id);
-            God::destroy_items(cn);
-            Repository::global_mut().characters[cn].used = USE_EMPTY;
+            God::destroy_items_gs(gs, cn);
+            gs.characters[cn].used = USE_EMPTY;
             return None;
         }
     }
 
-    Repository::global_mut().do_update_char(cn);
-    Repository::global_mut().globals.npcs_created += 1;
+    gs.do_update_char(cn);
+    gs.globals.npcs_created += 1;
 
     Some(cn)
 }
@@ -1240,7 +1255,7 @@ pub fn populate(gs: &mut GameState) {
         let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
 
         if used != USE_EMPTY && has_respawn {
-            if let Some(cn) = pop_create_char(n, true) {
+            if let Some(cn) = pop_create_char(gs, n, true) {
                 log::debug!("Spawned NPC {} from template {}", cn, n);
             }
         }
