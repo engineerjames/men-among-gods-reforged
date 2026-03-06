@@ -695,6 +695,43 @@ fn plr_front_tile_gs(gs: &mut GameState, cn: usize, action: &str) -> Option<(usi
     Some((m, x, y))
 }
 
+/// Compute the adjacent cardinal tile in front of the character, with bounds checks.
+///
+/// # Arguments
+/// * `gs` - Active game state used to inspect character position.
+/// * `cn` - Character index performing the action.
+///
+/// # Returns
+/// * `Some((map_index, x, y))` when the facing tile is on the map.
+/// * `None` if the facing direction is diagonal or would leave the map.
+fn plr_cardinal_front_tile_gs(gs: &mut GameState, cn: usize) -> Option<(usize, i16, i16)> {
+    let ch = gs.characters[cn];
+
+    match ch.dir {
+        core::constants::DX_UP if ch.y > 0 => {
+            let y = ch.y - 1;
+            let m = (ch.x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
+            Some((m, ch.x, y))
+        }
+        core::constants::DX_DOWN if ch.y < (core::constants::SERVER_MAPY as i16 - 1) => {
+            let y = ch.y + 1;
+            let m = (ch.x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
+            Some((m, ch.x, y))
+        }
+        core::constants::DX_LEFT if ch.x > 0 => {
+            let x = ch.x - 1;
+            let m = (x as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
+            Some((m, x, ch.y))
+        }
+        core::constants::DX_RIGHT if ch.x < (core::constants::SERVER_MAPX as i16 - 1) => {
+            let x = ch.x + 1;
+            let m = (x as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
+            Some((m, x, ch.y))
+        }
+        _ => None,
+    }
+}
+
 /// Port of `plr_move_up` from `svr_act.cpp`
 ///
 /// Performs a move action upwards for the given character. This removes the
@@ -1166,55 +1203,26 @@ pub fn plr_wave(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index using the item
 pub fn plr_use(gs: &mut GameState, cn: usize) {
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        Repository::global_mut().characters[cn].x as i32,
-        Repository::global_mut().characters[cn].y as i32,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
+    notify_character_tile(gs, cn);
 
-    let ch = Repository::global_mut().characters[cn];
-    let m = match ch.dir {
-        core::constants::DX_UP if ch.y > 0 => {
-            Some((ch.x as usize) + ((ch.y - 1) as usize) * core::constants::SERVER_MAPX as usize)
-        }
-        core::constants::DX_DOWN if ch.y < (core::constants::SERVER_MAPY as i16 - 1) => {
-            Some((ch.x as usize) + ((ch.y + 1) as usize) * core::constants::SERVER_MAPX as usize)
-        }
-        core::constants::DX_LEFT if ch.x > 0 => {
-            Some(((ch.x - 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize)
-        }
-        core::constants::DX_RIGHT if ch.x < (core::constants::SERVER_MAPX as i16 - 1) => {
-            Some(((ch.x + 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize)
-        }
-        _ => None,
-    };
-
-    let Some(m) = m else {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+    let Some((m, _, _)) = plr_cardinal_front_tile_gs(gs, cn) else {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     };
 
-    let in_id = Repository::global_mut().map[m].it;
+    let in_id = gs.map[m].it;
 
     if in_id == 0 {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    let can_use = {
-        let flags = Repository::global_mut().items[in_id as usize].flags;
-        (flags & core::constants::ItemFlags::IF_USE.bits()) != 0
-            || (flags & core::constants::ItemFlags::IF_USESPECIAL.bits()) != 0
-    };
+    let flags = gs.items[in_id as usize].flags;
+    let can_use = (flags & core::constants::ItemFlags::IF_USE.bits()) != 0
+        || (flags & core::constants::ItemFlags::IF_USESPECIAL.bits()) != 0;
 
     if !can_use {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
@@ -1229,21 +1237,28 @@ pub fn plr_use(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `cn` - Character index using the skill
 pub fn plr_skill(gs: &mut GameState, cn: usize) {
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        Repository::global_mut().characters[cn].x as i32,
-        Repository::global_mut().characters[cn].y as i32,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
+    notify_character_tile(gs, cn);
 
-    let skill_target = Repository::global_mut().characters[cn].skill_target2;
+    let skill_target = gs.characters[cn].skill_target2;
 
     driver::skill_driver(gs, cn, skill_target as i32);
+}
+
+/// Periodic medium-rate driver using an explicit game state.
+///
+/// # Arguments
+/// * `gs` - Active game state used for ticker and follow target lookup.
+/// * `cn` - Character index to process.
+pub fn player_driver_med_gs(gs: &mut GameState, cn: usize) {
+    let ticker = gs.globals.ticker;
+    if gs.characters[cn].data[12] + core::constants::TICKS * 15 > ticker {
+        return;
+    }
+
+    let co = gs.characters[cn].data[10];
+    if co != 0 {
+        driver::follow_driver(cn, co as usize);
+    }
 }
 
 /// Periodic driver invoked at a medium rate for a player.
@@ -1255,15 +1270,7 @@ pub fn plr_skill(gs: &mut GameState, cn: usize) {
 /// # Arguments
 /// * `cn` - Character index to process
 pub fn player_driver_med(cn: usize) {
-    let ticker = Repository::global_mut().globals.ticker;
-    if Repository::global_mut().characters[cn].data[12] + core::constants::TICKS * 15 > ticker {
-        return;
-    }
-
-    let co = Repository::global_mut().characters[cn].data[10];
-    if co != 0 {
-        driver::follow_driver(cn, co as usize);
-    }
+    player_driver_med_gs(GameState::global_mut(), cn);
 }
 
 /// Port of `plr_drop` from `svr_act.cpp`
@@ -1276,82 +1283,48 @@ pub fn player_driver_med(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index performing the drop
 pub fn plr_drop(cn: usize) {
-    Repository::global_mut().do_area_notify(
-        cn as i32,
-        0,
-        Repository::global_mut().characters[cn].x as i32,
-        Repository::global_mut().characters[cn].y as i32,
-        core::constants::NT_SEE as i32,
-        cn as i32,
-        0,
-        0,
-        0,
-    );
+    let gs = GameState::global_mut();
+    notify_character_tile(gs, cn);
 
-    let in_id = Repository::global_mut().characters[cn].citem;
+    let in_id = gs.characters[cn].citem;
 
     if in_id == 0 {
         return;
     }
 
-    let ch = Repository::global_mut().characters[cn];
-    let (m, x, y) = match ch.dir {
-        core::constants::DX_UP if ch.y > 0 => {
-            let m = (ch.x as usize) + ((ch.y - 1) as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), ch.x, ch.y - 1)
-        }
-        core::constants::DX_DOWN if ch.y < (core::constants::SERVER_MAPY as i16 - 1) => {
-            let m = (ch.x as usize) + ((ch.y + 1) as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), ch.x, ch.y + 1)
-        }
-        core::constants::DX_LEFT if ch.x > 0 => {
-            let m = ((ch.x - 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), ch.x - 1, ch.y)
-        }
-        core::constants::DX_RIGHT if ch.x < (core::constants::SERVER_MAPX as i16 - 1) => {
-            let m = ((ch.x + 1) as usize) + (ch.y as usize) * core::constants::SERVER_MAPX as usize;
-            (Some(m), ch.x + 1, ch.y)
-        }
-        _ => (None, 0, 0),
-    };
-
-    let Some(m) = m else {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+    let Some((m, x, y)) = plr_cardinal_front_tile_gs(gs, cn) else {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     };
 
     // Check for step action items
-    let in2 = Repository::global_mut().map[m].it;
+    let in2 = gs.map[m].it;
     if in2 != 0 {
-        let has_step_action = (Repository::global_mut().items[in2 as usize].flags
-            & core::constants::ItemFlags::IF_STEPACTION.bits())
-            != 0;
+        let has_step_action =
+            (gs.items[in2 as usize].flags & core::constants::ItemFlags::IF_STEPACTION.bits()) != 0;
 
         if has_step_action {
             driver::step_driver(cn, in2 as usize);
-            Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             return;
         }
     }
 
     // Check if tile is blocked
-    let is_blocked = Repository::global_mut().map[m].ch != 0
-        || Repository::global_mut().map[m].to_ch != 0
-        || Repository::global_mut().map[m].it != 0
-        || (Repository::global_mut().map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0;
+    let is_blocked = gs.map[m].ch != 0
+        || gs.map[m].to_ch != 0
+        || gs.map[m].it != 0
+        || (gs.map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0;
 
     if is_blocked {
-        Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    {
-        let gs = Repository::global_mut();
-        gs.characters[cn].citem = 0;
-        gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
-    }
+    gs.characters[cn].citem = 0;
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    Repository::global_mut().do_update_char(cn);
+    gs.do_update_char(cn);
 
     // Handle money
     let final_in_id = if in_id & 0x80000000 != 0 {
@@ -1359,66 +1332,60 @@ pub fn plr_drop(cn: usize) {
         let new_in = God::create_item(1); // blank template
 
         if new_in.is_none() {
-            Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             return;
         }
 
-        let new_in = new_in.unwrap();
+        let new_in = new_in.expect("checked for item creation failure above");
 
-        {
-            let gs = Repository::global_mut();
-            gs.items[new_in].flags |= core::constants::ItemFlags::IF_TAKE.bits()
-                | core::constants::ItemFlags::IF_LOOK.bits()
-                | core::constants::ItemFlags::IF_MONEY.bits();
-            gs.items[new_in].value = tmp;
-            let mut reference = [0u8; 40];
-            let bytes = "some money".as_bytes();
-            let len = bytes.len().min(40);
-            reference[..len].copy_from_slice(&bytes[..len]);
-            gs.items[new_in].reference = reference;
+        gs.items[new_in].flags |= core::constants::ItemFlags::IF_TAKE.bits()
+            | core::constants::ItemFlags::IF_LOOK.bits()
+            | core::constants::ItemFlags::IF_MONEY.bits();
+        gs.items[new_in].value = tmp;
+        let mut reference = [0u8; 40];
+        let bytes = "some money".as_bytes();
+        let len = bytes.len().min(40);
+        reference[..len].copy_from_slice(&bytes[..len]);
+        gs.items[new_in].reference = reference;
 
-            let (description, sprite) = if tmp > 999999 {
-                ("A huge pile of gold coins", 121)
-            } else if tmp > 99999 {
-                ("A very large pile of gold coins", 120)
-            } else if tmp > 9999 {
-                ("A large pile of gold coins", 41)
-            } else if tmp > 999 {
-                ("A small pile of gold coins", 40)
-            } else if tmp > 99 {
-                ("Some gold coins", 39)
-            } else if tmp > 9 {
-                ("A pile of silver coins", 38)
-            } else if tmp > 2 {
-                ("A few silver coins", 37)
-            } else if tmp == 2 {
-                ("A couple of silver coins", 37)
-            } else {
-                ("A lonely silver coin", 37)
-            };
+        let (description, sprite) = if tmp > 999999 {
+            ("A huge pile of gold coins", 121)
+        } else if tmp > 99999 {
+            ("A very large pile of gold coins", 120)
+        } else if tmp > 9999 {
+            ("A large pile of gold coins", 41)
+        } else if tmp > 999 {
+            ("A small pile of gold coins", 40)
+        } else if tmp > 99 {
+            ("Some gold coins", 39)
+        } else if tmp > 9 {
+            ("A pile of silver coins", 38)
+        } else if tmp > 2 {
+            ("A few silver coins", 37)
+        } else if tmp == 2 {
+            ("A couple of silver coins", 37)
+        } else {
+            ("A lonely silver coin", 37)
+        };
 
-            let mut description_bytes = [0u8; 200];
-            let bytes = description.as_bytes();
-            let len = bytes.len().min(200);
-            description_bytes[..len].copy_from_slice(&bytes[..len]);
-            gs.items[new_in].description = description_bytes;
-            gs.items[new_in].sprite[0] = sprite;
-        }
+        let mut description_bytes = [0u8; 200];
+        let bytes = description.as_bytes();
+        let len = bytes.len().min(200);
+        description_bytes[..len].copy_from_slice(&bytes[..len]);
+        gs.items[new_in].description = description_bytes;
+        gs.items[new_in].sprite[0] = sprite;
 
         log::info!("Character {} dropped {}G {}S", cn, tmp / 100, tmp % 100);
 
         new_in as u32
     } else {
         // Check whether the item is allowed to be given/dropped
-        let may_drop = Repository::global_mut().do_maygive(cn, 0, in_id as usize);
+        let may_drop = gs.do_maygive(cn, 0, in_id as usize);
         if !may_drop {
             // Restore cursor item and indicate failure
-            {
-                let gs = Repository::global_mut();
-                gs.characters[cn].citem = in_id;
-                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
-            }
-            Repository::global_mut().do_character_log(
+            gs.characters[cn].citem = in_id;
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
                 "You are not allowed to do that!\n",
@@ -1426,35 +1393,25 @@ pub fn plr_drop(cn: usize) {
             return;
         }
 
-        let item_name = Repository::global_mut().items[in_id as usize]
-            .get_name()
-            .to_string();
+        let item_name = gs.items[in_id as usize].get_name().to_string();
         log::info!("Character {} dropped {}", cn, item_name);
         in_id
     };
 
-    Repository::global_mut().map[m].it = final_in_id;
+    gs.map[m].it = final_in_id;
 
-    let (active, light_active, light_inactive) = {
-        let gs = Repository::global_mut();
-        (
-            gs.items[final_in_id as usize].active,
-            gs.items[final_in_id as usize].light[1],
-            gs.items[final_in_id as usize].light[0],
-        )
-    };
+    let active = gs.items[final_in_id as usize].active;
+    let light_active = gs.items[final_in_id as usize].light[1];
+    let light_inactive = gs.items[final_in_id as usize].light[0];
 
-    {
-        let gs = Repository::global_mut();
-        gs.items[final_in_id as usize].x = x as u16;
-        gs.items[final_in_id as usize].y = y as u16;
-        gs.items[final_in_id as usize].carried = 0;
-    }
+    gs.items[final_in_id as usize].x = x as u16;
+    gs.items[final_in_id as usize].y = y as u16;
+    gs.items[final_in_id as usize].carried = 0;
 
     if active != 0 && light_active != 0 {
-        Repository::global_mut().do_add_light(x as i32, y as i32, light_active as i32);
+        gs.do_add_light(x as i32, y as i32, light_active as i32);
     } else if light_inactive != 0 {
-        Repository::global_mut().do_add_light(x as i32, y as i32, light_inactive as i32);
+        gs.do_add_light(x as i32, y as i32, light_inactive as i32);
     }
 }
 
@@ -1467,8 +1424,8 @@ pub fn plr_drop(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index whose misc action to process
 pub fn plr_misc(gs: &mut GameState, cn: usize) {
-    let status2 = Repository::global_mut().characters[cn].status2;
-    let is_player = Repository::global_mut().characters[cn].is_player();
+    let status2 = gs.characters[cn].status2;
+    let is_player = gs.characters[cn].is_player();
 
     match status2 {
         0 => {
@@ -1539,9 +1496,36 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
         }
         _ => {
             log::error!("plr_misc: unknown status2 {} for char {}", status2, cn);
-            Repository::global_mut().characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         }
     }
+}
+
+/// Reset a character's animation status using an explicit game state.
+///
+/// # Arguments
+/// * `gs` - Active game state used to mutate the character.
+/// * `cn` - Character index whose status should be reset.
+pub fn plr_reset_status_gs(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].status = match gs.characters[cn].dir {
+        core::constants::DX_UP => 0,
+        core::constants::DX_DOWN => 1,
+        core::constants::DX_LEFT => 2,
+        core::constants::DX_RIGHT => 3,
+        core::constants::DX_LEFTUP => 4,
+        core::constants::DX_LEFTDOWN => 5,
+        core::constants::DX_RIGHTUP => 6,
+        core::constants::DX_RIGHTDOWN => 7,
+        _ => {
+            log::error!(
+                "plr_reset_status: illegal value for dir: {} for char {}",
+                gs.characters[cn].dir,
+                cn
+            );
+            gs.characters[cn].dir = core::constants::DX_UP;
+            0
+        }
+    };
 }
 
 /// Port of `plr_check_target` from `svr_act.cpp`
@@ -1556,23 +1540,32 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
 ///
 /// # Returns
 /// `true` if tile is a valid empty target, `false` otherwise
-pub fn plr_check_target(m: usize) -> bool {
-    if Repository::global_mut().map[m].ch != 0 || Repository::global_mut().map[m].to_ch != 0 {
+pub fn plr_check_target_gs(gs: &mut GameState, m: usize) -> bool {
+    if gs.map[m].ch != 0 || gs.map[m].to_ch != 0 {
         return false;
     }
 
-    if (Repository::global_mut().map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0 {
+    if (gs.map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0 {
         return false;
     }
 
-    let it_id = Repository::global_mut().map[m].it;
+    let it_id = gs.map[m].it;
     if it_id != 0 {
-        (Repository::global_mut().items[it_id as usize].flags
-            & core::constants::ItemFlags::IF_MOVEBLOCK.bits())
-            == 0
+        (gs.items[it_id as usize].flags & core::constants::ItemFlags::IF_MOVEBLOCK.bits()) == 0
     } else {
         true
     }
+}
+
+/// Check whether a target tile is usable via the global game state bridge.
+///
+/// # Arguments
+/// * `m` - Map index to inspect
+///
+/// # Returns
+/// `true` if tile is a valid empty target, `false` otherwise
+pub fn plr_check_target(m: usize) -> bool {
+    plr_check_target_gs(GameState::global_mut(), m)
 }
 
 /// Port of `plr_set_target` from `svr_act.cpp`
@@ -1586,14 +1579,26 @@ pub fn plr_check_target(m: usize) -> bool {
 ///
 /// # Returns
 /// `true` on success, `false` if tile is not a valid target
-pub fn plr_set_target(m: usize, cn: usize) -> bool {
-    if !plr_check_target(m) {
+pub fn plr_set_target_gs(gs: &mut GameState, m: usize, cn: usize) -> bool {
+    if !plr_check_target_gs(gs, m) {
         return false;
     }
 
-    Repository::global_mut().map[m].to_ch = cn as u32;
+    gs.map[m].to_ch = cn as u32;
 
     true
+}
+
+/// Mark a target tile via the global game state bridge.
+///
+/// # Arguments
+/// * `m` - Map index to set as target
+/// * `cn` - Character index that will be the target occupant
+///
+/// # Returns
+/// `true` on success, `false` if tile is not a valid target
+pub fn plr_set_target(m: usize, cn: usize) -> bool {
+    plr_set_target_gs(GameState::global_mut(), m, cn)
 }
 
 /// Port of `plr_reset_status` from `svr_act.cpp`
@@ -1605,28 +1610,7 @@ pub fn plr_set_target(m: usize, cn: usize) -> bool {
 /// # Arguments
 /// * `cn` - Character index whose status to reset
 pub fn plr_reset_status(cn: usize) {
-    {
-        let gs = Repository::global_mut();
-        gs.characters[cn].status = match gs.characters[cn].dir {
-            core::constants::DX_UP => 0,
-            core::constants::DX_DOWN => 1,
-            core::constants::DX_LEFT => 2,
-            core::constants::DX_RIGHT => 3,
-            core::constants::DX_LEFTUP => 4,
-            core::constants::DX_LEFTDOWN => 5,
-            core::constants::DX_RIGHTUP => 6,
-            core::constants::DX_RIGHTDOWN => 7,
-            _ => {
-                log::error!(
-                    "plr_reset_status: illegal value for dir: {} for char {}",
-                    gs.characters[cn].dir,
-                    cn
-                );
-                gs.characters[cn].dir = core::constants::DX_UP;
-                0
-            }
-        };
-    }
+    plr_reset_status_gs(GameState::global_mut(), cn);
 }
 
 /// Perform the character's current driving action.
@@ -1638,8 +1622,8 @@ pub fn plr_reset_status(cn: usize) {
 /// # Arguments
 /// * `cn` - Character index to perform driver actions for
 pub fn plr_doact(gs: &mut GameState, cn: usize) {
-    plr_reset_status(cn);
-    if Repository::global_mut().characters[cn].group_active() {
+    plr_reset_status_gs(gs, cn);
+    if gs.characters[cn].group_active() {
         driver::driver(gs, cn);
     }
 }
@@ -1653,11 +1637,11 @@ pub fn plr_doact(gs: &mut GameState, cn: usize) {
 ///
 /// # Arguments
 /// * `cn` - Character index to process
-pub fn plr_act(_gs: &mut GameState, cn: usize) {
+pub fn plr_act(gs: &mut GameState, cn: usize) {
     let (stunned, flags, status) = (
-        Repository::global_mut().characters[cn].stunned,
-        Repository::global_mut().characters[cn].flags,
-        Repository::global_mut().characters[cn].status,
+        gs.characters[cn].stunned,
+        gs.characters[cn].flags,
+        gs.characters[cn].status,
     );
 
     if stunned != 0 {
@@ -1674,394 +1658,394 @@ pub fn plr_act(_gs: &mut GameState, cn: usize) {
         // idle states: call idle and driver
         0..=7 => {
             driver::act_idle(cn);
-            plr_doact(_gs, cn);
+            plr_doact(gs, cn);
         }
 
         // walk up: 16..22 increment, 23 execute
         16..=22 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         23 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 16;
+                gs.characters[cn].status = 16;
                 plr_move_up(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // walk down: 24..30 then 31
         24..=30 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         31 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 24;
+                gs.characters[cn].status = 24;
                 plr_move_down(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // walk left: 32..38 then 39
         32..=38 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         39 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 32;
+                gs.characters[cn].status = 32;
                 plr_move_left(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // walk right: 40..46 then 47
         40..=46 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         47 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 40;
+                gs.characters[cn].status = 40;
                 plr_move_right(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // left+up: 48..58 then 59
         48..=58 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         59 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 48;
+                gs.characters[cn].status = 48;
                 plr_move_leftup(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // left+down: 60..70 then 71
         60..=70 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         71 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 60;
+                gs.characters[cn].status = 60;
                 plr_move_leftdown(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // right+up: 72..82 then 83
         72..=82 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         83 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 72;
+                gs.characters[cn].status = 72;
                 plr_move_rightup(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // right+down: 84..94 then 95
         84..=94 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         95 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 84;
+                gs.characters[cn].status = 84;
                 plr_move_rightdown(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // turns: grouped ranges mapping to final turn actions
         96..=98 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         99 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 96;
+                gs.characters[cn].status = 96;
                 plr_turn_leftup(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         100..=102 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         103 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 96;
+                gs.characters[cn].status = 96;
                 plr_turn_left(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         104..=106 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         107 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 104;
+                gs.characters[cn].status = 104;
                 plr_turn_rightup(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         108..=110 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         111 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 108;
+                gs.characters[cn].status = 108;
                 plr_turn_right(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         112..=114 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         115 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 112;
+                gs.characters[cn].status = 112;
                 plr_turn_leftdown(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         116..=118 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         119 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 116;
+                gs.characters[cn].status = 116;
                 plr_turn_left(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         120..=122 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         123 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 120;
+                gs.characters[cn].status = 120;
                 plr_turn_rightdown(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         124..=126 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         127 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 124;
+                gs.characters[cn].status = 124;
                 plr_turn_right(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         128..=130 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         131 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 128;
+                gs.characters[cn].status = 128;
                 plr_turn_leftup(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         132..=134 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         135 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 132;
+                gs.characters[cn].status = 132;
                 plr_turn_up(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         136..=138 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         139 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 136;
+                gs.characters[cn].status = 136;
                 plr_turn_leftdown(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         140..=142 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         143 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 140;
+                gs.characters[cn].status = 140;
                 plr_turn_down(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         144..=146 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         147 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 144;
+                gs.characters[cn].status = 144;
                 plr_turn_rightup(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         148..=150 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         151 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 148;
+                gs.characters[cn].status = 148;
                 plr_turn_up(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         152..=154 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         155 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 152;
+                gs.characters[cn].status = 152;
                 plr_turn_rightdown(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         156..=158 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         159 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 156;
+                gs.characters[cn].status = 156;
                 plr_turn_down(cn);
-                plr_doact(_gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // misc actions: 160..166 increment, 167 execute misc then doact
         160..=166 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         167 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 160;
-                plr_misc(_gs, cn);
-                plr_doact(_gs, cn);
+                gs.characters[cn].status = 160;
+                plr_misc(gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // misc down 168..174 then 175
         168..=174 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         175 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 168;
-                plr_misc(_gs, cn);
-                plr_doact(_gs, cn);
+                gs.characters[cn].status = 168;
+                plr_misc(gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // misc left 176..182 then 183
         176..=182 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         183 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 176;
-                plr_misc(_gs, cn);
-                plr_doact(_gs, cn);
+                gs.characters[cn].status = 176;
+                plr_misc(gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         // misc right 184..190 then 191
         184..=190 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status += 1;
+                gs.characters[cn].status += 1;
             }
         }
         191 => {
             if speedo(cn) != 0 {
-                Repository::global_mut().characters[cn].status = 184;
-                plr_misc(_gs, cn);
-                plr_doact(_gs, cn);
+                gs.characters[cn].status = 184;
+                plr_misc(gs, cn);
+                plr_doact(gs, cn);
             }
         }
 
         _ => {
-            let status = Repository::global_mut().characters[cn].status;
+            let status = gs.characters[cn].status;
             log::error!(
                 "plr_act: unknown character status {} for char {}",
                 status,
                 cn
             );
-            Repository::global_mut().characters[cn].status = 0;
+            gs.characters[cn].status = 0;
         }
     }
 }
