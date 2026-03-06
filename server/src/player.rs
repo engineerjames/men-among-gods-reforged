@@ -1663,12 +1663,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // walk up: 16..22 increment, 23 execute
         16..=22 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         23 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 16;
                 plr_move_up(cn);
                 plr_doact(gs, cn);
@@ -1677,12 +1677,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // walk down: 24..30 then 31
         24..=30 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         31 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 24;
                 plr_move_down(cn);
                 plr_doact(gs, cn);
@@ -1691,12 +1691,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // walk left: 32..38 then 39
         32..=38 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         39 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 32;
                 plr_move_left(cn);
                 plr_doact(gs, cn);
@@ -1705,12 +1705,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // walk right: 40..46 then 47
         40..=46 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         47 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 40;
                 plr_move_right(cn);
                 plr_doact(gs, cn);
@@ -1719,12 +1719,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // left+up: 48..58 then 59
         48..=58 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         59 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 48;
                 plr_move_leftup(cn);
                 plr_doact(gs, cn);
@@ -1733,12 +1733,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // left+down: 60..70 then 71
         60..=70 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         71 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 60;
                 plr_move_leftdown(cn);
                 plr_doact(gs, cn);
@@ -1747,12 +1747,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // right+up: 72..82 then 83
         72..=82 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         83 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 72;
                 plr_move_rightup(cn);
                 plr_doact(gs, cn);
@@ -1761,12 +1761,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // right+down: 84..94 then 95
         84..=94 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         95 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 84;
                 plr_move_rightdown(cn);
                 plr_doact(gs, cn);
@@ -1775,12 +1775,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // turns: grouped ranges mapping to final turn actions
         96..=98 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         99 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 96;
                 plr_turn_leftup(cn);
                 plr_doact(gs, cn);
@@ -1788,12 +1788,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         100..=102 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         103 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 96;
                 plr_turn_left(cn);
                 plr_doact(gs, cn);
@@ -1801,12 +1801,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         104..=106 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         107 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 104;
                 plr_turn_rightup(cn);
                 plr_doact(gs, cn);
@@ -1814,12 +1814,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         108..=110 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         111 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 108;
                 plr_turn_right(cn);
                 plr_doact(gs, cn);
@@ -1827,12 +1827,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         112..=114 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         115 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 112;
                 plr_turn_leftdown(cn);
                 plr_doact(gs, cn);
@@ -1840,12 +1840,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         116..=118 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         119 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 116;
                 plr_turn_left(cn);
                 plr_doact(gs, cn);
@@ -1853,12 +1853,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         120..=122 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         123 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 120;
                 plr_turn_rightdown(cn);
                 plr_doact(gs, cn);
@@ -1866,12 +1866,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         124..=126 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         127 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 124;
                 plr_turn_right(cn);
                 plr_doact(gs, cn);
@@ -1879,12 +1879,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         128..=130 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         131 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 128;
                 plr_turn_leftup(cn);
                 plr_doact(gs, cn);
@@ -1892,12 +1892,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         132..=134 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         135 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 132;
                 plr_turn_up(cn);
                 plr_doact(gs, cn);
@@ -1905,12 +1905,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         136..=138 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         139 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 136;
                 plr_turn_leftdown(cn);
                 plr_doact(gs, cn);
@@ -1918,12 +1918,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         140..=142 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         143 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 140;
                 plr_turn_down(cn);
                 plr_doact(gs, cn);
@@ -1931,12 +1931,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         144..=146 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         147 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 144;
                 plr_turn_rightup(cn);
                 plr_doact(gs, cn);
@@ -1944,12 +1944,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         148..=150 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         151 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 148;
                 plr_turn_up(cn);
                 plr_doact(gs, cn);
@@ -1957,12 +1957,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         152..=154 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         155 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 152;
                 plr_turn_rightdown(cn);
                 plr_doact(gs, cn);
@@ -1970,12 +1970,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
         }
 
         156..=158 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         159 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 156;
                 plr_turn_down(cn);
                 plr_doact(gs, cn);
@@ -1984,12 +1984,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc actions: 160..166 increment, 167 execute misc then doact
         160..=166 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         167 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 160;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -1998,12 +1998,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc down 168..174 then 175
         168..=174 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         175 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 168;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -2012,12 +2012,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc left 176..182 then 183
         176..=182 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         183 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 176;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -2026,12 +2026,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc right 184..190 then 191
         184..=190 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         191 => {
-            if speedo(cn) != 0 {
+            if speedo_gs(gs, cn) != 0 {
                 gs.characters[cn].status = 184;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -2057,10 +2057,9 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 ///
 /// # Arguments
 /// * `n` - Character index
-pub fn speedo(n: usize) -> i32 {
-    let speed = (Repository::global_mut().characters[n].speed as usize)
-        .min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
-    let ctick = Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
+pub fn speedo_gs(gs: &mut GameState, n: usize) -> i32 {
+    let speed = (gs.characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
+    let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
     SPEEDTAB[speed][ctick] as i32
 }
 
@@ -2084,11 +2083,11 @@ pub fn plr_clear_map() {
 ///
 /// # Arguments
 /// * `nr` - Player slot index requesting the map update
-pub fn plr_getmap(_gs: &mut GameState, nr: usize) {
-    plr_getmap_complete(nr);
+pub fn plr_getmap(gs: &mut GameState, nr: usize) {
+    plr_getmap_complete_gs(gs, nr);
 }
 
-pub fn plr_getmap_complete(nr: usize) {
+pub fn plr_getmap_complete_gs(gs: &mut GameState, nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr);
 
     // We copy it out here so we HAVE to write it back.
@@ -2099,18 +2098,14 @@ pub fn plr_getmap_complete(nr: usize) {
     const XSCUT: i32 = 2;
     const XECUT: i32 = 2;
 
-    let ys = Repository::global_mut().characters[cn].y as i32 - (core::constants::TILEY as i32 / 2)
-        + YSCUT;
-    let ye = Repository::global_mut().characters[cn].y as i32 + (core::constants::TILEY as i32 / 2)
-        - YECUT;
-    let xs = Repository::global_mut().characters[cn].x as i32 - (core::constants::TILEX as i32 / 2)
-        + XSCUT;
-    let xe = Repository::global_mut().characters[cn].x as i32 + (core::constants::TILEX as i32 / 2)
-        - XECUT;
+    let ys = gs.characters[cn].y as i32 - (core::constants::TILEY as i32 / 2) + YSCUT;
+    let ye = gs.characters[cn].y as i32 + (core::constants::TILEY as i32 / 2) - YECUT;
+    let xs = gs.characters[cn].x as i32 - (core::constants::TILEX as i32 / 2) + XSCUT;
+    let xe = gs.characters[cn].x as i32 + (core::constants::TILEX as i32 / 2) - XECUT;
 
-    let current_x = Repository::global_mut().characters[cn].x as i32;
-    let current_y = Repository::global_mut().characters[cn].y as i32;
-    Repository::global_mut().can_see(
+    let current_x = gs.characters[cn].x as i32;
+    let current_y = gs.characters[cn].y as i32;
+    gs.can_see(
         Some(cn),
         current_x,
         current_y,
@@ -2123,9 +2118,9 @@ pub fn plr_getmap_complete(nr: usize) {
     let player_vy = Server::with_players(|players| players[nr].vy);
     let player_visi = Server::with_players(|players| players[nr].visi);
 
-    let see_x = Repository::global_mut().see_map[cn].x;
-    let see_y = Repository::global_mut().see_map[cn].y;
-    let see_vis = Repository::global_mut().see_map[cn].vis;
+    let see_x = gs.see_map[cn].x;
+    let see_y = gs.see_map[cn].y;
+    let see_vis = gs.see_map[cn].vis;
 
     let mut do_all = false;
     if player_vx != see_x || player_vy != see_y || player_visi != see_vis || player_visi != see_vis
@@ -2138,7 +2133,7 @@ pub fn plr_getmap_complete(nr: usize) {
         do_all = true;
     }
 
-    if Repository::global_mut().characters[cn].is_building() {
+    if gs.characters[cn].is_building() {
         do_all = true;
     }
 
@@ -2183,7 +2178,7 @@ pub fn plr_getmap_complete(nr: usize) {
 
             let mi = (x + y * core::constants::SERVER_MAPX) as usize;
 
-            let map_m = Repository::global_mut().map[mi];
+            let map_m = gs.map[mi];
             if do_all
                 || map_m.it != 0
                 || map_m.ch as usize != 0
@@ -2197,22 +2192,19 @@ pub fn plr_getmap_complete(nr: usize) {
                 continue;
             }
 
-            let tmp = Repository::global_mut().check_dlightm(mi);
+            let tmp = gs.check_dlightm(mi);
 
-            let mut light = std::cmp::max(Repository::global_mut().map[mi].light as i32, tmp);
-            light = Repository::global_mut().do_character_calculate_light(cn, light);
+            let mut light = std::cmp::max(gs.map[mi].light as i32, tmp);
+            light = gs.do_character_calculate_light(cn, light);
 
-            if light <= 5
-                && (Repository::global_mut().characters[cn].flags & CharacterFlags::Infrared.bits())
-                    != 0
-            {
+            if light <= 5 && (gs.characters[cn].flags & CharacterFlags::Infrared.bits()) != 0 {
                 infra = true;
             } else {
                 infra = false;
             }
 
             // Everyone sees themselves at least
-            if light == 0 && Repository::global_mut().map[mi].ch as usize == cn {
+            if light == 0 && gs.map[mi].ch as usize == cn {
                 light = 1;
             }
 
@@ -2230,7 +2222,7 @@ pub fn plr_getmap_complete(nr: usize) {
             smap[n].flags = 0;
 
             {
-                let map_flags = Repository::global_mut().map[mi].flags;
+                let map_flags = gs.map[mi].flags;
                 if map_flags
                     & (MF_GFX_INJURED
                         | MF_GFX_INJURED1
@@ -2285,7 +2277,7 @@ pub fn plr_getmap_complete(nr: usize) {
                     smap[n].flags |= INFRARED;
                 }
 
-                if Repository::global_mut().characters[cn].is_building() {
+                if gs.characters[cn].is_building() {
                     smap[n].flags2 = map_flags as u32;
                 } else {
                     smap[n].flags2 = 0;
@@ -2295,7 +2287,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 let tmp_vis = ((x - current_x + 20) + (y - current_y + 20) * 40) as usize;
 
                 let visible = {
-                    let see = &Repository::global_mut().see_map[cn];
+                    let see = &gs.see_map[cn];
                     see.vis[tmp_vis] != 0
                         || see.vis[tmp_vis + 40] != 0
                         || see.vis[tmp_vis - 40] != 0
@@ -2351,13 +2343,13 @@ pub fn plr_getmap_complete(nr: usize) {
                 // Begin of character
                 let co = map_m.ch as usize;
                 let tmp_see = if visible && co != 0 {
-                    Repository::global_mut().do_char_can_see(cn, co)
+                    gs.do_char_can_see(cn, co)
                 } else {
                     0
                 };
 
                 if tmp_see != 0 {
-                    let char_co = Repository::global_mut().characters[co];
+                    let char_co = gs.characters[co];
                     if char_co.sprite_override != 0 {
                         smap[n].ch_sprite = char_co.sprite_override;
                     } else {
@@ -2399,7 +2391,7 @@ pub fn plr_getmap_complete(nr: usize) {
                 let item_on_m = if map_m.it == 0 {
                     None
                 } else {
-                    Some(Repository::global_mut().items[map_m.it as usize])
+                    Some(gs.items[map_m.it as usize])
                 };
                 if map_m.fsprite != 0 {
                     smap[n].it_sprite = map_m.fsprite as i16;
@@ -2447,15 +2439,15 @@ pub fn plr_getmap_complete(nr: usize) {
     }
 
     Server::with_players_mut(|player| {
-        player[nr].vx = Repository::global_mut().see_map[cn].x;
-        player[nr].vy = Repository::global_mut().see_map[cn].y;
+        player[nr].vx = gs.see_map[cn].x;
+        player[nr].vy = gs.see_map[cn].y;
     });
 }
 
 /// Port of `plr_state` from `svr_tick.cpp`
 /// Handles player state transitions (login, exit, timeouts)
 pub fn plr_state(gs: &mut GameState, nr: usize) {
-    let ticker = Repository::global_mut().globals.ticker;
+    let ticker = gs.globals.ticker;
     let (lasttick, state) =
         Server::with_players(|players| (players[nr].lasttick as i32, players[nr].state));
 
@@ -2559,19 +2551,16 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
         }
     };
 
-    {
-        let gs = Repository::global_mut();
-        gs.characters[cn].player = nr as i32;
-        gs.characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
-        gs.characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
-        gs.characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
-        gs.characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
-        gs.characters[cn].points = 0;
-        gs.characters[cn].points_tot = 0;
-        gs.characters[cn].luck = 205;
-    }
+    gs.characters[cn].player = nr as i32;
+    gs.characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
+    gs.characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
+    gs.characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
+    gs.characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
+    gs.characters[cn].points = 0;
+    gs.characters[cn].points_tot = 0;
+    gs.characters[cn].luck = 205;
 
-    Repository::global_mut().globals.players_created += 1;
+    gs.globals.players_created += 1;
 
     // Try dropping the character near the home temple (three attempts)
     if !God::drop_char_fuzzy_large(
@@ -2595,7 +2584,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     ) {
         log::error!("plr_newlogin(): could not drop new character");
         plr_logout(gs, cn, nr, enums::LogoutReason::NoRoom);
-        Repository::global_mut().characters[cn].used = core::constants::USE_EMPTY;
+        gs.characters[cn].used = core::constants::USE_EMPTY;
         return;
     }
 
@@ -2605,67 +2594,63 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
         .unwrap()
         .as_secs() as u32;
 
-    {
-        let ch = &mut Repository::global_mut().characters[cn];
-        ch.creation_date = now;
-        ch.login_date = now;
-        ch.flags |= CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
-        ch.addr = Server::with_players(|players| players[nr].addr);
+    let ch = &mut gs.characters[cn];
+    ch.creation_date = now;
+    ch.login_date = now;
+    ch.flags |= CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
+    ch.addr = Server::with_players(|players| players[nr].addr);
 
-        // char_add_net behaviour: shift data[80..89] and insert lower 24 bits of addr
-        let net = (ch.addr & 0x00ffffff) as i32;
-        let mut n = 80usize;
-        while n < 89 {
-            if (ch.data[n] & 0x00ffffff) == net {
-                break;
-            }
-            n += 1;
+    // char_add_net behaviour: shift data[80..89] and insert lower 24 bits of addr
+    let net = (ch.addr & 0x00ffffff) as i32;
+    let mut n = 80usize;
+    while n < 89 {
+        if (ch.data[n] & 0x00ffffff) == net {
+            break;
         }
-        for m in (81..=n).rev() {
-            ch.data[m] = ch.data[m - 1];
-        }
-        ch.data[80] = net;
-
-        ch.mode = 1;
+        n += 1;
     }
+    for m in (81..=n).rev() {
+        ch.data[m] = ch.data[m - 1];
+    }
+    ch.data[80] = net;
+
+    ch.mode = 1;
 
     // update character to clients
-    Repository::global_mut().do_update_char(cn);
+    gs.do_update_char(cn);
 
     // set player mapping and send SV_NEWPLAYER + SV_TICK
-    {
-        let pass1 = Repository::global_mut().characters[cn].pass1;
-        let pass2 = Repository::global_mut().characters[cn].pass2;
+    let pass1 = gs.characters[cn].pass1;
+    let pass2 = gs.characters[cn].pass2;
 
-        Server::with_players_mut(|players| {
-            players[nr].usnr = cn;
-            players[nr].pass1 = pass1;
-            players[nr].pass2 = pass2;
-        });
+    Server::with_players_mut(|players| {
+        players[nr].usnr = cn;
+        players[nr].pass1 = pass1;
+        players[nr].pass2 = pass2;
+    });
 
-        log::info!(
-            "New player logged in as character index={} (players index={})",
-            cn,
-            nr
-        );
+    log::info!(
+        "New player logged in as character index={} (players index={})",
+        cn,
+        nr
+    );
 
-        let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_NEWPLAYER;
-        buf[1..5].copy_from_slice(&(cn as u32).to_le_bytes());
-        buf[5..9].copy_from_slice(&pass1.to_le_bytes());
-        buf[9..13].copy_from_slice(&pass2.to_le_bytes());
-        let ver_bytes = core::constants::VERSION.to_le_bytes();
-        buf[13] = ver_bytes[0];
-        buf[14] = ver_bytes[1];
-        buf[15] = ver_bytes[2];
+    let mut buf: [u8; 16] = [0; 16];
+    buf[0] = core::constants::SV_NEWPLAYER;
+    buf[1..5].copy_from_slice(&(cn as u32).to_le_bytes());
+    buf[5..9].copy_from_slice(&pass1.to_le_bytes());
+    buf[9..13].copy_from_slice(&pass2.to_le_bytes());
+    let ver_bytes = core::constants::VERSION.to_le_bytes();
+    buf[13] = ver_bytes[0];
+    buf[14] = ver_bytes[1];
+    buf[15] = ver_bytes[2];
 
-        NetworkManager::with(|network| {
-            network.csend_gs(gs, nr, &buf, 16);
-        });
-    }
+    NetworkManager::with(|network| {
+        network.csend_gs(gs, nr, &buf, 16);
+    });
 
     // finalize player state
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].state = core::constants::ST_NORMAL;
         players[nr].lasttick = ticker;
@@ -2676,8 +2661,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] =
-        (Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
+    tbuf[1] = (gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
         network.xsend_gs(gs, nr, &tbuf, 2);
     });
@@ -2690,17 +2674,17 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     let intro3 = " \n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
 
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro1);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro2);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro4);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro1);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro2);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro4);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
 
     // change password if client provided one and character has no CF_PASSWD
     let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
     if needs_pass {
-        if (Repository::global_mut().characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
+        if (gs.characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
             // extract password string
             let pass =
                 Server::with_players(|players| c_string_to_str(&players[nr].passwd).to_string());
@@ -2709,7 +2693,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
     }
 
     // announce
-    Repository::global_mut().do_announce(cn, 0, &format!("A new player has entered the game.\n"));
+    gs.do_announce(cn, 0, "A new player has entered the game.\n");
 }
 
 /// Port of `plr_login` from `svr_tick.cpp`
@@ -2727,7 +2711,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     let mut is_api_login = false;
     if login_ticket != 0 {
         is_api_login = true;
-        let cn = match resolve_api_login_character(nr, login_ticket) {
+        let cn = match resolve_api_login_character(gs, nr, login_ticket) {
             Ok(cn) => cn,
             Err(reason) => {
                 log::warn!("API login denied: {:?}", reason);
@@ -2736,10 +2720,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
             }
         };
 
-        let (pass1, pass2) = (
-            Repository::global_mut().characters[cn].pass1,
-            Repository::global_mut().characters[cn].pass2,
-        );
+        let (pass1, pass2) = (gs.characters[cn].pass1, gs.characters[cn].pass2);
 
         Server::with_players_mut(|players| {
             players[nr].usnr = cn;
@@ -2761,7 +2742,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     if !is_api_login {
         // password/pass1/pass2 check
         let pass_ok = {
-            let ch = Repository::global_mut().characters[cn];
+            let ch = gs.characters[cn];
             let p1 = ch.pass1;
             let p2 = ch.pass2;
             let player_p1 = Server::with_players(|players| players[nr].pass1);
@@ -2777,7 +2758,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
         // If character has explicit password flag, compare stored passwd
         let has_passwd_mismatch = {
-            let ch = Repository::global_mut().characters[cn];
+            let ch = gs.characters[cn];
             if (ch.flags & CharacterFlags::Passwd.bits()) != 0 {
                 let stored = ch.passwd;
                 let client = Server::with_players(|players| players[nr].passwd);
@@ -2795,7 +2776,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // Deleted account
-    let is_deleted = Repository::global_mut().characters[cn].used == core::constants::USE_EMPTY;
+    let is_deleted = gs.characters[cn].used == core::constants::USE_EMPTY;
     if is_deleted {
         log::warn!("Login as {} denied (deleted)", cn);
         plr_logout(gs, 0, nr, enums::LogoutReason::PasswordIncorrect);
@@ -2808,14 +2789,11 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     //       plr_logout(cn, ch[cn].player, LO_IDLE);
     //   }
     // and then continue the login (no early return).
-    let already_active = Repository::global_mut().characters[cn].used
-        != core::constants::USE_NONACTIVE
-        && (Repository::global_mut().characters[cn].flags
-            & CharacterFlags::ComputerControlledPlayer.bits())
-            == 0;
+    let already_active = gs.characters[cn].used != core::constants::USE_NONACTIVE
+        && (gs.characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0;
     if already_active {
         log::warn!("Login as {} who is already active", cn);
-        let active_player = Repository::global_mut().characters[cn].player as usize;
+        let active_player = gs.characters[cn].player as usize;
         // Only kick the *other* active player if they still have a live socket.
         // A stale `ch.player` binding can happen after disconnects; never kick ourselves.
         let should_kick = active_player != 0
@@ -2835,8 +2813,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // Kicked
-    let is_kicked =
-        (Repository::global_mut().characters[cn].flags & CharacterFlags::Kicked.bits()) != 0;
+    let is_kicked = (gs.characters[cn].flags & CharacterFlags::Kicked.bits()) != 0;
     if is_kicked {
         log::warn!("Login as {} denied (kicked)", cn);
         plr_logout(gs, 0, nr, enums::LogoutReason::Kicked);
@@ -2845,7 +2822,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
     // Ban check (skip golden/god)
     let banned = Server::with_players(|players| players[nr].addr);
-    let exempt = (Repository::global_mut().characters[cn].flags
+    let exempt = (gs.characters[cn].flags
         & (CharacterFlags::Golden.bits() | CharacterFlags::God.bits()))
         != 0;
     if !exempt && God::is_banned(banned as i32) {
@@ -2857,23 +2834,20 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     // TODO: cap() handling (player cap/queue) not implemented - skip
 
     // attach player to character
+    gs.characters[cn].player = nr as i32;
+    // Ensure the logged-in entity is treated as a player character.
+    // API-created characters are spawned from templates and may not carry the Player flag,
+    // which would break `/who` visibility and command processing.
+    gs.characters[cn].flags |= CharacterFlags::Player.bits();
+    // If not CCP and is god, mark invisible
+    if (gs.characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
+        && (gs.characters[cn].flags & CharacterFlags::God.bits()) != 0
     {
-        let gs = Repository::global_mut();
-        gs.characters[cn].player = nr as i32;
-        // Ensure the logged-in entity is treated as a player character.
-        // API-created characters are spawned from templates and may not carry the Player flag,
-        // which would break `/who` visibility and command processing.
-        gs.characters[cn].flags |= CharacterFlags::Player.bits();
-        // If not CCP and is god, mark invisible
-        if (gs.characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
-            && (gs.characters[cn].flags & CharacterFlags::God.bits()) != 0
-        {
-            gs.characters[cn].flags |= CharacterFlags::Invisible.bits();
-        }
+        gs.characters[cn].flags |= CharacterFlags::Invisible.bits();
     }
 
     // finalize player state
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
     Server::with_players_mut(|players| {
         players[nr].state = core::constants::ST_NORMAL;
         players[nr].lasttick = ticker;
@@ -2892,8 +2866,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     // send tick
     let mut tbuf: [u8; 2] = [0; 2];
     tbuf[0] = core::constants::SV_TICK;
-    tbuf[1] =
-        (Repository::global_mut().globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
+    tbuf[1] = (gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     NetworkManager::with(|network| {
         network.xsend_gs(gs, nr, &tbuf, 2);
     });
@@ -2904,34 +2877,32 @@ fn plr_login(gs: &mut GameState, nr: usize) {
         .unwrap()
         .as_secs() as u32;
 
-    {
-        let ch = &mut Repository::global_mut().characters[cn];
-        ch.used = core::constants::USE_ACTIVE;
-        ch.login_date = now;
-        ch.addr = Server::with_players(|players| players[nr].addr);
-        ch.current_online_time = 0;
+    let ch = &mut gs.characters[cn];
+    ch.used = core::constants::USE_ACTIVE;
+    ch.login_date = now;
+    ch.addr = Server::with_players(|players| players[nr].addr);
+    ch.current_online_time = 0;
 
-        // char_add_net behaviour: shift data[80..89] and insert lower 24 bits
-        let net = (ch.addr & 0x00ffffff) as i32;
-        let mut nidx = 80usize;
-        while nidx < 89 {
-            if (ch.data[nidx] & 0x00ffffff) == net {
-                break;
-            }
-            nidx += 1;
+    // char_add_net behaviour: shift data[80..89] and insert lower 24 bits
+    let net = (ch.addr & 0x00ffffff) as i32;
+    let mut nidx = 80usize;
+    while nidx < 89 {
+        if (ch.data[nidx] & 0x00ffffff) == net {
+            break;
         }
-        for m in (81..=nidx).rev() {
-            ch.data[m] = ch.data[m - 1];
-        }
-        ch.data[80] = net;
+        nidx += 1;
     }
+    for m in (81..=nidx).rev() {
+        ch.data[m] = ch.data[m - 1];
+    }
+    ch.data[80] = net;
 
     // ensure client player mode default
     Server::with_players_mut(|players| players[nr].cpl.mode = -1);
 
     // Try to drop character at tavern/nearby
-    let tav_x = Repository::global_mut().characters[cn].tavern_x as usize;
-    let tav_y = Repository::global_mut().characters[cn].tavern_y as usize;
+    let tav_x = gs.characters[cn].tavern_x as usize;
+    let tav_y = gs.characters[cn].tavern_y as usize;
     if !God::drop_char_fuzzy_large(cn, tav_x, tav_y, tav_x, tav_y)
         && !God::drop_char_fuzzy_large(cn, tav_x + 3, tav_y, tav_x, tav_y)
         && !God::drop_char_fuzzy_large(cn, tav_x, tav_y + 3, tav_x, tav_y)
@@ -2943,15 +2914,14 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
     // remove illegal active recall spells
     for i in 0..20usize {
-        let has_recall = Repository::global_mut().characters[cn].spell[i] != 0;
+        let has_recall = gs.characters[cn].spell[i] != 0;
         if has_recall {
-            let spell_idx = Repository::global_mut().characters[cn].spell[i] as usize;
-            let is_recall =
-                Repository::global_mut().items[spell_idx].temp == core::constants::SK_RECALL as u16;
+            let spell_idx = gs.characters[cn].spell[i] as usize;
+            let is_recall = gs.items[spell_idx].temp == core::constants::SK_RECALL as u16;
             if is_recall {
-                Repository::global_mut().items[spell_idx].used = core::constants::USE_EMPTY;
-                Repository::global_mut().characters[cn].spell[i] = 0;
-                Repository::global_mut().do_character_log(
+                gs.items[spell_idx].used = core::constants::USE_EMPTY;
+                gs.characters[cn].spell[i] = 0;
+                gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
                     "CHEATER: removed active teleport\n",
@@ -2961,7 +2931,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // update client about char
-    Repository::global_mut().do_update_char(cn);
+    gs.do_update_char(cn);
 
     log::info!("Login successful");
 
@@ -2970,37 +2940,28 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     let intro2 = "May your visit here be... interesting.\n";
     let intro3 = "\n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
-    let mut message_of_the_day = Repository::global_mut().latest_message_of_the_day();
+    let mut message_of_the_day = gs.latest_message_of_the_day();
     if !message_of_the_day.is_empty() && !message_of_the_day.ends_with('\n') {
         message_of_the_day.push('\n');
     }
 
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro1);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro2);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro4);
-    Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro1);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro2);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro4);
+    gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
     if !message_of_the_day.trim().is_empty() {
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            "Message of the Day:\n",
-        );
-        Repository::global_mut().do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &message_of_the_day,
-        );
-        Repository::global_mut().do_character_log(cn, core::types::FontColor::Yellow, intro3);
+        gs.do_character_log(cn, core::types::FontColor::Yellow, "Message of the Day:\n");
+        gs.do_character_log(cn, core::types::FontColor::Yellow, &message_of_the_day);
+        gs.do_character_log(cn, core::types::FontColor::Yellow, intro3);
     }
 
     if !is_api_login {
         // do password change if provided
         let needs_pass = Server::with_players(|players| players[nr].passwd[0] != 0);
         if needs_pass {
-            if (Repository::global_mut().characters[cn].flags & CharacterFlags::Passwd.bits()) == 0
-            {
+            if (gs.characters[cn].flags & CharacterFlags::Passwd.bits()) == 0 {
                 let pass = Server::with_players(|players| {
                     c_string_to_str(&players[nr].passwd).to_string()
                 });
@@ -3010,12 +2971,10 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // If god, remind invisibility
-    if (Repository::global_mut().characters[cn].flags
-        & CharacterFlags::ComputerControlledPlayer.bits())
-        == 0
-        && (Repository::global_mut().characters[cn].flags & CharacterFlags::God.bits()) != 0
+    if (gs.characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) == 0
+        && (gs.characters[cn].flags & CharacterFlags::God.bits()) != 0
     {
-        Repository::global_mut().do_character_log(
+        gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
             "Remember, you are invisible!\n",
@@ -3023,13 +2982,12 @@ fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // announce
-    let name = Repository::global_mut().characters[cn]
-        .get_name()
-        .to_string();
-    Repository::global_mut().do_announce(cn, 0, &format!("{} entered the game.\n", name));
+    let name = gs.characters[cn].get_name().to_string();
+    gs.do_announce(cn, 0, &format!("{} entered the game.\n", name));
 }
 
 fn resolve_api_login_character(
+    gs: &mut GameState,
     _nr: usize,
     login_ticket: u64,
 ) -> Result<usize, enums::LogoutReason> {
@@ -3064,8 +3022,7 @@ fn resolve_api_login_character(
             let candidate = server_id as usize;
             let candidate_is_valid = candidate > 0
                 && candidate < core::constants::MAXCHARS
-                && Repository::global_mut().characters[candidate].used
-                    != core::constants::USE_EMPTY;
+                && gs.characters[candidate].used != core::constants::USE_EMPTY;
 
             if !candidate_is_valid {
                 log::error!(
@@ -3089,35 +3046,32 @@ fn resolve_api_login_character(
                 }
             };
 
-            {
-                let gs = Repository::global_mut();
-                write_ascii_into_fixed(&mut gs.characters[cn].name, &character.name);
-                gs.characters[cn].reference = gs.characters[cn].name;
-                write_ascii_into_fixed(&mut gs.characters[cn].description, &character.description);
+            write_ascii_into_fixed(&mut gs.characters[cn].name, &character.name);
+            gs.characters[cn].reference = gs.characters[cn].name;
+            write_ascii_into_fixed(&mut gs.characters[cn].description, &character.description);
 
-                // Characters created from templates start out "in use" (often `USE_ACTIVE`) because
-                // templates represent live world entities. For API-created player characters, we
-                // want them to begin offline so the normal login path can attach and activate them.
-                gs.characters[cn].used = core::constants::USE_NONACTIVE;
-                gs.characters[cn].player = 0;
+            // Characters created from templates start out "in use" (often `USE_ACTIVE`) because
+            // templates represent live world entities. For API-created player characters, we
+            // want them to begin offline so the normal login path can attach and activate them.
+            gs.characters[cn].used = core::constants::USE_NONACTIVE;
+            gs.characters[cn].player = 0;
 
-                if is_brand_new_character {
-                    // API login does NOT go through `plr_newlogin`, so first-time characters
-                    // need the same baseline initialization (home temple/tavern, base stats).
-                    // Without this, `plr_login` can try to drop at (0,0).
-                    gs.characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
-                    gs.characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
-                    gs.characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
-                    gs.characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
-                    gs.characters[cn].points = 0;
-                    gs.characters[cn].points_tot = 0;
-                    gs.characters[cn].luck = 205;
-                    gs.characters[cn].mode = 1;
+            if is_brand_new_character {
+                // API login does NOT go through `plr_newlogin`, so first-time characters
+                // need the same baseline initialization (home temple/tavern, base stats).
+                // Without this, `plr_login` can try to drop at (0,0).
+                gs.characters[cn].temple_x = core::constants::HOME_MERCENARY_X as u16;
+                gs.characters[cn].temple_y = core::constants::HOME_MERCENARY_Y as u16;
+                gs.characters[cn].tavern_x = core::constants::HOME_MERCENARY_X as u16;
+                gs.characters[cn].tavern_y = core::constants::HOME_MERCENARY_Y as u16;
+                gs.characters[cn].points = 0;
+                gs.characters[cn].points_tot = 0;
+                gs.characters[cn].luck = 205;
+                gs.characters[cn].mode = 1;
 
-                    // Mark as a player/new user in the same way as `plr_newlogin`.
-                    gs.characters[cn].flags |=
-                        CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
-                }
+                // Mark as a player/new user in the same way as `plr_newlogin`.
+                gs.characters[cn].flags |=
+                    CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
             }
 
             cn
@@ -3127,18 +3081,15 @@ fn resolve_api_login_character(
     // Always sync the most recent API-side name/description into the live character slot.
     // This fixes older characters that were created before description persistence and ensures
     // updates made via the API are reflected on the server.
-    {
-        let gs = Repository::global_mut();
-        write_ascii_into_fixed(&mut gs.characters[cn].name, &character.name);
-        gs.characters[cn].reference = gs.characters[cn].name;
+    write_ascii_into_fixed(&mut gs.characters[cn].name, &character.name);
+    gs.characters[cn].reference = gs.characters[cn].name;
 
-        let desc = if character.description.trim().is_empty() {
-            gs.characters[cn].get_default_description()
-        } else {
-            character.description.clone()
-        };
-        write_ascii_into_fixed(&mut gs.characters[cn].description, &desc);
-    }
+    let desc = if character.description.trim().is_empty() {
+        gs.characters[cn].get_default_description()
+    } else {
+        character.description.clone()
+    };
+    write_ascii_into_fixed(&mut gs.characters[cn].description, &desc);
 
     if is_brand_new_character {
         if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {
@@ -3155,7 +3106,7 @@ fn resolve_api_login_character(
 
 /// Port of `plr_change` from `svr_tick.cpp`
 /// Sends changed player data to the client
-pub fn plr_change(_gs: &mut GameState, nr: usize) {
+pub fn plr_change(gs: &mut GameState, nr: usize) {
     let cn = Server::with_players(|players| players[nr].usnr);
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
@@ -3163,32 +3114,31 @@ pub fn plr_change(_gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let ticker = Repository::global_mut().globals.ticker;
+    let ticker = gs.globals.ticker;
     let should_update = {
-        let has_update_flag =
-            (Repository::global_mut().characters[cn].flags & CharacterFlags::Update.bits()) != 0;
+        let has_update_flag = (gs.characters[cn].flags & CharacterFlags::Update.bits()) != 0;
         let ticker_match = (cn & 15) == (ticker as usize & 15);
         has_update_flag || ticker_match
     };
 
     if should_update {
         // Send full player stats update
-        plr_change_stats(nr, cn, ticker);
+        plr_change_stats(gs, nr, cn, ticker);
     }
 
     // Always send combat-related updates
-    plr_change_hp(nr, cn);
-    plr_change_end(nr, cn);
-    plr_change_mana(nr, cn);
-    plr_change_dir(nr, cn);
-    plr_change_points(nr, cn);
-    plr_change_gold(nr, cn);
+    plr_change_hp(gs, nr, cn);
+    plr_change_end(gs, nr, cn);
+    plr_change_mana(gs, nr, cn);
+    plr_change_dir(gs, nr, cn);
+    plr_change_points(gs, nr, cn);
+    plr_change_gold(gs, nr, cn);
 
     // Send god load info every 32 ticks
-    plr_change_load(nr, cn, ticker);
+    plr_change_load(gs, nr, cn, ticker);
 
     // Send map position and scrolling
-    plr_change_position(nr, cn);
+    plr_change_position(gs, nr, cn);
 
     // Send light updates
     plr_change_light(nr);
@@ -3197,19 +3147,19 @@ pub fn plr_change(_gs: &mut GameState, nr: usize) {
     plr_change_map(nr);
 
     // Send target updates
-    plr_change_target(nr, cn);
+    plr_change_target(gs, nr, cn);
 }
 
 /// Send full stats update to player
-fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
+fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
     // Send name in three parts if changed
     let name_changed = Server::with_players(|players| {
-        let ch = Repository::global_mut().characters[cn];
+        let ch = gs.characters[cn];
         players[nr].cpl.name[..] != ch.name[..]
     });
 
     if name_changed {
-        let ch = Repository::global_mut().characters[cn];
+        let ch = gs.characters[cn];
         // part1: 15 bytes
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = core::constants::SV_SETCHAR_NAME1;
@@ -3236,11 +3186,11 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // send mode if different
     let need_mode = {
-        let mode = Repository::global_mut().characters[cn].mode as i32;
+        let mode = gs.characters[cn].mode as i32;
         Server::with_players(|players| players[nr].cpl.mode != mode)
     };
     if need_mode {
-        let mode = Repository::global_mut().characters[cn].mode;
+        let mode = gs.characters[cn].mode;
         let mut buf: [u8; 2] = [0; 2];
         buf[0] = core::constants::SV_SETCHAR_MODE;
         buf[1] = mode;
@@ -3251,11 +3201,11 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
     // attribs (5 x 6 bytes)
     for a in 0..5usize {
         let changed = {
-            let chv = Repository::global_mut().characters[cn].attrib[a];
+            let chv = gs.characters[cn].attrib[a];
             Server::with_players(|players| players[nr].cpl.attrib[a] != chv)
         };
         if changed {
-            let bytes = Repository::global_mut().characters[cn].attrib[a];
+            let bytes = gs.characters[cn].attrib[a];
             let mut buf: [u8; 8] = [0; 8];
             buf[0] = core::constants::SV_SETCHAR_ATTRIB;
             buf[1] = a as u8;
@@ -3272,7 +3222,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
         core::constants::SV_SETCHAR_MANA,
     ];
     for (idx, code) in powers.iter().enumerate() {
-        let ch = Repository::global_mut().characters[cn];
+        let ch = gs.characters[cn];
         let different = Server::with_players(|players| match idx {
             0 => players[nr].cpl.hp != ch.hp,
             1 => players[nr].cpl.end != ch.end,
@@ -3308,11 +3258,11 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
     // skills (0..50)
     for s in 0..50usize {
         let changed = {
-            let chv = Repository::global_mut().characters[cn].skill[s];
+            let chv = gs.characters[cn].skill[s];
             Server::with_players(|players| players[nr].cpl.skill[s] != chv)
         };
         if changed {
-            let bytes = Repository::global_mut().characters[cn].skill[s];
+            let bytes = gs.characters[cn].skill[s];
             let mut buf: [u8; 8] = [0; 8];
             buf[0] = core::constants::SV_SETCHAR_SKILL;
             buf[1] = s as u8;
@@ -3324,13 +3274,12 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // items (40)
     for i in 0..40usize {
-        let is_building = Repository::global_mut().characters[cn].is_building();
-        let in_idx = Repository::global_mut().characters[cn].item[i] as usize;
+        let is_building = gs.characters[cn].is_building();
+        let in_idx = gs.characters[cn].item[i] as usize;
         let cpl_item = Server::with_players(|players| players[nr].cpl.item[i]);
 
         // Check if changed OR if IF_UPDATE is set (but not for building mode)
         let needs_update = if in_idx != 0 && !is_building {
-            let gs = Repository::global_mut();
             (cpl_item != in_idx as i32)
                 || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
         } else {
@@ -3377,7 +3326,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
                         buf[8] = 0;
                     } else {
                         // Template item
-                        let sprite = Repository::global_mut().item_templates[in_idx].sprite[0];
+                        let sprite = gs.item_templates[in_idx].sprite[0];
                         buf[5] = (sprite & 0xff) as u8;
                         buf[6] = ((sprite >> 8) & 0xff) as u8;
                         buf[7] = 0;
@@ -3386,7 +3335,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
                 } else {
                     // Normal mode - use item sprite and placement
                     {
-                        let it = &Repository::global_mut().items[in_idx];
+                        let it = &gs.items[in_idx];
                         let sprite = if it.active != 0 {
                             it.sprite[1]
                         } else {
@@ -3399,8 +3348,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
                         buf[8] = ((placement >> 8) & 0xff) as u8;
                     }
                     // Clear IF_UPDATE flag
-                    Repository::global_mut().items[in_idx].flags &=
-                        !core::constants::ItemFlags::IF_UPDATE.bits();
+                    gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
                 }
             } else {
                 buf[5] = 0;
@@ -3416,12 +3364,11 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // worn (20)
     for i in 0..20usize {
-        let in_idx = Repository::global_mut().characters[cn].worn[i] as usize;
+        let in_idx = gs.characters[cn].worn[i] as usize;
         let cpl_worn = Server::with_players(|players| players[nr].cpl.worn[i]);
 
         // Check if changed OR if IF_UPDATE is set
         let needs_update = if in_idx != 0 {
-            let gs = Repository::global_mut();
             (cpl_worn != in_idx as i32)
                 || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
         } else {
@@ -3436,7 +3383,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
             if in_idx != 0 {
                 {
-                    let it = &Repository::global_mut().items[in_idx];
+                    let it = &gs.items[in_idx];
                     let sprite = if it.active != 0 {
                         it.sprite[1]
                     } else {
@@ -3449,8 +3396,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
                     buf[8] = ((placement >> 8) & 0xff) as u8;
                 }
                 // Clear IF_UPDATE flag
-                Repository::global_mut().items[in_idx].flags &=
-                    !core::constants::ItemFlags::IF_UPDATE.bits();
+                gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
             } else {
                 buf[5] = 0;
                 buf[6] = 0;
@@ -3465,13 +3411,12 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
     // spells (20)
     for i in 0..20usize {
-        let in_idx = Repository::global_mut().characters[cn].spell[i] as usize;
+        let in_idx = gs.characters[cn].spell[i] as usize;
         let cpl_spell = Server::with_players(|players| players[nr].cpl.spell[i]);
         let cpl_active = Server::with_players(|players| players[nr].cpl.active[i]);
 
         // Calculate current active fraction
         let (current_active_frac, has_update_flag) = if in_idx != 0 {
-            let gs = Repository::global_mut();
             let it = &gs.items[in_idx];
             let duration = std::cmp::max(1, it.duration);
             let frac = ((it.active * 16) / duration) as i16;
@@ -3494,7 +3439,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 
             if in_idx != 0 {
                 {
-                    let it = &Repository::global_mut().items[in_idx];
+                    let it = &gs.items[in_idx];
                     let sprite = it.sprite[1];
                     let duration = std::cmp::max(1, it.duration);
                     let active_frac = ((it.active * 16) / duration) as i16;
@@ -3505,8 +3450,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
                     buf[8] = ((active_frac >> 8) & 0xff) as u8;
                 }
                 // Clear IF_UPDATE flag
-                Repository::global_mut().items[in_idx].flags &=
-                    !core::constants::ItemFlags::IF_UPDATE.bits();
+                gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
                 Server::with_players_mut(|players| {
                     players[nr].cpl.spell[i] = in_idx as i32;
                     players[nr].cpl.active[i] = current_active_frac as i8;
@@ -3527,13 +3471,12 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
     }
 
     // citem (cursor item)
-    let is_building = Repository::global_mut().characters[cn].is_building();
-    let in_idx = Repository::global_mut().characters[cn].citem as usize;
+    let is_building = gs.characters[cn].is_building();
+    let in_idx = gs.characters[cn].citem as usize;
     let cpl_citem = Server::with_players(|players| players[nr].cpl.citem);
 
     // Check if changed OR if IF_UPDATE is set (but not for building mode or gold amounts)
     let needs_update = if in_idx != 0 && !is_building && (in_idx & 0x80000000) == 0 {
-        let gs = Repository::global_mut();
         (cpl_citem != in_idx as i32)
             || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
     } else {
@@ -3576,7 +3519,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
             } else {
                 // Normal item
                 {
-                    let it = &Repository::global_mut().items[in_idx];
+                    let it = &gs.items[in_idx];
                     let sprite = if it.active != 0 {
                         it.sprite[1]
                     } else {
@@ -3589,8 +3532,7 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
                     buf[4] = ((placement >> 8) & 0xff) as u8;
                 }
                 // Clear IF_UPDATE flag
-                Repository::global_mut().items[in_idx].flags &=
-                    !core::constants::ItemFlags::IF_UPDATE.bits();
+                gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
             }
         } else {
             // Empty cursor
@@ -3606,8 +3548,8 @@ fn plr_change_stats(nr: usize, cn: usize, _ticker: i32) {
 }
 
 /// Send HP change to player
-fn plr_change_hp(nr: usize, cn: usize) {
-    let current_hp = (Repository::global_mut().characters[cn].a_hp + 500) / 1000;
+fn plr_change_hp(gs: &mut GameState, nr: usize, cn: usize) {
+    let current_hp = (gs.characters[cn].a_hp + 500) / 1000;
     let player_hp = Server::with_players(|players| players[nr].cpl.a_hp);
 
     if current_hp != player_hp {
@@ -3627,8 +3569,8 @@ fn plr_change_hp(nr: usize, cn: usize) {
 }
 
 /// Send endurance change to player
-fn plr_change_end(nr: usize, cn: usize) {
-    let current_end = (Repository::global_mut().characters[cn].a_end + 500) / 1000;
+fn plr_change_end(gs: &mut GameState, nr: usize, cn: usize) {
+    let current_end = (gs.characters[cn].a_end + 500) / 1000;
     let player_end = Server::with_players(|players| players[nr].cpl.a_end);
 
     if current_end != player_end {
@@ -3648,8 +3590,8 @@ fn plr_change_end(nr: usize, cn: usize) {
 }
 
 /// Send mana change to player
-fn plr_change_mana(nr: usize, cn: usize) {
-    let current_mana = (Repository::global_mut().characters[cn].a_mana + 500) / 1000;
+fn plr_change_mana(gs: &mut GameState, nr: usize, cn: usize) {
+    let current_mana = (gs.characters[cn].a_mana + 500) / 1000;
     let player_mana = Server::with_players(|players| players[nr].cpl.a_mana);
 
     if current_mana != player_mana {
@@ -3669,8 +3611,8 @@ fn plr_change_mana(nr: usize, cn: usize) {
 }
 
 /// Send direction change to player
-fn plr_change_dir(nr: usize, cn: usize) {
-    let current_dir = Repository::global_mut().characters[cn].dir;
+fn plr_change_dir(gs: &mut GameState, nr: usize, cn: usize) {
+    let current_dir = gs.characters[cn].dir;
     let player_dir = Server::with_players(|players| players[nr].cpl.dir);
 
     if current_dir as i32 != player_dir {
@@ -3687,10 +3629,10 @@ fn plr_change_dir(nr: usize, cn: usize) {
 }
 
 /// Send points/kindred change to player
-fn plr_change_points(nr: usize, cn: usize) {
-    let points = Repository::global_mut().characters[cn].points;
-    let points_tot = Repository::global_mut().characters[cn].points_tot;
-    let kindred = Repository::global_mut().characters[cn].kindred;
+fn plr_change_points(gs: &mut GameState, nr: usize, cn: usize) {
+    let points = gs.characters[cn].points;
+    let points_tot = gs.characters[cn].points_tot;
+    let kindred = gs.characters[cn].kindred;
     let (cpl_points, cpl_points_tot, cpl_kindred) = Server::with_players(|players| {
         (
             players[nr].cpl.points,
@@ -3718,10 +3660,10 @@ fn plr_change_points(nr: usize, cn: usize) {
 }
 
 /// Send gold/armor/weapon change to player
-fn plr_change_gold(nr: usize, cn: usize) {
-    let gold = Repository::global_mut().characters[cn].gold;
-    let armor = Repository::global_mut().characters[cn].armor;
-    let weapon = Repository::global_mut().characters[cn].weapon;
+fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
+    let gold = gs.characters[cn].gold;
+    let armor = gs.characters[cn].armor;
+    let weapon = gs.characters[cn].weapon;
     let (cpl_gold, cpl_armor, cpl_weapon) = Server::with_players(|players| {
         (
             players[nr].cpl.gold,
@@ -3752,11 +3694,11 @@ fn plr_change_gold(nr: usize, cn: usize) {
 }
 
 /// Send server load info to gods every 32 ticks
-fn plr_change_load(nr: usize, cn: usize, ticker: i32) {
-    let is_god = (Repository::global_mut().characters[cn].flags & CharacterFlags::God.bits()) != 0;
+fn plr_change_load(gs: &mut GameState, nr: usize, cn: usize, ticker: i32) {
+    let is_god = (gs.characters[cn].flags & CharacterFlags::God.bits()) != 0;
 
     if is_god && (ticker & 31) == 0 {
-        let load = Repository::global_mut().globals.load as u32;
+        let load = gs.globals.load as u32;
         let mut buf: [u8; 5] = [0; 5];
         buf[0] = core::constants::SV_LOAD;
         buf[1..5].copy_from_slice(&load.to_le_bytes());
@@ -4103,9 +4045,9 @@ fn plr_change_map(nr: usize) {
 }
 
 /// Send position change to player with map scrolling
-fn plr_change_position(nr: usize, cn: usize) {
-    let x = Repository::global_mut().characters[cn].x;
-    let y = Repository::global_mut().characters[cn].y;
+fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
+    let x = gs.characters[cn].x;
+    let y = gs.characters[cn].y;
     let (cpl_x, cpl_y) = Server::with_players(|players| (players[nr].cpl.x, players[nr].cpl.y));
 
     if x as i32 != cpl_x || y as i32 != cpl_y {
@@ -4230,14 +4172,14 @@ fn plr_change_position(nr: usize, cn: usize) {
 }
 
 /// Send target change to player
-fn plr_change_target(nr: usize, cn: usize) {
+fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
     let (attack_cn, goto_x, goto_y, misc_action, misc_target1, misc_target2) = (
-        Repository::global_mut().characters[cn].attack_cn,
-        Repository::global_mut().characters[cn].goto_x,
-        Repository::global_mut().characters[cn].goto_y,
-        Repository::global_mut().characters[cn].misc_action,
-        Repository::global_mut().characters[cn].misc_target1,
-        Repository::global_mut().characters[cn].misc_target2,
+        gs.characters[cn].attack_cn,
+        gs.characters[cn].goto_x,
+        gs.characters[cn].goto_y,
+        gs.characters[cn].misc_action,
+        gs.characters[cn].misc_target1,
+        gs.characters[cn].misc_target2,
     );
 
     let (
@@ -4311,7 +4253,7 @@ fn plr_change_target(nr: usize, cn: usize) {
 
 /// Port of `plr_tick` from `svr_tick.cpp`
 /// Handles player tick processing (lag detection and stoning)
-pub fn plr_tick(_gs: &mut GameState, nr: usize) {
+pub fn plr_tick(gs: &mut GameState, nr: usize) {
     // Increment local tick counter
     Server::with_players_mut(|players| {
         players[nr].ltick = players[nr].ltick.wrapping_add(1);
@@ -4328,10 +4270,7 @@ pub fn plr_tick(_gs: &mut GameState, nr: usize) {
     }
 
     // Check lag-based stoning conditions
-    let (data_19, flags) = (
-        Repository::global_mut().characters[cn].data[19],
-        Repository::global_mut().characters[cn].flags,
-    );
+    let (data_19, flags) = (gs.characters[cn].data[19], gs.characters[cn].flags);
 
     let is_player = (flags & CharacterFlags::Player.bits()) != 0;
     let is_stoned = (flags & CharacterFlags::Stoned.bits()) != 0;
@@ -4344,16 +4283,14 @@ pub fn plr_tick(_gs: &mut GameState, nr: usize) {
 
     // Check if player should be stoned due to lag
     if ltick > rtick.wrapping_add(data_19 as u32) && !is_stoned {
-        let name = Repository::global_mut().characters[cn]
-            .get_name()
-            .to_string();
+        let name = gs.characters[cn].get_name().to_string();
         log::info!(
             "Character '{}' turned to stone due to lag ({:.2}s)",
             name,
             (ltick.wrapping_sub(rtick)) as f64 / TICKS as f64
         );
-        Repository::global_mut().characters[cn].flags |= CharacterFlags::Stoned.bits();
-        stone_gc(cn, true);
+        gs.characters[cn].flags |= CharacterFlags::Stoned.bits();
+        stone_gc(gs, cn, true);
     }
     // Check if player should be unstoned (lag gone)
     else if ltick
@@ -4362,21 +4299,18 @@ pub fn plr_tick(_gs: &mut GameState, nr: usize) {
             .wrapping_sub(TICKS as u32)
         && is_stoned
     {
-        let name = Repository::global_mut().characters[cn]
-            .get_name()
-            .to_string();
+        let name = gs.characters[cn].get_name().to_string();
         log::info!("Character '{}' unstoned, lag is gone", name);
-        Repository::global_mut().characters[cn].flags &= !CharacterFlags::Stoned.bits();
-        stone_gc(cn, false);
+        gs.characters[cn].flags &= !CharacterFlags::Stoned.bits();
+        stone_gc(gs, cn, false);
     }
 }
 
 /// Port of `stone_gc` from `svr_tick.cpp`
 /// Handles stoning/unstoning of linked characters (e.g., usurped characters)
-fn stone_gc(cn: usize, mode: bool) {
-    let is_player =
-        (Repository::global_mut().characters[cn].flags & CharacterFlags::Player.bits()) != 0;
-    let co = Repository::global_mut().characters[cn].data[64] as usize;
+fn stone_gc(gs: &mut GameState, cn: usize, mode: bool) {
+    let is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+    let co = gs.characters[cn].data[64] as usize;
 
     if !is_player {
         return;
@@ -4388,24 +4322,24 @@ fn stone_gc(cn: usize, mode: bool) {
 
     // Check if co is a valid active character
     let is_valid = co < core::constants::MAXCHARS
-        && Repository::global_mut().characters[co].used == core::constants::USE_ACTIVE
-        && Repository::global_mut().characters[co].data[63] == cn as i32;
+        && gs.characters[co].used == core::constants::USE_ACTIVE
+        && gs.characters[co].data[63] == cn as i32;
 
     if !is_valid {
         return;
     }
 
     if mode {
-        Repository::global_mut().characters[co].flags |= CharacterFlags::Stoned.bits();
+        gs.characters[co].flags |= CharacterFlags::Stoned.bits();
     } else {
-        Repository::global_mut().characters[co].flags &= !CharacterFlags::Stoned.bits();
+        gs.characters[co].flags &= !CharacterFlags::Stoned.bits();
     }
 }
 
 /// Port of `plr_idle` from `svr_tick.cpp`
 /// Handles idle timeout checking for players
 pub fn plr_idle(gs: &mut GameState, nr: usize) {
-    let ticker = Repository::global_mut().globals.ticker as u32;
+    let ticker = gs.globals.ticker as u32;
     let (lasttick, lasttick2, state, usnr) = Server::with_players(|players| {
         (
             players[nr].lasttick,
