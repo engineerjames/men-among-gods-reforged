@@ -1328,12 +1328,11 @@ impl Server {
             return;
         }
 
-        if let Some(ref mut sock) = gs.players[player_idx].sock {
+        if let Some(mut sock) = gs.players[player_idx].sock.take() {
             match sock.read(&mut gs.players[player_idx].inbuf[in_len..]) {
                 Ok(0) => {
                     log::info!("Connection closed (recv)");
                     let cn = gs.players[player_idx].usnr;
-                    gs.players[player_idx].sock = None;
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
@@ -1342,12 +1341,14 @@ impl Server {
                 Ok(len) => {
                     gs.players[player_idx].in_len += len;
                     gs.globals.recv += len as i64;
+                    gs.players[player_idx].sock = Some(sock);
                 }
-                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    gs.players[player_idx].sock = Some(sock);
+                }
                 Err(e) => {
                     log::error!("Connection closed (recv error): {}", e);
                     let cn = gs.players[player_idx].usnr;
-                    gs.players[player_idx].sock = None;
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
@@ -1390,7 +1391,7 @@ impl Server {
             return;
         }
 
-        if let Some(ref mut sock) = gs.players[player_idx].sock {
+        if let Some(mut sock) = gs.players[player_idx].sock.take() {
             let end = slice_start + len;
             let to_send = &gs.players[player_idx].obuf
                 [slice_start..end.min(gs.players[player_idx].obuf.len())];
@@ -1399,7 +1400,6 @@ impl Server {
                 Ok(0) => {
                     log::error!("Connection closed (send, wrote 0)");
                     let cn = gs.players[player_idx].usnr;
-                    gs.players[player_idx].sock = None;
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
@@ -1411,12 +1411,14 @@ impl Server {
                     if gs.players[player_idx].optr >= gs.players[player_idx].obuf.len() {
                         gs.players[player_idx].optr = 0;
                     }
+                    gs.players[player_idx].sock = Some(sock);
                 }
-                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {}
+                Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
+                    gs.players[player_idx].sock = Some(sock);
+                }
                 Err(e) => {
                     log::error!("Connection closed (send error): {}", e);
                     let cn = gs.players[player_idx].usnr;
-                    gs.players[player_idx].sock = None;
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;

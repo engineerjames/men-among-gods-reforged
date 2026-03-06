@@ -4633,7 +4633,8 @@ fn plr_unique(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the password fragment
 fn plr_passwd(gs: &mut GameState, nr: usize) {
-    gs.players[nr].passwd[..15].copy_from_slice(&gs.players[nr].inbuf[1..16].try_into().unwrap());
+    let src: [u8; 15] = gs.players[nr].inbuf[1..16].try_into().unwrap();
+    gs.players[nr].passwd[..15].copy_from_slice(&src);
     gs.players[nr].passwd[15] = 0;
 
     let mut hash: u32 = 0;

@@ -655,9 +655,7 @@ impl GameState {
                     buf[offset + 2..offset + 6].copy_from_slice(&price_bytes);
                 }
 
-                NetworkManager::with(|network| {
-                    network.xsend(self, player_id as usize, &buf, 16);
-                });
+                network_manager::xsend(self, player_id as usize, &buf, 16);
             }
 
             // Send worn slots 0-19 (displayed as slots 40-59) if corpse
@@ -682,9 +680,7 @@ impl GameState {
                     buf[offset + 2..offset + 6].copy_from_slice(&price_bytes);
                 }
 
-                NetworkManager::with(|network| {
-                    network.xsend(self, player_id as usize, &buf, 16);
-                });
+                network_manager::xsend(self, player_id as usize, &buf, 16);
             }
 
             // Send citem and gold (slots 60-61)
@@ -730,9 +726,7 @@ impl GameState {
             buf[9] = (gold_sprite >> 8) as u8;
             buf[10..14].copy_from_slice(&[0u8; 4]);
 
-            NetworkManager::with(|network| {
-                network.xsend(self, player_id as usize, &buf, 16);
-            });
+            network_manager::xsend(self, player_id as usize, &buf, 16);
         }
 
         // God/IMP/USURP debug information

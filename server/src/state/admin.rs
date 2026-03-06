@@ -193,9 +193,7 @@ impl GameState {
                 buf[offset + 2..offset + 6].copy_from_slice(&cost_bytes);
             }
 
-            NetworkManager::with(|network| {
-                network.xsend(self, player_id as usize, &buf, 16);
-            });
+            network_manager::xsend(self, player_id as usize, &buf, 16);
         }
     }
 

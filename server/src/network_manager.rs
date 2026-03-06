@@ -138,7 +138,8 @@ pub fn csend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
             return;
         }
 
-        gs.players[player_id].obuf[gs.players[player_id].iptr] = data[written];
+        let iptr = gs.players[player_id].iptr;
+        gs.players[player_id].obuf[iptr] = data[written];
         gs.players[player_id].iptr = tmp;
         written += 1;
     }

@@ -18,7 +18,6 @@ mod player;
 mod points;
 mod populate;
 mod server;
-mod single_thread_cell;
 mod state;
 mod talk;
 mod tls;
@@ -32,7 +31,6 @@ use std::sync::Arc;
 use core;
 
 use crate::game_state::GameState;
-use crate::server::Server;
 
 fn handle_command_line_args(args: &[String], gs: &mut GameState) {
     if args.len() == 2 {
@@ -122,11 +120,9 @@ fn main() -> Result<(), String> {
 
     log::info!("Shutdown signal received, exiting main loop...");
     let mut logout_entries: Vec<(usize, usize)> = Vec::new();
-    Server::with_players(|players| {
-        for n in 1..core::constants::MAXPLAYER {
-            logout_entries.push((players[n].usnr, n));
-        }
-    });
+    for player_idx in 1..gs.players.len() {
+        logout_entries.push((gs.players[player_idx].usnr, player_idx));
+    }
     for (usnr, n) in &logout_entries {
         player::plr_logout(&mut gs, *usnr, *n, enums::LogoutReason::Shutdown);
     }
