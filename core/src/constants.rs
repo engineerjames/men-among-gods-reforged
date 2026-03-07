@@ -367,8 +367,8 @@ pub const SPR_EMPTY: u16 = 999;
 // Map Constants (from MapConstants.h)
 // =============================================================================
 
-pub const TILEX: usize = 60;
-pub const TILEY: usize = 60;
+pub const TILEX: usize = 80;
+pub const TILEY: usize = 80;
 pub const MAPX: usize = TILEX;
 pub const MAPY: usize = TILEY;
 pub const VISI_STRIDE: usize = 80;
