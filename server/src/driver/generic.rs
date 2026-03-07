@@ -37,7 +37,7 @@ pub fn act_idle(gs: &mut GameState, cn: usize) {
 pub fn act_drop(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    let cannot_flee = gs.do_char_can_flee(cn) == 0;
+    let cannot_flee = !gs.do_char_can_flee(cn);
     let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
 
     if cannot_flee || simple {
@@ -91,7 +91,7 @@ pub fn act_drop(gs: &mut GameState, cn: usize) {
 pub fn act_use(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    let cannot_flee = gs.do_char_can_flee(cn) == 0;
+    let cannot_flee = !gs.do_char_can_flee(cn);
     let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
 
     if cannot_flee || simple {
@@ -151,7 +151,7 @@ pub fn act_pickup(gs: &mut GameState, cn: usize) {
 
     gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    let cannot_flee = gs.do_char_can_flee(cn) == 0;
+    let cannot_flee = !gs.do_char_can_flee(cn);
     let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
 
     if cannot_flee || simple {
@@ -679,7 +679,7 @@ pub fn act_move_rightdown(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -729,7 +729,7 @@ pub fn act_move_rightup(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -779,7 +779,7 @@ pub fn act_move_leftdown(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -829,7 +829,7 @@ pub fn act_move_leftup(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -875,7 +875,7 @@ pub fn act_move_right(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -911,7 +911,7 @@ pub fn act_move_left(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -947,7 +947,7 @@ pub fn act_move_down(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -983,7 +983,7 @@ pub fn act_move_up(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.do_char_can_flee(cn) == 0 {
+    if !gs.do_char_can_flee(cn) {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
@@ -1777,7 +1777,7 @@ pub fn driver_msg(
         != 0;
 
     if !is_player {
-        if driver::npc_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4) != 0 {
+        if driver::npc_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4) {
             return;
         }
     }

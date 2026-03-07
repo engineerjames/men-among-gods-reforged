@@ -2214,7 +2214,7 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
             return;
         }
 
-        if gs.may_attack_msg(co, best_target, false) == 0 {
+        if !gs.may_attack_msg(co, best_target, false) {
             gs.do_sayx(cn, &format!("The Gods would be angry if we did that, you didn't want to anger the Gods, {} did you?", co_name));
             return;
         }

@@ -46,11 +46,11 @@ fn take_item_from_char(gs: &mut GameState, item_idx: usize, cn: usize) {
     gs.do_update_char(cn);
 }
 
-pub fn sub_door_driver(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
+pub fn sub_door_driver(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     let item = &gs.items[item_idx];
 
     if item.data[0] == 65500 {
-        return 0;
+        return false;
     }
 
     if item.data[0] == 65501 || item.data[0] == 65502 {
@@ -73,27 +73,22 @@ pub fn sub_door_driver(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
             }
         }
 
-        return if item.data[0] == 65501 && empty == 3 && star == 1 {
-            1
-        } else if item.data[0] == 65502 && empty == 3 && circle == 1 {
-            1
-        } else {
-            0
-        };
+        return (item.data[0] == 65501 && empty == 3 && star == 1)
+            || (item.data[0] == 65502 && empty == 3 && circle == 1);
     }
 
-    0
+    false
 }
 
-pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let map_idx =
         gs.items[item_idx].x as usize + gs.items[item_idx].y as usize * SERVER_MAPX as usize;
     let blocked = gs.map[map_idx].ch != 0;
     if blocked {
-        return 0;
+        return false;
     }
 
-    let mut lock = 0;
+    let mut lock = false;
     let mut key_vanishes = false;
     let mut key_slot: Option<usize> = None;
 
@@ -102,7 +97,7 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         let lock_code = gs.items[item_idx].data[0];
         if lock_code != 0 {
             if cn == 0 {
-                lock = 1;
+                lock = true;
             } else if lock_code >= 65500 {
                 lock = sub_door_driver(gs, cn, item_idx);
             } else {
@@ -113,7 +108,7 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                     && (citem & 0x80000000) == 0
                     && gs.items[citem].temp == lock_code as u16
                 {
-                    lock = 1;
+                    lock = true;
                     if gs.items[item_idx].data[3] != 0 {
                         key_vanishes = true;
                         key_slot = None;
@@ -122,7 +117,7 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                     for n in 0..40 {
                         let in2 = character.item[n] as usize;
                         if in2 != 0 && gs.items[in2].temp == lock_code as u16 {
-                            lock = 1;
+                            lock = true;
                             if gs.items[item_idx].data[3] != 0 {
                                 key_vanishes = true;
                                 key_slot = Some(n);
@@ -132,14 +127,14 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                     }
                 }
 
-                if lock == 0 {
+                if !lock {
                     let citem = character.citem as usize;
                     if citem != 0 && (citem & 0x80000000) == 0 && gs.items[citem].driver == 3 {
                         let skill = character.skill[SK_LOCK][5] + gs.items[citem].data[0] as u8;
                         let power = gs.items[item_idx].data[2];
 
                         if power == 0 || skill >= (power + helpers::random_mod(20)) as u8 {
-                            lock = 1;
+                            lock = true;
                         } else {
                             gs.do_character_log(
                                 cn,
@@ -152,7 +147,7 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 }
             }
 
-            gs.items[item_idx].data[1] != 0 && lock == 0
+            gs.items[item_idx].data[1] != 0 && !lock
         } else {
             false
         }
@@ -165,7 +160,7 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Blue,
             "It's locked and you don't have the right key.\n",
         );
-        return 0;
+        return false;
     }
 
     if key_vanishes {
@@ -203,7 +198,7 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         let sight_flags = gs.item_templates[temp].flags & ItemFlags::IF_SIGHTBLOCK.bits();
         let item = &mut gs.items[item_idx];
         item.flags |= ItemFlags::IF_MOVEBLOCK.bits() | sight_flags;
-        if lock != 0 {
+        if lock {
             item.data[1] = 1;
         }
     }
@@ -223,12 +218,12 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         0,
     );
 
-    1
+    true
 }
 
-pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let (active, template_id) = (
@@ -237,16 +232,16 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     );
 
     if active != 0 {
-        return 0;
+        return false;
     }
 
     if template_id <= 0 || template_id >= MAXTITEM {
-        return 0;
+        return false;
     }
 
     let in2 = match God::create_item(gs, template_id) {
         Some(id) => id,
-        None => return 0,
+        None => return false,
     };
 
     if !God::give_character_item(gs, cn, in2) {
@@ -260,7 +255,7 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             ),
         );
         gs.items[in2].used = core::constants::USE_EMPTY;
-        return 0;
+        return false;
     }
 
     let item_ref = gs.items[in2].reference;
@@ -320,18 +315,18 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         );
     }
 
-    1
+    true
 }
 
-pub fn use_create_gold(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_create_gold(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let (active, gold_amount) = (gs.items[item_idx].active, gs.items[item_idx].data[0]);
 
     if active != 0 {
-        return 0;
+        return false;
     }
 
     let gold_to_add = gold_amount * 100;
@@ -353,12 +348,12 @@ pub fn use_create_gold(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             .collect::<String>()
     );
 
-    1
+    true
 }
 
-pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let (active, required_temp, template_id) = (
@@ -368,29 +363,29 @@ pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     );
 
     if active != 0 {
-        return 0;
+        return false;
     }
 
     // Check if character has the required item in citem
     let citem = gs.characters[cn].citem as usize;
 
     if citem == 0 || (citem & 0x80000000) != 0 {
-        return 0;
+        return false;
     }
 
     let citem_temp = gs.items[citem].temp;
 
     if citem_temp as u32 != required_temp {
-        return 0;
+        return false;
     }
 
     if template_id <= 0 || template_id >= MAXTITEM {
-        return 0;
+        return false;
     }
 
     let in2 = match God::create_item(gs, template_id) {
         Some(id) => id,
-        None => return 0,
+        None => return false,
     };
 
     if !God::give_character_item(gs, cn, in2) {
@@ -404,7 +399,7 @@ pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             ),
         );
         gs.items[in2].used = USE_EMPTY;
-        return 0;
+        return false;
     }
 
     let item_ref = c_string_to_str(&gs.items[in2].reference);
@@ -423,18 +418,18 @@ pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.items[citem].used = USE_EMPTY;
     gs.characters[cn].citem = 0;
 
-    1
+    true
 }
 
-pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let active = gs.items[item_idx].active;
 
     if active != 0 {
-        return 0;
+        return false;
     }
 
     // Find how many data entries are non-zero
@@ -456,7 +451,7 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     let (count, data) = match data_entries {
         Some(v) => v,
-        None => return 0,
+        None => return false,
     };
 
     // Pick a random entry
@@ -464,7 +459,7 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let template_id = data[n] as usize;
 
     if template_id <= 0 || template_id >= MAXTITEM {
-        return 0;
+        return false;
     }
 
     // Check if this is a special item template
@@ -479,7 +474,7 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         Some(id) => id,
         None => {
             gs.do_character_log(cn, core::types::FontColor::Green, "It's empty...\n");
-            return 1;
+            return true;
         }
     };
 
@@ -490,7 +485,7 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             "Your backpack is full, so you can't take anything.\n",
         );
         gs.items[in2].used = USE_EMPTY;
-        return 0;
+        return false;
     }
 
     let item_ref = c_string_to_str(&gs.items[in2].reference);
@@ -506,12 +501,12 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         gs.items[item_idx].get_name()
     );
 
-    1
+    true
 }
 
-pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let citem = gs.characters[cn].citem as usize;
@@ -522,7 +517,7 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Blue,
             "What do you want to do with it?",
         );
-        return 0;
+        return false;
     }
 
     let carried = gs.items[item_idx].carried;
@@ -532,7 +527,7 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Blue,
             "Too difficult to do on the ground.\n",
         );
-        return 0;
+        return false;
     }
 
     let (base_temp, ingredient_temp) = (gs.items[item_idx].temp, gs.items[citem].temp);
@@ -608,13 +603,13 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         Some(t) => t,
         None => {
             gs.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
-            return 0;
+            return false;
         }
     };
 
     let in3 = match God::create_item(gs, result_template) {
         Some(id) => id,
-        None => return 0,
+        None => return false,
     };
 
     gs.items[in3].flags |= ItemFlags::IF_UPDATE.bits();
@@ -625,12 +620,12 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     take_item_from_char(gs, item_idx, cn);
     God::give_character_item(gs, cn, in3);
 
-    1
+    true
 }
 
-pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let citem = gs.characters[cn].citem as usize;
@@ -641,7 +636,7 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Blue,
             "What do you want to do with it?\n",
         );
-        return 0;
+        return false;
     }
 
     let carried = gs.items[item_idx].carried;
@@ -651,25 +646,25 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Blue,
             "Too difficult to do on the ground.\n",
         );
-        return 0;
+        return false;
     }
 
     let citem_temp = gs.items[citem].temp;
     if citem_temp != 206 {
         gs.do_character_log(cn, core::types::FontColor::Blue, "Sorry?\n");
-        return 0;
+        return false;
     }
 
     let (current_temp, max_data) = (gs.items[item_idx].temp as i32, gs.items[item_idx].data[0]);
 
     if current_temp as u32 >= max_data {
         gs.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
-        return 0;
+        return false;
     }
 
     let in3 = match God::create_item(gs, (current_temp + 1) as usize) {
         Some(id) => id,
-        None => return 0,
+        None => return false,
     };
 
     gs.items[in3].flags |= ItemFlags::IF_UPDATE.bits();
@@ -680,13 +675,13 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     take_item_from_char(gs, item_idx, cn);
     God::give_character_item(gs, cn, in3);
 
-    1
+    true
 }
 
-pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         log::error!("stone_sword called with cn=0");
-        return 0;
+        return false;
     }
 
     let (active, template_id) = (
@@ -696,7 +691,7 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     if active != 0 {
         log::error!("stone_sword called on active item");
-        return 0;
+        return false;
     }
 
     if template_id <= 0 || template_id >= MAXTITEM {
@@ -704,7 +699,7 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             "stone_sword called with invalid template_id: {}",
             template_id
         );
-        return 0;
+        return false;
     }
 
     // Check if character has enough strength (100+)
@@ -716,12 +711,12 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Blue,
             "You're not strong enough.\n",
         );
-        return 0;
+        return false;
     }
 
     let in2 = match God::create_item(gs, template_id) {
         Some(id) => id,
-        None => return 0,
+        None => return false,
     };
 
     God::give_character_item(gs, cn, in2);
@@ -733,10 +728,10 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         &format!("You got a {}.\n", item_ref),
     );
 
-    1
+    true
 }
 
-pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize) -> i32 {
+pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize) -> bool {
     let current_progress = gs.characters[cn].data[20];
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
 
@@ -834,7 +829,7 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
     gs.characters[cn].tavern_x = x as u16;
     gs.characters[cn].tavern_y = y as u16;
 
-    1
+    true
 }
 
 pub fn is_nolab_item(gs: &mut GameState, item_idx: usize) -> bool {
@@ -854,16 +849,16 @@ pub fn is_nolab_item(gs: &mut GameState, item_idx: usize) -> bool {
     )
 }
 
-pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 1;
+        return true;
     }
 
     let has_useactivate = (gs.items[item_idx].flags & ItemFlags::IF_USEACTIVATE.bits()) != 0;
     let is_active = gs.items[item_idx].active != 0;
 
     if has_useactivate && !is_active {
-        return 1;
+        return true;
     }
 
     let citem = gs.characters[cn].citem as usize;
@@ -907,7 +902,7 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     if data2 != 0 {
         let data3 = gs.items[item_idx].data[3];
         helpers::use_labtransfer(gs, cn, data2 as i32, data3 as i32);
-        return 1;
+        return true;
     }
 
     let dest_x = gs.items[item_idx].data[0] as usize;
@@ -917,12 +912,12 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     God::transfer_char(gs, cn, dest_x, dest_y);
     EffectManager::fx_add_effect(gs, 6, 0, dest_x as i32, dest_y as i32, 0);
 
-    1
+    true
 }
 
-pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 1;
+        return true;
     }
 
     let dest_x = gs.items[item_idx].data[0];
@@ -950,7 +945,7 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             "Sorry, this lag scroll was too old. You need to use it four minutes after lagging out or earlier!\n",
         );
-        return 1;
+        return true;
     }
 
     // Create a recall spell item
@@ -958,7 +953,7 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         Some(id) => id,
         None => {
             log::error!("god_create_item failed in teleport2");
-            return 0;
+            return false;
         }
     };
 
@@ -987,15 +982,15 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 spell_name
             ),
         );
-        return 0;
+        return false;
     }
 
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
     crate::effect::EffectManager::fx_add_effect(gs, 7, 0, x as i32, y as i32, 0);
-    1
+    true
 }
 
-pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     let citem = gs.characters[cn].citem as usize;
     if citem != 0 && is_nolab_item(gs, citem) {
         let item_ref = c_string_to_str(&gs.items[citem].reference).to_string();
@@ -1071,10 +1066,10 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
         gs.characters[cn].tavern_y = y as u16;
     }
 
-    1
+    true
 }
 
-pub fn use_ladder(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_ladder(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     let item = &gs.items[item_idx];
     let item_x = item.x as usize;
@@ -1086,14 +1081,14 @@ pub fn use_ladder(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     God::transfer_char(gs, cn, dest_x, dest_y);
 
-    1
+    true
 }
 
-pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let co = gs.items[item_idx].data[0] as usize;
 
     if !core::types::Character::is_sane_character(co) {
-        return 0;
+        return false;
     }
 
     let owner = gs.characters[co].data[core::constants::CHD_CORPSEOWNER] as usize;
@@ -1102,7 +1097,7 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         let may_attack = gs.may_attack_msg(cn, owner, false);
         let allowed_cn = gs.characters[owner].data[core::constants::CHD_ALLOW] as usize;
 
-        if may_attack == 0 && allowed_cn != cn {
+        if !may_attack && allowed_cn != cn {
             let owner_name = c_string_to_str(&gs.characters[owner].name).to_string();
             let owner_is_male =
                 (gs.characters[owner].kindred & core::constants::KIN_MALE as i32) != 0;
@@ -1132,7 +1127,7 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 );
             }
 
-            return 0;
+            return false;
         }
     }
 
@@ -1144,15 +1139,15 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     );
     gs.do_look_char(cn, co, 0, 0, 1);
 
-    1
+    true
 }
 
-pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let skill_nr = gs.items[item_idx].data[0] as usize;
     let teaches_only = gs.items[item_idx].data[1] != 0;
 
     if skill_nr >= MAXSKILL {
-        return 0;
+        return false;
     }
 
     let current_val = gs.characters[cn].skill[skill_nr][0];
@@ -1167,7 +1162,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 core::types::FontColor::Yellow,
                 &format!("You already know {}.\n", name),
             );
-            return 0;
+            return false;
         }
 
         if current_val >= max_val {
@@ -1177,7 +1172,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 core::types::FontColor::Yellow,
                 &format!("You cannot raise skill {} any higher.\n", name),
             );
-            return 0;
+            return false;
         }
 
         let name = skilltab::get_skill_name(skill_nr);
@@ -1206,7 +1201,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             &format!("This scroll teaches {}, which you cannot learn.\n", name),
         );
-        return 0;
+        return false;
     } else {
         gs.characters[cn].skill[skill_nr][0] = 1;
         let name = skilltab::get_skill_name(skill_nr);
@@ -1222,10 +1217,10 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     God::take_from_char(gs, item_idx, cn);
     gs.characters[cn].set_do_update_flags();
 
-    1
+    true
 }
 
-pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // TODO: Move these to core library
     const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
@@ -1243,7 +1238,7 @@ pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 AT_NAME[attrib_nr]
             ),
         );
-        return 0;
+        return false;
     }
 
     // Calculate points needed: v*v*v*diff/20
@@ -1271,10 +1266,10 @@ pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     take_item_from_char(gs, item_idx, cn);
     gs.characters[cn].set_do_update_flags();
 
-    1
+    true
 }
 
-pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let amount = gs.items[item_idx].data[0] as i32;
     let current_hp = gs.characters[cn].hp[0];
     let max_hp = gs.characters[cn].hp[2];
@@ -1286,7 +1281,7 @@ pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "You cannot raise Hitpoints any higher.\n",
         );
-        return 0;
+        return false;
     }
 
     gs.do_character_log(
@@ -1310,10 +1305,10 @@ pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     take_item_from_char(gs, item_idx, cn);
     gs.characters[cn].set_do_update_flags();
 
-    1
+    true
 }
 
-pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let amount = gs.items[item_idx].data[0] as i32;
     let current_end = gs.characters[cn].end[0];
     let max_end = gs.characters[cn].end[2];
@@ -1325,7 +1320,7 @@ pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "You cannot raise Endurance any higher.\n",
         );
-        return 0;
+        return false;
     }
 
     gs.do_character_log(
@@ -1349,10 +1344,10 @@ pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     take_item_from_char(gs, item_idx, cn);
     gs.characters[cn].set_do_update_flags();
 
-    1
+    true
 }
 
-pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let amount = gs.items[item_idx].data[0] as i32;
     let current_mana = gs.characters[cn].mana[0];
     let max_mana = gs.characters[cn].mana[2];
@@ -1364,7 +1359,7 @@ pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "You cannot raise Mana any higher.\n",
         );
-        return 0;
+        return false;
     }
 
     gs.do_character_log(
@@ -1389,7 +1384,7 @@ pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     take_item_from_char(gs, item_idx, cn);
     gs.characters[cn].set_do_update_flags();
 
-    1
+    true
 }
 
 pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
@@ -1887,7 +1882,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     need
 }
 
-pub fn use_crystal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_crystal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let mut cnt = 0;
 
     // Call use_crystal_sub until it returns <= 4, up to 4 times
@@ -1896,13 +1891,13 @@ pub fn use_crystal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 
     if cnt == 0 {
-        1
+        true
     } else {
-        0
+        false
     }
 }
 
-pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
+pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     // Get group, template, and max count from item data
     let (group, template, max_cnt) = {
         let item = &gs.items[item_idx];
@@ -1923,12 +1918,12 @@ pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 
         // Check if there's a mine wall item at that location
         let in2 = gs.map[map_idx].it as usize;
         if in2 == 0 {
-            return 0;
+            return false;
         }
 
         let driver = gs.items[in2].driver;
         if driver != 26 {
-            return 0;
+            return false;
         }
     }
 
@@ -1948,13 +1943,13 @@ pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 
 
     // Don't spawn if too many NPCs already
     if cnt > max_cnt {
-        return 0;
+        return false;
     }
 
     // create the NPC from template
     let cc = match populate::pop_create_char(gs, template, false) {
         Some(cc) => cc,
-        None => return 0,
+        None => return false,
     };
 
     // drop the character near the mine item
@@ -1966,18 +1961,18 @@ pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 
         {
             gs.characters[cc].used = core::constants::USE_EMPTY;
         };
-        return 0;
+        return false;
     }
 
     // ensure the new character is visible/updated
     gs.do_update_char(cc);
 
-    1
+    true
 }
 
-pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let citem = gs.characters[cn].citem;
@@ -1988,7 +1983,7 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "What do you want to do with it?\n",
         );
-        return 0;
+        return false;
     }
 
     // Check if rat eye is carried (not on ground)
@@ -1999,7 +1994,7 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "Too difficult to do on the ground.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check if citem matches any of the required templates in data[0-8]
@@ -2018,7 +2013,7 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         Some(s) => s,
         None => {
             gs.do_character_log(cn, core::types::FontColor::Green, "This doesnt fit.\n");
-            return 0;
+            return false;
         }
     };
 
@@ -2050,7 +2045,7 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
         let in3 = match God::create_item(gs, result_template) {
             Some(id) => id,
-            None => return 1,
+            None => return true,
         };
 
         {
@@ -2067,10 +2062,10 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         God::give_character_item(gs, cn, in3);
     }
 
-    1
+    true
 }
 
-pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if the weapon is wielded
     let is_wielded = gs.characters[cn].worn[WN_RHAND] == item_idx as u32;
 
@@ -2080,7 +2075,7 @@ pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "You cannot use Skua's weapon if you're not wielding it.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check if character has Skua's kindred (KIN_SKUA = 0x00000002)
@@ -2136,10 +2131,10 @@ pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    1
+    true
 }
 
-pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if the weapon is wielded
     let is_wielded = { gs.characters[cn].worn[core::constants::WN_RHAND] == item_idx as u32 };
 
@@ -2149,7 +2144,7 @@ pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "You cannot use the Purple One's weapon if you're not wielding it.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check if character has Purple One's kindred (KIN_PURPLE = 0x00000001)
@@ -2205,10 +2200,10 @@ pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    1
+    true
 }
 
-pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
+pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     // Get the map coordinate from item data[0]
     let m = gs.items[item_idx].data[0] as usize;
 
@@ -2216,13 +2211,13 @@ pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     let in2 = gs.map[m].it;
 
     if in2 == 0 {
-        return 0;
+        return false;
     }
 
     // Check if the item is already active
     let is_active = gs.items[in2 as usize].active != 0;
     if is_active {
-        return 0;
+        return false;
     }
 
     // Activate the linked item
@@ -2239,14 +2234,14 @@ pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         gs.do_add_light(x, y, light1 as i32 - light0 as i32);
     }
 
-    1
+    true
 }
 
-pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if already active
     let is_active = gs.items[item_idx].active != 0;
     if is_active {
-        return 0;
+        return false;
     }
 
     // Check if player needs to provide an item (data[1])
@@ -2257,12 +2252,12 @@ pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             let citem = gs.characters[cn].citem;
 
             if citem == 0 || (citem & 0x80000000) != 0 {
-                return 0;
+                return false;
             }
 
             let citem_template = gs.items[citem as usize].temp;
             if citem_template as usize != required_template {
-                return 0;
+                return false;
             }
 
             // Remove the required item
@@ -2291,10 +2286,10 @@ pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         log::info!("use_spawn: would add effect for template {}", temp);
     }
 
-    1
+    true
 }
 
-pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Item templates for rewards at different levels
     const FIND: [usize; 90] = [
         // Level 0 (0-29): silver, small jewels, skeleton
@@ -2311,7 +2306,7 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Check if already active (already searched)
     let is_active = gs.items[item_idx].active != 0;
     if is_active {
-        return 0;
+        return false;
     }
 
     // Get pile info
@@ -2370,7 +2365,7 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     // Roll for loot
     if crate::helpers::random_mod(chance) != 0 {
-        return 1; // Nothing found
+        return true; // Nothing found
     }
 
     // Determine what to give based on level
@@ -2405,10 +2400,10 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    1
+    true
 }
 
-pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
+pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     // Get previously spawned character
     let cc = gs.items[item_idx].data[0] as usize;
 
@@ -2422,13 +2417,13 @@ pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         };
 
         if is_alive {
-            return 1; // Still alive, don't spawn new one
+            return true; // Still alive, don't spawn new one
         }
     }
 
     let cc = match populate::pop_create_char(gs, 328, false) {
         Some(cc) => cc,
-        None => return 1,
+        None => return true,
     };
 
     let (item_x, item_y) = (gs.items[item_idx].x, gs.items[item_idx].y);
@@ -2438,7 +2433,7 @@ pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         {
             gs.characters[cc].used = USE_EMPTY;
         };
-        return 1;
+        return true;
     }
 
     // Create link between item and character
@@ -2450,7 +2445,7 @@ pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         gs.items[item_idx].data[0] = cc as u32;
     };
 
-    1
+    true
 }
 
 pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
@@ -2516,7 +2511,7 @@ pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.items[in_idx].data[2] as i32
 }
 
-pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use core::constants::{AT_STREN, WN_RHAND};
 
     // Get character strength
@@ -2541,7 +2536,7 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         {
             gs.characters[cn].misc_action = 0; // DR_IDLE
         };
-        return 0;
+        return false;
     }
 
     // Check for proper tools in right hand
@@ -2593,7 +2588,7 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             {
                 gs.characters[cn].misc_action = 0; // DR_IDLE
             };
-            return 0;
+            return false;
         }
     }
 
@@ -2619,17 +2614,17 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         gs.add_lights(x as i32, y as i32);
     }
 
-    0
+    false
 }
 
-pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let carried = gs.items[item_idx].carried;
     if carried != 0 {
-        return 0;
+        return false;
     }
 
     // Get item position and template
@@ -2665,10 +2660,10 @@ pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.reset_go(x as i32, y as i32);
     gs.add_lights(x as i32, y as i32);
 
-    1
+    true
 }
 
-pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     use core::constants::{ItemFlags, USE_EMPTY};
 
@@ -2706,7 +2701,7 @@ pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             487 => 490, // huge ruby
             488 => 491, // huge emerald
             489 => 492, // huge saphire
-            _ => return 0,
+            _ => return false,
         }
     } else if t1 == 338 {
         // silver ring with gem
@@ -2727,12 +2722,12 @@ pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                     core::types::FontColor::Green,
                     "This stone is too powerful for a silver ring.\n",
                 );
-                return 0;
+                return false;
             }
-            _ => return 0,
+            _ => return false,
         }
     } else {
-        return 0;
+        return false;
     };
 
     // Create result item
@@ -2760,13 +2755,13 @@ pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         // Give result to character
         God::give_character_item(gs, cn, in3);
 
-        return 1;
+        return true;
     }
 
-    0
+    false
 }
 
-pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Get amulet piece template
     let t1 = gs.items[item_idx].temp;
 
@@ -2775,7 +2770,7 @@ pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     if in2 == 0 || (in2 & 0x80000000) != 0 {
         gs.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
-        return 0;
+        return false;
     }
 
     let t2 = gs.items[in2].temp;
@@ -2795,7 +2790,7 @@ pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         466
     } else {
         gs.do_character_log(cn, core::types::FontColor::Yellow, "That doesn't fit.\n");
-        return 0;
+        return false;
     };
 
     // Create result item
@@ -2820,29 +2815,29 @@ pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         // Give result to character
         God::give_character_item(gs, cn, in3);
 
-        return 1;
+        return true;
     }
 
-    0
+    false
 }
 
-pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     use core::constants::USE_EMPTY;
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let carried = gs.items[item_idx].carried;
     if carried == 0 {
-        return 0;
+        return false;
     }
 
     // Create gargoyle character (template 325)
     let cc = match God::create_char(gs, 325, true) {
         Some(cc) => cc as usize,
-        None => return 0,
+        None => return false,
     };
 
     // Get character position
@@ -2859,7 +2854,7 @@ pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "The Gargoyle could not materialize.\n",
         );
-        return 0;
+        return false;
     }
 
     // Remove item
@@ -2878,26 +2873,26 @@ pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         gs.characters[cc].data[64] = ticker + (TICKS * 60 * 15);
     };
 
-    1
+    true
 }
 
-pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     use core::constants::USE_EMPTY;
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let carried = gs.items[item_idx].carried;
     if carried == 0 {
-        return 0;
+        return false;
     }
 
     // Create grolm character (template 577)
     let cc = match God::create_char(gs, 577, true) {
         Some(cc) => cc as usize,
-        None => return 0,
+        None => return false,
     };
 
     // Get character position
@@ -2914,7 +2909,7 @@ pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Green,
             "The Grolm could not materialize.\n",
         );
-        return 0;
+        return false;
     }
 
     // Remove item
@@ -2933,10 +2928,10 @@ pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         gs.characters[cc].data[64] = ticker + (TICKS * 60 * 15);
     };
 
-    1
+    true
 }
 
-pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> i32 {
+pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
     // Boost attributes
     {
         for n in 0..5 {
@@ -3002,7 +2997,7 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> i32 {
         God::give_character_item(gs, cn, in_idx);
     }
 
-    0
+    false
 }
 
 pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
@@ -3081,7 +3076,7 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     cn as i32
 }
 
-pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Calculate bonus
     let bonus = {
         let data0 = gs.items[item_idx].data[0];
@@ -3190,10 +3185,10 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         new_solve
     );
 
-    0
+    false
 }
 
-pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if already active
     let active = gs.items[item_idx].active;
     if active != 0 {
@@ -3232,11 +3227,11 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 }
             }
         }
-        return 0;
+        return false;
     }
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     // Check rank restriction
@@ -3269,7 +3264,7 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 r2
             ),
         );
-        return 0;
+        return false;
     }
 
     // Activate pentagram
@@ -3421,7 +3416,7 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let penta_needed = gs.penta_needed;
     if act >= penta_needed {
         solved_pentagram(gs, cn, item_idx);
-        return 0;
+        return false;
     }
 
     // Spawn enemies
@@ -3452,12 +3447,12 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         }
     }
 
-    1
+    true
 }
 
-pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let in2 = gs.characters[cn].citem as usize;
@@ -3468,7 +3463,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             "You get the feeling that it would be apropriate to give the gods a present.\n",
         );
-        return 0;
+        return false;
     }
 
     // Special-case: ONE FIRE POINT / ONE FAKE POINT
@@ -3626,7 +3621,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
 
             gs.do_character_log(cn, core::types::FontColor::Yellow, " \n");
 
-            return 0;
+            return false;
         }
     }
 
@@ -3756,19 +3751,19 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
 
     gs.do_character_log(cn, core::types::FontColor::Yellow, luck_message);
 
-    1
+    true
 }
 
-pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     // Check if wielding the item
     let is_wielded = { gs.characters[cn].worn[core::constants::WN_RHAND] as usize == item_idx };
 
     if !is_wielded {
-        return 0;
+        return false;
     }
 
     {
@@ -3810,12 +3805,12 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     item_damage_worn(gs, cn, core::constants::WN_RHAND, 500);
 
-    1
+    true
 }
 
-pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 1;
+        return true;
     }
 
     // Check if requires activation
@@ -3827,7 +3822,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     };
 
     if needs_activation && !is_active {
-        return 1;
+        return true;
     }
 
     // Remove nolab items from citem
@@ -4015,12 +4010,12 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         };
     }
 
-    1
+    true
 }
 
-pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     // Check if character is Seyan'Du
@@ -4032,7 +4027,7 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             "You have the feeling you're in the wrong place here.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check for existing Seyan'Du sword (driver 40)
@@ -4085,15 +4080,15 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 core::types::FontColor::Yellow,
                 "Kwai, the great goddess of war, deemed you unworthy to receive a new blade.\n",
             );
-            return 0;
+            return false;
         }
 
         // Create new Seyan'Du sword (template 682)
         let Some(new_sword) = God::create_item(gs, 682) else {
-            return 0;
+            return false;
         };
         if new_sword == 0 {
-            return 0;
+            return false;
         }
         in2 = new_sword;
         God::give_character_item(gs, cn, in2);
@@ -4170,10 +4165,10 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     gs.do_update_char(cn);
 
-    0
+    false
 }
 
-pub fn use_seyan_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_seyan_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn != 0 {
         // Check if character is Seyan'Du
         let is_seyan = { (gs.characters[cn].kindred & KIN_SEYAN_DU as i32) != 0 };
@@ -4183,16 +4178,16 @@ pub fn use_seyan_door(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 core::types::FontColor::Red,
                 "You have the feeling this isn't meant for you.\n",
             );
-            return 0;
+            return false;
         }
     }
 
     use_door(gs, cn, item_idx)
 }
 
-pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let (is_seyan, is_male, cn_name) = {
@@ -4226,7 +4221,7 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         // Give Seyan'Du sword (template 682)
         let in2 = match God::create_item(gs, 682) {
             Some(id) => id,
-            None => return 0,
+            None => return false,
         };
         God::give_character_item(gs, cn, in2);
         {
@@ -4335,10 +4330,10 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         )
     };
 
-    1
+    true
 }
 
-pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Read scroll data
     let (spell, power, charges) = {
         (
@@ -4350,7 +4345,7 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
     if charges == 0 {
         gs.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happened!\n");
-        return 0;
+        return false;
     }
 
     // Get target (skill_target1 or self)
@@ -4367,48 +4362,48 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             "You cannot see your target.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check attack spells for may_attack
     if spell as usize == SK_CURSE || spell as usize == SK_STUN {
-        if gs.may_attack_msg(cn, co, true) == 0 {
+        if !gs.may_attack_msg(cn, co, true) {
             log::info!("Prevented from attacking target {}", co);
-            return 0;
+            return false;
         }
     } else {
-        if driver::player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
+        if !driver::player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) {
             // Change target to self
             co = cn;
         }
     }
 
     // Cast spell
-    let ret = match spell as usize {
+    let ret: bool = match spell as usize {
         SK_LIGHT => {
             driver::spell_light(gs, cn, co, power as i32);
-            1
+            true
         }
         SK_ENHANCE => {
             driver::spell_enhance(gs, cn, co, power as i32);
-            1
+            true
         }
         SK_PROTECT => {
             driver::spell_protect(gs, cn, co, power as i32);
-            1
+            true
         }
         SK_BLESS => {
             driver::spell_bless(gs, cn, co, power as i32);
-            1
+            true
         }
         SK_MSHIELD => {
             driver::spell_mshield(gs, cn, co, power as i32);
-            1
+            true
         }
         SK_CURSE => {
             let target_resistance = gs.characters[co].skill[SK_RESIST][5];
             if driver::chance_base(gs, cn, power as i32, 10, target_resistance as i32) != 0 {
-                1
+                true
             } else {
                 driver::spell_curse(gs, cn, co, power as i32)
             }
@@ -4416,32 +4411,32 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         SK_STUN => {
             let target_resistance = gs.characters[co].skill[SK_RESIST][5];
             if driver::chance_base(gs, cn, power as i32, 12, target_resistance as i32) != 0 {
-                1
+                true
             } else {
                 driver::spell_stun(gs, cn, co, power as i32)
             }
         }
-        _ => 0,
+        _ => false,
     };
 
     // Decrement charges if spell succeeded
-    if ret != 0 {
+    if ret {
         let new_charges = charges - 1;
         {
             gs.items[item_idx].data[2] = new_charges;
             gs.items[item_idx].value /= 2;
         };
         if new_charges < 1 {
-            return 1; // Scroll consumed
+            return true; // Scroll consumed
         }
     }
 
-    0
+    false
 }
 
-pub fn use_blook_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_blook_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     gs.do_character_log(
@@ -4457,25 +4452,25 @@ pub fn use_blook_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> i3
             gs.items[item_idx].data[1] as i16 + gs.items[item_idx].data[0] as i16;
     };
 
-    1
+    true
 }
 
-pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if already active
     let active = gs.items[item_idx].active;
     if active != 0 {
-        return 0;
+        return false;
     }
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     // Create NPC from template
     let template = gs.items[item_idx].data[0];
     let co = match populate::pop_create_char(gs, template as usize, false) {
         Some(co) => co,
-        None => return 0,
+        None => return false,
     };
 
     // Drop NPC near item location
@@ -4485,7 +4480,7 @@ pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         {
             gs.characters[co].used = USE_EMPTY;
         };
-        return 0;
+        return false;
     }
 
     // Link NPC to creator
@@ -4493,12 +4488,12 @@ pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         gs.characters[co].data[0] = cn as i32;
     };
 
-    1
+    true
 }
 
-pub fn use_rotate(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_rotate(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     // Rotate item: increment data[1] (0-3), update sprite
@@ -4512,23 +4507,23 @@ pub fn use_rotate(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         gs.items[item_idx].flags |= ItemFlags::IF_UPDATE.bits();
     };
 
-    1
+    true
 }
 
-pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0] = matching key part
     // data[1] = resulting key part
     // data[2] = (optional) other matching key part
     // data[3] = (optional) other resulting key part
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let citem = gs.characters[cn].citem as usize;
     if citem == 0 || (citem & 0x80000000) != 0 {
         gs.do_character_log(cn, core::types::FontColor::Yellow, "Nothing happens.\n");
-        return 0;
+        return false;
     }
 
     let carried = gs.items[item_idx].carried;
@@ -4538,7 +4533,7 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Red,
             "Too difficult to do on the ground.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check for matching parts
@@ -4566,7 +4561,7 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Red,
             "Those don't fit together.\n",
         );
-        return 0;
+        return false;
     }
 
     // Log the assembly
@@ -4598,15 +4593,15 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     };
     God::give_character_item(gs, cn, new_key.unwrap());
 
-    1
+    true
 }
 
-pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0] = item accepted as offering
     // data[1] = item returned as gift
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let offer = gs.characters[cn].citem as usize;
@@ -4616,7 +4611,7 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             "You get the feeling that it would be appropriate to give the Goddess a present.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check if offering is money or wrong item
@@ -4628,7 +4623,7 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             "The Goddess only wants her property back, and rejects your offer.\n",
         );
-        return 0;
+        return false;
     }
 
     // Accept offering
@@ -4669,16 +4664,16 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         &format!("The Goddess has given you a {} in return!\n", gift_ref),
     );
 
-    1
+    true
 }
 
-pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0] = minimum offering accepted
     // data[1] = teleport coordinate x
     // data[2] = teleport coordinate y
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let offer = gs.characters[cn].citem;
@@ -4688,7 +4683,7 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i
             core::types::FontColor::Yellow,
             "You get the feeling that it would be appropriate to give the Goddess a present.\n",
         );
-        return 0;
+        return false;
     }
 
     // Check if it's money
@@ -4698,7 +4693,7 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i
             core::types::FontColor::Yellow,
             "Only money is accepted at this shrine.\n",
         );
-        return 0;
+        return false;
     }
 
     let amount = offer & 0x7fffffff;
@@ -4710,7 +4705,7 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i
             core::types::FontColor::Yellow,
             "Your offering is not sufficient, and was rejected.\n",
         );
-        return 0;
+        return false;
     }
 
     // Log offering
@@ -4749,7 +4744,7 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> i
         };
     }
 
-    1
+    true
 }
 
 pub fn change_to_archtemplar(gs: &mut GameState, cn: usize) {
@@ -4927,14 +4922,14 @@ pub fn change_to_sorcerer(gs: &mut GameState, cn: usize) {
     );
 }
 
-pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     // Requires specific potions to change character class
     // Potion of Life (148) -> Archtemplar/Archharakim
     // Greater Healing Potion (127/274) -> Warrior
     // Greater Mana Potion (131/273) -> Sorcerer
 
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let citem = gs.characters[cn].citem as usize;
@@ -4944,7 +4939,7 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 
             core::types::FontColor::Yellow,
             "Read the notes, my friend.\n",
         );
-        return 0;
+        return false;
     }
 
     let (citem_temp, kindred) = {
@@ -4966,7 +4961,7 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 
                 "You are neither Templar nor Harakim.\n",
             );
         }
-        return 0;
+        return false;
     }
 
     // Greater healing potion -> Warrior
@@ -4980,7 +4975,7 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 
                 "You are not a Mercenary.\n",
             );
         }
-        return 0;
+        return false;
     }
 
     // Greater mana potion -> Sorcerer
@@ -4994,7 +4989,7 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 
                 "You are not a Mercenary.\n",
             );
         }
-        return 0;
+        return false;
     }
 
     gs.do_character_log(
@@ -5002,10 +4997,10 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 
         core::types::FontColor::Yellow,
         "Read the notes, my friend.\n",
     );
-    0
+    false
 }
 
-pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0-3] = bitmask for visited flags (stored in character data[46-49])
     // data[4] = base experience reward
 
@@ -5076,12 +5071,12 @@ pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         );
     }
 
-    1
+    true
 }
 
-pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     if cn == 0 {
-        return 0;
+        return false;
     }
 
     let citem = gs.characters[cn].citem;
@@ -5091,7 +5086,7 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
             core::types::FontColor::Yellow,
             "You feel that you could dispose of unwanted items in this digusting garbage can.\n",
         );
-        return 0;
+        return false;
     }
 
     if (citem & 0x80000000) != 0 {
@@ -5128,7 +5123,7 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
         );
     }
 
-    1
+    true
 }
 
 pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool) {
@@ -5187,7 +5182,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                         "You use cannot the lock-pick directly. Hold it under your mouse cursor and click on the door...\n",
                     );
                 }
-                0
+                false
             }
             4 => use_mix_potion(gs, cn, item_idx),
             5 => stone_sword(gs, cn, item_idx),
@@ -5216,55 +5211,55 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             28 => use_gargoyle(gs, cn, item_idx),
             29 => use_grave(gs, cn, item_idx),
             30 => use_create_item2(gs, cn, item_idx),
-            31 => 0, // empty, hole water
+            31 => false, // empty, hole water
             32 => build_amulet(gs, cn, item_idx),
             33 => use_pentagram(gs, cn, item_idx),
             34 => use_seyan_shrine(gs, cn, item_idx),
             35 => use_seyan_door(gs, cn, item_idx),
-            36 => 0, // magic portal 1 in lab13
-            37 => 0, // traps
-            38 => 0, // magic portal 2 in lab13
+            36 => false, // magic portal 1 in lab13
+            37 => false, // traps
+            38 => false, // magic portal 2 in lab13
             39 => purple_protect(gs, cn, item_idx),
-            40 => 0, // seyan'du sword
+            40 => false, // seyan'du sword
             41 => use_shrine(gs, cn, item_idx),
             42 => use_create_item3(gs, cn, item_idx),
-            43 => 0, // spiderweb
+            43 => false, // spiderweb
             44 => use_kill_undead(gs, cn, item_idx),
             45 => use_seyan_portal(gs, cn, item_idx),
             46 => teleport3(gs, cn, item_idx),
-            47 => 0, // arena portal
+            47 => false, // arena portal
             48 => spell_scroll(gs, cn, item_idx),
             49 => use_blook_pentagram(gs, cn, item_idx),
             50 => use_create_npc(gs, cn, item_idx),
             51 => use_rotate(gs, cn, item_idx),
-            52 => 0, // personal item
+            52 => false, // personal item
             53 => use_create_item(gs, cn, item_idx),
             54 => use_create_item(gs, cn, item_idx),
             55 => shrine_of_change(gs, cn, item_idx),
-            56 => 0, // greenling green ball
+            56 => false, // greenling green ball
             57 => explorer_point(gs, cn, item_idx),
             58 => use_grolm(gs, cn, item_idx),
             59 => use_create_gold(gs, cn, item_idx),
             61 => use_lab8_key(gs, cn, item_idx),
             63 => use_lab8_shrine(gs, cn, item_idx),
             64 => use_lab8_moneyshrine(gs, cn, item_idx),
-            65 => crate::lab9::lab9_use_switch(gs, cn, item_idx as i32) as i32,
-            66 => crate::lab9::lab9_use_door(gs, cn, item_idx as i32) as i32,
+            65 => crate::lab9::lab9_use_switch(gs, cn, item_idx as i32),
+            66 => crate::lab9::lab9_use_door(gs, cn, item_idx as i32),
             67 => use_garbage(gs, cn, item_idx),
             68 => use_soulstone(gs, cn, item_idx),
-            69 => 0,
+            69 => false,
             _ => {
                 log::warn!(
                     "use_driver: Unknown use_driver {} for item {}",
                     driver,
                     item_idx
                 );
-                0
+                false
             }
         };
 
         if cn != 0 {
-            if ret == 0 {
+            if !ret {
                 if !carried {
                     {
                         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
@@ -5449,12 +5444,12 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
     }
 }
 
-pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if !core::types::Character::is_sane_character(cn) {
-        return 0;
+        return false;
     }
     if !core::types::Item::is_sane_item(item_idx) {
-        return 0;
+        return false;
     }
 
     let citem = gs.characters[cn].citem;
@@ -5464,12 +5459,12 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::types::FontColor::Blue,
             "Try using something with the soulstone. That is, click on the stone with an item under your cursor.",
         );
-        return 0;
+        return false;
     }
 
     let in2 = citem as usize;
     if !core::types::Item::is_sane_item(in2) {
-        return 0;
+        return false;
     }
 
     // Check if the item is another soulstone (driver 68)
@@ -5500,7 +5495,7 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         };
 
         soul_destroy(gs, cn, in2);
-        return 1;
+        return true;
     }
 
     let in2_temp = gs.items[in2].temp;
@@ -5513,7 +5508,7 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             {
                 gs.items[item_idx].hp[0] += 10;
             };
-            1
+            true
         }
         46 => {
             // Purple flower -> mana potion
@@ -5521,7 +5516,7 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             {
                 gs.items[item_idx].mana[0] += 10;
             };
-            1
+            true
         }
         91 => {
             // Torch -> repair
@@ -5529,12 +5524,12 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             {
                 gs.items[item_idx].max_age[1] *= 4;
             };
-            1
+            true
         }
         100 => {
             // Flask -> mana potion
             soul_transform(gs, cn, item_idx, in2, 102);
-            1
+            true
         }
         101 => {
             // Healing potion
@@ -5542,7 +5537,7 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             {
                 gs.items[in2].hp[0] += 10;
             };
-            1
+            true
         }
         102 => {
             // Mana potion
@@ -5550,16 +5545,16 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             {
                 gs.items[in2].mana[0] += 10;
             };
-            1
+            true
         }
         // Equipment items that can be enhanced
         27..=44 | 51..=80 | 94..=99 | 116 | 125 | 158 | 501..=503 | 523..=524 | 813 | 981..=986 => {
             soul_trans_equipment(gs, cn, item_idx, in2);
-            1
+            true
         }
         _ => {
             gs.do_character_log(cn, core::types::FontColor::Blue, "Nothing happened.\n");
-            0
+            false
         }
     }
 }
@@ -5803,7 +5798,7 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
     soul_destroy(gs, cn, soulstone_idx);
 }
 
-pub fn item_age(gs: &mut GameState, item_idx: usize) -> i32 {
+pub fn item_age(gs: &mut GameState, item_idx: usize) -> bool {
     let (current_age_act, max_age_act, current_damage, max_damage) = {
         let act = if gs.items[item_idx].active != 0 { 1 } else { 0 };
         (
@@ -5857,7 +5852,7 @@ pub fn item_age(gs: &mut GameState, item_idx: usize) -> i32 {
             }
         };
 
-        return 1;
+        return true;
     }
 
     // Expire no-age items after 30 minutes (lag scrolls after 2 minutes)
@@ -5873,11 +5868,11 @@ pub fn item_age(gs: &mut GameState, item_idx: usize) -> i32 {
             {
                 gs.items[item_idx].damage_state = 5;
             };
-            return 1;
+            return true;
         }
     }
 
-    0
+    false
 }
 
 pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
@@ -5897,7 +5892,7 @@ pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
         gs.items[worn_idx].current_damage += damage as u32;
     };
 
-    if item_age(gs, worn_idx) != 0 {
+    if item_age(gs, worn_idx) {
         let (damage_state, reference) = {
             (
                 gs.items[worn_idx].damage_state,
@@ -5971,7 +5966,7 @@ pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
         gs.items[citem_idx].current_damage += damage as u32;
     };
 
-    if item_age(gs, citem_idx) != 0 {
+    if item_age(gs, citem_idx) {
         let (damage_state, reference) = {
             (
                 gs.items[citem_idx].damage_state,
@@ -6200,7 +6195,7 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
             lightage(gs, item_idx, 1);
         }
 
-        if item_age(gs, item_idx) != 0 {
+        if item_age(gs, item_idx) {
             must_update = true;
             age_message(gs, cn, item_idx, "in your backpack");
 
@@ -6246,7 +6241,7 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
             lightage(gs, item_idx, 1);
         }
 
-        if item_age(gs, item_idx) != 0 {
+        if item_age(gs, item_idx) {
             must_update = true;
             let damage_state = gs.items[item_idx].damage_state;
 
@@ -6288,7 +6283,7 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
                 lightage(gs, item_idx, 1);
             }
 
-            if item_age(gs, item_idx) != 0 {
+            if item_age(gs, item_idx) {
                 must_update = true;
                 let damage_state = gs.items[item_idx].damage_state;
 
@@ -6650,7 +6645,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                     lightage(gs, in_idx, EXP_TIME);
                 }
 
-                if item_age(gs, in_idx) != 0 {
+                if item_age(gs, in_idx) {
                     let damage_state = gs.items[in_idx].damage_state;
                     if damage_state == 5 {
                         let light = gs.items[in_idx].light[act];

@@ -189,7 +189,7 @@ impl GameState {
         // Basic attack handling: permission checks, enemy bookkeeping,
         // hit/miss roll, damage calculation, item damage and surround hits.
 
-        if self.may_attack_msg(cn, co, true) == 0 {
+        if !self.may_attack_msg(cn, co, true) {
             self.characters[cn].attack_cn = 0;
             self.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             return;
@@ -249,11 +249,11 @@ impl GameState {
         }
 
         // Use canonical helpers for facing/back checks
-        if driver::is_facing(&self.characters[co], &self.characters[cn]) == 0 {
+        if !driver::is_facing(&self.characters[co], &self.characters[cn]) {
             s2 -= 10;
         }
 
-        if driver::is_back(&self.characters[co], &self.characters[cn]) != 0 {
+        if driver::is_back(&self.characters[co], &self.characters[cn]) {
             s2 -= 10;
         }
 
@@ -468,7 +468,7 @@ impl GameState {
     /// Port of `do_char_can_flee(int cn)` from `svr_do.cpp`
     ///
     /// Check if a character can flee from combat.
-    pub(crate) fn do_char_can_flee(&mut self, cn: usize) -> i32 {
+    pub(crate) fn do_char_can_flee(&mut self, cn: usize) -> bool {
         // First, remove stale enemy entries where the relation is not mutual
         for m in 0..4 {
             let co = self.characters[cn].enemy[m] as usize;
@@ -492,13 +492,13 @@ impl GameState {
             e0 == 0 && e1 == 0 && e2 == 0 && e3 == 0
         };
         if no_enemies {
-            return 1;
+            return true;
         }
 
         // If escape timer active, can't flee
         let escape_timer = self.characters[cn].escape_timer;
         if escape_timer != 0 {
-            return 0;
+            return false;
         }
 
         // Sum perception of enemies
@@ -525,13 +525,13 @@ impl GameState {
                 self.characters[cn].enemy[m] = 0;
             }
             self.remove_enemy(cn);
-            return 1;
+            return true;
         }
 
         self.characters[cn].escape_timer = core::constants::TICKS as u16;
         self.do_character_log(cn, core::types::FontColor::Red, "You cannot escape!\n");
 
-        0
+        false
     }
 
     /// Port of `do_ransack_corpse(int cn, int co, char *msg)` from `svr_do.cpp`
@@ -657,29 +657,29 @@ impl GameState {
     /// # Returns
     /// * 1 if attack is allowed
     /// * 0 if attack is not allowed
-    pub(crate) fn may_attack_msg(&mut self, cn: usize, co: usize, msg: bool) -> i32 {
+    pub(crate) fn may_attack_msg(&mut self, cn: usize, co: usize, msg: bool) -> bool {
         use core::constants::*;
 
         // Sanity checks
         if cn == 0 || cn >= MAXCHARS || co == 0 || co >= MAXCHARS {
-            return 1;
+            return true;
         }
         if self.characters[cn].used == 0 || self.characters[co].used == 0 {
-            return 1;
+            return true;
         }
 
         // Unsafe gods may attack anyone
         if (self.characters[cn].flags & CharacterFlags::God.bits()) != 0
             && (self.characters[cn].flags & CharacterFlags::Safe.bits()) == 0
         {
-            return 1;
+            return true;
         }
 
         // Unsafe gods may be attacked by anyone
         if (self.characters[co].flags & CharacterFlags::God.bits()) != 0
             && (self.characters[co].flags & CharacterFlags::Safe.bits()) == 0
         {
-            return 1;
+            return true;
         }
 
         let mut cn_actual = cn;
@@ -691,13 +691,13 @@ impl GameState {
         {
             cn_actual = self.characters[cn].data[CHD_MASTER] as usize;
             if cn_actual == 0 || cn_actual >= MAXCHARS || self.characters[cn_actual].used == 0 {
-                return 1; // Bad values, let them try
+                return true;
             }
         }
 
         // NPCs may attack anyone, anywhere
         if (self.characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0 {
-            return 1;
+            return true;
         }
 
         // Check for NOFIGHT
@@ -714,7 +714,7 @@ impl GameState {
                     "You can't attack anyone here!\n",
                 );
             }
-            return 0;
+            return false;
         }
 
         // Player companion target? Act as if trying to attack the master instead
@@ -723,7 +723,7 @@ impl GameState {
         {
             co_actual = self.characters[co_actual].data[CHD_MASTER] as usize;
             if co_actual == 0 || co_actual >= MAXCHARS || self.characters[co_actual].used == 0 {
-                return 1; // Bad values, let them try
+                return true;
             }
         }
 
@@ -731,12 +731,12 @@ impl GameState {
         if (self.characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0
             || (self.characters[co_actual].flags & CharacterFlags::Player.bits()) == 0
         {
-            return 1;
+            return true;
         }
 
         // Both are players. Check for Arena (OK)
         if ((self.map[m1].flags & self.map[m2].flags) & MF_ARENA as u64) != 0 {
-            return 1;
+            return true;
         }
 
         // Check if aggressor is purple
@@ -748,7 +748,7 @@ impl GameState {
                     "You can't attack other players! You're not a follower of the Purple One.\n",
                 );
             }
-            return 0;
+            return false;
         }
 
         // Check if victim is purple
@@ -769,7 +769,7 @@ impl GameState {
                     ),
                 );
             }
-            return 0;
+            return false;
         }
 
         if helpers::absrankdiff(&self.characters[cn_actual], &self.characters[co_actual])
@@ -786,10 +786,10 @@ impl GameState {
                     ),
                 );
             }
-            return 0;
+            return false;
         }
 
-        1
+        true
     }
 
     /// Port of `remember_pvp(int cn, int co)` from `svr_do.cpp`

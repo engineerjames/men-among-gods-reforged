@@ -1167,9 +1167,9 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character
     /// * `pass` - New password string
-    pub fn change_pass(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> i32 {
+    pub fn change_pass(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> bool {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
-            return 0;
+            return false;
         }
 
         let pass_hash = pass.as_bytes();
@@ -1199,15 +1199,15 @@ impl God {
                 target_name
             ),
         );
-        1
+        true
     }
 
     // This function is unused in the original implementation
 
     /// Remove an item from a character while reusing an existing game-state borrow.
-    fn remove_item(gs: &mut GameState, cn: usize, item_id: usize) -> i32 {
+    fn remove_item(gs: &mut GameState, cn: usize, item_id: usize) -> bool {
         if !Character::is_sane_character(cn) || !core::types::Item::is_sane_item(item_id) {
-            return 0;
+            return false;
         }
 
         // Check inventory slots
@@ -1216,7 +1216,7 @@ impl God {
                 gs.characters[cn].item[n] = 0;
                 gs.items[item_id].carried = 0;
                 gs.characters[cn].set_do_update_flags();
-                return 1;
+                return true;
             }
         }
 
@@ -1226,11 +1226,11 @@ impl God {
                 gs.characters[cn].worn[n] = 0;
                 gs.items[item_id].carried = 0;
                 gs.characters[cn].set_do_update_flags();
-                return 1;
+                return true;
             }
         }
 
-        0
+        false
     }
 
     /// Try to drop an item near a tile while reusing an existing game-state borrow.
@@ -2636,9 +2636,9 @@ impl God {
     /// # Arguments
     /// * `looker` - Character performing the check
     /// * `target` - Target character
-    fn invis(gs: &mut GameState, looker: usize, target: usize) -> i32 {
+    fn invis(gs: &mut GameState, looker: usize, target: usize) -> bool {
         if !Character::is_sane_character(looker) || !Character::is_sane_character(target) {
-            return 1;
+            return true;
         }
 
         let looker_char = &gs.characters[looker];
@@ -2648,11 +2648,11 @@ impl God {
         if target_char.flags & CharacterFlags::Invisible.bits() != 0 {
             // Check if looker can see invisible
             if looker_char.flags & CharacterFlags::Infrared.bits() == 0 {
-                return 1;
+                return true;
             }
         }
 
-        0
+        false
     }
 
     /// Summon another character to the caller's location.
@@ -2679,7 +2679,7 @@ impl God {
             // single-arg: treat spec1 as character number
             co = spec1.parse::<usize>().unwrap_or(0);
 
-            if co == 0 || !Character::is_sane_character(co) || Self::invis(gs, cn, co) != 0 {
+            if co == 0 || !Character::is_sane_character(co) || Self::invis(gs, cn, co) {
                 gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
                 return;
             }
@@ -2759,7 +2759,7 @@ impl God {
                 }
 
                 // invisibility check: ignore whom we can't see
-                if Self::invis(gs, cn, co) != 0 {
+                if Self::invis(gs, cn, co) {
                     continue;
                 }
 
@@ -4078,9 +4078,9 @@ impl God {
     /// Save character `co` to persistent storage.
     ///
     /// Returns `1` on success and performs necessary write operations.
-    pub fn save(gs: &mut GameState, cn: usize, co: usize) -> i32 {
+    pub fn save(gs: &mut GameState, cn: usize, co: usize) -> bool {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
-            return 0;
+            return false;
         }
 
         if !gs.characters[co].is_player() {
@@ -4089,7 +4089,7 @@ impl God {
                 core::types::FontColor::Red,
                 "Cannot save non-player character\n",
             );
-            return 0;
+            return false;
         }
 
         let target_name = gs.characters[co].get_name().to_string();
@@ -4100,7 +4100,7 @@ impl God {
         );
         // TODO: Actual save logic would write to disk
 
-        1
+        true
     }
 
     /// Command to make `co` perform a slap animation (cosmetic/admin).

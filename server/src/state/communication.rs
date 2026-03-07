@@ -1094,7 +1094,7 @@ impl GameState {
         let cn_invis_level = crate::helpers::invis_level(&self.characters[cn]);
         let co_invis_level = crate::helpers::invis_level(&self.characters[co]);
         // do_is_ignore
-        let is_ignored = !cn_is_god && self.do_is_ignore(cn, co, 0) != 0;
+        let is_ignored = !cn_is_god && self.do_is_ignore(cn, co, 0);
         // C++: ! (player) || not active || (invis && invis_level) || (not god && (notell || ignore))
         if !co_is_player
             || !co_active
@@ -1410,20 +1410,20 @@ impl GameState {
     /// Port of `do_is_ignore(int cn, int co, int flag)` from `svr_do.cpp`
     ///
     /// Check if cn is ignoring co.
-    pub(crate) fn do_is_ignore(&mut self, cn: usize, co: usize, flag: i32) -> i32 {
+    pub(crate) fn do_is_ignore(&mut self, cn: usize, co: usize, flag: i32) -> bool {
         if flag == 0 {
             for n in 30..39 {
                 if self.characters[co].data[n] as usize == cn {
-                    return 1;
+                    return true;
                 }
             }
         }
         for n in 50..59 {
             if self.characters[co].data[n] as usize == cn {
-                return 1;
+                return true;
             }
         }
-        0
+        false
     }
 
     /// Port of `do_lookup_char_self(const char *name, int cn)` from `svr_do.cpp`

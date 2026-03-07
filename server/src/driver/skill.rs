@@ -90,17 +90,17 @@ pub fn skill_name(n: usize) -> &'static str {
     }
 }
 
-pub fn player_or_ghost(cn: &Character, cn_idx: usize, co: &Character) -> i32 {
+pub fn player_or_ghost(cn: &Character, cn_idx: usize, co: &Character) -> bool {
     if (cn.flags & CharacterFlags::Player.bits()) == 0 {
-        return 0;
+        return false;
     }
     if (co.flags & CharacterFlags::Player.bits()) != 0 {
-        return 1;
+        return true;
     }
     if co.data[63] as usize == cn_idx {
-        return 1;
+        return true;
     }
-    0
+    false
 }
 pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     // Ported from C++ spellcost(int cn, int cost)
@@ -288,8 +288,7 @@ pub fn add_spell(gs: &mut GameState, cn: usize, in_: usize) -> i32 {
     1
 }
 
-pub fn is_exhausted(gs: &mut GameState, cn: usize) -> i32 {
-    // Ported from C++ is_exhausted(int cn)
+pub fn is_exhausted(gs: &mut GameState, cn: usize) -> bool {
     for n in 0..20 {
         let in_ = gs.characters[cn].spell[n] as usize;
         if in_ != 0 {
@@ -300,11 +299,11 @@ pub fn is_exhausted(gs: &mut GameState, cn: usize) -> i32 {
                     core::types::FontColor::Red,
                     "You are still exhausted from your last spell!\n",
                 );
-                return 1;
+                return true;
             }
         }
     }
-    0
+    false
 }
 
 pub fn add_exhaust(gs: &mut GameState, cn: usize, exhaust_length: i32) {
@@ -395,12 +394,12 @@ pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
     GameState::char_play_sound(gs, cn, sound as i32 + 1, -150, 0);
 }
 
-pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     // Ported from C++ spell_light(int cn, int co, int power)
     let in_ = God::create_item(gs, 1);
     if in_.is_none() {
         log::error!("god_create_item failed in spell_light");
-        return 0;
+        return false;
     }
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
     {
@@ -426,7 +425,7 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
                 core::types::FontColor::Green,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         let sense = gs.characters[co].skill[core::constants::SK_SENSE][5];
         if sense + 10 > power as u8 {
@@ -466,7 +465,7 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
                 core::types::FontColor::Green,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         gs.do_character_log(
             cn,
@@ -484,7 +483,7 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
     }
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
     EffectManager::fx_add_effect(gs, 7, 0, x as i32, y as i32, 0);
-    1
+    true
 }
 
 pub fn skill_light(gs: &mut GameState, cn: usize) {
@@ -510,7 +509,7 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
@@ -552,11 +551,11 @@ pub fn spellpower(cn: &Character) -> i32 {
     a + b + c + d + e
 }
 
-pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_protect");
-        return 0;
+        return false;
     }
     let in_ = in_opt.unwrap();
 
@@ -609,7 +608,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
                 FontColor::Green,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
 
         let sense = gs.characters[co].skill[SK_SENSE][5];
@@ -651,7 +650,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
                 FontColor::Green,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         gs.do_character_log(cn, FontColor::Green, "You feel protected.\n");
         let sound = gs.characters[cn].sound;
@@ -673,7 +672,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_protect(gs: &mut GameState, cn: usize) {
@@ -693,11 +692,11 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
-    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
+    if !player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -739,11 +738,11 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS / 2);
 }
 
-pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_enhance");
-        return 0;
+        return false;
     }
     let in_ = in_opt.unwrap();
 
@@ -796,7 +795,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
                 FontColor::Yellow,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         let sense = gs.characters[co].skill[SK_SENSE][5];
         if sense as i32 + 10 > power {
@@ -842,7 +841,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
                 FontColor::Yellow,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         gs.do_character_log(cn, FontColor::Green, "Your weapon feels stronger.\n");
         let sound = gs.characters[cn].sound;
@@ -870,7 +869,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_enhance(gs: &mut GameState, cn: usize) {
@@ -885,11 +884,11 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
-    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
+    if !player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -957,11 +956,11 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS / 2);
 }
 
-pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_bless");
-        return 0;
+        return false;
     }
     let in_ = in_opt.unwrap();
 
@@ -1015,7 +1014,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
                 FontColor::Yellow,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         let sense = gs.characters[co].skill[SK_SENSE][5];
         if sense as i32 + 10 > power {
@@ -1060,7 +1059,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
                 FontColor::Yellow,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         gs.do_character_log(cn, FontColor::Green, "You have been blessed.\n");
         let sound = gs.characters[cn].sound;
@@ -1088,7 +1087,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_bless(gs: &mut GameState, cn: usize) {
@@ -1103,11 +1102,11 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
-    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
+    if !player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -1266,11 +1265,11 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
     );
 }
 
-pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_mshield");
-        return 0;
+        return false;
     }
     let in_ = in_opt.unwrap();
 
@@ -1298,7 +1297,7 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
                 FontColor::Green,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         let sense = gs.characters[co].skill[SK_SENSE][5];
         if sense as i32 + 10 > power {
@@ -1346,7 +1345,7 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
                 FontColor::Green,
                 &format!("Magical interference neutralised the {}'s effect.\n", name),
             );
-            return 0;
+            return false;
         }
         gs.do_character_log(cn, FontColor::Green, "Magic Shield active!\n");
         let sound = gs.characters[cn].sound;
@@ -1374,11 +1373,11 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i3
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_mshield(gs: &mut GameState, cn: usize) {
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
@@ -1398,7 +1397,7 @@ pub fn skill_mshield(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
-pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     if cn != co {
         gs.characters[co].a_hp += spell_race_mod(gs, power * 2500, gs.characters[cn].kindred);
         if gs.characters[co].a_hp > (gs.characters[co].hp[5] as i32) * 1000 {
@@ -1467,7 +1466,7 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_heal(gs: &mut GameState, cn: usize) {
@@ -1482,11 +1481,11 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
-    if player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) == 0 {
+    if !player_or_ghost(&gs.characters[cn], cn, &gs.characters[co]) {
         let name_from = gs.characters[co].get_name().to_string();
         let name_to = gs.characters[cn].get_name().to_string();
         gs.do_character_log(
@@ -1551,16 +1550,16 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS * 2);
 }
 
-pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let flags = gs.characters[co].flags;
     if (flags & CharacterFlags::Immortal.bits()) != 0 {
-        return 0;
+        return false;
     }
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in spell_curse");
-        return 0;
+        return false;
     }
     let in_idx = in_opt.unwrap();
 
@@ -1594,7 +1593,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
                 gs.items[in_idx].get_name().to_string()
             ),
         );
-        return 0;
+        return false;
     }
 
     let sense = gs.characters[co].skill[SK_SENSE][5];
@@ -1635,7 +1634,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_curse(gs: &mut GameState, cn: usize) {
@@ -1666,7 +1665,7 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
     }
 
     gs.remember_pvp(cn, co);
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
@@ -1674,7 +1673,7 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.may_attack_msg(cn, co, true) == 0 {
+    if !gs.may_attack_msg(cn, co, true) {
         chlog!(
             cn,
             "Prevented from attacking {}",
@@ -1781,27 +1780,27 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 4);
 }
 
-pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     if gs.characters[cn].attack_cn as usize != co && gs.characters[co].alignment == 10000 {
-        return 0;
+        return false;
     }
 
-    if gs.may_attack_msg(cn, co, false) == 0 {
-        return 0;
+    if !gs.may_attack_msg(cn, co, false) {
+        return false;
     }
 
     if power < gs.characters[co].skill[core::constants::SK_RESIST][5] as i32 {
-        return 0;
+        return false;
     }
 
     for n in 1..10 {
         if gs.characters[cn].data[n] as usize == co {
-            return 0;
+            return false;
         }
     }
 
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
-        return 0;
+        return false;
     }
 
     if gs.characters[co].flags & CharacterFlags::SpellIgnore.bits() == 0 {
@@ -1818,7 +1817,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_warcry");
-        return 0;
+        return false;
     }
     let in_idx = in_opt.unwrap();
 
@@ -1841,7 +1840,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
     let in2_opt = God::create_item(gs, 1);
     if in2_opt.is_none() {
         log::error!("god_create_item failed in skill_warcry");
-        return 0;
+        return false;
     }
     let in2 = in2_opt.unwrap();
     {
@@ -1875,7 +1874,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_warcry(gs: &mut GameState, cn: usize) {
@@ -1906,7 +1905,7 @@ pub fn skill_warcry(gs: &mut GameState, cn: usize) {
             let m = (x + y * core::constants::SERVER_MAPX) as usize;
             let co = gs.map[m].ch as usize;
             if co != 0 {
-                if warcry(gs, cn, co, power) != 0 {
+                if warcry(gs, cn, co, power) {
                     gs.remember_pvp(cn, co);
                     let name = gs.characters[cn].get_name().to_string();
                     gs.do_character_log(
@@ -2190,7 +2189,7 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
 }
 
 pub fn skill_identify(gs: &mut GameState, cn: usize) {
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
@@ -2309,7 +2308,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.may_attack_msg(cn, co, true) == 0 {
+    if !gs.may_attack_msg(cn, co, true) {
         chlog!(
             cn,
             "Prevented from attacking {}",
@@ -2320,7 +2319,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
 
     gs.remember_pvp(cn, co);
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
@@ -2565,7 +2564,7 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
 }
 
 pub fn skill_recall(gs: &mut GameState, cn: usize) {
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
@@ -2619,14 +2618,14 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
     );
 }
 
-pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
+pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
-        return 0;
+        return false;
     }
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
-        return 0;
+        return false;
     }
     let in_idx = in_opt.unwrap();
 
@@ -2710,7 +2709,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
                 "stun"
             ),
         );
-        return 0;
+        return false;
     }
 
     EffectManager::fx_add_effect(
@@ -2722,7 +2721,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> i32 {
         0,
     );
 
-    1
+    true
 }
 
 pub fn skill_stun(gs: &mut GameState, cn: usize) {
@@ -2753,11 +2752,11 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     }
 
     gs.remember_pvp(cn, co);
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
-    if gs.may_attack_msg(cn, co, true) == 0 {
+    if !gs.may_attack_msg(cn, co, true) {
         chlog!(
             cn,
             "Prevented from attacking {}",
@@ -2873,7 +2872,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
@@ -2920,7 +2919,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
 
         // Dispelling someone else's non-curse spell is treated like an attack.
         if target != 0 {
-            if gs.may_attack_msg(cn, co, true) == 0 {
+            if !gs.may_attack_msg(cn, co, true) {
                 chlog!(
                     cn,
                     "Prevented from dispelling {}",
@@ -3106,12 +3105,12 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if is_exhausted(gs, cn) != 0 {
+    if is_exhausted(gs, cn) {
         return;
     }
 
     // Check if can attack target
-    if co != 0 && gs.may_attack_msg(cn, co, true) == 0 {
+    if co != 0 && !gs.may_attack_msg(cn, co, true) {
         chlog!(
             cn,
             "Prevented from attacking {} ({})",
@@ -3396,7 +3395,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     EffectManager::fx_add_effect(gs, 7, 0, cn_x, cn_y, 0);
 }
 
-pub fn is_facing(cn: &Character, co: &Character) -> i32 {
+pub fn is_facing(cn: &Character, co: &Character) -> bool {
     let dir = cn.dir;
     let cx = cn.x;
     let cy = cn.y;
@@ -3404,39 +3403,15 @@ pub fn is_facing(cn: &Character, co: &Character) -> i32 {
     let oy = co.y;
 
     match dir {
-        DX_RIGHT => {
-            if cx + 1 == ox && cy == oy {
-                1
-            } else {
-                0
-            }
-        }
-        DX_LEFT => {
-            if cx - 1 == ox && cy == oy {
-                1
-            } else {
-                0
-            }
-        }
-        DX_UP => {
-            if cx == ox && cy - 1 == oy {
-                1
-            } else {
-                0
-            }
-        }
-        DX_DOWN => {
-            if cx == ox && cy + 1 == oy {
-                1
-            } else {
-                0
-            }
-        }
-        _ => 0,
+        DX_RIGHT => cx + 1 == ox && cy == oy,
+        DX_LEFT => cx - 1 == ox && cy == oy,
+        DX_UP => cx == ox && cy - 1 == oy,
+        DX_DOWN => cx == ox && cy + 1 == oy,
+        _ => false,
     }
 }
 
-pub fn is_back(cn: &Character, co: &Character) -> i32 {
+pub fn is_back(cn: &Character, co: &Character) -> bool {
     let dir = cn.dir;
     let cx = cn.x;
     let cy = cn.y;
@@ -3444,35 +3419,11 @@ pub fn is_back(cn: &Character, co: &Character) -> i32 {
     let oy = co.y;
 
     match dir {
-        DX_LEFT => {
-            if cx + 1 == ox && cy == oy {
-                1
-            } else {
-                0
-            }
-        }
-        DX_RIGHT => {
-            if cx - 1 == ox && cy == oy {
-                1
-            } else {
-                0
-            }
-        }
-        DX_DOWN => {
-            if cx == ox && cy - 1 == oy {
-                1
-            } else {
-                0
-            }
-        }
-        DX_UP => {
-            if cx == ox && cy + 1 == oy {
-                1
-            } else {
-                0
-            }
-        }
-        _ => 0,
+        DX_LEFT => cx + 1 == ox && cy == oy,
+        DX_RIGHT => cx - 1 == ox && cy == oy,
+        DX_DOWN => cx == ox && cy - 1 == oy,
+        DX_UP => cx == ox && cy + 1 == oy,
+        _ => false,
     }
 }
 
