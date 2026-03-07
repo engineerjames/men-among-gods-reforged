@@ -58,7 +58,7 @@ pub struct ServerPlayer {
     // copy of visibility map for comparision
     pub vx: i32,
     pub vy: i32,
-    pub visi: [i8; 40 * 40],
+    pub visi: [i8; core::constants::VISI_BUFFER_LEN],
 
     pub input: [u8; 128],
 
@@ -113,7 +113,7 @@ impl ServerPlayer {
             xmap: std::array::from_fn(|_| Map::default()),
             vx: 0,
             vy: 0,
-            visi: [0; 40 * 40],
+            visi: [0; core::constants::VISI_BUFFER_LEN],
             input: [0; 128],
             zs: None,
             ticker_started: 0,

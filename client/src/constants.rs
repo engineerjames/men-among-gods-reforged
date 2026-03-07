@@ -1,0 +1,5 @@
+pub const TARGET_WIDTH: f32 = 1280.0;
+pub const TARGET_HEIGHT: f32 = 720.0;
+
+pub const TARGET_WIDTH_INT: u32 = TARGET_WIDTH as u32;
+pub const TARGET_HEIGHT_INT: u32 = TARGET_HEIGHT as u32;

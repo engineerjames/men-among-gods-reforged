@@ -865,17 +865,17 @@ impl Scene for GameScene {
 
         // 2. Static UI frame (sprite 1) overlays the world
         self.perf_profiler.begin_sample(PerfLabel::DrawUiFrame);
-        Self::draw_ui_frame(canvas, gfx_cache)?;
+        // Self::draw_ui_frame(canvas, gfx_cache)?;
         self.perf_profiler.end_sample(PerfLabel::DrawUiFrame);
 
         // 3. HP / End / Mana bars
         self.perf_profiler.begin_sample(PerfLabel::DrawBars);
-        Self::draw_bars(canvas, ps)?;
+        // Self::draw_bars(canvas, ps)?;
         self.perf_profiler.end_sample(PerfLabel::DrawBars);
 
         // 4. Stat text labels
         self.perf_profiler.begin_sample(PerfLabel::DrawStatText);
-        Self::draw_stat_text(canvas, gfx_cache, ps)?;
+        // Self::draw_stat_text(canvas, gfx_cache, ps)?;
         self.perf_profiler.end_sample(PerfLabel::DrawStatText);
 
         // 5. Chat log + input line
@@ -886,40 +886,40 @@ impl Scene for GameScene {
         // 6. Lower-right mode/status indicators
         self.perf_profiler
             .begin_sample(PerfLabel::DrawModeIndicators);
-        Self::draw_mode_indicators(canvas, ps)?;
+        // Self::draw_mode_indicators(canvas, ps)?;
         self.perf_profiler.end_sample(PerfLabel::DrawModeIndicators);
 
         // 7. Left panel attributes and skills
         self.perf_profiler
             .begin_sample(PerfLabel::DrawAttributesSkills);
-        self.draw_attributes_skills(canvas, gfx_cache, ps)?;
+        // self.draw_attributes_skills(canvas, gfx_cache, ps)?;
         self.perf_profiler
             .end_sample(PerfLabel::DrawAttributesSkills);
 
         // 8. Inventory, worn items, spells, carried item
         self.perf_profiler
             .begin_sample(PerfLabel::DrawInventoryEquipmentSpells);
-        self.draw_inventory_equipment_spells(canvas, gfx_cache, ps)?;
+        // self.draw_inventory_equipment_spells(canvas, gfx_cache, ps)?;
         self.perf_profiler
             .end_sample(PerfLabel::DrawInventoryEquipmentSpells);
 
         // 9. Portrait/shop overlays
         self.perf_profiler
             .begin_sample(PerfLabel::DrawPortraitAndShop);
-        Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
-        self.draw_shop_overlay(canvas, gfx_cache, ps)?;
+        // Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
+        // self.draw_shop_overlay(canvas, gfx_cache, ps)?;
         self.perf_profiler
             .end_sample(PerfLabel::DrawPortraitAndShop);
 
         // 11. Minimap (bottom-left, 128×128, persistent world buffer)
         self.perf_profiler.begin_sample(PerfLabel::DrawMinimap);
-        self.draw_minimap(canvas, gfx_cache, ps)?;
+        // self.draw_minimap(canvas, gfx_cache, ps)?;
         self.perf_profiler.end_sample(PerfLabel::DrawMinimap);
 
         // 12. Skill button labels (4×3 grid in lower-right)
         self.perf_profiler
             .begin_sample(PerfLabel::DrawSkillButtonLabels);
-        self.draw_skill_button_labels(canvas, gfx_cache, ps)?;
+        // self.draw_skill_button_labels(canvas, gfx_cache, ps)?;
         self.perf_profiler
             .end_sample(PerfLabel::DrawSkillButtonLabels);
 

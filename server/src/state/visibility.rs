@@ -6,7 +6,7 @@ use crate::game_state::GameState;
 
 impl GameState {
     #[inline]
-    fn vis_buf(&mut self) -> &[i8; 40 * 40] {
+    fn vis_buf(&mut self) -> &[i8; core::constants::VISI_BUFFER_LEN] {
         if self.vis_is_global {
             &mut self._visi
         } else {
@@ -15,7 +15,7 @@ impl GameState {
     }
 
     #[inline]
-    fn vis_buf_mut(&mut self) -> &mut [i8; 40 * 40] {
+    fn vis_buf_mut(&mut self) -> &mut [i8; core::constants::VISI_BUFFER_LEN] {
         if self.vis_is_global {
             &mut self._visi
         } else {
@@ -25,13 +25,15 @@ impl GameState {
 
     #[inline]
     fn vis_index(&mut self, x: i32, y: i32) -> Option<usize> {
-        let rx = x - self.ox + 20;
-        let ry = y - self.oy + 20;
+        let rx = x - self.ox + core::constants::VISI_CENTER;
+        let ry = y - self.oy + core::constants::VISI_CENTER;
 
-        if !(0..40).contains(&rx) || !(0..40).contains(&ry) {
+        if !(0..core::constants::VISI_STRIDE as i32).contains(&rx)
+            || !(0..core::constants::VISI_STRIDE as i32).contains(&ry)
+        {
             None
         } else {
-            Some((rx + ry * 40) as usize)
+            Some((rx + ry * core::constants::VISI_STRIDE as i32) as usize)
         }
     }
 
@@ -702,47 +704,57 @@ impl GameState {
     fn check_vis(&mut self, x: i32, y: i32) -> i32 {
         let mut best = 99;
 
-        let x = x - self.ox + 20;
-        let y = y - self.oy + 20;
+        let x = x - self.ox + core::constants::VISI_CENTER;
+        let y = y - self.oy + core::constants::VISI_CENTER;
+        let stride = core::constants::VISI_STRIDE as i32;
+        let edge = core::constants::VISI_STRIDE as i32 - 1;
 
         // Needs a 1-tile border for +/-1 neighbor checks.
-        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+        if x <= 0 || x >= edge || y <= 0 || y >= edge {
             return 0;
         }
 
         let visi = self.vis_buf();
 
-        if visi[((x + 1) + y * 40) as usize] != 0 && visi[((x + 1) + y * 40) as usize] < best {
-            best = visi[((x + 1) + y * 40) as usize];
-        }
-        if visi[((x - 1) + y * 40) as usize] != 0 && visi[((x - 1) + y * 40) as usize] < best {
-            best = visi[((x - 1) + y * 40) as usize];
-        }
-        if visi[(x + (y + 1) * 40) as usize] != 0 && visi[(x + (y + 1) * 40) as usize] < best {
-            best = visi[(x + (y + 1) * 40) as usize];
-        }
-        if visi[(x + (y - 1) * 40) as usize] != 0 && visi[(x + (y - 1) * 40) as usize] < best {
-            best = visi[(x + (y - 1) * 40) as usize];
-        }
-        if visi[((x + 1) + (y + 1) * 40) as usize] != 0
-            && visi[((x + 1) + (y + 1) * 40) as usize] < best
+        if visi[((x + 1) + y * stride) as usize] != 0
+            && visi[((x + 1) + y * stride) as usize] < best
         {
-            best = visi[((x + 1) + (y + 1) * 40) as usize];
+            best = visi[((x + 1) + y * stride) as usize];
         }
-        if visi[((x + 1) + (y - 1) * 40) as usize] != 0
-            && visi[((x + 1) + (y - 1) * 40) as usize] < best
+        if visi[((x - 1) + y * stride) as usize] != 0
+            && visi[((x - 1) + y * stride) as usize] < best
         {
-            best = visi[((x + 1) + (y - 1) * 40) as usize];
+            best = visi[((x - 1) + y * stride) as usize];
         }
-        if visi[((x - 1) + (y + 1) * 40) as usize] != 0
-            && visi[((x - 1) + (y + 1) * 40) as usize] < best
+        if visi[(x + (y + 1) * stride) as usize] != 0
+            && visi[(x + (y + 1) * stride) as usize] < best
         {
-            best = visi[((x - 1) + (y + 1) * 40) as usize];
+            best = visi[(x + (y + 1) * stride) as usize];
         }
-        if visi[((x - 1) + (y - 1) * 40) as usize] != 0
-            && visi[((x - 1) + (y - 1) * 40) as usize] < best
+        if visi[(x + (y - 1) * stride) as usize] != 0
+            && visi[(x + (y - 1) * stride) as usize] < best
         {
-            best = visi[((x - 1) + (y - 1) * 40) as usize];
+            best = visi[(x + (y - 1) * stride) as usize];
+        }
+        if visi[((x + 1) + (y + 1) * stride) as usize] != 0
+            && visi[((x + 1) + (y + 1) * stride) as usize] < best
+        {
+            best = visi[((x + 1) + (y + 1) * stride) as usize];
+        }
+        if visi[((x + 1) + (y - 1) * stride) as usize] != 0
+            && visi[((x + 1) + (y - 1) * stride) as usize] < best
+        {
+            best = visi[((x + 1) + (y - 1) * stride) as usize];
+        }
+        if visi[((x - 1) + (y + 1) * stride) as usize] != 0
+            && visi[((x - 1) + (y + 1) * stride) as usize] < best
+        {
+            best = visi[((x - 1) + (y + 1) * stride) as usize];
+        }
+        if visi[((x - 1) + (y - 1) * stride) as usize] != 0
+            && visi[((x - 1) + (y - 1) * stride) as usize] < best
+        {
+            best = visi[((x - 1) + (y - 1) * stride) as usize];
         }
 
         if best == 99 {
@@ -785,37 +797,39 @@ impl GameState {
             return false;
         }
 
-        let x = x - self.ox + 20;
-        let y = y - self.oy + 20;
+        let x = x - self.ox + core::constants::VISI_CENTER;
+        let y = y - self.oy + core::constants::VISI_CENTER;
+        let stride = core::constants::VISI_STRIDE as i32;
+        let edge = core::constants::VISI_STRIDE as i32 - 1;
 
-        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+        if x <= 0 || x >= edge || y <= 0 || y >= edge {
             return false;
         }
 
         let visi = self.vis_buf();
 
-        if visi[((x + 1) + (y) * 40) as usize] == value {
+        if visi[((x + 1) + y * stride) as usize] == value {
             return true;
         }
-        if visi[((x - 1) + (y) * 40) as usize] == value {
+        if visi[((x - 1) + y * stride) as usize] == value {
             return true;
         }
-        if visi[((x) + (y + 1) * 40) as usize] == value {
+        if visi[(x + (y + 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x) + (y - 1) * 40) as usize] == value {
+        if visi[(x + (y - 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x + 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y + 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x + 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y - 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x - 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y + 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x - 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y - 1) * stride) as usize] == value {
             return true;
         }
 
@@ -915,37 +929,39 @@ impl GameState {
             return false;
         }
 
-        let x = x - self.ox + 20;
-        let y = y - self.oy + 20;
+        let x = x - self.ox + core::constants::VISI_CENTER;
+        let y = y - self.oy + core::constants::VISI_CENTER;
+        let stride = core::constants::VISI_STRIDE as i32;
+        let edge = core::constants::VISI_STRIDE as i32 - 1;
 
-        if x <= 0 || x >= 39 || y <= 0 || y >= 39 {
+        if x <= 0 || x >= edge || y <= 0 || y >= edge {
             return false;
         }
 
         let visi = self.vis_buf();
 
-        if visi[((x + 1) + (y) * 40) as usize] == value {
+        if visi[((x + 1) + y * stride) as usize] == value {
             return true;
         }
-        if visi[((x - 1) + (y) * 40) as usize] == value {
+        if visi[((x - 1) + y * stride) as usize] == value {
             return true;
         }
-        if visi[((x) + (y + 1) * 40) as usize] == value {
+        if visi[(x + (y + 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x) + (y - 1) * 40) as usize] == value {
+        if visi[(x + (y - 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x + 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y + 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x + 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x + 1) + (y - 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x - 1) + (y + 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y + 1) * stride) as usize] == value {
             return true;
         }
-        if visi[((x - 1) + (y - 1) * 40) as usize] == value {
+        if visi[((x - 1) + (y - 1) * stride) as usize] == value {
             return true;
         }
         false
@@ -1032,5 +1048,30 @@ impl GameState {
                 self.map[m].dlight = 0;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::game_state::StorageBackend;
+
+    #[test]
+    fn vis_index_centers_origin_in_visibility_buffer() {
+        let mut game_state = GameState::new(StorageBackend::DatFiles);
+        game_state.ox = 100;
+        game_state.oy = 100;
+
+        let expected = core::constants::VISI_CENTER as usize
+            + core::constants::VISI_CENTER as usize * core::constants::VISI_STRIDE;
+
+        assert_eq!(game_state.vis_index(100, 100), Some(expected));
+    }
+
+    #[test]
+    fn can_go_reaches_adjacent_tile_on_empty_map() {
+        let mut game_state = GameState::new(StorageBackend::DatFiles);
+
+        assert_ne!(game_state.can_go(100, 100, 101, 100), 0);
     }
 }

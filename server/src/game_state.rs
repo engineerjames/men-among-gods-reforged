@@ -111,9 +111,9 @@ pub struct GameState {
 
     // -- Visibility state (formerly State) --
     /// Scratch visibility buffer (underscore prefix preserved from original).
-    pub _visi: [i8; 40 * 40],
+    pub _visi: [i8; core::constants::VISI_BUFFER_LEN],
     /// Primary visibility buffer.
-    pub visi: [i8; 40 * 40],
+    pub visi: [i8; core::constants::VISI_BUFFER_LEN],
     /// Whether visibility is computed globally or per-character.
     pub vis_is_global: bool,
     /// Cache miss counter for visibility lookups.
@@ -199,7 +199,7 @@ impl GameState {
     /// # Returns
     ///
     /// * A freshly allocated `GameState` with all fields at their defaults.
-    fn new(backend: StorageBackend) -> Self {
+    pub(crate) fn new(backend: StorageBackend) -> Self {
         Self {
             map: vec![
                 core::types::Map::default();
@@ -228,8 +228,8 @@ impl GameState {
             item_tick_gc_count: 0,
             item_tick_expire_counter: 0,
             // Visibility state
-            _visi: [0; 40 * 40],
-            visi: [0; 40 * 40],
+            _visi: [0; core::constants::VISI_BUFFER_LEN],
+            visi: [0; core::constants::VISI_BUFFER_LEN],
             vis_is_global: true,
             see_miss: 0,
             see_hit: 0,
