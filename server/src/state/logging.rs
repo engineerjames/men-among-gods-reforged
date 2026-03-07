@@ -2,15 +2,11 @@ use core::constants::{CharacterFlags, CT_LGUARD, MAXCHARS, MAXPLAYER};
 use std::cmp;
 use std::sync::OnceLock;
 
-use crate::network_manager::NetworkManager;
-use crate::repository::Repository;
-use crate::server::Server;
+use crate::game_state::GameState;
 use crate::talk::npc_hear;
 use crate::types::server_player::ServerPlayer;
 
-use super::State;
-
-impl State {
+impl GameState {
     /// Port of `do_character_log(character_id, font, message)` from the original
     /// server sources.
     ///
@@ -24,26 +20,24 @@ impl State {
     /// * `font` - Font/color to use for the message
     /// * `message` - The text to send
     pub(crate) fn do_character_log(
-        &self,
+        &mut self,
         character_id: usize,
         font: core::types::FontColor,
         message: &str,
     ) {
-        Repository::with_characters(|characters| {
-            let ch = &characters[character_id];
-            if ch.player == 0 && ch.temp != CT_LGUARD as u16 {
-                return;
-            }
+        let ch = &mut self.characters[character_id];
+        if ch.player == 0 && ch.temp != CT_LGUARD as u16 {
+            return;
+        }
 
-            // TODO: Think of a better way to handle newlines
-            let message_with_newline = if message.ends_with('\n') {
-                message.to_string()
-            } else {
-                format!("{}\n", message)
-            };
+        // TODO: Think of a better way to handle newlines
+        let message_with_newline = if message.ends_with('\n') {
+            message.to_string()
+        } else {
+            format!("{}\n", message)
+        };
 
-            self.do_log(character_id, font, &message_with_newline);
-        });
+        self.do_log(character_id, font, &message_with_newline);
     }
 
     /// Port of `do_log(character_id, font, message)` from the original server.
@@ -57,7 +51,7 @@ impl State {
     /// * `cn` - Character whose player will receive the message
     /// * `font` - Color/font modifier for the message
     /// * `message` - Message text (may be longer than a single packet)
-    fn do_log(&self, cn: usize, font: core::types::FontColor, message: &str) {
+    fn do_log(&mut self, cn: usize, font: core::types::FontColor, message: &str) {
         log::debug!(
             "do_log: cn={}, font={:?}, message='{}'",
             cn,
@@ -66,7 +60,7 @@ impl State {
         );
         let mut buffer: [u8; 16] = [0; 16];
 
-        let player_number = Repository::with_characters(|ch| ch[cn].player) as usize;
+        let player_number = self.characters[cn].player as usize;
 
         if !ServerPlayer::is_sane_player(player_number) {
             log::error!(
@@ -77,8 +71,8 @@ impl State {
             return;
         }
 
-        if Server::with_players(|players| players[player_number].usnr) != cn {
-            Repository::with_characters_mut(|ch| ch[cn].player = 0);
+        if self.players[player_number].usnr != cn {
+            self.characters[cn].player = 0;
             return;
         }
         let bytes = message.as_bytes();
@@ -98,9 +92,7 @@ impl State {
                 *b = 0;
             }
 
-            NetworkManager::with(|network| {
-                network.xsend(player_number, &buffer, 16);
-            });
+            crate::network_manager::xsend(self, player_number, &buffer, 16);
 
             pos += take;
             if pos >= len {
@@ -123,7 +115,7 @@ impl State {
     /// * `font` - Color/font for the message
     /// * `message` - Text to broadcast
     pub(crate) fn do_area_log(
-        &self,
+        &mut self,
         cn: usize,
         co: usize,
         xs: i32,
@@ -138,31 +130,27 @@ impl State {
 
         let mut recipients: Vec<usize> = Vec::new();
 
-        Repository::with_map(|map| {
-            for y in y_min..y_max {
-                let row_base = y * core::constants::SERVER_MAPX;
-                for x in x_min..x_max {
-                    let idx = (x + row_base) as usize;
-                    let cc = map[idx].ch as usize;
-                    if cc == 0 || cc == cn || cc == co {
-                        continue;
-                    }
-                    recipients.push(cc);
+        for y in y_min..y_max {
+            let row_base = y * core::constants::SERVER_MAPX;
+            for x in x_min..x_max {
+                let idx = (x + row_base) as usize;
+                let cc = self.map[idx].ch as usize;
+                if cc == 0 || cc == cn || cc == co {
+                    continue;
                 }
+                recipients.push(cc);
             }
-        });
+        }
 
-        let recipients: Vec<usize> = Repository::with_characters(|characters| {
-            recipients
-                .into_iter()
-                .filter(|cc| {
-                    *cc < MAXCHARS
-                        && characters[*cc].used == core::constants::USE_ACTIVE
-                        && characters[*cc].player != 0
-                        && (characters[*cc].flags & CharacterFlags::Player.bits()) != 0
-                })
-                .collect()
-        });
+        let recipients: Vec<usize> = recipients
+            .into_iter()
+            .filter(|cc| {
+                *cc < MAXCHARS
+                    && self.characters[*cc].used == core::constants::USE_ACTIVE
+                    && self.characters[*cc].player != 0
+                    && (self.characters[*cc].flags & CharacterFlags::Player.bits()) != 0
+            })
+            .collect();
 
         for cc in recipients {
             self.do_character_log(cc, font, message);
@@ -179,19 +167,17 @@ impl State {
     /// # Arguments
     /// * `character_id` - Speaker character id
     /// * `message` - Raw speech text
-    pub(crate) fn do_sayx(&self, character_id: usize, message: &str) {
+    pub(crate) fn do_sayx(&mut self, character_id: usize, message: &str) {
         let mut buf = message.to_string();
-        Self::process_options(character_id, &mut buf);
+        self.process_options(character_id, &mut buf);
 
-        let (x, y, is_player, name) = Repository::with_characters(|characters| {
-            let ch = &characters[character_id];
-            (
-                ch.x as i32,
-                ch.y as i32,
-                (ch.flags & CharacterFlags::Player.bits()) != 0,
-                ch.get_name().to_string(),
-            )
-        });
+        let ch = &mut self.characters[character_id];
+        let (x, y, is_player, name) = (
+            ch.x as i32,
+            ch.y as i32,
+            (ch.flags & CharacterFlags::Player.bits()) != 0,
+            ch.get_name().to_string(),
+        );
 
         let name_short: String = name.chars().take(30).collect();
         let msg_short: String = buf.chars().take(300).collect();
@@ -218,10 +204,14 @@ impl State {
     /// * `sound` - Sound id to play
     /// * `vol` - Volume modifier
     /// * `pan` - Stereo pan modifier
-    pub(crate) fn char_play_sound(character_id: usize, sound: i32, vol: i32, pan: i32) {
-        let matching_player_id = Server::with_players(|players| {
-            (0..MAXPLAYER).find(|&i| players[i].usnr == character_id)
-        });
+    pub(crate) fn char_play_sound(
+        gs: &mut GameState,
+        character_id: usize,
+        sound: i32,
+        vol: i32,
+        pan: i32,
+    ) {
+        let matching_player_id = (0..MAXPLAYER).find(|&i| gs.players[i].usnr == character_id);
 
         let Some(player_id) = matching_player_id else {
             log::debug!(
@@ -237,9 +227,7 @@ impl State {
         buf[5..9].copy_from_slice(&vol.to_le_bytes());
         buf[9..13].copy_from_slice(&pan.to_le_bytes());
 
-        NetworkManager::with(|network| {
-            network.xsend(player_id, &buf, 13);
-        });
+        crate::network_manager::xsend(gs, player_id, &buf, 13);
     }
 
     /// Port of `do_area_sound(cn, co, xs, ys, nr)` from the original server.
@@ -253,7 +241,7 @@ impl State {
     /// * `co` - Second character to exclude
     /// * `xs, ys` - Coordinates of the sound source
     /// * `nr` - Sound id
-    pub(crate) fn do_area_sound(cn: usize, co: usize, xs: i32, ys: i32, nr: i32) {
+    pub(crate) fn do_area_sound(&mut self, cn: usize, co: usize, xs: i32, ys: i32, nr: i32) {
         let x_min = cmp::max(0, xs - 8);
         let x_max = cmp::min(core::constants::SERVER_MAPX, xs + 9);
         let y_min = cmp::max(0, ys - 8);
@@ -261,46 +249,41 @@ impl State {
 
         let mut recipients: Vec<(usize, i32, i32)> = Vec::new();
 
-        Repository::with_map(|map| {
-            for y in y_min..y_max {
-                let row_base = y * core::constants::SERVER_MAPX;
-                for x in x_min..x_max {
-                    let idx = (x + row_base) as usize;
-                    let cc = map[idx].ch as usize;
-                    if cc == 0 || cc == cn || cc == co {
-                        continue;
-                    }
-
-                    let s = ys - y + xs - x;
-                    let xpan = if s < 0 {
-                        -500
-                    } else if s > 0 {
-                        500
-                    } else {
-                        0
-                    };
-
-                    let dist2 = (ys - y) * (ys - y) + (xs - x) * (xs - x);
-                    let mut xvol = -150 - dist2 * 30;
-                    if xvol < -5000 {
-                        xvol = -5000;
-                    }
-
-                    recipients.push((cc, xvol, xpan));
+        for y in y_min..y_max {
+            let row_base = y * core::constants::SERVER_MAPX;
+            for x in x_min..x_max {
+                let idx = (x + row_base) as usize;
+                let cc = self.map[idx].ch as usize;
+                if cc == 0 || cc == cn || cc == co {
+                    continue;
                 }
-            }
-        });
 
-        let recipients_with_player: Vec<(usize, i32, i32)> =
-            Repository::with_characters(|characters| {
-                recipients
-                    .into_iter()
-                    .filter(|(cc, _, _)| characters[*cc].player != 0)
-                    .collect()
-            });
+                let s = ys - y + xs - x;
+                let xpan = if s < 0 {
+                    -500
+                } else if s > 0 {
+                    500
+                } else {
+                    0
+                };
+
+                let dist2 = (ys - y) * (ys - y) + (xs - x) * (xs - x);
+                let mut xvol = -150 - dist2 * 30;
+                if xvol < -5000 {
+                    xvol = -5000;
+                }
+
+                recipients.push((cc, xvol, xpan));
+            }
+        }
+
+        let recipients_with_player: Vec<(usize, i32, i32)> = recipients
+            .into_iter()
+            .filter(|(cc, _, _)| self.characters[*cc].player != 0)
+            .collect();
 
         for (cc, vol, pan) in recipients_with_player {
-            Self::char_play_sound(cc, nr, vol, pan);
+            Self::char_play_sound(self, cc, nr, vol, pan);
         }
     }
 
@@ -313,7 +296,7 @@ impl State {
     /// # Arguments
     /// * `character_id` - Speaker character id
     /// * `buf` - Mutable message buffer to strip options from
-    pub(crate) fn process_options(character_id: usize, buf: &mut String) {
+    pub(crate) fn process_options(&mut self, character_id: usize, buf: &mut String) {
         if !buf.starts_with('#') {
             return;
         }
@@ -338,11 +321,9 @@ impl State {
         buf.drain(..idx);
 
         if sound_id != 0 {
-            let (x, y) = Repository::with_characters(|characters| {
-                let ch = &characters[character_id];
-                (ch.x as i32, ch.y as i32)
-            });
-            Self::do_area_sound(character_id, 0, x, y, sound_id);
+            let x = self.characters[character_id].x as i32;
+            let y = self.characters[character_id].y as i32;
+            self.do_area_sound(character_id, 0, x, y, sound_id);
         }
     }
 
@@ -354,13 +335,13 @@ impl State {
     /// # Arguments
     /// * `font` - Font/color to use
     /// * `text` - Message text
-    pub(crate) fn do_imp_log(&self, font: core::types::FontColor, text: &str) {
+    pub(crate) fn do_imp_log(&mut self, font: core::types::FontColor, text: &str) {
         for n in 1..core::constants::MAXCHARS {
-            if Repository::with_characters(|ch| {
-                ch[n].player != 0
-                    && (ch[n].flags & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()))
-                        != 0
-            }) {
+            if self.characters[n].player != 0
+                && (self.characters[n].flags
+                    & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()))
+                    != 0
+            {
                 self.do_log(n, font, text);
             }
         }
@@ -376,7 +357,7 @@ impl State {
     /// * `source` - Source character id (for visibility checks)
     /// * `author` - Optional author character id to prefix the message
     /// * `text` - Message text
-    pub(crate) fn do_caution(&self, source: usize, author: usize, text: &str) {
+    pub(crate) fn do_caution(&mut self, source: usize, author: usize, text: &str) {
         if text.is_empty() {
             log::error!("do_caution called with empty text");
             return;
@@ -385,20 +366,18 @@ impl State {
         let named = if author != 0 {
             format!(
                 "[{}] {}\n",
-                Repository::with_characters(|ch| ch[author].get_name().to_string()),
+                self.characters[author].get_name().to_string(),
                 anon
             )
         } else {
             anon.clone()
         };
         for n in 1..core::constants::MAXCHARS {
-            if !Repository::with_characters(|ch| {
-                ch[n].player != 0 || ch[n].temp == CT_LGUARD as u16
-            }) {
+            if !(self.characters[n].player != 0 || self.characters[n].temp == CT_LGUARD as u16) {
                 continue;
             }
             if source != 0
-                && (Repository::with_characters(|ch2| ch2[source].flags)
+                && (self.characters[source].flags
                     & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()))
                     != 0
             {
@@ -419,7 +398,7 @@ impl State {
     /// * `source` - Source character id for visibility rules
     /// * `author` - Optional author to prefix the message
     /// * `text` - Announcement text
-    pub(crate) fn do_announce(&self, source: usize, author: usize, text: &str) {
+    pub(crate) fn do_announce(&mut self, source: usize, author: usize, text: &str) {
         if text.is_empty() {
             log::error!("do_announce called with empty text");
             return;
@@ -428,7 +407,7 @@ impl State {
         let named = if author != 0 {
             format!(
                 "[{}] {}\n",
-                Repository::with_characters(|ch| ch[author].get_name().to_string()),
+                self.characters[author].get_name().to_string(),
                 anon
             )
         } else {
@@ -436,19 +415,14 @@ impl State {
         };
         for n in 1..core::constants::MAXCHARS {
             // Exclude if not a player and not temp==15
-            if !Repository::with_characters(|ch| {
-                ch[n].player != 0 || ch[n].temp == CT_LGUARD as u16
-            }) {
+            if !(self.characters[n].player != 0 || self.characters[n].temp == CT_LGUARD as u16) {
                 continue;
             }
             // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
             if source != 0 {
-                let (src_flags, src_invis_level) = Repository::with_characters(|ch| {
-                    let f = ch[source].flags;
-                    let lvl = crate::helpers::invis_level(source);
-                    (f, lvl)
-                });
-                let n_invis_level = crate::helpers::invis_level(n);
+                let src_flags = self.characters[source].flags;
+                let src_invis_level = crate::helpers::invis_level(&self.characters[source]);
+                let n_invis_level = crate::helpers::invis_level(&self.characters[n]);
                 if (src_flags
                     & (core::constants::CharacterFlags::Invisible.bits()
                         | core::constants::CharacterFlags::NoWho.bits()))
@@ -475,7 +449,7 @@ impl State {
     /// characters only. Visibility/invisibility rules are applied when a
     /// `source` is provided.
     #[allow(dead_code)]
-    pub(crate) fn do_admin_log(&self, source: i32, text: &str) {
+    pub(crate) fn do_admin_log(&mut self, source: i32, text: &str) {
         if text.is_empty() {
             log::error!("do_admin_log called with empty text");
             return;
@@ -483,27 +457,24 @@ impl State {
 
         for n in 1..core::constants::MAXCHARS {
             // Exclude if not a player
-            if !Repository::with_characters(|ch| ch[n].player != 0) {
+            if self.characters[n].player == 0 {
                 continue;
             }
             // Only to staff, IMP, or USURP
-            if !Repository::with_characters(|ch| {
-                (ch[n].flags
-                    & (CharacterFlags::Staff.bits()
-                        | CharacterFlags::Imp.bits()
-                        | CharacterFlags::Usurp.bits()))
-                    != 0
-            }) {
+            if (self.characters[n].flags
+                & (CharacterFlags::Staff.bits()
+                    | CharacterFlags::Imp.bits()
+                    | CharacterFlags::Usurp.bits()))
+                == 0
+            {
                 continue;
             }
             // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
             if source > 0 {
-                let (src_flags, src_invis_level) = Repository::with_characters(|ch| {
-                    let f = ch[source as usize].flags;
-                    let lvl = crate::helpers::invis_level(source as usize);
-                    (f, lvl)
-                });
-                let n_invis_level = crate::helpers::invis_level(n);
+                let src_flags = self.characters[source as usize].flags;
+                let src_invis_level =
+                    crate::helpers::invis_level(&self.characters[source as usize]);
+                let n_invis_level = crate::helpers::invis_level(&self.characters[n]);
                 if (src_flags
                     & (core::constants::CharacterFlags::Invisible.bits()
                         | core::constants::CharacterFlags::NoWho.bits()))
@@ -525,21 +496,20 @@ impl State {
     /// # Arguments
     /// * `font` - Font/color to use
     /// * `text` - Message text
-    pub(crate) fn do_staff_log(&self, font: core::types::FontColor, text: &str) {
+    pub(crate) fn do_staff_log(&mut self, font: core::types::FontColor, text: &str) {
         if text.is_empty() {
             log::error!("do_staff_log called with empty text");
             return;
         }
         for n in 1..core::constants::MAXCHARS {
-            if Repository::with_characters(|ch| {
-                ch[n].player != 0
-                    && (ch[n].flags
-                        & (CharacterFlags::Staff.bits()
-                            | CharacterFlags::Imp.bits()
-                            | CharacterFlags::Usurp.bits()))
-                        != 0
-                    && (ch[n].flags & CharacterFlags::NoStaff.bits()) == 0
-            }) {
+            if self.characters[n].player != 0
+                && (self.characters[n].flags
+                    & (CharacterFlags::Staff.bits()
+                        | CharacterFlags::Imp.bits()
+                        | CharacterFlags::Usurp.bits()))
+                    != 0
+                && (self.characters[n].flags & CharacterFlags::NoStaff.bits()) == 0
+            {
                 self.do_log(n, font, text);
             }
         }
@@ -560,15 +530,13 @@ impl State {
         // Build messages
         let msg_named = format!(
             "{}: \"{}\"\n",
-            Repository::with_characters(|ch| ch[cn].get_name().to_string()),
+            self.characters[cn].get_name().to_string(),
             text
         );
         let msg_invis = format!("Somebody says: \"{}\"\n", text);
 
         // Check invisibility of speaker
-        let invis = Repository::with_characters(|ch| {
-            (ch[cn].flags & CharacterFlags::Invisible.bits()) != 0
-        });
+        let invis = (self.characters[cn].flags & CharacterFlags::Invisible.bits()) != 0;
 
         // Static spiral generation (port of initspiral / areaspiral[] from original C++)
         static AREASPIRAL: OnceLock<Vec<i32>> = OnceLock::new();
@@ -615,30 +583,29 @@ impl State {
                 continue;
             }
 
-            let cc = Repository::with_map(|map| map[m as usize].ch as usize);
+            let cc = self.map[m as usize].ch as usize;
 
             if cc == 0 {
                 continue;
             }
 
             // Check if cc is a sane character (active/used). If helper missing, leave TODO
-            let sane = Repository::with_characters(|ch| {
-                ch[cc].used == core::constants::USE_ACTIVE || ch[cc].temp == CT_LGUARD as u16
-            });
+            let sane = self.characters[cc].used == core::constants::USE_ACTIVE
+                || self.characters[cc].temp == CT_LGUARD as u16;
             if !sane {
                 continue;
             }
 
             // If listener is a player (or usurp), handle visibility immediately
-            let is_player_or_usurp = Repository::with_characters(|ch| {
-                (ch[cc].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-            });
+            let is_player_or_usurp = (self.characters[cc].flags
+                & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+                != 0;
 
             if is_player_or_usurp {
                 // Respect speaker invisibility and listener's invis level
                 let show_named = !invis
-                    || Repository::with_characters(|ch| ch[cn].get_invisibility_level())
-                        <= Repository::with_characters(|ch| ch[cc].get_invisibility_level());
+                    || self.characters[cn].get_invisibility_level()
+                        <= self.characters[cc].get_invisibility_level();
                 if show_named {
                     self.do_character_log(cc, core::types::FontColor::Blue, &msg_named);
                 } else {
@@ -660,7 +627,7 @@ impl State {
             let can_see = self.do_char_can_see(npc, cn);
 
             if can_see != 0 {
-                npc_hear(npc, cn, text);
+                npc_hear(self, npc, cn, text);
             }
         }
     }

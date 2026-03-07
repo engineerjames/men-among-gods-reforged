@@ -1,10 +1,10 @@
 use core::{
     constants::{CharacterFlags, AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL},
     string_operations::c_string_to_str,
-    types::FontColor,
+    types::{Character, FontColor},
 };
 
-use crate::{driver, god::God, populate, repository::Repository, state::State};
+use crate::{driver, game_state::GameState, god::God, populate};
 
 #[macro_export]
 macro_rules! chlog {
@@ -76,97 +76,94 @@ pub fn write_c_string(buf: &mut [u8], s: &str) {
 ///
 /// Creates a template item, then applies randomized prefix/suffix modifiers, sprite overrides,
 /// and rewrites name/reference/description. Returns the new item id, or `None` if creation fails.
-pub fn create_special_item(temp: usize) -> Option<usize> {
-    let item_id = God::create_item(temp)?;
+pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
+    let item_id = God::create_item(gs, temp)?;
+    let item = &mut gs.items[item_id];
 
-    Repository::with_items_mut(|items| {
-        let item = &mut items[item_id];
+    // Match C: the resulting item should not be linked to its original template.
+    item.temp = 0;
 
-        // Match C: the resulting item should not be linked to its original template.
-        item.temp = 0;
-
-        let mut mul: i16 = 1;
-        let pref: &str = match random_mod_usize(8) {
-            0 => {
-                // "Shining " +10 light
-                item.light[0] += 10;
-                "Shining "
-            }
-            1 => {
-                // "Godly " doubles suffix bonuses
-                mul = 2;
-                "Godly "
-            }
-            _ => "",
-        };
-
-        let suffix: &str = match random_mod_usize(8) {
-            0 => {
-                item.attrib[AT_BRAVE as usize][0] += 4 * mul as i8;
-                " of the Lion"
-            }
-            1 => {
-                item.attrib[AT_WILL as usize][0] += 4 * mul as i8;
-                " of the Snake"
-            }
-            2 => {
-                item.attrib[AT_INT as usize][0] += 4 * mul as i8;
-                " of the Owl"
-            }
-            3 => {
-                item.attrib[AT_AGIL as usize][0] += 4 * mul as i8;
-                " of the Weasel"
-            }
-            4 => {
-                item.attrib[AT_STREN as usize][0] += 4 * mul as i8;
-                " of the Bear"
-            }
-            5 => {
-                item.mana[0] += 10 * mul;
-                " of Magic"
-            }
-            6 => {
-                item.hp[0] += 10 * mul;
-                " of Life"
-            }
-            7 => {
-                item.armor[0] += 2 * mul as i8;
-                " of Defence"
-            }
-            _ => "",
-        };
-
-        let spr: i16 = match temp {
-            57 => 840,    // Bronze Helmet
-            59 => 845,    // Bronze Armor
-            63 => 830,    // Steel Helmt
-            65 => 835,    // Steel Armor
-            69 => 870,    // Golden Helmet
-            71 => 875,    // Golden Armor
-            75 => 850,    // Crystal Helmet
-            76 => 855,    // Crystal Armor
-            94 => 860,    // Titanium Helmet
-            95 => 865,    // Titanium Armor
-            981 => 16775, // Emerald Helmet
-            982 => 16780, // Emerald Armor
-            _ => item.sprite[0],
-        };
-
-        item.sprite[0] = spr;
-        item.max_damage = 0;
-
-        let base_name = c_string_to_str(&item.name);
-        let combined = format!("{}{}{}", pref, base_name, suffix);
-
-        write_c_string(&mut item.name, &combined);
-        // Match C: titlecase first letter of *name* only.
-        if let Some(b0) = item.name.first_mut() {
-            *b0 = b0.to_ascii_uppercase();
+    let mut mul: i16 = 1;
+    let pref: &str = match random_mod_usize(8) {
+        0 => {
+            // "Shining " +10 light
+            item.light[0] += 10;
+            "Shining "
         }
+        1 => {
+            // "Godly " doubles suffix bonuses
+            mul = 2;
+            "Godly "
+        }
+        _ => "",
+    };
 
-        write_c_string(&mut item.reference, &combined);
-        write_c_string(&mut item.description, &format!("A {}.", combined));
-    });
+    let suffix: &str = match random_mod_usize(8) {
+        0 => {
+            item.attrib[AT_BRAVE as usize][0] += 4 * mul as i8;
+            " of the Lion"
+        }
+        1 => {
+            item.attrib[AT_WILL as usize][0] += 4 * mul as i8;
+            " of the Snake"
+        }
+        2 => {
+            item.attrib[AT_INT as usize][0] += 4 * mul as i8;
+            " of the Owl"
+        }
+        3 => {
+            item.attrib[AT_AGIL as usize][0] += 4 * mul as i8;
+            " of the Weasel"
+        }
+        4 => {
+            item.attrib[AT_STREN as usize][0] += 4 * mul as i8;
+            " of the Bear"
+        }
+        5 => {
+            item.mana[0] += 10 * mul;
+            " of Magic"
+        }
+        6 => {
+            item.hp[0] += 10 * mul;
+            " of Life"
+        }
+        7 => {
+            item.armor[0] += 2 * mul as i8;
+            " of Defence"
+        }
+        _ => "",
+    };
+
+    let spr: i16 = match temp {
+        57 => 840,    // Bronze Helmet
+        59 => 845,    // Bronze Armor
+        63 => 830,    // Steel Helmt
+        65 => 835,    // Steel Armor
+        69 => 870,    // Golden Helmet
+        71 => 875,    // Golden Armor
+        75 => 850,    // Crystal Helmet
+        76 => 855,    // Crystal Armor
+        94 => 860,    // Titanium Helmet
+        95 => 865,    // Titanium Armor
+        981 => 16775, // Emerald Helmet
+        982 => 16780, // Emerald Armor
+        _ => item.sprite[0],
+    };
+
+    item.sprite[0] = spr;
+    item.max_damage = 0;
+
+    let base_name = c_string_to_str(&item.name);
+    let combined = format!("{}{}{}", pref, base_name, suffix);
+
+    write_c_string(&mut item.name, &combined);
+    // Match C: titlecase first letter of *name* only.
+    if let Some(b0) = item.name.first_mut() {
+        *b0 = b0.to_ascii_uppercase();
+    }
+
+    write_c_string(&mut item.reference, &combined);
+    write_c_string(&mut item.description, &format!("A {}.", combined));
 
     Some(item_id)
 }
@@ -179,21 +176,21 @@ pub fn create_special_item(temp: usize) -> Option<usize> {
 /// into the lab. Returns `true` on success, `false` on failure.
 ///
 /// # Arguments
+/// * `gs` - Unified mutable game state
 /// * `cn` - Player character initiating the lab transfer
 /// * `nr` - Lab number (determines enemy template)
 /// * `exp` - Experience reward associated with the lab
-pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
-    use crate::repository::Repository;
+pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool {
     use core::constants::{CharacterFlags, SERVER_MAPX};
     // 1. Check if area is busy (any player or labkeeper in 164..184 x 159..178)
     let mut busy_name: Option<String> = None;
     'outer: for y in 159..179 {
         for x in 164..=184 {
-            let co = Repository::with_map(|map| map[x + y * SERVER_MAPX as usize].ch as usize);
+            let co = gs.map[x + y * SERVER_MAPX as usize].ch as usize;
             if co != 0 {
-                let flags = Repository::with_characters(|ch| ch[co].flags);
+                let flags = gs.characters[co].flags;
                 if flags & (CharacterFlags::Player.bits() | CharacterFlags::LabKeeper.bits()) != 0 {
-                    let name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                    let name = gs.characters[co].get_name().to_string();
                     busy_name = Some(name);
                     break 'outer;
                 }
@@ -201,19 +198,17 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         }
     }
     if let Some(name) = busy_name {
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                &format!("Sorry, the area is still busy. {} is there.\n", name),
-            );
-            log::info!(
-                "Player {} attempted to enter lab {}, but area is busy with {}",
-                Repository::with_characters(|ch| ch[cn].get_name().to_string()),
-                nr,
-                name
-            );
-        });
+        gs.do_character_log(
+            cn,
+            FontColor::Red,
+            &format!("Sorry, the area is still busy. {} is there.\n", name),
+        );
+        log::info!(
+            "Player {} attempted to enter lab {}, but area is busy with {}",
+            gs.characters[cn].get_name().to_string(),
+            nr,
+            name
+        );
         return false;
     }
 
@@ -229,82 +224,71 @@ pub fn use_labtransfer(cn: usize, nr: i32, exp: i32) -> bool {
         8 => 845, // forest/golem
         9 => 919, // riddle
         _ => {
-            State::with(|state| {
-                state.do_character_log(
-                    cn,
-                    FontColor::Red,
-                    "Sorry, could not determine which enemy to send you.\n",
-                )
-            });
+            gs.do_character_log(
+                cn,
+                FontColor::Red,
+                "Sorry, could not determine which enemy to send you.\n",
+            );
             chlog!(cn, "Sorry, could not determine which enemy to send you");
             return false;
         }
     };
 
     // pop_create_char(template, 0): create the enemy character (assume function exists)
-    let co = match populate::pop_create_char(template, false) {
+    let co = match populate::pop_create_char(gs, template, false) {
         Some(co) => co,
         None => {
             chlog!(cn, "Sorry, could not create your enemy.");
-            State::with(|state| {
-                state.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
-                log::error!(
-                    "use_labtransfer: pop_create_char({}) failed for player {}",
-                    template,
-                    Repository::with_characters(|ch| ch[cn].get_name().to_string())
-                );
-            });
+            gs.do_character_log(cn, FontColor::Red, "Sorry, could not create your enemy.\n");
+            log::error!(
+                "use_labtransfer: pop_create_char({}) failed for player {}",
+                template,
+                gs.characters[cn].get_name().to_string()
+            );
             return false;
         }
     };
 
-    if !God::drop_char(co, 174, 172) {
-        State::with(|state| {
-            state.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
-            log::error!(
-                "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
-                co,
-                Repository::with_characters(|ch| ch[cn].get_name().to_string())
-            );
-        });
-        God::destroy_items(co);
-        Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
+    if !God::drop_char(gs, co, 174, 172) {
+        gs.do_character_log(cn, FontColor::Red, "Sorry, could not place your enemy.\n");
+        log::error!(
+            "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
+            co,
+            gs.characters[cn].get_name().to_string()
+        );
+        God::destroy_items(gs, co);
+        gs.characters[co].used = core::constants::USE_EMPTY;
         return false;
     }
 
     // Set up enemy data fields and flags
-    Repository::with_characters_mut(|ch| {
-        ch[co].data[64] =
-            Repository::with_globals(|globs| globs.ticker) + 5 * 60 * core::constants::TICKS; // die in 2 min
-        ch[co].data[24] = 0; // do not interfere in fights
-        ch[co].data[36] = 0; // no walking around
-        ch[co].data[43] = 0; // don't attack anyone
-        ch[co].data[80] = 0; // no enemies
-        ch[co].data[0] = cn as i32; // person to make solve
-        ch[co].data[1] = nr; // labnr
-        ch[co].data[2] = exp; // exp plr is supposed to get
-        ch[co].flags |= CharacterFlags::LabKeeper.bits() | CharacterFlags::NoSleep.bits();
-        ch[co].flags &= !CharacterFlags::Respawn.bits();
-    });
+    gs.characters[co].data[64] = gs.globals.ticker + 5 * 60 * core::constants::TICKS; // die in 2 min
+    gs.characters[co].data[24] = 0; // do not interfere in fights
+    gs.characters[co].data[36] = 0; // no walking around
+    gs.characters[co].data[43] = 0; // don't attack anyone
+    gs.characters[co].data[80] = 0; // no enemies
+    gs.characters[co].data[0] = cn as i32; // person to make solve
+    gs.characters[co].data[1] = nr; // labnr
+    gs.characters[co].data[2] = exp; // exp plr is supposed to get
+    gs.characters[co].flags |= CharacterFlags::LabKeeper.bits() | CharacterFlags::NoSleep.bits();
+    gs.characters[co].flags &= !CharacterFlags::Respawn.bits();
 
     // npc_add_enemy(co, cn, 1): make him attack the solver (assume function exists)
-    driver::npc_add_enemy(co, cn, true);
+    driver::npc_add_enemy(gs, co, cn, true);
 
     // god_transfer_char(cn, 174, 166): transfer player (assume function exists)
-    if !God::transfer_char(cn, 174, 166) {
-        State::with(|state| {
-            state.do_character_log(
-                cn,
-                FontColor::Red,
-                "Sorry, could not transfer you to your enemy.\n",
-            );
-            log::error!(
-                "use_labtransfer: god_transfer_char({}, 174, 166) failed",
-                Repository::with_characters(|ch| ch[cn].get_name().to_string())
-            );
-        });
-        God::destroy_items(co);
-        Repository::with_characters_mut(|ch| ch[co].used = core::constants::USE_EMPTY);
+    if !God::transfer_char(gs, cn, 174, 166) {
+        gs.do_character_log(
+            cn,
+            FontColor::Red,
+            "Sorry, could not transfer you to your enemy.\n",
+        );
+        log::error!(
+            "use_labtransfer: god_transfer_char({}, 174, 166) failed",
+            gs.characters[cn].get_name().to_string()
+        );
+        God::destroy_items(gs, co);
+        gs.characters[co].used = core::constants::USE_EMPTY;
         return false;
     }
     chlog!(cn, "Entered Labkeeper room for lab {}", nr);
@@ -422,21 +406,19 @@ pub fn get_class_name(nr: i32) -> &'static str {
 /// # Arguments
 /// * `cn` - Character index owning the kill record
 /// * `val` - Monster class id
-pub fn killed_class(cn: usize, val: i32) -> bool {
-    Repository::with_characters_mut(|characters| {
-        let (bit, data_idx) = if val < 32 {
-            (1 << val, 60)
-        } else if val < 64 {
-            (1 << (val - 32), 61)
-        } else if val < 96 {
-            (1 << (val - 64), 62)
-        } else {
-            (1 << (val - 96), 63)
-        };
-        let tmp = characters[cn].data[data_idx] & bit;
-        characters[cn].data[data_idx] |= bit;
-        tmp != 0
-    })
+pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
+    let (bit, data_idx) = if val < 32 {
+        (1 << val, 60)
+    } else if val < 64 {
+        (1 << (val - 32), 61)
+    } else if val < 96 {
+        (1 << (val - 64), 62)
+    } else {
+        (1 << (val - 96), 63)
+    };
+    let tmp = gs.characters[cn].data[data_idx] & bit;
+    gs.characters[cn].data[data_idx] |= bit;
+    tmp != 0
 }
 
 /// Short rank names used in compact `who` displays.
@@ -481,9 +463,12 @@ pub fn ago_string(dt: u128) -> String {
 ///
 /// Port of the original `show_time(int cn)` which printed something like:
 /// "It's H:MM on the Dth of the Mth month of the year Y."
-pub fn show_time(cn: usize) {
+pub fn show_time(gs: &mut GameState, cn: usize) {
     // Read time values from globals
-    let (mdtime, mdday, mdyear) = Repository::with_globals(|g| (g.mdtime, g.mdday, g.mdyear));
+    let (mdtime, mdday, mdyear) = {
+        let g = &gs.globals;
+        (g.mdtime, g.mdday, g.mdyear)
+    };
 
     let hour = mdtime / (60 * 60);
     let minute = (mdtime / 60) % 60;
@@ -507,16 +492,14 @@ pub fn show_time(cn: usize) {
     let day_suf = ordinal_suffix(day);
     let month_suf = ordinal_suffix(month);
 
-    State::with(|state| {
-        state.do_character_log(
-            cn,
-            core::types::FontColor::Yellow,
-            &format!(
-                "It's {}:{:02} on the {}{} of the {}{} month of the year {}.\n",
-                hour, minute, day, day_suf, month, month_suf, year
-            ),
-        );
-    });
+    gs.do_character_log(
+        cn,
+        core::types::FontColor::Yellow,
+        &format!(
+            "It's {}:{:02} on the {}{} of the {}{} month of the year {}.\n",
+            hour, minute, day, day_suf, month, month_suf, year
+        ),
+    );
 }
 
 // WTF is this some kind of weird hash function?
@@ -526,20 +509,18 @@ pub fn show_time(cn: usize) {
 /// a compact identifier from the character name and password fields.
 ///
 /// # Arguments
-/// * `cn` - Character index
-pub fn char_id(cn: usize) -> i32 {
-    Repository::with_characters(|characters| {
-        let mut id = 0;
+/// * `ch` - Character data to hash.
+pub fn char_id(ch: &Character) -> i32 {
+    let mut id = 0;
 
-        for n in (0..40).step_by(std::mem::size_of::<i32>()) {
-            id ^= characters[cn].name[n] as u32;
-        }
+    for n in (0..40).step_by(std::mem::size_of::<i32>()) {
+        id ^= ch.name[n] as u32;
+    }
 
-        id ^= characters[cn].pass1;
-        id ^= characters[cn].pass2;
+    id ^= ch.pass1;
+    id ^= ch.pass2;
 
-        id as i32
-    })
+    id as i32
 }
 
 /// Calculate experience required to reach the next rank from `current_experience`.
@@ -589,13 +570,11 @@ pub fn points_tolevel(current_experience: u32) -> u32 {
 /// characters, based on their total experience.
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
-pub fn rankdiff(cn: i32, co: i32) -> i32 {
-    let cn_experience =
-        Repository::with_characters(|characters| characters[cn as usize].points_tot as u32);
-    let co_experience =
-        Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
+/// * `cn` - First character.
+/// * `co` - Second character.
+pub fn rankdiff(cn: &Character, co: &Character) -> i32 {
+    let cn_experience = cn.points_tot as u32;
+    let co_experience = co.points_tot as u32;
 
     core::ranks::points2rank(co_experience) as i32 - core::ranks::points2rank(cn_experience) as i32
 }
@@ -603,29 +582,29 @@ pub fn rankdiff(cn: i32, co: i32) -> i32 {
 /// Absolute rank difference between two characters.
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
-pub fn absrankdiff(cn: i32, co: i32) -> u32 {
+/// * `cn` - First character.
+/// * `co` - Second character.
+pub fn absrankdiff(cn: &Character, co: &Character) -> u32 {
     rankdiff(cn, co).abs() as u32
 }
 
 /// Check whether two characters are within attack range (unused helper).
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
+/// * `cn` - First character.
+/// * `co` - Second character.
 #[allow(dead_code)]
-pub fn in_attackrange(cn: i32, co: i32) -> bool {
+pub fn in_attackrange(cn: &Character, co: &Character) -> bool {
     absrankdiff(cn, co) <= core::constants::ATTACK_RANGE as u32
 }
 
 /// Check whether two characters are within group range (unused helper).
 ///
 /// # Arguments
-/// * `cn` - First character index
-/// * `co` - Second character index
+/// * `cn` - First character.
+/// * `co` - Second character.
 #[allow(dead_code)]
-pub fn in_grouprange(cn: i32, co: i32) -> bool {
+pub fn in_grouprange(cn: &Character, co: &Character) -> bool {
     absrankdiff(cn, co) <= core::constants::GROUP_RANGE as u32
 }
 
@@ -636,10 +615,10 @@ pub fn in_grouprange(cn: i32, co: i32) -> bool {
 /// experience value.
 ///
 /// # Arguments
-/// * `cn` - Player character index
+/// * `cn` - Player character.
 /// * `co_rank` - Opponent's rank index
 /// * `exp` - Base experience to scale
-pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
+pub fn scale_exps2(cn: &Character, co_rank: i32, exp: i32) -> i32 {
     const SCALE_TAB: [f32; 49] = [
         0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07,
         0.10, 0.15, 0.20, 0.25, 0.33, 0.50, 0.70, 0.80, 0.90, 1.00, 1.02, 1.04, 1.08, 1.16, 1.32,
@@ -647,8 +626,7 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
         4.00, 4.00, 4.00, 4.00,
     ];
 
-    let player_experience =
-        Repository::with_characters(|characters| characters[cn as usize].points_tot as u32);
+    let player_experience = cn.points_tot as u32;
 
     let mut diff = co_rank - core::ranks::points2rank(player_experience) as i32;
 
@@ -664,12 +642,11 @@ pub fn scale_exps2(cn: i32, co_rank: i32, exp: i32) -> i32 {
 /// their total points.
 ///
 /// # Arguments
-/// * `cn` - Player character index
-/// * `co` - Opponent character index
+/// * `cn` - Player character.
+/// * `co` - Opponent character.
 /// * `exp` - Base experience to scale
-pub fn scale_exps(cn: i32, co: i32, exp: i32) -> i32 {
-    let co_experience =
-        Repository::with_characters(|characters| characters[co as usize].points_tot as u32);
+pub fn scale_exps(cn: &Character, co: &Character, exp: i32) -> i32 {
+    let co_experience = co.points_tot as u32;
     scale_exps2(cn, core::ranks::points2rank(co_experience) as i32, exp)
 }
 
@@ -843,24 +820,23 @@ pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
 /// invisibility hierarchy (greater inv, god, imp/usurp, staff, default).
 ///
 /// # Arguments
-/// * `cn` - Character index
-pub fn invis_level(cn: usize) -> i32 {
-    Repository::with_characters(|characters| {
-        if characters[cn].flags & CharacterFlags::GreaterInv.bits() != 0 {
-            return 15;
-        }
-        if characters[cn].flags & CharacterFlags::God.bits() != 0 {
-            return 10;
-        }
-        if characters[cn].flags & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()) != 0 {
-            return 5;
-        }
-        if characters[cn].flags & CharacterFlags::Staff.bits() != 0 {
-            return 2;
-        }
+/// * `ch` - Character to inspect.
+pub fn invis_level(ch: &Character) -> i32 {
+    let flags = ch.flags;
+    if flags & CharacterFlags::GreaterInv.bits() != 0 {
+        return 15;
+    }
+    if flags & CharacterFlags::God.bits() != 0 {
+        return 10;
+    }
+    if flags & (CharacterFlags::Imp.bits() | CharacterFlags::Usurp.bits()) != 0 {
+        return 5;
+    }
+    if flags & CharacterFlags::Staff.bits() != 0 {
+        return 2;
+    }
 
-        1
-    })
+    1
 }
 
 /// Helper: points needed to raise an attribute.

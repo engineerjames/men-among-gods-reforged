@@ -1,10 +1,8 @@
 use core::{constants::CharacterFlags, string_operations::c_string_to_str, types::FontColor};
 
-use crate::{
-    god::God, helpers, network_manager::NetworkManager, repository::Repository, state::State,
-};
+use crate::{game_state::GameState, god::God, helpers, network_manager};
 
-impl State {
+impl GameState {
     /// Port of `do_look_depot(int cn, int co)` from `svr_do.cpp`
     ///
     /// Displays the depot (bank storage) interface to a character.
@@ -19,7 +17,7 @@ impl State {
     /// # Arguments
     /// * `cn` - Character viewing the depot
     /// * `co` - Target character (must be same as cn)
-    pub(crate) fn do_look_depot(&self, cn: usize, co: usize) {
+    pub(crate) fn do_look_depot(&mut self, cn: usize, co: usize) {
         // Validate parameters
         if co == 0 || co >= core::constants::MAXCHARS {
             return;
@@ -31,14 +29,10 @@ impl State {
         }
 
         // Check if in a bank or is god
-        let (char_x, char_y, is_god, player_id) = Repository::with_characters(|ch| {
-            (
-                ch[cn].x,
-                ch[cn].y,
-                ch[cn].flags & CharacterFlags::God.bits() != 0,
-                ch[cn].player,
-            )
-        });
+        let char_x = self.characters[cn].x;
+        let char_y = self.characters[cn].y;
+        let is_god = self.characters[cn].flags & CharacterFlags::God.bits() != 0;
+        let player_id = self.characters[cn].player;
 
         if player_id == 0 {
             return;
@@ -46,9 +40,7 @@ impl State {
 
         if !is_god {
             let map_idx = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
-            let in_bank = Repository::with_map(|map| {
-                map[map_idx].flags & core::constants::MF_BANK as u64 != 0
-            });
+            let in_bank = self.map[map_idx].flags & core::constants::MF_BANK as u64 != 0;
 
             if !in_bank {
                 self.do_character_log(
@@ -71,15 +63,14 @@ impl State {
         }
         buf[15] = 0;
 
-        NetworkManager::with(|network| {
-            network.xsend(player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK2 packet
         buf[0] = core::constants::SV_LOOK2;
 
-        let (sprite, points_tot, hp5) =
-            Repository::with_characters(|ch| (ch[co].sprite, ch[co].points_tot, ch[co].hp[5]));
+        let sprite = self.characters[co].sprite;
+        let points_tot = self.characters[co].points_tot;
+        let hp5 = self.characters[co].hp[5];
 
         buf[1] = 35;
         buf[2] = 0;
@@ -95,23 +86,17 @@ impl State {
         let hp_bytes = (hp5 as u32).to_le_bytes();
         buf[9..13].copy_from_slice(&hp_bytes);
 
-        NetworkManager::with(|network| {
-            network.xsend(player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK3 packet
         buf[0] = core::constants::SV_LOOK3;
 
-        let (end5, a_hp, a_end, mana5, a_mana, co_id) = Repository::with_characters(|ch| {
-            (
-                ch[co].end[5],
-                ch[co].a_hp,
-                ch[co].a_end,
-                ch[co].mana[5],
-                ch[co].a_mana,
-                helpers::char_id(co),
-            )
-        });
+        let end5 = self.characters[co].end[5];
+        let a_hp = self.characters[co].a_hp;
+        let a_end = self.characters[co].a_end;
+        let mana5 = self.characters[co].mana[5];
+        let a_mana = self.characters[co].a_mana;
+        let co_id = helpers::char_id(&self.characters[co]);
 
         buf[1] = (end5 & 0xFF) as u8;
         buf[2] = (end5 >> 8) as u8;
@@ -140,9 +125,7 @@ impl State {
         buf[13] = (amana_display & 0xFF) as u8;
         buf[14] = (amana_display >> 8) as u8;
 
-        NetworkManager::with(|network| {
-            network.xsend(player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK4 packet
         buf[0] = core::constants::SV_LOOK4;
@@ -163,7 +146,7 @@ impl State {
         buf[5] = 1;
 
         // Show cost for depositing carried item (if valid)
-        let citem = Repository::with_characters(|ch| ch[cn].citem);
+        let citem = self.characters[cn].citem;
         let deposit_cost = if citem > 0 && citem < core::constants::MAXITEM as u32 {
             let item_cost = self.do_depot_cost(citem as usize);
             (core::constants::TICKS * item_cost) as u32
@@ -174,24 +157,17 @@ impl State {
         let cost_bytes = deposit_cost.to_le_bytes();
         buf[6..10].copy_from_slice(&cost_bytes);
 
-        NetworkManager::with(|network| {
-            network.xsend(player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK5 packet (character name)
         buf[0] = core::constants::SV_LOOK5;
 
-        let co_name = Repository::with_characters(|ch| {
-            let mut name = [0u8; 15];
-            name.copy_from_slice(&ch[co].name[0..15]);
-            name
-        });
+        let mut co_name = [0u8; 15];
+        co_name.copy_from_slice(&mut self.characters[co].name[0..15]);
 
         buf[1..16].copy_from_slice(&co_name);
 
-        NetworkManager::with(|network| {
-            network.xsend(player_id as usize, &buf, 16);
-        });
+        network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK6 packets for all 62 depot slots in pairs
         for n in (0..62).step_by(2) {
@@ -199,18 +175,15 @@ impl State {
             buf[1] = n as u8;
 
             for m in n..std::cmp::min(62, n + 2) {
-                let (sprite, cost) = Repository::with_characters(|ch| {
-                    let item_idx = ch[co].depot[m];
-                    if item_idx != 0 {
-                        let spr =
-                            Repository::with_items(|items| items[item_idx as usize].sprite[0]);
-                        let item_cost = self.do_depot_cost(item_idx as usize);
-                        let total_cost = (core::constants::TICKS * item_cost) as u32;
-                        (spr, total_cost)
-                    } else {
-                        (0, 0)
-                    }
-                });
+                let item_idx = self.characters[co].depot[m];
+                let (sprite, cost) = if item_idx != 0 {
+                    let spr = self.items[item_idx as usize].sprite[0];
+                    let item_cost = self.do_depot_cost(item_idx as usize);
+                    let total_cost = (core::constants::TICKS * item_cost) as u32;
+                    (spr, total_cost)
+                } else {
+                    (0, 0)
+                };
 
                 let offset = 2 + (m - n) * 6;
                 buf[offset] = (sprite & 0xFF) as u8;
@@ -220,9 +193,7 @@ impl State {
                 buf[offset + 2..offset + 6].copy_from_slice(&cost_bytes);
             }
 
-            NetworkManager::with(|network| {
-                network.xsend(player_id as usize, &buf, 16);
-            });
+            network_manager::xsend(self, player_id as usize, &buf, 16);
         }
     }
 
@@ -233,30 +204,24 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character issuing the command (admin/god)
-    /// * `cv` - Character ID string to look up
-    pub(crate) fn do_look_player_depot(&self, cn: usize, co: usize) {
+    /// * `co` - Character index to look up
+    pub(crate) fn do_look_player_depot(&mut self, cn: usize, co: usize) {
         // Validate character ID
         if co == 0 || co >= core::constants::MAXCHARS {
             self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", co));
             return;
         }
 
-        let (co_name, depot_items) = Repository::with_characters(|ch| {
-            let name = ch[co].get_name().to_string();
-            let mut items = Vec::new();
+        let co_name = self.characters[co].get_name().to_string();
+        let mut depot_items = Vec::new();
 
-            for m in 0..62 {
-                let item_idx = ch[co].depot[m];
-                if item_idx != 0 {
-                    let item_name = Repository::with_items(|items| {
-                        items[item_idx as usize].get_name().to_string()
-                    });
-                    items.push((item_idx, item_name));
-                }
+        for m in 0..62 {
+            let item_idx = self.characters[co].depot[m];
+            if item_idx != 0 {
+                let item_name = self.items[item_idx as usize].get_name().to_string();
+                depot_items.push((item_idx, item_name));
             }
-
-            (name, items)
-        });
+        }
 
         self.do_character_log(
             cn,
@@ -292,29 +257,24 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character issuing the command (admin/god)
-    /// * `cv` - Character ID string to look up
-    pub fn do_look_player_inventory(&self, cn: usize, co: usize) {
+    /// * `co` - Character index to look up
+    pub fn do_look_player_inventory(&mut self, cn: usize, co: usize) {
         // Validate character ID
         if co == 0 || co >= core::constants::MAXCHARS {
             self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", co));
             return;
         }
 
-        let (co_name, inventory_items) = Repository::with_characters(|ch| {
-            let name = ch[co].get_name().to_string();
-            let mut items = Vec::new();
+        let co_name = self.characters[co].get_name().to_string();
+        let mut inventory_items = Vec::new();
 
-            for n in 0..40 {
-                let item_idx = ch[co].item[n];
-                if item_idx != 0 {
-                    let item_name =
-                        Repository::with_items(|it| it[item_idx as usize].get_name().to_string());
-                    items.push((item_idx, item_name));
-                }
+        for n in 0..40 {
+            let item_idx = self.characters[co].item[n];
+            if item_idx != 0 {
+                let item_name = self.items[item_idx as usize].get_name().to_string();
+                inventory_items.push((item_idx, item_name));
             }
-
-            (name, items)
-        });
+        }
 
         self.do_character_log(
             cn,
@@ -350,29 +310,24 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character issuing the command (admin/god)
-    /// * `cv` - Character ID string to look up
-    pub(crate) fn do_look_player_equipment(&self, cn: usize, co: usize) {
+    /// * `co` - Character index to look up
+    pub(crate) fn do_look_player_equipment(&mut self, cn: usize, co: usize) {
         // Validate character ID
         if co == 0 || co >= core::constants::MAXCHARS {
             self.do_character_log(cn, FontColor::Red, &format!("Bad character: {}!\n", co));
             return;
         }
 
-        let (co_name, equipment_items) = Repository::with_characters(|ch| {
-            let name = ch[co].get_name().to_string();
-            let mut items = Vec::new();
+        let co_name = self.characters[co].get_name().to_string();
+        let mut equipment_items = Vec::new();
 
-            for n in 0..20 {
-                let item_idx = ch[co].worn[n];
-                if item_idx != 0 {
-                    let item_name =
-                        Repository::with_items(|it| it[item_idx as usize].get_name().to_string());
-                    items.push((item_idx, item_name));
-                }
+        for n in 0..20 {
+            let item_idx = self.characters[co].worn[n];
+            if item_idx != 0 {
+                let item_name = self.items[item_idx as usize].get_name().to_string();
+                equipment_items.push((item_idx, item_name));
             }
-
-            (name, items)
-        });
+        }
 
         self.do_character_log(
             cn,
@@ -415,7 +370,7 @@ impl State {
     /// # Returns
     /// * `true` - Item was successfully stolen
     /// * `false` - Item not found or transfer failed
-    pub fn do_steal_player(&self, cn: usize, cv: &str, ci: &str) -> bool {
+    pub fn do_steal_player(&mut self, cn: usize, cv: &str, ci: &str) -> bool {
         // Parse character ID from string
         let co = match cv.trim().parse::<usize>() {
             Ok(id) => id,
@@ -444,48 +399,48 @@ impl State {
         // Search through inventory (40 slots)
         let mut found_location: Option<(usize, &str)> = None;
 
-        Repository::with_characters(|ch| {
-            for n in 0..40 {
-                if ch[co].item[n] == item_id {
-                    found_location = Some((n, "inventory"));
-                    return;
-                }
+        for n in 0..40 {
+            if self.characters[co].item[n] == item_id {
+                found_location = Some((n, "inventory"));
+                break;
             }
+        }
 
-            // Search through depot (62 slots) if not found in inventory
+        // Search through depot (62 slots) if not found in inventory
+        if found_location.is_none() {
             for n in 0..62 {
-                if ch[co].depot[n] == item_id {
+                if self.characters[co].depot[n] == item_id {
                     found_location = Some((n, "depot"));
-                    return;
+                    break;
                 }
             }
+        }
 
-            // Search through worn equipment (20 slots) if not found elsewhere
+        // Search through worn equipment (20 slots) if not found elsewhere
+        if found_location.is_none() {
             for n in 0..20 {
-                if ch[co].worn[n] == item_id {
+                if self.characters[co].worn[n] == item_id {
                     found_location = Some((n, "worn"));
-                    return;
+                    break;
                 }
             }
-        });
+        }
 
         if let Some((slot_index, location)) = found_location {
             // Try to give the item to the admin character
-            if God::give_character_item(cn, item_id as usize) {
+            if God::give_character_item(self, cn, item_id as usize) {
                 // Remove item from target's slot
-                Repository::with_characters_mut(|ch| match location {
-                    "inventory" => ch[co].item[slot_index] = 0,
-                    "depot" => ch[co].depot[slot_index] = 0,
-                    "worn" => ch[co].worn[slot_index] = 0,
+                match location {
+                    "inventory" => self.characters[co].item[slot_index] = 0,
+                    "depot" => self.characters[co].depot[slot_index] = 0,
+                    "worn" => self.characters[co].worn[slot_index] = 0,
                     _ => {}
-                });
+                }
 
                 // Get item reference and character name for logging
-                let (item_reference, co_name) = Repository::with_items(|it| {
-                    let item_ref = c_string_to_str(&it[item_id as usize].reference).to_string();
-                    let char_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
-                    (item_ref, char_name)
-                });
+                let item_reference =
+                    c_string_to_str(&mut self.items[item_id as usize].reference).to_string();
+                let co_name = self.characters[co].get_name().to_string();
 
                 self.do_character_log(
                     cn,
@@ -495,9 +450,8 @@ impl State {
                 true
             } else {
                 // Inventory full
-                let item_reference = Repository::with_items(|it| {
-                    c_string_to_str(&it[item_id as usize].reference).to_string()
-                });
+                let item_reference =
+                    c_string_to_str(&mut self.items[item_id as usize].reference).to_string();
 
                 self.do_character_log(
                     cn,

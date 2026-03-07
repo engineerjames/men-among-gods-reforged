@@ -1,6 +1,9 @@
 use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS};
 use core::string_operations::c_string_to_str;
 
+use crate::game_state::GameState;
+use core::types::Character;
+
 struct Know {
     word: [&'static str; 20],
     value: i32,
@@ -1880,37 +1883,21 @@ static KNOW: [Know; 227] = [
 
 use crate::effect::EffectManager;
 use crate::god::God;
-use crate::repository::Repository;
-use crate::state::State;
 use crate::{driver, helpers};
 
-/// Port of `obey(int cn, int co)` from `talk.cpp`
-///
-/// Checks whether the character `cn` will obey character `co`.
-/// This is used for companion / kindred obedience checks.
-///
-/// Returns:
-/// - `1` if `co` is the companion master of `cn` (data[63])
-/// - `2` if `cn` will obey `co` because of kindred/obedience flags (data[26] & data[28])
-/// - `0` otherwise
-///
-/// # Arguments
-/// * `cn` - Character that may obey
-/// * `co` - Character that may be obeyed
-pub fn obey(cn: usize, co: usize) -> i32 {
-    Repository::with_characters(|characters| {
-        // Check if co is the companion master (data[63])
-        if characters[cn].data[63] == co as i32 {
-            return 1;
-        }
-        // Check kindred and obedience flags (data[26] & data[28])
-        if (characters[cn].data[26] & characters[co].kindred) != 0
-            && (characters[cn].data[28] & 1) != 0
-        {
-            return 2;
-        }
-        0
-    })
+/// Port of `obey(int cn, int co)` from `talk.cpp` using direct `GameState` access.
+pub fn obey(gs: &mut GameState, cn: usize, co: usize) -> i32 {
+    // Check if co is the companion master (data[63])
+    if gs.characters[cn].data[63] == co as i32 {
+        return 1;
+    }
+    // Check kindred and obedience flags (data[26] & data[28])
+    if (gs.characters[cn].data[26] & gs.characters[co].kindred) != 0
+        && (gs.characters[cn].data[28] & 1) != 0
+    {
+        return 2;
+    }
+    0
 }
 
 /// Port of `answer_spellinfo(int cn, int co)` from `talk.cpp`
@@ -1921,36 +1908,27 @@ pub fn obey(cn: usize, co: usize) -> i32 {
 /// # Arguments
 /// * `cn` - Companion character (the one with spells)
 /// * `co` - Master character (viewer)
-pub fn answer_spellinfo(cn: usize, co: usize) {
-    if obey(cn, co) != 1 {
+pub fn answer_spellinfo(gs: &mut GameState, cn: usize, co: usize) {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
-    Repository::with_characters(|characters| {
-        Repository::with_items(|items| {
-            let mut found = false;
+    let mut found = false;
 
-            for n in 0..20 {
-                let spell_idx = characters[cn].spell[n] as usize;
-                if spell_idx != 0 && core::types::Item::is_sane_item(spell_idx) {
-                    let minutes = items[spell_idx].active / (TICKS as u32 * 60);
-                    let seconds = (items[spell_idx].active / TICKS as u32) % 60;
-                    let name = items[spell_idx].get_name();
+    for n in 0..20 {
+        let spell_idx = gs.characters[cn].spell[n] as usize;
+        if spell_idx != 0 && core::types::Item::is_sane_item(spell_idx) {
+            let minutes = gs.items[spell_idx].active / (TICKS as u32 * 60);
+            let seconds = (gs.items[spell_idx].active / TICKS as u32) % 60;
+            let name = gs.items[spell_idx].get_name().to_string();
+            gs.do_sayx(cn, &format!("{}, for {}m {}s.", name, minutes, seconds));
+            found = true;
+        }
+    }
 
-                    State::with(|state| {
-                        state.do_sayx(cn, &format!("{}, for {}m {}s.", name, minutes, seconds));
-                    });
-                    found = true;
-                }
-            }
-
-            if !found {
-                State::with(|state| {
-                    state.do_sayx(cn, "I have no spells on me at the moment.");
-                });
-            }
-        });
-    });
+    if !found {
+        gs.do_sayx(cn, "I have no spells on me at the moment.");
+    }
 }
 
 /// Port of `answer_transfer(int cn, int co)` from `talk.cpp`
@@ -1962,47 +1940,33 @@ pub fn answer_spellinfo(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - Companion character to transfer (and destroy)
 /// * `co` - Master character who receives experience
-pub fn answer_transfer(cn: usize, co: usize) {
-    if obey(cn, co) != 1 {
+pub fn answer_transfer(gs: &mut GameState, cn: usize, co: usize) {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
-    let (companion_name, exp_to_give, _cn_x, _cn_y, _co_x, _co_y) =
-        Repository::with_characters(|characters| {
-            (
-                characters[cn].get_name().to_string(),
-                characters[cn].data[28],
-                characters[cn].x,
-                characters[cn].y,
-                characters[co].x,
-                characters[co].y,
-            )
-        });
+    let companion_name = gs.characters[cn].get_name().to_string();
+    let exp_to_give = gs.characters[cn].data[28];
+    let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
+    let (co_x, co_y) = (gs.characters[co].x, gs.characters[co].y);
+    let master_name = gs.characters[co].get_name().to_string();
 
-    State::with(|state| {
-        state.do_sayx(
-            cn,
-            &format!(
-                "I'd prefer to die in battle, {}. But I shall obey my master.",
-                Repository::with_characters(|ch| ch[co].get_name().to_string())
-            ),
-        );
-    });
+    gs.do_sayx(
+        cn,
+        &format!(
+            "I'd prefer to die in battle, {}. But I shall obey my master.",
+            master_name
+        ),
+    );
 
-    // Give experience (do_give_exp equivalent - would need to be implemented)
-    State::with_mut(|state| {
-        state.do_give_exp(co, exp_to_give, 1, -1);
-    });
+    gs.do_give_exp(co, exp_to_give, 1, -1);
 
-    // Add visual effects (fx_add_effect equivalent - would need to be implemented)
-    EffectManager::fx_add_effect(6, 0, _co_x as i32, _co_y as i32, 0);
-    EffectManager::fx_add_effect(7, 0, _cn_x as i32, _cn_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, co_x as i32, co_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 7, 0, cn_x as i32, cn_y as i32, 0);
 
-    driver::die_companion(cn);
+    driver::die_companion(gs, cn);
 
-    Repository::with_characters_mut(|characters| {
-        characters[co].luck -= 1;
-    });
+    gs.characters[co].luck -= 1;
 
     log::info!(
         "Character {} transferred companion {} (exp: {})",
@@ -2022,12 +1986,13 @@ pub fn answer_transfer(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - Companion character
 /// * `co` - Master character to follow
-pub fn answer_follow(cn: usize, co: usize) {
-    if obey(cn, co) != 1 {
+pub fn answer_follow(gs: &mut GameState, cn: usize, co: usize) {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut gs.characters;
         // Clear data[80..92]
         for n in 80..92 {
             characters[cn].data[n] = 0;
@@ -2041,11 +2006,9 @@ pub fn answer_follow(cn: usize, co: usize) {
         characters[cn].data[69] = co as i32; // Set follow target
         characters[cn].data[29] = 0; // Clear wait position
 
-        let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes, {}!", co_name));
-        });
-    });
+        characters[co].get_name().to_string()
+    };
+    gs.do_sayx(cn, &format!("Yes, {}!", co_name));
 }
 
 /// Port of `answer_wait(int cn, int co)` from `talk.cpp`
@@ -2058,12 +2021,13 @@ pub fn answer_follow(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - Companion character
 /// * `co` - Master character issuing the command
-pub fn answer_wait(cn: usize, co: usize) {
-    if obey(cn, co) != 1 {
+pub fn answer_wait(gs: &mut GameState, cn: usize, co: usize) {
+    if obey(gs, cn, co) != 1 {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut gs.characters;
         // Clear data[80..92]
         for n in 80..92 {
             characters[cn].data[n] = 0;
@@ -2083,11 +2047,9 @@ pub fn answer_wait(cn: usize, co: usize) {
         characters[cn].data[30] = dir as i32;
         characters[cn].data[69] = 0; // Clear follow target
 
-        let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes, {}!", co_name));
-        });
-    });
+        characters[co].get_name().to_string()
+    };
+    gs.do_sayx(cn, &format!("Yes, {}!", co_name));
 }
 
 /// Port of `answer_stop(int cn, int co)` from `talk.cpp`
@@ -2100,12 +2062,14 @@ pub fn answer_wait(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - Companion character
 /// * `co` - Master character issuing the command
-pub fn answer_stop(cn: usize, co: usize) {
-    if obey(cn, co) == 0 {
+pub fn answer_stop(gs: &mut GameState, cn: usize, co: usize) {
+    if obey(gs, cn, co) == 0 {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let ticker = gs.globals.ticker;
+    let co_name = {
+        let characters = &mut gs.characters;
         // Clear data[80..92]
         for n in 80..92 {
             characters[cn].data[n] = 0;
@@ -2116,15 +2080,11 @@ pub fn answer_stop(cn: usize, co: usize) {
         characters[cn].goto_y = 0;
         characters[cn].misc_action = 0;
         characters[cn].data[78] = 0;
-
-        let ticker = Repository::with_globals(|globals| globals.ticker);
         characters[cn].data[27] = ticker;
 
-        let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes master {}!", co_name));
-        });
-    });
+        characters[co].get_name().to_string()
+    };
+    gs.do_sayx(cn, &format!("Yes master {}!", co_name));
 }
 
 /// Port of `answer_move(int cn, int co)` from `talk.cpp`
@@ -2137,12 +2097,13 @@ pub fn answer_stop(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - Companion character
 /// * `co` - Master character issuing the command
-pub fn answer_move(cn: usize, co: usize) {
-    if obey(cn, co) == 0 {
+pub fn answer_move(gs: &mut GameState, cn: usize, co: usize) {
+    if obey(gs, cn, co) == 0 {
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut gs.characters;
         let cn_x = characters[cn].x;
         let cn_y = characters[cn].y;
 
@@ -2153,11 +2114,9 @@ pub fn answer_move(cn: usize, co: usize) {
             (cn_y as i32 + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPY - 1) as u16;
         characters[cn].misc_action = 0;
 
-        let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("Yes master {}!", co_name));
-        });
-    });
+        characters[co].get_name().to_string()
+    };
+    gs.do_sayx(cn, &format!("Yes master {}!", co_name));
 }
 
 /// Port of `answer_attack(int cn, int co, char* text)` from `talk.cpp`
@@ -2171,8 +2130,8 @@ pub fn answer_move(cn: usize, co: usize) {
 /// * `cn` - Companion character to perform the attack
 /// * `co` - Master character issuing the command
 /// * `text` - Spoken text containing the target name
-pub fn answer_attack(cn: usize, co: usize, text: &str) {
-    if obey(cn, co) == 0 {
+pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
+    if obey(gs, cn, co) == 0 {
         return;
     }
 
@@ -2211,7 +2170,8 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
     let target_name_lower = target_name.to_lowercase();
 
     // Find closest matching character
-    let (best_target, best_dist) = Repository::with_characters(|characters| {
+    let (best_target, best_dist) = {
+        let characters = &gs.characters;
         let cn_x = characters[cn].x as i32;
         let cn_y = characters[cn].y as i32;
         let mut best = 9999;
@@ -2236,68 +2196,50 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
             }
         }
         (bestn, best)
-    });
+    };
 
     if best_target != 0 && best_dist < 40 {
-        Repository::with_characters(|characters| {
-            // Prevent attacks on self
-            if best_target == co {
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "But {}, I would never attack you!",
-                            characters[co].get_name()
-                        ),
-                    );
-                });
-                return;
-            }
-            if best_target == cn {
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "You want me to attack myself? That's silly, {}!",
-                            characters[co].get_name()
-                        ),
-                    );
-                });
-                return;
-            }
+        let co_name = gs.characters[co].get_name().to_string();
 
-            if State::with(|state| state.may_attack_msg(co, best_target, false)) == 0 {
-                State::with(|state| {
-                    state.do_sayx(cn, &format!("The Gods would be angry if we did that, you didn't want to anger the Gods, {} did you?", characters[co].get_name()));
-                });
-                return;
+        // Prevent attacks on self
+        if best_target == co {
+            gs.do_sayx(cn, &format!("But {}, I would never attack you!", co_name));
+            return;
+        }
+        if best_target == cn {
+            gs.do_sayx(
+                cn,
+                &format!("You want me to attack myself? That's silly, {}!", co_name),
+            );
+            return;
+        }
+
+        if !gs.may_attack_msg(co, best_target, false) {
+            gs.do_sayx(cn, &format!("The Gods would be angry if we did that, you didn't want to anger the Gods, {} did you?", co_name));
+            return;
+        }
+
+        let target_name = gs.characters[best_target].get_name().to_string();
+
+        let target_id = helpers::char_id(&gs.characters[best_target]) as usize;
+
+        {
+            let characters_mut = &mut gs.characters;
+            if best_target <= u16::MAX as usize {
+                characters_mut[cn].attack_cn = best_target as u16;
             }
 
-            let target_name = characters[best_target].get_name().to_string();
-            let co_name = characters[co].get_name().to_string();
+            let idx = best_target | (target_id << 16);
+            characters_mut[cn].data[80] = idx as i32;
+            characters_mut[cn].data[80] = best_target as i32;
+        }
+        gs.do_sayx(
+            cn,
+            &format!("Yes {}, I will kill {}!", co_name, target_name),
+        );
 
-            Repository::with_characters_mut(|characters_mut| {
-                if best_target <= u16::MAX as usize {
-                    characters_mut[cn].attack_cn = best_target as u16;
-                }
-
-                let idx = best_target | (helpers::char_id(best_target) as usize) << 16;
-                characters_mut[cn].data[80] = idx as i32;
-                characters_mut[cn].data[80] = best_target as i32;
-
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!("Yes {}, I will kill {}!", co_name, target_name),
-                    );
-                });
-            });
-
-            // Notify target
-            State::with(|state| {
-                state.do_notify_character(best_target as u32, NT_GOTMISS as i32, co as i32, 0, 0, 0)
-            });
-        });
+        // Notify target
+        gs.do_notify_character(best_target as u32, NT_GOTMISS as i32, co as i32, 0, 0, 0);
     }
 }
 
@@ -2310,40 +2252,29 @@ pub fn answer_attack(cn: usize, co: usize, text: &str) {
 /// # Arguments
 /// * `cn` - Companion character
 /// * `co` - Master character
-pub fn answer_quiet(cn: usize, co: usize) {
-    Repository::with_characters(|characters| {
-        let is_talkative = characters[cn].data[core::constants::CHD_TALKATIVE] != 0;
-        let template_talkative = Repository::with_character_templates(|templates| {
-            if (characters[cn].temp as usize) < core::constants::MAXTCHARS {
-                templates[characters[cn].temp as usize].data[core::constants::CHD_TALKATIVE]
-            } else {
-                0
-            }
-        });
+pub fn answer_quiet(gs: &mut GameState, cn: usize, co: usize) {
+    let is_talkative = gs.characters[cn].data[core::constants::CHD_TALKATIVE] != 0;
+    let template_talkative = {
+        let cn_temp = gs.characters[cn].temp as usize;
+        if cn_temp < core::constants::MAXTCHARS {
+            gs.character_templates[cn_temp].data[core::constants::CHD_TALKATIVE]
+        } else {
+            0
+        }
+    };
 
-        Repository::with_characters_mut(|characters_mut| {
-            if !is_talkative {
-                characters_mut[cn].data[core::constants::CHD_TALKATIVE] = template_talkative;
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!(
-                            "Thank you, {}, for letting me talk again!",
-                            characters[co].get_name()
-                        ),
-                    );
-                });
-            } else {
-                State::with(|state| {
-                    state.do_sayx(
-                        cn,
-                        &format!("Yes {}, I will shut up now.", characters[co].get_name()),
-                    );
-                });
-                characters_mut[cn].data[core::constants::CHD_TALKATIVE] = 0;
-            }
-        });
-    });
+    let co_name = gs.characters[co].get_name().to_string();
+
+    if !is_talkative {
+        gs.characters[cn].data[core::constants::CHD_TALKATIVE] = template_talkative;
+        gs.do_sayx(
+            cn,
+            &format!("Thank you, {}, for letting me talk again!", co_name),
+        );
+    } else {
+        gs.do_sayx(cn, &format!("Yes {}, I will shut up now.", co_name));
+        gs.characters[cn].data[core::constants::CHD_TALKATIVE] = 0;
+    }
 }
 
 /// Port of `answer_health(int cn, int co)` from `talk.cpp`
@@ -2354,22 +2285,19 @@ pub fn answer_quiet(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - Companion character whose health is reported
 /// * `co` - Master character listening
-pub fn answer_health(cn: usize, co: usize) {
-    Repository::with_characters(|characters| {
-        let a_hp = characters[cn].a_hp;
-        let hp_max = characters[cn].hp[5] as i32 * 550;
-        let co_name = characters[co].get_name().to_string();
+pub fn answer_health(gs: &mut GameState, cn: usize, co: usize) {
+    let a_hp = gs.characters[cn].a_hp;
+    let hp5 = gs.characters[cn].hp[5] as i32;
+    let hp_max = hp5 * 550;
+    let co_name = gs.characters[co].get_name().to_string();
 
-        State::with(|state| {
-            if a_hp > hp_max {
-                state.do_sayx(cn, &format!("I'm fine, {}.", co_name));
-            } else if a_hp > (characters[cn].hp[5] as i32 * 250) {
-                state.do_sayx(cn, &format!("I don't feel so good, {}.", co_name));
-            } else {
-                state.do_sayx(cn, "I'm dying!!");
-            }
-        });
-    });
+    if a_hp > hp_max {
+        gs.do_sayx(cn, &format!("I'm fine, {}.", co_name));
+    } else if a_hp > (hp5 * 250) {
+        gs.do_sayx(cn, &format!("I don't feel so good, {}.", co_name));
+    } else {
+        gs.do_sayx(cn, "I'm dying!!");
+    }
 }
 
 /// Port of `answer_shop(int cn, int co)` from `talk.cpp`
@@ -2380,26 +2308,22 @@ pub fn answer_health(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - NPC being asked
 /// * `co` - Player asking
-pub fn answer_shop(cn: usize, co: usize) {
-    Repository::with_characters(|characters| {
-        let is_merchant =
-            characters[cn].flags & core::constants::CharacterFlags::Merchant.bits() != 0;
-        let co_name = characters[co].get_name().to_string();
+pub fn answer_shop(gs: &mut GameState, cn: usize, co: usize) {
+    let is_merchant =
+        gs.characters[cn].flags & core::constants::CharacterFlags::Merchant.bits() != 0;
+    let co_name = gs.characters[co].get_name().to_string();
 
-        State::with(|state| {
-            if is_merchant {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "Hold down ALT and right click on me to buy or sell, {}.",
-                        co_name
-                    ),
-                );
-            } else {
-                state.do_sayx(cn, &format!("I'm not a merchant, {}.", co_name));
-            }
-        });
-    });
+    if is_merchant {
+        gs.do_sayx(
+            cn,
+            &format!(
+                "Hold down ALT and right click on me to buy or sell, {}.",
+                co_name
+            ),
+        );
+    } else {
+        gs.do_sayx(cn, &format!("I'm not a merchant, {}.", co_name));
+    }
 }
 
 /// Port of `answer_greeting(int cn, int co)` from `talk.cpp`
@@ -2411,27 +2335,21 @@ pub fn answer_shop(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - NPC character
 /// * `co` - Player character being greeted
-pub fn answer_greeting(cn: usize, co: usize) {
-    Repository::with_characters(|characters| {
-        let greeting_text = c_string_to_str(&characters[cn].text[2]);
+pub fn answer_greeting(gs: &mut GameState, cn: usize, co: usize) {
+    let ch_cn = gs.characters[cn];
+    let ch_co = gs.characters[co];
+    let greeting_text = c_string_to_str(&ch_cn.text[2]);
 
-        if !greeting_text.is_empty() && !greeting_text.starts_with('#') {
-            // Special case for Purple One cultist (temp 180)
-            if characters[cn].temp == 180
-                && (characters[co].kindred & (core::constants::KIN_PURPLE as i32)) != 0
-            {
-                State::with(|state| {
-                    state.do_sayx(cn, &format!("Greetings, {}!", characters[co].get_name()));
-                });
-                return;
-            }
-
-            State::with(|state| {
-                let formatted = greeting_text.replace("%s", characters[co].get_name());
-                state.do_sayx(cn, &formatted);
-            });
+    if !greeting_text.is_empty() && !greeting_text.starts_with('#') {
+        // Special case for Purple One cultist (temp 180)
+        if ch_cn.temp == 180 && (ch_co.kindred & (core::constants::KIN_PURPLE as i32)) != 0 {
+            gs.do_sayx(cn, &format!("Greetings, {}!", ch_co.get_name()));
+            return;
         }
-    });
+
+        let formatted = greeting_text.replace("%s", ch_co.get_name());
+        gs.do_sayx(cn, &formatted);
+    }
 }
 
 /// Port of `answer_whoami(int cn, int co)` from `talk.cpp`
@@ -2441,13 +2359,9 @@ pub fn answer_greeting(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - NPC character
 /// * `_co` - (unused) Player who asked
-pub fn answer_whoami(cn: usize, _co: usize) {
-    Repository::with_characters(|characters| {
-        let name = characters[cn].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(cn, &format!("I am {}.", name));
-        });
-    });
+pub fn answer_whoami(gs: &mut GameState, cn: usize, _co: usize) {
+    let name = gs.characters[cn].get_name().to_string();
+    gs.do_sayx(cn, &format!("I am {}.", name));
 }
 
 /// Port of `answer_where(int cn, int co)` from `talk.cpp`
@@ -2459,11 +2373,9 @@ pub fn answer_whoami(cn: usize, _co: usize) {
 /// # Arguments
 /// * `cn` - NPC character
 /// * `_co` - (unused) Player who asked
-pub fn answer_where(cn: usize, _co: usize) {
+pub fn answer_where(gs: &mut GameState, cn: usize, _co: usize) {
     // TODO: Implement get_area function
-    State::with(|state| {
-        state.do_sayx(cn, "I am here."); // Placeholder until get_area is implemented
-    });
+    gs.do_sayx(cn, "I am here."); // Placeholder until get_area is implemented
 }
 
 /// Port of `answer_time(int cn, int co)` from `talk.cpp`
@@ -2474,30 +2386,24 @@ pub fn answer_where(cn: usize, _co: usize) {
 /// # Arguments
 /// * `cn` - NPC character speaking
 /// * `_co` - (unused) Player who asked
-pub fn answer_time(cn: usize, _co: usize) {
-    Repository::with_globals(|globals| {
-        let day = globals.mdday;
-        let year = globals.mdyear;
-        let hour = globals.mdtime / 3600;
-        let minute = (globals.mdtime / 60) % 60;
+pub fn answer_time(gs: &mut GameState, cn: usize, _co: usize) {
+    let g = &gs.globals;
+    let (day, year, hour, minute) = (g.mdday, g.mdyear, g.mdtime / 3600, (g.mdtime / 60) % 60);
 
-        let suffix = match day {
-            1 => "st",
-            2 => "nd",
-            3 => "rd",
-            _ => "th",
-        };
+    let suffix = match day {
+        1 => "st",
+        2 => "nd",
+        3 => "rd",
+        _ => "th",
+    };
 
-        State::with(|state| {
-            state.do_sayx(
-                cn,
-                &format!(
-                    "Today is the {}{} day of the Year {}. It is {}:{:02} Astonian Standard Time.\n",
-                    day, suffix, year, hour, minute
-                ),
-            );
-        });
-    });
+    gs.do_sayx(
+        cn,
+        &format!(
+            "Today is the {}{} day of the Year {}. It is {}:{:02} Astonian Standard Time.\n",
+            day, suffix, year, hour, minute
+        ),
+    );
 }
 
 /// Port of `stronghold_points(int cn)` from `talk.cpp`
@@ -2510,14 +2416,12 @@ pub fn answer_time(cn: usize, _co: usize) {
 ///
 /// # Returns
 /// Total available stronghold points
-pub fn stronghold_points(cn: usize) -> i32 {
-    Repository::with_characters(|characters| {
-        characters[cn].data[26] / 25 +      // kills below rank
-        characters[cn].data[27] +           // kills at rank
-        characters[cn].data[28] * 2 +       // kills above rank
-        characters[cn].data[43] * 25 -      // candles
-        characters[cn].data[41] // points spent
-    })
+pub fn stronghold_points(cn: &Character) -> i32 {
+    cn.data[26] / 25 +      // kills below rank
+    cn.data[27] +           // kills at rank
+    cn.data[28] * 2 +       // kills above rank
+    cn.data[43] * 25 -      // candles
+    cn.data[41] // points spent
 }
 
 /// Port of `stronghold_exp_per_pt(int cn)` from `talk.cpp`
@@ -2530,11 +2434,9 @@ pub fn stronghold_points(cn: usize) -> i32 {
 ///
 /// # Returns
 /// Experience per point (clamped between 1 and 125)
-pub fn stronghold_exp_per_pt(cn: usize) -> i32 {
-    Repository::with_characters(|characters| {
-        let exp_per_pt = characters[cn].points_tot / 45123;
-        exp_per_pt.clamp(1, 125)
-    })
+pub fn stronghold_exp_per_pt(cn: &Character) -> i32 {
+    let exp_per_pt = cn.points_tot / 45123;
+    exp_per_pt.clamp(1, 125)
 }
 
 /// Port of `answer_points(int cn, int co, int nr)` from `talk.cpp`
@@ -2546,16 +2448,14 @@ pub fn stronghold_exp_per_pt(cn: usize) -> i32 {
 /// * `cn` - NPC character speaking
 /// * `co` - Player character whose points are described
 /// * `_know_idx` - Knowledge index that triggered this answer (unused)
-pub fn answer_points(cn: usize, co: usize, _know_idx: usize) {
-    let exp = stronghold_exp_per_pt(co);
-    let pts = stronghold_points(co);
+pub fn answer_points(gs: &mut GameState, cn: usize, co: usize, _know_idx: usize) {
+    let exp = stronghold_exp_per_pt(&gs.characters[co]);
+    let pts = stronghold_points(&gs.characters[co]);
 
-    State::with(|state| {
-        state.do_sayx(cn, &format!(
+    gs.do_sayx(cn, &format!(
             "You have {} points. You can BUY GOLD at one coin per point, BUY HEALING potions for 6 points, BUY MANA potions for 9 points or BUY EXPerience at {} exp per point.",
             pts, exp
         ));
-    });
 }
 
 /// Port of `answer_buygold(int cn, int co)` from `talk.cpp`
@@ -2566,40 +2466,34 @@ pub fn answer_points(cn: usize, co: usize, _know_idx: usize) {
 /// # Arguments
 /// * `cn` - NPC character handling the exchange
 /// * `co` - Player character spending points
-pub fn answer_buygold(cn: usize, co: usize) {
-    let mut pts = stronghold_points(co);
+pub fn answer_buygold(gs: &mut GameState, cn: usize, co: usize) {
+    let mut pts = stronghold_points(&gs.characters[co]);
     pts = pts.min(100);
 
     if pts < 1 {
-        Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have any points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
-        });
+        gs.do_sayx(
+            cn,
+            &format!(
+                "But you don't have any points to spend, {}!",
+                gs.characters[co].get_name()
+            ),
+        );
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut gs.characters;
         characters[co].data[41] += pts;
         characters[co].gold += pts * 100;
-
-        let co_name = characters[co].get_name().to_string();
-        State::with(|state| {
-            state.do_sayx(
-                cn,
-                &format!(
-                    "There you are, {}. {} gold coins. Thank you for your help!",
-                    co_name, pts
-                ),
-            );
-        });
-    });
+        characters[co].get_name().to_string()
+    };
+    gs.do_sayx(
+        cn,
+        &format!(
+            "There you are, {}. {} gold coins. Thank you for your help!",
+            co_name, pts
+        ),
+    );
 
     log::info!("Character {} bought gold from cityguard ({} pts)", co, pts);
 }
@@ -2612,42 +2506,32 @@ pub fn answer_buygold(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing the potion
-pub fn answer_buyhealth(cn: usize, co: usize) {
-    let pts = stronghold_points(co);
+pub fn answer_buyhealth(gs: &mut GameState, cn: usize, co: usize) {
+    let pts = stronghold_points(&gs.characters[co]);
 
     if pts < 6 {
-        Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have enough points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
-        });
+        gs.do_sayx(
+            cn,
+            &format!(
+                "But you don't have enough points to spend, {}!",
+                gs.characters[co].get_name()
+            ),
+        );
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
-        characters[co].data[41] += 6;
-    });
+    gs.characters[co].data[41] += 6;
 
-    if let Some(item_id) = God::create_item(101) {
-        God::give_character_item(co, item_id);
+    if let Some(item_id) = God::create_item(gs, 101) {
+        God::give_character_item(gs, co, item_id);
 
-        Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "There you are, {}. A healing potion. Thank you for your help!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
-        });
+        gs.do_sayx(
+            cn,
+            &format!(
+                "There you are, {}. A healing potion. Thank you for your help!",
+                gs.characters[co].get_name()
+            ),
+        );
 
         log::info!("Character {} bought healing potion from cityguard", co);
     }
@@ -2661,42 +2545,32 @@ pub fn answer_buyhealth(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing the potion
-pub fn answer_buymana(cn: usize, co: usize) {
-    let pts = stronghold_points(co);
+pub fn answer_buymana(gs: &mut GameState, cn: usize, co: usize) {
+    let pts = stronghold_points(&gs.characters[co]);
 
     if pts < 9 {
-        Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have enough points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
-        });
+        gs.do_sayx(
+            cn,
+            &format!(
+                "But you don't have enough points to spend, {}!",
+                gs.characters[co].get_name()
+            ),
+        );
         return;
     }
 
-    Repository::with_characters_mut(|characters| {
-        characters[co].data[41] += 9;
-    });
+    gs.characters[co].data[41] += 9;
 
-    if let Some(item_id) = God::create_item(102) {
-        God::give_character_item(co, item_id);
+    if let Some(item_id) = God::create_item(gs, 102) {
+        God::give_character_item(gs, co, item_id);
 
-        Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "There you are, {}. A mana potion. Thank you for your help!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
-        });
+        gs.do_sayx(
+            cn,
+            &format!(
+                "There you are, {}. A mana potion. Thank you for your help!",
+                gs.characters[co].get_name()
+            ),
+        );
 
         log::info!("Character {} bought mana potion from cityguard", co);
     }
@@ -2711,44 +2585,37 @@ pub fn answer_buymana(cn: usize, co: usize) {
 /// # Arguments
 /// * `cn` - NPC vendor
 /// * `co` - Player purchasing experience
-pub fn answer_buyexp(cn: usize, co: usize) {
-    let pts = stronghold_points(co);
-    let exp = stronghold_exp_per_pt(co);
+pub fn answer_buyexp(gs: &mut GameState, cn: usize, co: usize) {
+    let pts = stronghold_points(&gs.characters[co]);
+    let exp = stronghold_exp_per_pt(&gs.characters[co]);
 
     if pts < 1 {
-        Repository::with_characters(|characters| {
-            State::with(|state| {
-                state.do_sayx(
-                    cn,
-                    &format!(
-                        "But you don't have any points to spend, {}!",
-                        characters[co].get_name()
-                    ),
-                );
-            });
-        });
+        gs.do_sayx(
+            cn,
+            &format!(
+                "But you don't have any points to spend, {}!",
+                gs.characters[co].get_name()
+            ),
+        );
         return;
     }
 
     let total_exp = pts * exp;
 
-    Repository::with_characters_mut(|characters| {
+    let co_name = {
+        let characters = &mut gs.characters;
         characters[co].data[41] += pts;
         characters[co].points += total_exp;
         characters[co].points_tot += total_exp;
-
-        let co_name = characters[co].get_name().to_string();
-
-        State::with(|state| {
-            state.do_check_new_level(co);
-            state.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
-            state.do_character_log(
-                co,
-                core::types::FontColor::Yellow,
-                &format!("You get {} experience points.", total_exp),
-            );
-        });
-    });
+        characters[co].get_name().to_string()
+    };
+    gs.do_check_new_level(co);
+    gs.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
+    gs.do_character_log(
+        co,
+        core::types::FontColor::Yellow,
+        &format!("You get {} experience points.", total_exp),
+    );
 
     log::info!(
         "Character {} bought {} exps from cityguard ({} pts)",
@@ -2769,27 +2636,34 @@ pub fn answer_buyexp(cn: usize, co: usize) {
 /// * `special` - Special handler identifier
 /// * `word` - Original spoken text
 /// * `know_idx` - Index of the matched knowledge entry
-pub fn special_answer(cn: usize, co: usize, special: i32, word: &str, know_idx: usize) {
+pub fn special_answer(
+    gs: &mut GameState,
+    cn: usize,
+    co: usize,
+    special: i32,
+    word: &str,
+    know_idx: usize,
+) {
     match special {
-        HEALTH => answer_health(cn, co),
-        SHOP => answer_shop(cn, co),
-        GREET => answer_greeting(cn, co),
-        WHOAMI => answer_whoami(cn, co),
-        WHERE => answer_where(cn, co),
-        STOP => answer_stop(cn, co),
-        MOVE => answer_move(cn, co),
-        ATTACK => answer_attack(cn, co, word),
-        WAIT => answer_wait(cn, co),
-        FOLLOW => answer_follow(cn, co),
-        TIME => answer_time(cn, co),
-        POINTS => answer_points(cn, co, know_idx),
-        BUYGOLD => answer_buygold(cn, co),
-        BUYHEALTH => answer_buyhealth(cn, co),
-        BUYMANA => answer_buymana(cn, co),
-        BUYEXP => answer_buyexp(cn, co),
-        TRANSFER => answer_transfer(cn, co),
-        SPELLINFO => answer_spellinfo(cn, co),
-        QUIET => answer_quiet(cn, co),
+        HEALTH => answer_health(gs, cn, co),
+        SHOP => answer_shop(gs, cn, co),
+        GREET => answer_greeting(gs, cn, co),
+        WHOAMI => answer_whoami(gs, cn, co),
+        WHERE => answer_where(gs, cn, co),
+        STOP => answer_stop(gs, cn, co),
+        MOVE => answer_move(gs, cn, co),
+        ATTACK => answer_attack(gs, cn, co, word),
+        WAIT => answer_wait(gs, cn, co),
+        FOLLOW => answer_follow(gs, cn, co),
+        TIME => answer_time(gs, cn, co),
+        POINTS => answer_points(gs, cn, co, know_idx),
+        BUYGOLD => answer_buygold(gs, cn, co),
+        BUYHEALTH => answer_buyhealth(gs, cn, co),
+        BUYMANA => answer_buymana(gs, cn, co),
+        BUYEXP => answer_buyexp(gs, cn, co),
+        TRANSFER => answer_transfer(gs, cn, co),
+        SPELLINFO => answer_spellinfo(gs, cn, co),
+        QUIET => answer_quiet(gs, cn, co),
         _ => {}
     }
 }
@@ -2908,47 +2782,39 @@ fn replace_synonym(word: &mut String) {
 /// * `cn` - NPC character
 /// * `co` - Player who spoke to the NPC
 /// * `text` - Text that the player spoke
-pub fn npc_hear(cn: usize, co: usize, text: &str) {
+pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
     // Check for stop keyword
-    let stop_keyword = Repository::with_characters(|characters| {
-        c_string_to_str(&characters[cn].text[6]).to_string()
-    });
+    let stop_keyword = c_string_to_str(&gs.characters[cn].text[6]).to_string();
 
     if !stop_keyword.is_empty() && text.eq_ignore_ascii_case(&stop_keyword) {
-        Repository::with_characters_mut(|characters| {
-            for n in 80..92 {
-                characters[cn].data[n] = 0;
-            }
-            characters[cn].attack_cn = 0;
-            characters[cn].goto_x = 0;
-            characters[cn].goto_y = 0;
-            characters[cn].misc_action = 0;
-            characters[cn].data[78] = 0;
+        for n in 80..92 {
+            gs.characters[cn].data[n] = 0;
+        }
+        gs.characters[cn].attack_cn = 0;
+        gs.characters[cn].goto_x = 0;
+        gs.characters[cn].goto_y = 0;
+        gs.characters[cn].misc_action = 0;
+        gs.characters[cn].data[78] = 0;
+        gs.characters[cn].data[27] = gs.globals.ticker;
 
-            let ticker = Repository::with_globals(|g| g.ticker);
-            characters[cn].data[27] = ticker;
-
-            let response = c_string_to_str(&characters[cn].text[7]).to_string();
-
-            if !response.is_empty() {
-                State::with(|state| {
-                    state.do_sayx(cn, &response);
-                });
-            }
-        });
+        let response = c_string_to_str(&gs.characters[cn].text[7]).to_string();
+        if !response.is_empty() {
+            gs.do_sayx(cn, &response);
+        }
         return;
     }
 
     // Don't talk to enemies
-    if obey(cn, co) == 0 {
-        let is_enemy = Repository::with_characters(|characters| {
+    if obey(gs, cn, co) == 0 {
+        let mut is_enemy = false;
+        {
             for n in 80..92 {
-                if (characters[cn].data[n] & 0xffff) == co as i32 {
-                    return true;
+                if (gs.characters[cn].data[n] & 0xffff) == co as i32 {
+                    is_enemy = true;
+                    break;
                 }
             }
-            false
-        });
+        }
 
         if is_enemy {
             return;
@@ -2962,8 +2828,7 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
     let mut name_mentioned = false;
 
     let text_lower = str_lower(text);
-    let npc_name_lower =
-        Repository::with_characters(|characters| str_lower(characters[cn].get_name()));
+    let npc_name_lower = str_lower(gs.characters[cn].get_name());
 
     for c in text.chars() {
         if c == '!' {
@@ -3013,13 +2878,9 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
     let mut best_conf = 0;
     let mut best_nr = None;
 
-    let (npc_knowledge, npc_area, npc_temp) = Repository::with_characters(|characters| {
-        (
-            characters[cn].data[68],
-            characters[cn].data[72],
-            characters[cn].temp,
-        )
-    });
+    let npc_knowledge = gs.characters[cn].data[68];
+    let npc_area = gs.characters[cn].data[72];
+    let npc_temp = gs.characters[cn].temp;
 
     for (idx, know_entry) in KNOW.iter().enumerate() {
         // Check if NPC has the required knowledge, area, and temp
@@ -3096,27 +2957,23 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
     }
 
     // Determine if NPC should talk
-    let talk_level = Repository::with_characters(|characters| {
-        characters[cn].data[core::constants::CHD_TALKATIVE]
-    }) + if name_mentioned { 1 } else { 0 }
-        + if obey(cn, co) != 0 { 20 } else { 0 };
+    let talk_level = gs.characters[cn].data[core::constants::CHD_TALKATIVE]
+        + if name_mentioned { 1 } else { 0 }
+        + if obey(gs, cn, co) != 0 { 20 } else { 0 };
 
     if talk_level > 0 && best_conf > 0 {
         if let Some(nr) = best_nr {
             let know_entry = &KNOW[nr];
 
             if know_entry.special == 0 {
-                let answer = Repository::with_characters(|characters| {
-                    know_entry.answer.replace("%s", characters[co].get_name())
-                });
-
-                State::with(|state| {
-                    state.do_sayx(cn, &answer);
-                });
+                let answer = know_entry
+                    .answer
+                    .replace("%s", gs.characters[co].get_name());
+                gs.do_sayx(cn, &answer);
 
                 log::info!("Character {} answered \"{}\" with \"{}\"", cn, text, answer);
             } else {
-                special_answer(cn, co, know_entry.special, text, nr);
+                special_answer(gs, cn, co, know_entry.special, text, nr);
                 log::info!(
                     "Character {} answered \"{}\" with special {}",
                     cn,
@@ -3126,9 +2983,7 @@ pub fn npc_hear(cn: usize, co: usize, text: &str) {
             }
         }
     } else if name_mentioned && talk_level > 0 {
-        State::with(|state| {
-            state.do_sayx(cn, "I don't know about that.");
-        });
+        gs.do_sayx(cn, "I don't know about that.");
     }
 
     if best_conf <= 0 && talk_level > 0 {

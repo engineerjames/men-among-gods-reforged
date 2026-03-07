@@ -3,11 +3,10 @@ use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 use crate::driver;
+use crate::game_state::GameState;
 use crate::god::God;
-use crate::repository::Repository;
-use crate::state::State;
 
-impl State {
+impl GameState {
     /// Calculates adjusted price based on character's barter skill.
     ///
     /// # Arguments
@@ -19,9 +18,8 @@ impl State {
     /// # Returns
     ///
     /// Adjusted price after applying barter skill.
-    pub(crate) fn barter(&self, cn: usize, opr: i32, flag: i32) -> i32 {
-        let barter_skill =
-            Repository::with_characters(|ch| ch[cn].skill[core::constants::SK_BARTER][5] as i32);
+    pub(crate) fn barter(&mut self, cn: usize, opr: i32, flag: i32) -> i32 {
+        let barter_skill = self.characters[cn].skill[core::constants::SK_BARTER][5] as i32;
 
         let pr = if flag != 0 {
             // Merchant is selling (player is buying)
@@ -67,12 +65,8 @@ impl State {
         }
 
         // Check if target is a merchant or corpse (body)
-        let (is_merchant, is_body) = Repository::with_characters(|ch| {
-            (
-                ch[co].flags & CharacterFlags::Merchant.bits() != 0,
-                ch[co].flags & CharacterFlags::Body.bits() != 0,
-            )
-        });
+        let is_merchant = self.characters[co].flags & CharacterFlags::Merchant.bits() != 0;
+        let is_body = self.characters[co].flags & CharacterFlags::Body.bits() != 0;
 
         if !is_merchant && !is_body {
             return;
@@ -87,14 +81,10 @@ impl State {
 
         // For corpses, check distance (must be adjacent)
         if is_body {
-            let (cn_x, cn_y, co_x, co_y) = Repository::with_characters(|ch| {
-                (
-                    ch[cn].x as i32,
-                    ch[cn].y as i32,
-                    ch[co].x as i32,
-                    ch[co].y as i32,
-                )
-            });
+            let cn_x = self.characters[cn].x as i32;
+            let cn_y = self.characters[cn].y as i32;
+            let co_x = self.characters[co].x as i32;
+            let co_y = self.characters[co].y as i32;
 
             let distance = (cn_x - co_x).abs() + (cn_y - co_y).abs();
             if distance > 1 {
@@ -103,7 +93,7 @@ impl State {
         }
 
         // Handle selling to merchant (player has citem)
-        let citem = Repository::with_characters(|ch| ch[cn].citem);
+        let citem = self.characters[cn].citem;
 
         if citem != 0 && is_merchant {
             // Check if trying to sell money
@@ -115,13 +105,10 @@ impl State {
             let item_idx = citem as usize;
 
             // Check if merchant accepts this type of item
-            let merchant_template = Repository::with_characters(|ch| ch[co].data[0] as usize);
+            let merchant_template = self.characters[co].data[0] as usize;
 
-            let (item_flags, template_flags) = Repository::with_items(|items| {
-                Repository::with_item_templates(|templates| {
-                    (items[item_idx].flags, templates[merchant_template].flags)
-                })
-            });
+            let item_flags = self.items[item_idx].flags;
+            let template_flags = self.item_templates[merchant_template].flags;
 
             let mut accepts = false;
             if (item_flags & ItemFlags::IF_ARMOR.bits() != 0)
@@ -146,7 +133,7 @@ impl State {
             }
 
             if !accepts {
-                let merchant_name = Repository::with_characters(|ch| ch[co].get_name().to_string());
+                let merchant_name = self.characters[co].get_name().to_string();
                 self.do_character_log(
                     cn,
                     FontColor::Green,
@@ -160,10 +147,9 @@ impl State {
             let price = self.barter(cn, value as i32, 0);
 
             // Check if merchant can afford it
-            let merchant_gold = Repository::with_characters(|ch| ch[co].gold);
+            let merchant_gold = self.characters[co].gold;
             if merchant_gold < price {
-                let merchant_ref =
-                    Repository::with_characters(|ch| ch[co].get_reference().to_string());
+                let merchant_ref = self.characters[co].get_reference().to_string();
                 self.do_character_log(
                     cn,
                     FontColor::Green,
@@ -173,13 +159,11 @@ impl State {
             }
 
             // Complete the sale
-            Repository::with_characters_mut(|ch| {
-                ch[cn].citem = 0;
-                ch[cn].gold += price;
-            });
+            self.characters[cn].citem = 0;
+            self.characters[cn].gold += price;
 
             // Transfer item to merchant
-            if !God::give_character_item(co, item_idx) {
+            if !God::give_character_item(self, co, item_idx) {
                 log::error!(
                     "do_shop_char: god_give_character_item({}, {}) failed",
                     item_idx,
@@ -188,11 +172,9 @@ impl State {
                 return;
             }
 
-            let item_name = Repository::with_items(|items| items[item_idx].get_name().to_string());
+            let item_name = self.items[item_idx].get_name().to_string();
 
-            let item_ref = Repository::with_items(|items| {
-                c_string_to_str(&items[item_idx].reference).to_string()
-            });
+            let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_string();
 
             chlog!(
                 cn,
@@ -214,16 +196,14 @@ impl State {
             );
 
             // Update item template statistics
-            let temp_id = Repository::with_items(|items| items[item_idx].temp as usize);
+            let temp_id = self.items[item_idx].temp as usize;
             if temp_id > 0 && temp_id < core::constants::MAXTITEM {
                 log::warn!(
                     "TODO: Should update t_sold for template {} after selling item {}",
                     temp_id,
                     item_name
                 );
-                // Repository::with_item_templates_mut(|templates| {
-                //     templates[temp_id].t_sold += 1;
-                // });
+                // self.item_templates[temp_id].t_sold += 1;
             }
         } else {
             // Handle buying/taking/examining items
@@ -231,15 +211,14 @@ impl State {
                 // Buying or taking items
                 if nr < 40 {
                     // Inventory slot
-                    let item_idx =
-                        Repository::with_characters(|ch| ch[co].item[nr as usize] as usize);
+                    let item_idx = self.characters[co].item[nr as usize] as usize;
 
                     if item_idx != 0 {
                         let price = if is_merchant {
                             let value = self.do_item_value(item_idx);
                             let pr = self.barter(cn, value as i32, 1);
 
-                            let player_gold = Repository::with_characters(|ch| ch[cn].gold);
+                            let player_gold = self.characters[cn].gold;
                             if player_gold < pr {
                                 self.do_character_log(
                                     cn,
@@ -253,7 +232,7 @@ impl State {
                             0
                         };
 
-                        if !God::take_from_char(item_idx, co) {
+                        if !God::take_from_char(self, item_idx, co) {
                             log::error!(
                                 "do_shop_char: god_take_from_char({}, {}) failed",
                                 item_idx,
@@ -261,21 +240,16 @@ impl State {
                             );
                         }
 
-                        let gave_success = God::give_character_item(cn, item_idx);
+                        let gave_success = God::give_character_item(self, cn, item_idx);
 
                         if gave_success {
                             if is_merchant {
-                                Repository::with_characters_mut(|ch| {
-                                    ch[cn].gold -= price;
-                                    ch[co].gold += price;
-                                });
+                                self.characters[cn].gold -= price;
+                                self.characters[co].gold += price;
 
-                                let item_name = Repository::with_items(|items| {
-                                    items[item_idx].get_name().to_string()
-                                });
-                                let item_ref = Repository::with_items(|items| {
-                                    c_string_to_str(&items[item_idx].reference).to_string()
-                                });
+                                let item_name = self.items[item_idx].get_name().to_string();
+                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
+                                    .to_string();
 
                                 chlog!(
                                     cn,
@@ -297,18 +271,13 @@ impl State {
                                 );
 
                                 // Update template statistics
-                                let temp_id =
-                                    Repository::with_items(|items| items[item_idx].temp as usize);
+                                let temp_id = self.items[item_idx].temp as usize;
                                 if temp_id > 0 && temp_id < core::constants::MAXTITEM {
                                     log::warn!("TODO: Should update t_bought for template {} after buying item {}", temp_id, item_name);
-                                    // Repository::with_item_templates_mut(|templates| {
-                                    //     templates[temp_id].t_bought += 1;
-                                    // });
+                                    // self.item_templates[temp_id].t_bought += 1;
                                 }
                             } else {
-                                let item_name = Repository::with_items(|items| {
-                                    items[item_idx].get_name().to_string()
-                                });
+                                let item_name = self.items[item_idx].get_name().to_string();
 
                                 self.do_character_log(
                                     cn,
@@ -318,11 +287,10 @@ impl State {
                             }
                         } else {
                             // Failed to give item - put it back
-                            God::give_character_item(co, item_idx);
+                            God::give_character_item(self, co, item_idx);
 
-                            let item_ref = Repository::with_items(|items| {
-                                c_string_to_str(&items[item_idx].reference).to_string()
-                            });
+                            let item_ref =
+                                c_string_to_str(&mut self.items[item_idx].reference).to_string();
 
                             if is_merchant {
                                 self.do_character_log(
@@ -349,21 +317,17 @@ impl State {
                     // Worn items (only for corpses)
                     if is_body {
                         let worn_slot = (nr - 40) as usize;
-                        let item_idx =
-                            Repository::with_characters(|ch| ch[co].worn[worn_slot] as usize);
+                        let item_idx = self.characters[co].worn[worn_slot] as usize;
 
                         if item_idx != 0 {
-                            God::take_from_char(item_idx, co);
+                            God::take_from_char(self, item_idx, co);
 
-                            let gave_success = God::give_character_item(cn, item_idx);
+                            let gave_success = God::give_character_item(self, cn, item_idx);
 
                             if gave_success {
-                                let item_name = Repository::with_items(|items| {
-                                    items[item_idx].get_name().to_string()
-                                });
-                                let item_ref = Repository::with_items(|items| {
-                                    c_string_to_str(&items[item_idx].reference).to_string()
-                                });
+                                let item_name = self.items[item_idx].get_name().to_string();
+                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
+                                    .to_string();
 
                                 chlog!(cn, "Took {} from corpse", item_name);
 
@@ -374,11 +338,10 @@ impl State {
                                 );
                             } else {
                                 // Failed to give item - put it back
-                                God::give_character_item(co, item_idx);
+                                God::give_character_item(self, co, item_idx);
 
-                                let item_ref = Repository::with_items(|items| {
-                                    c_string_to_str(&items[item_idx].reference).to_string()
-                                });
+                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
+                                    .to_string();
 
                                 self.do_character_log(
                                     cn,
@@ -394,10 +357,10 @@ impl State {
                 } else if nr == 60 {
                     // Carried item (only for corpses)
                     if is_body {
-                        let item_idx = Repository::with_characters(|ch| ch[co].citem as usize);
+                        let item_idx = self.characters[co].citem as usize;
 
                         if item_idx != 0 {
-                            if !God::take_from_char(item_idx, co) {
+                            if !God::take_from_char(self, item_idx, co) {
                                 log::error!(
                                     "do_shop_char: god_take_from_char({}, {}) failed",
                                     item_idx,
@@ -406,15 +369,12 @@ impl State {
                                 return;
                             }
 
-                            let gave_success = God::give_character_item(cn, item_idx);
+                            let gave_success = God::give_character_item(self, cn, item_idx);
 
                             if gave_success {
-                                let item_name = Repository::with_items(|items| {
-                                    items[item_idx].get_name().to_string()
-                                });
-                                let item_ref = Repository::with_items(|items| {
-                                    c_string_to_str(&items[item_idx].reference).to_string()
-                                });
+                                let item_name = self.items[item_idx].get_name().to_string();
+                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
+                                    .to_string();
 
                                 chlog!(cn, "Took {} from corpse", item_name);
 
@@ -424,7 +384,7 @@ impl State {
                                     &format!("You took a {}.\n", item_ref),
                                 );
                             } else {
-                                if !God::give_character_item(co, item_idx) {
+                                if !God::give_character_item(self, co, item_idx) {
                                     log::error!(
                                         "do_shop_char: god_give_character_item({}, {}) failed",
                                         item_idx,
@@ -432,9 +392,8 @@ impl State {
                                     );
                                 }
 
-                                let item_ref = Repository::with_items(|items| {
-                                    c_string_to_str(&items[item_idx].reference).to_string()
-                                });
+                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
+                                    .to_string();
 
                                 self.do_character_log(
                                     cn,
@@ -450,13 +409,11 @@ impl State {
                 } else {
                     // nr == 61: Take gold (only for corpses)
                     if is_body {
-                        let corpse_gold = Repository::with_characters(|ch| ch[co].gold);
+                        let corpse_gold = self.characters[co].gold;
 
                         if corpse_gold > 0 {
-                            Repository::with_characters_mut(|ch| {
-                                ch[cn].gold += corpse_gold;
-                                ch[co].gold = 0;
-                            });
+                            self.characters[cn].gold += corpse_gold;
+                            self.characters[co].gold = 0;
 
                             chlog!(
                                 cn,
@@ -483,16 +440,12 @@ impl State {
 
                 if exam_nr < 40 {
                     // Inventory item description
-                    let item_idx =
-                        Repository::with_characters(|ch| ch[co].item[exam_nr as usize] as usize);
+                    let item_idx = self.characters[co].item[exam_nr as usize] as usize;
 
                     if item_idx != 0 {
-                        let (item_name, item_desc) = Repository::with_items(|items| {
-                            (
-                                items[item_idx].get_name().to_string(),
-                                c_string_to_str(&items[item_idx].description).to_string(),
-                            )
-                        });
+                        let item_name = self.items[item_idx].get_name().to_string();
+                        let item_desc =
+                            c_string_to_str(&mut self.items[item_idx].description).to_string();
 
                         self.do_character_log(cn, FontColor::Yellow, &format!("{}:\n", item_name));
                         self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", item_desc));
@@ -501,16 +454,12 @@ impl State {
                     // Worn item description (only for corpses)
                     if is_body {
                         let worn_slot = (exam_nr - 40) as usize;
-                        let item_idx =
-                            Repository::with_characters(|ch| ch[co].worn[worn_slot] as usize);
+                        let item_idx = self.characters[co].worn[worn_slot] as usize;
 
                         if item_idx != 0 {
-                            let (item_name, item_desc) = Repository::with_items(|items| {
-                                (
-                                    items[item_idx].get_name().to_string(),
-                                    c_string_to_str(&items[item_idx].description).to_string(),
-                                )
-                            });
+                            let item_name = self.items[item_idx].get_name().to_string();
+                            let item_desc =
+                                c_string_to_str(&mut self.items[item_idx].description).to_string();
 
                             self.do_character_log(
                                 cn,
@@ -527,15 +476,12 @@ impl State {
                 } else {
                     // Carried item description (only for corpses)
                     if is_body {
-                        let item_idx = Repository::with_characters(|ch| ch[co].citem as usize);
+                        let item_idx = self.characters[co].citem as usize;
 
                         if item_idx != 0 {
-                            let (item_name, item_desc) = Repository::with_items(|items| {
-                                (
-                                    items[item_idx].get_name().to_string(),
-                                    c_string_to_str(&items[item_idx].description).to_string(),
-                                )
-                            });
+                            let item_name = self.items[item_idx].get_name().to_string();
+                            let item_desc =
+                                c_string_to_str(&mut self.items[item_idx].description).to_string();
 
                             self.do_character_log(
                                 cn,
@@ -555,7 +501,7 @@ impl State {
 
         // Update merchant shop display if applicable
         if is_merchant {
-            driver::update_shop(co);
+            driver::update_shop(self, co);
         }
 
         // Refresh the character/corpse display
@@ -572,30 +518,28 @@ impl State {
     ///
     /// # Returns
     /// * Storage cost in gold per tick
-    pub(crate) fn do_depot_cost(&self, item_idx: usize) -> i32 {
+    pub(crate) fn do_depot_cost(&mut self, item_idx: usize) -> i32 {
         if item_idx == 0 || item_idx >= core::constants::MAXITEM {
             return 0;
         }
 
-        Repository::with_items(|items| {
-            let item = &items[item_idx];
+        let item = &mut self.items[item_idx];
 
-            let mut cost = 1;
+        let mut cost = 1;
 
-            // Add cost based on item value
-            cost += item.value as i32 / 1600;
+        // Add cost based on item value
+        cost += item.value as i32 / 1600;
 
-            // Add cost based on item power (cubic formula)
-            let power = item.power as i32;
-            cost += (power * power * power) / 16000;
+        // Add cost based on item power (cubic formula)
+        let power = item.power as i32;
+        cost += (power * power * power) / 16000;
 
-            // Items that are destroyed in labyrinth have much higher storage cost
-            if item.flags & ItemFlags::IF_LABYDESTROY.bits() != 0 {
-                cost += 20000;
-            }
+        // Items that are destroyed in labyrinth have much higher storage cost
+        if item.flags & ItemFlags::IF_LABYDESTROY.bits() != 0 {
+            cost += 20000;
+        }
 
-            cost
-        })
+        cost
     }
 
     /// Port of `do_add_depot(int cn, int in)` from `svr_do.cpp`
@@ -610,9 +554,9 @@ impl State {
     /// # Returns
     /// * `true` - Item was successfully added to depot
     /// * `false` - Depot is full (all 62 slots occupied)
-    pub(crate) fn do_add_depot(&self, cn: usize, item_idx: usize) -> bool {
+    pub(crate) fn do_add_depot(&mut self, cn: usize, item_idx: usize) -> bool {
         // Find first empty depot slot
-        let empty_slot = Repository::with_characters(|ch| (0..62).find(|&n| ch[cn].depot[n] == 0));
+        let empty_slot = (0..62).find(|&n| self.characters[cn].depot[n] == 0);
 
         // If no empty slot found, depot is full
         let slot = match empty_slot {
@@ -621,10 +565,8 @@ impl State {
         };
 
         // Add item to depot slot
-        Repository::with_characters_mut(|ch| {
-            ch[cn].depot[slot] = item_idx as u32;
-            ch[cn].set_do_update_flags();
-        });
+        self.characters[cn].depot[slot] = item_idx as u32;
+        self.characters[cn].set_do_update_flags();
 
         true
     }
@@ -643,32 +585,28 @@ impl State {
     /// 2. If not enough gold in bank account, sell cheapest depot items until enough funds
     /// 3. Deduct storage cost from bank account
     /// 4. Track total depot costs paid
-    pub(crate) fn do_pay_depot(&self, cn: usize) {
+    pub(crate) fn do_pay_depot(&mut self, cn: usize) {
         loop {
             // Calculate total cost for all items in depot
             let total_cost = self.get_depot_cost(cn);
 
-            let bank_balance = Repository::with_characters(|ch| ch[cn].data[13]);
+            let bank_balance = self.characters[cn].data[13];
 
             if total_cost > bank_balance {
                 // Not enough money - find and sell cheapest item
-                let (cheapest_value, cheapest_slot) = Repository::with_characters(|ch| {
-                    let mut lowest_value = 99999999;
-                    let mut lowest_slot = None;
+                let mut cheapest_value = 99999999;
+                let mut cheapest_slot = None;
 
-                    for n in 0..62 {
-                        let item_idx = ch[cn].depot[n];
-                        if item_idx != 0 {
-                            let value = self.do_item_value(item_idx as usize);
-                            if value < lowest_value {
-                                lowest_value = value;
-                                lowest_slot = Some(n);
-                            }
+                for n in 0..62 {
+                    let item_idx = self.characters[cn].depot[n];
+                    if item_idx != 0 {
+                        let value = self.do_item_value(item_idx as usize);
+                        if value < cheapest_value {
+                            cheapest_value = value;
+                            cheapest_slot = Some(n);
                         }
                     }
-
-                    (lowest_value, lowest_slot)
-                });
+                }
 
                 // If no items to sell, panic
                 let slot = match cheapest_slot {
@@ -682,26 +620,19 @@ impl State {
                 // Sell the item for half its value
                 let sell_value = cheapest_value / 2;
 
-                let item_idx = Repository::with_characters(|ch| ch[cn].depot[slot]);
+                let item_idx = self.characters[cn].depot[slot];
 
                 // Add proceeds to bank account
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].data[13] += sell_value as i32;
-                });
+                self.characters[cn].data[13] += sell_value as i32;
 
                 // Mark item as empty (destroyed)
-                Repository::with_items_mut(|items| {
-                    items[item_idx as usize].used = core::constants::USE_EMPTY;
-                });
+                self.items[item_idx as usize].used = core::constants::USE_EMPTY;
 
                 // Remove item from depot
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].depot[slot] = 0;
-                    ch[cn].depot_sold += 1;
-                });
+                self.characters[cn].depot[slot] = 0;
+                self.characters[cn].depot_sold += 1;
 
-                let item_name =
-                    Repository::with_items(|items| items[item_idx as usize].get_name().to_string());
+                let item_name = self.items[item_idx as usize].get_name().to_string();
 
                 chlog!(
                     cn,
@@ -713,10 +644,8 @@ impl State {
                 );
             } else {
                 // Enough money - pay the cost
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].data[13] -= total_cost;
-                    ch[cn].depot_cost += total_cost;
-                });
+                self.characters[cn].data[13] -= total_cost;
+                self.characters[cn].depot_cost += total_cost;
                 break;
             }
         }
@@ -731,17 +660,15 @@ impl State {
     ///
     /// # Returns
     /// * Total storage cost for all depot items
-    pub(crate) fn get_depot_cost(&self, cn: usize) -> i32 {
-        Repository::with_characters(|ch| {
-            let mut total = 0;
-            for n in 0..62 {
-                let item_idx = ch[cn].depot[n];
-                if item_idx != 0 {
-                    total += self.do_depot_cost(item_idx as usize);
-                }
+    pub(crate) fn get_depot_cost(&mut self, cn: usize) -> i32 {
+        let mut total = 0;
+        for n in 0..62 {
+            let item_idx = self.characters[cn].depot[n];
+            if item_idx != 0 {
+                total += self.do_depot_cost(item_idx as usize);
             }
-            total
-        })
+        }
+        total
     }
 
     /// Port of `do_depot_char(int cn, int co, int nr)` from `svr_do.cpp`
@@ -768,19 +695,13 @@ impl State {
         }
 
         // Check if in a bank or is god
-        let (char_x, char_y, is_god) = Repository::with_characters(|ch| {
-            (
-                ch[cn].x,
-                ch[cn].y,
-                ch[cn].flags & CharacterFlags::God.bits() != 0,
-            )
-        });
+        let char_x = self.characters[cn].x;
+        let char_y = self.characters[cn].y;
+        let is_god = self.characters[cn].flags & CharacterFlags::God.bits() != 0;
 
         if !is_god {
             let map_idx = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
-            let in_bank = Repository::with_map(|map| {
-                map[map_idx].flags & core::constants::MF_BANK as u64 != 0
-            });
+            let in_bank = self.map[map_idx].flags & core::constants::MF_BANK as u64 != 0;
 
             if !in_bank {
                 self.do_character_log(
@@ -792,7 +713,7 @@ impl State {
             }
         }
 
-        let citem = Repository::with_characters(|ch| ch[cn].citem);
+        let citem = self.characters[cn].citem;
 
         if citem != 0 {
             // Depositing an item
@@ -813,9 +734,7 @@ impl State {
                 return;
             }
 
-            let has_nodepot = Repository::with_items(|items| {
-                items[item_idx].flags & ItemFlags::IF_NODEPOT.bits() != 0
-            });
+            let has_nodepot = self.items[item_idx].flags & ItemFlags::IF_NODEPOT.bits() != 0;
 
             if has_nodepot {
                 self.do_character_log(cn, FontColor::Green, "You are not allowed to do that!\n");
@@ -827,16 +746,11 @@ impl State {
 
             // Try to add to depot
             if self.do_add_depot(co, item_idx) {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].citem = 0;
-                });
+                self.characters[cn].citem = 0;
 
-                let item_ref = Repository::with_items(|items| {
-                    c_string_to_str(&items[item_idx].reference).to_string()
-                });
+                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_string();
 
-                let item_name =
-                    Repository::with_items(|items| items[item_idx].get_name().to_string());
+                let item_name = self.items[item_idx].get_name().to_string();
 
                 // Calculate costs per day (Astonian and Earth)
                 let astonian_cost = storage_cost;
@@ -867,23 +781,19 @@ impl State {
             // Withdrawing or examining items
             if nr < 62 {
                 // Withdraw item from depot
-                let item_idx = Repository::with_characters(|ch| ch[co].depot[nr as usize]);
+                let item_idx = self.characters[co].depot[nr as usize];
 
                 if item_idx != 0 {
-                    let gave_success = God::give_character_item(cn, item_idx as usize);
+                    let gave_success = God::give_character_item(self, cn, item_idx as usize);
 
                     if gave_success {
-                        Repository::with_characters_mut(|ch| {
-                            ch[co].depot[nr as usize] = 0;
-                        });
+                        self.characters[co].depot[nr as usize] = 0;
 
-                        let item_ref = Repository::with_items(|items| {
-                            c_string_to_str(&items[item_idx as usize].reference).to_string()
-                        });
+                        let item_ref =
+                            c_string_to_str(&mut self.items[item_idx as usize].reference)
+                                .to_string();
 
-                        let item_name = Repository::with_items(|items| {
-                            items[item_idx as usize].get_name().to_string()
-                        });
+                        let item_name = self.items[item_idx as usize].get_name().to_string();
 
                         self.do_character_log(
                             cn,
@@ -893,9 +803,9 @@ impl State {
 
                         chlog!(cn, "Took {} from depot", item_name);
                     } else {
-                        let item_ref = Repository::with_items(|items| {
-                            c_string_to_str(&items[item_idx as usize].reference).to_string()
-                        });
+                        let item_ref =
+                            c_string_to_str(&mut self.items[item_idx as usize].reference)
+                                .to_string();
 
                         self.do_character_log(
                             cn,
@@ -910,15 +820,12 @@ impl State {
             } else {
                 // Examine item in depot
                 let exam_slot = (nr - 62) as usize;
-                let item_idx = Repository::with_characters(|ch| ch[co].depot[exam_slot]);
+                let item_idx = self.characters[co].depot[exam_slot];
 
                 if item_idx != 0 {
-                    let (item_name, item_desc) = Repository::with_items(|items| {
-                        (
-                            items[item_idx as usize].get_name().to_string(),
-                            c_string_to_str(&items[item_idx as usize].description).to_string(),
-                        )
-                    });
+                    let item_name = self.items[item_idx as usize].get_name().to_string();
+                    let item_desc =
+                        c_string_to_str(&mut self.items[item_idx as usize].description).to_string();
 
                     self.do_character_log(cn, FontColor::Yellow, &format!("{}:\n", item_name));
                     self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", item_desc));
@@ -933,7 +840,7 @@ impl State {
     ///
     /// # Arguments
     /// * `cn` - Character index
-    pub(crate) fn do_depot(&self, cn: usize) {
+    pub(crate) fn do_depot(&mut self, cn: usize) {
         self.do_character_log(cn, core::types::FontColor::Yellow, "This is your bank depot. You can store up to 62 items here. But you have to pay a rent for each item.\n");
         // Match original `do_depot`: immediately open the depot (shop-style) UI.
         self.do_look_depot(cn, cn);

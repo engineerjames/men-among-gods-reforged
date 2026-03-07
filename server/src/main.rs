@@ -3,6 +3,7 @@ mod background_saver;
 mod driver;
 mod effect;
 mod enums;
+mod game_state;
 mod god;
 mod keydb;
 mod keydb_store;
@@ -16,9 +17,7 @@ mod path_finding;
 mod player;
 mod points;
 mod populate;
-mod repository;
 mod server;
-mod single_thread_cell;
 mod state;
 mod talk;
 mod tls;
@@ -31,36 +30,34 @@ use std::sync::Arc;
 
 use core;
 
-use crate::path_finding::PathFinder;
-use crate::repository::Repository;
-use crate::server::Server;
+use crate::game_state::GameState;
 
-fn handle_command_line_args(args: &[String]) {
+fn handle_command_line_args(args: &[String], gs: &mut GameState) {
     if args.len() == 2 {
         let cmd = args[1].to_lowercase();
         match cmd.as_str() {
             "pop" => {
-                populate::populate();
+                populate::populate(gs);
                 process::exit(0);
             }
             "wipe" => {
-                populate::pop_wipe();
+                populate::pop_wipe(gs);
                 process::exit(0);
             }
             "light" => {
-                populate::init_lights();
+                populate::init_lights(gs);
                 process::exit(0);
             }
             "skill" => {
-                populate::pop_skill();
+                populate::pop_skill(gs);
                 process::exit(0);
             }
             "load" => {
-                populate::pop_load_all_chars();
+                populate::pop_load_all_chars(gs);
                 process::exit(0);
             }
             "save" => {
-                populate::pop_save_all_chars();
+                populate::pop_save_all_chars(gs);
                 process::exit(0);
             }
             _ => {}
@@ -70,9 +67,6 @@ fn handle_command_line_args(args: &[String]) {
 
 fn main() -> Result<(), String> {
     let args: Vec<String> = env::args().collect();
-
-    // The original implementation had a call here for nice(5) to lower process priority.
-    // This is platform dependent and omitted for simplicity.
 
     core::initialize_logger(log::LevelFilter::Info, Some("server.log")).unwrap_or_else(|e| {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);
@@ -99,52 +93,43 @@ fn main() -> Result<(), String> {
         process::exit(1);
     }
 
-    handle_command_line_args(&args);
-
-    // Initialize the global repository
-    if let Err(e) = Repository::initialize() {
-        log::error!("Failed to initialize repository: {}. Exiting.", e);
+    let mut gs = GameState::initialize().unwrap_or_else(|e| {
+        log::error!("Failed to initialize game state: {}. Exiting.", e);
         process::exit(1);
-    }
-
-    // Initialize the global pathfinder
-    if let Err(e) = PathFinder::initialize() {
-        log::error!("Failed to initialize pathfinder: {}. Exiting.", e);
-        process::exit(1);
-    }
-
-    // Check for dirty flag
-    Repository::with_globals(|globals| {
-        if globals.is_dirty() {
-            log::error!("Data files were not closed cleanly last time. Exiting.");
-            process::exit(1);
-        }
     });
+
+    handle_command_line_args(&args, &mut gs);
+
+    if gs.globals.is_dirty() {
+        log::error!("Data files were not closed cleanly last time. Exiting.");
+        process::exit(1);
+    }
 
     let mut server = server::Server::new();
 
-    server.initialize()?;
+    server.initialize(&mut gs).unwrap_or_else(|e| {
+        log::error!("Failed to initialize server: {}. Exiting.", e);
+        process::exit(1);
+    });
 
     log::info!("Entering main game loop...");
 
     while !quit_flag.load(Ordering::SeqCst) {
-        server.tick();
+        server.tick(&mut gs);
     }
 
     log::info!("Shutdown signal received, exiting main loop...");
-    Server::with_players_mut(|players| {
-        for n in 1..core::constants::MAXPLAYER {
-            player::plr_logout(players[n].usnr, n, enums::LogoutReason::Shutdown);
-        }
-    });
+    let mut logout_entries: Vec<(usize, usize)> = Vec::new();
+    for player_idx in 1..gs.players.len() {
+        logout_entries.push((gs.players[player_idx].usnr, player_idx));
+    }
+    for (usnr, n) in &logout_entries {
+        player::plr_logout(&mut gs, *usnr, *n, enums::LogoutReason::Shutdown);
+    }
 
-    // Shut down background saver thread (flushes pending writes)
     server.shutdown_background_saver();
 
-    // Perform a full synchronous save to the configured backend
-    Repository::shutdown();
-
-    // TODO: Wait some amount of time and forceably close all sockets
+    gs.shutdown();
 
     log::info!("Server shutdown complete.");
 

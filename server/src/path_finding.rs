@@ -7,14 +7,8 @@
 use std::cmp::Ordering;
 use std::cmp::{max, min};
 use std::collections::BinaryHeap;
-use std::sync::OnceLock;
 
 use core::constants::*;
-
-use crate::repository::Repository;
-use crate::single_thread_cell::SingleThreadCell;
-
-static PATHFINDER: OnceLock<SingleThreadCell<PathFinder>> = OnceLock::new();
 
 const MAX_NODES: usize = 4096;
 
@@ -550,19 +544,25 @@ impl PathFinder {
         None
     }
 
-    /// Find path from character to target
+    /// Find path from character to target.
     ///
     /// # Arguments
-    /// * `character` - The character doing the pathfinding
-    /// * `x1`, `y1` - Primary target coordinates
-    /// * `flag` - Mode: 0 = exact target, 1 = adjacent to target, 2 = two targets
-    /// * `x2`, `y2` - Secondary target coordinates (used in mode 2)
+    /// * `character` - The character doing the pathfinding.
+    /// * `map` - Read-only world map tiles.
+    /// * `items` - Read-only item table used for move-block checks.
+    /// * `current_tick` - Current world tick for bad-target suppression.
+    /// * `x1`, `y1` - Primary target coordinates.
+    /// * `flag` - Mode: 0 = exact target, 1 = adjacent to target, 2 = two targets.
+    /// * `x2`, `y2` - Secondary target coordinates (used in mode 2).
     ///
     /// # Returns
-    /// Direction to move, or None if no path found
+    /// Direction to move, or `None` if no path is found.
     pub fn find_path(
         &mut self,
-        cn: usize,
+        character: &core::types::Character,
+        map: &[core::types::Map],
+        items: &[core::types::Item],
+        current_tick: u32,
         x1: i16,
         y1: i16,
         flag: u8,
@@ -570,137 +570,103 @@ impl PathFinder {
         y2: i16,
     ) -> Option<u8> {
         // Bounds checking
-        // TODO: Confirm this is the right tick value
-        Repository::with_characters(|ch| {
-            let current_tick = Repository::with_globals(|globs| globs.ticker);
-            if ch[cn].x < 1 || ch[cn].x >= SERVER_MAPX as i16 {
-                return None;
-            }
-            if ch[cn].y < 1 || ch[cn].y >= SERVER_MAPY as i16 {
-                return None;
-            }
-            if x1 < 1 || x1 >= SERVER_MAPX as i16 {
-                return None;
-            }
-            if y1 < 1 || y1 >= SERVER_MAPY as i16 {
-                return None;
-            }
-            if x2 < 0 || x2 >= SERVER_MAPX as i16 {
-                return None;
-            }
-            if y2 < 0 || y2 >= SERVER_MAPY as i16 {
-                return None;
-            }
+        if character.x < 1 || character.x >= SERVER_MAPX as i16 {
+            return None;
+        }
+        if character.y < 1 || character.y >= SERVER_MAPY as i16 {
+            return None;
+        }
+        if x1 < 1 || x1 >= SERVER_MAPX as i16 {
+            return None;
+        }
+        if y1 < 1 || y1 >= SERVER_MAPY as i16 {
+            return None;
+        }
+        if x2 < 0 || x2 >= SERVER_MAPX as i16 {
+            return None;
+        }
+        if y2 < 0 || y2 >= SERVER_MAPY as i16 {
+            return None;
+        }
 
-            // Check if target is marked as bad
-            if self.is_bad_target(x1, y1, current_tick as u32) {
-                return None;
-            }
+        // Check if target is marked as bad
+        if self.is_bad_target(x1, y1, current_tick) {
+            return None;
+        }
 
-            // Determine movement blocking flags
-            let mapblock = if (ch[cn].kindred as u32 & KIN_MONSTER) != 0
-                && (ch[cn].flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
-                    == 0
-            {
-                MF_NOMONST as u64 | MF_MOVEBLOCK as u64
-            } else {
-                MF_MOVEBLOCK as u64
-            };
-
-            let mapblock = if (ch[cn].flags
-                & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+        // Determine movement blocking flags
+        let mapblock = if (character.kindred as u32 & KIN_MONSTER) != 0
+            && (character.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
                 == 0
-            {
-                mapblock | MF_DEATHTRAP as u64
-            } else {
-                mapblock
-            };
+        {
+            MF_NOMONST as u64 | MF_MOVEBLOCK as u64
+        } else {
+            MF_MOVEBLOCK as u64
+        };
 
-            // Check if target is passable (for exact target mode)
-            if flag == 0 {
-                let target_m = (x1 as i32 + y1 as i32 * SERVER_MAPX) as usize;
-                let passable = Repository::with_map(|map| {
-                    Repository::with_items(|items| {
-                        Self::is_passable(map, items, target_m, mapblock)
-                    })
-                });
-                if !passable {
-                    return None;
-                }
+        let mapblock = if (character.flags
+            & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+            == 0
+        {
+            mapblock | MF_DEATHTRAP as u64
+        } else {
+            mapblock
+        };
+
+        // Check if target is passable (for exact target mode)
+        if flag == 0 {
+            let target_m = (x1 as i32 + y1 as i32 * SERVER_MAPX) as usize;
+            if !Self::is_passable(map, items, target_m, mapblock) {
+                return None;
             }
+        }
 
-            // Calculate max steps
-            let distance = max((ch[cn].x - x1).abs(), (ch[cn].y - y1).abs()) as usize;
-            let mut max_step = if ch[cn].attack_cn != 0
-                || ((ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
-                    == 0
-                    && ch[cn].data[78] != 0)
-            {
-                distance * 4 + 50
-            } else {
-                distance * 8 + 100
-            };
+        // Calculate max steps
+        let distance = max((character.x - x1).abs(), (character.y - y1).abs()) as usize;
+        let mut max_step = if character.attack_cn != 0
+            || ((character.flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+                == 0
+                && character.data[78] != 0)
+        {
+            distance * 4 + 50
+        } else {
+            distance * 8 + 100
+        };
 
-            // Special case for temp == 498 (hack for grolmy in stunrun.c)
-            if ch[cn].temp == 498 {
-                max_step += 4000;
-            }
+        // Special case for temp == 498 (hack for grolmy in stunrun.c)
+        if character.temp == 498 {
+            max_step += 4000;
+        }
 
-            if max_step > MAX_NODES {
-                max_step = MAX_NODES;
-            }
+        if max_step > MAX_NODES {
+            max_step = MAX_NODES;
+        }
 
-            // Reset state for new search
-            self.reset();
+        // Reset state for new search
+        self.reset();
 
-            // Run A* search
-            let result = Repository::with_map(|map| {
-                Repository::with_items(|items| {
-                    self.astar(
-                        ch[cn].x, ch[cn].y, ch[cn].dir, map, items, mapblock, flag, x1, y1, x2, y2,
-                        max_step,
-                    )
-                })
-            });
+        // Run A* search
+        let result = self.astar(
+            character.x,
+            character.y,
+            character.dir,
+            map,
+            items,
+            mapblock,
+            flag,
+            x1,
+            y1,
+            x2,
+            y2,
+            max_step,
+        );
 
-            // Mark as bad target if failed
-            if result.is_none() {
-                self.add_bad_target(x1, y1, current_tick as u32);
-            }
+        // Mark as bad target if failed
+        if result.is_none() {
+            self.add_bad_target(x1, y1, current_tick);
+        }
 
-            result
-        })
-    }
-
-    /// Initialize the global PathFinder singleton with static allocations.
-    ///
-    /// This mirrors `Repository::initialize()` semantics and must be called
-    /// during server startup prior to using `with`/`with_mut`.
-    pub fn initialize() -> Result<(), String> {
-        let pf = PathFinder::new();
-        PATHFINDER
-            .set(SingleThreadCell::new(pf))
-            .map_err(|_| "PathFinder already initialized".to_string())?;
-        Ok(())
-    }
-
-    /// Execute `f` with a read-only reference to the global PathFinder.
-    #[allow(dead_code)]
-    pub fn with<F, R>(f: F) -> R
-    where
-        F: FnOnce(&PathFinder) -> R,
-    {
-        let pf = PATHFINDER.get().expect("PathFinder not initialized");
-        pf.with(f)
-    }
-
-    /// Execute `f` with a mutable reference to the global PathFinder.
-    pub fn with_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut PathFinder) -> R,
-    {
-        let pf = PATHFINDER.get().expect("PathFinder not initialized");
-        pf.with_mut(f)
+        result
     }
 }
 
@@ -822,11 +788,8 @@ mod tests {
 
     #[test]
     fn test_pathfinder_creation() {
-        // Initialize singleton (ok if already initialized)
-        let _ = PathFinder::initialize();
-        PathFinder::with(|pf| {
-            assert_eq!(pf.nodes.capacity(), MAX_NODES);
-            assert_eq!(pf.node_map.len(), (SERVER_MAPX * SERVER_MAPY) as usize);
-        });
+        let pf = PathFinder::new();
+        assert_eq!(pf.nodes.capacity(), MAX_NODES);
+        assert_eq!(pf.node_map.len(), (SERVER_MAPX * SERVER_MAPY) as usize);
     }
 }

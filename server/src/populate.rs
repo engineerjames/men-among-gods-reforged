@@ -12,15 +12,14 @@ use {core::constants::CharacterFlags, core::constants::ItemFlags};
 use crate::{
     driver::{self, use_item},
     effect::EffectManager,
+    game_state::GameState,
     god::God,
     helpers, player,
-    repository::Repository,
-    state::State,
 };
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
-pub fn init_lights() {
+pub fn init_lights(gs: &mut GameState) {
     let mut cnt1 = 0;
     let mut cnt2 = 0;
 
@@ -28,10 +27,8 @@ pub fn init_lights() {
     for y in 0..SERVER_MAPY as usize {
         for x in 0..SERVER_MAPX as usize {
             let m = x + y * SERVER_MAPX as usize;
-            Repository::with_map_mut(|map| {
-                map[m].light = 0;
-                map[m].dlight = 0;
-            });
+            gs.map[m].light = 0;
+            gs.map[m].dlight = 0;
         }
     }
 
@@ -41,42 +38,32 @@ pub fn init_lights() {
             let m = x + y * SERVER_MAPX as usize;
 
             // Compute daylight for indoor tiles first
-            let is_indoors = Repository::with_map(|map| map[m].flags & MF_INDOORS as u64 != 0);
+            let is_indoors = gs.map[m].flags & MF_INDOORS as u64 != 0;
 
             if is_indoors {
-                State::with_mut(|state| {
-                    state.compute_dlight(x as i32, y as i32);
-                });
+                gs.compute_dlight(x as i32, y as i32);
                 cnt2 += 1;
             }
 
             // Then add light from items
-            let in_id = Repository::with_map(|map| map[m].it);
+            let in_id = gs.map[m].it;
 
             if in_id == 0 {
                 continue;
             }
 
-            let (active, light_active, light_inactive) = Repository::with_items(|items| {
-                (
-                    items[in_id as usize].active,
-                    items[in_id as usize].light[1],
-                    items[in_id as usize].light[0],
-                )
-            });
+            let active = gs.items[in_id as usize].active;
+            let light_active = gs.items[in_id as usize].light[1];
+            let light_inactive = gs.items[in_id as usize].light[0];
 
             if active != 0 {
                 if light_active != 0 {
-                    State::with_mut(|state| {
-                        state.do_add_light(x as i32, y as i32, light_active as i32);
-                    });
+                    gs.do_add_light(x as i32, y as i32, light_active as i32);
                     cnt1 += 1;
                 }
             } else {
                 if light_inactive != 0 {
-                    State::with_mut(|state| {
-                        state.do_add_light(x as i32, y as i32, light_inactive as i32);
-                    });
+                    gs.do_add_light(x as i32, y as i32, light_inactive as i32);
                     cnt1 += 1;
                 }
             }
@@ -86,30 +73,34 @@ pub fn init_lights() {
     log::info!("Initialized lights: {} items, {} indoor tiles", cnt1, cnt2);
 }
 
-/// Port of `pop_create_item` from `populate.cpp`
-/// Creates items for NPCs based on alignment and template
-pub fn pop_create_item(temp: usize, cn: usize) -> usize {
+/// Create an item for a character using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `temp` - Item template id.
+/// * `cn` - Character receiving or influencing the item roll.
+pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
     let mut in_id = 0;
-    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
+    let alignment = gs.characters[cn].alignment;
 
     // First check: Gorn uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(542),  // bronze dagger
-            28 => God::create_item(543),  // steel dagger
-            29 => God::create_item(544),  // gold dagger
-            30 => God::create_item(545),  // crystal dagger
-            523 => God::create_item(546), // titan dagger
-            31 => God::create_item(547),  // bronze sword
-            32 => God::create_item(548),  // steel sword
-            33 => God::create_item(549),  // gold sword
-            34 => God::create_item(550),  // crystal sword
-            524 => God::create_item(551), // titan sword
-            35 => God::create_item(552),  // bronze two
-            36 => God::create_item(553),  // steel two
-            37 => God::create_item(554),  // gold two
-            38 => God::create_item(555),  // crystal two
-            125 => God::create_item(556), // titan two
+            27 => God::create_item(gs, 542),  // bronze dagger
+            28 => God::create_item(gs, 543),  // steel dagger
+            29 => God::create_item(gs, 544),  // gold dagger
+            30 => God::create_item(gs, 545),  // crystal dagger
+            523 => God::create_item(gs, 546), // titan dagger
+            31 => God::create_item(gs, 547),  // bronze sword
+            32 => God::create_item(gs, 548),  // steel sword
+            33 => God::create_item(gs, 549),  // gold sword
+            34 => God::create_item(gs, 550),  // crystal sword
+            524 => God::create_item(gs, 551), // titan sword
+            35 => God::create_item(gs, 552),  // bronze two
+            36 => God::create_item(gs, 553),  // steel two
+            37 => God::create_item(gs, 554),  // gold two
+            38 => God::create_item(gs, 555),  // crystal two
+            125 => God::create_item(gs, 556), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -118,21 +109,21 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     // Second check: Kwai uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(527),  // bronze dagger
-            28 => God::create_item(528),  // steel dagger
-            29 => God::create_item(529),  // gold dagger
-            30 => God::create_item(530),  // crystal dagger
-            523 => God::create_item(531), // titan dagger
-            31 => God::create_item(532),  // bronze sword
-            32 => God::create_item(533),  // steel sword
-            33 => God::create_item(534),  // gold sword
-            34 => God::create_item(535),  // crystal sword
-            524 => God::create_item(536), // titan sword
-            35 => God::create_item(537),  // bronze two
-            36 => God::create_item(538),  // steel two
-            37 => God::create_item(539),  // gold two
-            38 => God::create_item(540),  // crystal two
-            125 => God::create_item(541), // titan two
+            27 => God::create_item(gs, 527),  // bronze dagger
+            28 => God::create_item(gs, 528),  // steel dagger
+            29 => God::create_item(gs, 529),  // gold dagger
+            30 => God::create_item(gs, 530),  // crystal dagger
+            523 => God::create_item(gs, 531), // titan dagger
+            31 => God::create_item(gs, 532),  // bronze sword
+            32 => God::create_item(gs, 533),  // steel sword
+            33 => God::create_item(gs, 534),  // gold sword
+            34 => God::create_item(gs, 535),  // crystal sword
+            524 => God::create_item(gs, 536), // titan sword
+            35 => God::create_item(gs, 537),  // bronze two
+            36 => God::create_item(gs, 538),  // steel two
+            37 => God::create_item(gs, 539),  // gold two
+            38 => God::create_item(gs, 540),  // crystal two
+            125 => God::create_item(gs, 541), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -141,21 +132,21 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     // Third check: Purple One uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(572),  // bronze dagger
-            28 => God::create_item(573),  // steel dagger
-            29 => God::create_item(574),  // gold dagger
-            30 => God::create_item(575),  // crystal dagger
-            523 => God::create_item(576), // titan dagger
-            31 => God::create_item(577),  // bronze sword
-            32 => God::create_item(578),  // steel sword
-            33 => God::create_item(579),  // gold sword
-            34 => God::create_item(580),  // crystal sword
-            524 => God::create_item(581), // titan sword
-            35 => God::create_item(582),  // bronze two
-            36 => God::create_item(583),  // steel two
-            37 => God::create_item(584),  // gold two
-            38 => God::create_item(585),  // crystal two
-            125 => God::create_item(586), // titan two
+            27 => God::create_item(gs, 572),  // bronze dagger
+            28 => God::create_item(gs, 573),  // steel dagger
+            29 => God::create_item(gs, 574),  // gold dagger
+            30 => God::create_item(gs, 575),  // crystal dagger
+            523 => God::create_item(gs, 576), // titan dagger
+            31 => God::create_item(gs, 577),  // bronze sword
+            32 => God::create_item(gs, 578),  // steel sword
+            33 => God::create_item(gs, 579),  // gold sword
+            34 => God::create_item(gs, 580),  // crystal sword
+            524 => God::create_item(gs, 581), // titan sword
+            35 => God::create_item(gs, 582),  // bronze two
+            36 => God::create_item(gs, 583),  // steel two
+            37 => God::create_item(gs, 584),  // gold two
+            38 => God::create_item(gs, 585),  // crystal two
+            125 => God::create_item(gs, 586), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -164,21 +155,21 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
     // Fourth check: Skua uniques (1/150 chance)
     if in_id == 0 && alignment < 0 && helpers::random_mod(150) == 0 {
         in_id = match temp {
-            27 => God::create_item(280),  // bronze dagger
-            28 => God::create_item(281),  // steel dagger
-            29 => God::create_item(282),  // gold dagger
-            30 => God::create_item(283),  // crystal dagger
-            523 => God::create_item(525), // titan dagger
-            31 => God::create_item(284),  // bronze sword
-            32 => God::create_item(285),  // steel sword
-            33 => God::create_item(286),  // gold sword
-            34 => God::create_item(287),  // crystal sword
-            524 => God::create_item(526), // titan sword
-            35 => God::create_item(288),  // bronze two
-            36 => God::create_item(289),  // steel two
-            37 => God::create_item(290),  // gold two
-            38 => God::create_item(291),  // crystal two
-            125 => God::create_item(292), // titan two
+            27 => God::create_item(gs, 280),  // bronze dagger
+            28 => God::create_item(gs, 281),  // steel dagger
+            29 => God::create_item(gs, 282),  // gold dagger
+            30 => God::create_item(gs, 283),  // crystal dagger
+            523 => God::create_item(gs, 525), // titan dagger
+            31 => God::create_item(gs, 284),  // bronze sword
+            32 => God::create_item(gs, 285),  // steel sword
+            33 => God::create_item(gs, 286),  // gold sword
+            34 => God::create_item(gs, 287),  // crystal sword
+            524 => God::create_item(gs, 526), // titan sword
+            35 => God::create_item(gs, 288),  // bronze two
+            36 => God::create_item(gs, 289),  // steel two
+            37 => God::create_item(gs, 290),  // gold two
+            38 => God::create_item(gs, 291),  // crystal two
+            125 => God::create_item(gs, 292), // titan two
             _ => None,
         }
         .unwrap_or(0);
@@ -186,29 +177,24 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 
     // Default: create item from template
     if in_id == 0 {
-        in_id = God::create_item(temp).unwrap_or(0);
+        in_id = God::create_item(gs, temp).unwrap_or(0);
 
         // Apply item damage for regular items
         if in_id != 0 {
-            let max_damage = Repository::with_items(|items| items[in_id].max_damage);
+            let max_damage = gs.items[in_id].max_damage;
             if max_damage > 0 {
                 // 50% chance to age the item first
                 if helpers::random_mod(2) == 0 {
-                    Repository::with_items_mut(|items| {
-                        items[in_id].current_damage = max_damage + 1;
-                    });
-                    use_item::item_age(in_id);
+                    gs.items[in_id].current_damage = max_damage + 1;
+                    use_item::item_age(gs, in_id);
                 }
                 // Set random damage
-                Repository::with_items_mut(|items| {
-                    items[in_id].current_damage = helpers::random_mod(max_damage);
-                });
+                gs.items[in_id].current_damage = helpers::random_mod(max_damage);
             }
         }
     } else {
-        let char_name =
-            Repository::with_characters(|characters| characters[cn].get_name().to_string());
-        let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
+        let char_name = gs.characters[cn].get_name().to_string();
+        let item_name = gs.items[in_id].get_name().to_string();
         log::info!("{} got unique item {}.", char_name, item_name);
     }
 
@@ -217,8 +203,14 @@ pub fn pop_create_item(temp: usize, cn: usize) -> usize {
 
 /// Port of `pop_create_bonus` from `populate.c`
 /// Creates bonus items based on character rank (points_tot)
-pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
-    let points_tot = Repository::with_characters(|characters| characters[cn].points_tot);
+/// Create a bonus item using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `cn` - Character receiving the bonus.
+/// * `_chance` - Legacy chance parameter retained for parity.
+pub fn pop_create_bonus(gs: &mut GameState, cn: usize, _chance: i32) -> i32 {
+    let points_tot = gs.characters[cn].points_tot;
 
     let template = if points_tot > 20000000 {
         // Very high rank items
@@ -286,12 +278,11 @@ pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
         }
     };
 
-    let in_id = God::create_item(template);
+    let in_id = God::create_item(gs, template);
 
     if let Some(in_id) = in_id {
-        let char_name =
-            Repository::with_characters(|characters| characters[cn].get_name().to_string());
-        let item_name = Repository::with_items(|items| items[in_id].get_name().to_string());
+        let char_name = gs.characters[cn].get_name().to_string();
+        let item_name = gs.items[in_id].get_name().to_string();
         log::info!("{} got {} (template={})", char_name, item_name, template);
         in_id as i32
     } else {
@@ -301,8 +292,13 @@ pub fn pop_create_bonus(cn: usize, _chance: i32) -> i32 {
 
 /// Port of `pop_create_bonus_belt` from `populate.cpp`
 /// Creates special rainbow belts with random skills
-pub fn pop_create_bonus_belt(cn: usize) -> i32 {
-    let points_tot = Repository::with_characters(|characters| characters[cn].points_tot);
+/// Create a randomized rainbow belt using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `cn` - Character receiving the belt.
+pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
+    let points_tot = gs.characters[cn].points_tot;
 
     // Calculate rank (from points2rank - needs to be implemented elsewhere)
     let rank = if points_tot < 1000 {
@@ -315,26 +311,27 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
         return 0;
     }
 
-    let in_id = God::create_item(1106); // Rainbow belt template
+    let in_id = God::create_item(gs, 1106); // Rainbow belt template
     if in_id.is_none() {
         return 0;
     }
     let in_id = in_id.unwrap();
 
     // Customize the belt item (clear template and set sprite/name/description)
-    Repository::with_items_mut(|items| {
-        items[in_id].temp = 0; // Clear template
-        items[in_id].sprite[0] = 16964;
+    {
+        let item = &mut gs.items[in_id];
+        item.temp = 0; // Clear template
+        item.sprite[0] = 16964;
         let name_bytes = b"Rainbow Belt";
-        items[in_id].name[..name_bytes.len()].copy_from_slice(name_bytes);
-        items[in_id].name[name_bytes.len()..].fill(0);
+        item.name[..name_bytes.len()].copy_from_slice(name_bytes);
+        item.name[name_bytes.len()..].fill(0);
         let desc_bytes = b"An ancient belt. It seems to be highly magical";
-        items[in_id].description[..desc_bytes.len()].copy_from_slice(desc_bytes);
-        items[in_id].description[desc_bytes.len()..].fill(0);
+        item.description[..desc_bytes.len()].copy_from_slice(desc_bytes);
+        item.description[desc_bytes.len()..].fill(0);
         let ref_bytes = b"rainbow belt";
-        items[in_id].reference[..ref_bytes.len()].copy_from_slice(ref_bytes);
-        items[in_id].reference[ref_bytes.len()..].fill(0);
-    });
+        item.reference[..ref_bytes.len()].copy_from_slice(ref_bytes);
+        item.reference[ref_bytes.len()..].fill(0);
+    }
 
     log::info!(
         "Character {} with rank {} got Rainbow Belt (t={})",
@@ -349,10 +346,11 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
     }
 
     // Update item properties
-    Repository::with_items_mut(|items| {
-        items[in_id].power += 5 * num_skills;
-        items[in_id].value += 10000 * num_skills;
-    });
+    {
+        let item = &mut gs.items[in_id];
+        item.power += 5 * num_skills;
+        item.value += 10000 * num_skills;
+    }
 
     // Add random skills to belt
     for _ in 0..num_skills {
@@ -363,8 +361,8 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
             skill_value = 1; // Ensure at least 1
         }
 
-        Repository::with_items_mut(|items| {
-            let item = &mut items[in_id];
+        {
+            let item = &mut gs.items[in_id];
             match skill_number {
                 // Attributes
                 0 => {
@@ -697,7 +695,7 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
                 }
                 _ => {}
             }
-        });
+        }
     }
 
     in_id as i32
@@ -705,11 +703,15 @@ pub fn pop_create_bonus_belt(cn: usize) -> i32 {
 
 /// Port of `pop_create_char` from `populate.cpp`
 /// Creates a character from a template
-pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
+/// Create a character from a template using an explicit game-state borrow.
+///
+/// # Arguments
+/// * `gs` - Mutable game state.
+/// * `template_id` - Character template id.
+/// * `drop` - Whether to place the character on the map immediately.
+pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Option<usize> {
     // Find a free character slot.
-    let cn = match Repository::with_characters(|characters| {
-        (1..MAXCHARS).find(|&i| characters[i].used == USE_EMPTY)
-    }) {
+    let cn = match (1..MAXCHARS).find(|&i| gs.characters[i].used == USE_EMPTY) {
         Some(index) => index,
         None => {
             log::error!("MAXCHARS reached!");
@@ -718,105 +720,81 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
     };
 
     // Copy template and set initial fields (matches C++: ch[cn] = ch_temp[n]).
-    Repository::with_characters_mut(|characters| {
-        characters[cn] =
-            Repository::with_character_templates(|char_templates| char_templates[template_id]);
-        characters[cn].pass1 = helpers::random_mod(0x3fffffff);
-        characters[cn].pass2 = helpers::random_mod(0x3fffffff);
-        characters[cn].temp = template_id as u16;
-    });
+    {
+        gs.characters[cn] = gs.character_templates[template_id];
+        gs.characters[cn].pass1 = helpers::random_mod(0x3fffffff);
+        gs.characters[cn].pass2 = helpers::random_mod(0x3fffffff);
+        gs.characters[cn].temp = template_id as u16;
+    }
 
     let mut flag = false;
     let mut hasitems = false;
 
     // Create inventory items from template.
     for m in 0..40usize {
-        let tmp_template = Repository::with_characters(|characters| characters[cn].item[m]);
+        let tmp_template = gs.characters[cn].item[m];
         if tmp_template == 0 {
             continue;
         }
 
-        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        let tmp_instance = God::create_item(gs, tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
-            Repository::with_characters_mut(|characters| {
-                characters[cn].item[m] = 0;
-            });
+            gs.characters[cn].item[m] = 0;
         } else {
-            Repository::with_items_mut(|items| {
-                items[tmp_instance].carried = cn as u16;
-            });
-            Repository::with_characters_mut(|characters| {
-                characters[cn].item[m] = tmp_instance as u32;
-            });
+            gs.items[tmp_instance].carried = cn as u16;
+            gs.characters[cn].item[m] = tmp_instance as u32;
             hasitems = true;
         }
     }
 
     // Create worn items from template (uses pop_create_item to preserve unique logic).
     for m in 0..20usize {
-        let tmp_template = Repository::with_characters(|characters| characters[cn].worn[m]);
+        let tmp_template = gs.characters[cn].worn[m];
         if tmp_template == 0 {
             continue;
         }
 
-        let tmp_instance = pop_create_item(tmp_template as usize, cn);
+        let tmp_instance = pop_create_item(gs, tmp_template as usize, cn);
         if tmp_instance == 0 {
             flag = true;
-            Repository::with_characters_mut(|characters| {
-                characters[cn].worn[m] = 0;
-            });
+            gs.characters[cn].worn[m] = 0;
         } else {
-            Repository::with_items_mut(|items| {
-                items[tmp_instance].carried = cn as u16;
-            });
-            Repository::with_characters_mut(|characters| {
-                characters[cn].worn[m] = tmp_instance as u32;
-            });
+            gs.items[tmp_instance].carried = cn as u16;
+            gs.characters[cn].worn[m] = tmp_instance as u32;
             hasitems = true;
         }
     }
 
     // Clear spells from template.
-    Repository::with_characters_mut(|characters| {
-        for m in 0..20usize {
-            if characters[cn].spell[m] != 0 {
-                characters[cn].spell[m] = 0;
-            }
-        }
-    });
+    for m in 0..20usize {
+        gs.characters[cn].spell[m] = 0;
+    }
 
     // Create carried item (citem) from template.
-    let tmp_template = Repository::with_characters(|characters| characters[cn].citem);
+    let tmp_template = gs.characters[cn].citem;
     if tmp_template != 0 {
-        let tmp_instance = God::create_item(tmp_template as usize).unwrap_or(0);
+        let tmp_instance = God::create_item(gs, tmp_template as usize).unwrap_or(0);
         if tmp_instance == 0 {
             flag = true;
-            Repository::with_characters_mut(|characters| {
-                characters[cn].citem = 0;
-            });
+            gs.characters[cn].citem = 0;
         } else {
-            Repository::with_items_mut(|items| {
-                items[tmp_instance].carried = cn as u16;
-            });
-            Repository::with_characters_mut(|characters| {
-                characters[cn].citem = tmp_instance as u32;
-            });
+            gs.items[tmp_instance].carried = cn as u16;
+            gs.characters[cn].citem = tmp_instance as u32;
             hasitems = true;
         }
     }
 
     // Roll back if any item creation failed.
     if flag {
-        God::destroy_items(cn);
-        Repository::with_characters_mut(|characters| {
-            characters[cn].used = USE_EMPTY;
-        });
+        God::destroy_items(gs, cn);
+        gs.characters[cn].used = USE_EMPTY;
         return None;
     }
 
     // Finalize stats (mana logic matches C++).
-    Repository::with_characters_mut(|characters| {
+    {
+        let characters = &mut gs.characters;
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
@@ -832,13 +810,12 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
         characters[cn].dir = DX_DOWN;
         characters[cn].data[92] = TICKS * 60;
-    });
+    }
 
     // Bonus item / belt logic (matches C++: only if evil and hasitems; only first free slot).
-    let has_meditation =
-        Repository::with_characters(|characters| characters[cn].skill[SK_MEDIT][0] != 0);
-    let a_mana = Repository::with_characters(|characters| characters[cn].a_mana);
-    let alignment = Repository::with_characters(|characters| characters[cn].alignment);
+    let has_meditation = gs.characters[cn].skill[SK_MEDIT][0] != 0;
+    let a_mana = gs.characters[cn].a_mana;
+    let alignment = gs.characters[cn].alignment;
 
     let mut chance: i32 = 25;
     if !has_meditation && a_mana > 15 * 100 {
@@ -853,39 +830,33 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     if alignment < 0 && hasitems {
         // Bonus item: at most one, attempt on first empty slot.
-        if let Some(slot) = Repository::with_characters(|characters| {
-            let items = characters[cn].item;
+        let first_empty_slot = {
+            let items = gs.characters[cn].item;
             items.iter().position(|&it| it == 0)
-        }) {
+        };
+        if let Some(slot) = first_empty_slot {
             if chance > 0 && helpers::random_mod(chance as u32) == 0 {
-                let tmp = pop_create_bonus(cn, chance);
+                let tmp = pop_create_bonus(gs, cn, chance);
                 if tmp != 0 {
                     let tmp = tmp as usize;
-                    Repository::with_items_mut(|items| {
-                        items[tmp].carried = cn as u16;
-                    });
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].item[slot] = tmp as u32;
-                    });
+                    gs.items[tmp].carried = cn as u16;
+                    gs.characters[cn].item[slot] = tmp as u32;
                 }
             }
         }
 
         // Rainbow belt: at most one, attempt on (new) first empty slot.
-        if let Some(slot) = Repository::with_characters(|characters| {
-            let items = characters[cn].item;
+        let first_empty_slot = {
+            let items = gs.characters[cn].item;
             items.iter().position(|&it| it == 0)
-        }) {
+        };
+        if let Some(slot) = first_empty_slot {
             if helpers::random_mod(10000) == 0 {
-                let tmp = pop_create_bonus_belt(cn);
+                let tmp = pop_create_bonus_belt(gs, cn);
                 if tmp != 0 {
                     let tmp = tmp as usize;
-                    Repository::with_items_mut(|items| {
-                        items[tmp].carried = cn as u16;
-                    });
-                    Repository::with_characters_mut(|characters| {
-                        characters[cn].item[slot] = tmp as u32;
-                    });
+                    gs.items[tmp].carried = cn as u16;
+                    gs.characters[cn].item[slot] = tmp as u32;
                 }
             }
         }
@@ -893,40 +864,35 @@ pub fn pop_create_char(template_id: usize, drop: bool) -> Option<usize> {
 
     // Drop character on map if requested (matches C++: exact coords, cleanup on failure).
     if drop {
-        let (x, y) = Repository::with_characters(|characters| (characters[cn].x, characters[cn].y));
+        let (x, y) = {
+            let ch = gs.characters[cn];
+            (ch.x, ch.y)
+        };
 
-        if x < 0 || y < 0 || !God::drop_char(cn, x as usize, y as usize) {
+        if x < 0 || y < 0 || !God::drop_char(gs, cn, x as usize, y as usize) {
             log::error!("Could not drop char template {}", template_id);
-            God::destroy_items(cn);
-            Repository::with_characters_mut(|characters| {
-                characters[cn].used = USE_EMPTY;
-            });
+            God::destroy_items(gs, cn);
+            gs.characters[cn].used = USE_EMPTY;
             return None;
         }
     }
 
-    State::with(|state| state.do_update_char(cn));
-    Repository::with_globals_mut(|globals| {
-        globals.npcs_created += 1;
-    });
+    gs.do_update_char(cn);
+    gs.globals.npcs_created += 1;
 
     Some(cn)
 }
 
 /// Port of `reset_char` from `populate.cpp`
 /// Resets a character template and all instances
-pub fn reset_char(n: usize) {
+pub fn reset_char(gs: &mut GameState, n: usize) {
     if !(1..MAXTCHARS).contains(&n) {
         log::error!("reset_char: invalid template {}", n);
         return;
     }
 
-    let (used, has_respawn) = Repository::with_character_templates(|templates| {
-        (
-            templates[n].used,
-            (templates[n].flags & CharacterFlags::Respawn.bits()) != 0,
-        )
-    });
+    let used = gs.character_templates[n].used;
+    let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
 
     if used == USE_EMPTY || !has_respawn {
         log::error!(
@@ -936,8 +902,7 @@ pub fn reset_char(n: usize) {
         return;
     }
 
-    let name =
-        Repository::with_character_templates(|templates| templates[n].get_name().to_string());
+    let name = gs.character_templates[n].get_name().to_string();
     log::info!("Resetting char {} ({})", n, name);
 
     // Recalculate character template points
@@ -945,27 +910,21 @@ pub fn reset_char(n: usize) {
 
     // Destroy all instances of this template (they will be respawned)
     for cn in 1..MAXCHARS {
-        let (temp, used, char_name, x, y) = Repository::with_characters(|characters| {
-            (
-                characters[cn].temp,
-                characters[cn].used,
-                characters[cn].get_name().to_string(),
-                characters[cn].x,
-                characters[cn].y,
-            )
-        });
+        let temp = gs.characters[cn].temp;
+        let used = gs.characters[cn].used;
+        let char_name = gs.characters[cn].get_name().to_string();
+        let x = gs.characters[cn].x;
+        let y = gs.characters[cn].y;
 
         if temp as usize == n && used == USE_ACTIVE {
             log::info!(" --> {} ({}) ({},{})", char_name, cn, x, y);
 
             // Destroy items and remove from map
-            God::destroy_items(cn);
-            player::plr_map_remove(cn);
+            God::destroy_items(gs, cn);
+            player::plr_map_remove(gs, cn);
 
             // Mark character as unused
-            Repository::with_characters_mut(|characters| {
-                characters[cn].used = USE_EMPTY;
-            });
+            gs.characters[cn].used = USE_EMPTY;
 
             cnt += 1;
         }
@@ -973,31 +932,26 @@ pub fn reset_char(n: usize) {
 
     // Clean up effects referencing this template (type 2 = respawn timer)
     for m in 0..MAXEFFECT {
-        let (effect_used, effect_type, data2) = Repository::with_effects(|effects| {
-            (effects[m].used, effects[m].effect_type, effects[m].data[2])
-        });
+        let effect_used = gs.effects[m].used;
+        let effect_type = gs.effects[m].effect_type;
+        let data2 = gs.effects[m].data[2];
 
         if effect_used == USE_ACTIVE && effect_type == 2 && data2 == n as u32 {
             log::info!(" --> effect {}", m);
-            Repository::with_effects_mut(|effects| {
-                effects[m].used = USE_EMPTY;
-            });
+            gs.effects[m].used = USE_EMPTY;
         }
     }
 
     // Clean up items carried by this template
     for m in 0..MAXITEM {
-        let (item_used, carried) =
-            Repository::with_items(|items| (items[m].used, items[m].carried));
+        let item_used = gs.items[m].used;
+        let carried = gs.items[m].carried;
 
         if item_used == USE_ACTIVE && carried as usize == n {
-            let temp = Repository::with_items(|items| items[m].temp);
-            Repository::with_items_mut(|items| {
-                let item_template =
-                    Repository::with_item_templates(|templates| templates[temp as usize]);
-                items[m] = item_template;
-                items[m].temp = temp;
-            });
+            let temp = gs.items[m].temp;
+            let item_template = gs.item_templates[temp as usize];
+            gs.items[m] = item_template;
+            gs.items[m].temp = temp;
         }
     }
 
@@ -1006,12 +960,13 @@ pub fn reset_char(n: usize) {
     }
 
     // Schedule respawn if template is still active
-    let template_used = Repository::with_character_templates(|templates| templates[n].used);
+    let template_used = gs.character_templates[n].used;
     if template_used == USE_ACTIVE {
-        let (template_x, template_y) =
-            Repository::with_character_templates(|templates| (templates[n].x, templates[n].y));
+        let template_x = gs.character_templates[n].x;
+        let template_y = gs.character_templates[n].y;
 
         EffectManager::fx_add_effect(
+            gs,
             2,          // Effect type 2 = respawn timer
             TICKS * 10, // 10 seconds delay
             template_x as i32,
@@ -1034,53 +989,49 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 
 /// Port of `pop_skill` from `populate.cpp`
 /// Updates skills for all characters
-pub fn pop_skill() {
+pub fn pop_skill(gs: &mut GameState) {
     for cn in 1..MAXCHARS {
-        let is_player = Repository::with_characters(|characters| {
-            (characters[cn].flags & CharacterFlags::Player.bits()) != 0
-                && characters[cn].used == USE_ACTIVE
-        });
+        let is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+            && gs.characters[cn].used == USE_ACTIVE;
         if !is_player {
             continue;
         }
 
-        let t = Repository::with_characters(|characters| characters[cn].temp as usize);
+        let t = gs.characters[cn].temp as usize;
 
-        let template_skills = Repository::with_character_templates(|templates| templates[t].skill);
+        let template_skills = gs.character_templates[t].skill;
 
         for n in 0..50usize {
             let temp_skill = template_skills[n];
 
-            Repository::with_characters_mut(|characters| {
-                let ch = &mut characters[cn];
+            let ch = &mut gs.characters[cn];
 
-                if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
-                    ch.skill[n][0] = temp_skill[0];
-                    log::info!("added {} to {}", driver::skill_name(n), ch.get_name());
-                }
+            if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
+                ch.skill[n][0] = temp_skill[0];
+                log::info!("added {} to {}", driver::skill_name(n), ch.get_name());
+            }
 
-                if temp_skill[2] < ch.skill[n][0] {
-                    let p = skillcost(
-                        ch.skill[n][0] as i32,
-                        ch.skill[n][3] as i32,
-                        temp_skill[2] as i32,
-                    );
-                    log::info!(
-                        "reduced {} on {} from {} to {}, added {} exp",
-                        driver::skill_name(n),
-                        ch.get_name(),
-                        ch.skill[n][0],
-                        temp_skill[2],
-                        p
-                    );
-                    ch.skill[n][0] = temp_skill[2];
-                    ch.points += p;
-                }
+            if temp_skill[2] < ch.skill[n][0] {
+                let p = skillcost(
+                    ch.skill[n][0] as i32,
+                    ch.skill[n][3] as i32,
+                    temp_skill[2] as i32,
+                );
+                log::info!(
+                    "reduced {} on {} from {} to {}, added {} exp",
+                    driver::skill_name(n),
+                    ch.get_name(),
+                    ch.skill[n][0],
+                    temp_skill[2],
+                    p
+                );
+                ch.skill[n][0] = temp_skill[2];
+                ch.points += p;
+            }
 
-                ch.skill[n][1] = temp_skill[1];
-                ch.skill[n][2] = temp_skill[2];
-                ch.skill[n][3] = temp_skill[3];
-            });
+            ch.skill[n][1] = temp_skill[1];
+            ch.skill[n][2] = temp_skill[2];
+            ch.skill[n][3] = temp_skill[3];
         }
     }
     log::info!("Changed Skills.");
@@ -1088,22 +1039,18 @@ pub fn pop_skill() {
 
 /// Port of `reset_item` from `populate.cpp`
 /// Resets an item template and all instances
-pub fn reset_item(n: usize) {
+pub fn reset_item(gs: &mut GameState, n: usize) {
     if !(2..MAXTITEM).contains(&n) {
         return; // Never reset blank template (1)
     }
 
-    let name = Repository::with_item_templates(|templates| templates[n].get_name().to_string());
+    let name = gs.item_templates[n].get_name().to_string();
     log::info!("Resetting item {} ({})", n, name);
 
     for in_id in 1..MAXITEM {
-        let (used, item_temp, is_spell) = Repository::with_items(|items| {
-            (
-                items[in_id].used,
-                items[in_id].temp,
-                (items[in_id].flags & ItemFlags::IF_SPELL.bits()) != 0,
-            )
-        });
+        let used = gs.items[in_id].used;
+        let item_temp = gs.items[in_id].temp;
+        let is_spell = (gs.items[in_id].flags & ItemFlags::IF_SPELL.bits()) != 0;
 
         if used != USE_ACTIVE {
             continue;
@@ -1118,21 +1065,16 @@ pub fn reset_item(n: usize) {
             continue;
         }
 
-        let (item_name, carried, x, y) = Repository::with_items(|items| {
-            (
-                items[in_id].get_name().to_string(),
-                items[in_id].carried,
-                items[in_id].x,
-                items[in_id].y,
-            )
-        });
+        let item_name = gs.items[in_id].get_name().to_string();
+        let carried = gs.items[in_id].carried;
+        let x = gs.items[in_id].x;
+        let y = gs.items[in_id].y;
 
         log::info!(" --> {} ({}) ({}, {},{})", item_name, in_id, carried, x, y);
 
         // Check if item should be reset or removed
-        let (template_flags, template_sprite) = Repository::with_item_templates(|templates| {
-            (templates[n].flags, templates[n].sprite[0])
-        });
+        let template_flags = gs.item_templates[n].flags;
+        let template_sprite = gs.item_templates[n].sprite[0];
 
         let should_reset = (template_flags
             & (ItemFlags::IF_TAKE.bits()
@@ -1145,201 +1087,139 @@ pub fn reset_item(n: usize) {
 
         if should_reset {
             // Reset item from template (for takeable/interactive items or carried items)
-            Repository::with_items_mut(|items| {
-                let item_template = Repository::with_item_templates(|templates| templates[n]);
+            let item_template = gs.item_templates[n];
 
-                // Preserve certain fields
-                let x = items[in_id].x;
-                let y = items[in_id].y;
-                let carried = items[in_id].carried;
+            let x = gs.items[in_id].x;
+            let y = gs.items[in_id].y;
+            let carried = gs.items[in_id].carried;
 
-                items[in_id] = item_template;
-                items[in_id].x = x;
-                items[in_id].y = y;
-                items[in_id].carried = carried;
-                items[in_id].temp = n as u16;
-            });
+            gs.items[in_id] = item_template;
+            gs.items[in_id].x = x;
+            gs.items[in_id].y = y;
+            gs.items[in_id].carried = carried;
+            gs.items[in_id].temp = n as u16;
         } else {
             // Remove item and place floor sprite (for non-interactive map items)
             let map_index = x as usize + y as usize * SERVER_MAPX as usize;
 
-            Repository::with_map_mut(|map| {
-                map[map_index].it = 0;
-                map[map_index].fsprite = template_sprite as u16;
+            gs.map[map_index].it = 0;
+            gs.map[map_index].fsprite = template_sprite as u16;
 
-                if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
-                    map[map_index].flags |= MF_MOVEBLOCK as u64;
-                }
-                if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
-                    map[map_index].flags |= MF_SIGHTBLOCK as u64;
-                }
-            });
+            if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
+                gs.map[map_index].flags |= MF_MOVEBLOCK as u64;
+            }
+            if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
+                gs.map[map_index].flags |= MF_SIGHTBLOCK as u64;
+            }
 
-            Repository::with_items_mut(|items| {
-                items[in_id].used = USE_EMPTY;
-            });
+            gs.items[in_id].used = USE_EMPTY;
         }
     }
 }
 
 /// Port of `reset_changed_items` from `populate.cpp`
 /// Resets a predefined list of changed items
-pub fn reset_changed_items() {
+pub fn reset_changed_items(gs: &mut GameState) {
     let changelist: Vec<usize> = vec![];
 
     for n in changelist {
-        reset_item(n);
+        reset_item(gs, n);
     }
 }
 
 /// Port of `pop_tick` from `populate.cpp`
 /// Handles population ticking and resets
-pub fn pop_tick() {
+pub fn pop_tick(gs: &mut GameState) {
     const RESETTICKER: u32 = TICKS as u32 * 60;
 
-    let ticker = Repository::with_globals(|globals| globals.ticker) as u32;
+    let ticker = gs.globals.ticker as u32;
 
-    if ticker - Repository::get_last_population_reset_tick() >= RESETTICKER {
-        Repository::set_last_population_reset_tick(ticker);
+    if ticker - gs.last_population_reset_tick >= RESETTICKER {
+        gs.last_population_reset_tick = ticker;
         log::info!("Population tick: checking for resets");
     }
 
     // Check for character reset
-    let reset_char_id = Repository::with_globals(|globals| globals.reset_char);
+    let reset_char_id = gs.globals.reset_char;
     if reset_char_id != 0 {
-        reset_char(reset_char_id as usize);
-        Repository::with_globals_mut(|globals| globals.reset_char = 0);
+        reset_char(gs, reset_char_id as usize);
+        gs.globals.reset_char = 0;
     }
 
     // Check for item reset
-    let reset_item_id = Repository::with_globals(|globals| globals.reset_item);
+    let reset_item_id = gs.globals.reset_item;
     if reset_item_id != 0 {
-        reset_item(reset_item_id as usize);
-        Repository::with_globals_mut(|globals| globals.reset_item = 0);
+        reset_item(gs, reset_item_id as usize);
+        gs.globals.reset_item = 0;
     }
 }
 
 /// Port of `pop_reset_all` from `populate.cpp`
 /// Resets all character and item templates
 #[allow(dead_code)]
-pub fn pop_reset_all() {
+pub fn pop_reset_all(gs: &mut GameState) {
     for n in 1..MAXTCHARS {
-        reset_char(n);
+        reset_char(gs, n);
     }
     for n in 1..MAXTITEM {
-        reset_item(n);
+        reset_item(gs, n);
     }
     log::info!("Reset all templates");
 }
 
 /// Port of `pop_wipe` from `populate.cpp`
 /// Wipes all dynamic game data
-pub fn pop_wipe() {
+pub fn pop_wipe(gs: &mut GameState) {
     // Clear all characters
     for n in 1..MAXCHARS {
-        let is_player = Repository::with_characters(|characters| {
-            (characters[n].flags & CharacterFlags::Player.bits()) != 0
-        });
+        let is_player = (gs.characters[n].flags & CharacterFlags::Player.bits()) != 0;
 
         if !is_player {
-            Repository::with_characters_mut(|characters| {
-                characters[n].used = USE_EMPTY;
-            });
+            gs.characters[n].used = USE_EMPTY;
         }
     }
 
     // Clear all items
     for n in 1..MAXITEM {
-        Repository::with_items_mut(|items| {
-            items[n].used = USE_EMPTY;
-        });
+        gs.items[n].used = USE_EMPTY;
     }
 
     // Clear all effects
     for n in 1..MAXEFFECT {
-        Repository::with_effects_mut(|effects| {
-            effects[n].used = USE_EMPTY;
-        });
+        gs.effects[n].used = USE_EMPTY;
     }
 
     // Reset global statistics
-    Repository::with_globals_mut(|globals| {
-        globals.players_created = 0;
-        globals.npcs_created = 0;
-        globals.players_died = 0;
-        globals.npcs_died = 0;
-        globals.expire_cnt = 0;
-        globals.expire_run = 0;
-        globals.gc_cnt = 0;
-        globals.gc_run = 0;
-        globals.lost_cnt = 0;
-        globals.lost_run = 0;
-        globals.reset_char = 0;
-        globals.reset_item = 0;
-        globals.total_online_time = 0;
-        globals.uptime = 0;
-    });
+    gs.globals.players_created = 0;
+    gs.globals.npcs_created = 0;
+    gs.globals.players_died = 0;
+    gs.globals.npcs_died = 0;
+    gs.globals.expire_cnt = 0;
+    gs.globals.expire_run = 0;
+    gs.globals.gc_cnt = 0;
+    gs.globals.gc_run = 0;
+    gs.globals.lost_cnt = 0;
+    gs.globals.lost_run = 0;
+    gs.globals.reset_char = 0;
+    gs.globals.reset_item = 0;
+    gs.globals.total_online_time = 0;
+    gs.globals.uptime = 0;
 
     log::info!("Wiped all dynamic game data");
 }
 
-/// Port of `pop_remove` from `populate.cpp`
-/// Saves all players to disk
-#[allow(dead_code)]
-pub fn pop_remove() {
-    log::info!("Saving players...");
-
-    // TODO: Implement actual file saving when persistence system is ready
-    // This would open .tmp/char.dat, .tmp/item.dat, .tmp/global.dat
-    // and write out all player data
-
-    let mut chc = 0;
-
-    for n in 1..MAXCHARS {
-        let (used, is_player) = Repository::with_characters(|characters| {
-            (
-                characters[n].used,
-                (characters[n].flags & CharacterFlags::Player.bits()) != 0,
-            )
-        });
-
-        if used != USE_EMPTY && is_player {
-            // TODO: Write character to file
-            chc += 1;
-        }
-    }
-
-    log::info!("Saved {} player characters", chc);
-}
-
-/// Port of `pop_load` from `populate.cpp`
-/// Loads game data from disk
-#[allow(dead_code)]
-pub fn pop_load() {
-    log::info!("Loading game data...");
-
-    // TODO: Implement actual file loading when persistence system is ready
-    // This would read from data files and populate the repository
-
-    log::info!("Game data loaded");
-}
-
 /// Port of `populate` from `populate.cpp`
 /// Populates the world with NPCs
-pub fn populate() {
+pub fn populate(gs: &mut GameState) {
     log::info!("Populating world...");
 
     // Iterate through all character templates and spawn respawnable NPCs
     for n in 1..MAXTCHARS {
-        let (used, has_respawn) = Repository::with_character_templates(|templates| {
-            (
-                templates[n].used,
-                (templates[n].flags & CharacterFlags::Respawn.bits()) != 0,
-            )
-        });
+        let used = gs.character_templates[n].used;
+        let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
 
         if used != USE_EMPTY && has_respawn {
-            if let Some(cn) = pop_create_char(n, true) {
+            if let Some(cn) = pop_create_char(gs, n, true) {
                 log::debug!("Spawned NPC {} from template {}", cn, n);
             }
         }
@@ -1366,7 +1246,7 @@ pub fn pop_load_char(nr: usize) {
 
 /// Port of `pop_load_all_chars` from `populate.cpp`
 /// Loads all characters from disk
-pub fn pop_load_all_chars() {
+pub fn pop_load_all_chars(_gs: &mut GameState) {
     log::info!("Loading all characters...");
 
     for nr in 1..MAXCHARS {
@@ -1378,13 +1258,11 @@ pub fn pop_load_all_chars() {
 
 /// Port of `pop_save_all_chars` from `populate.cpp`
 /// Saves all characters to disk
-pub fn pop_save_all_chars() {
+pub fn pop_save_all_chars(gs: &mut GameState) {
     log::info!("Saving all characters...");
 
     for nr in 1..MAXCHARS {
-        let is_player = Repository::with_characters(|characters| {
-            (characters[nr].flags & CharacterFlags::Player.bits()) != 0
-        });
+        let is_player = (gs.characters[nr].flags & CharacterFlags::Player.bits()) != 0;
 
         if is_player {
             pop_save_char(nr);

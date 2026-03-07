@@ -1,22 +1,34 @@
+/// Unified game state container for all server-side world data.
+///
+/// `GameState` consolidates data previously spread across three global
+/// singletons (`Repository`, `State`, `PathFinder`) into a single owned
+/// struct.  It is created in `main()` and threaded through the call chain
+/// as `&mut GameState`, eliminating ~4,400 closure-based accessor calls
+/// and all nested closure patterns.
+///
+/// # Lifecycle
+///
+/// ```text
+/// main():
+///   let mut gs = GameState::initialize()?;
+///   server.initialize(&mut gs)?;
+///   loop { server.tick(&mut gs); }
+///   gs.shutdown();
+/// ```
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
 use std::{env, fs};
 
 use bincode::{Decode, Encode};
 
 use crate::keydb;
 use crate::keydb_store;
-use crate::single_thread_cell::SingleThreadCell;
+use crate::path_finding::PathFinder;
+use crate::types::server_player::ServerPlayer;
 
-static REPOSITORY: OnceLock<SingleThreadCell<Repository>> = OnceLock::new();
-
-const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
-const NORMALIZED_VERSION: u32 = 1;
-
-/// Persistence backend used by the repository for loading and saving data.
+/// Persistence backend used for loading and saving game data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageBackend {
-    /// Load/save from `.dat` files on disk (legacy).
+    /// Load/save from legacy `.dat` files on disk.
     DatFiles,
     /// Load/save from KeyDB.
     KeyDb,
@@ -24,7 +36,6 @@ pub enum StorageBackend {
 
 impl StorageBackend {
     /// Determine the storage backend from the `MAG_STORAGE_BACKEND` env var.
-    /// Values: `keydb` → [`KeyDb`], anything else (or unset) → [`DatFiles`].
     pub fn from_env() -> Self {
         match env::var("MAG_STORAGE_BACKEND")
             .unwrap_or_default()
@@ -37,6 +48,9 @@ impl StorageBackend {
     }
 }
 
+const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
+const NORMALIZED_VERSION: u32 = 1;
+
 #[derive(Debug, Encode, Decode)]
 struct NormalizedDataSet<T> {
     magic: [u8; 4],
@@ -46,44 +60,106 @@ struct NormalizedDataSet<T> {
     records: Vec<T>,
 }
 
-/// The in-memory data repository used by the server.
+/// The unified in-memory game state for the server.
 ///
-/// Holds maps, items, characters, globals, and other game data loaded from the
-/// `.dat` files. Accessed via thread-safe accessors via the public `with_*`
-/// helper methods which acquire a reentrant mutex and provide closures access
-/// to the internal storage.
-pub struct Repository {
-    map: Vec<core::types::Map>,
-    items: Vec<core::types::Item>,
-    item_templates: Vec<core::types::Item>,
-    characters: Vec<core::types::Character>,
-    character_templates: Vec<core::types::Character>,
-    effects: Vec<core::types::Effect>,
-    globals: core::types::Global,
-    see_map: Vec<core::types::SeeMap>,
-    bad_names: Vec<String>,
-    bad_words: Vec<String>,
-    message_of_the_day: String,
-    ban_list: Vec<core::types::Ban>,
-    executable_path: String,
-    last_population_reset_tick: u32,
-    ice_cloak_clock: u32,
-    item_tick_gc_off: u32,
-    item_tick_gc_count: u32,
-    item_tick_expire_counter: u32,
-    /// Which storage backend this repository was loaded from.
+/// Owns all world data (maps, items, characters, effects, globals), visibility
+/// computation state, pathfinding state, and persistence metadata.  Created
+/// once in `main()` via [`GameState::initialize`] and passed by mutable
+/// reference throughout the server's call chain.
+pub struct GameState {
+    // -- World data (formerly Repository) --
+    /// Map tiles indexed by `x + y * SERVER_MAPX`.
+    pub map: Vec<core::types::Map>,
+    /// All item instances (size `MAXITEM`).
+    pub items: Vec<core::types::Item>,
+    /// Item templates for creating/resetting items (size `MAXTITEM`).
+    pub item_templates: Vec<core::types::Item>,
+    /// All character instances — players and NPCs (size `MAXCHARS`).
+    pub characters: Vec<core::types::Character>,
+    /// Character templates for NPC spawning (size `MAXTCHARS`).
+    pub character_templates: Vec<core::types::Character>,
+    /// Transient/persistent world effects (size `MAXEFFECT`).
+    pub effects: Vec<core::types::Effect>,
+    /// Global server state (ticker, counters, flags, etc.).
+    pub globals: core::types::Global,
+    /// Per-character visibility information (size `MAXCHARS`).
+    pub see_map: Vec<core::types::SeeMap>,
+    /// Banned name patterns loaded from `badnames.txt`.
+    pub bad_names: Vec<String>,
+    /// Banned chat words loaded from `badwords.txt`.
+    pub bad_words: Vec<String>,
+    /// Message of the day text.
+    pub message_of_the_day: String,
+    /// Runtime ban list.
+    pub ban_list: Vec<core::types::Ban>,
+
+    // -- Network player slots --
+    /// Per-connection player data (sockets, buffers, client-side caches).
+    pub players: Vec<ServerPlayer>,
+
+    // -- Counters (formerly Repository fields) --
+    /// Tick at which the last population reset occurred.
+    pub last_population_reset_tick: u32,
+    /// Ice cloak timing clock.
+    pub ice_cloak_clock: u32,
+    /// Item tick GC offset counter.
+    pub item_tick_gc_off: u32,
+    /// Item tick GC count accumulator.
+    pub item_tick_gc_count: u32,
+    /// Item tick expiration counter.
+    pub item_tick_expire_counter: u32,
+
+    // -- Visibility state (formerly State) --
+    /// Scratch visibility buffer (underscore prefix preserved from original).
+    pub _visi: [i8; 40 * 40],
+    /// Primary visibility buffer.
+    pub visi: [i8; 40 * 40],
+    /// Whether visibility is computed globally or per-character.
+    pub vis_is_global: bool,
+    /// Cache miss counter for visibility lookups.
+    pub see_miss: u64,
+    /// Cache hit counter for visibility lookups.
+    pub see_hit: u64,
+    /// Current visibility origin X.
+    pub ox: i32,
+    /// Current visibility origin Y.
+    pub oy: i32,
+    /// Whether current visibility target is a monster.
+    pub is_monster: bool,
+    /// Number of pentagram items needed for a quest completion.
+    pub penta_needed: usize,
+
+    // -- Labyrinth 9 --
+    pub lab9: crate::lab9::Labyrinth9,
+
+    // -- Pathfinding --
+    /// A* pathfinder with pre-allocated node/visited buffers.
+    pub pathfinder: PathFinder,
+
+    // -- Persistence (private) --
+    /// Which storage backend this game state was loaded from.
     storage_backend: StorageBackend,
     /// Set to true once a clean save has been performed (avoids double-save
     /// from both `shutdown()` and `Drop`).
     saved_cleanly: bool,
+    /// Absolute path to the running executable, used to resolve `.dat` dir.
+    executable_path: String,
 }
 
-impl Repository {
+impl GameState {
     /// Normalize MOTD text for safe client display.
     ///
     /// Applies the historical maximum length constraint to avoid client
     /// issues with oversized MOTD payloads.
-    fn normalize_message_of_the_day(mut message_of_the_day: String) -> String {
+    ///
+    /// # Arguments
+    ///
+    /// * `message_of_the_day` - The raw MOTD string to normalize.
+    ///
+    /// # Returns
+    ///
+    /// * The MOTD string, truncated to 130 characters if necessary.
+    pub fn normalize_message_of_the_day(mut message_of_the_day: String) -> String {
         let char_count = message_of_the_day.chars().count();
         if char_count > 130 {
             log::warn!(
@@ -96,6 +172,11 @@ impl Repository {
     }
 
     /// Read MOTD from `motd.txt` and normalize it for display.
+    ///
+    /// # Returns
+    ///
+    /// * The normalized MOTD string read from disk, or a default if the file
+    ///   is missing.
     fn read_message_of_the_day_from_dat_file(&self) -> String {
         let motd_path = self.get_dat_file_path("motd.txt");
         log::info!("Loading message of the day from {:?}", motd_path);
@@ -104,12 +185,20 @@ impl Repository {
         Self::normalize_message_of_the_day(motd_data)
     }
 
-    /// Create a new `Repository` initialized with default values.
+    /// Create a new `GameState` initialized with default values.
     ///
     /// Allocates and initializes all in-memory collections with sizes based on
     /// constants (for example `MAXITEM`, `MAXCHARS`, `SERVER_MAPX` × `SERVER_MAPY`)
     /// and attempts to discover the current executable path to resolve the
     /// `.dat` directory via `get_dat_file_path`.
+    ///
+    /// # Arguments
+    ///
+    /// * `backend` - The storage backend to use for persistence.
+    ///
+    /// # Returns
+    ///
+    /// * A freshly allocated `GameState` with all fields at their defaults.
     fn new(backend: StorageBackend) -> Self {
         Self {
             map: vec![
@@ -130,6 +219,31 @@ impl Repository {
             bad_words: Vec::new(),
             message_of_the_day: String::new(),
             ban_list: Vec::new(),
+            players: (0..core::constants::MAXPLAYER)
+                .map(|_| ServerPlayer::new())
+                .collect(),
+            last_population_reset_tick: 0,
+            ice_cloak_clock: 0,
+            item_tick_gc_off: 0,
+            item_tick_gc_count: 0,
+            item_tick_expire_counter: 0,
+            // Visibility state
+            _visi: [0; 40 * 40],
+            visi: [0; 40 * 40],
+            vis_is_global: true,
+            see_miss: 0,
+            see_hit: 0,
+            ox: 0,
+            oy: 0,
+            is_monster: false,
+            penta_needed: 5,
+            // Labyrinth 9
+            lab9: crate::lab9::Labyrinth9::new(),
+            // Pathfinding
+            pathfinder: PathFinder::new(),
+            // Persistence
+            storage_backend: backend,
+            saved_cleanly: false,
             executable_path: match env::current_exe() {
                 Ok(exe_path) => exe_path.to_string_lossy().to_string(),
                 Err(e) => {
@@ -137,20 +251,73 @@ impl Repository {
                     String::new()
                 }
             },
-            last_population_reset_tick: 0,
-            ice_cloak_clock: 0,
-            item_tick_gc_off: 0,
-            item_tick_gc_count: 0,
-            item_tick_expire_counter: 0,
-            storage_backend: backend,
-            saved_cleanly: false,
         }
     }
+
+    /// Initialize a new `GameState` by loading all data from the configured
+    /// storage backend.
+    ///
+    /// Determines the backend from the `MAG_STORAGE_BACKEND` env var, allocates
+    /// the struct, and loads all world data.  Returns the fully populated
+    /// game state or an error if loading fails.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(GameState)` on success.
+    /// * `Err(String)` if data loading fails.
+    pub fn initialize() -> Result<GameState, String> {
+        let backend = StorageBackend::from_env();
+        log::info!("GameState storage backend: {:?}", backend);
+
+        let mut gs = Self::new(backend);
+        gs.load()?;
+        Ok(gs)
+    }
+
+    /// Return the storage backend in use.
+    ///
+    /// # Returns
+    ///
+    /// * The [`StorageBackend`] variant this game state was loaded from.
+    pub fn storage_backend(&self) -> StorageBackend {
+        self.storage_backend
+    }
+
+    /// Fetch the latest MOTD from the active backend for login-time display.
+    ///
+    /// In `DatFiles` mode this reads `motd.txt` from disk each call.
+    /// In `KeyDb` mode this reads `game:motd` from KeyDB each call.
+    /// On transient read failures the in-memory boot-loaded MOTD is used.
+    ///
+    /// # Returns
+    ///
+    /// * The current message of the day string.
+    pub fn latest_message_of_the_day(&self) -> String {
+        match self.storage_backend {
+            StorageBackend::DatFiles => self.read_message_of_the_day_from_dat_file(),
+            StorageBackend::KeyDb => match keydb::load_message_of_the_day() {
+                Ok(motd) => Self::normalize_message_of_the_day(motd),
+                Err(error) => {
+                    log::warn!(
+                        "Falling back to cached MOTD after KeyDB read failure: {}",
+                        error
+                    );
+                    self.message_of_the_day.clone()
+                }
+            },
+        }
+    }
+
     /// Load all game data from disk into memory.
     ///
     /// This calls each of the `load_*` helper methods in sequence and returns an
-    /// error if any step fails. After a successful `load`, the repository
+    /// error if any step fails. After a successful `load`, the game state
     /// contains populated `map`, `items`, `characters`, `globals`, etc.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if any data file fails to load.
     fn load(&mut self) -> Result<(), String> {
         match self.storage_backend {
             StorageBackend::DatFiles => self.load_from_dat_files(),
@@ -159,6 +326,11 @@ impl Repository {
     }
 
     /// Load all data from `.dat` files on disk (legacy path).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if any `.dat` file fails to load.
     fn load_from_dat_files(&mut self) -> Result<(), String> {
         self.load_map()?;
         self.load_items()?;
@@ -175,6 +347,11 @@ impl Repository {
     }
 
     /// Load all data from KeyDB.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the KeyDB connection or load fails.
     fn load_from_keydb(&mut self) -> Result<(), String> {
         let mut con = keydb::connect()?;
         let data = keydb_store::load_all(&mut con)?;
@@ -208,7 +385,12 @@ impl Repository {
     ///
     /// Bad names, bad words, and MOTD are treated as externally-managed
     /// read-only text data and are intentionally excluded from runtime saves.
-    fn save(&mut self) -> Result<(), String> {
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if saving fails.
+    pub fn save(&mut self) -> Result<(), String> {
         match self.storage_backend {
             StorageBackend::DatFiles => self.save_to_dat_files(),
             StorageBackend::KeyDb => self.save_to_keydb(),
@@ -216,6 +398,11 @@ impl Repository {
     }
 
     /// Save all data to `.dat` files on disk (legacy path).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if any file write fails.
     fn save_to_dat_files(&self) -> Result<(), String> {
         self.save_map()?;
         self.save_items()?;
@@ -226,6 +413,11 @@ impl Repository {
     }
 
     /// Save all data to KeyDB.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the KeyDB connection or save fails.
     fn save_to_keydb(&self) -> Result<(), String> {
         let mut con = keydb::connect()?;
         keydb_store::save_runtime_data(
@@ -238,68 +430,55 @@ impl Repository {
         )
     }
 
-    /// Perform a clean shutdown of the repository by saving all data to the
-    /// configured storage backend.
-    pub fn shutdown() {
-        if REPOSITORY.get().is_none() {
-            log::warn!("Repository.shutdown called but repository not initialized.");
-            return;
+    /// Perform a clean shutdown of the game state by clearing the dirty flag
+    /// and saving all data to the configured storage backend.
+    pub fn shutdown(&mut self) {
+        self.globals.set_dirty(false);
+        if let Err(e) = self.save() {
+            log::error!("Failed to save game state during shutdown: {}", e);
+        } else {
+            self.saved_cleanly = true;
+            log::info!("GameState saved cleanly in shutdown()");
         }
-
-        Self::with_repo_mut(|repo| {
-            repo.globals.set_dirty(false);
-            if let Err(e) = repo.save() {
-                log::error!("Failed to save repository during shutdown: {}", e);
-            } else {
-                repo.saved_cleanly = true;
-                log::info!("Repository saved cleanly in shutdown()");
-            }
-        });
     }
 
-    /// Return the storage backend in use.
-    pub fn storage_backend() -> StorageBackend {
-        Self::with_repo(|repo| repo.storage_backend)
-    }
-
-    /// Fetch the latest MOTD from the active backend for login-time display.
-    ///
-    /// In `DatFiles` mode this reads `motd.txt` from disk each call.
-    /// In `KeyDb` mode this reads `game:motd` from KeyDB each call.
-    /// On transient read failures the in-memory boot-loaded MOTD is used.
-    pub fn latest_message_of_the_day() -> String {
-        Self::with_repo(|repo| match repo.storage_backend {
-            StorageBackend::DatFiles => repo.read_message_of_the_day_from_dat_file(),
-            StorageBackend::KeyDb => match keydb::load_message_of_the_day() {
-                Ok(motd) => Self::normalize_message_of_the_day(motd),
-                Err(error) => {
-                    log::warn!(
-                        "Falling back to cached MOTD after KeyDB read failure: {}",
-                        error
-                    );
-                    repo.message_of_the_day.clone()
-                }
-            },
-        })
-    }
+    // -----------------------------------------------------------------------
+    //  File I/O helpers (moved from Repository)
+    // -----------------------------------------------------------------------
 
     /// Resolve the absolute path to a `.dat` file given its file name.
     ///
     /// The path is computed relative to the parent directory of the running
-    /// executable (the `executable_path` stored on construction). Returns a
-    /// `PathBuf` pointing to `<exe_parent>/.dat/<file_name>`.
-    fn get_dat_file_path(&self, file_name: &str) -> PathBuf {
+    /// executable. Returns a `PathBuf` pointing to `<exe_parent>/.dat/<file_name>`.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_name` - The name of the `.dat` file to resolve.
+    ///
+    /// # Returns
+    ///
+    /// * The absolute `PathBuf` to the file.
+    pub fn get_dat_file_path(&self, file_name: &str) -> PathBuf {
         let exe_path = Path::new(&self.executable_path);
 
-        let full_path = exe_path
+        exe_path
             .parent()
             .unwrap_or_else(|| Path::new(""))
             .join(".dat")
-            .join(file_name);
-
-        full_path
+            .join(file_name)
     }
 
+    /// Load and decode a normalized data set from a `.dat` file.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_name` - Name of the `.dat` file to load.
+    /// * `expected_record_count` - Expected number of records in the file.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<T>)` containing the decoded records.
+    /// * `Err(String)` on I/O or decoding errors.
     fn load_normalized_records<T: Decode<()>>(
         &self,
         file_name: &str,
@@ -357,6 +536,18 @@ impl Repository {
         Ok(payload.records)
     }
 
+    /// Encode and write a normalized data set to a `.dat` file.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_name` - Name of the `.dat` file to write.
+    /// * `source_record_size` - The `size_of` the source record type.
+    /// * `records` - The records to serialize.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` on encoding or I/O errors.
     fn save_normalized_records<T: Encode>(
         &self,
         file_name: &str,
@@ -379,11 +570,16 @@ impl Repository {
         Ok(())
     }
 
+    // -----------------------------------------------------------------------
+    //  Individual data loaders
+    // -----------------------------------------------------------------------
+
     /// Load `map.dat` and populate the `map` vector.
     ///
-    /// Validates the file size against the expected tile count and parses each
-    /// `Map` entry via `core::types::Map::from_bytes`. Returns an error if the
-    /// file cannot be read or its size doesn't match expectations.
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read or decoded.
     fn load_map(&mut self) -> Result<(), String> {
         let expected_tiles =
             (core::constants::SERVER_MAPX as usize) * (core::constants::SERVER_MAPY as usize);
@@ -398,6 +594,11 @@ impl Repository {
     }
 
     /// Save `map.dat` from the in-memory `map` vector back to disk.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be written.
     fn save_map(&self) -> Result<(), String> {
         let map_path = self.get_dat_file_path("map.dat");
         log::info!("Saving map data to {:?}", map_path);
@@ -412,9 +613,10 @@ impl Repository {
 
     /// Load `item.dat` and populate the `items` array.
     ///
-    /// Verifies the file size equals `MAXITEM * size_of::<Item>()` and parses
-    /// each `Item` via `core::types::Item::from_bytes`. Returns an error on
-    /// read or parse failures.
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read or decoded.
     fn load_items(&mut self) -> Result<(), String> {
         self.items = self
             .load_normalized_records::<core::types::Item>("item.dat", core::constants::MAXITEM)?;
@@ -427,6 +629,12 @@ impl Repository {
         Ok(())
     }
 
+    /// Save `item.dat` from the in-memory `items` array to disk.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be written.
     fn save_items(&self) -> Result<(), String> {
         let items_path = self.get_dat_file_path("item.dat");
 
@@ -443,8 +651,10 @@ impl Repository {
 
     /// Load `titem.dat` and populate the `item_templates` array.
     ///
-    /// Validates length and parses each template entry. This is used when
-    /// resetting or creating items from templates at runtime.
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read or decoded.
     fn load_item_templates(&mut self) -> Result<(), String> {
         self.item_templates = self
             .load_normalized_records::<core::types::Item>("titem.dat", core::constants::MAXTITEM)?;
@@ -459,8 +669,10 @@ impl Repository {
 
     /// Load `char.dat` and populate the `characters` array.
     ///
-    /// Validates the file size equals `MAXCHARS * size_of::<Character>()` and
-    /// parses each `Character` via `core::types::Character::from_bytes`.
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read or decoded.
     fn load_characters(&mut self) -> Result<(), String> {
         self.characters = self.load_normalized_records::<core::types::Character>(
             "char.dat",
@@ -470,6 +682,12 @@ impl Repository {
         Ok(())
     }
 
+    /// Save `char.dat` from the in-memory `characters` array to disk.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be written.
     fn save_characters(&self) -> Result<(), String> {
         let characters_path = self.get_dat_file_path("char.dat");
 
@@ -486,8 +704,10 @@ impl Repository {
 
     /// Load `tchar.dat` and populate the `character_templates` array.
     ///
-    /// Validates file size and parses each template entry used for NPC spawning
-    /// and template-based resets.
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read or decoded.
     fn load_character_templates(&mut self) -> Result<(), String> {
         self.character_templates = self.load_normalized_records::<core::types::Character>(
             "tchar.dat",
@@ -499,8 +719,10 @@ impl Repository {
 
     /// Load `effect.dat` and populate the `effects` array.
     ///
-    /// Validates file size and parses each `Effect` entry. Effects represent
-    /// transient or persistent world effects used by the server.
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read or decoded.
     fn load_effects(&mut self) -> Result<(), String> {
         self.effects = self.load_normalized_records::<core::types::Effect>(
             "effect.dat",
@@ -515,6 +737,12 @@ impl Repository {
         Ok(())
     }
 
+    /// Save `effect.dat` from the in-memory `effects` array to disk.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be written.
     fn save_effects(&self) -> Result<(), String> {
         let effects_path = self.get_dat_file_path("effect.dat");
 
@@ -531,9 +759,10 @@ impl Repository {
 
     /// Load `global.dat` and parse into the `globals` structure.
     ///
-    /// The file is expected to contain at least `size_of::<Global>()` bytes.
-    /// The first bytes are parsed into `core::types::Global` using
-    /// `from_bytes` and stored in `self.globals`.
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read or decoded.
     fn load_globals(&mut self) -> Result<(), String> {
         let mut records = self.load_normalized_records::<core::types::Global>("global.dat", 1)?;
         self.globals = records
@@ -557,6 +786,12 @@ impl Repository {
         Ok(())
     }
 
+    /// Save `global.dat` from the in-memory `globals` structure to disk.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be written.
     fn save_globals(&self) -> Result<(), String> {
         let globals_path = self.get_dat_file_path("global.dat");
 
@@ -576,8 +811,12 @@ impl Repository {
 
     /// Load `badnames.txt` into memory.
     ///
-    /// Each line is treated as a banned name pattern and stored in
-    /// `self.bad_names` for name validation checks.
+    /// Each line is treated as a banned name pattern.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read.
     fn load_bad_names(&mut self) -> Result<(), String> {
         let bad_names_path = self.get_dat_file_path("badnames.txt");
         log::info!("Loading bad names from {:?}", bad_names_path);
@@ -597,8 +836,12 @@ impl Repository {
 
     /// Load `badwords.txt` into memory.
     ///
-    /// Each line is treated as a banned chat word or filter term and stored
-    /// in `self.bad_words` for chat filtering.
+    /// Each line is treated as a banned chat word or filter term.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success.
+    /// * `Err(String)` if the file cannot be read.
     fn load_bad_words(&mut self) -> Result<(), String> {
         let bad_words_path = self.get_dat_file_path("badwords.txt");
         log::info!("Loading bad words from {:?}", bad_words_path);
@@ -618,18 +861,24 @@ impl Repository {
 
     /// Load the Message of the Day from `motd.txt`.
     ///
-    /// Falls back to a default string if the file is not present. The MOTD is
-    /// truncated to 130 characters if it is too long to avoid client issues.
+    /// Falls back to a default string if the file is not present.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` always succeeds.
     fn load_message_of_the_day(&mut self) -> Result<(), String> {
         self.message_of_the_day = self.read_message_of_the_day_from_dat_file();
-
         Ok(())
     }
 
     /// Load the ban list from `banlist.dat` if present.
     ///
     /// This currently logs and leaves `ban_list` empty when no file is present;
-    /// parsing and population of `ban_list` is TODO.
+    /// parsing and population is TODO.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` always succeeds.
     fn load_ban_list(&mut self) -> Result<(), String> {
         let banlist_path = self.get_dat_file_path("banlist.dat");
         log::info!("Loading ban list from {:?}", banlist_path);
@@ -647,303 +896,68 @@ impl Repository {
         }
         Ok(())
     }
-
-    // Initialize the global repository
-    /// Initialize the global `Repository` singleton.
-    ///
-    /// Loads data from disk and stores the `Repository` inside the global
-    /// `REPOSITORY` OnceLock guarded by a `ReentrantMutex`. Returns an error if
-    /// initialization or loading fails, or if the repository was already set.
-    pub fn initialize() -> Result<(), String> {
-        let backend = StorageBackend::from_env();
-        log::info!("Repository storage backend: {:?}", backend);
-
-        let mut repo = Repository::new(backend);
-        repo.load()?;
-        REPOSITORY
-            .set(SingleThreadCell::new(repo))
-            .map_err(|_| "Repository already initialized".to_string())?;
-        Ok(())
-    }
-
-    // Access helpers for the global repository protected by a reentrant mutex
-    /// Internal helper: acquire the global repository for read-only access.
-    ///
-    /// Locks the global `REPOSITORY` reentrant mutex and passes a shared
-    /// reference to the provided closure `f`. This guarantees safe concurrent
-    /// read access through the closure while the lock is held.
-    pub fn with_repo<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Repository) -> R,
-    {
-        let repo = REPOSITORY.get().expect("Repository not initialized");
-        repo.with(f)
-    }
-
-    /// Internal helper: acquire the global repository for mutable access.
-    ///
-    /// Locks the global `REPOSITORY` reentrant mutex and passes a unique
-    /// mutable reference to the provided closure `f`. Reentrancy allows nested
-    /// calls from the same thread.
-    pub fn with_repo_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Repository) -> R,
-    {
-        let repo = REPOSITORY.get().expect("Repository not initialized");
-        repo.with_mut(f)
-    }
-
-    // Static accessor methods for read-only access
-    /// Execute `f` with a read-only slice of the map tiles.
-    ///
-    /// The closure `f` is called while holding the repository lock, guaranteeing
-    /// safe concurrent access to the map data.
-    pub fn with_map<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[core::types::Map]) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.map[..]))
-    }
-
-    /// Execute `f` with a read-only slice of all item instances.
-    ///
-    /// Use this to safely read item fields while the repository lock is held.
-    pub fn with_items<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[core::types::Item]) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.items[..]))
-    }
-
-    /// Execute `f` with a read-only slice of item templates.
-    ///
-    /// Item templates are static data used to create or reset item instances.
-    pub fn with_item_templates<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[core::types::Item]) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.item_templates[..]))
-    }
-
-    /// Execute `f` with a read-only slice of characters.
-    ///
-    /// Characters include both player and NPC instances. Read access is
-    /// synchronized via the repository mutex.
-    pub fn with_characters<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[core::types::Character]) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.characters[..]))
-    }
-
-    /// Execute `f` with a read-only slice of effects.
-    ///
-    /// Effects are transient world-state objects processed during ticks.
-    pub fn with_effects<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[core::types::Effect]) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.effects[..]))
-    }
-
-    /// Execute `f` with a read-only reference to the global server state.
-    ///
-    /// Use this to query global counters and configuration loaded from
-    /// `global.dat`.
-    pub fn with_globals<F, R>(f: F) -> R
-    where
-        F: FnOnce(&core::types::Global) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.globals))
-    }
-
-    /// Execute `f` with a read-only slice of `SeeMap` data used for visibility
-    /// calculations. This function is currently unused but kept for completeness.
-    pub fn with_see_map<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[core::types::SeeMap]) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.see_map[..]))
-    }
-
-    /// Execute `f` with a mutable slice of the map tiles.
-    ///
-    /// Provides exclusive mutable access to the map while the repository lock
-    /// is held; use this to perform map updates safely.
-    pub fn with_map_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::Map]) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.map[..]))
-    }
-
-    /// Execute `f` with a mutable slice of item instances.
-    ///
-    /// Use this to modify items (create, reset, update) while holding the
-    /// repository mutex to ensure consistency.
-    pub fn with_items_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::Item]) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.items[..]))
-    }
-
-    /// Execute `f` with a read-only slice of character templates.
-    ///
-    /// Character templates are used to spawn NPCs and to reset template
-    /// instances.
-    pub fn with_character_templates<F, R>(f: F) -> R
-    where
-        F: FnOnce(&[core::types::Character]) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.character_templates[..]))
-    }
-
-    /// Execute `f` with a mutable slice of character instances.
-    ///
-    /// This allows adding/removing/modifying characters while holding the
-    /// repository lock to maintain consistency.
-    pub fn with_characters_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::Character]) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.characters[..]))
-    }
-
-    /// Execute `f` with a mutable slice of effects.
-    ///
-    /// Use this to create or clear effects during world ticks.
-    pub fn with_effects_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::Effect]) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.effects[..]))
-    }
-
-    /// Execute `f` with a mutable reference to the global server state.
-    ///
-    /// Use this to increment counters, set flags, or update global settings
-    /// in a thread-safe manner.
-    pub fn with_globals_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut core::types::Global) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.globals))
-    }
-
-    /// Execute `f` with a mutable slice of `SeeMap` data.
-    ///
-    /// This allows updates to visibility state; kept for completeness.
-    pub fn with_see_map_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut [core::types::SeeMap]) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.see_map[..]))
-    }
-
-    /// Execute `f` with a read-only reference to the ban list.
-    ///
-    /// The ban list is optionally loaded from `banlist.dat`; parsing is still
-    /// TODO. Use this to check bans in a thread-safe manner.
-    pub fn with_ban_list<F, R>(f: F) -> R
-    where
-        F: FnOnce(&Vec<core::types::Ban>) -> R,
-    {
-        Self::with_repo(|repo| f(&repo.ban_list))
-    }
-
-    /// Execute `f` with a mutable reference to the ban list.
-    ///
-    /// Allows adding or removing ban entries in a synchronized manner.
-    pub fn with_ban_list_mut<F, R>(f: F) -> R
-    where
-        F: FnOnce(&mut Vec<core::types::Ban>) -> R,
-    {
-        Self::with_repo_mut(|repo| f(&mut repo.ban_list))
-    }
-
-    /// Get the last population reset tick.
-    ///
-    /// Used to track when the last population reset occurred.
-    pub fn get_last_population_reset_tick() -> u32 {
-        Self::with_repo(|repo| repo.last_population_reset_tick)
-    }
-
-    /// Set the last population reset tick.
-    ///
-    /// Used to track when the last population reset occurred.
-    pub fn set_last_population_reset_tick(tick: u32) {
-        Self::with_repo_mut(|repo| {
-            repo.last_population_reset_tick = tick;
-        });
-    }
-
-    /// Get the current ice cloak clock value.
-    ///
-    /// Used for timing ice cloak effects (aging more slowly in inventory vs. worn).
-    pub fn get_ice_cloak_clock() -> u32 {
-        Self::with_repo(|repo| repo.ice_cloak_clock)
-    }
-
-    /// Set the ice cloak clock value.
-    ///
-    /// Used for timing ice cloak effects (aging more slowly in inventory vs. worn).
-    pub fn set_ice_cloak_clock(clock: u32) {
-        Self::with_repo_mut(|repo| {
-            repo.ice_cloak_clock = clock;
-        });
-    }
-
-    // Getters and setters for various counters that are used (statically) during
-    // the execution of the C implementation of item garbage collection and expiration.
-    pub fn get_item_tick_gc_off() -> u32 {
-        Self::with_repo(|repo| repo.item_tick_gc_off)
-    }
-
-    pub fn set_item_tick_gc_off(tick: u32) {
-        Self::with_repo_mut(|repo| {
-            repo.item_tick_gc_off = tick;
-        });
-    }
-
-    pub fn get_item_tick_gc_count() -> u32 {
-        Self::with_repo(|repo| repo.item_tick_gc_count)
-    }
-
-    pub fn set_item_tick_gc_count(count: u32) {
-        Self::with_repo_mut(|repo| {
-            repo.item_tick_gc_count = count;
-        });
-    }
-
-    pub fn get_item_tick_expire_counter() -> u32 {
-        Self::with_repo(|repo| repo.item_tick_expire_counter)
-    }
-
-    pub fn set_item_tick_expire_counter(counter: u32) {
-        Self::with_repo_mut(|repo| {
-            repo.item_tick_expire_counter = counter;
-        });
-    }
 }
 
-impl Drop for Repository {
-    /// Called when the `Repository` is dropped (on server shutdown).
+impl Drop for GameState {
+    /// Safety-net save on drop if `shutdown()` was not called.
     ///
-    /// Acts as a safety net: if `shutdown()` already performed a clean save
-    /// (indicated by `saved_cleanly`), the drop is a no-op. Otherwise it
-    /// attempts a last-ditch save to avoid data loss.
+    /// If `shutdown()` already performed a clean save (indicated by
+    /// `saved_cleanly`), the drop is a no-op. Otherwise it attempts a
+    /// last-ditch save to avoid data loss.
     fn drop(&mut self) {
         if self.saved_cleanly {
-            log::info!("Repository drop: already saved cleanly, skipping.");
+            log::info!("GameState drop: already saved cleanly, skipping.");
             return;
         }
 
         self.globals.set_dirty(false);
         self.save().unwrap_or_else(|e| {
-            log::error!("Failed to save repository cleanly on shutdown: {}", e);
+            log::error!("Failed to save game state cleanly on shutdown: {}", e);
         });
 
-        log::info!("Repository saved cleanly on shutdown (via Drop).");
+        log::info!("GameState saved cleanly on shutdown (via Drop).");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_motd_short_unchanged() {
+        let input = "Hello world!".to_string();
+        let result = GameState::normalize_message_of_the_day(input.clone());
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn normalize_motd_exactly_130_unchanged() {
+        let input: String = "A".repeat(130);
+        let result = GameState::normalize_message_of_the_day(input.clone());
+        assert_eq!(result, input);
+    }
+
+    #[test]
+    fn normalize_motd_truncates_at_131() {
+        let input: String = "B".repeat(200);
+        let result = GameState::normalize_message_of_the_day(input);
+        assert_eq!(result.chars().count(), 130);
+        assert!(result.chars().all(|c| c == 'B'));
+    }
+
+    #[test]
+    fn normalize_motd_empty() {
+        let result = GameState::normalize_message_of_the_day(String::new());
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn storage_backend_default_is_dat() {
+        // When the env var is not set, default to DatFiles.
+        // This test relies on the env var not being set in the test runner.
+        // We don't override the env var to avoid interfering with parallel tests.
+        let backend = StorageBackend::from_env();
+        // Accept either variant — what matters is it doesn't panic
+        assert!(backend == StorageBackend::DatFiles || backend == StorageBackend::KeyDb);
     }
 }

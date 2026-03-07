@@ -1,33 +1,30 @@
 use core::constants::CharacterFlags;
 
-use crate::path_finding::PathFinder;
+use crate::game_state::GameState;
 use crate::player;
-use crate::state::State;
-use crate::Repository;
 use crate::{core, driver, helpers};
 
 /// Notifies the area of the character's presence if the ticker matches.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_idle(cn: usize) {
-    let should_notify = Repository::with_globals(|g| (g.ticker & 15) == (cn as i32 & 15));
+pub fn act_idle(gs: &mut GameState, cn: usize) {
+    let should_notify = (gs.globals.ticker & 15) == (cn as i32 & 15);
     if should_notify {
-        let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
-        State::with(|state| {
-            state.do_area_notify(
-                cn as i32,
-                0,
-                x,
-                y,
-                core::constants::NT_SEE as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-        });
+        let (x, y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+        gs.do_area_notify(
+            cn as i32,
+            0,
+            x,
+            y,
+            core::constants::NT_SEE as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
     }
 }
 
@@ -35,385 +32,384 @@ pub fn act_idle(cn: usize) {
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_drop(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+pub fn act_drop(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
-    let simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+    let cannot_flee = !gs.do_char_can_flee(cn);
+    let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
 
     if cannot_flee || simple {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         core::constants::DX_UP => {
-            if ch[cn].y > 0 {
-                ch[cn].status = 160;
-                ch[cn].status2 = 2;
+            if gs.characters[cn].y > 0 {
+                gs.characters[cn].status = 160;
+                gs.characters[cn].status2 = 2;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_DOWN => {
-            if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
-                ch[cn].status = 168;
-                ch[cn].status2 = 2;
+            if gs.characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
+                gs.characters[cn].status = 168;
+                gs.characters[cn].status2 = 2;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_LEFT => {
-            if ch[cn].x > 0 {
-                ch[cn].status = 176;
-                ch[cn].status2 = 2;
+            if gs.characters[cn].x > 0 {
+                gs.characters[cn].status = 176;
+                gs.characters[cn].status2 = 2;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_RIGHT => {
-            if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
-                ch[cn].status = 184;
-                ch[cn].status2 = 2;
+            if gs.characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
+                gs.characters[cn].status = 184;
+                gs.characters[cn].status2 = 2;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Attempts to make the character use an item or interact in the direction they are facing.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_use(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+pub fn act_use(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
-    let simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+    let cannot_flee = !gs.do_char_can_flee(cn);
+    let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
 
     if cannot_flee || simple {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         core::constants::DX_UP => {
-            if ch[cn].y > 0 {
-                ch[cn].status = 160;
-                ch[cn].status2 = 4;
+            if gs.characters[cn].y > 0 {
+                gs.characters[cn].status = 160;
+                gs.characters[cn].status2 = 4;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_DOWN => {
-            if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
-                ch[cn].status = 168;
-                ch[cn].status2 = 4;
+            if gs.characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
+                gs.characters[cn].status = 168;
+                gs.characters[cn].status2 = 4;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_LEFT => {
-            if ch[cn].x > 0 {
-                ch[cn].status = 176;
-                ch[cn].status2 = 4;
+            if gs.characters[cn].x > 0 {
+                gs.characters[cn].status = 176;
+                gs.characters[cn].status2 = 4;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_RIGHT => {
-            if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
-                ch[cn].status = 184;
-                ch[cn].status2 = 4;
+            if gs.characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
+                gs.characters[cn].status = 184;
+                gs.characters[cn].status2 = 4;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Attempts to make the character pick up an item in the direction they are facing.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_pickup(cn: usize) {
-    let simple_initial =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+pub fn act_pickup(gs: &mut GameState, cn: usize) {
+    let simple_initial = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
     if simple_initial {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    let cannot_flee = State::with(|s| s.do_char_can_flee(cn) == 0);
-    let simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+    let cannot_flee = !gs.do_char_can_flee(cn);
+    let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
 
     if cannot_flee || simple {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         core::constants::DX_UP => {
-            if ch[cn].y > 0 {
-                ch[cn].status = 160;
-                ch[cn].status2 = 1;
+            if gs.characters[cn].y > 0 {
+                gs.characters[cn].status = 160;
+                gs.characters[cn].status2 = 1;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_DOWN => {
-            if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
-                ch[cn].status = 168;
-                ch[cn].status2 = 1;
+            if gs.characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
+                gs.characters[cn].status = 168;
+                gs.characters[cn].status2 = 1;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_LEFT => {
-            if ch[cn].x > 0 {
-                ch[cn].status = 176;
-                ch[cn].status2 = 1;
+            if gs.characters[cn].x > 0 {
+                gs.characters[cn].status = 176;
+                gs.characters[cn].status2 = 1;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_RIGHT => {
-            if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
-                ch[cn].status = 184;
-                ch[cn].status2 = 1;
+            if gs.characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
+                gs.characters[cn].status = 184;
+                gs.characters[cn].status2 = 1;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Attempts to make the character use a skill in the direction they are facing.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_skill(cn: usize) {
-    let simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+pub fn act_skill(gs: &mut GameState, cn: usize) {
+    let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
     if simple {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         core::constants::DX_UP => {
-            ch[cn].status = 160;
-            ch[cn].status2 = 9;
+            gs.characters[cn].status = 160;
+            gs.characters[cn].status2 = 9;
         }
         core::constants::DX_DOWN => {
-            ch[cn].status = 168;
-            ch[cn].status2 = 9;
+            gs.characters[cn].status = 168;
+            gs.characters[cn].status2 = 9;
         }
         core::constants::DX_LEFT => {
-            ch[cn].status = 176;
-            ch[cn].status2 = 9;
+            gs.characters[cn].status = 176;
+            gs.characters[cn].status2 = 9;
         }
         core::constants::DX_RIGHT => {
-            ch[cn].status = 184;
-            ch[cn].status2 = 9;
+            gs.characters[cn].status = 184;
+            gs.characters[cn].status2 = 9;
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Attempts to make the character perform a wave action in the direction they are facing.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_wave(cn: usize) {
-    let simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+pub fn act_wave(gs: &mut GameState, cn: usize) {
+    let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
     if simple {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         core::constants::DX_UP => {
-            if ch[cn].y > 0 {
-                ch[cn].status = 160;
-                ch[cn].status2 = 8;
+            if gs.characters[cn].y > 0 {
+                gs.characters[cn].status = 160;
+                gs.characters[cn].status2 = 8;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_DOWN => {
-            if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
-                ch[cn].status = 168;
-                ch[cn].status2 = 8;
+            if gs.characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
+                gs.characters[cn].status = 168;
+                gs.characters[cn].status2 = 8;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_LEFT => {
-            if ch[cn].x > 0 {
-                ch[cn].status = 176;
-                ch[cn].status2 = 8;
+            if gs.characters[cn].x > 0 {
+                gs.characters[cn].status = 176;
+                gs.characters[cn].status2 = 8;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_RIGHT => {
-            if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
-                ch[cn].status = 184;
-                ch[cn].status2 = 8;
+            if gs.characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
+                gs.characters[cn].status = 184;
+                gs.characters[cn].status2 = 8;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Attempts to make the character perform a bow action in the direction they are facing.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_bow(cn: usize) {
-    let simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+pub fn act_bow(gs: &mut GameState, cn: usize) {
+    let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
     if simple {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         core::constants::DX_UP => {
-            if ch[cn].y > 0 {
-                ch[cn].status = 160;
-                ch[cn].status2 = 7;
+            if gs.characters[cn].y > 0 {
+                gs.characters[cn].status = 160;
+                gs.characters[cn].status2 = 7;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_DOWN => {
-            if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
-                ch[cn].status = 168;
-                ch[cn].status2 = 7;
+            if gs.characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
+                gs.characters[cn].status = 168;
+                gs.characters[cn].status2 = 7;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_LEFT => {
-            if ch[cn].x > 0 {
-                ch[cn].status = 176;
-                ch[cn].status2 = 7;
+            if gs.characters[cn].x > 0 {
+                gs.characters[cn].status = 176;
+                gs.characters[cn].status2 = 7;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_RIGHT => {
-            if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
-                ch[cn].status = 184;
-                ch[cn].status2 = 7;
+            if gs.characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
+                gs.characters[cn].status = 184;
+                gs.characters[cn].status2 = 7;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Attempts to make the character give an item in the direction they are facing.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_give(cn: usize) {
-    let simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+pub fn act_give(gs: &mut GameState, cn: usize) {
+    let simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
     if simple {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         core::constants::DX_UP => {
-            if ch[cn].y > 0 {
-                ch[cn].status = 160;
-                ch[cn].status2 = 3;
+            if gs.characters[cn].y > 0 {
+                gs.characters[cn].status = 160;
+                gs.characters[cn].status2 = 3;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_DOWN => {
-            if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
-                ch[cn].status = 168;
-                ch[cn].status2 = 3;
+            if gs.characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
+                gs.characters[cn].status = 168;
+                gs.characters[cn].status2 = 3;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_LEFT => {
-            if ch[cn].x > 0 {
-                ch[cn].status = 176;
-                ch[cn].status2 = 3;
+            if gs.characters[cn].x > 0 {
+                gs.characters[cn].status = 176;
+                gs.characters[cn].status2 = 3;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         core::constants::DX_RIGHT => {
-            if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
-                ch[cn].status = 184;
-                ch[cn].status2 = 3;
+            if gs.characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
+                gs.characters[cn].status = 184;
+                gs.characters[cn].status2 = 3;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Attempts to make the character perform an attack in the direction they are facing.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
-pub fn act_attack(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_attack(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let is_simple =
-        Repository::with_characters(|ch| (ch[cn].flags & CharacterFlags::Simple.bits()) != 0);
+    let is_simple = (gs.characters[cn].flags & CharacterFlags::Simple.bits()) != 0;
 
     let mut v: i32;
     if !is_simple {
         let mut vv: i32;
         loop {
             vv = helpers::random_mod_i32(3);
-            let last = Repository::with_characters(|ch| ch[cn].lastattack);
+            let last = gs.characters[cn].lastattack;
             if vv != last as i32 {
                 break;
             }
         }
-        Repository::with_characters_mut(|ch| ch[cn].lastattack = vv as i8);
+        gs.characters[cn].lastattack = vv as i8;
 
         v = vv;
         if v != 0 {
@@ -423,264 +419,268 @@ pub fn act_attack(cn: usize) {
         v = 0;
     }
 
-    Repository::with_characters_mut(|ch| match ch[cn].dir {
+    match gs.characters[cn].dir {
         d if d == core::constants::DX_UP => {
-            if ch[cn].y > 0 {
-                ch[cn].status = 160;
-                ch[cn].status2 = v as i16;
+            if gs.characters[cn].y > 0 {
+                gs.characters[cn].status = 160;
+                gs.characters[cn].status2 = v as i16;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         d if d == core::constants::DX_DOWN => {
-            if ch[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
-                ch[cn].status = 168;
-                ch[cn].status2 = v as i16;
+            if gs.characters[cn].y < (core::constants::SERVER_MAPY as i16 - 1) {
+                gs.characters[cn].status = 168;
+                gs.characters[cn].status2 = v as i16;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         d if d == core::constants::DX_LEFT => {
-            if ch[cn].x > 0 {
-                ch[cn].status = 176;
-                ch[cn].status2 = v as i16;
+            if gs.characters[cn].x > 0 {
+                gs.characters[cn].status = 176;
+                gs.characters[cn].status2 = v as i16;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
         d if d == core::constants::DX_RIGHT => {
-            if ch[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
-                ch[cn].status = 184;
-                ch[cn].status2 = v as i16;
+            if gs.characters[cn].x < (core::constants::SERVER_MAPX as i16 - 1) {
+                gs.characters[cn].status = 184;
+                gs.characters[cn].status2 = v as i16;
             } else {
-                ch[cn].cerrno = core::constants::ERR_FAILED as u16;
+                gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
             }
         }
-        _ => ch[cn].cerrno = core::constants::ERR_FAILED as u16,
-    });
+        _ => gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16,
+    }
 }
 
 /// Turns the character to the specified direction.
 ///
 /// # Arguments
 ///
+/// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
 /// * `dir` - Direction to turn to
-pub fn act_turn(cn: usize, dir: i32) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn(gs: &mut GameState, cn: usize, dir: i32) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let same = Repository::with_characters(|ch| ch[cn].dir == dir as u8);
+    let same = gs.characters[cn].dir == dir as u8;
     if same {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_SUCCESS as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
         return;
     }
 
     match dir as u8 {
-        d if d == core::constants::DX_UP => act_turn_up(cn),
-        d if d == core::constants::DX_DOWN => act_turn_down(cn),
-        d if d == core::constants::DX_RIGHT => act_turn_right(cn),
-        d if d == core::constants::DX_LEFT => act_turn_left(cn),
-        d if d == core::constants::DX_LEFTUP => act_turn_leftup(cn),
-        d if d == core::constants::DX_LEFTDOWN => act_turn_leftdown(cn),
-        d if d == core::constants::DX_RIGHTUP => act_turn_rightup(cn),
-        d if d == core::constants::DX_RIGHTDOWN => act_turn_rightdown(cn),
+        d if d == core::constants::DX_UP => act_turn_up(gs, cn),
+        d if d == core::constants::DX_DOWN => act_turn_down(gs, cn),
+        d if d == core::constants::DX_RIGHT => act_turn_right(gs, cn),
+        d if d == core::constants::DX_LEFT => act_turn_left(gs, cn),
+        d if d == core::constants::DX_LEFTUP => act_turn_leftup(gs, cn),
+        d if d == core::constants::DX_LEFTDOWN => act_turn_leftdown(gs, cn),
+        d if d == core::constants::DX_RIGHTUP => act_turn_rightup(gs, cn),
+        d if d == core::constants::DX_RIGHTDOWN => act_turn_rightdown(gs, cn),
         _ => {
             log::error!("act_turn: invalid direction {} for character {}", dir, cn);
-            Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16)
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16
         }
     }
 }
 
-pub fn act_turn_rightdown(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_rightdown(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
     } else if dir == core::constants::DX_UP {
-        act_turn_rightup(cn);
+        act_turn_rightup(gs, cn);
     } else if dir == core::constants::DX_LEFT {
-        act_turn_leftdown(cn);
+        act_turn_leftdown(gs, cn);
     } else if dir == core::constants::DX_LEFTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
     } else if dir == core::constants::DX_RIGHTUP {
-        act_turn_right(cn);
+        act_turn_right(gs, cn);
     } else if dir == core::constants::DX_DOWN {
-        Repository::with_characters_mut(|ch| ch[cn].status = 120);
+        gs.characters[cn].status = 120;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 152);
+        gs.characters[cn].status = 152;
     }
 }
 
-pub fn act_turn_rightup(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_rightup(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
     } else if dir == core::constants::DX_DOWN {
-        act_turn_rightdown(cn);
+        act_turn_rightdown(gs, cn);
     } else if dir == core::constants::DX_LEFT {
-        act_turn_leftup(cn);
+        act_turn_leftup(gs, cn);
     } else if dir == core::constants::DX_LEFTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
     } else if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_right(cn);
+        act_turn_right(gs, cn);
     } else if dir == core::constants::DX_UP {
-        Repository::with_characters_mut(|ch| ch[cn].status = 104);
+        gs.characters[cn].status = 104;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 144);
+        gs.characters[cn].status = 144;
     }
 }
 
-pub fn act_turn_leftdown(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_leftdown(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_RIGHTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
     } else if dir == core::constants::DX_UP {
-        act_turn_leftup(cn);
+        act_turn_leftup(gs, cn);
     } else if dir == core::constants::DX_RIGHT {
-        act_turn_rightdown(cn);
+        act_turn_rightdown(gs, cn);
     } else if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
     } else if dir == core::constants::DX_LEFTUP {
-        act_turn_left(cn);
+        act_turn_left(gs, cn);
     } else if dir == core::constants::DX_DOWN {
-        Repository::with_characters_mut(|ch| ch[cn].status = 112);
+        gs.characters[cn].status = 112;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 136);
+        gs.characters[cn].status = 136;
     }
 }
 
-pub fn act_turn_leftup(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_leftup(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
     } else if dir == core::constants::DX_DOWN {
-        act_turn_leftdown(cn);
+        act_turn_leftdown(gs, cn);
     } else if dir == core::constants::DX_RIGHT {
-        act_turn_rightup(cn);
+        act_turn_rightup(gs, cn);
     } else if dir == core::constants::DX_RIGHTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
     } else if dir == core::constants::DX_LEFTDOWN {
-        act_turn_left(cn);
+        act_turn_left(gs, cn);
     } else if dir == core::constants::DX_UP {
-        Repository::with_characters_mut(|ch| ch[cn].status = 96);
+        gs.characters[cn].status = 96;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 128);
+        gs.characters[cn].status = 128;
     }
 }
 
-pub fn act_turn_right(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_right(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFT {
-        act_turn_leftdown(cn);
+        act_turn_leftdown(gs, cn);
     } else if dir == core::constants::DX_LEFTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
     } else if dir == core::constants::DX_LEFTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
     } else if dir == core::constants::DX_UP {
-        act_turn_rightup(cn);
+        act_turn_rightup(gs, cn);
     } else if dir == core::constants::DX_DOWN {
-        act_turn_rightdown(cn);
+        act_turn_rightdown(gs, cn);
     } else if dir == core::constants::DX_RIGHTUP {
-        Repository::with_characters_mut(|ch| ch[cn].status = 108);
+        gs.characters[cn].status = 108;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 124);
+        gs.characters[cn].status = 124;
     }
 }
 
-pub fn act_turn_left(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_left(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_RIGHT {
-        act_turn_rightup(cn);
+        act_turn_rightup(gs, cn);
     } else if dir == core::constants::DX_RIGHTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
     } else if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
     } else if dir == core::constants::DX_UP {
-        act_turn_leftup(cn);
+        act_turn_leftup(gs, cn);
     } else if dir == core::constants::DX_DOWN {
-        act_turn_leftdown(cn);
+        act_turn_leftdown(gs, cn);
     } else if dir == core::constants::DX_LEFTUP {
-        Repository::with_characters_mut(|ch| ch[cn].status = 100);
+        gs.characters[cn].status = 100;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 116);
+        gs.characters[cn].status = 116;
     }
 }
 
-pub fn act_turn_down(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_down(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_UP {
-        act_turn_leftup(cn);
+        act_turn_leftup(gs, cn);
     } else if dir == core::constants::DX_LEFTUP {
-        act_turn_left(cn);
+        act_turn_left(gs, cn);
     } else if dir == core::constants::DX_RIGHTUP {
-        act_turn_right(cn);
+        act_turn_right(gs, cn);
     } else if dir == core::constants::DX_LEFT {
-        act_turn_leftdown(cn);
+        act_turn_leftdown(gs, cn);
     } else if dir == core::constants::DX_RIGHT {
-        act_turn_rightdown(cn);
+        act_turn_rightdown(gs, cn);
     } else if dir == core::constants::DX_LEFTDOWN {
-        Repository::with_characters_mut(|ch| ch[cn].status = 140);
+        gs.characters[cn].status = 140;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 156);
+        gs.characters[cn].status = 156;
     }
 }
 
-pub fn act_turn_up(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_turn_up(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+    let dir = gs.characters[cn].dir;
 
     if dir == core::constants::DX_DOWN {
-        act_turn_rightdown(cn);
+        act_turn_rightdown(gs, cn);
     } else if dir == core::constants::DX_LEFTDOWN {
-        act_turn_left(cn);
+        act_turn_left(gs, cn);
     } else if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_right(cn);
+        act_turn_right(gs, cn);
     } else if dir == core::constants::DX_LEFT {
-        act_turn_leftup(cn);
+        act_turn_leftup(gs, cn);
     } else if dir == core::constants::DX_RIGHT {
-        act_turn_rightup(cn);
+        act_turn_rightup(gs, cn);
     } else if dir == core::constants::DX_LEFTUP {
-        Repository::with_characters_mut(|ch| ch[cn].status = 132);
+        gs.characters[cn].status = 132;
     } else {
-        Repository::with_characters_mut(|ch| ch[cn].status = 148);
+        gs.characters[cn].status = 148;
     }
 }
 
-pub fn act_move_rightdown(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_rightdown(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if x >= core::constants::SERVER_MAPX - 2 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if y >= core::constants::SERVER_MAPY - 2 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_RIGHTDOWN {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
@@ -689,47 +689,48 @@ pub fn act_move_rightdown(cn: usize) {
     let m2 = (base + 1) as usize;
     let target = (base + core::constants::SERVER_MAPX + 1) as usize;
 
-    if !player::plr_check_target(m1) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m1) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target(m2) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m2) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 84;
-        ch[cn].tox = (x + 1) as i16;
-        ch[cn].toy = (y + 1) as i16;
-    });
+    gs.characters[cn].status = 84;
+    gs.characters[cn].tox = (x + 1) as i16;
+    gs.characters[cn].toy = (y + 1) as i16;
 }
 
-pub fn act_move_rightup(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_rightup(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if x >= core::constants::SERVER_MAPX - 2 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if y < 1 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_RIGHTUP {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
@@ -738,47 +739,48 @@ pub fn act_move_rightup(cn: usize) {
     let m2 = (base + 1) as usize;
     let target = (base - core::constants::SERVER_MAPX + 1) as usize;
 
-    if !player::plr_check_target(m1) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m1) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target(m2) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m2) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 72;
-        ch[cn].tox = (x + 1) as i16;
-        ch[cn].toy = (y - 1) as i16;
-    });
+    gs.characters[cn].status = 72;
+    gs.characters[cn].tox = (x + 1) as i16;
+    gs.characters[cn].toy = (y - 1) as i16;
 }
 
-pub fn act_move_leftdown(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_leftdown(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if x < 1 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if y >= core::constants::SERVER_MAPY - 2 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_LEFTDOWN {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
@@ -787,47 +789,48 @@ pub fn act_move_leftdown(cn: usize) {
     let m2 = (base - 1) as usize;
     let target = (base + core::constants::SERVER_MAPX - 1) as usize;
 
-    if !player::plr_check_target(m1) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m1) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target(m2) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m2) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 60;
-        ch[cn].tox = (x - 1) as i16;
-        ch[cn].toy = (y + 1) as i16;
-    });
+    gs.characters[cn].status = 60;
+    gs.characters[cn].tox = (x - 1) as i16;
+    gs.characters[cn].toy = (y + 1) as i16;
 }
 
-pub fn act_move_leftup(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_leftup(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if x < 1 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if y < 1 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_LEFTUP {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
@@ -836,201 +839,199 @@ pub fn act_move_leftup(cn: usize) {
     let m2 = (base - 1) as usize;
     let target = (base - core::constants::SERVER_MAPX - 1) as usize;
 
-    if !player::plr_check_target(m1) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m1) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_check_target(m2) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_check_target(gs, m2) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 48;
-        ch[cn].tox = (x - 1) as i16;
-        ch[cn].toy = (y - 1) as i16;
-    });
+    gs.characters[cn].status = 48;
+    gs.characters[cn].tox = (x - 1) as i16;
+    gs.characters[cn].toy = (y - 1) as i16;
 }
 
-pub fn act_move_right(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_right(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if x >= core::constants::SERVER_MAPX - 2 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_RIGHT {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base + 1) as usize;
 
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 40;
-        ch[cn].tox = (x + 1) as i16;
-        ch[cn].toy = y as i16;
-    });
+    gs.characters[cn].status = 40;
+    gs.characters[cn].tox = (x + 1) as i16;
+    gs.characters[cn].toy = y as i16;
 }
 
-pub fn act_move_left(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_left(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if x < 1 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_LEFT {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base - 1) as usize;
 
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 32;
-        ch[cn].tox = (x - 1) as i16;
-        ch[cn].toy = y as i16;
-    });
+    gs.characters[cn].status = 32;
+    gs.characters[cn].tox = (x - 1) as i16;
+    gs.characters[cn].toy = y as i16;
 }
 
-pub fn act_move_down(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_down(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if y >= core::constants::SERVER_MAPY - 2 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_DOWN {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base + core::constants::SERVER_MAPX) as usize;
 
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 24;
-        ch[cn].tox = x as i16;
-        ch[cn].toy = (y + 1) as i16;
-    });
+    gs.characters[cn].status = 24;
+    gs.characters[cn].tox = x as i16;
+    gs.characters[cn].toy = (y + 1) as i16;
 }
 
-pub fn act_move_up(cn: usize) {
-    Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+pub fn act_move_up(gs: &mut GameState, cn: usize) {
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
-    let (x, y, dir) =
-        Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32, ch[cn].dir));
+    let (x, y, dir) = (
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+        gs.characters[cn].dir,
+    );
 
     if y < 1 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
     if dir != core::constants::DX_UP {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    if State::with(|s| s.do_char_can_flee(cn) == 0) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !gs.do_char_can_flee(cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
     let base = x + y * core::constants::SERVER_MAPX;
     let target = (base - core::constants::SERVER_MAPX) as usize;
 
-    if !player::plr_set_target(target, cn) {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_FAILED as u16);
+    if !player::plr_set_target(gs, target, cn) {
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         return;
     }
 
-    Repository::with_characters_mut(|ch| {
-        ch[cn].status = 16;
-        ch[cn].tox = x as i16;
-        ch[cn].toy = (y - 1) as i16;
-    });
+    gs.characters[cn].status = 16;
+    gs.characters[cn].tox = x as i16;
+    gs.characters[cn].toy = (y - 1) as i16;
 }
 
-pub fn char_give_char(cn: usize, co: usize) -> i32 {
-    // Port of C++ char_give_char
-    // quick error checks
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    let co_used = Repository::with_characters(|ch| ch[co].used);
-    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
+    let co_used = gs.characters[co].used;
+    let can_see = gs.do_char_can_see(cn, co);
     if co_used != core::constants::USE_ACTIVE || can_see == 0 || cn == co {
         return -1;
     }
 
-    let citem = Repository::with_characters(|ch| ch[cn].citem != 0);
+    let citem = gs.characters[cn].citem != 0;
     if !citem {
         return 1;
     }
 
-    let (x, tox, y, toy, ax, ay) = Repository::with_characters(|ch| {
-        (
-            ch[co].x as i32,
-            ch[co].tox as i32,
-            ch[co].y as i32,
-            ch[co].toy as i32,
-            ch[cn].x as i32,
-            ch[cn].y as i32,
-        )
-    });
+    let (x, tox, y, toy, ax, ay) = (
+        gs.characters[co].x as i32,
+        gs.characters[co].tox as i32,
+        gs.characters[co].y as i32,
+        gs.characters[co].toy as i32,
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+    );
 
     if (x == ax + 1 && (y == ay + 1 || y == ay - 1))
         || (x == ax - 1 && (y == ay + 1 || y == ay - 1))
     {
-        let err = char_moveto(cn, x, y, 2, tox, toy);
+        let err = char_moveto(gs, cn, x, y, 2, tox, toy);
         if err == -1 {
             return -1;
         } else {
@@ -1038,41 +1039,40 @@ pub fn char_give_char(cn: usize, co: usize) -> i32 {
         }
     }
 
-    // give if possible
     if (ax == x - 1 && ay == y) || (ax == tox - 1 && ay == toy) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
-            act_turn_right(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+            act_turn_right(gs, cn);
             return 0;
         }
-        act_give(cn);
+        act_give(gs, cn);
         return 0;
     }
     if (ax == x + 1 && ay == y) || (ax == tox + 1 && ay == toy) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
-            act_turn_left(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+            act_turn_left(gs, cn);
             return 0;
         }
-        act_give(cn);
+        act_give(gs, cn);
         return 0;
     }
     if (ax == x && ay == y - 1) || (ax == tox && ay == toy - 1) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
-            act_turn_down(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+            act_turn_down(gs, cn);
             return 0;
         }
-        act_give(cn);
+        act_give(gs, cn);
         return 0;
     }
     if (ax == x && ay == y + 1) || (ax == tox && ay == toy + 1) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
-            act_turn_up(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+            act_turn_up(gs, cn);
             return 0;
         }
-        act_give(cn);
+        act_give(gs, cn);
         return 0;
     }
 
-    let err = char_moveto(cn, x, y, 2, tox, toy);
+    let err = char_moveto(gs, cn, x, y, 2, tox, toy);
     if err == -1 {
         -1
     } else {
@@ -1080,17 +1080,16 @@ pub fn char_give_char(cn: usize, co: usize) -> i32 {
     }
 }
 
-pub fn char_attack_char(cn: usize, co: usize) -> i32 {
-    // Port of C++ char_attack_char
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    let co_used = Repository::with_characters(|ch| ch[co].used);
-    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co));
-    let co_flags = Repository::with_characters(|ch| ch[co].flags);
+    let co_used = gs.characters[co].used;
+    let can_see = gs.do_char_can_see(cn, co);
+    let co_flags = gs.characters[co].flags;
     if co_used != core::constants::USE_ACTIVE
         || can_see == 0
         || cn == co
@@ -1100,22 +1099,20 @@ pub fn char_attack_char(cn: usize, co: usize) -> i32 {
         return -1;
     }
 
-    let (x, tox, y, toy, ax, ay) = Repository::with_characters(|ch| {
-        (
-            ch[co].x as i32,
-            ch[co].tox as i32,
-            ch[co].y as i32,
-            ch[co].toy as i32,
-            ch[cn].x as i32,
-            ch[cn].y as i32,
-        )
-    });
+    let (x, tox, y, toy, ax, ay) = (
+        gs.characters[co].x as i32,
+        gs.characters[co].tox as i32,
+        gs.characters[co].y as i32,
+        gs.characters[co].toy as i32,
+        gs.characters[cn].x as i32,
+        gs.characters[cn].y as i32,
+    );
 
     // diagonal adjacency
     if (x == ax + 1 && (y == ay + 1 || y == ay - 1))
         || (x == ax - 1 && (y == ay + 1 || y == ay - 1))
     {
-        let err = char_moveto(cn, x, y, 2, tox, toy);
+        let err = char_moveto(gs, cn, x, y, 2, tox, toy);
         if err == -1 {
             return -1;
         } else {
@@ -1125,35 +1122,35 @@ pub fn char_attack_char(cn: usize, co: usize) -> i32 {
 
     // attack if possible
     if (ax == x - 1 && ay == y) || (ax == tox - 1 && ay == toy) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
-            act_turn_right(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+            act_turn_right(gs, cn);
             return 0;
         }
-        act_attack(cn);
+        act_attack(gs, cn);
         return 1;
     }
     if (ax == x + 1 && ay == y) || (ax == tox + 1 && ay == toy) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
-            act_turn_left(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+            act_turn_left(gs, cn);
             return 0;
         }
-        act_attack(cn);
+        act_attack(gs, cn);
         return 1;
     }
     if (ax == x && ay == y - 1) || (ax == tox && ay == toy - 1) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
-            act_turn_down(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+            act_turn_down(gs, cn);
             return 0;
         }
-        act_attack(cn);
+        act_attack(gs, cn);
         return 1;
     }
     if (ax == x && ay == y + 1) || (ax == tox && ay == toy + 1) {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
-            act_turn_up(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+            act_turn_up(gs, cn);
             return 0;
         }
-        act_attack(cn);
+        act_attack(gs, cn);
         return 1;
     }
 
@@ -1193,7 +1190,7 @@ pub fn char_attack_char(cn: usize, co: usize) -> i32 {
         nty = ny;
     }
 
-    let err = char_moveto(cn, nx, ny, 2, ntx, nty);
+    let err = char_moveto(gs, cn, nx, ny, 2, ntx, nty);
     if err == -1 {
         -1
     } else {
@@ -1201,125 +1198,120 @@ pub fn char_attack_char(cn: usize, co: usize) -> i32 {
     }
 }
 
-pub fn char_dropto(cn: usize, x: i32, y: i32) -> i32 {
-    // Port of C++ char_dropto
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    // nothing to drop?
-    let has_citem = Repository::with_characters(|ch| ch[cn].citem != 0);
+    let has_citem = gs.characters[cn].citem != 0;
     if !has_citem {
         return -1;
     }
 
-    let cx = Repository::with_characters(|ch| ch[cn].x as i32);
-    let cy = Repository::with_characters(|ch| ch[cn].y as i32);
+    let cx = gs.characters[cn].x as i32;
+    let cy = gs.characters[cn].y as i32;
     if cx == x - 1 && cy == y {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
-            act_turn_right(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+            act_turn_right(gs, cn);
             return 0;
         }
-        act_drop(cn);
+        act_drop(gs, cn);
         return 1;
     }
     if cx == x + 1 && cy == y {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
-            act_turn_left(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+            act_turn_left(gs, cn);
             return 0;
         }
-        act_drop(cn);
+        act_drop(gs, cn);
         return 1;
     }
     if cx == x && cy == y - 1 {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
-            act_turn_down(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+            act_turn_down(gs, cn);
             return 0;
         }
-        act_drop(cn);
+        act_drop(gs, cn);
         return 1;
     }
     if cx == x && cy == y + 1 {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
-            act_turn_up(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+            act_turn_up(gs, cn);
             return 0;
         }
-        act_drop(cn);
+        act_drop(gs, cn);
         return 1;
     }
 
-    // we're too far away... go there:
-    if char_moveto(cn, x, y, 1, 0, 0) == -1 {
+    if char_moveto(gs, cn, x, y, 1, 0, 0) == -1 {
         return -1;
     }
     0
 }
 
-pub fn char_pickup(cn: usize, x: i32, y: i32) -> i32 {
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+pub fn char_pickup(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    let cx = Repository::with_characters(|ch| ch[cn].x as i32);
-    let cy = Repository::with_characters(|ch| ch[cn].y as i32);
+    let cx = gs.characters[cn].x as i32;
+    let cy = gs.characters[cn].y as i32;
 
     if cx == x - 1 && cy == y {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
-            act_turn_right(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+            act_turn_right(gs, cn);
             return 0;
         }
-        act_pickup(cn);
+        act_pickup(gs, cn);
         return 1;
     }
     if cx == x + 1 && cy == y {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
-            act_turn_left(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+            act_turn_left(gs, cn);
             return 0;
         }
-        act_pickup(cn);
+        act_pickup(gs, cn);
         return 1;
     }
     if cx == x && cy == y - 1 {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
-            act_turn_down(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+            act_turn_down(gs, cn);
             return 0;
         }
-        act_pickup(cn);
+        act_pickup(gs, cn);
         return 1;
     }
     if cx == x && cy == y + 1 {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
-            act_turn_up(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+            act_turn_up(gs, cn);
             return 0;
         }
-        act_pickup(cn);
+        act_pickup(gs, cn);
         return 1;
     }
 
     -1
 }
 
-pub fn char_pickupto(cn: usize, x: i32, y: i32) -> i32 {
-    // Port of C++ char_pickupto
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+pub fn char_pickupto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    // already an item in hand?
-    let has_citem = Repository::with_characters(|ch| ch[cn].citem != 0);
+    let has_citem = gs.characters[cn].citem != 0;
     if has_citem {
         return -1;
     }
 
-    let ret = char_pickup(cn, x, y);
+    let ret = char_pickup(gs, cn, x, y);
     if ret == -1 {
-        if char_moveto(cn, x, y, 1, 0, 0) == -1 {
+        if char_moveto(gs, cn, x, y, 1, 0, 0) == -1 {
             return -1;
         } else {
             return 0;
@@ -1331,63 +1323,62 @@ pub fn char_pickupto(cn: usize, x: i32, y: i32) -> i32 {
     0
 }
 
-pub fn char_use(cn: usize, x: i32, y: i32) -> i32 {
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+pub fn char_use(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    let cx = Repository::with_characters(|ch| ch[cn].x as i32);
-    let cy = Repository::with_characters(|ch| ch[cn].y as i32);
+    let cx = gs.characters[cn].x as i32;
+    let cy = gs.characters[cn].y as i32;
 
     if cx == x - 1 && cy == y {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_RIGHT as i32 {
-            act_turn_right(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+            act_turn_right(gs, cn);
             return 0;
         }
-        act_use(cn);
+        act_use(gs, cn);
         return 1;
     }
     if cx == x + 1 && cy == y {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_LEFT as i32 {
-            act_turn_left(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+            act_turn_left(gs, cn);
             return 0;
         }
-        act_use(cn);
+        act_use(gs, cn);
         return 1;
     }
     if cx == x && cy == y - 1 {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_DOWN as i32 {
-            act_turn_down(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+            act_turn_down(gs, cn);
             return 0;
         }
-        act_use(cn);
+        act_use(gs, cn);
         return 1;
     }
     if cx == x && cy == y + 1 {
-        if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32 {
-            act_turn_up(cn);
+        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+            act_turn_up(gs, cn);
             return 0;
         }
-        act_use(cn);
+        act_use(gs, cn);
         return 1;
     }
 
     -1
 }
 
-pub fn char_useto(cn: usize, x: i32, y: i32) -> i32 {
-    // Port of C++ char_useto
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+pub fn char_useto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    let ret = char_use(cn, x, y);
+    let ret = char_use(gs, cn, x, y);
     if ret == -1 {
-        if char_moveto(cn, x, y, 1, 0, 0) == -1 {
+        if char_moveto(gs, cn, x, y, 1, 0, 0) == -1 {
             return -1;
         } else {
             return 0;
@@ -1399,37 +1390,53 @@ pub fn char_useto(cn: usize, x: i32, y: i32) -> i32 {
     0
 }
 
-pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i32 {
-    // Port of C++ char_moveto
-    let (cx, cy) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+pub fn char_moveto(
+    gs: &mut GameState,
+    cn: usize,
+    x: i32,
+    y: i32,
+    flag: i32,
+    x2: i32,
+    y2: i32,
+) -> i32 {
+    let (cx, cy) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
     if cx == x && cy == y && flag != 1 && flag != 3 {
         return 1;
     }
 
-    let cerrno = Repository::with_characters(|ch| ch[cn].cerrno);
+    let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
-        Repository::with_characters_mut(|ch| ch[cn].cerrno = core::constants::ERR_NONE as u16);
+        gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
         return -1;
     }
 
-    let unreach = Repository::with_characters(|ch| ch[cn].unreach);
-    let unreachx = Repository::with_characters(|ch| ch[cn].unreachx);
-    let unreachy = Repository::with_characters(|ch| ch[cn].unreachy);
-    let ticker = Repository::with_globals(|g| g.ticker as i64);
+    let unreach = gs.characters[cn].unreach;
+    let unreachx = gs.characters[cn].unreachx;
+    let unreachy = gs.characters[cn].unreachy;
+    let ticker = gs.globals.ticker as i64;
     if unreach as i64 > ticker && unreachx == x && unreachy == y {
         return -1;
     }
 
-    let dir = PathFinder::with_mut(|pf| {
-        pf.find_path(cn, x as i16, y as i16, flag as u8, x2 as i16, y2 as i16)
-    });
+    let dir = {
+        let current_tick = gs.globals.ticker as u32;
+        gs.pathfinder.find_path(
+            &gs.characters[cn],
+            &gs.map,
+            &gs.items,
+            current_tick,
+            x as i16,
+            y as i16,
+            flag as u8,
+            x2 as i16,
+            y2 as i16,
+        )
+    };
 
     if dir.is_none() {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].unreach = Repository::with_globals(|g| g.ticker) + core::constants::TICKS;
-            ch[cn].unreachx = x;
-            ch[cn].unreachy = y;
-        });
+        gs.characters[cn].unreach = gs.globals.ticker + core::constants::TICKS;
+        gs.characters[cn].unreachx = x;
+        gs.characters[cn].unreachy = y;
         return -1;
     }
 
@@ -1439,214 +1446,169 @@ pub fn char_moveto(cn: usize, x: i32, y: i32, flag: i32, x2: i32, y2: i32) -> i3
 
     match dir {
         d if d == Some(core::constants::DX_RIGHTDOWN) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_RIGHTDOWN as i32
-            {
-                act_turn_rightdown(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_RIGHTDOWN as i32 {
+                act_turn_rightdown(gs, cn);
                 return 0;
             }
-            act_move_rightdown(cn);
+            act_move_rightdown(gs, cn);
             0
         }
         d if d == Some(core::constants::DX_RIGHTUP) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_RIGHTUP as i32
-            {
-                act_turn_rightup(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_RIGHTUP as i32 {
+                act_turn_rightup(gs, cn);
                 return 0;
             }
-            act_move_rightup(cn);
+            act_move_rightup(gs, cn);
             0
         }
         d if d == Some(core::constants::DX_LEFTDOWN) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_LEFTDOWN as i32
-            {
-                act_turn_leftdown(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_LEFTDOWN as i32 {
+                act_turn_leftdown(gs, cn);
                 return 0;
             }
-            act_move_leftdown(cn);
+            act_move_leftdown(gs, cn);
             0
         }
         d if d == Some(core::constants::DX_LEFTUP) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_LEFTUP as i32
-            {
-                act_turn_leftup(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_LEFTUP as i32 {
+                act_turn_leftup(gs, cn);
                 return 0;
             }
-            act_move_leftup(cn);
+            act_move_leftup(gs, cn);
             0
         }
         d if d == Some(core::constants::DX_RIGHT) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_RIGHT as i32
-            {
-                act_turn_right(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+                act_turn_right(gs, cn);
                 return 0;
             }
-            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
-            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
-            let in_id = Repository::with_map(|map| {
-                map[(base_x + base_y * core::constants::SERVER_MAPX as usize) + 1].it
-            });
+            let base_x = gs.characters[cn].x as usize;
+            let base_y = gs.characters[cn].y as usize;
+            let in_id = gs.map[(base_x + base_y * core::constants::SERVER_MAPX as usize) + 1].it;
             if in_id != 0
-                && Repository::with_items(|items| items[in_id as usize].active) == 0
-                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+                && gs.items[in_id as usize].active == 0
+                && gs.items[in_id as usize].driver == 2
             {
-                act_use(cn);
+                act_use(gs, cn);
                 return 0;
             }
-            act_move_right(cn);
+            act_move_right(gs, cn);
             0
         }
         d if d == Some(core::constants::DX_LEFT) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_LEFT as i32
-            {
-                act_turn_left(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+                act_turn_left(gs, cn);
                 return 0;
             }
-            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
-            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
-            let in_id = Repository::with_map(|map| {
-                map[(base_x + base_y * core::constants::SERVER_MAPX as usize) - 1].it
-            });
+            let base_x = gs.characters[cn].x as usize;
+            let base_y = gs.characters[cn].y as usize;
+            let in_id = gs.map[(base_x + base_y * core::constants::SERVER_MAPX as usize) - 1].it;
             if in_id != 0
-                && Repository::with_items(|items| items[in_id as usize].active) == 0
-                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+                && gs.items[in_id as usize].active == 0
+                && gs.items[in_id as usize].driver == 2
             {
-                act_use(cn);
+                act_use(gs, cn);
                 return 0;
             }
-            act_move_left(cn);
+            act_move_left(gs, cn);
             0
         }
         d if d == Some(core::constants::DX_DOWN) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32)
-                != core::constants::DX_DOWN as i32
-            {
-                act_turn_down(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+                act_turn_down(gs, cn);
                 return 0;
             }
-            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
-            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
-            let in_id = Repository::with_map(|map| {
-                map[base_x + (base_y + 1) * core::constants::SERVER_MAPX as usize].it
-            });
+            let base_x = gs.characters[cn].x as usize;
+            let base_y = gs.characters[cn].y as usize;
+            let in_id = gs.map[base_x + (base_y + 1) * core::constants::SERVER_MAPX as usize].it;
             if in_id != 0
-                && Repository::with_items(|items| items[in_id as usize].active) == 0
-                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+                && gs.items[in_id as usize].active == 0
+                && gs.items[in_id as usize].driver == 2
             {
-                act_use(cn);
+                act_use(gs, cn);
                 return 0;
             }
-            act_move_down(cn);
+            act_move_down(gs, cn);
             0
         }
         d if d == Some(core::constants::DX_UP) => {
-            if Repository::with_characters(|ch| ch[cn].dir as i32) != core::constants::DX_UP as i32
-            {
-                act_turn_up(cn);
+            if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+                act_turn_up(gs, cn);
                 return 0;
             }
-            let base_x = Repository::with_characters(|ch| ch[cn].x as usize);
-            let base_y = Repository::with_characters(|ch| ch[cn].y as usize);
-            let in_id = Repository::with_map(|map| {
-                map[base_x + (base_y - 1) * core::constants::SERVER_MAPX as usize].it
-            });
+            let base_x = gs.characters[cn].x as usize;
+            let base_y = gs.characters[cn].y as usize;
+            let in_id = gs.map[base_x + (base_y - 1) * core::constants::SERVER_MAPX as usize].it;
             if in_id != 0
-                && Repository::with_items(|items| items[in_id as usize].active) == 0
-                && Repository::with_items(|items| items[in_id as usize].driver) == 2
+                && gs.items[in_id as usize].active == 0
+                && gs.items[in_id as usize].driver == 2
             {
-                act_use(cn);
+                act_use(gs, cn);
                 return 0;
             }
-            act_move_up(cn);
+            act_move_up(gs, cn);
             0
         }
         _ => -1,
     }
 }
 
-pub fn drv_moveto(cn: usize, x: usize, y: usize) {
-    // Mirror C++ drv_moveto
-    let ret = char_moveto(cn, x as i32, y as i32, 0, 0, 0);
+pub fn drv_moveto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
+    let ret = char_moveto(gs, cn, x as i32, y as i32, 0, 0, 0);
     if ret != 0 {
-        Repository::with_characters_mut(|ch| ch[cn].goto_x = 0);
+        gs.characters[cn].goto_x = 0;
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
     } else if ret == 1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     }
 }
 
-pub fn drv_turnto(cn: usize, x: usize, y: usize) {
-    // Mirror C++ drv_turnto
+pub fn drv_turnto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     let dir = crate::helpers::drv_dcoor2dir(
-        x as i32 - Repository::with_characters(|ch| ch[cn].x as i32),
-        y as i32 - Repository::with_characters(|ch| ch[cn].y as i32),
+        x as i32 - gs.characters[cn].x as i32,
+        y as i32 - gs.characters[cn].y as i32,
     );
-    if dir == Repository::with_characters(|ch| ch[cn].dir as i32) {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].misc_action = core::constants::DR_IDLE as u16;
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-        });
+    if dir == gs.characters[cn].dir as i32 {
+        gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     } else {
         if dir != -1 {
-            act_turn(cn, dir);
+            act_turn(gs, cn, dir);
         } else {
-            Repository::with_characters_mut(|ch| {
-                ch[cn].last_action = core::constants::ERR_FAILED as i8
-            });
+            gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
         }
     }
 }
 
-pub fn drv_dropto(cn: usize, x: usize, y: usize) {
-    // Mirror C++ drv_dropto
-    let ret = char_dropto(cn, x as i32, y as i32);
+pub fn drv_dropto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
+    let ret = char_dropto(gs, cn, x as i32, y as i32);
     if ret != 0 {
-        Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
+        gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
     } else if ret == 1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     }
 }
 
-pub fn drv_pickupto(cn: usize, x: usize, y: usize) {
-    // Mirror C++ drv_pickupto
-    let ret = char_pickupto(cn, x as i32, y as i32);
+pub fn drv_pickupto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
+    let ret = char_pickupto(gs, cn, x as i32, y as i32);
     if ret != 0 {
-        Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
+        gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
     } else if ret == 1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     }
 }
 
-pub fn drv_useto(cn: usize, x: usize, y: usize) {
-    // Mirror C++ drv_useto
-    let ret = char_useto(cn, x as i32, y as i32);
+pub fn drv_useto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
+    let ret = char_useto(gs, cn, x as i32, y as i32);
 
-    // bounds check as in C++
     let mut xx = x as i32;
     let mut yy = y as i32;
     if !(0..core::constants::SERVER_MAPX).contains(&xx)
@@ -1657,240 +1619,209 @@ pub fn drv_useto(cn: usize, x: usize, y: usize) {
     }
 
     let m = (xx + yy * core::constants::SERVER_MAPX) as usize;
-    let in_item = Repository::with_map(|map| map[m].it);
+    let in_item = gs.map[m].it;
 
-    if ret != 0
-        && (in_item == 0 || Repository::with_items(|items| items[in_item as usize].driver) != 25)
-    {
-        Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
+    if ret != 0 && (in_item == 0 || gs.items[in_item as usize].driver != 25) {
+        gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
     } else if ret == 1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     }
 }
 
-pub fn drv_use(cn: usize, nr: i32) {
-    // Mirror C++ drv_use
+pub fn drv_use(gs: &mut GameState, cn: usize, nr: i32) {
     let in_item = if nr < 20 {
-        Repository::with_characters(|ch| ch[cn].worn[nr as usize] as usize)
+        gs.characters[cn].worn[nr as usize] as usize
     } else {
-        Repository::with_characters(|ch| ch[cn].item[(nr - 20) as usize] as usize)
+        gs.characters[cn].item[(nr - 20) as usize] as usize
     };
 
     if in_item == 0 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8;
-            ch[cn].use_nr = 0;
-        });
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
+        gs.characters[cn].use_nr = 0;
         return;
     }
 
-    driver::use_driver(cn, in_item, true);
-    Repository::with_characters_mut(|ch| {
-        if ch[cn].cerrno == core::constants::ERR_SUCCESS as u16 {
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-        }
-        if ch[cn].cerrno == core::constants::ERR_FAILED as u16 {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8;
-        }
-        ch[cn].cerrno = core::constants::ERR_NONE as u16;
-        ch[cn].use_nr = 0;
-    });
+    driver::use_driver(gs, cn, in_item, true);
+    if gs.characters[cn].cerrno == core::constants::ERR_SUCCESS as u16 {
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
+    }
+    if gs.characters[cn].cerrno == core::constants::ERR_FAILED as u16 {
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
+    }
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
+    gs.characters[cn].use_nr = 0;
 }
 
-pub fn drv_attack_char(cn: usize, co: usize) {
-    // Mirror C++ drv_attack_char
-    let ret = char_attack_char(cn, co);
+pub fn drv_attack_char(gs: &mut GameState, cn: usize, co: usize) {
+    let ret = char_attack_char(gs, cn, co);
     if ret == -1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].attack_cn = 0;
-            ch[cn].last_action = core::constants::ERR_FAILED as i8;
-        });
+        gs.characters[cn].attack_cn = 0;
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
     } else if ret == 1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     }
 }
 
-pub fn drv_give_char(cn: usize, co: usize) {
-    // Mirror C++ drv_give_char
-    let ret = char_give_char(cn, co);
+pub fn drv_give_char(gs: &mut GameState, cn: usize, co: usize) {
+    let ret = char_give_char(gs, cn, co);
     if ret != 0 {
-        Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_IDLE as u16);
+        gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
     }
     if ret == -1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_FAILED as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_FAILED as i8;
     } else if ret == 1 {
-        Repository::with_characters_mut(|ch| {
-            ch[cn].last_action = core::constants::ERR_SUCCESS as i8
-        });
+        gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     }
 }
 
-pub fn drv_bow(cn: usize) {
-    // Mirror C++ drv_bow
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+pub fn drv_bow(gs: &mut GameState, cn: usize) {
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTUP {
-        act_turn_left(cn);
+        act_turn_left(gs, cn);
         return;
     }
     if dir == core::constants::DX_LEFTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
         return;
     }
     if dir == core::constants::DX_RIGHTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
         return;
     }
     if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_right(cn);
+        act_turn_right(gs, cn);
         return;
     }
 
-    act_bow(cn);
-    Repository::with_characters_mut(|ch| {
-        ch[cn].misc_action = core::constants::DR_IDLE as u16;
-        ch[cn].cerrno = core::constants::ERR_NONE as u16;
-        ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-    });
+    act_bow(gs, cn);
+    gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
+    gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
 }
 
-pub fn drv_wave(cn: usize) {
-    // Mirror C++ drv_wave
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+pub fn drv_wave(gs: &mut GameState, cn: usize) {
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTUP {
-        act_turn_left(cn);
+        act_turn_left(gs, cn);
         return;
     }
     if dir == core::constants::DX_LEFTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
         return;
     }
     if dir == core::constants::DX_RIGHTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
         return;
     }
     if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_right(cn);
+        act_turn_right(gs, cn);
         return;
     }
 
-    act_wave(cn);
-    Repository::with_characters_mut(|ch| {
-        ch[cn].misc_action = core::constants::DR_IDLE as u16;
-        ch[cn].cerrno = core::constants::ERR_NONE as u16;
-        ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-    });
+    act_wave(gs, cn);
+    gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
+    gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
 }
 
-pub fn drv_skill(cn: usize) {
-    // Mirror C++ drv_skill
-    let dir = Repository::with_characters(|ch| ch[cn].dir);
+pub fn drv_skill(gs: &mut GameState, cn: usize) {
+    let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTUP {
-        act_turn_left(cn);
+        act_turn_left(gs, cn);
         return;
     }
     if dir == core::constants::DX_LEFTDOWN {
-        act_turn_down(cn);
+        act_turn_down(gs, cn);
         return;
     }
     if dir == core::constants::DX_RIGHTUP {
-        act_turn_up(cn);
+        act_turn_up(gs, cn);
         return;
     }
     if dir == core::constants::DX_RIGHTDOWN {
-        act_turn_right(cn);
+        act_turn_right(gs, cn);
         return;
     }
 
-    act_skill(cn);
-    Repository::with_characters_mut(|ch| {
-        ch[cn].skill_target2 = ch[cn].skill_nr;
-        ch[cn].skill_nr = 0;
-        ch[cn].cerrno = core::constants::ERR_NONE as u16;
-        ch[cn].last_action = core::constants::ERR_SUCCESS as i8;
-    });
+    act_skill(gs, cn);
+    gs.characters[cn].skill_target2 = gs.characters[cn].skill_nr;
+    gs.characters[cn].skill_nr = 0;
+    gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
+    gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
 }
 
-pub fn driver_msg(cn: usize, msg_type: i32, dat1: i32, dat2: i32, dat3: i32, dat4: i32) {
+pub fn driver_msg(
+    gs: &mut GameState,
+    cn: usize,
+    msg_type: i32,
+    dat1: i32,
+    dat2: i32,
+    dat3: i32,
+    dat4: i32,
+) {
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("driver_msg: invalid character id {}", cn);
         return;
     }
 
-    // Mirror C++ driver_msg default handling
-    // if stunned -> ignore
-    let stunned = Repository::with_characters(|ch| ch[cn].stunned != 0);
+    let stunned = gs.characters[cn].stunned != 0;
     if stunned {
         return;
     }
 
-    let is_player = Repository::with_characters(|ch| {
-        (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-    });
+    let is_player = (gs.characters[cn].flags
+        & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+        != 0;
 
     if !is_player {
-        if driver::npc_msg(cn, msg_type, dat1, dat2, dat3, dat4) != 0 {
+        if driver::npc_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4) {
             return;
         }
     }
 
-    let is_ccp = Repository::with_characters(|ch| {
-        (ch[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) != 0
-    });
+    let is_ccp = (gs.characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) != 0;
     if is_ccp {
-        // TODO: driver_ccp::ccp_msg(cn, msg_type, dat1, dat2, dat3, dat4);
-        // Actually this should never be called...
         log::error!("driver_ccp::ccp_msg not implemented for {}", cn);
     }
 
     match msg_type as u32 {
         x if x == core::constants::NT_GOTHIT as u32 || x == core::constants::NT_GOTMISS as u32 => {
-            let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn as i32);
-            let fightback =
-                Repository::with_characters(|ch| ch[cn].data[core::constants::CHD_FIGHTBACK]);
-            let misc_action = Repository::with_characters(|ch| ch[cn].misc_action);
+            let attack_cn = gs.characters[cn].attack_cn as i32;
+            let fightback = gs.characters[cn].data[core::constants::CHD_FIGHTBACK];
+            let misc_action = gs.characters[cn].misc_action;
             if attack_cn == 0 && fightback == 0 && misc_action != core::constants::DR_GIVE as u16 {
-                Repository::with_characters_mut(|ch| ch[cn].attack_cn = dat1 as u16);
+                gs.characters[cn].attack_cn = dat1 as u16;
             }
         }
-        _ => {
-            // Other message types aren't handled and this is expected so no reason to log anything extra here.
-        }
+        _ => {}
     }
 }
 
-pub fn follow_driver(cn: usize, co: usize) -> bool {
-    // Bounds and validity checks
+pub fn follow_driver(gs: &mut GameState, cn: usize, co: usize) -> bool {
     if co == 0 || co >= core::constants::MAXCHARS {
         return false;
     }
-    let (tox, toy, dir) =
-        Repository::with_characters(|ch| (ch[co].tox as i32, ch[co].toy as i32, ch[co].dir as i32));
+    let (tox, toy, dir) = (
+        gs.characters[co].tox as i32,
+        gs.characters[co].toy as i32,
+        gs.characters[co].dir as i32,
+    );
     if !(5..=core::constants::SERVER_MAPX - 6).contains(&tox)
         || !(5..=core::constants::SERVER_MAPY - 6).contains(&toy)
     {
         return false;
     }
 
-    let is_companion = Repository::with_characters(|ch| {
-        (ch[cn].temp == core::constants::CT_COMPANION as u16) && ch[cn].data[63] as usize == co
-    });
-    let can_see = State::with_mut(|state| state.do_char_can_see(cn, co)) != 0;
+    let is_companion = (gs.characters[cn].temp == core::constants::CT_COMPANION as u16)
+        && gs.characters[cn].data[63] as usize == co;
+    let can_see = gs.do_char_can_see(cn, co) != 0;
     if !(is_companion || can_see) {
         return false;
     }
 
-    // Calculate m (map index)
     let mut m = tox + toy * core::constants::SERVER_MAPX;
     let dir_val = dir as u8;
     match dir_val {
@@ -1905,8 +1836,7 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
         _ => {}
     }
 
-    // Check adjacency in map
-    let map_len = Repository::with_map(|map| map.len());
+    let map_len = gs.map.len();
     let mut is_adjacent = false;
     let check_indices = vec![
         m,
@@ -1923,7 +1853,7 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
         if *idx < 0 || *idx as usize >= map_len {
             continue;
         }
-        let ch_val = Repository::with_map(|map| map[*idx as usize].ch);
+        let ch_val = gs.map[*idx as usize].ch;
         if ch_val as usize == cn {
             is_adjacent = true;
             break;
@@ -1931,74 +1861,53 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
     }
 
     if is_adjacent {
-        let cur_dir = Repository::with_characters(|ch| ch[cn].dir as i32);
+        let cur_dir = gs.characters[cn].dir as i32;
         if cur_dir as u8 == dir_val {
-            Repository::with_characters_mut(|ch| {
-                ch[cn].misc_action = core::constants::DR_IDLE as u16
-            });
+            gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
             return true;
         }
-        Repository::with_characters_mut(|ch| ch[cn].misc_action = core::constants::DR_TURN as u16);
-        let (x, y) = Repository::with_characters(|ch| (ch[cn].x as i32, ch[cn].y as i32));
+        gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
+        let (x, y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
         match dir_val {
             core::constants::DX_UP => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = x as u16;
-                    ch[cn].misc_target2 = (y - 1) as u16;
-                });
+                gs.characters[cn].misc_target1 = x as u16;
+                gs.characters[cn].misc_target2 = (y - 1) as u16;
             }
             core::constants::DX_DOWN => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = x as u16;
-                    ch[cn].misc_target2 = (y + 1) as u16;
-                });
+                gs.characters[cn].misc_target1 = x as u16;
+                gs.characters[cn].misc_target2 = (y + 1) as u16;
             }
             core::constants::DX_LEFT => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = (x - 1) as u16;
-                    ch[cn].misc_target2 = y as u16;
-                });
+                gs.characters[cn].misc_target1 = (x - 1) as u16;
+                gs.characters[cn].misc_target2 = y as u16;
             }
             core::constants::DX_RIGHT => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = (x + 1) as u16;
-                    ch[cn].misc_target2 = y as u16;
-                });
+                gs.characters[cn].misc_target1 = (x + 1) as u16;
+                gs.characters[cn].misc_target2 = y as u16;
             }
             core::constants::DX_LEFTUP => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = (x - 1) as u16;
-                    ch[cn].misc_target2 = (y - 1) as u16;
-                });
+                gs.characters[cn].misc_target1 = (x - 1) as u16;
+                gs.characters[cn].misc_target2 = (y - 1) as u16;
             }
             core::constants::DX_LEFTDOWN => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = (x - 1) as u16;
-                    ch[cn].misc_target2 = (y + 1) as u16;
-                });
+                gs.characters[cn].misc_target1 = (x - 1) as u16;
+                gs.characters[cn].misc_target2 = (y + 1) as u16;
             }
             core::constants::DX_RIGHTUP => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = (x + 1) as u16;
-                    ch[cn].misc_target2 = (y - 1) as u16;
-                });
+                gs.characters[cn].misc_target1 = (x + 1) as u16;
+                gs.characters[cn].misc_target2 = (y - 1) as u16;
             }
             core::constants::DX_RIGHTDOWN => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_target1 = (x + 1) as u16;
-                    ch[cn].misc_target2 = (y + 1) as u16;
-                });
+                gs.characters[cn].misc_target1 = (x + 1) as u16;
+                gs.characters[cn].misc_target2 = (y + 1) as u16;
             }
             _ => {
-                Repository::with_characters_mut(|ch| {
-                    ch[cn].misc_action = core::constants::DR_IDLE as u16
-                });
+                gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
             }
         }
         return true;
     }
 
-    // Try to find a valid target tile
     let mut found = false;
     let mut new_m = m;
     let offsets = [
@@ -2017,7 +1926,7 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
         if try_m < 0 || try_m as usize >= map_len {
             continue;
         }
-        if player::plr_check_target(try_m as usize) {
+        if player::plr_check_target(gs, try_m as usize) {
             new_m = try_m;
             found = true;
             break;
@@ -2026,126 +1935,99 @@ pub fn follow_driver(cn: usize, co: usize) -> bool {
     if !found {
         return false;
     }
-    Repository::with_characters_mut(|ch| {
-        ch[cn].goto_x = (new_m % core::constants::SERVER_MAPX) as u16;
-        ch[cn].goto_y = (new_m / core::constants::SERVER_MAPX) as u16;
-    });
+    gs.characters[cn].goto_x = (new_m % core::constants::SERVER_MAPX) as u16;
+    gs.characters[cn].goto_y = (new_m / core::constants::SERVER_MAPX) as u16;
     true
 }
 
-pub fn driver(cn: usize) {
-    // 1. If not player or usurp -> run NPC high-priority driver
-    let is_player_or_usurp = Repository::with_characters(|ch| {
-        (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-    });
+pub fn driver(gs: &mut GameState, cn: usize) {
+    let is_player_or_usurp = (gs.characters[cn].flags
+        & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+        != 0;
     if !is_player_or_usurp {
-        driver::npc_driver_high(cn);
+        driver::npc_driver_high(gs, cn);
     }
 
-    // 2. use_nr (highest priority)
-    let use_nr = Repository::with_characters(|ch| ch[cn].use_nr);
+    let use_nr = gs.characters[cn].use_nr;
     if use_nr != 0 {
-        drv_use(cn, use_nr as i32);
+        drv_use(gs, cn, use_nr as i32);
         return;
     }
 
-    // 3. skill_nr
-    let skill_nr = Repository::with_characters(|ch| ch[cn].skill_nr);
+    let skill_nr = gs.characters[cn].skill_nr;
     if skill_nr != 0 {
-        drv_skill(cn);
+        drv_skill(gs, cn);
         return;
     }
 
-    // 4. If player/usurp and not attacking, run player_driver_med
-    let is_player_or_usurp = Repository::with_characters(|ch| {
-        (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-    });
-    let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
+    let is_player_or_usurp = (gs.characters[cn].flags
+        & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+        != 0;
+    let attack_cn = gs.characters[cn].attack_cn;
     if is_player_or_usurp && attack_cn == 0 {
-        player::player_driver_med(cn);
+        player::player_driver_med(gs, cn);
     }
 
-    // 5. goto_x (moveto)
-    let goto_x = Repository::with_characters(|ch| ch[cn].goto_x);
+    let goto_x = gs.characters[cn].goto_x;
     if goto_x != 0 {
-        let goto_y = Repository::with_characters(|ch| ch[cn].goto_y);
-        drv_moveto(cn, goto_x as usize, goto_y as usize);
+        let goto_y = gs.characters[cn].goto_y;
+        drv_moveto(gs, cn, goto_x as usize, goto_y as usize);
         return;
     }
 
-    // 6. attack_cn
-    let attack_cn = Repository::with_characters(|ch| ch[cn].attack_cn);
+    let attack_cn = gs.characters[cn].attack_cn;
     if attack_cn != 0 {
-        drv_attack_char(cn, attack_cn as usize);
+        drv_attack_char(gs, cn, attack_cn as usize);
         return;
     }
 
-    // 7. misc_action dispatch
-    let misc_action = Repository::with_characters(|ch| ch[cn].misc_action);
+    let misc_action = gs.characters[cn].misc_action;
     match misc_action as u32 {
         x if x == core::constants::DR_IDLE => {
-            let is_player = Repository::with_characters(|ch| {
-                (ch[cn].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-            });
+            let is_player = (gs.characters[cn].flags
+                & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+                != 0;
             if !is_player {
-                driver::npc_driver_low(cn);
+                driver::npc_driver_low(gs, cn);
             }
         }
         x if x == core::constants::DR_DROP => {
-            drv_dropto(
-                cn,
-                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
-                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
-            );
+            let t1 = gs.characters[cn].misc_target1 as usize;
+            let t2 = gs.characters[cn].misc_target2 as usize;
+            drv_dropto(gs, cn, t1, t2);
         }
         x if x == core::constants::DR_PICKUP => {
-            drv_pickupto(
-                cn,
-                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
-                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
-            );
+            let t1 = gs.characters[cn].misc_target1 as usize;
+            let t2 = gs.characters[cn].misc_target2 as usize;
+            drv_pickupto(gs, cn, t1, t2);
         }
         x if x == core::constants::DR_GIVE => {
-            drv_give_char(
-                cn,
-                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
-            );
+            let t1 = gs.characters[cn].misc_target1 as usize;
+            drv_give_char(gs, cn, t1);
         }
         x if x == core::constants::DR_USE => {
-            drv_useto(
-                cn,
-                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
-                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
-            );
+            let t1 = gs.characters[cn].misc_target1 as usize;
+            let t2 = gs.characters[cn].misc_target2 as usize;
+            drv_useto(gs, cn, t1, t2);
         }
         x if x == core::constants::DR_BOW => {
             log::debug!("drv_bow called for cn {}", cn);
-            drv_bow(cn);
+            drv_bow(gs, cn);
         }
         x if x == core::constants::DR_WAVE => {
-            drv_wave(cn);
+            drv_wave(gs, cn);
         }
         x if x == core::constants::DR_TURN => {
-            drv_turnto(
-                cn,
-                Repository::with_characters(|ch| ch[cn].misc_target1 as usize),
-                Repository::with_characters(|ch| ch[cn].misc_target2 as usize),
-            );
+            let t1 = gs.characters[cn].misc_target1 as usize;
+            let t2 = gs.characters[cn].misc_target2 as usize;
+            drv_turnto(gs, cn, t1, t2);
         }
-        x if x == core::constants::DR_SINGLEBUILD => {
-            // not implemented
-        }
-        x if x == core::constants::DR_AREABUILD1 => {
-            // not implemented
-        }
-        x if x == core::constants::DR_AREABUILD2 => {
-            // not implemented
-        }
+        x if x == core::constants::DR_SINGLEBUILD => {}
+        x if x == core::constants::DR_AREABUILD1 => {}
+        x if x == core::constants::DR_AREABUILD2 => {}
         _ => {
             log::error!("player_driver(): unknown misc_action {}", misc_action);
-            Repository::with_characters_mut(|ch| {
-                ch[cn].misc_action = core::constants::DR_IDLE as u16
-            });
+            gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
         }
     }
 }
