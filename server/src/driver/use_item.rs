@@ -1890,11 +1890,7 @@ pub fn use_crystal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         cnt += 1;
     }
 
-    if cnt == 0 {
-        true
-    } else {
-        false
-    }
+    cnt == 0
 }
 
 pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
