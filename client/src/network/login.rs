@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    net::TcpStream,
+    net::{Shutdown, TcpStream},
     sync::mpsc,
     time::{Duration, Instant},
 };
@@ -11,37 +11,75 @@ use mag_core::encrypt::xcrypt;
 
 use super::{client_commands, server_commands, tick_stream, NetworkCommand, NetworkEvent};
 
-/// A combined `Read + Write` trait for use as a trait object.
-trait ReadWrite: Read + Write + Send {}
-impl<T: Read + Write + Send> ReadWrite for T {}
-
-/// A boxed stream that is `Read + Write` and optionally backed by TLS.
-/// We also keep a handle to the raw `TcpStream` so we can call
-/// `set_nonblocking` on the underlying socket.
+/// A game connection backed by either a plain TCP stream or a TLS session.
 struct GameConnection {
-    stream: Box<dyn ReadWrite>,
-    raw_tcp: std::net::TcpStream,
+    stream: ConnectionStream,
+}
+
+enum ConnectionStream {
+    Plain(TcpStream),
+    Tls(rustls::StreamOwned<rustls::ClientConnection, TcpStream>),
 }
 
 impl GameConnection {
     fn set_nonblocking(&self, nonblocking: bool) -> std::io::Result<()> {
-        self.raw_tcp.set_nonblocking(nonblocking)
+        match &self.stream {
+            ConnectionStream::Plain(stream) => stream.set_nonblocking(nonblocking),
+            ConnectionStream::Tls(stream) => stream.sock.set_nonblocking(nonblocking),
+        }
+    }
+
+    fn shutdown(&mut self) {
+        match &mut self.stream {
+            ConnectionStream::Plain(stream) => {
+                let _ = stream.shutdown(Shutdown::Both);
+            }
+            ConnectionStream::Tls(stream) => {
+                let _ = stream.sock.set_nonblocking(false);
+
+                stream.conn.send_close_notify();
+
+                let (conn, sock) = (&mut stream.conn, &mut stream.sock);
+                while conn.wants_write() {
+                    match conn.write_tls(sock) {
+                        Ok(0) => break,
+                        Ok(_) => {}
+                        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => continue,
+                        Err(err) => {
+                            log::debug!("Failed to write TLS close_notify: {err}");
+                            break;
+                        }
+                    }
+                }
+
+                let _ = sock.shutdown(Shutdown::Both);
+            }
+        }
     }
 }
 
 impl Read for GameConnection {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        self.stream.read(buf)
+        match &mut self.stream {
+            ConnectionStream::Plain(stream) => stream.read(buf),
+            ConnectionStream::Tls(stream) => stream.read(buf),
+        }
     }
 }
 
 impl Write for GameConnection {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        self.stream.write(buf)
+        match &mut self.stream {
+            ConnectionStream::Plain(stream) => stream.write(buf),
+            ConnectionStream::Tls(stream) => stream.write(buf),
+        }
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        self.stream.flush()
+        match &mut self.stream {
+            ConnectionStream::Plain(stream) => stream.flush(),
+            ConnectionStream::Tls(stream) => stream.flush(),
+        }
     }
 }
 
@@ -87,11 +125,9 @@ pub(crate) fn run_network_task(
         let _ = event_tx.send(NetworkEvent::Status("TLS handshake...".to_string()));
         match crate::cert_trust::build_game_tls_connector(&host) {
             Ok(tls_conn) => {
-                let tls_stream =
-                    rustls::StreamOwned::new(tls_conn, tcp_stream.try_clone().unwrap());
+                let tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream);
                 GameConnection {
-                    stream: Box::new(tls_stream),
-                    raw_tcp: tcp_stream,
+                    stream: ConnectionStream::Tls(tls_stream),
                 }
             }
             Err(e) => {
@@ -100,10 +136,8 @@ pub(crate) fn run_network_task(
             }
         }
     } else {
-        let raw_clone = tcp_stream.try_clone().unwrap();
         GameConnection {
-            stream: Box::new(tcp_stream),
-            raw_tcp: raw_clone,
+            stream: ConnectionStream::Plain(tcp_stream),
         }
     };
 
@@ -111,6 +145,7 @@ pub(crate) fn run_network_task(
 
     if let Err(e) = login_handshake(&mut conn, ticket, race, &event_tx) {
         log::error!("login_handshake failed: {e}");
+        conn.shutdown();
         let _ = event_tx.send(NetworkEvent::Error(e));
         return;
     }
@@ -281,13 +316,17 @@ fn run_network_loop(
                                 .map_err(|e| format!("Send failed: {e}"))?;
                         }
                         NetworkCommand::Shutdown => {
+                            stream.shutdown();
                             let _ = event_tx.send(NetworkEvent::Status("Disconnected".to_string()));
                             return Ok(());
                         }
                     }
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    stream.shutdown();
+                    return Ok(());
+                }
             }
         }
 
