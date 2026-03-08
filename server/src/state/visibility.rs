@@ -593,7 +593,7 @@ impl GameState {
             self.characters[cn].y as i32,
             self.characters[co].x as i32,
             self.characters[co].y as i32,
-            15,
+            (core::constants::TILEX / 2) as i32,
         ) == 0
         {
             return 0;
@@ -678,7 +678,7 @@ impl GameState {
             self.characters[cn].y as i32,
             self.items[in_idx].x as i32,
             self.items[in_idx].y as i32,
-            15,
+            (core::constants::TILEX / 2) as i32,
         );
 
         if can_see == 0 {

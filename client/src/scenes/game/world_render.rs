@@ -9,7 +9,7 @@ use mag_core::constants::{
 
 use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
-use super::GameScene;
+use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH};
 
 #[derive(Copy, Clone)]
 enum HoverHighlight {
@@ -60,8 +60,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * 16;
-        let ry = ground_y + 16 - ys * 32;
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         // Apply darkness modulation from tile light value.
         // C formula: channel = channel * LEFFECT / (darkness² + LEFFECT)
@@ -110,8 +110,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * 16;
-        let ry = ground_y + 16 - ys * 32;
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
@@ -149,8 +149,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * 16;
-        let ry = ground_y + 16 - ys * 32;
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
@@ -195,8 +195,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * 16;
-        let ry = ground_y + 16 - ys * 32;
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         // Shadow is placed at character's feet, flattened to 1/4 height.
         // disp=14 matches the original C code.
@@ -244,8 +244,8 @@ impl GameScene {
         // Isometric projection for a 2×2 tile area (64×64 pixels), matching dd_alphaeffect_magic.
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - 32;
-        let ry = ground_y - 48;
+        let rx = ground_x - FLOOR_TILE_WIDTH;
+        let ry = ground_y - (FLOOR_TILE_WIDTH + FLOOR_TILE_HEIGHT);
 
         let str_div = strength.max(1) as i32;
         let strength_clamped = strength.clamp(1, 7) as i32;
@@ -428,6 +428,12 @@ impl GameScene {
                     tile.back as i16
                 } else {
                     tile.ba_sprite
+                };
+
+                let ba = if (tile.flags & INVIS) != 0 {
+                    SPR_EMPTY as i16
+                } else {
+                    ba
                 };
 
                 if ba <= 0 {

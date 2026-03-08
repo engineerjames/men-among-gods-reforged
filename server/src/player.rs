@@ -2023,7 +2023,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         current_y,
         current_x + 1,
         current_y + 1,
-        16,
+        (core::constants::TILEX / 2) as i32, // TODO: Re-evaluate if this is the right size...
     );
 
     let player_vx = gs.players[nr].vx;

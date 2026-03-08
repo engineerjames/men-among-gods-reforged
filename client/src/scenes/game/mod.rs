@@ -62,6 +62,12 @@ pub(super) const QSIZE: u32 = 8;
 
 // ---- Layout constants (ported from engine.c / layout.rs) ---- //
 
+/// Width in pixels of one ground diamond.
+pub(super) const FLOOR_TILE_WIDTH: i32 = 32;
+
+/// Height in pixels of one ground diamond.
+pub(super) const FLOOR_TILE_HEIGHT: i32 = 16;
+
 /// Camera X shift to account for the left-hand UI panel.
 pub(super) const MAP_X_SHIFT: i32 = -200;
 

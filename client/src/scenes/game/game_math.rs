@@ -5,7 +5,7 @@ use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
 
 use crate::player_state::PlayerState;
 
-use super::{GameScene, MAP_X_SHIFT};
+use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, MAP_X_SHIFT};
 
 impl GameScene {
     /// Returns `true` if the tile at `(x, y)` should be hidden in the "hide"
@@ -34,10 +34,10 @@ impl GameScene {
         cam_xoff: i32,
         cam_yoff: i32,
     ) -> (i32, i32) {
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-        let cx = xpos / 2 + ypos / 2 + 32 + XPOS + MAP_X_SHIFT + cam_xoff;
-        let cy = xpos / 4 - ypos / 4 + YPOS - 16 + cam_yoff;
+        let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
+        let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
+        let cx = xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT + cam_xoff;
+        let cy = xpos / 4 - ypos / 4 + YPOS - FLOOR_TILE_HEIGHT + cam_yoff;
         (cx, cy)
     }
 
@@ -69,12 +69,12 @@ impl GameScene {
             for mx in 0..TILEX {
                 let (cx, cy_top) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
                 let dx = (screen_x - cx).abs();
-                let dy = (screen_y - (cy_top + 8)).abs();
+                let dy = (screen_y - (cy_top + FLOOR_TILE_HEIGHT / 2)).abs();
 
                 // Inside 32x16 isometric floor diamond:
                 // |dx|/16 + |dy|/8 <= 1  =>  dx*8 + dy*16 <= 128
-                let metric = dx * 8 + dy * 16;
-                if metric <= 128 {
+                let metric = dx * (FLOOR_TILE_HEIGHT / 2) + dy * (FLOOR_TILE_WIDTH / 2);
+                if metric <= (FLOOR_TILE_WIDTH / 2) * (FLOOR_TILE_HEIGHT / 2) {
                     match best {
                         Some((_, _, cur_metric)) if metric >= cur_metric => {}
                         _ => best = Some((mx, my, metric)),
@@ -369,15 +369,15 @@ mod tests {
     #[test]
     fn diamond_origin_at_zero() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
-        assert_eq!(cx, 32 + XPOS + MAP_X_SHIFT);
-        assert_eq!(cy, YPOS - 16);
+        assert_eq!(cx, FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT);
+        assert_eq!(cy, YPOS - FLOOR_TILE_HEIGHT);
     }
 
     #[test]
     fn diamond_origin_with_camera_offset() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 10, -5);
-        assert_eq!(cx, 32 + XPOS + MAP_X_SHIFT + 10);
-        assert_eq!(cy, YPOS - 16 - 5);
+        assert_eq!(cx, FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT + 10);
+        assert_eq!(cy, YPOS - FLOOR_TILE_HEIGHT - 5);
     }
 
     #[test]
@@ -385,10 +385,10 @@ mod tests {
         let tile_x = TILEX / 2;
         let tile_y = TILEY / 2;
         let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0, 0);
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-        assert_eq!(cx, xpos / 2 + ypos / 2 + 32 + XPOS + MAP_X_SHIFT);
-        assert_eq!(cy, xpos / 4 - ypos / 4 + YPOS - 16);
+        let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
+        let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
+        assert_eq!(cx, xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT);
+        assert_eq!(cy, xpos / 4 - ypos / 4 + YPOS - FLOOR_TILE_HEIGHT);
     }
 
     // -- cursor_in_map_interaction_area --
@@ -521,8 +521,7 @@ mod tests {
         let center_x = TILEX / 2;
         let center_y = TILEY / 2;
         let (cx, cy) = GameScene::tile_ground_diamond_origin(center_x, center_y, 0, 0);
-        // The center of the diamond is at (cx, cy+8)
-        let result = GameScene::screen_to_map_tile(cx, cy + 8, 0, 0);
+        let result = GameScene::screen_to_map_tile(cx, cy + FLOOR_TILE_HEIGHT / 2, 0, 0);
         assert_eq!(result, Some((center_x, center_y)));
     }
 
