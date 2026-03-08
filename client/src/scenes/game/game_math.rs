@@ -387,7 +387,10 @@ mod tests {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0, 0);
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
-        assert_eq!(cx, xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT);
+        assert_eq!(
+            cx,
+            xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT
+        );
         assert_eq!(cy, xpos / 4 - ypos / 4 + YPOS - FLOOR_TILE_HEIGHT);
     }
 
