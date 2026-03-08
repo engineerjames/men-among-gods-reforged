@@ -63,7 +63,7 @@ pub(super) const QSIZE: u32 = 8;
 // ---- Layout constants (ported from engine.c / layout.rs) ---- //
 
 /// Camera X shift to account for the left-hand UI panel.
-pub(super) const MAP_X_SHIFT: i32 = -400;
+pub(super) const MAP_X_SHIFT: i32 = -200;
 
 /// Sprite ID of the static 800×600 UI background frame.
 pub(super) const UI_FRAME_SPRITE: usize = 1;

@@ -368,15 +368,18 @@ mod tests {
     #[test]
     fn tile_index_in_bounds() {
         assert_eq!(GameMap::tile_index(0, 0), Some(0));
-        assert_eq!(GameMap::tile_index(33, 33), Some(TILEX * TILEY - 1));
+        assert_eq!(
+            GameMap::tile_index(TILEX - 1, TILEY - 1),
+            Some(TILEX * TILEY - 1)
+        );
         assert_eq!(GameMap::tile_index(1, 0), Some(1));
         assert_eq!(GameMap::tile_index(0, 1), Some(TILEX));
     }
 
     #[test]
     fn tile_index_out_of_bounds() {
-        assert_eq!(GameMap::tile_index(34, 0), None);
-        assert_eq!(GameMap::tile_index(0, 34), None);
+        assert_eq!(GameMap::tile_index(TILEX, 0), None);
+        assert_eq!(GameMap::tile_index(0, TILEY), None);
         assert_eq!(GameMap::tile_index(100, 100), None);
     }
 
@@ -391,7 +394,7 @@ mod tests {
     #[test]
     fn tile_at_xy_out_of_bounds() {
         let map = GameMap::new();
-        assert!(map.tile_at_xy(34, 0).is_none());
+        assert!(map.tile_at_xy(TILEX, 0).is_none());
     }
 
     #[test]

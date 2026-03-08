@@ -88,18 +88,13 @@ impl GameScene {
 
     /// Returns `true` if the screen coordinate falls within the map interaction
     /// area (the isometric viewport, excluding UI panels).
-    pub(super) fn cursor_in_map_interaction_area(screen_x: i32, screen_y: i32) -> bool {
-        // Matches original inter.c::mouse_mapbox coordinate transform and bounds check.
-        let x = screen_x + 176 - 16;
-        let y = screen_y + 8;
-
-        let mx = 2 * y + x - (YPOS * 2) - XPOS + (((TILEX as i32) - 34) / 2 * 32);
-        let my = x - 2 * y + (YPOS * 2) - XPOS + (((TILEX as i32) - 34) / 2 * 32);
-
-        !(mx < 3 * 32 + 12
-            || mx > ((TILEX as i32) - 7) * 32 + 20
-            || my < 7 * 32 + 12
-            || my > ((TILEY as i32) - 3) * 32 + 20)
+    pub(super) fn cursor_in_map_interaction_area(
+        screen_x: i32,
+        screen_y: i32,
+        cam_xoff: i32,
+        cam_yoff: i32,
+    ) -> bool {
+        Self::screen_to_map_tile(screen_x, screen_y, cam_xoff, cam_yoff).is_some()
     }
 
     /// Maps a total experience point value to a rank index (0–23).
@@ -324,19 +319,20 @@ mod tests {
 
     #[test]
     fn autohide_hidden_tile() {
-        // x < TILEX/2 (17) AND y > TILEX/2 (17)
-        assert!(GameScene::autohide(10, 18));
-        assert!(GameScene::autohide(0, 33));
-        assert!(GameScene::autohide(16, 18));
+        let center_x = TILEX / 2;
+        let center_y = TILEY / 2;
+        assert!(GameScene::autohide(center_x - 1, center_y + 1));
+        assert!(GameScene::autohide(0, TILEY - 1));
+        assert!(GameScene::autohide(center_x - 5, center_y + 8));
     }
 
     #[test]
     fn autohide_visible_tile() {
-        // x >= TILEX/2 => visible
-        assert!(!GameScene::autohide(17, 18));
-        assert!(!GameScene::autohide(33, 33));
-        // y <= TILEX/2 => visible
-        assert!(!GameScene::autohide(10, 17));
+        let center_x = TILEX / 2;
+        let center_y = TILEY / 2;
+        assert!(!GameScene::autohide(center_x, center_y + 1));
+        assert!(!GameScene::autohide(TILEX - 1, TILEY - 1));
+        assert!(!GameScene::autohide(center_x - 5, center_y));
         assert!(!GameScene::autohide(10, 0));
     }
 
@@ -373,9 +369,7 @@ mod tests {
     #[test]
     fn diamond_origin_at_zero() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
-        // cx = 0/2 + 0/2 + 32 + XPOS + MAP_X_SHIFT + 0
         assert_eq!(cx, 32 + XPOS + MAP_X_SHIFT);
-        // cy = 0/4 - 0/4 + YPOS - 16 + 0
         assert_eq!(cy, YPOS - 16);
     }
 
@@ -386,17 +380,30 @@ mod tests {
         assert_eq!(cy, YPOS - 16 - 5);
     }
 
+    #[test]
+    fn diamond_origin_matches_linear_tile_projection() {
+        let tile_x = TILEX / 2;
+        let tile_y = TILEY / 2;
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0, 0);
+        let xpos = (tile_x as i32) * 32;
+        let ypos = (tile_y as i32) * 32;
+        assert_eq!(cx, xpos / 2 + ypos / 2 + 32 + XPOS + MAP_X_SHIFT);
+        assert_eq!(cy, xpos / 4 - ypos / 4 + YPOS - 16);
+    }
+
     // -- cursor_in_map_interaction_area --
 
     #[test]
     fn cursor_at_origin_outside() {
-        assert!(!GameScene::cursor_in_map_interaction_area(0, 0));
+        assert!(!GameScene::cursor_in_map_interaction_area(
+            -10_000, -10_000, 0, 0
+        ));
     }
 
     #[test]
     fn cursor_center_inside() {
-        // Center of 800×600 should be inside the map area
-        assert!(GameScene::cursor_in_map_interaction_area(400, 300));
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
+        assert!(GameScene::cursor_in_map_interaction_area(cx, cy + 8, 0, 0));
     }
 
     // -- points_to_rank_index --
@@ -511,11 +518,12 @@ mod tests {
 
     #[test]
     fn screen_to_map_tile_known_origin() {
-        // Feed in the screen position of tile (17, 17) center with cam=(0,0)
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(17, 17, 0, 0);
+        let center_x = TILEX / 2;
+        let center_y = TILEY / 2;
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(center_x, center_y, 0, 0);
         // The center of the diamond is at (cx, cy+8)
         let result = GameScene::screen_to_map_tile(cx, cy + 8, 0, 0);
-        assert_eq!(result, Some((17, 17)));
+        assert_eq!(result, Some((center_x, center_y)));
     }
 
     #[test]
