@@ -68,8 +68,26 @@ pub(super) const FLOOR_TILE_WIDTH: i32 = 32;
 /// Height in pixels of one ground diamond.
 pub(super) const FLOOR_TILE_HEIGHT: i32 = 16;
 
-/// Camera X shift to account for the left-hand UI panel.
-pub(super) const MAP_X_SHIFT: i32 = -200;
+/// Optional X nudge applied after centering (positive = right).
+pub(super) const MAP_X_TWEAK: i32 = 0;
+
+/// Optional Y nudge applied after centering (positive = down).
+pub(super) const MAP_Y_TWEAK: i32 = 0;
+
+/// X origin offset that places tile (TILEX/2, TILEY/2) at the horizontal
+/// center of the logical viewport.
+pub(super) const MAP_ORIGIN_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32) / 2
+    - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 2)
+        + (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 2)
+        + FLOOR_TILE_WIDTH)
+    + MAP_X_TWEAK;
+
+/// Y origin offset that places tile (TILEX/2, TILEY/2) at the vertical
+/// center of the logical viewport.
+pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32) / 2
+    - (FLOOR_TILE_HEIGHT / 2)
+    - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 4) - (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 4))
+    + MAP_Y_TWEAK;
 
 /// Sprite ID of the static 800×600 UI background frame.
 pub(super) const UI_FRAME_SPRITE: usize = 1;

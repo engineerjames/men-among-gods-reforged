@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
 
-use mag_core::constants::{INVIS, TILEX, TILEY, XPOS, YPOS};
+use mag_core::constants::{INVIS, TILEX, TILEY};
 use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
 
 use crate::player_state::PlayerState;
 
-use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, MAP_X_SHIFT};
+use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, MAP_ORIGIN_X, MAP_ORIGIN_Y};
 
 impl GameScene {
     /// Returns `true` if the tile at `(x, y)` should be hidden in the "hide"
@@ -36,8 +36,8 @@ impl GameScene {
     ) -> (i32, i32) {
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
-        let cx = xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT + cam_xoff;
-        let cy = xpos / 4 - ypos / 4 + YPOS - FLOOR_TILE_HEIGHT + cam_yoff;
+        let cx = xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X + cam_xoff;
+        let cy = xpos / 4 - ypos / 4 + MAP_ORIGIN_Y + cam_yoff;
         (cx, cy)
     }
 
@@ -369,15 +369,15 @@ mod tests {
     #[test]
     fn diamond_origin_at_zero() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
-        assert_eq!(cx, FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT);
-        assert_eq!(cy, YPOS - FLOOR_TILE_HEIGHT);
+        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
+        assert_eq!(cy, MAP_ORIGIN_Y);
     }
 
     #[test]
     fn diamond_origin_with_camera_offset() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 10, -5);
-        assert_eq!(cx, FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT + 10);
-        assert_eq!(cy, YPOS - FLOOR_TILE_HEIGHT - 5);
+        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X + 10);
+        assert_eq!(cy, MAP_ORIGIN_Y - 5);
     }
 
     #[test]
@@ -387,11 +387,24 @@ mod tests {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0, 0);
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
+        assert_eq!(cx, xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
+        assert_eq!(cy, xpos / 4 - ypos / 4 + MAP_ORIGIN_Y);
+    }
+
+    #[test]
+    fn center_tile_is_at_screen_center() {
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
         assert_eq!(
             cx,
-            xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + XPOS + MAP_X_SHIFT
+            crate::constants::TARGET_WIDTH_INT as i32 / 2,
+            "center tile X should equal half the logical viewport width"
         );
-        assert_eq!(cy, xpos / 4 - ypos / 4 + YPOS - FLOOR_TILE_HEIGHT);
+        // cy is the diamond top; the visual center is cy + FLOOR_TILE_HEIGHT / 2.
+        assert_eq!(
+            cy + FLOOR_TILE_HEIGHT / 2,
+            crate::constants::TARGET_HEIGHT_INT as i32 / 2,
+            "center tile visual midpoint Y should equal half the logical viewport height"
+        );
     }
 
     // -- cursor_in_map_interaction_area --
