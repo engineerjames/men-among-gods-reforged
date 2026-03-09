@@ -5,11 +5,17 @@
 //! [`ChatBox`].  All rendering is done via SDL2 primitives and the existing
 //! bitmap font system — no additional dependencies are required.
 
+#[allow(dead_code)]
 pub mod button;
+#[allow(dead_code)]
 pub mod chat_box;
+#[allow(dead_code)]
 pub mod label;
+#[allow(dead_code)]
 pub mod panel;
+#[allow(dead_code)]
 pub mod style;
+#[allow(dead_code)]
 pub mod widget;
 
 use sdl2::{render::Canvas, video::Window};

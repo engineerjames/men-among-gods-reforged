@@ -10,17 +10,14 @@ use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
 use super::{
     GameScene, BAR_BG_COLOR, BAR_END_Y, BAR_FILL_COLOR, BAR_FILL_LOOK_COLOR, BAR_H, BAR_HP_Y,
-    BAR_MANA_Y, BAR_SCALE_NUM, BAR_W_MAX, BAR_X, EQUIP_WNTAB, INPUT_X, INPUT_Y, INV_SCROLL_MAX,
-    INV_SCROLL_RANGE, INV_SCROLL_X, INV_SCROLL_Y_BASE, LOG_LINES, LOG_LINE_H, LOG_X, LOG_Y,
-    MINIMAP_VIEW_SIZE, MINIMAP_WORLD_SIZE, MINIMAP_X, MINIMAP_Y, MODE_INDICATOR_COLOR, NAME_AREA_W,
-    NAME_AREA_X, NAME_Y, PORTRAIT_NAME_Y, PORTRAIT_RANK_Y, SCROLL_KNOB_COLOR, SCROLL_KNOB_H,
-    SCROLL_KNOB_W, SKILL_SCROLL_MAX, SKILL_SCROLL_RANGE, SKILL_SCROLL_X, SKILL_SCROLL_Y_BASE,
-    STAT_ARMOR_X, STAT_ARMOR_Y, STAT_END_X, STAT_END_Y, STAT_EXP_X, STAT_EXP_Y, STAT_HP_X,
-    STAT_HP_Y, STAT_MANA_X, STAT_MANA_Y, STAT_MONEY_X, STAT_MONEY_Y, STAT_WEAPON_X, STAT_WEAPON_Y,
-    UI_FONT, UI_FRAME_SPRITE,
+    BAR_MANA_Y, BAR_SCALE_NUM, BAR_W_MAX, BAR_X, EQUIP_WNTAB, INV_SCROLL_MAX, INV_SCROLL_RANGE,
+    INV_SCROLL_X, INV_SCROLL_Y_BASE, MINIMAP_VIEW_SIZE, MINIMAP_WORLD_SIZE, MINIMAP_X, MINIMAP_Y,
+    MODE_INDICATOR_COLOR, NAME_AREA_W, NAME_AREA_X, NAME_Y, PORTRAIT_NAME_Y, PORTRAIT_RANK_Y,
+    SCROLL_KNOB_COLOR, SCROLL_KNOB_H, SCROLL_KNOB_W, SKILL_SCROLL_MAX, SKILL_SCROLL_RANGE,
+    SKILL_SCROLL_X, SKILL_SCROLL_Y_BASE, STAT_ARMOR_X, STAT_ARMOR_Y, STAT_END_X, STAT_END_Y,
+    STAT_EXP_X, STAT_EXP_Y, STAT_HP_X, STAT_HP_Y, STAT_MANA_X, STAT_MANA_Y, STAT_MONEY_X,
+    STAT_MONEY_Y, STAT_WEAPON_X, STAT_WEAPON_Y, UI_FONT, UI_FRAME_SPRITE,
 };
-
-use crate::types::log_message::LogMessageColor;
 
 impl GameScene {
     /// Draw a UI item sprite with an optional additive hover highlight.
@@ -263,52 +260,6 @@ impl GameScene {
         font_cache::draw_text_centered(canvas, gfx, UI_FONT, &name, center_x, PORTRAIT_NAME_Y)?;
         let rank_name = mag_core::ranks::rank_name(points);
         font_cache::draw_text_centered(canvas, gfx, UI_FONT, rank_name, center_x, PORTRAIT_RANK_Y)?;
-
-        Ok(())
-    }
-
-    /// Draw the chat log and input line using bitmap fonts.
-    pub(super) fn draw_chat(
-        &mut self,
-        canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
-        ps: &PlayerState,
-    ) -> Result<(), String> {
-        let total = ps.log_len();
-
-        // Follow-tail behavior unless manually scrolled: when new messages arrive while scrolled
-        // up, keep the current viewport stable by moving the offset with the growth.
-        if total > self.last_log_len && self.log_scroll > 0 {
-            let delta = total - self.last_log_len;
-            self.log_scroll = self.log_scroll.saturating_add(delta);
-        }
-        self.last_log_len = total;
-
-        // Clamp to valid history range. 0 means newest-at-bottom.
-        let max_scroll = total.saturating_sub(LOG_LINES);
-        self.log_scroll = self.log_scroll.min(max_scroll);
-
-        // Render fixed lines top->bottom, where bottom is always the newest message at current
-        // scroll offset (matches original C client behavior).
-        for line in 0..LOG_LINES {
-            let idx_from_most_recent = self
-                .log_scroll
-                .saturating_add(LOG_LINES.saturating_sub(1).saturating_sub(line));
-
-            if let Some(msg) = ps.log_message(idx_from_most_recent) {
-                let font = match msg.color {
-                    LogMessageColor::Red => 0,
-                    LogMessageColor::Yellow => 1,
-                    LogMessageColor::Green => 2,
-                    LogMessageColor::Blue => 3,
-                };
-                let y = LOG_Y + (line as i32) * LOG_LINE_H;
-                font_cache::draw_text(canvas, gfx, font, &msg.message, LOG_X, y)?;
-            }
-        }
-
-        // Input line at original position (engine.c: dd_puttext(500, ...)).
-        font_cache::draw_text(canvas, gfx, UI_FONT, &self.input_buf, INPUT_X, INPUT_Y)?;
 
         Ok(())
     }

@@ -38,11 +38,21 @@ use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
 
 use crate::{
     cert_trust,
+    constants::TARGET_HEIGHT_INT,
     network::{client_commands::ClientCommand, NetworkRuntime},
     player_state::PlayerState,
     preferences::{self, CharacterIdentity, DisplayMode},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
+    ui::{
+        chat_box::ChatBox,
+        style::Padding,
+        widget::{
+            Bounds, EventResponse, KeyModifiers, MouseButton as UiMouseButton, UiEvent, Widget,
+            WidgetAction,
+        },
+        RenderContext,
+    },
 };
 
 // ---------------------------------------------------------------------------
@@ -146,6 +156,11 @@ pub(super) const LOG_LINES: usize = 22;
 pub(super) const INPUT_X: i32 = 500;
 pub(super) const INPUT_Y: i32 = 9 + LOG_LINE_H * (LOG_LINES as i32);
 
+const CHATBOX_X: i32 = 0;
+const CHATBOX_Y: i32 = TARGET_HEIGHT_INT as i32 - CHATBOX_H as i32;
+const CHATBOX_W: u32 = 300;
+const CHATBOX_H: u32 = 200;
+
 // Minimap
 pub(super) const MINIMAP_X: i32 = 3;
 pub(super) const MINIMAP_Y: i32 = 471;
@@ -173,14 +188,10 @@ pub(super) const INV_SCROLL_MAX: i32 = 30;
 /// scroll positions, pending stat raises, minimap pixel buffer, and escape
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
-    pub(super) input_buf: String,
-    pub(super) sent_chat_history: Vec<String>,
-    pub(super) chat_history_index: Option<usize>,
-    pub(super) chat_history_draft: Option<String>,
+    pub(super) chat_box: ChatBox,
+    pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
-    pub(super) log_scroll: usize,
-    pub(super) last_log_len: usize,
     pub(super) ctrl_held: bool,
     pub(super) shift_held: bool,
     pub(super) alt_held: bool,
@@ -222,14 +233,14 @@ impl GameScene {
     /// A fresh `GameScene` ready to be entered via [`Scene::on_enter`].
     pub fn new() -> Self {
         Self {
-            input_buf: String::new(),
-            sent_chat_history: Vec::new(),
-            chat_history_index: None,
-            chat_history_draft: None,
+            chat_box: ChatBox::new(
+                Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
+                Color::RGBA(10, 10, 30, 180),
+                Padding::uniform(4),
+            ),
+            last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
-            log_scroll: 0,
-            last_log_len: 0,
             ctrl_held: false,
             shift_held: false,
             alt_held: false,
@@ -269,6 +280,94 @@ impl GameScene {
 
     pub(super) fn play_click_sound(&self, app_state: &AppState) {
         app_state.sfx_cache.play_click(self.master_volume);
+    }
+
+    /// Translate an SDL2 event into a UI-framework `UiEvent`, if applicable.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - The SDL2 event.
+    /// * `mouse_x` - Current logical mouse X position.
+    /// * `mouse_y` - Current logical mouse Y position.
+    ///
+    /// # Returns
+    ///
+    /// `Some(UiEvent)` for events the widget system cares about, `None` otherwise.
+    fn sdl_to_ui_event(event: &Event, mouse_x: i32, mouse_y: i32) -> Option<UiEvent> {
+        match event {
+            Event::MouseWheel { y, .. } => Some(UiEvent::MouseWheel {
+                x: mouse_x,
+                y: mouse_y,
+                delta: *y,
+            }),
+            Event::MouseButtonUp {
+                mouse_btn, x, y, ..
+            } => {
+                let button = match mouse_btn {
+                    MouseButton::Left => UiMouseButton::Left,
+                    MouseButton::Right => UiMouseButton::Right,
+                    MouseButton::Middle => UiMouseButton::Middle,
+                    _ => return None,
+                };
+                Some(UiEvent::MouseClick {
+                    x: *x,
+                    y: *y,
+                    button,
+                })
+            }
+            Event::TextInput { text, .. } => Some(UiEvent::TextInput { text: text.clone() }),
+            Event::KeyDown {
+                keycode: Some(kc),
+                keymod,
+                ..
+            } => Some(UiEvent::KeyDown {
+                keycode: *kc,
+                modifiers: KeyModifiers::from_sdl2(*keymod),
+            }),
+            Event::MouseMotion { x, y, .. } => Some(UiEvent::MouseMove { x: *x, y: *y }),
+            _ => None,
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the chat box and act on them.
+    ///
+    /// Currently the only action is `SendChat`, which sends say-packets
+    /// through the network runtime.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    fn process_chat_box_actions(&mut self, app_state: &AppState) {
+        for action in self.chat_box.take_actions() {
+            match action {
+                WidgetAction::SendChat(text) => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
+                            net.send(pkt);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Forward any new log messages from `PlayerState` into the `ChatBox`.
+    ///
+    /// Messages are fetched in insertion order (oldest-first) starting from
+    /// `last_synced_log_len` so the ChatBox receives them chronologically.
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - The current player state with the authoritative message log.
+    fn sync_chat_messages(&mut self, ps: &PlayerState) {
+        let total = ps.log_len();
+        if total <= self.last_synced_log_len {
+            return;
+        }
+        let new_messages = (self.last_synced_log_len..total)
+            .filter_map(|i| ps.log_message_by_insertion_order(i).cloned());
+        self.chat_box.push_messages(new_messages);
+        self.last_synced_log_len = total;
     }
 
     fn is_selected_visible(ps: &PlayerState) -> bool {
@@ -353,11 +452,14 @@ impl Scene for GameScene {
     /// connection to the game server via the login ticket, and load the
     /// player's saved profile (skill-button assignments, volume, etc.).
     fn on_enter(&mut self, app_state: &mut AppState) {
-        self.input_buf.clear();
+        self.chat_box = ChatBox::new(
+            Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
+            Color::RGBA(10, 10, 30, 180),
+            Padding::uniform(4),
+        );
+        self.last_synced_log_len = 0;
         self.pending_exit = None;
         self.certificate_mismatch = None;
-        self.log_scroll = 0;
-        self.last_log_len = 0;
         self.ctrl_held = false;
         self.shift_held = false;
         self.alt_held = false;
@@ -505,32 +607,20 @@ impl Scene for GameScene {
             return None;
         }
 
+        // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
+        if let Some(ui_event) = Self::sdl_to_ui_event(event, self.mouse_x, self.mouse_y) {
+            if self.chat_box.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_chat_box_actions(app_state);
+                return None;
+            }
+        }
+
         match event {
             Event::KeyDown {
                 keycode: Some(kc),
                 keymod,
                 ..
             } => match *kc {
-                Keycode::Return | Keycode::KpEnter => {
-                    if !self.input_buf.is_empty() {
-                        let text = self.input_buf.clone();
-                        self.input_buf.clear();
-                        self.sent_chat_history.push(text.clone());
-                        if self.sent_chat_history.len() > 100 {
-                            self.sent_chat_history.remove(0);
-                        }
-                        self.chat_history_index = None;
-                        self.chat_history_draft = None;
-                        if let Some(net) = app_state.network.as_ref() {
-                            for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
-                                net.send(pkt);
-                            }
-                        }
-                    }
-                }
-                Keycode::Backspace => {
-                    self.input_buf.pop();
-                }
                 Keycode::F1 => {
                     if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
                         if let (Some(net), Some(ps)) =
@@ -632,50 +722,10 @@ impl Scene for GameScene {
                         net.send(ClientCommand::new_exit());
                     }
                 }
-                Keycode::PageUp => {
-                    self.log_scroll = self.log_scroll.saturating_add(3);
-                }
-                Keycode::PageDown => {
-                    self.log_scroll = self.log_scroll.saturating_sub(3);
-                }
-                Keycode::Up => {
-                    if !self.sent_chat_history.is_empty() {
-                        let next_index = match self.chat_history_index {
-                            Some(index) => index.saturating_sub(1),
-                            None => {
-                                self.chat_history_draft = Some(self.input_buf.clone());
-                                self.sent_chat_history.len() - 1
-                            }
-                        };
-                        self.chat_history_index = Some(next_index);
-                        if let Some(message) = self.sent_chat_history.get(next_index) {
-                            self.input_buf = message.clone();
-                        }
-                    }
-                }
-                Keycode::Down => {
-                    if let Some(index) = self.chat_history_index {
-                        if index + 1 < self.sent_chat_history.len() {
-                            let next_index = index + 1;
-                            self.chat_history_index = Some(next_index);
-                            if let Some(message) = self.sent_chat_history.get(next_index) {
-                                self.input_buf = message.clone();
-                            }
-                        } else {
-                            self.chat_history_index = None;
-                            self.input_buf = self.chat_history_draft.take().unwrap_or_default();
-                        }
-                    }
-                }
                 _ => {}
             },
             Event::KeyUp { .. } => {
                 // Modifier keys handled above the menu gate; nothing else needed.
-            }
-            Event::TextInput { text, .. } => {
-                if self.input_buf.len() + text.len() <= MAX_INPUT_LEN {
-                    self.input_buf.push_str(text);
-                }
             }
             Event::MouseButtonUp {
                 mouse_btn, x, y, ..
@@ -815,14 +865,8 @@ impl Scene for GameScene {
                     }
                     // Keep inventory index aligned to the left column (C client uses inv_pos +=/-= 2).
                     self.inv_scroll &= !1usize;
-                } else {
-                    // Chat / default: scroll log
-                    if dy > 0 {
-                        self.log_scroll = self.log_scroll.saturating_add(dy as usize);
-                    } else if dy < 0 {
-                        self.log_scroll = self.log_scroll.saturating_sub((-dy) as usize);
-                    }
                 }
+                // Chat area scroll is handled by ChatBox above.
             }
             _ => {}
         }
@@ -834,7 +878,8 @@ impl Scene for GameScene {
     /// # Returns
     ///
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
-    fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
+        self.chat_box.update(dt);
         self.perf_profiler.check_expired();
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
@@ -865,6 +910,11 @@ impl Scene for GameScene {
     ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.clear();
+
+        // Sync new log messages from PlayerState into the ChatBox before rendering.
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.sync_chat_messages(ps);
+        }
 
         self.perf_profiler.begin_frame();
 
@@ -902,9 +952,15 @@ impl Scene for GameScene {
         // Self::draw_stat_text(canvas, gfx_cache, ps)?;
         self.perf_profiler.end_sample(PerfLabel::DrawStatText);
 
-        // 5. Chat log + input line
+        // 5. Chat log + input line (via ChatBox widget)
         self.perf_profiler.begin_sample(PerfLabel::DrawChat);
-        self.draw_chat(canvas, gfx_cache, ps)?;
+        {
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.chat_box.render(&mut ctx)?;
+        }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
         // 6. Lower-right mode/status indicators
@@ -1164,6 +1220,9 @@ impl Scene for GameScene {
                 }
                 if ui.button("Quit").clicked() {
                     scene_change = Some(SceneType::Exit);
+                }
+                if ui.button("Return to game").clicked() {
+                    self.escape_menu_open = false;
                 }
             });
 

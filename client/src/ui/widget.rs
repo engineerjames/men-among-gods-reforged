@@ -1,5 +1,7 @@
 //! Core widget trait, geometry types, and event definitions for the UI framework.
 
+use std::time::Duration;
+
 use sdl2::keyboard::Keycode;
 
 use super::style::Padding;
@@ -228,6 +230,17 @@ pub trait Widget {
     ///
     /// `Consumed` if this widget handled the event, `Ignored` otherwise.
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse;
+
+    /// Advance any time-driven widget state by `dt`.
+    ///
+    /// Called once per frame before `render`. The default implementation is a
+    /// no-op; override it when a widget needs to animate or react to elapsed
+    /// time (e.g. idle-fade, cooldown timers).
+    ///
+    /// # Arguments
+    ///
+    /// * `_dt` - Elapsed time since the last frame.
+    fn update(&mut self, _dt: Duration) {}
 
     /// Draw this widget onto the canvas.
     ///

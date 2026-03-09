@@ -8,6 +8,7 @@ pub enum LogMessageColor {
 }
 
 /// A single entry in the chat log buffer.
+#[derive(Clone)]
 pub struct LogMessage {
     pub message: String,
     pub color: LogMessageColor,

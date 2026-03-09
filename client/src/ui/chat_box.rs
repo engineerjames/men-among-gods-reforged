@@ -5,6 +5,8 @@
 //! renders a semi-transparent background over the world view and handles
 //! scroll, typing, and history-navigation events internally.
 
+use std::time::Duration;
+
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
@@ -30,6 +32,12 @@ const INPUT_FONT: usize = 1;
 
 /// Colour of the thin separator line between log and input.
 const SEPARATOR_COLOR: Color = Color::RGBA(120, 120, 140, 200);
+
+/// Seconds of inactivity before the fade-out animation begins.
+const IDLE_FADE_DELAY_SECS: f32 = 5.0;
+
+/// Duration in seconds of the fade-out transition (fully opaque → invisible).
+const IDLE_FADE_DURATION_SECS: f32 = 1.0;
 
 /// A self-contained scrollable chat log with an input line.
 ///
@@ -59,6 +67,12 @@ pub struct ChatBox {
     // -- Focus & actions --
     focused: bool,
     pending_actions: Vec<WidgetAction>,
+
+    // -- Idle fade --
+    /// Seconds elapsed since the last user interaction or incoming message.
+    idle_elapsed: f32,
+    /// Current draw opacity in the range 0 (invisible) – 255 (fully opaque).
+    alpha: u8,
 }
 
 impl ChatBox {
@@ -92,6 +106,8 @@ impl ChatBox {
             chat_history_draft: None,
             focused: true,
             pending_actions: Vec::new(),
+            idle_elapsed: 0.0,
+            alpha: 255,
         }
     }
 
@@ -101,6 +117,7 @@ impl ChatBox {
     ///
     /// * `message` - The log message to add.
     pub fn push_message(&mut self, message: LogMessage) {
+        self.idle_elapsed = 0.0;
         self.messages.push(message);
     }
 
@@ -110,6 +127,7 @@ impl ChatBox {
     ///
     /// * `messages` - An iterator of log messages to add.
     pub fn push_messages(&mut self, messages: impl Iterator<Item = LogMessage>) {
+        self.idle_elapsed = 0.0;
         self.messages.extend(messages);
     }
 
@@ -251,6 +269,7 @@ impl Widget for ChatBox {
                 if !self.bounds.contains_point(*x, *y) {
                     return EventResponse::Ignored;
                 }
+                self.idle_elapsed = 0.0;
                 if *delta > 0 {
                     self.scroll_offset = self.scroll_offset.saturating_add(*delta as usize);
                 } else if *delta < 0 {
@@ -261,6 +280,7 @@ impl Widget for ChatBox {
 
             UiEvent::MouseClick { x, y, .. } => {
                 if self.bounds.contains_point(*x, *y) {
+                    self.idle_elapsed = 0.0;
                     self.focused = true;
                     EventResponse::Consumed
                 } else {
@@ -273,6 +293,7 @@ impl Widget for ChatBox {
                 if !self.focused {
                     return EventResponse::Ignored;
                 }
+                self.idle_elapsed = 0.0;
                 if self.input_buf.len() + text.len() <= MAX_INPUT_LEN {
                     self.input_buf.push_str(text);
                 }
@@ -283,6 +304,7 @@ impl Widget for ChatBox {
                 if !self.focused {
                     return EventResponse::Ignored;
                 }
+                self.idle_elapsed = 0.0;
                 match *keycode {
                     Keycode::Return | Keycode::KpEnter => {
                         self.submit_input();
@@ -308,7 +330,21 @@ impl Widget for ChatBox {
         }
     }
 
+    fn update(&mut self, dt: Duration) {
+        self.idle_elapsed += dt.as_secs_f32();
+        self.alpha = if self.idle_elapsed < IDLE_FADE_DELAY_SECS {
+            255
+        } else {
+            let t = ((self.idle_elapsed - IDLE_FADE_DELAY_SECS) / IDLE_FADE_DURATION_SECS).min(1.0);
+            ((1.0 - t) * 255.0) as u8
+        };
+    }
+
     fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+        if self.alpha == 0 {
+            return Ok(());
+        }
+
         self.sync_scroll();
 
         let bg_rect = sdl2::rect::Rect::new(
@@ -318,9 +354,11 @@ impl Widget for ChatBox {
             self.bounds.height,
         );
 
-        // 1. Semi-transparent background
+        // 1. Semi-transparent background (alpha-scaled by idle fade)
+        let bg_a = ((self.bg_color.a as f32) * (self.alpha as f32 / 255.0)) as u8;
+        let bg_color = Color::RGBA(self.bg_color.r, self.bg_color.g, self.bg_color.b, bg_a);
         ctx.canvas.set_blend_mode(BlendMode::Blend);
-        ctx.canvas.set_draw_color(self.bg_color);
+        ctx.canvas.set_draw_color(bg_color);
         ctx.canvas.fill_rect(bg_rect)?;
 
         let inner = self.bounds.inner(&self.padding);
@@ -334,13 +372,28 @@ impl Widget for ChatBox {
             if let Some(msg) = self.message_from_end(idx_from_most_recent) {
                 let font = Self::font_for_color(msg.color);
                 let y = inner.y + (line as i32) * self.line_height as i32;
-                font_cache::draw_text(ctx.canvas, ctx.gfx, font, &msg.message, inner.x, y)?;
+                font_cache::draw_text_faded(
+                    ctx.canvas,
+                    ctx.gfx,
+                    font,
+                    &msg.message,
+                    inner.x,
+                    y,
+                    self.alpha,
+                )?;
             }
         }
 
-        // 3. Separator line between log and input
+        // 3. Separator line between log and input (alpha-scaled)
+        let sep_a = ((SEPARATOR_COLOR.a as f32) * (self.alpha as f32 / 255.0)) as u8;
+        let sep_color = Color::RGBA(
+            SEPARATOR_COLOR.r,
+            SEPARATOR_COLOR.g,
+            SEPARATOR_COLOR.b,
+            sep_a,
+        );
         let sep_y = inner.y + (self.visible_lines as i32) * self.line_height as i32 + 1;
-        ctx.canvas.set_draw_color(SEPARATOR_COLOR);
+        ctx.canvas.set_draw_color(sep_color);
         ctx.canvas.draw_line(
             sdl2::rect::Point::new(inner.x, sep_y),
             sdl2::rect::Point::new(inner.x + inner.width as i32 - 1, sep_y),
@@ -348,13 +401,14 @@ impl Widget for ChatBox {
 
         // 4. Input line below separator
         let input_y = sep_y + 3; // 3px below separator
-        font_cache::draw_text(
+        font_cache::draw_text_faded(
             ctx.canvas,
             ctx.gfx,
             INPUT_FONT,
             &self.input_buf,
             inner.x,
             input_y,
+            self.alpha,
         )?;
 
         Ok(())
@@ -706,5 +760,79 @@ mod tests {
         assert_eq!(ChatBox::font_for_color(LogMessageColor::Yellow), 1);
         assert_eq!(ChatBox::font_for_color(LogMessageColor::Green), 2);
         assert_eq!(ChatBox::font_for_color(LogMessageColor::Blue), 3);
+    }
+
+    // -- idle fade --
+
+    #[test]
+    fn update_no_fade_before_delay() {
+        use std::time::Duration;
+        let mut cb = test_chat_box();
+        cb.update(Duration::from_secs_f32(IDLE_FADE_DELAY_SECS - 0.1));
+        assert_eq!(cb.alpha, 255);
+    }
+
+    #[test]
+    fn update_mid_fade() {
+        use std::time::Duration;
+        let mut cb = test_chat_box();
+        cb.update(Duration::from_secs_f32(
+            IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS * 0.5,
+        ));
+        assert!(cb.alpha > 0 && cb.alpha < 255, "alpha={}", cb.alpha);
+    }
+
+    #[test]
+    fn update_fully_faded() {
+        use std::time::Duration;
+        let mut cb = test_chat_box();
+        cb.update(Duration::from_secs_f32(
+            IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0,
+        ));
+        assert_eq!(cb.alpha, 0);
+    }
+
+    #[test]
+    fn update_reset_on_text_input() {
+        use std::time::Duration;
+        let mut cb = test_chat_box();
+        // Age the widget past the full fade threshold.
+        cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
+        cb.update(Duration::ZERO);
+        assert_eq!(cb.alpha, 0);
+        // Any text input should reset the timer even if nothing is appended.
+        cb.handle_event(&UiEvent::TextInput {
+            text: "a".to_owned(),
+        });
+        cb.update(Duration::ZERO);
+        assert_eq!(cb.alpha, 255);
+    }
+
+    #[test]
+    fn update_reset_on_push_message() {
+        use std::time::Duration;
+        let mut cb = test_chat_box();
+        cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
+        cb.update(Duration::ZERO);
+        assert_eq!(cb.alpha, 0);
+        cb.push_message(make_msg("incoming", LogMessageColor::Green));
+        cb.update(Duration::ZERO);
+        assert_eq!(cb.alpha, 255);
+    }
+
+    #[test]
+    fn update_reset_on_click_inside() {
+        use std::time::Duration;
+        let mut cb = test_chat_box();
+        cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
+        cb.update(Duration::ZERO);
+        assert_eq!(cb.alpha, 0);
+        cb.handle_event(&UiEvent::MouseClick {
+            x: 50,
+            y: 400,
+            button: super::super::widget::MouseButton::Left,
+        });
+        cb.update(Duration::ZERO);
+        assert_eq!(cb.alpha, 255);
     }
 }
