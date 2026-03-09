@@ -681,27 +681,6 @@ impl Scene for GameScene {
                         net.send(ClientCommand::new_mode(0));
                     }
                 }
-                Keycode::F4 => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let current = ps.player_data().show_proz;
-                        ps.player_data_mut().show_proz = 1 - current;
-                        self.save_active_profile(app_state);
-                    }
-                }
-                Keycode::F6 => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let current = ps.player_data().hide;
-                        ps.player_data_mut().hide = 1 - current;
-                        self.save_active_profile(app_state);
-                    }
-                }
-                Keycode::F7 => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let current = ps.player_data().show_names;
-                        ps.player_data_mut().show_names = 1 - current;
-                        self.save_active_profile(app_state);
-                    }
-                }
                 Keycode::F12 => {
                     if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
                         if let (Some(net), Some(ps)) =
@@ -1128,6 +1107,45 @@ impl Scene for GameScene {
                     .changed()
                 {
                     profile_changed = true;
+                }
+
+                // Show Names toggle
+                let mut show_names = if let Some(ps) = app_state.player_state.as_ref() {
+                    ps.player_data().show_names != 0
+                } else {
+                    false
+                };
+                if ui.checkbox(&mut show_names, "Show Names").changed() {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().show_names = if show_names { 1 } else { 0 };
+                        profile_changed = true;
+                    }
+                }
+
+                // Show % Health toggle
+                let mut show_proz = if let Some(ps) = app_state.player_state.as_ref() {
+                    ps.player_data().show_proz != 0
+                } else {
+                    false
+                };
+                if ui.checkbox(&mut show_proz, "Show % Health").changed() {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().show_proz = if show_proz { 1 } else { 0 };
+                        profile_changed = true;
+                    }
+                }
+
+                // Hide Walls toggle
+                let mut hide_walls = if let Some(ps) = app_state.player_state.as_ref() {
+                    ps.player_data().hide != 0
+                } else {
+                    false
+                };
+                if ui.checkbox(&mut hide_walls, "Hide Walls").changed() {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().hide = if hide_walls { 1 } else { 0 };
+                        profile_changed = true;
+                    }
                 }
 
                 ui.separator();
