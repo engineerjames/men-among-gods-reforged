@@ -32,6 +32,7 @@ mod scenes;
 mod sfx_cache;
 mod state;
 mod types;
+mod ui;
 
 /// Global flag ensuring the egui glyph warm-up runs exactly once.
 static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
