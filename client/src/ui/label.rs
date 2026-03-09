@@ -45,7 +45,7 @@ impl Label {
         }
     }
 
-    /// Creates a new label with an explicit colour tint.
+    /// Creates a new label with an explicit color tint.
     ///
     /// # Arguments
     ///
@@ -53,7 +53,7 @@ impl Label {
     /// * `font` - Bitmap font index (0–3).
     /// * `x` - Left edge in pixels.
     /// * `y` - Top edge in pixels.
-    /// * `color` - RGB colour modulation applied to the font texture.
+    /// * `color` - RGB color modulation applied to the font texture.
     ///
     /// # Returns
     ///

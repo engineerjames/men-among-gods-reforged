@@ -67,14 +67,14 @@ impl Padding {
 pub enum Background {
     /// No background is drawn (fully transparent).
     None,
-    /// A solid colour fill. Use `Color::RGBA` for semi-transparency.
+    /// A solid color fill. Use `Color::RGBA` for semi-transparency.
     SolidColor(Color),
 }
 
 /// A rectangular border drawn around a widget.
 #[derive(Clone, Copy, Debug)]
 pub struct Border {
-    /// Border colour.
+    /// Border color.
     pub color: Color,
     /// Border thickness in pixels.
     pub width: u32,

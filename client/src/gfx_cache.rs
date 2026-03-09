@@ -97,9 +97,9 @@ impl GraphicsCache {
         }
     }
 
-    /// Returns the alpha-weighted average colour of a sprite.
+    /// Returns the alpha-weighted average color of a sprite.
     ///
-    /// If the colour has not been calculated yet, the sprite is loaded from
+    /// If the color has not been calculated yet, the sprite is loaded from
     /// the ZIP archive as a side-effect.
     ///
     /// # Arguments
@@ -153,7 +153,7 @@ impl GraphicsCache {
     /// * `id` - Numeric sprite ID.
     ///
     /// # Returns
-    /// * `&mut Texture` — the caller may set blend/colour/alpha modulation
+    /// * `&mut Texture` — the caller may set blend/color/alpha modulation
     ///   but must reset it before yielding control.
     pub fn get_texture(&mut self, id: usize) -> &mut Texture {
         const ERROR_SPRITE_ID: usize = 128;
@@ -181,7 +181,7 @@ impl GraphicsCache {
     }
 
     /// Loads and decodes a single sprite from the ZIP archive, caching its
-    /// average colour and RGBA pixels as a side-effect.
+    /// average color and RGBA pixels as a side-effect.
     ///
     /// # Arguments
     /// * `id` - Numeric sprite ID.
@@ -208,13 +208,13 @@ impl GraphicsCache {
         None
     }
 
-    /// Computes the alpha-weighted average RGB colour of raw PNG/image bytes.
+    /// Computes the alpha-weighted average RGB color of raw PNG/image bytes.
     ///
     /// # Arguments
     /// * `image_bytes` - Raw image file bytes (e.g. PNG).
     ///
     /// # Returns
-    /// * `(r, g, b)` average colour. Returns `(0, 0, 0)` on decode failure
+    /// * `(r, g, b)` average color. Returns `(0, 0, 0)` on decode failure
     ///   or if all pixels are fully transparent.
     fn calculate_avg_color(image_bytes: &[u8]) -> (u8, u8, u8) {
         let rgba_image = match Self::decode_rgba_image(image_bytes) {

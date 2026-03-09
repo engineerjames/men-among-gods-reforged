@@ -689,7 +689,7 @@ impl GameScene {
                     // blank, causing them to be re-queried on every step.
                     let is_blank = self.minimap_xmap[cell + 3] == 0;
                     // 0xFF marks the player position — always overwrite it so the old
-                    // white dot is replaced with the real tile colour when the player moves.
+                    // white dot is replaced with the real tile color when the player moves.
                     let is_player_marker = self.minimap_xmap[cell] == 0xFF
                         && self.minimap_xmap[cell + 1] == 0xFF
                         && self.minimap_xmap[cell + 2] == 0xFF;
@@ -703,9 +703,9 @@ impl GameScene {
                 }
 
                 // Objects override background — but only when the sprite has a
-                // non-zero average colour.  Transparent / invisible obj sprites
+                // non-zero average color.  Transparent / invisible obj sprites
                 // return (0,0,0) from get_avg_color; writing that value would paint
-                // an opaque black pixel over the valid background colour.  In the
+                // an opaque black pixel over the valid background color.  In the
                 // original C engine, setting xmap[..]=0 implicitly marked the cell
                 // as "unvisited" so the background reclaimed it next pass; our RGBA
                 // buffer has no such equivalence, so we guard the write instead.

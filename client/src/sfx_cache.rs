@@ -134,7 +134,7 @@ impl SoundCache {
     }
 
     /// Play a sound effect by numeric ID. `vol` is 0-127, `pan` is 0 (left) – 255 (right)
-    /// with 128 as centre. `master_volume` is a 0.0–1.0 multiplier applied on top.
+    /// with 128 as center. `master_volume` is a 0.0–1.0 multiplier applied on top.
     /// Mismatched or missing IDs are silently ignored.
     pub fn play_sfx(&self, nr: usize, vol: i32, pan: i32, master_volume: f32) {
         let Some(chunk) = self.sfx_cache.get(&nr) else {

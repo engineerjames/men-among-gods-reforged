@@ -172,7 +172,7 @@ impl Widget for RectButton {
 
 /// A clickable circular button.
 ///
-/// Hit-testing uses the true Euclidean distance from the centre.  Rendering
+/// Hit-testing uses the true Euclidean distance from the center.  Rendering
 /// uses a midpoint-circle scanline fill so no external dependencies are
 /// needed.
 pub struct CircleButton {
@@ -183,7 +183,7 @@ pub struct CircleButton {
     border_color: Option<Color>,
     hovered: bool,
     hover_alpha: u8,
-    /// Cached bounding box, kept in sync with centre/radius.
+    /// Cached bounding box, kept in sync with center/radius.
     cached_bounds: Bounds,
 }
 
@@ -192,10 +192,10 @@ impl CircleButton {
     ///
     /// # Arguments
     ///
-    /// * `center_x` - X centre in logical pixels.
-    /// * `center_y` - Y centre in logical pixels.
+    /// * `center_x` - X center in logical pixels.
+    /// * `center_y` - Y center in logical pixels.
     /// * `radius` - Radius in pixels.
-    /// * `fill_color` - Fill colour.
+    /// * `fill_color` - Fill color.
     ///
     /// # Returns
     ///
@@ -213,16 +213,16 @@ impl CircleButton {
         }
     }
 
-    /// Computes the axis-aligned bounding box from centre and radius.
+    /// Computes the axis-aligned bounding box from center and radius.
     fn compute_bounds(cx: i32, cy: i32, r: u32) -> Bounds {
         Bounds::new(cx - r as i32, cy - r as i32, r * 2, r * 2)
     }
 
-    /// Sets the border colour for the circle outline.
+    /// Sets the border color for the circle outline.
     ///
     /// # Arguments
     ///
-    /// * `color` - Outline colour.
+    /// * `color` - Outline color.
     ///
     /// # Returns
     ///

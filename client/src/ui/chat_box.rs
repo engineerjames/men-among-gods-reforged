@@ -67,7 +67,7 @@ impl ChatBox {
     /// # Arguments
     ///
     /// * `bounds` - Position and size of the widget.
-    /// * `bg_color` - Background fill colour (use `Color::RGBA` for
+    /// * `bg_color` - Background fill color (use `Color::RGBA` for
     ///   semi-transparency).
     /// * `padding` - Inner spacing between the box edge and text content.
     ///
