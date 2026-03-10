@@ -16,6 +16,8 @@ pub mod inventory_panel;
 #[allow(dead_code)]
 pub mod label;
 #[allow(dead_code)]
+pub mod minimap_widget;
+#[allow(dead_code)]
 pub mod panel;
 #[allow(dead_code)]
 pub mod rank_arc;

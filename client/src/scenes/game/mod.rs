@@ -48,6 +48,7 @@ use crate::{
         chat_box::ChatBox,
         hud_button_bar::HudButtonBar,
         inventory_panel::InventoryPanel,
+        minimap_widget::MinimapWidget,
         rank_arc::RankArc,
         settings_panel::SettingsPanel,
         skills_panel::SkillsPanel,
@@ -64,9 +65,6 @@ use crate::{
 // ---------------------------------------------------------------------------
 // Layout / tuning constants (all pub(super) so submodules can import them)
 // ---------------------------------------------------------------------------
-
-/// Maximum characters allowed in the chat input buffer.
-pub(super) const MAX_INPUT_LEN: usize = 120;
 
 /// Maximum complete network tick groups processed per frame.
 ///
@@ -105,23 +103,8 @@ pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32
     - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 4) - (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 4))
     + MAP_Y_TWEAK;
 
-/// Sprite ID of the static 800×600 UI background frame.
-pub(super) const UI_FRAME_SPRITE: usize = 1;
-
 /// Default bitmap font index (yellow, sprite 701).
 pub(super) const UI_FONT: usize = 1;
-
-// Matches original engine.c worn-slot draw order (wntab[]).
-pub(super) const EQUIP_WNTAB: [usize; 12] = [0, 9, 2, 3, 1, 4, 8, 7, 10, 11, 5, 6];
-
-// HP / Endurance / Mana bars
-pub(super) const BAR_X: i32 = 373;
-pub(super) const BAR_HP_Y: i32 = 127;
-pub(super) const BAR_END_Y: i32 = 134;
-pub(super) const BAR_MANA_Y: i32 = 141;
-pub(super) const BAR_H: u32 = 6;
-pub(super) const BAR_SCALE_NUM: i32 = 62;
-pub(super) const BAR_W_MAX: i32 = 62;
 
 /// Bar background (capacity).
 pub(super) const BAR_BG_COLOR: Color = Color::RGB(9, 4, 58);
@@ -190,6 +173,15 @@ const INV_PANEL_H: u32 = 280;
 /// Semi-transparent background color shared by all HUD panels.
 const HUD_PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
 
+// ---- Minimap toggle button ---- //
+
+/// X center of the minimap toggle button (near top-right of screen).
+const MINIMAP_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
+/// Y center of the minimap toggle button.
+const MINIMAP_BTN_CY: i32 = 30;
+/// Radius of the minimap toggle button.
+const MINIMAP_BTN_RADIUS: u32 = 14;
+
 // Minimap
 pub(super) const MINIMAP_X: i32 = 3;
 pub(super) const MINIMAP_Y: i32 = 471;
@@ -224,6 +216,7 @@ pub struct GameScene {
     pub(super) skills_panel: SkillsPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
+    pub(super) minimap_widget: MinimapWidget,
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -305,6 +298,7 @@ impl GameScene {
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
                 HUD_PANEL_BG,
             ),
+            minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
@@ -742,7 +736,6 @@ impl Scene for GameScene {
             Event::MouseMotion { x, y, .. } => {
                 self.mouse_x = *x;
                 self.mouse_y = *y;
-                return None;
             }
             _ => {}
         }
@@ -786,6 +779,11 @@ impl Scene for GameScene {
                 return None;
             }
 
+            // --- Dispatch to minimap toggle button / panel ---
+            if self.minimap_widget.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
             // --- Dispatch to HUD button bar ---
             if self.hud_buttons.handle_event(&ui_event) == EventResponse::Consumed {
                 for action in self.hud_buttons.take_actions() {
@@ -794,6 +792,7 @@ impl Scene for GameScene {
                             HudPanel::Skills => self.skills_panel.toggle(),
                             HudPanel::Inventory => self.inventory_panel.toggle(),
                             HudPanel::Settings => self.settings_panel.toggle(),
+                            HudPanel::Minimap => self.minimap_widget.toggle(),
                         }
                     }
                 }
@@ -1162,6 +1161,12 @@ impl Scene for GameScene {
                     gold: ci.gold,
                     selected_char: ps.selected_char(),
                 });
+
+                // Update minimap xmap buffer, then push viewport pixels to the widget.
+                if let Some((cx, cy)) = self.update_minimap_xmap(gfx_cache, ps) {
+                    self.minimap_widget
+                        .update_viewport(&self.minimap_xmap, cx, cy);
+                }
             }
             let mut ctx = RenderContext {
                 canvas,
@@ -1181,6 +1186,7 @@ impl Scene for GameScene {
             self.settings_panel.render(&mut ctx)?;
             self.rank_arc.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
+            self.minimap_widget.render(&mut ctx)?;
         }
 
         // 5c. Carried item (always drawn, even when inventory panel is hidden)
@@ -1194,13 +1200,6 @@ impl Scene for GameScene {
         // Self::draw_mode_indicators(canvas, ps)?;
         self.perf_profiler.end_sample(PerfLabel::DrawModeIndicators);
 
-        // 7. Left panel attributes and skills
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawAttributesSkills);
-        // self.draw_attributes_skills(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawAttributesSkills);
-
         // 8. Inventory, worn items, spells, carried item
         self.perf_profiler
             .begin_sample(PerfLabel::DrawInventoryEquipmentSpells);
@@ -1212,21 +1211,9 @@ impl Scene for GameScene {
         self.perf_profiler
             .begin_sample(PerfLabel::DrawPortraitAndShop);
         // Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
-        // self.draw_shop_overlay(canvas, gfx_cache, ps)?;
+        self.draw_shop_overlay(canvas, gfx_cache, ps)?;
         self.perf_profiler
             .end_sample(PerfLabel::DrawPortraitAndShop);
-
-        // 11. Minimap (bottom-left, 128×128, persistent world buffer)
-        self.perf_profiler.begin_sample(PerfLabel::DrawMinimap);
-        // self.draw_minimap(canvas, gfx_cache, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawMinimap);
-
-        // 12. Skill button labels (4×3 grid in lower-right)
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawSkillButtonLabels);
-        // self.draw_skill_button_labels(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawSkillButtonLabels);
 
         self.perf_profiler.end_frame();
         Ok(())

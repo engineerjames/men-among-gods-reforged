@@ -1,23 +1,26 @@
-use sdl2::{pixels::Color, render::Canvas, video::Window};
+use sdl2::{render::Canvas, video::Window};
 
 use mag_core::constants::{
     PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK, PL_RING, PL_SHIELD,
-    PL_TWOHAND, PL_WEAPON, TILEX, TILEY, WN_LHAND, WN_RHAND,
+    PL_TWOHAND, PL_WEAPON, TILEX, TILEY, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD,
+    WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
-use mag_core::types::skilltab::get_skill_name;
 
 use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
 use super::{
-    GameScene, BAR_BG_COLOR, BAR_END_Y, BAR_FILL_COLOR, BAR_FILL_LOOK_COLOR, BAR_H, BAR_HP_Y,
-    BAR_MANA_Y, BAR_SCALE_NUM, BAR_W_MAX, BAR_X, EQUIP_WNTAB, INV_SCROLL_MAX, INV_SCROLL_RANGE,
-    INV_SCROLL_X, INV_SCROLL_Y_BASE, MINIMAP_VIEW_SIZE, MINIMAP_WORLD_SIZE, MINIMAP_X, MINIMAP_Y,
-    MODE_INDICATOR_COLOR, NAME_AREA_W, NAME_AREA_X, NAME_Y, PORTRAIT_NAME_Y, PORTRAIT_RANK_Y,
-    SCROLL_KNOB_COLOR, SCROLL_KNOB_H, SCROLL_KNOB_W, SKILL_SCROLL_MAX, SKILL_SCROLL_RANGE,
-    SKILL_SCROLL_X, SKILL_SCROLL_Y_BASE, STAT_ARMOR_X, STAT_ARMOR_Y, STAT_END_X, STAT_END_Y,
-    STAT_EXP_X, STAT_EXP_Y, STAT_HP_X, STAT_HP_Y, STAT_MANA_X, STAT_MANA_Y, STAT_MONEY_X,
-    STAT_MONEY_Y, STAT_WEAPON_X, STAT_WEAPON_Y, UI_FONT, UI_FRAME_SPRITE,
+    GameScene, INV_SCROLL_MAX, INV_SCROLL_RANGE, INV_SCROLL_X, INV_SCROLL_Y_BASE,
+    MINIMAP_WORLD_SIZE, MODE_INDICATOR_COLOR, SCROLL_KNOB_COLOR, SCROLL_KNOB_H, SCROLL_KNOB_W,
+    UI_FONT,
 };
+
+/// Maps the 12 equipment grid positions (row-major, 2 cols × 6 rows) to
+/// `WN_*` wear-slot indices.  Matches the original C `wntab[]` order.
+/// TODO: Refactor this to put this logic all in one place.
+const EQUIP_WNTAB: [usize; 12] = [
+    WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_LRING, WN_RRING,
+    WN_LEGS, WN_FEET,
+];
 
 impl GameScene {
     /// Draw a UI item sprite with an optional additive hover highlight.
@@ -357,19 +360,29 @@ impl GameScene {
         Ok(())
     }
 
-    /// Update the persistent world minimap buffer from the current map state, then
-    /// blit the 128x128 viewport centred on the player to the minimap area (x=3, y=471).
-    pub(super) fn draw_minimap(
+    /// Repaint the persistent 1024×1024 world minimap buffer from the current
+    /// map state.
+    ///
+    /// Only performs work when the player has moved since the last call.
+    /// The viewport extraction + rendering is handled by [`MinimapWidget`].
+    ///
+    /// # Arguments
+    ///
+    /// * `gfx` - Graphics cache (used for average-color lookups).
+    /// * `ps` - Current player state (map tiles + player position).
+    ///
+    /// # Returns
+    ///
+    /// The player's center `(x, y)` in world-map coordinates, or `None` if
+    /// the center tile is unavailable.
+    pub(super) fn update_minimap_xmap(
         &mut self,
-        canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache,
         ps: &PlayerState,
-    ) -> Result<(), String> {
+    ) -> Option<(u16, u16)> {
         let map = ps.map();
 
-        let Some(center) = map.tile_at_xy(TILEX / 2, TILEY / 2) else {
-            return Ok(());
-        };
+        let center = map.tile_at_xy(TILEX / 2, TILEY / 2)?;
 
         let center_xy = (center.x, center.y);
 
@@ -442,56 +455,7 @@ impl GameScene {
             }
         }
 
-        // Build the 128x128 viewport.
-        let half = (MINIMAP_VIEW_SIZE as i32) / 2;
-        let mapx = ((center.x as i32) - half)
-            .clamp(0, MINIMAP_WORLD_SIZE as i32 - MINIMAP_VIEW_SIZE as i32);
-        let mapy = ((center.y as i32) - half)
-            .clamp(0, MINIMAP_WORLD_SIZE as i32 - MINIMAP_VIEW_SIZE as i32);
-
-        // C call: dd_show_map(xmap, mapy, mapx)  →  xo=mapy, yo=mapx
-        // C blit index: s = (y + yo)*1024 + xo  =  (row + mapx)*1024 + (col + mapy)
-        let xo = mapy as usize; // column offset (global Y)
-        let yo = mapx as usize; // row offset (global X)
-
-        let view_size = MINIMAP_VIEW_SIZE as usize;
-        let mut pixels: Vec<u8> = vec![0u8; view_size * view_size * 4];
-        for row in 0..view_size {
-            for col in 0..view_size {
-                let src_row = yo + row;
-                let src_col = xo + col;
-                if src_row >= MINIMAP_WORLD_SIZE || src_col >= MINIMAP_WORLD_SIZE {
-                    continue;
-                }
-                // Match C: s = (y+yo)*1024 + xo;  s++ per column
-                let src = (src_row * MINIMAP_WORLD_SIZE + src_col) * 4;
-                let dst = (row * view_size + col) * 4;
-                // ABGR8888 on little-endian: memory bytes are [R,G,B,A] — matches xmap layout directly.
-                pixels[dst] = self.minimap_xmap[src];
-                pixels[dst + 1] = self.minimap_xmap[src + 1];
-                pixels[dst + 2] = self.minimap_xmap[src + 2];
-                pixels[dst + 3] = self.minimap_xmap[src + 3];
-            }
-        }
-
-        gfx.ensure_minimap_texture();
-        if let Some(tex) = gfx.minimap_texture.as_mut() {
-            let pitch = view_size * 4;
-            tex.update(None, &pixels, pitch)
-                .map_err(|e| e.to_string())?;
-            canvas.copy(
-                tex,
-                None,
-                Some(sdl2::rect::Rect::new(
-                    MINIMAP_X,
-                    MINIMAP_Y,
-                    MINIMAP_VIEW_SIZE,
-                    MINIMAP_VIEW_SIZE,
-                )),
-            )?;
-        }
-
-        Ok(())
+        Some(center_xy)
     }
 
     /// Draw the currently carried item (citem) sprite under the mouse cursor.

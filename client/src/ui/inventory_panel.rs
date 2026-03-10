@@ -57,6 +57,7 @@ const UI_FONT: usize = 1;
 
 /// Maps the 12 equipment grid positions (row-major, 2 cols × 6 rows) to
 /// `WN_*` wear-slot indices.  Matches the original C `wntab[]` order.
+/// TODO: Refactor this to put this logic all in one place.
 const EQUIP_WNTAB: [usize; 12] = [
     WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_LRING, WN_RRING,
     WN_LEGS, WN_FEET,
@@ -64,6 +65,7 @@ const EQUIP_WNTAB: [usize; 12] = [
 
 /// Human-readable labels drawn inside empty equipment cells, indexed the same
 /// as `EQUIP_WNTAB`.
+///
 const EQUIP_LABELS: [&str; 12] = [
     "Head", "Cloak", "Body", "Arms", "Neck", "Belt", "Weapon", "Shield", "L.Ring", "R.Ring",
     "Legs", "Feet",
@@ -352,6 +354,10 @@ impl Widget for InventoryPanel {
                 if !self.bounds.contains_point(*x, *y) {
                     return EventResponse::Ignored;
                 }
+                // Sync stored coords so hovered_inv_slot / hovered_equip_pos
+                // use the click position even if no MouseMove preceded it.
+                self.mouse_x = *x;
+                self.mouse_y = *y;
 
                 let data = match self.data.as_ref() {
                     Some(d) => d,

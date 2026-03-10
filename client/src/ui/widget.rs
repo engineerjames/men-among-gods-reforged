@@ -201,6 +201,8 @@ pub enum HudPanel {
     Inventory,
     /// Settings / options.
     Settings,
+    /// World minimap overlay.
+    Minimap,
 }
 
 /// A side-effect that a widget wants the owning scene to perform.
