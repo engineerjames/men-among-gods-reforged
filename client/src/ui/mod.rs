@@ -10,9 +10,17 @@ pub mod button;
 #[allow(dead_code)]
 pub mod chat_box;
 #[allow(dead_code)]
+pub mod hud_button_bar;
+#[allow(dead_code)]
+pub mod inventory_panel;
+#[allow(dead_code)]
 pub mod label;
 #[allow(dead_code)]
 pub mod panel;
+#[allow(dead_code)]
+pub mod settings_panel;
+#[allow(dead_code)]
+pub mod skills_panel;
 #[allow(dead_code)]
 pub mod style;
 #[allow(dead_code)]

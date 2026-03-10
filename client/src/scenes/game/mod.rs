@@ -46,10 +46,14 @@ use crate::{
     state::{AppState, DisplayCommand},
     ui::{
         chat_box::ChatBox,
+        hud_button_bar::HudButtonBar,
+        inventory_panel::InventoryPanel,
+        settings_panel::SettingsPanel,
+        skills_panel::SkillsPanel,
         style::Padding,
         widget::{
-            Bounds, EventResponse, KeyModifiers, MouseButton as UiMouseButton, UiEvent, Widget,
-            WidgetAction,
+            Bounds, EventResponse, HudPanel, KeyModifiers, MouseButton as UiMouseButton, UiEvent,
+            Widget, WidgetAction,
         },
         RenderContext,
     },
@@ -161,6 +165,25 @@ const CHATBOX_Y: i32 = TARGET_HEIGHT_INT as i32 - CHATBOX_H as i32;
 const CHATBOX_W: u32 = 300;
 const CHATBOX_H: u32 = 200;
 
+// ---- HUD button bar layout ---- //
+
+/// X center of the invisible arc that the HUD buttons sit on.
+const HUD_ARC_CENTER_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 / 2;
+/// Y center of the invisible arc (at the bottom edge of the viewport).
+const HUD_ARC_CENTER_Y: i32 = crate::constants::TARGET_HEIGHT_INT as i32;
+/// Radius of the invisible layout arc.
+const HUD_ARC_RADIUS: u32 = 60;
+/// Radius of each individual HUD button.
+const HUD_BUTTON_RADIUS: u32 = 16;
+/// Sprite IDs for [Skills, Inventory, Settings] buttons.
+const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
+/// Width of each togglable HUD panel.
+const HUD_PANEL_W: u32 = 300;
+/// Height of each togglable HUD panel.
+const HUD_PANEL_H: u32 = 250;
+/// Semi-transparent background color shared by all HUD panels.
+const HUD_PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
+
 // Minimap
 pub(super) const MINIMAP_X: i32 = 3;
 pub(super) const MINIMAP_Y: i32 = 471;
@@ -189,6 +212,10 @@ pub(super) const INV_SCROLL_MAX: i32 = 30;
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
     pub(super) chat_box: ChatBox,
+    pub(super) hud_buttons: HudButtonBar,
+    pub(super) skills_panel: SkillsPanel,
+    pub(super) inventory_panel: InventoryPanel,
+    pub(super) settings_panel: SettingsPanel,
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -232,11 +259,36 @@ impl GameScene {
     ///
     /// A fresh `GameScene` ready to be entered via [`Scene::on_enter`].
     pub fn new() -> Self {
+        // HUD panels are centered horizontally, positioned so their bottom
+        // edge sits 20 px above the top of the button arc.
+        let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
+        let panel_bottom = HUD_ARC_CENTER_Y - HUD_ARC_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 20;
+        let panel_y = panel_bottom - HUD_PANEL_H as i32;
+
         Self {
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
                 Color::RGBA(10, 10, 30, 180),
                 Padding::uniform(4),
+            ),
+            hud_buttons: HudButtonBar::new(
+                HUD_ARC_CENTER_X,
+                HUD_ARC_CENTER_Y,
+                HUD_ARC_RADIUS,
+                HUD_BUTTON_RADIUS,
+                HUD_SPRITE_IDS,
+            ),
+            skills_panel: SkillsPanel::new(
+                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                HUD_PANEL_BG,
+            ),
+            inventory_panel: InventoryPanel::new(
+                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                HUD_PANEL_BG,
+            ),
+            settings_panel: SettingsPanel::new(
+                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                HUD_PANEL_BG,
             ),
             last_synced_log_len: 0,
             pending_exit: None,
@@ -347,6 +399,7 @@ impl GameScene {
                         }
                     }
                 }
+                WidgetAction::TogglePanel(_) => {}
             }
         }
     }
@@ -613,6 +666,31 @@ impl Scene for GameScene {
                 self.process_chat_box_actions(app_state);
                 return None;
             }
+
+            // --- Dispatch to open HUD panels (eat clicks so they don't reach the world) ---
+            if self.skills_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+            if self.inventory_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+            if self.settings_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            // --- Dispatch to HUD button bar ---
+            if self.hud_buttons.handle_event(&ui_event) == EventResponse::Consumed {
+                for action in self.hud_buttons.take_actions() {
+                    if let WidgetAction::TogglePanel(panel) = action {
+                        match panel {
+                            HudPanel::Skills => self.skills_panel.toggle(),
+                            HudPanel::Inventory => self.inventory_panel.toggle(),
+                            HudPanel::Settings => self.settings_panel.toggle(),
+                        }
+                    }
+                }
+                return None;
+            }
         }
 
         match event {
@@ -859,6 +937,9 @@ impl Scene for GameScene {
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
     fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
         self.chat_box.update(dt);
+        self.skills_panel.update(dt);
+        self.inventory_panel.update(dt);
+        self.settings_panel.update(dt);
         self.perf_profiler.check_expired();
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
@@ -941,6 +1022,18 @@ impl Scene for GameScene {
             self.chat_box.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
+
+        // 5b. HUD panels + button bar (rendered after chat, before legacy HUD)
+        {
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.skills_panel.render(&mut ctx)?;
+            self.inventory_panel.render(&mut ctx)?;
+            self.settings_panel.render(&mut ctx)?;
+            self.hud_buttons.render(&mut ctx)?;
+        }
 
         // 6. Lower-right mode/status indicators
         self.perf_profiler

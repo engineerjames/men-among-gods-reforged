@@ -183,6 +183,8 @@ pub struct CircleButton {
     border_color: Option<Color>,
     hovered: bool,
     hover_alpha: u8,
+    /// Optional sprite drawn centered inside the circle.
+    sprite_id: Option<usize>,
     /// Cached bounding box, kept in sync with center/radius.
     cached_bounds: Bounds,
 }
@@ -209,6 +211,7 @@ impl CircleButton {
             border_color: None,
             hovered: false,
             hover_alpha: 96,
+            sprite_id: None,
             cached_bounds: Self::compute_bounds(center_x, center_y, radius),
         }
     }
@@ -229,6 +232,20 @@ impl CircleButton {
     /// `self` for chaining.
     pub fn with_border_color(mut self, color: Color) -> Self {
         self.border_color = Some(color);
+        self
+    }
+
+    /// Sets a sprite to draw centered inside the circle.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Sprite ID from the graphics cache.
+    ///
+    /// # Returns
+    ///
+    /// `self` for chaining.
+    pub fn with_sprite(mut self, id: usize) -> Self {
+        self.sprite_id = Some(id);
         self
     }
 
@@ -386,6 +403,19 @@ impl Widget for CircleButton {
             Self::draw_circle_outline(ctx.canvas, self.center_x, self.center_y, self.radius)?;
         }
 
+        // Sprite icon (centered inside the circle)
+        if let Some(id) = self.sprite_id {
+            let texture = ctx.gfx.get_texture(id);
+            let q = texture.query();
+            let dst_x = self.center_x - q.width as i32 / 2;
+            let dst_y = self.center_y - q.height as i32 / 2;
+            ctx.canvas.copy(
+                texture,
+                None,
+                Some(sdl2::rect::Rect::new(dst_x, dst_y, q.width, q.height)),
+            )?;
+        }
+
         // Hover highlight
         if self.hovered {
             ctx.canvas.set_blend_mode(BlendMode::Add);
@@ -481,6 +511,18 @@ mod tests {
         let btn = CircleButton::new(i32::MAX - 10, i32::MAX - 10, 5, Color::RGB(0, 0, 0));
         // Should not panic
         assert!(!btn.contains_point(0, 0));
+    }
+
+    #[test]
+    fn circle_sprite_defaults_to_none() {
+        let btn = CircleButton::new(50, 50, 10, Color::RGB(0, 0, 0));
+        assert!(btn.sprite_id.is_none());
+    }
+
+    #[test]
+    fn circle_with_sprite_sets_id() {
+        let btn = CircleButton::new(50, 50, 10, Color::RGB(0, 0, 0)).with_sprite(267);
+        assert_eq!(btn.sprite_id, Some(267));
     }
 
     #[test]

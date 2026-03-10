@@ -643,6 +643,7 @@ mod tests {
         assert_eq!(actions.len(), 1);
         match &actions[0] {
             WidgetAction::SendChat(text) => assert_eq!(text, "hello world"),
+            _ => panic!("Expected SendChat action"),
         }
     }
 

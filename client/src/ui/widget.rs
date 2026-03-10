@@ -190,6 +190,17 @@ pub enum EventResponse {
 // Actions
 // ---------------------------------------------------------------------------
 
+/// Identifies one of the togglable HUD panels.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HudPanel {
+    /// Skills / character / talent tree.
+    Skills,
+    /// Money / inventory / equipment.
+    Inventory,
+    /// Settings / options.
+    Settings,
+}
+
 /// A side-effect that a widget wants the owning scene to perform.
 ///
 /// Widgets cannot access the network or global game state directly. Instead
@@ -198,6 +209,8 @@ pub enum EventResponse {
 pub enum WidgetAction {
     /// Send a chat message through the network.
     SendChat(String),
+    /// Toggle visibility of a HUD panel.
+    TogglePanel(HudPanel),
 }
 
 // ---------------------------------------------------------------------------
