@@ -255,6 +255,10 @@ pub enum WidgetAction {
         /// Target character.
         c: u32,
     },
+    /// Change the player's speed mode.
+    ///
+    /// Mapped to `ClientCommand::new_mode(mode)` by the scene.
+    ChangeMode(i32),
 }
 
 // ---------------------------------------------------------------------------

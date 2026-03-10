@@ -48,7 +48,9 @@ use crate::{
         chat_box::ChatBox,
         hud_button_bar::HudButtonBar,
         inventory_panel::InventoryPanel,
+        look_panel::LookPanel,
         minimap_widget::MinimapWidget,
+        mode_button::ModeButton,
         rank_arc::RankArc,
         settings_panel::SettingsPanel,
         skills_panel::SkillsPanel,
@@ -182,6 +184,27 @@ const MINIMAP_BTN_CY: i32 = 30;
 /// Radius of the minimap toggle button.
 const MINIMAP_BTN_RADIUS: u32 = 14;
 
+// ---- Mode button (lower-right) ---- //
+
+/// X center of the circular speed-mode button.
+const MODE_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
+/// Y center of the circular speed-mode button.
+const MODE_BTN_CY: i32 = crate::constants::TARGET_HEIGHT_INT as i32 - 30;
+/// Radius of the circular speed-mode button.
+const MODE_BTN_RADIUS: u32 = 18;
+
+// ---- Look panel (center-right) ---- //
+
+/// Width of the look panel.
+const LOOK_PANEL_W: u32 = 140;
+/// Height of the look panel.
+const LOOK_PANEL_H: u32 = 260;
+/// X position of the look panel (right side, 4 px margin).
+const LOOK_PANEL_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - LOOK_PANEL_W as i32 - 4;
+/// Y position of the look panel (vertically centered).
+const LOOK_PANEL_Y: i32 =
+    (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 2;
+
 // Minimap
 pub(super) const MINIMAP_X: i32 = 3;
 pub(super) const MINIMAP_Y: i32 = 471;
@@ -217,6 +240,8 @@ pub struct GameScene {
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
+    pub(super) mode_button: ModeButton,
+    pub(super) look_panel: LookPanel,
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -299,6 +324,11 @@ impl GameScene {
                 HUD_PANEL_BG,
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
+            mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
+            look_panel: LookPanel::new(
+                Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
+                HUD_PANEL_BG,
+            ),
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
@@ -420,7 +450,24 @@ impl GameScene {
                 | WidgetAction::CastSkill { .. }
                 | WidgetAction::BeginSkillAssign { .. }
                 | WidgetAction::InvAction { .. }
-                | WidgetAction::InvLookAction { .. } => {}
+                | WidgetAction::InvLookAction { .. }
+                | WidgetAction::ChangeMode(_) => {}
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the mode button and send mode
+    /// commands to the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    fn process_mode_button_actions(&mut self, app_state: &AppState) {
+        for action in self.mode_button.take_actions() {
+            if let WidgetAction::ChangeMode(mode) = action {
+                if let Some(net) = app_state.network.as_ref() {
+                    net.send(ClientCommand::new_mode(mode as i16));
+                }
             }
         }
     }
@@ -455,7 +502,8 @@ impl GameScene {
                 WidgetAction::SendChat(_)
                 | WidgetAction::TogglePanel(_)
                 | WidgetAction::InvAction { .. }
-                | WidgetAction::InvLookAction { .. } => {}
+                | WidgetAction::InvLookAction { .. }
+                | WidgetAction::ChangeMode(_) => {}
             }
         }
     }
@@ -784,6 +832,17 @@ impl Scene for GameScene {
                 return None;
             }
 
+            // --- Dispatch to mode button ---
+            if self.mode_button.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_mode_button_actions(app_state);
+                return None;
+            }
+
+            // --- Dispatch to look panel ---
+            if self.look_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
             // --- Dispatch to HUD button bar ---
             if self.hud_buttons.handle_event(&ui_event) == EventResponse::Consumed {
                 for action in self.hud_buttons.take_actions() {
@@ -821,9 +880,6 @@ impl Scene for GameScene {
                                 ));
                             }
                         }
-                    } else if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_mode(2));
                     }
                 }
                 Keycode::F2 => {
@@ -841,9 +897,6 @@ impl Scene for GameScene {
                                 ));
                             }
                         }
-                    } else if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_mode(1));
                     }
                 }
                 Keycode::F3 => {
@@ -861,9 +914,6 @@ impl Scene for GameScene {
                                 ));
                             }
                         }
-                    } else if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_mode(0));
                     }
                 }
                 Keycode::F12 => {
@@ -1048,6 +1098,7 @@ impl Scene for GameScene {
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
+        self.mode_button.update(dt);
         self.perf_profiler.check_expired();
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
@@ -1139,6 +1190,7 @@ impl Scene for GameScene {
                 self.status_panel.sync(ps, rank_index);
                 self.rank_arc
                     .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
+                self.mode_button.sync(ci.mode);
                 use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
                 let sorted = SP::build_sorted_skills(&ci.skill);
                 self.skills_panel.update_data(SkillsPanelData {
@@ -1187,6 +1239,17 @@ impl Scene for GameScene {
             self.rank_arc.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
+            self.mode_button.render(&mut ctx)?;
+        }
+
+        // 5c-ii. Look panel (center-right, when look target is visible)
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.look_panel.sync(ps);
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.look_panel.render(&mut ctx)?;
         }
 
         // 5c. Carried item (always drawn, even when inventory panel is hidden)

@@ -36,14 +36,26 @@ const SIGIL_WIDTH: i32 = 32;
 const SIGIL_HEIGHT: i32 = 96;
 /// Vertical gap before the rank label row.
 const RANK_LABEL_GAP: i32 = 3;
+/// Spell icon cell size in pixels.
+const SPELL_CELL: i32 = 24;
+/// Columns in the spell grid.
+const SPELL_COLS: i32 = 5;
+/// Rows in the spell grid.
+const SPELL_ROWS: i32 = 4;
+/// Vertical gap between the rank label and the spell grid.
+const SPELL_GAP: i32 = 4;
+
 /// Minimum panel content height required to fit the full expanded bar column
-/// (three stat bars + weapon/armor row + rank label).  Used by `compute_bounds`
-/// so ranks whose trimmed sigil is shorter than the bar section still produce a
-/// panel tall enough to display all content without clipping.
+/// (three stat bars + weapon/armor row + rank label + spell grid).  Used by
+/// `compute_bounds` so ranks whose trimmed sigil is shorter than the bar
+/// section still produce a panel tall enough to display all content without
+/// clipping.
 const EXPANDED_CONTENT_H: i32 = (BAR_HEIGHT + BAR_GAP) * 3
     + font_cache::BITMAP_GLYPH_H as i32
     + RANK_LABEL_GAP
-    + font_cache::BITMAP_GLYPH_H as i32;
+    + font_cache::BITMAP_GLYPH_H as i32
+    + SPELL_GAP
+    + SPELL_CELL * SPELL_ROWS;
 /// Per-rank transparent rows to trim from the top and bottom of the sigil.
 ///
 /// Each tuple is `(top_rows, bottom_rows)`. These are applied only when
@@ -106,6 +118,8 @@ struct StatSnapshot {
     mana_max: i32,
     weapon: i32,
     armor: i32,
+    spell: [i32; 20],
+    active: [i8; 20],
 }
 
 // ---------------------------------------------------------------------------
@@ -176,6 +190,8 @@ impl StatusPanel {
             mana_max: ci.mana[5] as i32,
             weapon: ci.weapon,
             armor: ci.armor,
+            spell: ci.spell,
+            active: ci.active,
         };
         self.rebuild_bounds();
     }
@@ -204,8 +220,13 @@ impl StatusPanel {
             draw_height as i32
         };
         let h = PANEL_PADDING * 2 + content_h;
+        let right_content_w = if expanded {
+            BAR_WIDTH.max(SPELL_COLS * SPELL_CELL)
+        } else {
+            0
+        };
         let w = if expanded {
-            PANEL_PADDING * 2 + SIGIL_WIDTH + SIGIL_BAR_GAP + BAR_WIDTH
+            PANEL_PADDING * 2 + SIGIL_WIDTH + SIGIL_BAR_GAP + right_content_w
         } else {
             PANEL_PADDING * 2 + SIGIL_WIDTH
         };
@@ -425,6 +446,32 @@ impl Widget for StatusPanel {
             bar_x,
             rank_label_y,
         )?;
+
+        // Spell grid (5 cols × 4 rows of 24×24 icons)
+        let spell_y_start = rank_label_y + font_cache::BITMAP_GLYPH_H as i32 + SPELL_GAP;
+        for n in 0..20usize {
+            let sprite = self.stats.spell[n];
+            if sprite <= 0 {
+                continue;
+            }
+            let x = bar_x + ((n % SPELL_COLS as usize) as i32) * SPELL_CELL;
+            let y = spell_y_start + ((n / SPELL_COLS as usize) as i32) * SPELL_CELL;
+            let tex = ctx.gfx.get_texture(sprite as usize);
+            let q = tex.query();
+
+            // Spell attenuation matches engine.c: copyspritex effect = 15 - min(15, active)
+            let active = (self.stats.active[n] as i32).clamp(0, 15);
+            let effect = 15 - active;
+            let atten = (255 * 120 / (effect * effect + 120)) as u8;
+
+            tex.set_color_mod(atten, atten, atten);
+            ctx.canvas.copy(
+                tex,
+                None,
+                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
+            )?;
+            tex.set_color_mod(255, 255, 255);
+        }
 
         Ok(())
     }

@@ -96,52 +96,34 @@ impl GameScene {
             }
         }
 
-        // Mode/toggle buttons area: two rows, 4 cols, trans_button geometry.
+        // Toggle buttons area: two rows, 4 cols, trans_button geometry.
+        // Mode buttons (cols 0-2, row 0) are handled by ModeButton widget.
         if (604..=798).contains(&x) && (552..=582).contains(&y) {
             let col = (x - 604) / 49;
             let row = (y - 552) / 16;
-            if let Some(net) = app_state.network.as_ref() {
-                if row == 0 {
-                    match col {
-                        0 => {
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_mode(2));
+            if row == 0 && col == 3 {
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    let cur = ps.player_data().show_proz;
+                    ps.player_data_mut().show_proz = 1 - cur;
+                    profile_changed = true;
+                }
+            } else if row == 1 {
+                match col {
+                    1 => {
+                        if let Some(ps) = app_state.player_state.as_mut() {
+                            let cur = ps.player_data().hide;
+                            ps.player_data_mut().hide = 1 - cur;
+                            profile_changed = true;
                         }
-                        1 => {
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_mode(1));
-                        }
-                        2 => {
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_mode(0));
-                        }
-                        3 => {
-                            if let Some(ps) = app_state.player_state.as_mut() {
-                                let cur = ps.player_data().show_proz;
-                                ps.player_data_mut().show_proz = 1 - cur;
-                                profile_changed = true;
-                            }
-                        }
-                        _ => {}
                     }
-                } else if row == 1 {
-                    match col {
-                        1 => {
-                            if let Some(ps) = app_state.player_state.as_mut() {
-                                let cur = ps.player_data().hide;
-                                ps.player_data_mut().hide = 1 - cur;
-                                profile_changed = true;
-                            }
+                    2 => {
+                        if let Some(ps) = app_state.player_state.as_mut() {
+                            let cur = ps.player_data().show_names;
+                            ps.player_data_mut().show_names = 1 - cur;
+                            profile_changed = true;
                         }
-                        2 => {
-                            if let Some(ps) = app_state.player_state.as_mut() {
-                                let cur = ps.player_data().show_names;
-                                ps.player_data_mut().show_names = 1 - cur;
-                                profile_changed = true;
-                            }
-                        }
-                        _ => {}
                     }
+                    _ => {}
                 }
             }
             if profile_changed {
