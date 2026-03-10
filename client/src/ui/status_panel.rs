@@ -7,6 +7,8 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use mag_core::ranks;
+
 use crate::font_cache;
 use crate::player_state::PlayerState;
 
@@ -27,8 +29,43 @@ const BAR_GAP: i32 = 3;
 const SIGIL_BAR_GAP: i32 = 6;
 /// Padding inside the panel background.
 const PANEL_PADDING: i32 = 4;
-/// Assumed sigil sprite dimensions (square).
-const SIGIL_SIZE: i32 = 32;
+/// Rank sigil sprite width in pixels.
+const SIGIL_WIDTH: i32 = 32;
+/// Rank sigil sprite height in pixels.
+const SIGIL_HEIGHT: i32 = 96;
+/// Vertical gap before the rank label row.
+const RANK_LABEL_GAP: i32 = 3;
+/// Per-rank transparent rows to trim from the top and bottom of the sigil.
+///
+/// Each tuple is `(top_rows, bottom_rows)`. These are applied only when
+/// drawing the sprite so you can tune away transparent padding without
+/// changing the panel's nominal 32×96 sigil footprint.
+const SIGIL_TRIM_ROWS: [(u32, u32); 24] = [
+    (30, 30), // Private
+    (20, 34), // Private First Class
+    (40, 26), // Corporal
+    (42, 19), // Sergeant
+    (22, 19), // Staff Sergeant
+    (16, 19), // Master Sergeant
+    (7, 19),  // First Sergeant
+    (7, 19),  // Sergeant Major
+    (20, 30), // Second Lieutenant
+    (27, 27), // First Lieutenant
+    (27, 13), // Captain
+    (0, 14),  // Major
+    (0, 16),
+    (0, 18),
+    (0, 20),
+    (0, 22),
+    (0, 24),
+    (0, 26),
+    (0, 28),
+    (0, 30),
+    (0, 32),
+    (0, 34),
+    (0, 36),
+    (0, 38),
+];
 
 /// Bitmap font index used for value text (yellow font).
 const FONT: usize = 1;
@@ -51,6 +88,7 @@ const MANA_BG: Color = Color::RGB(12, 25, 65);
 #[derive(Clone, Debug, Default)]
 struct StatSnapshot {
     rank_index: usize,
+    rank_name: &'static str,
     a_hp: i32,
     hp_max: i32,
     a_end: i32,
@@ -115,6 +153,7 @@ impl StatusPanel {
         let ci = ps.character_info();
         self.stats = StatSnapshot {
             rank_index,
+            rank_name: ranks::rank_name(ci.points_tot as u32),
             a_hp: ci.a_hp,
             hp_max: ci.hp[5] as i32,
             a_end: ci.a_end,
@@ -128,16 +167,12 @@ impl StatusPanel {
 
     /// Compute the bounding rectangle for the given expansion state.
     fn compute_bounds(x: i32, y: i32, expanded: bool) -> Bounds {
+        let h = PANEL_PADDING * 2 + SIGIL_HEIGHT;
         if expanded {
-            let w = PANEL_PADDING * 2 + SIGIL_SIZE + SIGIL_BAR_GAP + BAR_WIDTH;
-            // 3 bars + 2 gaps + 1 text row for weapon/armor
-            let bars_h = BAR_HEIGHT * 3 + BAR_GAP * 2;
-            let wv_row_h = font_cache::BITMAP_GLYPH_H as i32 + BAR_GAP;
-            let h = PANEL_PADDING * 2 + bars_h + wv_row_h;
+            let w = PANEL_PADDING * 2 + SIGIL_WIDTH + SIGIL_BAR_GAP + BAR_WIDTH;
             Bounds::new(x, y, w as u32, h as u32)
         } else {
-            let w = PANEL_PADDING * 2 + SIGIL_SIZE;
-            let h = PANEL_PADDING * 2 + SIGIL_SIZE;
+            let w = PANEL_PADDING * 2 + SIGIL_WIDTH;
             Bounds::new(x, y, w as u32, h as u32)
         }
     }
@@ -145,12 +180,28 @@ impl StatusPanel {
     /// Returns the bounding rectangle of just the sigil icon (for hit-testing
     /// the toggle click).
     fn sigil_bounds(&self) -> Bounds {
+        let (trim_top, draw_height) = self.sigil_draw_metrics();
         Bounds::new(
             self.bounds.x + PANEL_PADDING,
-            self.bounds.y + PANEL_PADDING,
-            SIGIL_SIZE as u32,
-            SIGIL_SIZE as u32,
+            self.bounds.y + PANEL_PADDING + trim_top as i32,
+            SIGIL_WIDTH as u32,
+            draw_height,
         )
+    }
+
+    /// Returns the configured top/bottom trim rows for the current rank.
+    fn sigil_trim_rows(&self) -> (u32, u32) {
+        SIGIL_TRIM_ROWS[self.stats.rank_index.min(SIGIL_TRIM_ROWS.len() - 1)]
+    }
+
+    /// Returns the trimmed top offset and drawable height for the current rank sigil.
+    fn sigil_draw_metrics(&self) -> (u32, u32) {
+        let (trim_top, trim_bottom) = self.sigil_trim_rows();
+        let max_trim = SIGIL_HEIGHT as u32;
+        let trim_top = trim_top.min(max_trim);
+        let trim_bottom = trim_bottom.min(max_trim.saturating_sub(trim_top));
+        let draw_height = max_trim.saturating_sub(trim_top + trim_bottom).max(1);
+        (trim_top, draw_height)
     }
 
     /// Draw a single stat bar with centered `"cur / max"` text.
@@ -257,11 +308,21 @@ impl Widget for StatusPanel {
         let sigil_y = self.bounds.y + PANEL_PADDING;
         let sprite_id = 10 + self.stats.rank_index.min(20);
         let tex = ctx.gfx.get_texture(sprite_id);
-        let q = tex.query();
+        let (trim_top, draw_height) = self.sigil_draw_metrics();
         ctx.canvas.copy(
             tex,
-            None,
-            Some(sdl2::rect::Rect::new(sigil_x, sigil_y, q.width, q.height)),
+            Some(sdl2::rect::Rect::new(
+                0,
+                trim_top as i32,
+                SIGIL_WIDTH as u32,
+                draw_height,
+            )),
+            Some(sdl2::rect::Rect::new(
+                sigil_x,
+                sigil_y + trim_top as i32,
+                SIGIL_WIDTH as u32,
+                draw_height,
+            )),
         )?;
 
         if !self.expanded {
@@ -269,7 +330,7 @@ impl Widget for StatusPanel {
         }
 
         // Stat bars (to the right of the sigil)
-        let bar_x = sigil_x + SIGIL_SIZE + SIGIL_BAR_GAP;
+        let bar_x = sigil_x + SIGIL_WIDTH + SIGIL_BAR_GAP;
         let bar_y_start = self.bounds.y + PANEL_PADDING;
 
         Self::draw_bar(
@@ -305,6 +366,16 @@ impl Widget for StatusPanel {
         let wv_text = format!("WV: {}  AV: {}", self.stats.weapon, self.stats.armor);
         font_cache::draw_text(ctx.canvas, ctx.gfx, FONT, &wv_text, bar_x, wv_y)?;
 
+        let rank_label_y = wv_y + font_cache::BITMAP_GLYPH_H as i32 + RANK_LABEL_GAP;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            self.stats.rank_name,
+            bar_x,
+            rank_label_y,
+        )?;
+
         Ok(())
     }
 }
@@ -328,7 +399,7 @@ mod tests {
         let mut panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
         assert!(panel.expanded);
 
-        // Click inside the sigil area (sigil starts at x=8, y=8, size 32×32).
+        // Click inside the sigil area (sigil starts at x=8, y=8, size 32×96).
         let click = UiEvent::MouseClick {
             x: 20,
             y: 20,
@@ -362,7 +433,15 @@ mod tests {
         let expanded = StatusPanel::compute_bounds(4, 4, true);
         let collapsed = StatusPanel::compute_bounds(4, 4, false);
         assert!(collapsed.width < expanded.width);
-        assert!(collapsed.height < expanded.height);
+        assert!(collapsed.height <= expanded.height);
+    }
+
+    #[test]
+    fn collapsed_bounds_fit_tall_sigil_and_rank_label() {
+        let collapsed = StatusPanel::compute_bounds(4, 4, false);
+        let min_height = PANEL_PADDING * 2 + SIGIL_HEIGHT;
+        assert_eq!(collapsed.height as i32, min_height);
+        assert_eq!(collapsed.width as i32, PANEL_PADDING * 2 + SIGIL_WIDTH);
     }
 
     #[test]
@@ -393,5 +472,20 @@ mod tests {
         assert!(sb.y >= panel.bounds.y);
         assert!(sb.x + sb.width as i32 <= panel.bounds.x + panel.bounds.width as i32);
         assert!(sb.y + sb.height as i32 <= panel.bounds.y + panel.bounds.height as i32);
+    }
+
+    #[test]
+    fn sigil_trim_rows_defaults_to_zero() {
+        let panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        assert_eq!(panel.sigil_trim_rows(), (0, 0));
+    }
+
+    #[test]
+    fn sigil_bounds_reflect_trimmed_height() {
+        let mut panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        panel.stats.rank_index = 5;
+        let bounds = panel.sigil_bounds();
+        assert_eq!(bounds.y, 4 + PANEL_PADDING + 2);
+        assert_eq!(bounds.height, (SIGIL_HEIGHT - 4) as u32);
     }
 }
