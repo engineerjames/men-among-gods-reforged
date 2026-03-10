@@ -4,6 +4,7 @@
 //! The sigil is always visible. Clicking it toggles the stat bars and
 //! weapon/armor text on or off. Bars are shown by default.
 
+use mag_core::constants::RANKS;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
@@ -35,14 +36,23 @@ const SIGIL_WIDTH: i32 = 32;
 const SIGIL_HEIGHT: i32 = 96;
 /// Vertical gap before the rank label row.
 const RANK_LABEL_GAP: i32 = 3;
+/// Minimum panel content height required to fit the full expanded bar column
+/// (three stat bars + weapon/armor row + rank label).  Used by `compute_bounds`
+/// so ranks whose trimmed sigil is shorter than the bar section still produce a
+/// panel tall enough to display all content without clipping.
+const EXPANDED_CONTENT_H: i32 = (BAR_HEIGHT + BAR_GAP) * 3
+    + font_cache::BITMAP_GLYPH_H as i32
+    + RANK_LABEL_GAP
+    + font_cache::BITMAP_GLYPH_H as i32;
 /// Per-rank transparent rows to trim from the top and bottom of the sigil.
 ///
 /// Each tuple is `(top_rows, bottom_rows)`. These are applied only when
 /// drawing the sprite so you can tune away transparent padding without
 /// changing the panel's nominal 32×96 sigil footprint.
-const SIGIL_TRIM_ROWS: [(u32, u32); 24] = [
+const SIGIL_TRIM_ROWS: [(u32, u32); RANKS] = [
     (30, 30), // Private
     (20, 34), // Private First Class
+    (40, 26), // Lance Corporal
     (40, 26), // Corporal
     (42, 19), // Sergeant
     (22, 19), // Staff Sergeant
@@ -52,19 +62,18 @@ const SIGIL_TRIM_ROWS: [(u32, u32); 24] = [
     (20, 30), // Second Lieutenant
     (27, 27), // First Lieutenant
     (27, 13), // Captain
-    (0, 14),  // Major
-    (0, 16),
-    (0, 18),
-    (0, 20),
-    (0, 22),
-    (0, 24),
-    (0, 26),
-    (0, 28),
-    (0, 30),
-    (0, 32),
-    (0, 34),
-    (0, 36),
-    (0, 38),
+    (0, 64),  // Major
+    (0, 45),  // Lieutenant Colonel
+    (0, 27),  // Colonel
+    (0, 14),  // Brigadier General
+    (0, 0),   // Major General
+    (0, 24),  // Lieutenant General
+    (0, 14),  // General
+    (0, 14),  // Field Marshal
+    (0, 14),  // Knight
+    (0, 14),  // Baron
+    (0, 14),  // Earl
+    (0, 14),  // Warlord
 ];
 
 /// Bitmap font index used for value text (yellow font).
@@ -132,8 +141,13 @@ impl StatusPanel {
     ///
     /// A new `StatusPanel`, expanded by default.
     pub fn new(x: i32, y: i32, bg_color: Color) -> Self {
+        // Rank index defaults to 0; derive its draw height for the initial bounds.
+        let (trim_top, trim_bottom) = SIGIL_TRIM_ROWS[0];
+        let draw_height = (SIGIL_HEIGHT as u32)
+            .saturating_sub(trim_top + trim_bottom)
+            .max(1);
         Self {
-            bounds: Self::compute_bounds(x, y, true),
+            bounds: Self::compute_bounds(x, y, true, draw_height),
             expanded: true,
             bg_color,
             stats: StatSnapshot::default(),
@@ -163,44 +177,78 @@ impl StatusPanel {
             weapon: ci.weapon,
             armor: ci.armor,
         };
+        self.rebuild_bounds();
     }
 
-    /// Compute the bounding rectangle for the given expansion state.
-    fn compute_bounds(x: i32, y: i32, expanded: bool) -> Bounds {
-        let h = PANEL_PADDING * 2 + SIGIL_HEIGHT;
-        if expanded {
-            let w = PANEL_PADDING * 2 + SIGIL_WIDTH + SIGIL_BAR_GAP + BAR_WIDTH;
-            Bounds::new(x, y, w as u32, h as u32)
+    /// Compute the bounding rectangle for the given state.
+    ///
+    /// In *expanded* mode the panel height is `max(draw_height, EXPANDED_CONTENT_H)`
+    /// so that the bar column never overflows the background even for ranks
+    /// with a short trimmed sigil.  In *collapsed* mode the height equals the
+    /// trimmed sigil height exactly.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Left edge in pixels.
+    /// * `y` - Top edge in pixels.
+    /// * `expanded` - Whether the stat bars are visible.
+    /// * `draw_height` - Trimmed sigil height for the current rank.
+    ///
+    /// # Returns
+    ///
+    /// * A `Bounds` rectangle sized to contain all visible content.
+    fn compute_bounds(x: i32, y: i32, expanded: bool, draw_height: u32) -> Bounds {
+        let content_h = if expanded {
+            (draw_height as i32).max(EXPANDED_CONTENT_H)
         } else {
-            let w = PANEL_PADDING * 2 + SIGIL_WIDTH;
-            Bounds::new(x, y, w as u32, h as u32)
-        }
+            draw_height as i32
+        };
+        let h = PANEL_PADDING * 2 + content_h;
+        let w = if expanded {
+            PANEL_PADDING * 2 + SIGIL_WIDTH + SIGIL_BAR_GAP + BAR_WIDTH
+        } else {
+            PANEL_PADDING * 2 + SIGIL_WIDTH
+        };
+        Bounds::new(x, y, w as u32, h as u32)
+    }
+
+    /// Recomputes `self.bounds` from the current position, expansion state, and
+    /// sigil draw height.  Call this whenever any of those inputs change.
+    fn rebuild_bounds(&mut self) {
+        let (_, draw_height) = self.sigil_draw_metrics();
+        self.bounds =
+            Self::compute_bounds(self.bounds.x, self.bounds.y, self.expanded, draw_height);
     }
 
     /// Returns the bounding rectangle of just the sigil icon (for hit-testing
     /// the toggle click).
     fn sigil_bounds(&self) -> Bounds {
-        let (trim_top, draw_height) = self.sigil_draw_metrics();
+        let (_, draw_height) = self.sigil_draw_metrics();
         Bounds::new(
             self.bounds.x + PANEL_PADDING,
-            self.bounds.y + PANEL_PADDING + trim_top as i32,
+            self.bounds.y + PANEL_PADDING,
             SIGIL_WIDTH as u32,
             draw_height,
         )
     }
 
-    /// Returns the configured top/bottom trim rows for the current rank.
-    fn sigil_trim_rows(&self) -> (u32, u32) {
-        SIGIL_TRIM_ROWS[self.stats.rank_index.min(SIGIL_TRIM_ROWS.len() - 1)]
-    }
-
-    /// Returns the trimmed top offset and drawable height for the current rank sigil.
+    /// Returns `(trim_top, draw_height)` for the current rank sigil.
+    ///
+    /// Looks up the per-rank entry in `SIGIL_TRIM_ROWS`, clamps both values
+    /// so they can never exceed `SIGIL_HEIGHT`, and derives the number of
+    /// pixel rows that should actually be drawn.
+    ///
+    /// # Returns
+    ///
+    /// * `trim_top` — rows to skip from the top of the sprite sheet.
+    /// * `draw_height` — pixel rows to copy, always at least 1.
     fn sigil_draw_metrics(&self) -> (u32, u32) {
-        let (trim_top, trim_bottom) = self.sigil_trim_rows();
-        let max_trim = SIGIL_HEIGHT as u32;
-        let trim_top = trim_top.min(max_trim);
-        let trim_bottom = trim_bottom.min(max_trim.saturating_sub(trim_top));
-        let draw_height = max_trim.saturating_sub(trim_top + trim_bottom).max(1);
+        let idx = self.stats.rank_index.min(SIGIL_TRIM_ROWS.len() - 1);
+        let (trim_top, trim_bottom) = SIGIL_TRIM_ROWS[idx];
+        let max = SIGIL_HEIGHT as u32;
+        let trim_top = trim_top.min(max);
+        let trim_bottom = trim_bottom.min(max.saturating_sub(trim_top));
+        let draw_height = max.saturating_sub(trim_top + trim_bottom).max(1);
         (trim_top, draw_height)
     }
 
@@ -257,7 +305,9 @@ impl Widget for StatusPanel {
     /// * `x` - New left edge.
     /// * `y` - New top edge.
     fn set_position(&mut self, x: i32, y: i32) {
-        self.bounds = Self::compute_bounds(x, y, self.expanded);
+        self.bounds.x = x;
+        self.bounds.y = y;
+        self.rebuild_bounds();
     }
 
     /// Handle input events.
@@ -276,7 +326,7 @@ impl Widget for StatusPanel {
         if let UiEvent::MouseClick { x, y, .. } = event {
             if self.sigil_bounds().contains_point(*x, *y) {
                 self.expanded = !self.expanded;
-                self.bounds = Self::compute_bounds(self.bounds.x, self.bounds.y, self.expanded);
+                self.rebuild_bounds();
                 return EventResponse::Consumed;
             }
         }
@@ -319,7 +369,7 @@ impl Widget for StatusPanel {
             )),
             Some(sdl2::rect::Rect::new(
                 sigil_x,
-                sigil_y + trim_top as i32,
+                sigil_y,
                 SIGIL_WIDTH as u32,
                 draw_height,
             )),
@@ -430,17 +480,20 @@ mod tests {
 
     #[test]
     fn collapsed_bounds_smaller_than_expanded() {
-        let expanded = StatusPanel::compute_bounds(4, 4, true);
-        let collapsed = StatusPanel::compute_bounds(4, 4, false);
+        // Use a draw_height below EXPANDED_CONTENT_H so the expanded panel must grow.
+        let draw_height = 36u32;
+        let expanded = StatusPanel::compute_bounds(4, 4, true, draw_height);
+        let collapsed = StatusPanel::compute_bounds(4, 4, false, draw_height);
         assert!(collapsed.width < expanded.width);
-        assert!(collapsed.height <= expanded.height);
+        assert!(collapsed.height < expanded.height);
     }
 
     #[test]
-    fn collapsed_bounds_fit_tall_sigil_and_rank_label() {
-        let collapsed = StatusPanel::compute_bounds(4, 4, false);
-        let min_height = PANEL_PADDING * 2 + SIGIL_HEIGHT;
-        assert_eq!(collapsed.height as i32, min_height);
+    fn collapsed_bounds_sized_to_draw_height() {
+        let (trim_top, trim_bottom) = SIGIL_TRIM_ROWS[0];
+        let draw_height = SIGIL_HEIGHT as u32 - trim_top - trim_bottom;
+        let collapsed = StatusPanel::compute_bounds(4, 4, false, draw_height);
+        assert_eq!(collapsed.height, PANEL_PADDING as u32 * 2 + draw_height);
         assert_eq!(collapsed.width as i32, PANEL_PADDING * 2 + SIGIL_WIDTH);
     }
 
@@ -475,17 +528,25 @@ mod tests {
     }
 
     #[test]
-    fn sigil_trim_rows_defaults_to_zero() {
+    fn sigil_draw_metrics_matches_trim_table() {
+        // Rank 0: SIGIL_TRIM_ROWS[0] = (30, 30) → draw_height = 96 − 60 = 36.
         let panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
-        assert_eq!(panel.sigil_trim_rows(), (0, 0));
+        let (expected_trim_top, expected_trim_bottom) = SIGIL_TRIM_ROWS[0];
+        let expected_draw_height = SIGIL_HEIGHT as u32 - expected_trim_top - expected_trim_bottom;
+        let (trim_top, draw_height) = panel.sigil_draw_metrics();
+        assert_eq!(trim_top, expected_trim_top);
+        assert_eq!(draw_height, expected_draw_height);
     }
 
     #[test]
     fn sigil_bounds_reflect_trimmed_height() {
         let mut panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
         panel.stats.rank_index = 5;
+        let (trim_top, trim_bottom) = SIGIL_TRIM_ROWS[5];
+        let expected_height = SIGIL_HEIGHT as u32 - trim_top - trim_bottom;
         let bounds = panel.sigil_bounds();
-        assert_eq!(bounds.y, 4 + PANEL_PADDING + 2);
-        assert_eq!(bounds.height, (SIGIL_HEIGHT - 4) as u32);
+        // y is anchored at the top of the content area — trim does not shift y.
+        assert_eq!(bounds.y, 4 + PANEL_PADDING);
+        assert_eq!(bounds.height, expected_height);
     }
 }
