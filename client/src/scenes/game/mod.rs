@@ -50,6 +50,7 @@ use crate::{
         inventory_panel::InventoryPanel,
         settings_panel::SettingsPanel,
         skills_panel::SkillsPanel,
+        status_panel::StatusPanel,
         style::Padding,
         widget::{
             Bounds, EventResponse, HudPanel, KeyModifiers, MouseButton as UiMouseButton, UiEvent,
@@ -211,6 +212,7 @@ pub(super) const INV_SCROLL_MAX: i32 = 30;
 /// scroll positions, pending stat raises, minimap pixel buffer, and escape
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
+    pub(super) status_panel: StatusPanel,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
     pub(super) skills_panel: SkillsPanel,
@@ -266,6 +268,7 @@ impl GameScene {
         let panel_y = panel_bottom - HUD_PANEL_H as i32;
 
         Self {
+            status_panel: StatusPanel::new(4, 4, HUD_PANEL_BG),
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
                 Color::RGBA(10, 10, 30, 180),
@@ -662,6 +665,11 @@ impl Scene for GameScene {
 
         // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
         if let Some(ui_event) = Self::sdl_to_ui_event(event, self.mouse_x, self.mouse_y) {
+            // --- StatusPanel toggle (upper-left sigil) ---
+            if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
             if self.chat_box.handle_event(&ui_event) == EventResponse::Consumed {
                 self.process_chat_box_actions(app_state);
                 return None;
@@ -937,6 +945,7 @@ impl Scene for GameScene {
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
     fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
         self.chat_box.update(dt);
+        self.status_panel.update(dt);
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
@@ -1022,6 +1031,19 @@ impl Scene for GameScene {
             self.chat_box.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
+
+        // 5a. Status panel (upper-left sigil + stat bars)
+        {
+            if let Some(ps) = app_state.player_state.as_ref() {
+                let rank_index = Self::points_to_rank_index(ps.character_info().points_tot as u32);
+                self.status_panel.sync(ps, rank_index);
+            }
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.status_panel.render(&mut ctx)?;
+        }
 
         // 5b. HUD panels + button bar (rendered after chat, before legacy HUD)
         {
