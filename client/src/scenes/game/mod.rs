@@ -183,6 +183,10 @@ const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
 const HUD_PANEL_W: u32 = 300;
 /// Height of each togglable HUD panel.
 const HUD_PANEL_H: u32 = 250;
+/// Wider width for the inventory panel (two grids + scrollbar + gap).
+const INV_PANEL_W: u32 = 350;
+/// Taller height for the inventory panel.
+const INV_PANEL_H: u32 = 280;
 /// Semi-transparent background color shared by all HUD panels.
 const HUD_PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
 
@@ -289,7 +293,12 @@ impl GameScene {
                 HUD_PANEL_BG,
             ),
             inventory_panel: InventoryPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                Bounds::new(
+                    HUD_ARC_CENTER_X - INV_PANEL_W as i32 / 2,
+                    panel_bottom - INV_PANEL_H as i32,
+                    INV_PANEL_W,
+                    INV_PANEL_H,
+                ),
                 HUD_PANEL_BG,
             ),
             settings_panel: SettingsPanel::new(
@@ -1089,6 +1098,16 @@ impl Scene for GameScene {
                     skill: ci.skill,
                     points: ci.points,
                     sorted_skills: sorted,
+                });
+                use crate::ui::inventory_panel::InventoryPanelData;
+                self.inventory_panel.update_data(InventoryPanelData {
+                    items: ci.item,
+                    items_p: ci.item_p,
+                    worn: ci.worn,
+                    worn_p: ci.worn_p,
+                    citem: ci.citem,
+                    citem_p: ci.citem_p,
+                    gold: ci.gold,
                 });
             }
             let mut ctx = RenderContext {
