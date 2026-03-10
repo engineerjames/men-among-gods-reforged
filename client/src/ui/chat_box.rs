@@ -302,6 +302,11 @@ impl Widget for ChatBox {
 
             UiEvent::KeyDown { keycode, .. } => {
                 if !self.focused {
+                    if matches!(*keycode, Keycode::Return | Keycode::KpEnter) {
+                        self.idle_elapsed = 0.0;
+                        self.focused = true;
+                        return EventResponse::Consumed;
+                    }
                     return EventResponse::Ignored;
                 }
                 self.idle_elapsed = 0.0;
@@ -655,6 +660,25 @@ mod tests {
             modifiers: super::super::widget::KeyModifiers::default(),
         };
         cb.handle_event(&event);
+        assert!(cb.take_actions().is_empty());
+    }
+
+    #[test]
+    fn enter_when_unfocused_sets_focus_without_submitting() {
+        let mut cb = test_chat_box();
+        cb.focused = false;
+        cb.input_buf = "pending".to_owned();
+
+        let event = UiEvent::KeyDown {
+            keycode: Keycode::Return,
+            modifiers: super::super::widget::KeyModifiers::default(),
+        };
+
+        let resp = cb.handle_event(&event);
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(cb.focused);
+        assert_eq!(cb.input_text(), "pending");
         assert!(cb.take_actions().is_empty());
     }
 
