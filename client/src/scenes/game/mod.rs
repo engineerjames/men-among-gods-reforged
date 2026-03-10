@@ -48,6 +48,7 @@ use crate::{
         chat_box::ChatBox,
         hud_button_bar::HudButtonBar,
         inventory_panel::InventoryPanel,
+        rank_arc::RankArc,
         settings_panel::SettingsPanel,
         skills_panel::SkillsPanel,
         status_panel::StatusPanel,
@@ -215,6 +216,7 @@ pub struct GameScene {
     pub(super) status_panel: StatusPanel,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
+    pub(super) rank_arc: RankArc,
     pub(super) skills_panel: SkillsPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
@@ -281,6 +283,7 @@ impl GameScene {
                 HUD_BUTTON_RADIUS,
                 HUD_SPRITE_IDS,
             ),
+            rank_arc: RankArc::new(HUD_ARC_CENTER_X, HUD_ARC_CENTER_Y, 30, 2),
             skills_panel: SkillsPanel::new(
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
                 HUD_PANEL_BG,
@@ -402,7 +405,42 @@ impl GameScene {
                         }
                     }
                 }
-                WidgetAction::TogglePanel(_) => {}
+                WidgetAction::TogglePanel(_)
+                | WidgetAction::CommitStats { .. }
+                | WidgetAction::CastSkill { .. }
+                | WidgetAction::BeginSkillAssign { .. } => {}
+            }
+        }
+    }
+
+    /// Drain and process actions produced by the skills panel.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    fn process_skills_panel_actions(&mut self, app_state: &AppState) {
+        for action in self.skills_panel.take_actions() {
+            match action {
+                WidgetAction::CommitStats { raises } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        for (which, value) in raises {
+                            net.send(ClientCommand::new_stat(which, value));
+                        }
+                    }
+                }
+                WidgetAction::CastSkill { skill_nr } => {
+                    if let (Some(net), Some(ps)) =
+                        (app_state.network.as_ref(), app_state.player_state.as_ref())
+                    {
+                        let target = Self::default_skill_target(ps);
+                        let a0 = ps.character_info().attrib[0][5] as u32;
+                        net.send(ClientCommand::new_skill(skill_nr, target, a0));
+                    }
+                }
+                WidgetAction::BeginSkillAssign { skill_id } => {
+                    self.pending_skill_assignment = Some(skill_id);
+                }
+                WidgetAction::SendChat(_) | WidgetAction::TogglePanel(_) => {}
             }
         }
     }
@@ -677,6 +715,7 @@ impl Scene for GameScene {
 
             // --- Dispatch to open HUD panels (eat clicks so they don't reach the world) ---
             if self.skills_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_skills_panel_actions(app_state);
                 return None;
             }
             if self.inventory_panel.handle_event(&ui_event) == EventResponse::Consumed {
@@ -1035,8 +1074,22 @@ impl Scene for GameScene {
         // 5a. Status panel (upper-left sigil + stat bars)
         {
             if let Some(ps) = app_state.player_state.as_ref() {
-                let rank_index = Self::points_to_rank_index(ps.character_info().points_tot as u32);
+                let ci = ps.character_info();
+                let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
                 self.status_panel.sync(ps, rank_index);
+                self.rank_arc
+                    .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
+                use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
+                let sorted = SP::build_sorted_skills(&ci.skill);
+                self.skills_panel.update_data(SkillsPanelData {
+                    attrib: ci.attrib,
+                    hp: ci.hp,
+                    end: ci.end,
+                    mana: ci.mana,
+                    skill: ci.skill,
+                    points: ci.points,
+                    sorted_skills: sorted,
+                });
             }
             let mut ctx = RenderContext {
                 canvas,
@@ -1054,6 +1107,7 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
+            self.rank_arc.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
         }
 

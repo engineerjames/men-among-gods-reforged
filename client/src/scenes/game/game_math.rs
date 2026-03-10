@@ -221,7 +221,7 @@ impl GameScene {
 
     /// Computes the experience-point cost to raise attribute `n` by one point
     /// from base value `v`.
-    pub(super) fn attrib_needed(ci: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+    pub(crate) fn attrib_needed(ci: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
         const HIGH_VAL: i32 = i32::MAX;
         let max_v = ci.attrib[n][2] as i32;
         if v >= max_v {
@@ -234,7 +234,7 @@ impl GameScene {
 
     /// Computes the experience-point cost to raise skill `n` by one point
     /// from base value `v`.
-    pub(super) fn skill_needed(ci: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
+    pub(crate) fn skill_needed(ci: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
         const HIGH_VAL: i32 = i32::MAX;
         let max_v = ci.skill[n][2] as i32;
         if v >= max_v {
@@ -247,7 +247,7 @@ impl GameScene {
     }
 
     /// Computes the experience-point cost to raise HP by one point from base value `v`.
-    pub(super) fn hp_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    pub(crate) fn hp_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
         const HIGH_VAL: i32 = i32::MAX;
         if v >= ci.hp[2] as i32 {
             return HIGH_VAL;
@@ -256,7 +256,7 @@ impl GameScene {
     }
 
     /// Computes the experience-point cost to raise Endurance by one point from base value `v`.
-    pub(super) fn end_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    pub(crate) fn end_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
         const HIGH_VAL: i32 = i32::MAX;
         if v >= ci.end[2] as i32 {
             return HIGH_VAL;
@@ -265,7 +265,7 @@ impl GameScene {
     }
 
     /// Computes the experience-point cost to raise Mana by one point from base value `v`.
-    pub(super) fn mana_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
+    pub(crate) fn mana_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
         const HIGH_VAL: i32 = i32::MAX;
         if v >= ci.mana[2] as i32 {
             return HIGH_VAL;
@@ -275,7 +275,7 @@ impl GameScene {
 
     /// Returns all skill indices sorted by: learned status, sort-key character,
     /// then name — with unused/empty skills pushed to the end.
-    pub(super) fn sorted_skills(ci: &mag_core::types::ClientPlayer) -> Vec<usize> {
+    pub(crate) fn sorted_skills(ci: &mag_core::types::ClientPlayer) -> Vec<usize> {
         let mut out: Vec<usize> = (0..MAX_SKILLS).collect();
         out.sort_by(|&a, &b| {
             let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();

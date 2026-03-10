@@ -211,6 +211,24 @@ pub enum WidgetAction {
     SendChat(String),
     /// Toggle visibility of a HUD panel.
     TogglePanel(HudPanel),
+    /// Commit pending stat/skill raises to the server.
+    ///
+    /// Each tuple is `(stat_index, raise_count)` where `stat_index` is the
+    /// protocol stat number (0-7 = attribs/pools, 8+ = skill_nr + 8).
+    CommitStats {
+        /// The raises to commit.
+        raises: Vec<(i16, i32)>,
+    },
+    /// Cast/fire a skill by its protocol skill number.
+    CastSkill {
+        /// The skill number to cast.
+        skill_nr: u32,
+    },
+    /// Begin a spell-bar assignment for the given skilltab index.
+    BeginSkillAssign {
+        /// The skilltab index of the skill to assign.
+        skill_id: usize,
+    },
 }
 
 // ---------------------------------------------------------------------------

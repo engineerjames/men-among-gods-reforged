@@ -18,6 +18,8 @@ pub mod label;
 #[allow(dead_code)]
 pub mod panel;
 #[allow(dead_code)]
+pub mod rank_arc;
+#[allow(dead_code)]
 pub mod settings_panel;
 #[allow(dead_code)]
 pub mod skills_panel;
