@@ -356,11 +356,17 @@ impl GameScene {
     /// * `event` - The SDL2 event.
     /// * `mouse_x` - Current logical mouse X position.
     /// * `mouse_y` - Current logical mouse Y position.
+    /// * `modifiers` - Current modifier key state.
     ///
     /// # Returns
     ///
     /// `Some(UiEvent)` for events the widget system cares about, `None` otherwise.
-    fn sdl_to_ui_event(event: &Event, mouse_x: i32, mouse_y: i32) -> Option<UiEvent> {
+    fn sdl_to_ui_event(
+        event: &Event,
+        mouse_x: i32,
+        mouse_y: i32,
+        modifiers: KeyModifiers,
+    ) -> Option<UiEvent> {
         match event {
             Event::MouseWheel { y, .. } => Some(UiEvent::MouseWheel {
                 x: mouse_x,
@@ -380,6 +386,7 @@ impl GameScene {
                     x: *x,
                     y: *y,
                     button,
+                    modifiers,
                 })
             }
             Event::TextInput { text, .. } => Some(UiEvent::TextInput { text: text.clone() }),
@@ -417,7 +424,9 @@ impl GameScene {
                 WidgetAction::TogglePanel(_)
                 | WidgetAction::CommitStats { .. }
                 | WidgetAction::CastSkill { .. }
-                | WidgetAction::BeginSkillAssign { .. } => {}
+                | WidgetAction::BeginSkillAssign { .. }
+                | WidgetAction::InvAction { .. }
+                | WidgetAction::InvLookAction { .. } => {}
             }
         }
     }
@@ -449,7 +458,40 @@ impl GameScene {
                 WidgetAction::BeginSkillAssign { skill_id } => {
                     self.pending_skill_assignment = Some(skill_id);
                 }
-                WidgetAction::SendChat(_) | WidgetAction::TogglePanel(_) => {}
+                WidgetAction::SendChat(_)
+                | WidgetAction::TogglePanel(_)
+                | WidgetAction::InvAction { .. }
+                | WidgetAction::InvLookAction { .. } => {}
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the inventory panel and send the
+    /// corresponding network commands.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    fn process_inventory_panel_actions(&mut self, app_state: &AppState) {
+        for action in self.inventory_panel.take_actions() {
+            match action {
+                WidgetAction::InvAction {
+                    a,
+                    b,
+                    selected_char,
+                } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_inv(a, b, selected_char));
+                    }
+                }
+                WidgetAction::InvLookAction { a, b, c } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_inv_look(a, b, c));
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -711,7 +753,16 @@ impl Scene for GameScene {
         }
 
         // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
-        if let Some(ui_event) = Self::sdl_to_ui_event(event, self.mouse_x, self.mouse_y) {
+        if let Some(ui_event) = Self::sdl_to_ui_event(
+            event,
+            self.mouse_x,
+            self.mouse_y,
+            KeyModifiers {
+                ctrl: self.ctrl_held,
+                shift: self.shift_held,
+                alt: self.alt_held,
+            },
+        ) {
             // --- StatusPanel toggle (upper-left sigil) ---
             if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 return None;
@@ -728,6 +779,7 @@ impl Scene for GameScene {
                 return None;
             }
             if self.inventory_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_inventory_panel_actions(app_state);
                 return None;
             }
             if self.settings_panel.handle_event(&ui_event) == EventResponse::Consumed {
@@ -1108,6 +1160,7 @@ impl Scene for GameScene {
                     citem: ci.citem,
                     citem_p: ci.citem_p,
                     gold: ci.gold,
+                    selected_char: ps.selected_char(),
                 });
             }
             let mut ctx = RenderContext {
@@ -1128,6 +1181,11 @@ impl Scene for GameScene {
             self.settings_panel.render(&mut ctx)?;
             self.rank_arc.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
+        }
+
+        // 5c. Carried item (always drawn, even when inventory panel is hidden)
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.draw_carried_item(canvas, gfx_cache, ps)?;
         }
 
         // 6. Lower-right mode/status indicators

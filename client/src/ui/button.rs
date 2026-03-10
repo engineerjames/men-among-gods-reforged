@@ -103,6 +103,7 @@ impl Widget for RectButton {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 if self.bounds.contains_point(*x, *y) {
                     EventResponse::Consumed
@@ -380,6 +381,7 @@ impl Widget for CircleButton {
                 x,
                 y,
                 button: MouseButton::Left,
+                ..
             } => {
                 if self.contains_point(*x, *y) {
                     EventResponse::Consumed
@@ -436,6 +438,7 @@ impl Widget for CircleButton {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::widget::KeyModifiers;
 
     // -- RectButton --
 
@@ -460,6 +463,7 @@ mod tests {
             x: 20,
             y: 20,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Consumed);
     }
@@ -471,6 +475,7 @@ mod tests {
             x: 0,
             y: 0,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
     }

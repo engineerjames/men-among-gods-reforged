@@ -454,6 +454,7 @@ mod tests {
             x: 20,
             y: 20,
             button: super::super::widget::MouseButton::Left,
+            modifiers: super::super::widget::KeyModifiers::default(),
         };
         let resp = panel.handle_event(&click);
         assert_eq!(resp, EventResponse::Consumed);
@@ -472,6 +473,7 @@ mod tests {
             x: 500,
             y: 500,
             button: super::super::widget::MouseButton::Left,
+            modifiers: super::super::widget::KeyModifiers::default(),
         };
         let resp = panel.handle_event(&click);
         assert_eq!(resp, EventResponse::Ignored);

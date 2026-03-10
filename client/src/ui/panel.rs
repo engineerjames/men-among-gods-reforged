@@ -216,6 +216,7 @@ mod tests {
             x: 5,
             y: 5,
             button: super::super::widget::MouseButton::Left,
+            modifiers: super::super::widget::KeyModifiers::default(),
         };
         let resp = panel.handle_event(&event);
         assert_eq!(resp, EventResponse::Consumed);

@@ -493,4 +493,42 @@ impl GameScene {
 
         Ok(())
     }
+
+    /// Draw the currently carried item (citem) sprite under the mouse cursor.
+    ///
+    /// This is drawn unconditionally (regardless of inventory panel visibility)
+    /// so the player always sees the item they are holding.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    /// * `gfx` - Graphics/texture cache.
+    /// * `ps` - Current player state.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    pub(super) fn draw_carried_item(
+        &self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        let citem = ps.character_info().citem;
+        if citem <= 0 {
+            return Ok(());
+        }
+        let tex = gfx.get_texture(citem as usize);
+        let q = tex.query();
+        canvas.copy(
+            tex,
+            None,
+            Some(sdl2::rect::Rect::new(
+                self.mouse_x - 8,
+                self.mouse_y - 8,
+                q.width,
+                q.height,
+            )),
+        )
+    }
 }

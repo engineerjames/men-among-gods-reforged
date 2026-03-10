@@ -254,6 +254,7 @@ mod tests {
             x: 100,
             y: 100,
             button: super::super::widget::MouseButton::Left,
+            modifiers: super::super::widget::KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
     }

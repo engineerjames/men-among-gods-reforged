@@ -152,7 +152,7 @@ impl Widget for HudButtonBar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::widget::MouseButton;
+    use crate::ui::widget::{KeyModifiers, MouseButton};
 
     #[test]
     fn compute_positions_120_degree_spread() {
@@ -192,6 +192,7 @@ mod tests {
             x: cx,
             y: cy,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Consumed);
 
@@ -210,6 +211,7 @@ mod tests {
             x: 0,
             y: 0,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
         assert!(bar.take_actions().is_empty());
@@ -225,6 +227,7 @@ mod tests {
             x: cx,
             y: cy,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(bar.take_actions().len(), 1);
         // Second drain should be empty

@@ -496,7 +496,7 @@ impl Widget for SkillsPanel {
             return EventResponse::Ignored;
         }
         match event {
-            UiEvent::MouseClick { x, y, button } => {
+            UiEvent::MouseClick { x, y, button, .. } => {
                 if !self.bounds.contains_point(*x, *y) {
                     return EventResponse::Ignored;
                 }
@@ -784,6 +784,7 @@ impl Widget for SkillsPanel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::widget::KeyModifiers;
 
     fn make_data() -> SkillsPanelData {
         SkillsPanelData {
@@ -819,6 +820,7 @@ mod tests {
             x: 50,
             y: 50,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
     }
@@ -832,6 +834,7 @@ mod tests {
             x: 50,
             y: 50,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Consumed);
     }
@@ -845,6 +848,7 @@ mod tests {
             x: 0,
             y: 0,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
     }

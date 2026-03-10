@@ -574,6 +574,7 @@ mod tests {
             x: 50,
             y: 400,
             button: super::super::widget::MouseButton::Left,
+            modifiers: super::super::widget::KeyModifiers::default(),
         };
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Consumed);
@@ -588,6 +589,7 @@ mod tests {
             x: 800,
             y: 100,
             button: super::super::widget::MouseButton::Left,
+            modifiers: super::super::widget::KeyModifiers::default(),
         };
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Ignored);
@@ -856,6 +858,7 @@ mod tests {
             x: 50,
             y: 400,
             button: super::super::widget::MouseButton::Left,
+            modifiers: super::super::widget::KeyModifiers::default(),
         });
         cb.update(Duration::ZERO);
         assert_eq!(cb.alpha, 255);

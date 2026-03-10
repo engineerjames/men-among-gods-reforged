@@ -146,6 +146,8 @@ pub enum UiEvent {
         y: i32,
         /// Which button.
         button: MouseButton,
+        /// Modifier key state at the time of the click.
+        modifiers: KeyModifiers,
     },
     /// The scroll wheel moved.
     MouseWheel {
@@ -228,6 +230,28 @@ pub enum WidgetAction {
     BeginSkillAssign {
         /// The skilltab index of the skill to assign.
         skill_id: usize,
+    },
+    /// Inventory interaction (pick up, equip, shift-equip, etc.).
+    ///
+    /// Mapped to `ClientCommand::new_inv(a, b, selected_char)` by the scene.
+    InvAction {
+        /// Action code (0=shift-pick, 1=shift-equip, 5=equip, 6=pick, 7=right-click worn).
+        a: u32,
+        /// Item slot index or wear-slot number.
+        b: u32,
+        /// Target character (0 = self).
+        selected_char: u32,
+    },
+    /// Inspect an inventory/worn item.
+    ///
+    /// Mapped to `ClientCommand::new_inv_look(a, b, c)` by the scene.
+    InvLookAction {
+        /// Item slot index.
+        a: u32,
+        /// Reserved (usually 0).
+        b: u32,
+        /// Target character.
+        c: u32,
     },
 }
 

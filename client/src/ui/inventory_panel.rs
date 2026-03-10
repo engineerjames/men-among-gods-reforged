@@ -14,7 +14,7 @@ use mag_core::constants::{
     WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
 use crate::font_cache;
 
@@ -90,6 +90,8 @@ pub struct InventoryPanelData {
     pub citem_p: i32,
     /// Total gold (gold = val/100, silver = val%100).
     pub gold: i32,
+    /// Currently selected/targeted character (0 = self).
+    pub selected_char: u16,
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +113,7 @@ pub struct InventoryPanel {
     inv_scroll: usize,
     mouse_x: i32,
     mouse_y: i32,
+    actions: Vec<WidgetAction>,
 }
 
 impl InventoryPanel {
@@ -134,6 +137,7 @@ impl InventoryPanel {
             inv_scroll: 0,
             mouse_x: 0,
             mouse_y: 0,
+            actions: Vec::new(),
         }
     }
 
@@ -339,15 +343,77 @@ impl Widget for InventoryPanel {
                 self.inv_scroll &= !1usize;
                 EventResponse::Consumed
             }
-            UiEvent::MouseClick { x, y, .. } => {
-                if self.bounds.contains_point(*x, *y) {
-                    EventResponse::Consumed
-                } else {
-                    EventResponse::Ignored
+            UiEvent::MouseClick {
+                x,
+                y,
+                button,
+                modifiers,
+            } => {
+                if !self.bounds.contains_point(*x, *y) {
+                    return EventResponse::Ignored;
                 }
+
+                let data = match self.data.as_ref() {
+                    Some(d) => d,
+                    None => return EventResponse::Consumed,
+                };
+                let selected_char = data.selected_char as u32;
+
+                // Check inventory grid hit.
+                if let Some(idx) = self.hovered_inv_slot() {
+                    match button {
+                        MouseButton::Right => {
+                            self.actions.push(WidgetAction::InvLookAction {
+                                a: idx as u32,
+                                b: 0,
+                                c: selected_char,
+                            });
+                        }
+                        MouseButton::Left => {
+                            let a = if modifiers.shift { 0u32 } else { 6u32 };
+                            self.actions.push(WidgetAction::InvAction {
+                                a,
+                                b: idx as u32,
+                                selected_char,
+                            });
+                        }
+                        _ => {}
+                    }
+                    return EventResponse::Consumed;
+                }
+
+                // Check equipment grid hit.
+                if let Some(pos) = self.hovered_equip_pos() {
+                    let wn_slot = EQUIP_WNTAB[pos];
+                    match button {
+                        MouseButton::Right => {
+                            self.actions.push(WidgetAction::InvAction {
+                                a: 7,
+                                b: wn_slot as u32,
+                                selected_char,
+                            });
+                        }
+                        MouseButton::Left => {
+                            let a = if modifiers.shift { 1u32 } else { 5u32 };
+                            self.actions.push(WidgetAction::InvAction {
+                                a,
+                                b: wn_slot as u32,
+                                selected_char,
+                            });
+                        }
+                        _ => {}
+                    }
+                    return EventResponse::Consumed;
+                }
+
+                EventResponse::Consumed
             }
             _ => EventResponse::Ignored,
         }
+    }
+
+    fn take_actions(&mut self) -> Vec<WidgetAction> {
+        std::mem::take(&mut self.actions)
     }
 
     fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
@@ -483,22 +549,6 @@ impl Widget for InventoryPanel {
             }
         }
 
-        // --- Carried item following cursor ---
-        if data.citem > 0 {
-            let tex = ctx.gfx.get_texture(data.citem as usize);
-            let q = tex.query();
-            ctx.canvas.copy(
-                tex,
-                None,
-                Some(sdl2::rect::Rect::new(
-                    self.mouse_x - 8,
-                    self.mouse_y - 8,
-                    q.width,
-                    q.height,
-                )),
-            )?;
-        }
-
         Ok(())
     }
 }
@@ -510,7 +560,7 @@ impl Widget for InventoryPanel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::widget::MouseButton;
+    use crate::ui::widget::{KeyModifiers, MouseButton};
 
     /// Helper to create a default data snapshot for testing.
     fn test_data() -> InventoryPanelData {
@@ -522,6 +572,7 @@ mod tests {
             citem: 0,
             citem_p: 0,
             gold: 0,
+            selected_char: 0,
         }
     }
 
@@ -548,6 +599,7 @@ mod tests {
             x: 50,
             y: 50,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
     }
@@ -561,6 +613,7 @@ mod tests {
             x: 50,
             y: 50,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Consumed);
     }
@@ -574,6 +627,7 @@ mod tests {
             x: 0,
             y: 0,
             button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
     }
