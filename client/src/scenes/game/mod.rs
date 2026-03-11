@@ -52,7 +52,7 @@ use crate::{
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
         rank_arc::RankArc,
-        settings_panel::SettingsPanel,
+        settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
         shop_panel::ShopPanel,
         skills_panel::SkillsPanel,
         status_panel::StatusPanel,
@@ -276,7 +276,12 @@ impl GameScene {
                 HUD_PANEL_BG,
             ),
             settings_panel: SettingsPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                Bounds::new(
+                    HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2,
+                    panel_bottom - SETTINGS_PANEL_H as i32,
+                    HUD_PANEL_W,
+                    SETTINGS_PANEL_H,
+                ),
                 HUD_PANEL_BG,
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
@@ -405,16 +410,7 @@ impl GameScene {
                         }
                     }
                 }
-                WidgetAction::TogglePanel(_)
-                | WidgetAction::CommitStats { .. }
-                | WidgetAction::CastSkill { .. }
-                | WidgetAction::BeginSkillAssign { .. }
-                | WidgetAction::BindSkillKey { .. }
-                | WidgetAction::InvAction { .. }
-                | WidgetAction::InvLookAction { .. }
-                | WidgetAction::ChangeMode(_)
-                | WidgetAction::ShopAction { .. }
-                | WidgetAction::CloseShop => {}
+                _ => {}
             }
         }
     }
@@ -476,13 +472,7 @@ impl GameScene {
                     }
                     self.save_active_profile(app_state);
                 }
-                WidgetAction::SendChat(_)
-                | WidgetAction::TogglePanel(_)
-                | WidgetAction::InvAction { .. }
-                | WidgetAction::InvLookAction { .. }
-                | WidgetAction::ChangeMode(_)
-                | WidgetAction::ShopAction { .. }
-                | WidgetAction::CloseShop => {}
+                _ => {}
             }
         }
     }
@@ -540,6 +530,136 @@ impl GameScene {
                 _ => {}
             }
         }
+    }
+
+    /// Build a [`SettingsPanelData`] snapshot from current game state.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    ///
+    /// # Returns
+    ///
+    /// A snapshot suitable for [`SettingsPanel::sync_state`].
+    fn build_settings_panel_data(&self, app_state: &AppState) -> SettingsPanelData {
+        let (shadows, show_names, show_health_pct, hide_walls) =
+            if let Some(ps) = app_state.player_state.as_ref() {
+                let pd = ps.player_data();
+                (
+                    pd.are_shadows_enabled != 0,
+                    pd.show_names != 0,
+                    pd.show_proz != 0,
+                    pd.hide != 0,
+                )
+            } else {
+                (false, false, false, false)
+            };
+
+        let last_rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
+
+        SettingsPanelData {
+            shadows_enabled: shadows,
+            spell_effects_enabled: self.are_spell_effects_enabled,
+            show_names,
+            show_health_pct,
+            hide_walls,
+            master_volume: self.master_volume,
+            display_mode: app_state.display_mode,
+            pixel_perfect_scaling: app_state.pixel_perfect_scaling,
+            vsync_enabled: app_state.vsync_enabled,
+            last_rtt_ms: last_rtt,
+            profiler_active: self.perf_profiler.is_active(),
+            profiler_remaining_secs: if self.perf_profiler.is_active() {
+                Some(self.perf_profiler.remaining_secs())
+            } else {
+                None
+            },
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the settings panel and apply
+    /// the corresponding state mutations.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network + player state).
+    ///
+    /// # Returns
+    ///
+    /// `Some(SceneType)` if the user chose to disconnect or quit.
+    fn process_settings_panel_actions(&mut self, app_state: &mut AppState) -> Option<SceneType> {
+        let mut scene_change: Option<SceneType> = None;
+        let mut profile_changed = false;
+
+        for action in self.settings_panel.take_actions() {
+            match action {
+                WidgetAction::SetShadows(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().are_shadows_enabled = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetSpellEffects(v) => {
+                    self.are_spell_effects_enabled = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetShowNames(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().show_names = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetShowHealthPct(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().show_proz = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetHideWalls(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().hide = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetMasterVolume(v) => {
+                    self.master_volume = v;
+                    app_state.master_volume = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetDisplayMode(m) => {
+                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(m));
+                }
+                WidgetAction::SetPixelPerfectScaling(v) => {
+                    app_state.display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
+                }
+                WidgetAction::SetVSync(v) => {
+                    app_state.display_command = Some(DisplayCommand::SetVSync(v));
+                }
+                WidgetAction::Disconnect => {
+                    scene_change = Some(SceneType::CharacterSelection);
+                }
+                WidgetAction::Quit => {
+                    scene_change = Some(SceneType::Exit);
+                }
+                WidgetAction::OpenLogDir => {
+                    let log_dir = preferences::log_file_path()
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+                    crate::platform::open_directory_in_file_manager(&log_dir);
+                }
+                WidgetAction::StartProfiler => {
+                    self.perf_profiler.start();
+                }
+                _ => {}
+            }
+        }
+
+        if profile_changed {
+            self.save_active_profile(app_state);
+        }
+
+        scene_change
     }
 
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.
@@ -828,6 +948,9 @@ impl Scene for GameScene {
                 return None;
             }
             if self.settings_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                    return Some(sc);
+                }
                 return None;
             }
 
@@ -860,7 +983,13 @@ impl Scene for GameScene {
                         match panel {
                             HudPanel::Skills => self.skills_panel.toggle(),
                             HudPanel::Inventory => self.inventory_panel.toggle(),
-                            HudPanel::Settings => self.settings_panel.toggle(),
+                            HudPanel::Settings => {
+                                self.settings_panel.toggle();
+                                if self.settings_panel.is_visible() {
+                                    let data = self.build_settings_panel_data(app_state);
+                                    self.settings_panel.sync_state(&data);
+                                }
+                            }
                             HudPanel::Minimap => self.minimap_widget.toggle(),
                         }
                     }
@@ -1133,6 +1262,19 @@ impl Scene for GameScene {
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
+        // Keep read-only settings panel values current each frame.
+        if self.settings_panel.is_visible() {
+            let rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
+            self.settings_panel.update_ping(rtt);
+            self.settings_panel.update_profiler_label(
+                self.perf_profiler.is_active(),
+                if self.perf_profiler.is_active() {
+                    Some(self.perf_profiler.remaining_secs())
+                } else {
+                    None
+                },
+            );
+        }
         self.mode_button.update(dt);
         self.shop_panel.update(dt);
         self.perf_profiler.check_expired();

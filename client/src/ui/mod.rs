@@ -12,6 +12,10 @@ pub mod button_arc;
 #[allow(dead_code)]
 pub mod chat_box;
 #[allow(dead_code)]
+pub mod checkbox;
+#[allow(dead_code)]
+pub mod dropdown;
+#[allow(dead_code)]
 pub mod inventory_panel;
 #[allow(dead_code)]
 pub mod label;
@@ -31,6 +35,8 @@ pub mod settings_panel;
 pub mod shop_panel;
 #[allow(dead_code)]
 pub mod skills_panel;
+#[allow(dead_code)]
+pub mod slider;
 #[allow(dead_code)]
 pub mod status_panel;
 #[allow(dead_code)]

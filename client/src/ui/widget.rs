@@ -6,6 +6,7 @@ use sdl2::keyboard::Keycode;
 
 use super::style::Padding;
 use super::RenderContext;
+use crate::preferences::DisplayMode;
 
 // ---------------------------------------------------------------------------
 // Geometry
@@ -277,6 +278,32 @@ pub enum WidgetAction {
     },
     /// Close the shop/depot/grave overlay.
     CloseShop,
+    /// Disconnect from the game server and return to character selection.
+    Disconnect,
+    /// Quit the application entirely.
+    Quit,
+    /// Open the log directory in the platform file manager.
+    OpenLogDir,
+    /// Start the wall-clock performance profiler.
+    StartProfiler,
+    /// Toggle shadow rendering.
+    SetShadows(bool),
+    /// Toggle spell/visual effects.
+    SetSpellEffects(bool),
+    /// Toggle overhead player name display.
+    SetShowNames(bool),
+    /// Toggle overhead health percentage display.
+    SetShowHealthPct(bool),
+    /// Toggle wall hiding.
+    SetHideWalls(bool),
+    /// Change the master volume (0.0 = muted, 1.0 = full).
+    SetMasterVolume(f32),
+    /// Change the display mode (windowed, fullscreen, borderless).
+    SetDisplayMode(DisplayMode),
+    /// Toggle pixel-perfect (integer-only) scaling.
+    SetPixelPerfectScaling(bool),
+    /// Toggle vertical sync.
+    SetVSync(bool),
 }
 
 // ---------------------------------------------------------------------------
