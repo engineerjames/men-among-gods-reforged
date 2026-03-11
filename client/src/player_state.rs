@@ -304,11 +304,6 @@ impl PlayerState {
         out
     }
 
-    /// Returns the log message at `index`, or `None` if out of range.
-    pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
-        self.message_log.get(index)
-    }
-
     /// Returns the log message at `index` in insertion order (0 = oldest).
     ///
     /// The underlying `CircularBuffer` stores newest-first (`get(0)` = newest).
@@ -322,7 +317,7 @@ impl PlayerState {
     /// # Returns
     ///
     /// The message at that position, or `None` if `index >= log_len()`.
-    pub fn log_message_by_insertion_order(&self, index: usize) -> Option<&LogMessage> {
+    pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
         let len = self.message_log.len();
         if index >= len {
             return None;

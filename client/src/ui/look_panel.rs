@@ -6,11 +6,13 @@
 //! HP/Endurance/Mana bars.
 
 use mag_core::constants::{
-    TILEX, TILEY, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND,
+    RANKS, TILEX, TILEY, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND,
     WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
+
+use mag_core::ranks;
 
 use crate::font_cache;
 use crate::player_state::PlayerState;
@@ -43,6 +45,61 @@ const BAR_GAP: i32 = 3;
 /// Font index (yellow bitmap).
 const FONT: usize = 1;
 
+/// Rank sigil sprite width in pixels.
+const SIGIL_W: i32 = 32;
+/// Rank sigil sprite height in pixels (full sheet height before trimming).
+const SIGIL_H: i32 = 96;
+
+/// Per-rank transparent rows to trim from the top and bottom of the sigil.
+///
+/// Each tuple is `(top_rows, bottom_rows)`. Mirrors `SIGIL_TRIM_ROWS` in
+/// `status_panel`; kept here so the look panel has no dependency on it.
+const SIGIL_TRIM_ROWS: [(u32, u32); RANKS] = [
+    (30, 30), // Private
+    (20, 34), // Private First Class
+    (40, 26), // Lance Corporal
+    (40, 26), // Corporal
+    (42, 19), // Sergeant
+    (22, 19), // Staff Sergeant
+    (16, 19), // Master Sergeant
+    (7, 19),  // First Sergeant
+    (7, 19),  // Sergeant Major
+    (20, 30), // Second Lieutenant
+    (27, 27), // First Lieutenant
+    (27, 13), // Captain
+    (0, 64),  // Major
+    (0, 45),  // Lieutenant Colonel
+    (0, 27),  // Colonel
+    (0, 14),  // Brigadier General
+    (0, 0),   // Major General
+    (0, 24),  // Lieutenant General
+    (0, 14),  // General
+    (0, 14),  // Field Marshal
+    (0, 14),  // Knight
+    (0, 14),  // Baron
+    (0, 14),  // Earl
+    (0, 14),  // Warlord
+];
+
+/// Compute sigil draw coordinates for a given rank index.
+///
+/// # Arguments
+///
+/// * `rank_index` - 0-based rank index (clamped to table bounds).
+///
+/// # Returns
+///
+/// `(trim_top, draw_height)` — source-rect offset and pixel height to copy.
+fn sigil_metrics(rank_index: usize) -> (u32, u32) {
+    let idx = rank_index.min(SIGIL_TRIM_ROWS.len() - 1);
+    let (trim_top, trim_bottom) = SIGIL_TRIM_ROWS[idx];
+    let max = SIGIL_H as u32;
+    let trim_top = trim_top.min(max);
+    let trim_bottom = trim_bottom.min(max.saturating_sub(trim_top));
+    let draw_height = max.saturating_sub(trim_top + trim_bottom).max(1);
+    (trim_top, draw_height)
+}
+
 // Bar colors
 const HP_FILL: Color = Color::RGB(180, 30, 30);
 const END_FILL: Color = Color::RGB(200, 180, 40);
@@ -62,7 +119,7 @@ const EQUIP_WNTAB: [usize; 12] = [
 // ---------------------------------------------------------------------------
 
 /// Cached data from the look target, copied once per frame.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 struct LookSnapshot {
     visible: bool,
     name: String,
@@ -75,6 +132,29 @@ struct LookSnapshot {
     end: u32,
     a_mana: u32,
     mana: u32,
+    /// 0-based rank index derived from the look target's experience points.
+    rank_index: usize,
+    /// Human-readable rank name for the look target.
+    rank_name: &'static str,
+}
+
+impl Default for LookSnapshot {
+    fn default() -> Self {
+        Self {
+            visible: false,
+            name: String::new(),
+            sprite_id: 0,
+            worn: [0; 12],
+            a_hp: 0,
+            hp: 0,
+            a_end: 0,
+            end: 0,
+            a_mana: 0,
+            mana: 0,
+            rank_index: 0,
+            rank_name: ranks::RANK_NAMES[0],
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +231,9 @@ impl LookPanel {
             worn[n] = look.worn(*slot);
         }
 
+        let points = look.points();
+        let rank_index = ranks::points2rank(points).min((RANKS - 1) as u32) as usize;
+
         self.snap = LookSnapshot {
             visible: true,
             name: look.name().unwrap_or("").to_string(),
@@ -162,6 +245,8 @@ impl LookPanel {
             end: look.end(),
             a_mana: look.a_mana(),
             mana: look.mana(),
+            rank_index,
+            rank_name: ranks::rank_name(points),
         };
     }
 
@@ -244,6 +329,9 @@ impl Widget for LookPanel {
             return Ok(());
         }
 
+        let (sigil_trim_top, sigil_draw_h) = sigil_metrics(self.snap.rank_index);
+        let sigil_sprite = 10 + self.snap.rank_index.min(20);
+
         // Pre-compute content height so the background fits tightly.
         let sprite_h = if self.snap.sprite_id > 0 {
             let tex = ctx.gfx.get_texture(self.snap.sprite_id as usize);
@@ -252,11 +340,13 @@ impl Widget for LookPanel {
         } else {
             0
         };
+        // Header row: the sigil height dominates (name + rank name fit inside).
+        let header_h = sigil_draw_h as i32;
         let content_h = PAD
-            + font_cache::BITMAP_GLYPH_H as i32 + GAP   // name
-            + sprite_h                                     // sprite + gap
-            + EQUIP_ROWS * EQUIP_CELL + GAP               // equipment grid
-            + (BAR_H + BAR_GAP) * 3 - BAR_GAP             // 3 bars
+            + header_h + GAP                         // sigil / name+rank header
+            + sprite_h                               // sprite + gap (if any)
+            + EQUIP_ROWS * EQUIP_CELL + GAP          // equipment grid
+            + (BAR_H + BAR_GAP) * 3 - BAR_GAP        // 3 bars
             + PAD;
         self.bounds.height = content_h as u32;
 
@@ -270,12 +360,48 @@ impl Widget for LookPanel {
             self.bounds.height,
         ))?;
 
-        let mut y = self.bounds.y + PAD;
         let cx = self.bounds.x + self.bounds.width as i32 / 2;
+        let mut y = self.bounds.y + PAD;
 
-        // Name (centered)
-        font_cache::draw_text_centered(ctx.canvas, ctx.gfx, FONT, &self.snap.name, cx, y)?;
-        y += font_cache::BITMAP_GLYPH_H as i32 + GAP;
+        // Header: rank sigil (left column) + name and rank label (right column)
+        let sigil_x = self.bounds.x + PAD;
+        let sigil_tex = ctx.gfx.get_texture(sigil_sprite);
+        ctx.canvas.copy(
+            sigil_tex,
+            Some(sdl2::rect::Rect::new(
+                0,
+                sigil_trim_top as i32,
+                SIGIL_W as u32,
+                sigil_draw_h,
+            )),
+            Some(sdl2::rect::Rect::new(
+                sigil_x,
+                y,
+                SIGIL_W as u32,
+                sigil_draw_h,
+            )),
+        )?;
+        let text_x = sigil_x + SIGIL_W + GAP;
+        // Vertically center the two text lines within the sigil height.
+        let two_text_h = font_cache::BITMAP_GLYPH_H as i32 * 2 + GAP;
+        let text_block_y = y + (header_h - two_text_h).max(0) / 2;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &self.snap.name.clone(),
+            text_x,
+            text_block_y,
+        )?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            self.snap.rank_name,
+            text_x,
+            text_block_y + font_cache::BITMAP_GLYPH_H as i32 + GAP,
+        )?;
+        y += header_h + GAP;
 
         // Sprite (2× zoom, centered)
         if self.snap.sprite_id > 0 {

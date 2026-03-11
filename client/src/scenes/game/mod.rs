@@ -108,45 +108,6 @@ pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32
 /// Default bitmap font index (yellow, sprite 701).
 pub(super) const UI_FONT: usize = 1;
 
-/// Bar background (capacity).
-pub(super) const BAR_BG_COLOR: Color = Color::RGB(9, 4, 58);
-/// Bar fill (own character).
-pub(super) const BAR_FILL_COLOR: Color = Color::RGB(8, 77, 23);
-pub(super) const BAR_FILL_LOOK_COLOR: Color = Color::RGB(140, 20, 20);
-pub(super) const MODE_INDICATOR_COLOR: Color = Color::RGB(200, 96, 24);
-pub(super) const SCROLL_KNOB_COLOR: Color = Color::RGB(8, 77, 23);
-
-// Stat text positions
-pub(super) const STAT_HP_X: i32 = 5;
-pub(super) const STAT_HP_Y: i32 = 270;
-pub(super) const STAT_END_X: i32 = 5;
-pub(super) const STAT_END_Y: i32 = 284;
-pub(super) const STAT_MANA_X: i32 = 5;
-pub(super) const STAT_MANA_Y: i32 = 298;
-pub(super) const STAT_MONEY_X: i32 = 375;
-pub(super) const STAT_MONEY_Y: i32 = 190;
-pub(super) const STAT_WEAPON_X: i32 = 646;
-pub(super) const STAT_WEAPON_Y: i32 = 243;
-pub(super) const STAT_ARMOR_X: i32 = 646;
-pub(super) const STAT_ARMOR_Y: i32 = 257;
-pub(super) const STAT_EXP_X: i32 = 646;
-pub(super) const STAT_EXP_Y: i32 = 271;
-
-// Name text (centered in 125px wide area)
-pub(super) const NAME_AREA_X: i32 = 374;
-pub(super) const NAME_AREA_W: i32 = 125;
-pub(super) const NAME_Y: i32 = 28;
-pub(super) const PORTRAIT_NAME_Y: i32 = 152;
-pub(super) const PORTRAIT_RANK_Y: i32 = 172;
-
-// Chat log area
-pub(super) const LOG_X: i32 = 500;
-pub(super) const LOG_Y: i32 = 4;
-pub(super) const LOG_LINE_H: i32 = 10;
-pub(super) const LOG_LINES: usize = 22;
-pub(super) const INPUT_X: i32 = 500;
-pub(super) const INPUT_Y: i32 = 9 + LOG_LINE_H * (LOG_LINES as i32);
-
 const CHATBOX_X: i32 = 0;
 const CHATBOX_Y: i32 = TARGET_HEIGHT_INT as i32 - CHATBOX_H as i32;
 const CHATBOX_W: u32 = 300;
@@ -196,30 +157,16 @@ const MODE_BTN_RADIUS: u32 = 18;
 // ---- Look panel (center-right) ---- //
 
 /// Width of the look panel.
-const LOOK_PANEL_W: u32 = 140;
+const LOOK_PANEL_W: u32 = 180;
 /// Height of the look panel.
 const LOOK_PANEL_H: u32 = 260;
 /// X position of the look panel (right side, 4 px margin).
 const LOOK_PANEL_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - LOOK_PANEL_W as i32 - 4;
 /// Y position of the look panel (vertically centered).
-const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 2;
+const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 4;
 
 // Minimap
-pub(super) const MINIMAP_X: i32 = 3;
-pub(super) const MINIMAP_Y: i32 = 471;
-pub(super) const MINIMAP_VIEW_SIZE: u32 = 128;
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
-
-pub(super) const SCROLL_KNOB_W: u32 = 11;
-pub(super) const SCROLL_KNOB_H: u32 = 11;
-pub(super) const SKILL_SCROLL_X: i32 = 207;
-pub(super) const SKILL_SCROLL_Y_BASE: i32 = 149;
-pub(super) const SKILL_SCROLL_RANGE: i32 = 58;
-pub(super) const SKILL_SCROLL_MAX: i32 = 40;
-pub(super) const INV_SCROLL_X: i32 = 290;
-pub(super) const INV_SCROLL_Y_BASE: i32 = 36;
-pub(super) const INV_SCROLL_RANGE: i32 = 94;
-pub(super) const INV_SCROLL_MAX: i32 = 30;
 
 // ---------------------------------------------------------------------------
 // GameScene struct
@@ -550,8 +497,8 @@ impl GameScene {
         if total <= self.last_synced_log_len {
             return;
         }
-        let new_messages = (self.last_synced_log_len..total)
-            .filter_map(|i| ps.log_message_by_insertion_order(i).cloned());
+        let new_messages =
+            (self.last_synced_log_len..total).filter_map(|i| ps.log_message(i).cloned());
         self.chat_box.push_messages(new_messages);
         self.last_synced_log_len = total;
     }

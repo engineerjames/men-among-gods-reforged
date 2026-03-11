@@ -230,7 +230,7 @@ impl InventoryPanel {
         }
         let col = if mx < CELL {
             0usize
-        } else if mx >= CELL + EQUIP_COL_GAP && mx < 2 * CELL + EQUIP_COL_GAP {
+        } else if (CELL + EQUIP_COL_GAP..2 * CELL + EQUIP_COL_GAP).contains(&mx) {
             1usize
         } else {
             return None;
