@@ -51,9 +51,10 @@ const Y_PROFILER_BTN: i32 = 238;
 const Y_LOGDIR_BTN: i32 = 258;
 const Y_SEPARATOR: i32 = 280;
 const Y_SESSION_BTNS: i32 = 292;
+const Y_RETURN_BTN: i32 = 314;
 
 /// Total panel height needed to fit all controls.
-pub const SETTINGS_PANEL_H: u32 = 316;
+pub const SETTINGS_PANEL_H: u32 = 338;
 
 // ---------------------------------------------------------------------------
 // Data snapshot
@@ -120,6 +121,7 @@ pub struct SettingsPanel {
     btn_log_dir: RectButton,
     btn_disconnect: RectButton,
     btn_quit: RectButton,
+    btn_return: RectButton,
 }
 
 impl SettingsPanel {
@@ -229,6 +231,9 @@ impl SettingsPanel {
             )
             .with_label("Quit", 0)
             .with_border(btn_border),
+            btn_return: RectButton::new(Bounds::new(x, bounds.y + Y_RETURN_BTN, w, BTN_H), btn_bg)
+                .with_label("Return to Game", 0)
+                .with_border(btn_border),
         }
     }
 
@@ -427,6 +432,10 @@ impl Widget for SettingsPanel {
             self.pending_actions.push(WidgetAction::Quit);
             return EventResponse::Consumed;
         }
+        if self.btn_return.handle_event(event) == EventResponse::Consumed {
+            self.visible = false;
+            return EventResponse::Consumed;
+        }
 
         // Consume any click inside panel bounds to prevent click-through.
         match event {
@@ -517,6 +526,7 @@ impl Widget for SettingsPanel {
         self.btn_log_dir.render(ctx)?;
         self.btn_disconnect.render(ctx)?;
         self.btn_quit.render(ctx)?;
+        self.btn_return.render(ctx)?;
 
         // Dropdown rendered last so its expanded option list overlays everything.
         self.drp_display_mode.render(ctx)?;
