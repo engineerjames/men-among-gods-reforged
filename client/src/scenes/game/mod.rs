@@ -106,9 +106,6 @@ pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32
     - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 4) - (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 4))
     + MAP_Y_TWEAK;
 
-/// Default bitmap font index (yellow, sprite 701).
-pub(super) const UI_FONT: usize = 1;
-
 const CHATBOX_X: i32 = 0;
 const CHATBOX_Y: i32 = TARGET_HEIGHT_INT as i32 - CHATBOX_H as i32;
 const CHATBOX_W: u32 = 300;
