@@ -6,8 +6,6 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::types::skill_buttons::SkillButtons;
-
 /// Window display mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayMode {
@@ -57,9 +55,9 @@ pub struct CharacterIdentity {
 ///
 /// Loaded from / saved to the JSON profile file. Contains spell-bar
 /// bindings, toggle states, and the volume level.
+/// TODO: Combine the various settings structs
 #[derive(Clone, Debug)]
 pub struct RuntimeProfile {
-    pub skill_buttons: [SkillButtons; 12],
     pub shadows_enabled: bool,
     pub spell_effects_enabled: bool,
     pub master_volume: f32,
@@ -91,12 +89,6 @@ impl Default for GlobalSettings {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct SpellButtonEntry {
-    name: String,
-    skill_nr: u32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
 struct SkillKeybindEntry {
     key: u8,
     skill_nr: u32,
@@ -107,7 +99,6 @@ struct CharacterProfile {
     character_id: u64,
     character_name: String,
     account_username: Option<String>,
-    skill_buttons: Vec<SpellButtonEntry>,
     #[serde(default)]
     skill_keybinds: Vec<SkillKeybindEntry>,
     shadows_enabled: bool,
@@ -288,20 +279,6 @@ fn write_storage(path: &Path, storage: &AppProfileStorage) -> Result<(), String>
 /// Converts internal serialised profile data to the public
 /// [`RuntimeProfile`] struct.
 fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
-    let mut buttons = [SkillButtons::default(); 12];
-
-    for (idx, button) in profile.skill_buttons.iter().take(12).enumerate() {
-        if button.name.is_empty()
-            || button.name == "-"
-            || button.skill_nr == SkillButtons::UNASSIGNED_SKILL_NR
-        {
-            buttons[idx].set_unassigned();
-        } else {
-            buttons[idx].set_name(&button.name);
-            buttons[idx].set_skill_nr(button.skill_nr);
-        }
-    }
-
     let mut keybinds: [Option<u32>; 9] = [None; 9];
     for entry in &profile.skill_keybinds {
         if entry.key >= 1 && entry.key <= 9 {
@@ -310,7 +287,6 @@ fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
     }
 
     RuntimeProfile {
-        skill_buttons: buttons,
         shadows_enabled: profile.shadows_enabled,
         spell_effects_enabled: profile.spell_effects_enabled,
         master_volume: profile.master_volume.clamp(0.0, 1.0),
@@ -327,21 +303,6 @@ fn from_runtime_profile(
     identity: &CharacterIdentity,
     runtime: &RuntimeProfile,
 ) -> CharacterProfile {
-    let skill_buttons = runtime
-        .skill_buttons
-        .iter()
-        .map(|button| {
-            let name = button.name_str();
-            let skill_nr = if button.is_unassigned() {
-                SkillButtons::UNASSIGNED_SKILL_NR
-            } else {
-                button.skill_nr()
-            };
-
-            SpellButtonEntry { name, skill_nr }
-        })
-        .collect::<Vec<_>>();
-
     let skill_keybinds: Vec<SkillKeybindEntry> = runtime
         .skill_keybinds
         .iter()
@@ -358,7 +319,6 @@ fn from_runtime_profile(
         character_id: identity.id,
         character_name: identity.name.clone(),
         account_username: identity.account_username.clone(),
-        skill_buttons,
         skill_keybinds,
         shadows_enabled: runtime.shadows_enabled,
         spell_effects_enabled: runtime.spell_effects_enabled,
