@@ -302,7 +302,10 @@ impl Widget for ChatBox {
 
             UiEvent::KeyDown { keycode, .. } => {
                 if !self.focused {
-                    if matches!(*keycode, Keycode::Return | Keycode::KpEnter) {
+                    if matches!(
+                        *keycode,
+                        Keycode::Return | Keycode::KpEnter | Keycode::Slash
+                    ) {
                         self.idle_elapsed = 0.0;
                         self.focused = true;
                         return EventResponse::Consumed;
