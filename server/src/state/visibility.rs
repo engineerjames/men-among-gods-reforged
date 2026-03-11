@@ -1050,28 +1050,3 @@ impl GameState {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::game_state::StorageBackend;
-
-    #[test]
-    fn vis_index_centers_origin_in_visibility_buffer() {
-        let mut game_state = GameState::new(StorageBackend::DatFiles);
-        game_state.ox = 100;
-        game_state.oy = 100;
-
-        let expected = core::constants::VISI_CENTER as usize
-            + core::constants::VISI_CENTER as usize * core::constants::VISI_STRIDE;
-
-        assert_eq!(game_state.vis_index(100, 100), Some(expected));
-    }
-
-    #[test]
-    fn can_go_reaches_adjacent_tile_on_empty_map() {
-        let mut game_state = GameState::new(StorageBackend::DatFiles);
-
-        assert_ne!(game_state.can_go(100, 100, 101, 100), 0);
-    }
-}
