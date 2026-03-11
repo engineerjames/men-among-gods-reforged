@@ -2023,7 +2023,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         current_y,
         current_x + 1,
         current_y + 1,
-        16,
+        (core::constants::TILEX / 2) as i32, // TODO: Re-evaluate if this is the right size...
     );
 
     let player_vx = gs.players[nr].vx;
@@ -2186,20 +2186,24 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].flags2 = 0;
                 }
 
-                // TODO: Can this go negative?
-                let tmp_vis = ((x - current_x + 20) + (y - current_y + 20) * 40) as usize;
+                let rel_x = x - current_x + core::constants::VISI_CENTER;
+                let rel_y = y - current_y + core::constants::VISI_CENTER;
+                let edge = core::constants::VISI_STRIDE as i32 - 1;
 
-                let visible = {
+                let visible = if rel_x <= 0 || rel_x >= edge || rel_y <= 0 || rel_y >= edge {
+                    false
+                } else {
+                    let tmp_vis = rel_x as usize + rel_y as usize * core::constants::VISI_STRIDE;
                     let see = &gs.see_map[cn];
                     see.vis[tmp_vis] != 0
-                        || see.vis[tmp_vis + 40] != 0
-                        || see.vis[tmp_vis - 40] != 0
+                        || see.vis[tmp_vis + core::constants::VISI_STRIDE] != 0
+                        || see.vis[tmp_vis - core::constants::VISI_STRIDE] != 0
                         || see.vis[tmp_vis + 1] != 0
-                        || see.vis[tmp_vis + 1 + 40] != 0
-                        || see.vis[tmp_vis + 1 - 40] != 0
+                        || see.vis[tmp_vis + 1 + core::constants::VISI_STRIDE] != 0
+                        || see.vis[tmp_vis + 1 - core::constants::VISI_STRIDE] != 0
                         || see.vis[tmp_vis - 1] != 0
-                        || see.vis[tmp_vis - 1 + 40] != 0
-                        || see.vis[tmp_vis - 1 - 40] != 0
+                        || see.vis[tmp_vis - 1 + core::constants::VISI_STRIDE] != 0
+                        || see.vis[tmp_vis - 1 - core::constants::VISI_STRIDE] != 0
                 };
 
                 if !visible {

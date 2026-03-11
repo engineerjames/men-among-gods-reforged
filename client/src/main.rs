@@ -16,6 +16,7 @@ use crate::state::{ApiTokenState, AppState, DisplayCommand};
 
 mod account_api;
 mod cert_trust;
+mod constants;
 mod dpi_scaling;
 mod filepaths;
 mod font_cache;
@@ -31,6 +32,7 @@ mod scenes;
 mod sfx_cache;
 mod state;
 mod types;
+mod ui;
 
 /// Global flag ensuring the egui glyph warm-up runs exactly once.
 static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
@@ -110,27 +112,23 @@ fn main() -> Result<(), String> {
     log::info!("Creating window and event pump...");
     let video = sdl_context.video()?;
     let mut window = video
-        .window("Men Among Gods - Reforged v1.3.0", 800, 600)
+        .window(
+            "Men Among Gods - Reforged v1.3.0",
+            constants::TARGET_WIDTH_INT,
+            constants::TARGET_HEIGHT_INT,
+        )
         .position_centered()
         .allow_highdpi()
         .resizable()
         .build()
         .map_err(|e| e.to_string())?;
 
-    let _ = window.set_minimum_size(800, 600);
+    let _ = window.set_minimum_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
 
     let mut event_pump = sdl_context.event_pump()?;
 
     log::info!("Initializing canvas...");
     let mut egui = egui_sdl2::EguiCanvas::new(window);
-
-    // Set a fixed 800x600 logical render size so that all SDL canvas.copy() /
-    // fill_rect() calls in every scene use logical pixel coordinates regardless
-    // of the physical drawable size (e.g. Retina 2x displays).
-    // egui's painter pre-multiplies vertices by pixels_per_point itself, so we
-    // temporarily disable the logical size before egui.paint() each frame.
-    const LOGICAL_W: u32 = 800;
-    const LOGICAL_H: u32 = 600;
 
     log::info!("Initializing graphics and sound caches...");
     let gfx_cache = GraphicsCache::new(
@@ -216,6 +214,8 @@ fn main() -> Result<(), String> {
             let event = dpi_scaling::adjust_mouse_event_for_hidpi(
                 event,
                 egui.painter.canvas.window(),
+                constants::TARGET_WIDTH,
+                constants::TARGET_HEIGHT,
                 app_state.pixel_perfect_scaling,
             );
 
@@ -255,9 +255,10 @@ fn main() -> Result<(), String> {
             }
         }
         // ------------------------------------------------------------------
-
-        // Logical size on  → scene SDL drawing uses 800×600 coords.
-        let _ = egui.painter.canvas.set_logical_size(LOGICAL_W, LOGICAL_H);
+        let _ = egui
+            .painter
+            .canvas
+            .set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
         // Integer scale → pixel-perfect (nearest integer multiplier) when on.
         let _ = egui
             .painter

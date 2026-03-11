@@ -304,9 +304,25 @@ impl PlayerState {
         out
     }
 
-    /// Returns the log message at `index`, or `None` if out of range.
+    /// Returns the log message at `index` in insertion order (0 = oldest).
+    ///
+    /// The underlying `CircularBuffer` stores newest-first (`get(0)` = newest).
+    /// This helper reverses the index so callers can iterate oldest-to-newest,
+    /// which is what `ChatBox::push_messages` expects.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Zero-based offset where 0 is the oldest message.
+    ///
+    /// # Returns
+    ///
+    /// The message at that position, or `None` if `index >= log_len()`.
     pub fn log_message(&self, index: usize) -> Option<&LogMessage> {
-        self.message_log.get(index)
+        let len = self.message_log.len();
+        if index >= len {
+            return None;
+        }
+        self.message_log.get(len - 1 - index)
     }
 
     /// Appends a message to the chat log, word-wrapping it first.

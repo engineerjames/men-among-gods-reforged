@@ -203,3 +203,9 @@ impl NetworkRuntime {
         self.last_ctick_sent = t;
     }
 }
+
+impl Drop for NetworkRuntime {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}

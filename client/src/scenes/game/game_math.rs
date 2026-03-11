@@ -1,11 +1,8 @@
-use std::cmp::Ordering;
-
-use mag_core::constants::{INVIS, TILEX, TILEY, XPOS, YPOS};
-use mag_core::types::skilltab::{get_skill_name, get_skill_sortkey, MAX_SKILLS};
+use mag_core::constants::{INVIS, TILEX, TILEY};
 
 use crate::player_state::PlayerState;
 
-use super::{GameScene, MAP_X_SHIFT};
+use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, MAP_ORIGIN_X, MAP_ORIGIN_Y};
 
 impl GameScene {
     /// Returns `true` if the tile at `(x, y)` should be hidden in the "hide"
@@ -34,10 +31,10 @@ impl GameScene {
         cam_xoff: i32,
         cam_yoff: i32,
     ) -> (i32, i32) {
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-        let cx = xpos / 2 + ypos / 2 + 32 + XPOS + MAP_X_SHIFT + cam_xoff;
-        let cy = xpos / 4 - ypos / 4 + YPOS - 16 + cam_yoff;
+        let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
+        let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
+        let cx = xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X + cam_xoff;
+        let cy = xpos / 4 - ypos / 4 + MAP_ORIGIN_Y + cam_yoff;
         (cx, cy)
     }
 
@@ -69,12 +66,12 @@ impl GameScene {
             for mx in 0..TILEX {
                 let (cx, cy_top) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
                 let dx = (screen_x - cx).abs();
-                let dy = (screen_y - (cy_top + 8)).abs();
+                let dy = (screen_y - (cy_top + FLOOR_TILE_HEIGHT / 2)).abs();
 
                 // Inside 32x16 isometric floor diamond:
                 // |dx|/16 + |dy|/8 <= 1  =>  dx*8 + dy*16 <= 128
-                let metric = dx * 8 + dy * 16;
-                if metric <= 128 {
+                let metric = dx * (FLOOR_TILE_HEIGHT / 2) + dy * (FLOOR_TILE_WIDTH / 2);
+                if metric <= (FLOOR_TILE_WIDTH / 2) * (FLOOR_TILE_HEIGHT / 2) {
                     match best {
                         Some((_, _, cur_metric)) if metric >= cur_metric => {}
                         _ => best = Some((mx, my, metric)),
@@ -88,18 +85,13 @@ impl GameScene {
 
     /// Returns `true` if the screen coordinate falls within the map interaction
     /// area (the isometric viewport, excluding UI panels).
-    pub(super) fn cursor_in_map_interaction_area(screen_x: i32, screen_y: i32) -> bool {
-        // Matches original inter.c::mouse_mapbox coordinate transform and bounds check.
-        let x = screen_x + 176 - 16;
-        let y = screen_y + 8;
-
-        let mx = 2 * y + x - (YPOS * 2) - XPOS + (((TILEX as i32) - 34) / 2 * 32);
-        let my = x - 2 * y + (YPOS * 2) - XPOS + (((TILEX as i32) - 34) / 2 * 32);
-
-        !(mx < 3 * 32 + 12
-            || mx > ((TILEX as i32) - 7) * 32 + 20
-            || my < 7 * 32 + 12
-            || my > ((TILEY as i32) - 3) * 32 + 20)
+    pub(super) fn cursor_in_map_interaction_area(
+        screen_x: i32,
+        screen_y: i32,
+        cam_xoff: i32,
+        cam_yoff: i32,
+    ) -> bool {
+        Self::screen_to_map_tile(screen_x, screen_y, cam_xoff, cam_yoff).is_some()
     }
 
     /// Maps a total experience point value to a rank index (0–23).
@@ -223,120 +215,30 @@ impl GameScene {
         }
         best.map(|(x, y, _)| (x, y))
     }
-
-    /// Computes the experience-point cost to raise attribute `n` by one point
-    /// from base value `v`.
-    pub(super) fn attrib_needed(ci: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
-        const HIGH_VAL: i32 = i32::MAX;
-        let max_v = ci.attrib[n][2] as i32;
-        if v >= max_v {
-            return HIGH_VAL;
-        }
-        let diff = ci.attrib[n][3] as i32;
-        let v64 = v as i64;
-        ((v64 * v64 * v64) * (diff as i64) / 20).clamp(0, i32::MAX as i64) as i32
-    }
-
-    /// Computes the experience-point cost to raise skill `n` by one point
-    /// from base value `v`.
-    pub(super) fn skill_needed(ci: &mag_core::types::ClientPlayer, n: usize, v: i32) -> i32 {
-        const HIGH_VAL: i32 = i32::MAX;
-        let max_v = ci.skill[n][2] as i32;
-        if v >= max_v {
-            return HIGH_VAL;
-        }
-        let diff = ci.skill[n][3] as i32;
-        let v64 = v as i64;
-        let cubic = ((v64 * v64 * v64) * (diff as i64) / 40).clamp(0, i32::MAX as i64) as i32;
-        v.max(cubic)
-    }
-
-    /// Computes the experience-point cost to raise HP by one point from base value `v`.
-    pub(super) fn hp_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
-        const HIGH_VAL: i32 = i32::MAX;
-        if v >= ci.hp[2] as i32 {
-            return HIGH_VAL;
-        }
-        (v as i64 * ci.hp[3] as i64).clamp(0, i32::MAX as i64) as i32
-    }
-
-    /// Computes the experience-point cost to raise Endurance by one point from base value `v`.
-    pub(super) fn end_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
-        const HIGH_VAL: i32 = i32::MAX;
-        if v >= ci.end[2] as i32 {
-            return HIGH_VAL;
-        }
-        (v as i64 * ci.end[3] as i64 / 2).clamp(0, i32::MAX as i64) as i32
-    }
-
-    /// Computes the experience-point cost to raise Mana by one point from base value `v`.
-    pub(super) fn mana_needed(ci: &mag_core::types::ClientPlayer, v: i32) -> i32 {
-        const HIGH_VAL: i32 = i32::MAX;
-        if v >= ci.mana[2] as i32 {
-            return HIGH_VAL;
-        }
-        (v as i64 * ci.mana[3] as i64).clamp(0, i32::MAX as i64) as i32
-    }
-
-    /// Returns all skill indices sorted by: learned status, sort-key character,
-    /// then name — with unused/empty skills pushed to the end.
-    pub(super) fn sorted_skills(ci: &mag_core::types::ClientPlayer) -> Vec<usize> {
-        let mut out: Vec<usize> = (0..MAX_SKILLS).collect();
-        out.sort_by(|&a, &b| {
-            let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
-            let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
-            if a_unused != b_unused {
-                return if a_unused {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                };
-            }
-
-            let a_learned = ci.skill[a][0] != 0;
-            let b_learned = ci.skill[b][0] != 0;
-            if a_learned != b_learned {
-                return if a_learned {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                };
-            }
-
-            let a_key = get_skill_sortkey(a);
-            let b_key = get_skill_sortkey(b);
-            if a_key != b_key {
-                return a_key.cmp(&b_key);
-            }
-
-            get_skill_name(a).cmp(get_skill_name(b))
-        });
-        out
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mag_core::types::ClientPlayer;
 
     // -- autohide --
 
     #[test]
     fn autohide_hidden_tile() {
-        // x < TILEX/2 (17) AND y > TILEX/2 (17)
-        assert!(GameScene::autohide(10, 18));
-        assert!(GameScene::autohide(0, 33));
-        assert!(GameScene::autohide(16, 18));
+        let center_x = TILEX / 2;
+        let center_y = TILEY / 2;
+        assert!(GameScene::autohide(center_x - 1, center_y + 1));
+        assert!(GameScene::autohide(0, TILEY - 1));
+        assert!(GameScene::autohide(center_x - 5, center_y + 8));
     }
 
     #[test]
     fn autohide_visible_tile() {
-        // x >= TILEX/2 => visible
-        assert!(!GameScene::autohide(17, 18));
-        assert!(!GameScene::autohide(33, 33));
-        // y <= TILEX/2 => visible
-        assert!(!GameScene::autohide(10, 17));
+        let center_x = TILEX / 2;
+        let center_y = TILEY / 2;
+        assert!(!GameScene::autohide(center_x, center_y + 1));
+        assert!(!GameScene::autohide(TILEX - 1, TILEY - 1));
+        assert!(!GameScene::autohide(center_x - 5, center_y));
         assert!(!GameScene::autohide(10, 0));
     }
 
@@ -373,30 +275,57 @@ mod tests {
     #[test]
     fn diamond_origin_at_zero() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
-        // cx = 0/2 + 0/2 + 32 + XPOS + MAP_X_SHIFT + 0
-        assert_eq!(cx, 32 + XPOS + MAP_X_SHIFT);
-        // cy = 0/4 - 0/4 + YPOS - 16 + 0
-        assert_eq!(cy, YPOS - 16);
+        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
+        assert_eq!(cy, MAP_ORIGIN_Y);
     }
 
     #[test]
     fn diamond_origin_with_camera_offset() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 10, -5);
-        assert_eq!(cx, 32 + XPOS + MAP_X_SHIFT + 10);
-        assert_eq!(cy, YPOS - 16 - 5);
+        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X + 10);
+        assert_eq!(cy, MAP_ORIGIN_Y - 5);
+    }
+
+    #[test]
+    fn diamond_origin_matches_linear_tile_projection() {
+        let tile_x = TILEX / 2;
+        let tile_y = TILEY / 2;
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0, 0);
+        let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
+        let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
+        assert_eq!(cx, xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
+        assert_eq!(cy, xpos / 4 - ypos / 4 + MAP_ORIGIN_Y);
+    }
+
+    #[test]
+    fn center_tile_is_at_screen_center() {
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
+        assert_eq!(
+            cx,
+            crate::constants::TARGET_WIDTH_INT as i32 / 2,
+            "center tile X should equal half the logical viewport width"
+        );
+        // cy is the diamond top; the visual center is cy + FLOOR_TILE_HEIGHT / 2.
+        assert_eq!(
+            cy + FLOOR_TILE_HEIGHT / 2,
+            crate::constants::TARGET_HEIGHT_INT as i32 / 2,
+            "center tile visual midpoint Y should equal half the logical viewport height"
+        );
     }
 
     // -- cursor_in_map_interaction_area --
 
     #[test]
     fn cursor_at_origin_outside() {
-        assert!(!GameScene::cursor_in_map_interaction_area(0, 0));
+        assert!(!GameScene::cursor_in_map_interaction_area(
+            -10_000, -10_000, 0, 0
+        ));
     }
 
     #[test]
     fn cursor_center_inside() {
-        // Center of 800×600 should be inside the map area
-        assert!(GameScene::cursor_in_map_interaction_area(400, 300));
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
+        assert!(GameScene::cursor_in_map_interaction_area(cx, cy + 8, 0, 0));
     }
 
     // -- points_to_rank_index --
@@ -415,121 +344,20 @@ mod tests {
         assert_eq!(GameScene::points_to_rank_index(u32::MAX), 23);
     }
 
-    // -- attrib_needed --
-
-    #[test]
-    fn attrib_needed_below_max() {
-        let mut ci = ClientPlayer::default();
-        ci.attrib[0][2] = 100; // max
-        ci.attrib[0][3] = 20; // diff
-                              // cost = v^3 * diff / 20 = 10^3 * 20 / 20 = 1000
-        assert_eq!(GameScene::attrib_needed(&ci, 0, 10), 1000);
-    }
-
-    #[test]
-    fn attrib_needed_at_max() {
-        let mut ci = ClientPlayer::default();
-        ci.attrib[0][2] = 100;
-        ci.attrib[0][3] = 20;
-        assert_eq!(GameScene::attrib_needed(&ci, 0, 100), i32::MAX);
-    }
-
-    #[test]
-    fn attrib_needed_at_zero() {
-        let mut ci = ClientPlayer::default();
-        ci.attrib[0][2] = 100;
-        ci.attrib[0][3] = 20;
-        assert_eq!(GameScene::attrib_needed(&ci, 0, 0), 0);
-    }
-
-    // -- skill_needed --
-
-    #[test]
-    fn skill_needed_below_max() {
-        let mut ci = ClientPlayer::default();
-        ci.skill[0][2] = 100; // max
-        ci.skill[0][3] = 40; // diff
-                             // cubic = 10^3 * 40 / 40 = 1000; max(10, 1000) = 1000
-        assert_eq!(GameScene::skill_needed(&ci, 0, 10), 1000);
-    }
-
-    #[test]
-    fn skill_needed_floor_is_v() {
-        let mut ci = ClientPlayer::default();
-        ci.skill[0][2] = 100;
-        ci.skill[0][3] = 1; // low diff
-                            // cubic = 2^3 * 1 / 40 = 0; max(2, 0) = 2
-        assert_eq!(GameScene::skill_needed(&ci, 0, 2), 2);
-    }
-
-    #[test]
-    fn skill_needed_at_max() {
-        let mut ci = ClientPlayer::default();
-        ci.skill[0][2] = 50;
-        ci.skill[0][3] = 10;
-        assert_eq!(GameScene::skill_needed(&ci, 0, 50), i32::MAX);
-    }
-
-    // -- hp_needed / end_needed / mana_needed --
-
-    #[test]
-    fn hp_needed_below_max() {
-        let mut ci = ClientPlayer::default();
-        ci.hp[2] = 200; // max
-        ci.hp[3] = 3; // diff
-                      // cost = v * diff = 50 * 3 = 150
-        assert_eq!(GameScene::hp_needed(&ci, 50), 150);
-    }
-
-    #[test]
-    fn hp_needed_at_max() {
-        let mut ci = ClientPlayer::default();
-        ci.hp[2] = 200;
-        ci.hp[3] = 3;
-        assert_eq!(GameScene::hp_needed(&ci, 200), i32::MAX);
-    }
-
-    #[test]
-    fn end_needed_below_max() {
-        let mut ci = ClientPlayer::default();
-        ci.end[2] = 200;
-        ci.end[3] = 6;
-        // cost = v * diff / 2 = 50 * 6 / 2 = 150
-        assert_eq!(GameScene::end_needed(&ci, 50), 150);
-    }
-
-    #[test]
-    fn mana_needed_below_max() {
-        let mut ci = ClientPlayer::default();
-        ci.mana[2] = 200;
-        ci.mana[3] = 4;
-        // cost = v * diff = 50 * 4 = 200
-        assert_eq!(GameScene::mana_needed(&ci, 50), 200);
-    }
-
     // -- screen_to_map_tile --
 
     #[test]
     fn screen_to_map_tile_known_origin() {
-        // Feed in the screen position of tile (17, 17) center with cam=(0,0)
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(17, 17, 0, 0);
-        // The center of the diamond is at (cx, cy+8)
-        let result = GameScene::screen_to_map_tile(cx, cy + 8, 0, 0);
-        assert_eq!(result, Some((17, 17)));
+        let center_x = TILEX / 2;
+        let center_y = TILEY / 2;
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(center_x, center_y, 0, 0);
+        let result = GameScene::screen_to_map_tile(cx, cy + FLOOR_TILE_HEIGHT / 2, 0, 0);
+        assert_eq!(result, Some((center_x, center_y)));
     }
 
     #[test]
     fn screen_to_map_tile_far_offscreen() {
         // Way off screen: should return None
         assert_eq!(GameScene::screen_to_map_tile(-10000, -10000, 0, 0), None);
-    }
-
-    // -- sorted_skills --
-
-    #[test]
-    fn sorted_skills_length() {
-        let ci = ClientPlayer::default();
-        let sorted = GameScene::sorted_skills(&ci);
-        assert_eq!(sorted.len(), MAX_SKILLS);
     }
 }

@@ -72,9 +72,44 @@ pub fn points2rank(value: u32) -> u32 {
     }
 }
 
+/// Lower-bound experience thresholds for each of the 24 ranks.
+///
+/// `RANK_THRESHOLDS[i]` is the minimum total points to enter rank `i`.
+pub const RANK_THRESHOLDS: [u32; 24] = [
+    0, 50, 850, 4_900, 17_700, 48_950, 113_750, 233_800, 438_600, 766_650, 1_266_650, 1_998_700,
+    3_035_500, 4_463_550, 6_384_350, 8_915_600, 12_192_400, 16_368_450, 21_617_250, 28_133_300,
+    36_133_300, 49_014_500, 63_000_600, 80_977_100,
+];
+
+/// Computes the fractional progress toward the next rank.
+///
+/// Returns a value in `[0.0, 1.0]`. At the maximum rank (Warlord, index 23)
+/// the function returns `1.0`.
+///
+/// # Arguments
+///
+/// * `points` - Total experience points.
+///
+/// # Returns
+///
+/// Fractional progress within the current rank.
+pub fn rank_progress(points: u32) -> f64 {
+    let idx = points2rank(points) as usize;
+    if idx >= 23 {
+        return 1.0;
+    }
+    let lo = RANK_THRESHOLDS[idx] as f64;
+    let hi = RANK_THRESHOLDS[idx + 1] as f64;
+    let span = hi - lo;
+    if span <= 0.0 {
+        return 1.0;
+    }
+    ((points as f64 - lo) / span).clamp(0.0, 1.0)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{points2rank, rank_name, RANK_NAMES};
+    use super::{points2rank, rank_name, rank_progress, RANK_NAMES, RANK_THRESHOLDS};
 
     #[test]
     fn points2rank_respects_threshold_boundaries() {
@@ -106,6 +141,33 @@ mod tests {
         for points in [0_u32, 1, 49, 50, 849, 850, 4_899, 4_900, u32::MAX] {
             let name = rank_name(points);
             assert!(RANK_NAMES.contains(&name));
+        }
+    }
+
+    #[test]
+    fn rank_progress_zero_at_rank_start() {
+        assert!((rank_progress(0) - 0.0).abs() < 1e-9);
+        assert!((rank_progress(50) - 0.0).abs() < 1e-9);
+        assert!((rank_progress(850) - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rank_progress_approaches_one_near_boundary() {
+        // 49 out of 50 threshold for rank 0:
+        let p = rank_progress(49);
+        assert!(p > 0.9 && p < 1.0);
+    }
+
+    #[test]
+    fn rank_progress_max_rank_returns_one() {
+        assert!((rank_progress(80_977_100) - 1.0).abs() < 1e-9);
+        assert!((rank_progress(u32::MAX) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn rank_thresholds_are_sorted() {
+        for w in RANK_THRESHOLDS.windows(2) {
+            assert!(w[0] < w[1], "thresholds not sorted: {} >= {}", w[0], w[1]);
         }
     }
 }

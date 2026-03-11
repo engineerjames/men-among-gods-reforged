@@ -4,12 +4,12 @@ use mag_core::constants::{
     CMAGIC, DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, EMAGIC, GMAGIC, INJURED, INJURED1,
     INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
     MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
-    MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB, XPOS, YPOS,
+    MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
 };
 
 use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
-use super::{GameScene, MAP_X_SHIFT};
+use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH};
 
 #[derive(Copy, Clone)]
 enum HoverHighlight {
@@ -58,12 +58,10 @@ impl GameScene {
         let q = texture.query();
         let xs = q.width as i32 / 32;
         let ys = q.height as i32 / 32;
-
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-
-        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
-        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+        let (ground_x, ground_y) =
+            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         // Apply darkness modulation from tile light value.
         // C formula: channel = channel * LEFFECT / (darkness² + LEFFECT)
@@ -110,12 +108,10 @@ impl GameScene {
         let q = texture.query();
         let xs = q.width as i32 / 32;
         let ys = q.height as i32 / 32;
-
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-
-        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
-        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+        let (ground_x, ground_y) =
+            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
@@ -151,12 +147,10 @@ impl GameScene {
         let q = texture.query();
         let xs = q.width as i32 / 32;
         let ys = q.height as i32 / 32;
-
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-
-        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
-        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+        let (ground_x, ground_y) =
+            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
@@ -199,12 +193,10 @@ impl GameScene {
         let q = texture.query();
         let xs = q.width as i32 / 32;
         let ys = q.height as i32 / 32;
-
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-
-        let rx = xpos / 2 + ypos / 2 - xs * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
-        let ry = xpos / 4 - ypos / 4 + YPOS - ys * 32 + cam_yoff + yoff;
+        let (ground_x, ground_y) =
+            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
+        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
         // Shadow is placed at character's feet, flattened to 1/4 height.
         // disp=14 matches the original C code.
@@ -250,10 +242,10 @@ impl GameScene {
         yoff: i32,
     ) -> Result<(), String> {
         // Isometric projection for a 2×2 tile area (64×64 pixels), matching dd_alphaeffect_magic.
-        let xpos = (tile_x as i32) * 32;
-        let ypos = (tile_y as i32) * 32;
-        let rx = xpos / 2 + ypos / 2 - 2 * 16 + 32 + XPOS + MAP_X_SHIFT + cam_xoff + xoff;
-        let ry = xpos / 4 - ypos / 4 + YPOS - 2 * 32 + cam_yoff + yoff;
+        let (ground_x, ground_y) =
+            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let rx = ground_x - FLOOR_TILE_WIDTH;
+        let ry = ground_y - (FLOOR_TILE_WIDTH + FLOOR_TILE_HEIGHT);
 
         let str_div = strength.max(1) as i32;
         let strength_clamped = strength.clamp(1, 7) as i32;
@@ -328,11 +320,10 @@ impl GameScene {
             return None;
         }
 
-        if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y) {
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {
             return None;
         }
-
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
         let (mx, my) = Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)?;
 
         if !(3..=TILEX - 7).contains(&mx) || !(7..=TILEY - 3).contains(&my) {
@@ -486,8 +477,8 @@ impl GameScene {
                     continue;
                 }
 
-                let xpos = (x as i32) * 32;
-                let ypos = (y as i32) * 32;
+                let (ground_x, ground_y) =
+                    Self::tile_ground_diamond_origin(x, y, cam_xoff, cam_yoff);
                 let ch_xoff = tile.obj_xoff;
                 let ch_yoff = tile.obj_yoff;
 
@@ -662,12 +653,8 @@ impl GameScene {
                         // dd_gputtext formula (ported from engine.c + nameplates.rs):
                         // horizontally centered, shifted 64px up relative to sprite origin.
                         let text_len = text.len() as i32;
-                        let np_rx = xpos / 2 + ypos / 2 + 32 - (text_len * 5 / 2)
-                            + XPOS
-                            + MAP_X_SHIFT
-                            + cam_xoff
-                            + ch_xoff;
-                        let np_ry = xpos / 4 - ypos / 4 + YPOS - 64 + cam_yoff + ch_yoff;
+                        let np_rx = ground_x - (text_len * 5 / 2) + ch_xoff;
+                        let np_ry = ground_y - 48 + ch_yoff;
                         font_cache::draw_text_tinted(
                             // TODO: Refactor this to a new function in the font_cache
                             canvas,

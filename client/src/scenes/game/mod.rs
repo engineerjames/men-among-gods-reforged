@@ -8,16 +8,13 @@
 //! | [`profile`] | Load/save per-character preference profiles |
 //! | [`game_math`] | Pure geometry, stat-cost formulas, coordinate transforms |
 //! | [`world_render`] | Isometric tile/sprite/shadow/effect drawing |
-//! | [`ui_render`] | HUD panels: bars, chat, inventory, minimap, shop overlay |
-//! | [`input`] | Click-handling for stat/inv/skill/shop panels |
 //! | [`net_events`] | Per-frame network tick processing and auto-look |
+//! | [`perf_profiler`] | Wall-clock profiler for rendering functions (activated from escape menu) |
 
 mod game_math;
-mod input;
 mod net_events;
 mod perf_profiler;
 mod profile;
-mod ui_render;
 mod world_render;
 
 use perf_profiler::{PerfLabel, PerfProfiler};
@@ -26,11 +23,7 @@ use std::time::Duration;
 
 use egui_sdl2::egui;
 use sdl2::{
-    event::Event,
-    keyboard::{Keycode, Mod},
-    mouse::MouseButton,
-    pixels::Color,
-    render::Canvas,
+    event::Event, keyboard::Keycode, mouse::MouseButton, pixels::Color, render::Canvas,
     video::Window,
 };
 
@@ -38,19 +31,35 @@ use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
 
 use crate::{
     cert_trust,
+    constants::TARGET_HEIGHT_INT,
+    gfx_cache::GraphicsCache,
     network::{client_commands::ClientCommand, NetworkRuntime},
     player_state::PlayerState,
-    preferences::{self, CharacterIdentity, DisplayMode},
+    preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
+    ui::{
+        self,
+        button_arc::HudButtonBar,
+        chat_box::ChatBox,
+        inventory_panel::InventoryPanel,
+        look_panel::LookPanel,
+        minimap_widget::MinimapWidget,
+        mode_button::ModeButton,
+        rank_arc::RankArc,
+        settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
+        shop_panel::ShopPanel,
+        skills_panel::SkillsPanel,
+        status_panel::StatusPanel,
+        style::Padding,
+        widget::{Bounds, EventResponse, HudPanel, KeyModifiers, Widget, WidgetAction},
+        RenderContext,
+    },
 };
 
 // ---------------------------------------------------------------------------
 // Layout / tuning constants (all pub(super) so submodules can import them)
 // ---------------------------------------------------------------------------
-
-/// Maximum characters allowed in the chat input buffer.
-pub(super) const MAX_INPUT_LEN: usize = 120;
 
 /// Maximum complete network tick groups processed per frame.
 ///
@@ -62,82 +71,103 @@ pub(super) const QSIZE: u32 = 8;
 
 // ---- Layout constants (ported from engine.c / layout.rs) ---- //
 
-/// Camera X shift to account for the left-hand UI panel.
-pub(super) const MAP_X_SHIFT: i32 = -176;
+/// Width in pixels of one ground diamond.
+pub(super) const FLOOR_TILE_WIDTH: i32 = 32;
 
-/// Sprite ID of the static 800×600 UI background frame.
-pub(super) const UI_FRAME_SPRITE: usize = 1;
+/// Height in pixels of one ground diamond.
+pub(super) const FLOOR_TILE_HEIGHT: i32 = 16;
 
-/// Default bitmap font index (yellow, sprite 701).
-pub(super) const UI_FONT: usize = 1;
+/// Optional X nudge applied after centering (positive = right).
+pub(super) const MAP_X_TWEAK: i32 = 0;
 
-// Matches original engine.c worn-slot draw order (wntab[]).
-pub(super) const EQUIP_WNTAB: [usize; 12] = [0, 9, 2, 3, 1, 4, 8, 7, 10, 11, 5, 6];
+/// Optional Y nudge applied after centering (positive = down).
+pub(super) const MAP_Y_TWEAK: i32 = 0;
 
-// HP / Endurance / Mana bars
-pub(super) const BAR_X: i32 = 373;
-pub(super) const BAR_HP_Y: i32 = 127;
-pub(super) const BAR_END_Y: i32 = 134;
-pub(super) const BAR_MANA_Y: i32 = 141;
-pub(super) const BAR_H: u32 = 6;
-pub(super) const BAR_SCALE_NUM: i32 = 62;
-pub(super) const BAR_W_MAX: i32 = 62;
+/// X origin offset that places tile (TILEX/2, TILEY/2) at the horizontal
+/// center of the logical viewport.
+pub(super) const MAP_ORIGIN_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32) / 2
+    - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 2)
+        + (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 2)
+        + FLOOR_TILE_WIDTH)
+    + MAP_X_TWEAK;
 
-/// Bar background (capacity).
-pub(super) const BAR_BG_COLOR: Color = Color::RGB(9, 4, 58);
-/// Bar fill (own character).
-pub(super) const BAR_FILL_COLOR: Color = Color::RGB(8, 77, 23);
-pub(super) const BAR_FILL_LOOK_COLOR: Color = Color::RGB(140, 20, 20);
-pub(super) const MODE_INDICATOR_COLOR: Color = Color::RGB(200, 96, 24);
-pub(super) const SCROLL_KNOB_COLOR: Color = Color::RGB(8, 77, 23);
+/// Y origin offset that places tile (TILEX/2, TILEY/2) at the vertical
+/// center of the logical viewport.
+pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32) / 2
+    - (FLOOR_TILE_HEIGHT / 2)
+    - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 4) - (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 4))
+    + MAP_Y_TWEAK;
 
-// Stat text positions
-pub(super) const STAT_HP_X: i32 = 5;
-pub(super) const STAT_HP_Y: i32 = 270;
-pub(super) const STAT_END_X: i32 = 5;
-pub(super) const STAT_END_Y: i32 = 284;
-pub(super) const STAT_MANA_X: i32 = 5;
-pub(super) const STAT_MANA_Y: i32 = 298;
-pub(super) const STAT_MONEY_X: i32 = 375;
-pub(super) const STAT_MONEY_Y: i32 = 190;
-pub(super) const STAT_WEAPON_X: i32 = 646;
-pub(super) const STAT_WEAPON_Y: i32 = 243;
-pub(super) const STAT_ARMOR_X: i32 = 646;
-pub(super) const STAT_ARMOR_Y: i32 = 257;
-pub(super) const STAT_EXP_X: i32 = 646;
-pub(super) const STAT_EXP_Y: i32 = 271;
+const CHATBOX_X: i32 = 0;
+const CHATBOX_Y: i32 = TARGET_HEIGHT_INT as i32 - CHATBOX_H as i32;
+const CHATBOX_W: u32 = 300;
+const CHATBOX_H: u32 = 200;
 
-// Name text (centered in 125px wide area)
-pub(super) const NAME_AREA_X: i32 = 374;
-pub(super) const NAME_AREA_W: i32 = 125;
-pub(super) const NAME_Y: i32 = 28;
-pub(super) const PORTRAIT_NAME_Y: i32 = 152;
-pub(super) const PORTRAIT_RANK_Y: i32 = 172;
+// ---- HUD button bar layout ---- //
 
-// Chat log area
-pub(super) const LOG_X: i32 = 500;
-pub(super) const LOG_Y: i32 = 4;
-pub(super) const LOG_LINE_H: i32 = 10;
-pub(super) const LOG_LINES: usize = 22;
-pub(super) const INPUT_X: i32 = 500;
-pub(super) const INPUT_Y: i32 = 9 + LOG_LINE_H * (LOG_LINES as i32);
+/// X center of the invisible arc that the HUD buttons sit on.
+const HUD_ARC_CENTER_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 / 2;
+/// Y center of the invisible arc (at the bottom edge of the viewport).
+const HUD_ARC_CENTER_Y: i32 = crate::constants::TARGET_HEIGHT_INT as i32;
+/// Radius of the invisible layout arc.
+const HUD_ARC_RADIUS: u32 = 60;
+/// Radius of each individual HUD button.
+const HUD_BUTTON_RADIUS: u32 = 16;
+/// Sprite IDs for [Skills, Inventory, Settings] buttons.
+const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
+/// Width of each togglable HUD panel.
+const HUD_PANEL_W: u32 = 300;
+/// Height of each togglable HUD panel.
+const HUD_PANEL_H: u32 = 250;
+/// Wider width for the inventory panel (two grids + scrollbar + gap).
+const INV_PANEL_W: u32 = 190;
+/// Taller height for the inventory panel.
+const INV_PANEL_H: u32 = 280;
+/// Semi-transparent background color shared by all HUD panels.
+const HUD_PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
+
+// ---- Minimap toggle button ---- //
+
+/// X center of the minimap toggle button (near top-right of screen).
+const MINIMAP_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
+/// Y center of the minimap toggle button.
+const MINIMAP_BTN_CY: i32 = 30;
+/// Radius of the minimap toggle button.
+const MINIMAP_BTN_RADIUS: u32 = 14;
+
+// ---- Mode button (lower-right) ---- //
+
+/// X center of the circular speed-mode button.
+const MODE_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
+/// Y center of the circular speed-mode button.
+const MODE_BTN_CY: i32 = crate::constants::TARGET_HEIGHT_INT as i32 - 30;
+/// Radius of the circular speed-mode button.
+const MODE_BTN_RADIUS: u32 = 18;
+
+// ---- Look panel (center-right) ---- //
+
+/// Width of the look panel.
+const LOOK_PANEL_W: u32 = 180;
+/// Height of the look panel.
+const LOOK_PANEL_H: u32 = 260;
+/// X position of the look panel (right side, 4 px margin).
+const LOOK_PANEL_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - LOOK_PANEL_W as i32 - 4;
+/// Y position of the look panel (vertically centered).
+const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 4;
+
+// ---- Shop panel (centered on screen) ---- //
+
+/// Width of the shop panel.
+const SHOP_PANEL_W: u32 = crate::ui::shop_panel::SHOP_PANEL_W;
+/// Height of the shop panel.
+const SHOP_PANEL_H: u32 = crate::ui::shop_panel::SHOP_PANEL_H;
+/// X position of the shop panel (horizontally centered).
+const SHOP_PANEL_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SHOP_PANEL_W as i32) / 2;
+/// Y position of the shop panel (vertically centered).
+const SHOP_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - SHOP_PANEL_H as i32) / 2;
 
 // Minimap
-pub(super) const MINIMAP_X: i32 = 3;
-pub(super) const MINIMAP_Y: i32 = 471;
-pub(super) const MINIMAP_VIEW_SIZE: u32 = 128;
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
-
-pub(super) const SCROLL_KNOB_W: u32 = 11;
-pub(super) const SCROLL_KNOB_H: u32 = 11;
-pub(super) const SKILL_SCROLL_X: i32 = 207;
-pub(super) const SKILL_SCROLL_Y_BASE: i32 = 149;
-pub(super) const SKILL_SCROLL_RANGE: i32 = 58;
-pub(super) const SKILL_SCROLL_MAX: i32 = 40;
-pub(super) const INV_SCROLL_X: i32 = 290;
-pub(super) const INV_SCROLL_Y_BASE: i32 = 36;
-pub(super) const INV_SCROLL_RANGE: i32 = 94;
-pub(super) const INV_SCROLL_MAX: i32 = 30;
 
 // ---------------------------------------------------------------------------
 // GameScene struct
@@ -149,14 +179,20 @@ pub(super) const INV_SCROLL_MAX: i32 = 30;
 /// scroll positions, pending stat raises, minimap pixel buffer, and escape
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
-    pub(super) input_buf: String,
-    pub(super) sent_chat_history: Vec<String>,
-    pub(super) chat_history_index: Option<usize>,
-    pub(super) chat_history_draft: Option<String>,
+    pub(super) status_panel: StatusPanel,
+    pub(super) chat_box: ChatBox,
+    pub(super) hud_buttons: HudButtonBar,
+    pub(super) rank_arc: RankArc,
+    pub(super) skills_panel: SkillsPanel,
+    pub(super) inventory_panel: InventoryPanel,
+    pub(super) settings_panel: SettingsPanel,
+    pub(super) minimap_widget: MinimapWidget,
+    pub(super) mode_button: ModeButton,
+    pub(super) look_panel: LookPanel,
+    pub(super) shop_panel: ShopPanel,
+    pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
-    pub(super) log_scroll: usize,
-    pub(super) last_log_len: usize,
     pub(super) ctrl_held: bool,
     pub(super) shift_held: bool,
     pub(super) alt_held: bool,
@@ -197,15 +233,62 @@ impl GameScene {
     ///
     /// A fresh `GameScene` ready to be entered via [`Scene::on_enter`].
     pub fn new() -> Self {
+        // HUD panels are centered horizontally, positioned so their bottom
+        // edge sits 20 px above the top of the button arc.
+        let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
+        let panel_bottom = HUD_ARC_CENTER_Y - HUD_ARC_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 20;
+        let panel_y = panel_bottom - HUD_PANEL_H as i32;
+
         Self {
-            input_buf: String::new(),
-            sent_chat_history: Vec::new(),
-            chat_history_index: None,
-            chat_history_draft: None,
+            status_panel: StatusPanel::new(4, 4, HUD_PANEL_BG),
+            chat_box: ChatBox::new(
+                Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
+                Color::RGBA(10, 10, 30, 180),
+                Padding::uniform(4),
+            ),
+            hud_buttons: HudButtonBar::new(
+                HUD_ARC_CENTER_X,
+                HUD_ARC_CENTER_Y,
+                HUD_ARC_RADIUS,
+                HUD_BUTTON_RADIUS,
+                HUD_SPRITE_IDS,
+            ),
+            rank_arc: RankArc::new(HUD_ARC_CENTER_X, HUD_ARC_CENTER_Y, 30, 2),
+            skills_panel: SkillsPanel::new(
+                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                HUD_PANEL_BG,
+            ),
+            inventory_panel: InventoryPanel::new(
+                Bounds::new(
+                    HUD_ARC_CENTER_X - INV_PANEL_W as i32 / 2,
+                    panel_bottom - INV_PANEL_H as i32,
+                    INV_PANEL_W,
+                    INV_PANEL_H,
+                ),
+                HUD_PANEL_BG,
+            ),
+            settings_panel: SettingsPanel::new(
+                Bounds::new(
+                    HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2,
+                    panel_bottom - SETTINGS_PANEL_H as i32,
+                    HUD_PANEL_W,
+                    SETTINGS_PANEL_H,
+                ),
+                HUD_PANEL_BG,
+            ),
+            minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
+            mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
+            look_panel: LookPanel::new(
+                Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
+                HUD_PANEL_BG,
+            ),
+            shop_panel: ShopPanel::new(
+                Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
+                HUD_PANEL_BG,
+            ),
+            last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
-            log_scroll: 0,
-            last_log_len: 0,
             ctrl_held: false,
             shift_held: false,
             alt_held: false,
@@ -247,6 +330,155 @@ impl GameScene {
         app_state.sfx_cache.play_click(self.master_volume);
     }
 
+    /// Build a [`SettingsPanelData`] snapshot from current game state.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    ///
+    /// # Returns
+    ///
+    /// A snapshot suitable for [`SettingsPanel::sync_state`].
+    fn build_settings_panel_data(&self, app_state: &AppState) -> SettingsPanelData {
+        let (shadows, show_names, show_health_pct, hide_walls) =
+            if let Some(ps) = app_state.player_state.as_ref() {
+                let pd = ps.player_data();
+                (
+                    pd.are_shadows_enabled != 0,
+                    pd.show_names != 0,
+                    pd.show_proz != 0,
+                    pd.hide != 0,
+                )
+            } else {
+                (false, false, false, false)
+            };
+
+        let last_rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
+
+        SettingsPanelData {
+            shadows_enabled: shadows,
+            spell_effects_enabled: self.are_spell_effects_enabled,
+            show_names,
+            show_health_pct,
+            hide_walls,
+            master_volume: self.master_volume,
+            display_mode: app_state.display_mode,
+            pixel_perfect_scaling: app_state.pixel_perfect_scaling,
+            vsync_enabled: app_state.vsync_enabled,
+            last_rtt_ms: last_rtt,
+            profiler_active: self.perf_profiler.is_active(),
+            profiler_remaining_secs: if self.perf_profiler.is_active() {
+                Some(self.perf_profiler.remaining_secs())
+            } else {
+                None
+            },
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the settings panel and apply
+    /// the corresponding state mutations.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network + player state).
+    ///
+    /// # Returns
+    ///
+    /// `Some(SceneType)` if the user chose to disconnect or quit.
+    fn process_settings_panel_actions(&mut self, app_state: &mut AppState) -> Option<SceneType> {
+        let mut scene_change: Option<SceneType> = None;
+        let mut profile_changed = false;
+
+        for action in self.settings_panel.take_actions() {
+            match action {
+                WidgetAction::SetShadows(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().are_shadows_enabled = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetSpellEffects(v) => {
+                    self.are_spell_effects_enabled = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetShowNames(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().show_names = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetShowHealthPct(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().show_proz = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetHideWalls(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().hide = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetMasterVolume(v) => {
+                    self.master_volume = v;
+                    app_state.master_volume = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetDisplayMode(m) => {
+                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(m));
+                }
+                WidgetAction::SetPixelPerfectScaling(v) => {
+                    app_state.display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
+                }
+                WidgetAction::SetVSync(v) => {
+                    app_state.display_command = Some(DisplayCommand::SetVSync(v));
+                }
+                WidgetAction::Disconnect => {
+                    scene_change = Some(SceneType::CharacterSelection);
+                }
+                WidgetAction::Quit => {
+                    scene_change = Some(SceneType::Exit);
+                }
+                WidgetAction::OpenLogDir => {
+                    let log_dir = preferences::log_file_path()
+                        .parent()
+                        .map(|p| p.to_path_buf())
+                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+                    crate::platform::open_directory_in_file_manager(&log_dir);
+                }
+                WidgetAction::StartProfiler => {
+                    self.perf_profiler.start();
+                }
+                _ => {}
+            }
+        }
+
+        if profile_changed {
+            self.save_active_profile(app_state);
+        }
+
+        scene_change
+    }
+
+    /// Forward any new log messages from `PlayerState` into the `ChatBox`.
+    ///
+    /// Messages are fetched in insertion order (oldest-first) starting from
+    /// `last_synced_log_len` so the ChatBox receives them chronologically.
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - The current player state with the authoritative message log.
+    fn sync_chat_messages(&mut self, ps: &PlayerState) {
+        let total = ps.log_len();
+        if total <= self.last_synced_log_len {
+            return;
+        }
+        let new_messages =
+            (self.last_synced_log_len..total).filter_map(|i| ps.log_message(i).cloned());
+        self.chat_box.push_messages(new_messages);
+        self.last_synced_log_len = total;
+    }
+
     fn is_selected_visible(ps: &PlayerState) -> bool {
         let selected = ps.selected_char();
         if selected == 0 {
@@ -264,6 +496,142 @@ impl GameScene {
         }
 
         false
+    }
+
+    /// Draw the currently carried item (citem) sprite under the mouse cursor.
+    ///
+    /// This is drawn unconditionally (regardless of inventory panel visibility)
+    /// so the player always sees the item they are holding.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    /// * `gfx` - Graphics/texture cache.
+    /// * `ps` - Current player state.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn draw_carried_item(
+        &self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        let citem = ps.character_info().citem;
+        if citem <= 0 {
+            return Ok(());
+        }
+        let tex = gfx.get_texture(citem as usize);
+        let q = tex.query();
+        canvas.copy(
+            tex,
+            None,
+            Some(sdl2::rect::Rect::new(
+                self.mouse_x - 8,
+                self.mouse_y - 8,
+                q.width,
+                q.height,
+            )),
+        )
+    }
+
+    /// Repaint the persistent 1024×1024 world minimap buffer from the current
+    /// map state.
+    ///
+    /// Only performs work when the player has moved since the last call.
+    /// The viewport extraction + rendering is handled by [`MinimapWidget`].
+    ///
+    /// # Arguments
+    ///
+    /// * `gfx` - Graphics cache (used for average-color lookups).
+    /// * `ps` - Current player state (map tiles + player position).
+    ///
+    /// # Returns
+    ///
+    /// The player's center `(x, y)` in world-map coordinates, or `None` if
+    /// the center tile is unavailable.
+    fn update_minimap_xmap(
+        &mut self,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Option<(u16, u16)> {
+        let map = ps.map();
+
+        let center = map.tile_at_xy(TILEX / 2, TILEY / 2)?;
+
+        let center_xy = (center.x, center.y);
+
+        // Only repaint xmap when the player moved.
+        if self.minimap_last_xy != Some(center_xy) {
+            self.minimap_last_xy = Some(center_xy);
+
+            for idx in 0..map.len() {
+                let Some(tile) = map.tile_at_index(idx) else {
+                    continue;
+                };
+                let gx = tile.x as usize;
+                let gy = tile.y as usize;
+                if gx >= MINIMAP_WORLD_SIZE || gy >= MINIMAP_WORLD_SIZE {
+                    continue;
+                }
+                if (tile.flags & mag_core::constants::INVIS) != 0 {
+                    continue;
+                }
+                let cell = (gy + gx * MINIMAP_WORLD_SIZE) * 4;
+
+                let back_id = tile.back.max(0) as usize;
+                if back_id != 0 {
+                    // Use the alpha byte as the "never visited" sentinel: the buffer is
+                    // zero-initialised, so alpha==0 means this cell has never been painted.
+                    // RGB-only checks incorrectly treated legitimately-black backgrounds as
+                    // blank, causing them to be re-queried on every step.
+                    let is_blank = self.minimap_xmap[cell + 3] == 0;
+                    // 0xFF marks the player position — always overwrite it so the old
+                    // white dot is replaced with the real tile color when the player moves.
+                    let is_player_marker = self.minimap_xmap[cell] == 0xFF
+                        && self.minimap_xmap[cell + 1] == 0xFF
+                        && self.minimap_xmap[cell + 2] == 0xFF;
+                    if is_blank || is_player_marker {
+                        let (r, g, b) = gfx.get_avg_color(back_id);
+                        self.minimap_xmap[cell] = r;
+                        self.minimap_xmap[cell + 1] = g;
+                        self.minimap_xmap[cell + 2] = b;
+                        self.minimap_xmap[cell + 3] = 255;
+                    }
+                }
+
+                // Objects override background — but only when the sprite has a
+                // non-zero average color.  Transparent / invisible obj sprites
+                // return (0,0,0) from get_avg_color; writing that value would paint
+                // an opaque black pixel over the valid background color.  In the
+                // original C engine, setting xmap[..]=0 implicitly marked the cell
+                // as "unvisited" so the background reclaimed it next pass; our RGBA
+                // buffer has no such equivalence, so we guard the write instead.
+                if tile.obj1 > 0 {
+                    let (r, g, b) = gfx.get_avg_color(tile.obj1 as usize);
+                    if (r | g | b) != 0 {
+                        self.minimap_xmap[cell] = r;
+                        self.minimap_xmap[cell + 1] = g;
+                        self.minimap_xmap[cell + 2] = b;
+                        self.minimap_xmap[cell + 3] = 255;
+                    }
+                }
+            }
+
+            // Mark player position (white pixel).
+            let cx = center.x as usize;
+            let cy = center.y as usize;
+            if cx < MINIMAP_WORLD_SIZE && cy < MINIMAP_WORLD_SIZE {
+                let cell = (cy + cx * MINIMAP_WORLD_SIZE) * 4;
+                self.minimap_xmap[cell] = 0xFF;
+                self.minimap_xmap[cell + 1] = 0xFF;
+                self.minimap_xmap[cell + 2] = 0xFF;
+                self.minimap_xmap[cell + 3] = 0xFF;
+            }
+        }
+
+        Some(center_xy)
     }
 
     /// Starts (or restarts) the game network session from the current login target.
@@ -329,11 +697,14 @@ impl Scene for GameScene {
     /// connection to the game server via the login ticket, and load the
     /// player's saved profile (skill-button assignments, volume, etc.).
     fn on_enter(&mut self, app_state: &mut AppState) {
-        self.input_buf.clear();
+        self.chat_box = ChatBox::new(
+            Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
+            Color::RGBA(10, 10, 30, 180),
+            Padding::uniform(4),
+        );
+        self.last_synced_log_len = 0;
         self.pending_exit = None;
         self.certificate_mismatch = None;
-        self.log_scroll = 0;
-        self.last_log_len = 0;
         self.ctrl_held = false;
         self.shift_held = false;
         self.alt_held = false;
@@ -471,7 +842,6 @@ impl Scene for GameScene {
             Event::MouseMotion { x, y, .. } => {
                 self.mouse_x = *x;
                 self.mouse_y = *y;
-                return None;
             }
             _ => {}
         }
@@ -481,203 +851,132 @@ impl Scene for GameScene {
             return None;
         }
 
+        // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
+        if let Some(ui_event) = ui::sdl_to_ui_event(
+            event,
+            self.mouse_x,
+            self.mouse_y,
+            KeyModifiers {
+                ctrl: self.ctrl_held,
+                shift: self.shift_held,
+                alt: self.alt_held,
+            },
+        ) {
+            // --- StatusPanel toggle (upper-left sigil) ---
+            if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            if self.chat_box.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_chat_box_actions(app_state);
+                return None;
+            }
+
+            // --- Dispatch to open HUD panels (eat clicks so they don't reach the world) ---
+            if self.skills_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_skills_panel_actions(app_state);
+                return None;
+            }
+            if self.inventory_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_inventory_panel_actions(app_state);
+                return None;
+            }
+            if self.settings_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                    return Some(sc);
+                }
+                return None;
+            }
+
+            // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
+            if self.shop_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_shop_panel_actions(app_state);
+                return None;
+            }
+
+            // --- Dispatch to minimap toggle button / panel ---
+            if self.minimap_widget.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            // --- Dispatch to mode button ---
+            if self.mode_button.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_mode_button_actions(app_state);
+                return None;
+            }
+
+            // --- Dispatch to look panel ---
+            if self.look_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            // --- Dispatch to HUD button bar ---
+            if self.hud_buttons.handle_event(&ui_event) == EventResponse::Consumed {
+                for action in self.hud_buttons.take_actions() {
+                    if let WidgetAction::TogglePanel(panel) = action {
+                        match panel {
+                            HudPanel::Skills => self.skills_panel.toggle(),
+                            HudPanel::Inventory => self.inventory_panel.toggle(),
+                            HudPanel::Settings => {
+                                self.settings_panel.toggle();
+                                if self.settings_panel.is_visible() {
+                                    let data = self.build_settings_panel_data(app_state);
+                                    self.settings_panel.sync_state(&data);
+                                }
+                            }
+                            HudPanel::Minimap => self.minimap_widget.toggle(),
+                        }
+                    }
+                }
+                return None;
+            }
+        }
+
         match event {
             Event::KeyDown {
-                keycode: Some(kc),
-                keymod,
-                ..
+                keycode: Some(kc), ..
             } => match *kc {
-                Keycode::Return | Keycode::KpEnter => {
-                    if !self.input_buf.is_empty() {
-                        let text = self.input_buf.clone();
-                        self.input_buf.clear();
-                        self.sent_chat_history.push(text.clone());
-                        if self.sent_chat_history.len() > 100 {
-                            self.sent_chat_history.remove(0);
-                        }
-                        self.chat_history_index = None;
-                        self.chat_history_draft = None;
-                        if let Some(net) = app_state.network.as_ref() {
-                            for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
-                                net.send(pkt);
-                            }
-                        }
-                    }
-                }
-                Keycode::Backspace => {
-                    self.input_buf.pop();
-                }
-                Keycode::F1 => {
-                    if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
+                Keycode::Num1
+                | Keycode::Num2
+                | Keycode::Num3
+                | Keycode::Num4
+                | Keycode::Num5
+                | Keycode::Num6
+                | Keycode::Num7
+                | Keycode::Num8
+                | Keycode::Num9 => {
+                    if self.ctrl_held {
+                        let key_slot = (i32::from(*kc) - i32::from(Keycode::Num1)) as usize;
                         if let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
-                            let btn = ps.player_data().skill_buttons[0];
-                            if !btn.is_unassigned() {
+                            if let Some(skill_nr) = ps.player_data().skill_keybinds[key_slot] {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
-                                    btn.skill_nr(),
+                                    skill_nr,
                                     Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
-                        }
-                    } else if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_mode(2));
-                    }
-                }
-                Keycode::F2 => {
-                    if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            let btn = ps.player_data().skill_buttons[1];
-                            if !btn.is_unassigned() {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    btn.skill_nr(),
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    } else if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_mode(1));
-                    }
-                }
-                Keycode::F3 => {
-                    if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            let btn = ps.player_data().skill_buttons[2];
-                            if !btn.is_unassigned() {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    btn.skill_nr(),
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    } else if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_mode(0));
-                    }
-                }
-                Keycode::F4 => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let current = ps.player_data().show_proz;
-                        ps.player_data_mut().show_proz = 1 - current;
-                        self.save_active_profile(app_state);
-                    }
-                }
-                Keycode::F6 => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let current = ps.player_data().hide;
-                        ps.player_data_mut().hide = 1 - current;
-                        self.save_active_profile(app_state);
-                    }
-                }
-                Keycode::F7 => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let current = ps.player_data().show_names;
-                        ps.player_data_mut().show_names = 1 - current;
-                        self.save_active_profile(app_state);
-                    }
-                }
-                Keycode::F12 => {
-                    if keymod.intersects(Mod::LSHIFTMOD | Mod::RSHIFTMOD) {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            let btn = ps.player_data().skill_buttons[11];
-                            if !btn.is_unassigned() {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    btn.skill_nr(),
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    } else if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_exit());
-                    }
-                }
-                Keycode::PageUp => {
-                    self.log_scroll = self.log_scroll.saturating_add(3);
-                }
-                Keycode::PageDown => {
-                    self.log_scroll = self.log_scroll.saturating_sub(3);
-                }
-                Keycode::Up => {
-                    if !self.sent_chat_history.is_empty() {
-                        let next_index = match self.chat_history_index {
-                            Some(index) => index.saturating_sub(1),
-                            None => {
-                                self.chat_history_draft = Some(self.input_buf.clone());
-                                self.sent_chat_history.len() - 1
-                            }
-                        };
-                        self.chat_history_index = Some(next_index);
-                        if let Some(message) = self.sent_chat_history.get(next_index) {
-                            self.input_buf = message.clone();
-                        }
-                    }
-                }
-                Keycode::Down => {
-                    if let Some(index) = self.chat_history_index {
-                        if index + 1 < self.sent_chat_history.len() {
-                            let next_index = index + 1;
-                            self.chat_history_index = Some(next_index);
-                            if let Some(message) = self.sent_chat_history.get(next_index) {
-                                self.input_buf = message.clone();
-                            }
-                        } else {
-                            self.chat_history_index = None;
-                            self.input_buf = self.chat_history_draft.take().unwrap_or_default();
                         }
                     }
                 }
                 _ => {}
             },
-            Event::KeyUp { .. } => {
-                // Modifier keys handled above the menu gate; nothing else needed.
-            }
-            Event::TextInput { text, .. } => {
-                if self.input_buf.len() + text.len() <= MAX_INPUT_LEN {
-                    self.input_buf.push_str(text);
-                }
-            }
             Event::MouseButtonUp {
                 mouse_btn, x, y, ..
             } => {
-                if self.click_stat_or_inv(app_state, *mouse_btn, *x, *y) {
-                    return None;
-                }
-                if self.click_mode_or_skill_button(app_state, *mouse_btn, *x, *y) {
-                    return None;
-                }
-
                 let Some(ps) = app_state.player_state.as_ref() else {
+                    log::warn!("Mouse click with no player state");
                     return None;
                 };
 
                 let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
 
                 let Some((mx, my)) = Self::screen_to_map_tile(*x, *y, cam_xoff, cam_yoff) else {
+                    log::warn!("Click outside of map area: screen=({}, {})", x, y);
                     return None;
                 };
-
-                // C client edge-tile clipping (inter.c:872):
-                // Reject clicks on the outer edge tiles where the map data is unreliable.
-                if !(3..=TILEX - 7).contains(&mx) || !(7..=TILEY - 3).contains(&my) {
-                    return None;
-                }
 
                 let has_ctrl = self.ctrl_held;
                 let has_shift = self.shift_held;
@@ -772,34 +1071,6 @@ impl Scene for GameScene {
                     _ => {}
                 }
             }
-            Event::MouseWheel { y, .. } => {
-                let dy = *y;
-                if self.mouse_x < 220 {
-                    // Skill / stat panel
-                    if dy > 0 {
-                        self.skill_scroll = self.skill_scroll.saturating_sub(dy as usize);
-                    } else if dy < 0 {
-                        self.skill_scroll = (self.skill_scroll + (-dy) as usize).min(90);
-                    }
-                } else if self.mouse_x < 300 {
-                    // Inventory panel
-                    let step = (dy.unsigned_abs() as usize) * 2;
-                    if dy > 0 {
-                        self.inv_scroll = self.inv_scroll.saturating_sub(step);
-                    } else if dy < 0 {
-                        self.inv_scroll = (self.inv_scroll + step).min(30);
-                    }
-                    // Keep inventory index aligned to the left column (C client uses inv_pos +=/-= 2).
-                    self.inv_scroll &= !1usize;
-                } else {
-                    // Chat / default: scroll log
-                    if dy > 0 {
-                        self.log_scroll = self.log_scroll.saturating_add(dy as usize);
-                    } else if dy < 0 {
-                        self.log_scroll = self.log_scroll.saturating_sub((-dy) as usize);
-                    }
-                }
-            }
             _ => {}
         }
         None
@@ -810,7 +1081,27 @@ impl Scene for GameScene {
     /// # Returns
     ///
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
-    fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
+        self.chat_box.update(dt);
+        self.status_panel.update(dt);
+        self.skills_panel.update(dt);
+        self.inventory_panel.update(dt);
+        self.settings_panel.update(dt);
+        // Keep read-only settings panel values current each frame.
+        if self.settings_panel.is_visible() {
+            let rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
+            self.settings_panel.update_ping(rtt);
+            self.settings_panel.update_profiler_label(
+                self.perf_profiler.is_active(),
+                if self.perf_profiler.is_active() {
+                    Some(self.perf_profiler.remaining_secs())
+                } else {
+                    None
+                },
+            );
+        }
+        self.mode_button.update(dt);
+        self.shop_panel.update(dt);
         self.perf_profiler.check_expired();
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
@@ -842,6 +1133,11 @@ impl Scene for GameScene {
         canvas.set_draw_color(Color::RGB(0, 0, 0));
         canvas.clear();
 
+        // Sync new log messages from PlayerState into the ChatBox before rendering.
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.sync_chat_messages(ps);
+        }
+
         self.perf_profiler.begin_frame();
 
         // Split borrow: gfx_cache (mut) and player_state (ref) are separate fields.
@@ -863,65 +1159,130 @@ impl Scene for GameScene {
         self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
-        // 2. Static UI frame (sprite 1) overlays the world
-        self.perf_profiler.begin_sample(PerfLabel::DrawUiFrame);
-        Self::draw_ui_frame(canvas, gfx_cache)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawUiFrame);
-
-        // 3. HP / End / Mana bars
-        self.perf_profiler.begin_sample(PerfLabel::DrawBars);
-        Self::draw_bars(canvas, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawBars);
-
-        // 4. Stat text labels
-        self.perf_profiler.begin_sample(PerfLabel::DrawStatText);
-        Self::draw_stat_text(canvas, gfx_cache, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawStatText);
-
-        // 5. Chat log + input line
+        // 5. Chat log + input line (via ChatBox widget)
         self.perf_profiler.begin_sample(PerfLabel::DrawChat);
-        self.draw_chat(canvas, gfx_cache, ps)?;
+        {
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.chat_box.render(&mut ctx)?;
+        }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
-        // 6. Lower-right mode/status indicators
+        // 5a. Status panel (upper-left sigil + stat bars)
         self.perf_profiler
-            .begin_sample(PerfLabel::DrawModeIndicators);
-        Self::draw_mode_indicators(canvas, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawModeIndicators);
+            .begin_sample(PerfLabel::SyncAndDrawStatus);
+        {
+            if let Some(ps) = app_state.player_state.as_ref() {
+                let ci = ps.character_info();
+                let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
+                self.status_panel.sync(ps, rank_index);
+                self.rank_arc
+                    .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
+                self.mode_button.sync(ci.mode);
+                use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
+                let sorted = SP::build_sorted_skills(&ci.skill);
+                self.skills_panel.update_data(SkillsPanelData {
+                    attrib: ci.attrib,
+                    hp: ci.hp,
+                    end: ci.end,
+                    mana: ci.mana,
+                    skill: ci.skill,
+                    points: ci.points,
+                    sorted_skills: sorted,
+                    keybinds: ps.player_data().skill_keybinds,
+                });
+                use crate::ui::inventory_panel::InventoryPanelData;
+                self.inventory_panel.update_data(InventoryPanelData {
+                    items: ci.item,
+                    items_p: ci.item_p,
+                    worn: ci.worn,
+                    worn_p: ci.worn_p,
+                    citem: ci.citem,
+                    citem_p: ci.citem_p,
+                    gold: ci.gold,
+                    selected_char: ps.selected_char(),
+                });
 
-        // 7. Left panel attributes and skills
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawAttributesSkills);
-        self.draw_attributes_skills(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawAttributesSkills);
+                // Update minimap xmap buffer, then push viewport pixels to the widget.
+                if let Some((cx, cy)) = self.update_minimap_xmap(gfx_cache, ps) {
+                    self.minimap_widget
+                        .update_viewport(&self.minimap_xmap, cx, cy);
+                }
+            }
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.status_panel.render(&mut ctx)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::SyncAndDrawStatus);
 
-        // 8. Inventory, worn items, spells, carried item
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawInventoryEquipmentSpells);
-        self.draw_inventory_equipment_spells(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawInventoryEquipmentSpells);
+        // 5b. HUD panels + button bar (rendered after chat, before legacy HUD)
+        self.perf_profiler.begin_sample(PerfLabel::DrawHudPanels);
+        {
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.skills_panel.render(&mut ctx)?;
+            self.inventory_panel.render(&mut ctx)?;
+            self.settings_panel.render(&mut ctx)?;
+            self.rank_arc.render(&mut ctx)?;
+            self.hud_buttons.render(&mut ctx)?;
+            self.minimap_widget.render(&mut ctx)?;
+            self.mode_button.render(&mut ctx)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
 
-        // 9. Portrait/shop overlays
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawPortraitAndShop);
-        Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
-        self.draw_shop_overlay(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawPortraitAndShop);
+        // 5c-ii. Look panel (center-right, when look target is visible)
+        self.perf_profiler.begin_sample(PerfLabel::DrawLookPanel);
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.look_panel.sync(ps);
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.look_panel.render(&mut ctx)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawLookPanel);
 
-        // 11. Minimap (bottom-left, 128×128, persistent world buffer)
-        self.perf_profiler.begin_sample(PerfLabel::DrawMinimap);
-        self.draw_minimap(canvas, gfx_cache, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawMinimap);
+        // 5d. Shop/depot/grave overlay (centered, when active)
+        self.perf_profiler.begin_sample(PerfLabel::DrawShopPanel);
+        {
+            use crate::ui::shop_panel::ShopPanelData;
+            if let Some(ps) = app_state.player_state.as_ref() {
+                let shop = ps.shop_target();
+                let mut items = [0u16; 62];
+                let mut prices = [0u32; 62];
+                for i in 0..62 {
+                    items[i] = shop.item(i);
+                    prices[i] = shop.price(i);
+                }
+                self.shop_panel.update_data(ShopPanelData {
+                    items,
+                    prices,
+                    pl_price: shop.pl_price(),
+                    shop_nr: shop.nr(),
+                    citem: ps.character_info().citem,
+                    visible: ps.should_show_shop(),
+                });
+            }
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.shop_panel.render(&mut ctx)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawShopPanel);
 
-        // 12. Skill button labels (4×3 grid in lower-right)
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawSkillButtonLabels);
-        self.draw_skill_button_labels(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawSkillButtonLabels);
+        // 5e. Carried item (always drawn, even when inventory panel is hidden)
+        self.perf_profiler.begin_sample(PerfLabel::DrawCarriedItem);
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.draw_carried_item(canvas, gfx_cache, ps)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawCarriedItem);
 
         self.perf_profiler.end_frame();
         Ok(())
@@ -1011,144 +1372,6 @@ impl Scene for GameScene {
                         });
                 });
         }
-        self.perf_profiler.begin_sample(PerfLabel::RenderUi);
-
-        if !self.escape_menu_open {
-            self.perf_profiler.end_sample(PerfLabel::RenderUi);
-            return None;
-        }
-
-        let mut scene_change: Option<SceneType> = None;
-        let mut profile_changed = false;
-
-        egui::Window::new("Options")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.heading("Settings");
-                ui.separator();
-
-                // Shadows toggle
-                let mut shadows = if let Some(ps) = app_state.player_state.as_ref() {
-                    ps.player_data().are_shadows_enabled != 0
-                } else {
-                    false
-                };
-                if ui.checkbox(&mut shadows, "Enable Shadows").changed() {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().are_shadows_enabled = if shadows { 1 } else { 0 };
-                        profile_changed = true;
-                    }
-                }
-
-                // Spell effects toggle
-                if ui
-                    .checkbox(&mut self.are_spell_effects_enabled, "Enable Spell Effects")
-                    .changed()
-                {
-                    profile_changed = true;
-                }
-
-                ui.separator();
-
-                let latest_rtt = app_state
-                    .network
-                    .as_ref()
-                    .and_then(|net| net.last_rtt_ms)
-                    .map(|value| format!("{} ms", value))
-                    .unwrap_or_else(|| "N/A".to_string());
-                ui.label(format!("Latest Ping (Round-Trip Time): {}", latest_rtt));
-
-                // Volume slider
-                if ui
-                    .add(
-                        egui::Slider::new(&mut self.master_volume, 0.0..=1.0)
-                            .text("Volume")
-                            .show_value(true),
-                    )
-                    .changed()
-                {
-                    profile_changed = true;
-                }
-                // Sync to AppState so SFX playback uses it.
-                app_state.master_volume = self.master_volume;
-
-                ui.separator();
-
-                // --- Display settings ------------------------------------
-                ui.heading("Display");
-
-                // Display mode combo box
-                let mut selected_mode = app_state.display_mode;
-                egui::ComboBox::from_label("Display Mode")
-                    .selected_text(selected_mode.to_string())
-                    .show_ui(ui, |ui| {
-                        for mode in DisplayMode::ALL {
-                            ui.selectable_value(&mut selected_mode, mode, mode.to_string());
-                        }
-                    });
-                if selected_mode != app_state.display_mode {
-                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(selected_mode));
-                }
-
-                // Pixel-perfect scaling checkbox
-                let mut pixel_perfect = app_state.pixel_perfect_scaling;
-                if ui
-                    .checkbox(&mut pixel_perfect, "Pixel-Perfect Scaling")
-                    .changed()
-                {
-                    app_state.display_command =
-                        Some(DisplayCommand::SetPixelPerfectScaling(pixel_perfect));
-                }
-
-                // VSync checkbox
-                let mut vsync = app_state.vsync_enabled;
-                if ui.checkbox(&mut vsync, "VSync").changed() {
-                    app_state.display_command = Some(DisplayCommand::SetVSync(vsync));
-                }
-                // ---------------------------------------------------------
-
-                ui.separator();
-
-                // --- Performance profiling ---------------------------------
-                let profiler_label = if self.perf_profiler.is_active() {
-                    format!(
-                        "Profiling... {}s remaining",
-                        self.perf_profiler.remaining_secs()
-                    )
-                } else {
-                    "Profile Performance".to_string()
-                };
-                if ui.button(&profiler_label).clicked() {
-                    self.perf_profiler.start();
-                }
-                // ---------------------------------------------------------
-
-                if ui.button("Open Log Directory").clicked() {
-                    let log_dir = preferences::log_file_path()
-                        .parent()
-                        .map(|p| p.to_path_buf())
-                        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-                    crate::platform::open_directory_in_file_manager(&log_dir);
-                }
-
-                ui.separator();
-
-                if ui.button("Disconnect").clicked() {
-                    scene_change = Some(SceneType::CharacterSelection);
-                }
-                if ui.button("Quit").clicked() {
-                    scene_change = Some(SceneType::Exit);
-                }
-            });
-
-        if profile_changed {
-            self.save_active_profile(app_state);
-        }
-
-        self.perf_profiler.end_sample(PerfLabel::RenderUi);
-
-        scene_change
+        None
     }
 }

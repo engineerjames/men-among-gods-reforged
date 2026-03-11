@@ -12,53 +12,50 @@ const PROFILE_DURATION: Duration = Duration::from_secs(10);
 /// The frame-time budget we compare against (60 FPS ≈ 16.667 ms).
 const TARGET_FRAME_TIME: Duration = Duration::from_micros(16_667);
 
-/// Type-safe labels for every instrumented rendering function.
+/// Type-safe labels for every instrumented rendering section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) enum PerfLabel {
+    /// Isometric tile/sprite/shadow/effect rendering.
     DrawWorld,
-    DrawUiFrame,
-    DrawBars,
-    DrawStatText,
+    /// Chat log + input line (`ChatBox` widget).
     DrawChat,
-    DrawModeIndicators,
-    DrawAttributesSkills,
-    DrawInventoryEquipmentSpells,
-    DrawPortraitAndShop,
-    DrawMinimap,
-    DrawSkillButtonLabels,
+    /// Status panel data sync + render (sigil, rank arc, mode button sync).
+    SyncAndDrawStatus,
+    /// HUD panels: skills, inventory, settings, rank arc, hud buttons,
+    /// minimap, mode button.
+    DrawHudPanels,
+    /// Look panel sync + render.
+    DrawLookPanel,
+    /// Shop/depot/grave panel data sync + render.
+    DrawShopPanel,
+    /// Carried-item sprite drawn under the mouse cursor.
+    DrawCarriedItem,
+    /// egui overlay rendering (escape menu, certificate dialogs).
     RenderUi,
 }
 
 impl PerfLabel {
     /// All variants in the order they should appear in the summary.
-    const ALL: [PerfLabel; 12] = [
+    const ALL: [PerfLabel; 8] = [
         Self::DrawWorld,
-        Self::DrawUiFrame,
-        Self::DrawBars,
-        Self::DrawStatText,
         Self::DrawChat,
-        Self::DrawModeIndicators,
-        Self::DrawAttributesSkills,
-        Self::DrawInventoryEquipmentSpells,
-        Self::DrawPortraitAndShop,
-        Self::DrawMinimap,
-        Self::DrawSkillButtonLabels,
+        Self::SyncAndDrawStatus,
+        Self::DrawHudPanels,
+        Self::DrawLookPanel,
+        Self::DrawShopPanel,
+        Self::DrawCarriedItem,
         Self::RenderUi,
     ];
 
     fn as_str(self) -> &'static str {
         match self {
             Self::DrawWorld => "draw_world",
-            Self::DrawUiFrame => "draw_ui_frame",
-            Self::DrawBars => "draw_bars",
-            Self::DrawStatText => "draw_stat_text",
             Self::DrawChat => "draw_chat",
-            Self::DrawModeIndicators => "draw_mode_indicators",
-            Self::DrawAttributesSkills => "draw_attributes_skills",
-            Self::DrawInventoryEquipmentSpells => "draw_inventory_equipment_spells",
-            Self::DrawPortraitAndShop => "draw_portrait_and_shop",
-            Self::DrawMinimap => "draw_minimap",
-            Self::DrawSkillButtonLabels => "draw_skill_button_labels",
+            Self::SyncAndDrawStatus => "sync_and_draw_status",
+            Self::DrawHudPanels => "draw_hud_panels",
+            Self::DrawLookPanel => "draw_look_panel",
+            Self::DrawShopPanel => "draw_shop_panel",
+            Self::DrawCarriedItem => "draw_carried_item",
             Self::RenderUi => "render_ui",
         }
     }
@@ -422,19 +419,12 @@ mod tests {
     fn perf_label_as_str_all_variants() {
         let cases = [
             (PerfLabel::DrawWorld, "draw_world"),
-            (PerfLabel::DrawUiFrame, "draw_ui_frame"),
-            (PerfLabel::DrawBars, "draw_bars"),
-            (PerfLabel::DrawStatText, "draw_stat_text"),
             (PerfLabel::DrawChat, "draw_chat"),
-            (PerfLabel::DrawModeIndicators, "draw_mode_indicators"),
-            (PerfLabel::DrawAttributesSkills, "draw_attributes_skills"),
-            (
-                PerfLabel::DrawInventoryEquipmentSpells,
-                "draw_inventory_equipment_spells",
-            ),
-            (PerfLabel::DrawPortraitAndShop, "draw_portrait_and_shop"),
-            (PerfLabel::DrawMinimap, "draw_minimap"),
-            (PerfLabel::DrawSkillButtonLabels, "draw_skill_button_labels"),
+            (PerfLabel::SyncAndDrawStatus, "sync_and_draw_status"),
+            (PerfLabel::DrawHudPanels, "draw_hud_panels"),
+            (PerfLabel::DrawLookPanel, "draw_look_panel"),
+            (PerfLabel::DrawShopPanel, "draw_shop_panel"),
+            (PerfLabel::DrawCarriedItem, "draw_carried_item"),
             (PerfLabel::RenderUi, "render_ui"),
         ];
         for (label, expected) in cases {
@@ -447,16 +437,12 @@ mod tests {
         // Every variant must appear exactly once in ALL.
         let all_variants = [
             PerfLabel::DrawWorld,
-            PerfLabel::DrawUiFrame,
-            PerfLabel::DrawBars,
-            PerfLabel::DrawStatText,
             PerfLabel::DrawChat,
-            PerfLabel::DrawModeIndicators,
-            PerfLabel::DrawAttributesSkills,
-            PerfLabel::DrawInventoryEquipmentSpells,
-            PerfLabel::DrawPortraitAndShop,
-            PerfLabel::DrawMinimap,
-            PerfLabel::DrawSkillButtonLabels,
+            PerfLabel::SyncAndDrawStatus,
+            PerfLabel::DrawHudPanels,
+            PerfLabel::DrawLookPanel,
+            PerfLabel::DrawShopPanel,
+            PerfLabel::DrawCarriedItem,
             PerfLabel::RenderUi,
         ];
         assert_eq!(PerfLabel::ALL.len(), all_variants.len());
@@ -568,7 +554,7 @@ mod tests {
         let mut p = PerfProfiler::new();
         p.start();
         p.begin_frame();
-        p.end_sample(PerfLabel::DrawBars); // no matching begin_sample
+        p.end_sample(PerfLabel::DrawChat); // no matching begin_sample
         assert!(p.current_times.is_empty());
     }
 
@@ -620,13 +606,13 @@ mod tests {
         p.begin_frame();
         p.begin_sample(PerfLabel::DrawChat);
         p.end_sample(PerfLabel::DrawChat);
-        p.begin_sample(PerfLabel::DrawMinimap);
-        p.end_sample(PerfLabel::DrawMinimap);
+        p.begin_sample(PerfLabel::DrawShopPanel);
+        p.end_sample(PerfLabel::DrawShopPanel);
         p.end_frame();
 
         let times = &p.frame_samples[0].function_times;
         assert_eq!(times[0].0, PerfLabel::DrawChat);
-        assert_eq!(times[1].0, PerfLabel::DrawMinimap);
+        assert_eq!(times[1].0, PerfLabel::DrawShopPanel);
     }
 
     #[test]
@@ -647,8 +633,8 @@ mod tests {
         let mut p = PerfProfiler::new();
         p.start();
         p.begin_frame();
-        p.begin_sample(PerfLabel::DrawBars);
-        p.end_sample(PerfLabel::DrawBars);
+        p.begin_sample(PerfLabel::DrawHudPanels);
+        p.end_sample(PerfLabel::DrawHudPanels);
         p.end_frame();
 
         // total_frame_time is measured from begin_frame to end_frame, so it

@@ -39,7 +39,7 @@ pub fn draw_text(
     x: i32,
     y: i32,
 ) -> Result<(), String> {
-    draw_text_impl(canvas, gfx_cache, font, text, x, y, None)
+    draw_text_impl(canvas, gfx_cache, font, text, x, y, None, None)
 }
 
 /// Draws a text string using `font`, tinted to `color`.
@@ -54,7 +54,37 @@ pub fn draw_text_tinted(
     y: i32,
     color: sdl2::pixels::Color,
 ) -> Result<(), String> {
-    draw_text_impl(canvas, gfx_cache, font, text, x, y, Some(color))
+    draw_text_impl(canvas, gfx_cache, font, text, x, y, Some(color), None)
+}
+
+/// Draws `text` using `font` at reduced opacity.
+///
+/// `alpha = 255` is fully opaque; `alpha = 0` is invisible. This uses SDL
+/// texture alpha modulation and restores the texture state before returning.
+///
+/// # Arguments
+///
+/// * `canvas` - SDL2 canvas to draw onto.
+/// * `gfx_cache` - Graphics cache holding font textures.
+/// * `font` - Bitmap font index (0–3).
+/// * `text` - Text string to render.
+/// * `x` - Left edge of the first glyph in pixels.
+/// * `y` - Top edge of the glyph row in pixels.
+/// * `alpha` - Opacity: 255 = fully opaque, 0 = invisible.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or an SDL2 error string.
+pub fn draw_text_faded(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    x: i32,
+    y: i32,
+    alpha: u8,
+) -> Result<(), String> {
+    draw_text_impl(canvas, gfx_cache, font, text, x, y, None, Some(alpha))
 }
 
 fn draw_text_impl(
@@ -65,12 +95,17 @@ fn draw_text_impl(
     x: i32,
     y: i32,
     tint: Option<sdl2::pixels::Color>,
+    alpha: Option<u8>,
 ) -> Result<(), String> {
     let sprite_id = BITMAP_FONT_FIRST_SPRITE_ID + (font % BITMAP_FONT_COUNT);
 
     if let Some(color) = tint {
         let texture = gfx_cache.get_texture(sprite_id);
         texture.set_color_mod(color.r, color.g, color.b);
+    }
+    if let Some(a) = alpha {
+        let texture = gfx_cache.get_texture(sprite_id);
+        texture.set_alpha_mod(a);
     }
 
     let mut cx = x;
@@ -102,6 +137,10 @@ fn draw_text_impl(
     if tint.is_some() {
         let texture = gfx_cache.get_texture(sprite_id);
         texture.set_color_mod(255, 255, 255);
+    }
+    if alpha.is_some() {
+        let texture = gfx_cache.get_texture(sprite_id);
+        texture.set_alpha_mod(255);
     }
 
     if let Some(err) = first_error {

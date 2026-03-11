@@ -1,11 +1,6 @@
 use sdl2::{event::Event, video::Window};
 
-/// Logical width of the game viewport (the original resolution).
-const LOGICAL_W: f32 = 800.0;
-/// Logical height of the game viewport.
-const LOGICAL_H: f32 = 600.0;
-
-/// Computes the viewport rectangle used to map 800×600 logical coordinates
+/// Computes the viewport rectangle used to map logical coordinates
 /// into the current drawable area.
 ///
 /// When `pixel_perfect_scaling` is enabled, this emulates SDL integer scaling
@@ -14,32 +9,39 @@ const LOGICAL_H: f32 = 600.0;
 ///
 /// # Arguments
 /// * `window` - The SDL2 window to measure.
+/// * `logical_width` - The width of the logical coordinate space (e.g. 1920).
+/// * `logical_height` - The height of the logical coordinate space (e.g. 1080).
 /// * `pixel_perfect_scaling` - Whether integer scaling is active.
 ///
 /// # Returns
 /// * `(view_x, view_y, view_w, view_h)` in drawable pixels.
-fn logical_viewport(window: &Window, pixel_perfect_scaling: bool) -> (f32, f32, f32, f32) {
+fn logical_viewport(
+    window: &Window,
+    logical_width: f32,
+    logical_height: f32,
+    pixel_perfect_scaling: bool,
+) -> (f32, f32, f32, f32) {
     let (drawable_w, drawable_h) = window.drawable_size();
     let ww = drawable_w as f32;
     let wh = drawable_h as f32;
 
     if ww <= 0.0 || wh <= 0.0 {
-        return (0.0, 0.0, LOGICAL_W, LOGICAL_H);
+        return (0.0, 0.0, logical_width, logical_height);
     }
 
     if pixel_perfect_scaling {
-        let scale = (ww / LOGICAL_W)
+        let scale = (ww / logical_width)
             .floor()
-            .min((wh / LOGICAL_H).floor())
+            .min((wh / logical_height).floor())
             .max(1.0);
-        let view_w = LOGICAL_W * scale;
-        let view_h = LOGICAL_H * scale;
+        let view_w = logical_width * scale;
+        let view_h = logical_height * scale;
         let view_x = (ww - view_w) * 0.5;
         let view_y = (wh - view_h) * 0.5;
         return (view_x, view_y, view_w, view_h);
     }
 
-    let target_aspect = LOGICAL_W / LOGICAL_H;
+    let target_aspect = logical_width / logical_height;
     let window_aspect = ww / wh;
 
     if window_aspect > target_aspect {
@@ -55,28 +57,39 @@ fn logical_viewport(window: &Window, pixel_perfect_scaling: bool) -> (f32, f32, 
     }
 }
 
-/// Converts a physical screen coordinate pair to logical (800×600) coordinates,
+/// Converts a physical screen coordinate pair to logical (1920×1080) coordinates,
 /// accounting for letterboxing.
 ///
 /// # Arguments
 /// * `x` - Physical X coordinate.
 /// * `y` - Physical Y coordinate.
 /// * `window` - The SDL2 window for viewport calculation.
+/// * `logical_width` - The width of the logical coordinate space (e.g. 1920).
+/// * `logical_height` - The height of the logical coordinate space (e.g. 1080).
+/// * `pixel_perfect_scaling` - Whether integer scaling is active.
 ///
 /// # Returns
-/// * `(logical_x, logical_y)` in the 800×600 coordinate space.
-fn to_logical_coords(x: i32, y: i32, window: &Window, pixel_perfect_scaling: bool) -> (i32, i32) {
+/// * `(logical_x, logical_y)` in the 1920×1080 coordinate space.
+fn to_logical_coords(
+    x: i32,
+    y: i32,
+    window: &Window,
+    logical_width: f32,
+    logical_height: f32,
+    pixel_perfect_scaling: bool,
+) -> (i32, i32) {
     let (scale_x, scale_y) = hidpi_scale(window);
     let x_draw = x as f32 * scale_x;
     let y_draw = y as f32 * scale_y;
 
-    let (view_x, view_y, view_w, view_h) = logical_viewport(window, pixel_perfect_scaling);
+    let (view_x, view_y, view_w, view_h) =
+        logical_viewport(window, logical_width, logical_height, pixel_perfect_scaling);
     if view_w <= 0.0 || view_h <= 0.0 {
         return (x, y);
     }
 
-    let lx = ((x_draw - view_x) * LOGICAL_W / view_w).round() as i32;
-    let ly = ((y_draw - view_y) * LOGICAL_H / view_h).round() as i32;
+    let lx = ((x_draw - view_x) * logical_width / view_w).round() as i32;
+    let ly = ((y_draw - view_y) * logical_height / view_h).round() as i32;
     (lx, ly)
 }
 
@@ -86,21 +99,32 @@ fn to_logical_coords(x: i32, y: i32, window: &Window, pixel_perfect_scaling: boo
 /// * `dx` - Physical X delta.
 /// * `dy` - Physical Y delta.
 /// * `window` - The SDL2 window for viewport calculation.
+/// * `logical_width` - The width of the logical coordinate space (e.g. 1920).
+/// * `logical_height` - The height of the logical coordinate space (e.g. 1080).
+/// * `pixel_perfect_scaling` - Whether integer scaling is active.
 ///
 /// # Returns
-/// * `(logical_dx, logical_dy)`.
-fn to_logical_rel(dx: i32, dy: i32, window: &Window, pixel_perfect_scaling: bool) -> (i32, i32) {
+/// * `(logical_dx, logical_dy)` in the logical coordinate space.
+fn to_logical_rel(
+    dx: i32,
+    dy: i32,
+    window: &Window,
+    logical_width: f32,
+    logical_height: f32,
+    pixel_perfect_scaling: bool,
+) -> (i32, i32) {
     let (scale_x, scale_y) = hidpi_scale(window);
     let dx_draw = dx as f32 * scale_x;
     let dy_draw = dy as f32 * scale_y;
 
-    let (_, _, view_w, view_h) = logical_viewport(window, pixel_perfect_scaling);
+    let (_, _, view_w, view_h) =
+        logical_viewport(window, logical_width, logical_height, pixel_perfect_scaling);
     if view_w <= 0.0 || view_h <= 0.0 {
         return (dx, dy);
     }
 
-    let ldx = (dx_draw * LOGICAL_W / view_w).round() as i32;
-    let ldy = (dy_draw * LOGICAL_H / view_h).round() as i32;
+    let ldx = (dx_draw * logical_width / view_w).round() as i32;
+    let ldy = (dy_draw * logical_height / view_h).round() as i32;
     (ldx, ldy)
 }
 
@@ -215,12 +239,14 @@ pub fn adjust_mouse_event_for_egui_hidpi(event: &Event, window: &Window) -> Even
     }
 }
 
-/// Re-maps mouse event coordinates from physical window space to the 800×600
+/// Re-maps mouse event coordinates from physical window space to the 1920×1080
 /// logical coordinate space used by the game renderer.
 ///
 /// # Arguments
 /// * `event` - The original SDL2 mouse event (consumed).
 /// * `window` - The SDL2 window for viewport calculation.
+/// * `logical_width` - The width of the logical coordinate space (e.g. 1920).
+/// * `logical_height` - The height of the logical coordinate space (e.g. 1080).
 /// * `pixel_perfect_scaling` - Whether integer scaling is active.
 ///
 /// # Returns
@@ -228,6 +254,8 @@ pub fn adjust_mouse_event_for_egui_hidpi(event: &Event, window: &Window) -> Even
 pub fn adjust_mouse_event_for_hidpi(
     event: Event,
     window: &Window,
+    logical_width: f32,
+    logical_height: f32,
     pixel_perfect_scaling: bool,
 ) -> Event {
     match event {
@@ -241,8 +269,22 @@ pub fn adjust_mouse_event_for_hidpi(
             xrel,
             yrel,
         } => {
-            let (x, y) = to_logical_coords(x, y, window, pixel_perfect_scaling);
-            let (xrel, yrel) = to_logical_rel(xrel, yrel, window, pixel_perfect_scaling);
+            let (x, y) = to_logical_coords(
+                x,
+                y,
+                window,
+                logical_width,
+                logical_height,
+                pixel_perfect_scaling,
+            );
+            let (xrel, yrel) = to_logical_rel(
+                xrel,
+                yrel,
+                window,
+                logical_width,
+                logical_height,
+                pixel_perfect_scaling,
+            );
             Event::MouseMotion {
                 timestamp,
                 window_id,
@@ -263,7 +305,14 @@ pub fn adjust_mouse_event_for_hidpi(
             x,
             y,
         } => {
-            let (x, y) = to_logical_coords(x, y, window, pixel_perfect_scaling);
+            let (x, y) = to_logical_coords(
+                x,
+                y,
+                window,
+                logical_width,
+                logical_height,
+                pixel_perfect_scaling,
+            );
             Event::MouseButtonDown {
                 timestamp,
                 window_id,
@@ -283,7 +332,14 @@ pub fn adjust_mouse_event_for_hidpi(
             x,
             y,
         } => {
-            let (x, y) = to_logical_coords(x, y, window, pixel_perfect_scaling);
+            let (x, y) = to_logical_coords(
+                x,
+                y,
+                window,
+                logical_width,
+                logical_height,
+                pixel_perfect_scaling,
+            );
             Event::MouseButtonUp {
                 timestamp,
                 window_id,

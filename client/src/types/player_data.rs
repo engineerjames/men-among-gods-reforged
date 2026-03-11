@@ -1,5 +1,3 @@
-use crate::types::skill_buttons::SkillButtons;
-
 /// HUD toggle flags and spell-bar bindings, matching the original C `pdata`
 /// struct (484 bytes).
 // pdata from original C headers
@@ -9,7 +7,9 @@ pub struct PlayerData {
     pub show_names: i32,
     pub show_proz: i32,
     pub are_shadows_enabled: i32,
-    pub skill_buttons: [SkillButtons; 12],
+    /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
+    /// `Some(skill_nr)` if bound, `None` if unbound.
+    pub skill_keybinds: [Option<u32>; 9],
 }
 
 impl Default for PlayerData {
@@ -19,7 +19,7 @@ impl Default for PlayerData {
             show_names: 1,
             show_proz: 0,
             are_shadows_enabled: 1,
-            skill_buttons: [SkillButtons::default(); 12],
+            skill_keybinds: [None; 9],
         }
     }
 }

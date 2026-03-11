@@ -68,6 +68,18 @@ impl Look {
         self.points
     }
 
+    pub fn hp(&self) -> u32 {
+        self.hp
+    }
+
+    pub fn end(&self) -> u32 {
+        self.end
+    }
+
+    pub fn mana(&self) -> u32 {
+        self.mana
+    }
+
     pub fn a_hp(&self) -> u32 {
         self.a_hp
     }
