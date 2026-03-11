@@ -266,6 +266,17 @@ pub enum WidgetAction {
     ///
     /// Mapped to `ClientCommand::new_mode(mode)` by the scene.
     ChangeMode(i32),
+    /// Shop interaction (buy/sell/take from depot or grave).
+    ///
+    /// Mapped to `ClientCommand::new_shop(shop_nr, action)` by the scene.
+    ShopAction {
+        /// The NPC/shop number.
+        shop_nr: i16,
+        /// Slot index (0-61 = buy/take, 62-123 = sell/look).
+        action: i32,
+    },
+    /// Close the shop/depot/grave overlay.
+    CloseShop,
 }
 
 // ---------------------------------------------------------------------------

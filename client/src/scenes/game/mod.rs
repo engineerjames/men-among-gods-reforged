@@ -53,6 +53,7 @@ use crate::{
         mode_button::ModeButton,
         rank_arc::RankArc,
         settings_panel::SettingsPanel,
+        shop_panel::ShopPanel,
         skills_panel::SkillsPanel,
         status_panel::StatusPanel,
         style::Padding,
@@ -165,6 +166,17 @@ const LOOK_PANEL_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - LOOK_PANEL
 /// Y position of the look panel (vertically centered).
 const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 4;
 
+// ---- Shop panel (centered on screen) ---- //
+
+/// Width of the shop panel.
+const SHOP_PANEL_W: u32 = crate::ui::shop_panel::SHOP_PANEL_W;
+/// Height of the shop panel.
+const SHOP_PANEL_H: u32 = crate::ui::shop_panel::SHOP_PANEL_H;
+/// X position of the shop panel (horizontally centered).
+const SHOP_PANEL_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SHOP_PANEL_W as i32) / 2;
+/// Y position of the shop panel (vertically centered).
+const SHOP_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - SHOP_PANEL_H as i32) / 2;
+
 // Minimap
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
 
@@ -188,6 +200,7 @@ pub struct GameScene {
     pub(super) minimap_widget: MinimapWidget,
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
+    pub(super) shop_panel: ShopPanel,
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -273,6 +286,10 @@ impl GameScene {
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
             look_panel: LookPanel::new(
                 Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
+                HUD_PANEL_BG,
+            ),
+            shop_panel: ShopPanel::new(
+                Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
             last_synced_log_len: 0,
@@ -398,7 +415,9 @@ impl GameScene {
                 | WidgetAction::BindSkillKey { .. }
                 | WidgetAction::InvAction { .. }
                 | WidgetAction::InvLookAction { .. }
-                | WidgetAction::ChangeMode(_) => {}
+                | WidgetAction::ChangeMode(_)
+                | WidgetAction::ShopAction { .. }
+                | WidgetAction::CloseShop => {}
             }
         }
     }
@@ -464,7 +483,9 @@ impl GameScene {
                 | WidgetAction::TogglePanel(_)
                 | WidgetAction::InvAction { .. }
                 | WidgetAction::InvLookAction { .. }
-                | WidgetAction::ChangeMode(_) => {}
+                | WidgetAction::ChangeMode(_)
+                | WidgetAction::ShopAction { .. }
+                | WidgetAction::CloseShop => {}
             }
         }
     }
@@ -492,6 +513,31 @@ impl GameScene {
                     if let Some(net) = app_state.network.as_ref() {
                         self.play_click_sound(app_state);
                         net.send(ClientCommand::new_inv_look(a, b, c));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the shop panel and send the
+    /// corresponding network commands, or close the shop.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network + player state).
+    fn process_shop_panel_actions(&mut self, app_state: &mut AppState) {
+        for action in self.shop_panel.take_actions() {
+            match action {
+                WidgetAction::ShopAction { shop_nr, action } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_shop(shop_nr, action));
+                    }
+                }
+                WidgetAction::CloseShop => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.close_shop();
                     }
                 }
                 _ => {}
@@ -785,6 +831,12 @@ impl Scene for GameScene {
                 return None;
             }
             if self.settings_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
+            if self.shop_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_shop_panel_actions(app_state);
                 return None;
             }
 
@@ -1085,6 +1137,7 @@ impl Scene for GameScene {
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
         self.mode_button.update(dt);
+        self.shop_panel.update(dt);
         self.perf_profiler.check_expired();
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
@@ -1154,6 +1207,8 @@ impl Scene for GameScene {
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
         // 5a. Status panel (upper-left sigil + stat bars)
+        self.perf_profiler
+            .begin_sample(PerfLabel::SyncAndDrawStatus);
         {
             if let Some(ps) = app_state.player_state.as_ref() {
                 let ci = ps.character_info();
@@ -1198,8 +1253,10 @@ impl Scene for GameScene {
             };
             self.status_panel.render(&mut ctx)?;
         }
+        self.perf_profiler.end_sample(PerfLabel::SyncAndDrawStatus);
 
         // 5b. HUD panels + button bar (rendered after chat, before legacy HUD)
+        self.perf_profiler.begin_sample(PerfLabel::DrawHudPanels);
         {
             let mut ctx = RenderContext {
                 canvas,
@@ -1213,8 +1270,10 @@ impl Scene for GameScene {
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
         }
+        self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
 
         // 5c-ii. Look panel (center-right, when look target is visible)
+        self.perf_profiler.begin_sample(PerfLabel::DrawLookPanel);
         if let Some(ps) = app_state.player_state.as_ref() {
             self.look_panel.sync(ps);
             let mut ctx = RenderContext {
@@ -1223,18 +1282,43 @@ impl Scene for GameScene {
             };
             self.look_panel.render(&mut ctx)?;
         }
+        self.perf_profiler.end_sample(PerfLabel::DrawLookPanel);
 
-        // 5c. Carried item (always drawn, even when inventory panel is hidden)
+        // 5d. Shop/depot/grave overlay (centered, when active)
+        self.perf_profiler.begin_sample(PerfLabel::DrawShopPanel);
+        {
+            use crate::ui::shop_panel::ShopPanelData;
+            if let Some(ps) = app_state.player_state.as_ref() {
+                let shop = ps.shop_target();
+                let mut items = [0u16; 62];
+                let mut prices = [0u32; 62];
+                for i in 0..62 {
+                    items[i] = shop.item(i);
+                    prices[i] = shop.price(i);
+                }
+                self.shop_panel.update_data(ShopPanelData {
+                    items,
+                    prices,
+                    pl_price: shop.pl_price(),
+                    shop_nr: shop.nr(),
+                    citem: ps.character_info().citem,
+                    visible: ps.should_show_shop(),
+                });
+            }
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.shop_panel.render(&mut ctx)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawShopPanel);
+
+        // 5e. Carried item (always drawn, even when inventory panel is hidden)
+        self.perf_profiler.begin_sample(PerfLabel::DrawCarriedItem);
         if let Some(ps) = app_state.player_state.as_ref() {
             self.draw_carried_item(canvas, gfx_cache, ps)?;
         }
-
-        // 9. Portrait/shop overlays
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawPortraitAndShop);
-        self.draw_shop_overlay(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawPortraitAndShop);
+        self.perf_profiler.end_sample(PerfLabel::DrawCarriedItem);
 
         self.perf_profiler.end_frame();
         Ok(())

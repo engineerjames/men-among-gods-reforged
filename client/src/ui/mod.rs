@@ -28,6 +28,8 @@ pub mod rank_arc;
 #[allow(dead_code)]
 pub mod settings_panel;
 #[allow(dead_code)]
+pub mod shop_panel;
+#[allow(dead_code)]
 pub mod skills_panel;
 #[allow(dead_code)]
 pub mod status_panel;
