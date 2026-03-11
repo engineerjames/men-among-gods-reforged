@@ -1229,17 +1229,9 @@ impl Scene for GameScene {
             self.draw_carried_item(canvas, gfx_cache, ps)?;
         }
 
-        // 8. Inventory, worn items, spells, carried item
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawInventoryEquipmentSpells);
-        // self.draw_inventory_equipment_spells(canvas, gfx_cache, ps)?;
-        self.perf_profiler
-            .end_sample(PerfLabel::DrawInventoryEquipmentSpells);
-
         // 9. Portrait/shop overlays
         self.perf_profiler
             .begin_sample(PerfLabel::DrawPortraitAndShop);
-        // Self::draw_portrait_panel(canvas, gfx_cache, ps)?;
         self.draw_shop_overlay(canvas, gfx_cache, ps)?;
         self.perf_profiler
             .end_sample(PerfLabel::DrawPortraitAndShop);
