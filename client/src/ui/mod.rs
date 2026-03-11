@@ -8,9 +8,9 @@
 #[allow(dead_code)]
 pub mod button;
 #[allow(dead_code)]
-pub mod chat_box;
+pub mod button_arc;
 #[allow(dead_code)]
-pub mod hud_button_bar;
+pub mod chat_box;
 #[allow(dead_code)]
 pub mod inventory_panel;
 #[allow(dead_code)]

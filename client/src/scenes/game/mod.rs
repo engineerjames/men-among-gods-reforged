@@ -45,8 +45,8 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
     ui::{
+        button_arc::HudButtonBar,
         chat_box::ChatBox,
-        hud_button_bar::HudButtonBar,
         inventory_panel::InventoryPanel,
         look_panel::LookPanel,
         minimap_widget::MinimapWidget,
