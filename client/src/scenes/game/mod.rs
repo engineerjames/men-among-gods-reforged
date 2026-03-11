@@ -395,6 +395,7 @@ impl GameScene {
                 | WidgetAction::CommitStats { .. }
                 | WidgetAction::CastSkill { .. }
                 | WidgetAction::BeginSkillAssign { .. }
+                | WidgetAction::BindSkillKey { .. }
                 | WidgetAction::InvAction { .. }
                 | WidgetAction::InvLookAction { .. }
                 | WidgetAction::ChangeMode(_) => {}
@@ -423,7 +424,7 @@ impl GameScene {
     /// # Arguments
     ///
     /// * `app_state` - Shared application state (network access).
-    fn process_skills_panel_actions(&mut self, app_state: &AppState) {
+    fn process_skills_panel_actions(&mut self, app_state: &mut AppState) {
         for action in self.skills_panel.take_actions() {
             match action {
                 WidgetAction::CommitStats { raises } => {
@@ -444,6 +445,20 @@ impl GameScene {
                 }
                 WidgetAction::BeginSkillAssign { skill_id } => {
                     self.pending_skill_assignment = Some(skill_id);
+                }
+                WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        // Clear any previous slot that had the same skill_nr.
+                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
+                            if *slot == Some(skill_nr) {
+                                *slot = None;
+                            }
+                        }
+                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                        let name = mag_core::types::skilltab::get_skill_name(skill_nr as usize);
+                        ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
+                    }
+                    self.save_active_profile(app_state);
                 }
                 WidgetAction::SendChat(_)
                 | WidgetAction::TogglePanel(_)
@@ -882,6 +897,31 @@ impl Scene for GameScene {
                         net.send(ClientCommand::new_exit());
                     }
                 }
+                Keycode::Num1
+                | Keycode::Num2
+                | Keycode::Num3
+                | Keycode::Num4
+                | Keycode::Num5
+                | Keycode::Num6
+                | Keycode::Num7
+                | Keycode::Num8
+                | Keycode::Num9 => {
+                    if self.ctrl_held {
+                        let key_slot = (i32::from(*kc) - i32::from(Keycode::Num1)) as usize;
+                        if let (Some(net), Some(ps)) =
+                            (app_state.network.as_ref(), app_state.player_state.as_ref())
+                        {
+                            if let Some(skill_nr) = ps.player_data().skill_keybinds[key_slot] {
+                                self.play_click_sound(app_state);
+                                net.send(ClientCommand::new_skill(
+                                    skill_nr,
+                                    Self::default_skill_target(ps),
+                                    ps.character_info().attrib[0][0] as u32,
+                                ));
+                            }
+                        }
+                    }
+                }
                 _ => {}
             },
             Event::KeyUp { .. } => {
@@ -1102,21 +1142,6 @@ impl Scene for GameScene {
         self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
-        // 2. Static UI frame (sprite 1) overlays the world
-        self.perf_profiler.begin_sample(PerfLabel::DrawUiFrame);
-        // Self::draw_ui_frame(canvas, gfx_cache)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawUiFrame);
-
-        // 3. HP / End / Mana bars
-        self.perf_profiler.begin_sample(PerfLabel::DrawBars);
-        // Self::draw_bars(canvas, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawBars);
-
-        // 4. Stat text labels
-        self.perf_profiler.begin_sample(PerfLabel::DrawStatText);
-        // Self::draw_stat_text(canvas, gfx_cache, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawStatText);
-
         // 5. Chat log + input line (via ChatBox widget)
         self.perf_profiler.begin_sample(PerfLabel::DrawChat);
         {
@@ -1147,6 +1172,7 @@ impl Scene for GameScene {
                     skill: ci.skill,
                     points: ci.points,
                     sorted_skills: sorted,
+                    keybinds: ps.player_data().skill_keybinds,
                 });
                 use crate::ui::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
@@ -1202,12 +1228,6 @@ impl Scene for GameScene {
         if let Some(ps) = app_state.player_state.as_ref() {
             self.draw_carried_item(canvas, gfx_cache, ps)?;
         }
-
-        // 6. Lower-right mode/status indicators
-        self.perf_profiler
-            .begin_sample(PerfLabel::DrawModeIndicators);
-        // Self::draw_mode_indicators(canvas, ps)?;
-        self.perf_profiler.end_sample(PerfLabel::DrawModeIndicators);
 
         // 8. Inventory, worn items, spells, carried item
         self.perf_profiler

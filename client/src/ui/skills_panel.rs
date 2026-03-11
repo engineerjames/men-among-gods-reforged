@@ -7,6 +7,7 @@
 
 use std::cmp::Ordering;
 
+use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
@@ -51,6 +52,9 @@ pub struct SkillsPanelData {
     pub points: i32,
     /// Pre-sorted skill indices (learned first, then by sort key).
     pub sorted_skills: Vec<usize>,
+    /// Current CTRL+1-9 keybinds. Index 0 = key "1" .. 8 = key "9".
+    /// `Some(skill_nr)` if bound.
+    pub keybinds: [Option<u32>; 9],
 }
 
 /// The skills / character / attributes HUD panel.
@@ -74,6 +78,8 @@ pub struct SkillsPanel {
     skill_scroll: usize,
     /// Actions to be drained by the owning scene.
     pending_actions: Vec<WidgetAction>,
+    /// Skill currently waiting for a keybind key press (1-9), or `None`.
+    pending_keybind_skill: Option<u32>,
 }
 
 impl SkillsPanel {
@@ -98,6 +104,7 @@ impl SkillsPanel {
             stat_points_used: 0,
             skill_scroll: 0,
             pending_actions: Vec::new(),
+            pending_keybind_skill: None,
         }
     }
 
@@ -162,15 +169,16 @@ impl SkillsPanel {
         cb.y + (cb.height as i32) - 16
     }
 
-    /// X positions for name, value, +, -, cost columns.
-    fn col_x(&self) -> (i32, i32, i32, i32, i32) {
+    /// X positions for bind button, name, value, +, -, cost columns.
+    fn col_x(&self) -> (i32, i32, i32, i32, i32, i32) {
         let cb = self.content_bounds();
-        let name_x = cb.x + 2;
-        let value_x = cb.x + 130;
+        let bind_x = cb.x + 2;
+        let name_x = cb.x + 18;
+        let value_x = cb.x + 146;
         let plus_x = cb.x + 165;
         let minus_x = cb.x + 180;
         let cost_x = cb.x + 195;
-        (name_x, value_x, plus_x, minus_x, cost_x)
+        (bind_x, name_x, value_x, plus_x, minus_x, cost_x)
     }
 
     // ---- Cost calculation (mirrors legacy formulas) ----------------------
@@ -226,7 +234,7 @@ impl SkillsPanel {
 
     /// Handle a stat +/- click at panel-local coordinates.
     fn handle_stat_click(&mut self, x: i32, y: i32, data: &SkillsPanelData) {
-        let (_, _, plus_x, minus_x, _) = self.col_x();
+        let (_, _, _, plus_x, minus_x, _) = self.col_x();
 
         let is_plus = (plus_x..plus_x + 12).contains(&x);
         let is_minus = (minus_x..minus_x + 12).contains(&x);
@@ -430,8 +438,43 @@ impl SkillsPanel {
 
     /// Returns true if the x coordinate is in the skill-name column area.
     fn is_in_name_column(&self, x: i32) -> bool {
-        let (name_x, _, plus_x, _, _) = self.col_x();
+        let (_, name_x, _, plus_x, _, _) = self.col_x();
         x >= name_x && x < plus_x
+    }
+
+    /// Handle a click on the bind-button column for a skill row.
+    ///
+    /// Enters (or cancels) the keybind listening state for the clicked skill.
+    fn handle_bind_button_click(&mut self, y: i32, data: &SkillsPanelData) {
+        for row in 0..VISIBLE_SKILL_ROWS {
+            let ry = self.skill_row_y(row);
+            if y >= ry && y < ry + ROW_H {
+                let sorted_idx = self.skill_scroll + row;
+                if let Some(&skill_id) = data.sorted_skills.get(sorted_idx) {
+                    if get_skill_name(skill_id).is_empty() || data.skill[skill_id][0] == 0 {
+                        return;
+                    }
+                    let skill_nr = get_skill_nr(skill_id) as u32;
+                    if self.pending_keybind_skill == Some(skill_nr) {
+                        self.pending_keybind_skill = None;
+                    } else {
+                        self.pending_keybind_skill = Some(skill_nr);
+                    }
+                }
+                return;
+            }
+        }
+    }
+
+    /// Returns the key digit (1-9) currently bound to `skill_nr`, if any.
+    fn bound_key_for_skill(keybinds: &[Option<u32>; 9], skill_nr: u32) -> Option<u8> {
+        keybinds
+            .iter()
+            .enumerate()
+            .find_map(|(idx, opt)| match opt {
+                Some(nr) if *nr == skill_nr => Some((idx + 1) as u8),
+                _ => None,
+            })
     }
 
     /// Build a sorted skills list from raw skill data.
@@ -521,9 +564,22 @@ impl Widget for SkillsPanel {
                         }
 
                         // Check +/- columns.
-                        let (_, _, plus_x, minus_x, _) = self.col_x();
+                        let (_, _, _, plus_x, minus_x, _) = self.col_x();
                         if *x >= plus_x && *x < minus_x + 12 {
                             self.handle_stat_click(*x, *y, &data);
+                            return EventResponse::Consumed;
+                        }
+
+                        // Check bind button column for skill rows.
+                        let (bind_x, _, _, _, _, _) = self.col_x();
+                        let first_skill_y = self.skill_row_y(0);
+                        let last_skill_y = self.skill_row_y(VISIBLE_SKILL_ROWS - 1) + ROW_H;
+                        if *x >= bind_x
+                            && *x < bind_x + 14
+                            && *y >= first_skill_y
+                            && *y < last_skill_y
+                        {
+                            self.handle_bind_button_click(*y, &data);
                             return EventResponse::Consumed;
                         }
 
@@ -562,6 +618,33 @@ impl Widget for SkillsPanel {
                         (self.skill_scroll + (-delta) as usize).min(SKILL_SCROLL_MAX);
                 }
                 EventResponse::Consumed
+            }
+            UiEvent::KeyDown { keycode, .. } => {
+                if let Some(_skill_nr) = self.pending_keybind_skill {
+                    match *keycode {
+                        Keycode::Num1
+                        | Keycode::Num2
+                        | Keycode::Num3
+                        | Keycode::Num4
+                        | Keycode::Num5
+                        | Keycode::Num6
+                        | Keycode::Num7
+                        | Keycode::Num8
+                        | Keycode::Num9 => {
+                            let key_slot = (i32::from(*keycode) - i32::from(Keycode::Num1)) as u8;
+                            let skill_nr = self.pending_keybind_skill.take().unwrap();
+                            self.pending_actions
+                                .push(WidgetAction::BindSkillKey { skill_nr, key_slot });
+                            return EventResponse::Consumed;
+                        }
+                        Keycode::Escape => {
+                            self.pending_keybind_skill = None;
+                            return EventResponse::Consumed;
+                        }
+                        _ => {}
+                    }
+                }
+                EventResponse::Ignored
             }
             _ => EventResponse::Ignored,
         }
@@ -607,7 +690,7 @@ impl Widget for SkillsPanel {
         };
 
         let available_points = (data.points - self.stat_points_used).max(0);
-        let (name_x, _value_x, plus_x, minus_x, cost_x) = self.col_x();
+        let (bind_x, name_x, _value_x, plus_x, minus_x, cost_x) = self.col_x();
 
         // --- Attributes ---
         for n in 0..5 {
@@ -700,6 +783,41 @@ impl Widget for SkillsPanel {
                 if raised_idx >= self.stat_raised.len() {
                     continue;
                 }
+
+                // --- Bind button ---
+                let skill_nr = get_skill_nr(skill_id) as u32;
+                let is_listening = self.pending_keybind_skill == Some(skill_nr);
+                let bound_key = Self::bound_key_for_skill(&data.keybinds, skill_nr);
+
+                let btn_w = 14u32;
+                let btn_h = 12u32;
+                let btn_rect = sdl2::rect::Rect::new(bind_x, y, btn_w, btn_h);
+
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
+                if is_listening {
+                    ctx.canvas.set_draw_color(Color::RGBA(180, 180, 40, 200));
+                } else {
+                    ctx.canvas.set_draw_color(Color::RGBA(50, 50, 70, 180));
+                }
+                ctx.canvas.fill_rect(btn_rect)?;
+                ctx.canvas.set_draw_color(if is_listening {
+                    Color::RGBA(220, 220, 80, 255)
+                } else {
+                    self.border_color
+                });
+                ctx.canvas.draw_rect(btn_rect)?;
+
+                let label = if is_listening {
+                    "?".to_string()
+                } else if let Some(k) = bound_key {
+                    format!("{}", k)
+                } else {
+                    String::new()
+                };
+                if !label.is_empty() {
+                    font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &label, bind_x + 4, y)?;
+                }
+
                 let raised = self.stat_raised[raised_idx];
                 let value_total = data.skill[skill_id][5] as i32 + raised;
                 let value_bare = data.skill[skill_id][0] as i32 + raised;
@@ -795,6 +913,7 @@ mod tests {
             skill: [[0; 6]; 100],
             points: 10000,
             sorted_skills: (0..MAX_SKILLS).collect(),
+            keybinds: [None; 9],
         }
     }
 
@@ -930,5 +1049,84 @@ mod tests {
         let skill = [[0u8; 6]; 100];
         let sorted = SkillsPanel::build_sorted_skills(&skill);
         assert_eq!(sorted.len(), MAX_SKILLS);
+    }
+
+    #[test]
+    fn key_press_while_listening_emits_bind_action() {
+        let mut panel = SkillsPanel::new(Bounds::new(0, 0, 300, 250), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        panel.update_data(make_data());
+        panel.pending_keybind_skill = Some(42);
+
+        let resp = panel.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::Num3,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(panel.pending_keybind_skill.is_none());
+
+        let actions = panel.take_actions();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                assert_eq!(*skill_nr, 42);
+                assert_eq!(*key_slot, 2); // "3" => slot index 2
+            }
+            _ => panic!("Expected BindSkillKey action"),
+        }
+    }
+
+    #[test]
+    fn escape_cancels_listening() {
+        let mut panel = SkillsPanel::new(Bounds::new(0, 0, 300, 250), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        panel.update_data(make_data());
+        panel.pending_keybind_skill = Some(42);
+
+        let resp = panel.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::Escape,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(panel.pending_keybind_skill.is_none());
+        assert!(panel.take_actions().is_empty());
+    }
+
+    #[test]
+    fn non_number_key_while_listening_is_ignored() {
+        let mut panel = SkillsPanel::new(Bounds::new(0, 0, 300, 250), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        panel.update_data(make_data());
+        panel.pending_keybind_skill = Some(42);
+
+        let resp = panel.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::A,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Ignored);
+        assert_eq!(panel.pending_keybind_skill, Some(42)); // still listening
+        assert!(panel.take_actions().is_empty());
+    }
+
+    #[test]
+    fn key_press_without_listening_is_ignored() {
+        let mut panel = SkillsPanel::new(Bounds::new(0, 0, 300, 250), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        panel.update_data(make_data());
+
+        let resp = panel.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::Num5,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Ignored);
+        assert!(panel.take_actions().is_empty());
+    }
+
+    #[test]
+    fn bound_key_for_skill_finds_correct_slot() {
+        let mut keybinds: [Option<u32>; 9] = [None; 9];
+        keybinds[4] = Some(7); // key "5" → skill_nr 7
+        assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 7), Some(5));
+        assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 99), None);
     }
 }

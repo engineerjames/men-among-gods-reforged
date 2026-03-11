@@ -233,6 +233,13 @@ pub enum WidgetAction {
         /// The skilltab index of the skill to assign.
         skill_id: usize,
     },
+    /// Bind a skill to a CTRL+key slot (1-9).
+    BindSkillKey {
+        /// The protocol skill number to bind.
+        skill_nr: u32,
+        /// Key slot index (0 = key "1", 8 = key "9").
+        key_slot: u8,
+    },
     /// Inventory interaction (pick up, equip, shift-equip, etc.).
     ///
     /// Mapped to `ClientCommand::new_inv(a, b, selected_char)` by the scene.

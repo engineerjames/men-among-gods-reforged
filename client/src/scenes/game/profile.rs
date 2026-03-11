@@ -20,6 +20,7 @@ impl GameScene {
         if let Some(profile) = preferences::load_profile(identity) {
             if let Some(ps) = app_state.player_state.as_mut() {
                 ps.player_data_mut().skill_buttons = profile.skill_buttons;
+                ps.player_data_mut().skill_keybinds = profile.skill_keybinds;
                 ps.player_data_mut().are_shadows_enabled =
                     if profile.shadows_enabled { 1 } else { 0 };
                 ps.player_data_mut().hide = profile.hide;
@@ -53,6 +54,7 @@ impl GameScene {
             hide: pdata.hide,
             show_names: pdata.show_names,
             show_proz: pdata.show_proz,
+            skill_keybinds: pdata.skill_keybinds,
         })
     }
 

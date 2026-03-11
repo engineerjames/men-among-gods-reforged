@@ -66,6 +66,8 @@ pub struct RuntimeProfile {
     pub hide: i32,
     pub show_names: i32,
     pub show_proz: i32,
+    /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
+    pub skill_keybinds: [Option<u32>; 9],
 }
 
 /// Global (non-character-specific) settings persisted across sessions.
@@ -95,11 +97,19 @@ struct SpellButtonEntry {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+struct SkillKeybindEntry {
+    key: u8,
+    skill_nr: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 struct CharacterProfile {
     character_id: u64,
     character_name: String,
     account_username: Option<String>,
     skill_buttons: Vec<SpellButtonEntry>,
+    #[serde(default)]
+    skill_keybinds: Vec<SkillKeybindEntry>,
     shadows_enabled: bool,
     spell_effects_enabled: bool,
     master_volume: f32,
@@ -292,6 +302,13 @@ fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
         }
     }
 
+    let mut keybinds: [Option<u32>; 9] = [None; 9];
+    for entry in &profile.skill_keybinds {
+        if entry.key >= 1 && entry.key <= 9 {
+            keybinds[(entry.key - 1) as usize] = Some(entry.skill_nr);
+        }
+    }
+
     RuntimeProfile {
         skill_buttons: buttons,
         shadows_enabled: profile.shadows_enabled,
@@ -300,6 +317,7 @@ fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
         hide: profile.hide,
         show_names: profile.show_names,
         show_proz: profile.show_proz,
+        skill_keybinds: keybinds,
     }
 }
 
@@ -324,11 +342,24 @@ fn from_runtime_profile(
         })
         .collect::<Vec<_>>();
 
+    let skill_keybinds: Vec<SkillKeybindEntry> = runtime
+        .skill_keybinds
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, opt)| {
+            opt.map(|skill_nr| SkillKeybindEntry {
+                key: (idx + 1) as u8,
+                skill_nr,
+            })
+        })
+        .collect();
+
     CharacterProfile {
         character_id: identity.id,
         character_name: identity.name.clone(),
         account_username: identity.account_username.clone(),
         skill_buttons,
+        skill_keybinds,
         shadows_enabled: runtime.shadows_enabled,
         spell_effects_enabled: runtime.spell_effects_enabled,
         master_volume: runtime.master_volume.clamp(0.0, 1.0),
