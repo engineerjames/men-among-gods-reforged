@@ -53,8 +53,8 @@ const MANA_BG: Color = Color::RGB(12, 25, 65);
 
 /// Equipment grid slot order (row-major, 2 cols × 6 rows → WN_* indices).
 const EQUIP_WNTAB: [usize; 12] = [
-    WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_LRING,
-    WN_RRING, WN_LEGS, WN_FEET,
+    WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_LRING, WN_RRING,
+    WN_LEGS, WN_FEET,
 ];
 
 // ---------------------------------------------------------------------------
@@ -330,19 +330,13 @@ mod tests {
 
     #[test]
     fn not_visible_by_default() {
-        let panel = LookPanel::new(
-            Bounds::new(0, 0, 140, 260),
-            Color::RGBA(10, 10, 30, 180),
-        );
+        let panel = LookPanel::new(Bounds::new(0, 0, 140, 260), Color::RGBA(10, 10, 30, 180));
         assert!(!panel.snap.visible);
     }
 
     #[test]
     fn events_are_ignored() {
-        let mut panel = LookPanel::new(
-            Bounds::new(0, 0, 140, 260),
-            Color::RGBA(10, 10, 30, 180),
-        );
+        let mut panel = LookPanel::new(Bounds::new(0, 0, 140, 260), Color::RGBA(10, 10, 30, 180));
         let click = UiEvent::MouseClick {
             x: 70,
             y: 130,

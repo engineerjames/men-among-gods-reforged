@@ -202,8 +202,7 @@ const LOOK_PANEL_H: u32 = 260;
 /// X position of the look panel (right side, 4 px margin).
 const LOOK_PANEL_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - LOOK_PANEL_W as i32 - 4;
 /// Y position of the look panel (vertically centered).
-const LOOK_PANEL_Y: i32 =
-    (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 2;
+const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 2;
 
 // Minimap
 pub(super) const MINIMAP_X: i32 = 3;
