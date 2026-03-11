@@ -183,6 +183,7 @@ impl SkillsPanel {
 
     // ---- Cost calculation (mirrors legacy formulas) ----------------------
 
+    // TODO: Deduplicate these formulas into one place.
     /// Cost to raise attribute `n` by one from base value `v`.
     fn attrib_cost(data: &SkillsPanelData, n: usize, v: i32) -> i32 {
         let max_v = data.attrib[n][2] as i32;

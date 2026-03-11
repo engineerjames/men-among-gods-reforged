@@ -38,6 +38,7 @@ pub enum ClientCommandType {
     CmdInput6 = 28,
     CmdInput7 = 29,
     CmdInput8 = 30,
+    #[allow(dead_code)]
     CmdExit = 31,
     CmdUnique = 32,
     #[allow(dead_code)]
@@ -286,6 +287,7 @@ impl ClientCommand {
     }
 
     /// Creates a graceful disconnect command.
+    #[allow(dead_code)]
     pub fn new_exit() -> Self {
         let cmd = Self::cmd_u32(ClientCommandType::CmdExit, 0);
         cmd

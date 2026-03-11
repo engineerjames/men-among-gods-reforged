@@ -2,6 +2,7 @@ use crate::{
     network::{client_commands::ClientCommand, NetworkEvent},
     scenes::scene::SceneType,
     state::AppState,
+    ui::widget::{Widget, WidgetAction},
 };
 
 use super::{GameScene, MAX_TICK_GROUPS_PER_FRAME, QSIZE};
@@ -134,6 +135,146 @@ impl GameScene {
                 net.send(ClientCommand::new_autolook(lookat));
             }
             self.look_step = 0;
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the chat box and act on them.
+    ///
+    /// Currently the only action is `SendChat`, which sends say-packets
+    /// through the network runtime.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    pub(crate) fn process_chat_box_actions(&mut self, app_state: &AppState) {
+        for action in self.chat_box.take_actions() {
+            match action {
+                WidgetAction::SendChat(text) => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
+                            net.send(pkt);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the mode button and send mode
+    /// commands to the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    pub(crate) fn process_mode_button_actions(&mut self, app_state: &AppState) {
+        for action in self.mode_button.take_actions() {
+            if let WidgetAction::ChangeMode(mode) = action {
+                if let Some(net) = app_state.network.as_ref() {
+                    net.send(ClientCommand::new_mode(mode as i16));
+                }
+            }
+        }
+    }
+
+    /// Drain and process actions produced by the skills panel.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    pub(crate) fn process_skills_panel_actions(&mut self, app_state: &mut AppState) {
+        for action in self.skills_panel.take_actions() {
+            match action {
+                WidgetAction::CommitStats { raises } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        for (which, value) in raises {
+                            net.send(ClientCommand::new_stat(which, value));
+                        }
+                    }
+                }
+                WidgetAction::CastSkill { skill_nr } => {
+                    if let (Some(net), Some(ps)) =
+                        (app_state.network.as_ref(), app_state.player_state.as_ref())
+                    {
+                        let target = Self::default_skill_target(ps);
+                        let a0 = ps.character_info().attrib[0][5] as u32;
+                        net.send(ClientCommand::new_skill(skill_nr, target, a0));
+                    }
+                }
+                WidgetAction::BeginSkillAssign { skill_id } => {
+                    self.pending_skill_assignment = Some(skill_id);
+                }
+                WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        // Clear any previous slot that had the same skill_nr.
+                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
+                            if *slot == Some(skill_nr) {
+                                *slot = None;
+                            }
+                        }
+                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                        let name = mag_core::types::skilltab::get_skill_name(skill_nr as usize);
+                        ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
+                    }
+                    self.save_active_profile(app_state);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the inventory panel and send the
+    /// corresponding network commands.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    pub(crate) fn process_inventory_panel_actions(&mut self, app_state: &AppState) {
+        for action in self.inventory_panel.take_actions() {
+            match action {
+                WidgetAction::InvAction {
+                    a,
+                    b,
+                    selected_char,
+                } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_inv(a, b, selected_char));
+                    }
+                }
+                WidgetAction::InvLookAction { a, b, c } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_inv_look(a, b, c));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the shop panel and send the
+    /// corresponding network commands, or close the shop.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network + player state).
+    pub(crate) fn process_shop_panel_actions(&mut self, app_state: &mut AppState) {
+        for action in self.shop_panel.take_actions() {
+            match action {
+                WidgetAction::ShopAction { shop_nr, action } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_shop(shop_nr, action));
+                    }
+                }
+                WidgetAction::CloseShop => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.close_shop();
+                    }
+                }
+                _ => {}
+            }
         }
     }
 }
