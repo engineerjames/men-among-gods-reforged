@@ -45,17 +45,12 @@ const SPELL_ROWS: i32 = 4;
 /// Vertical gap between the rank label and the spell grid.
 const SPELL_GAP: i32 = 4;
 
-/// Minimum panel content height required to fit the full expanded bar column
-/// (three stat bars + weapon/armor row + rank label + spell grid).  Used by
-/// `compute_bounds` so ranks whose trimmed sigil is shorter than the bar
-/// section still produce a panel tall enough to display all content without
-/// clipping.
-const EXPANDED_CONTENT_H: i32 = (BAR_HEIGHT + BAR_GAP) * 3
+/// Base content height *without* any spell rows (three stat bars + WV/AV
+/// text + rank label).
+const BASE_CONTENT_H: i32 = (BAR_HEIGHT + BAR_GAP) * 3
     + font_cache::BITMAP_GLYPH_H as i32
     + RANK_LABEL_GAP
-    + font_cache::BITMAP_GLYPH_H as i32
-    + SPELL_GAP
-    + SPELL_CELL * SPELL_ROWS;
+    + font_cache::BITMAP_GLYPH_H as i32;
 /// Per-rank transparent rows to trim from the top and bottom of the sigil.
 ///
 /// Each tuple is `(top_rows, bottom_rows)`. These are applied only when
@@ -161,7 +156,7 @@ impl StatusPanel {
             .saturating_sub(trim_top + trim_bottom)
             .max(1);
         Self {
-            bounds: Self::compute_bounds(x, y, true, draw_height),
+            bounds: Self::compute_bounds(x, y, true, draw_height, 0),
             expanded: true,
             bg_color,
             stats: StatSnapshot::default(),
@@ -198,10 +193,9 @@ impl StatusPanel {
 
     /// Compute the bounding rectangle for the given state.
     ///
-    /// In *expanded* mode the panel height is `max(draw_height, EXPANDED_CONTENT_H)`
-    /// so that the bar column never overflows the background even for ranks
-    /// with a short trimmed sigil.  In *collapsed* mode the height equals the
-    /// trimmed sigil height exactly.
+    /// In *expanded* mode the panel height accounts for the bars, WV/AV text,
+    /// rank label, and only as many spell rows as actually occupied. In
+    /// *collapsed* mode the height equals the trimmed sigil height exactly.
     ///
     /// # Arguments
     ///
@@ -209,19 +203,30 @@ impl StatusPanel {
     /// * `y` - Top edge in pixels.
     /// * `expanded` - Whether the stat bars are visible.
     /// * `draw_height` - Trimmed sigil height for the current rank.
+    /// * `spell_rows` - Number of occupied spell rows (0-4).
     ///
     /// # Returns
     ///
     /// * A `Bounds` rectangle sized to contain all visible content.
-    fn compute_bounds(x: i32, y: i32, expanded: bool, draw_height: u32) -> Bounds {
+    fn compute_bounds(x: i32, y: i32, expanded: bool, draw_height: u32, spell_rows: i32) -> Bounds {
+        let spell_h = if spell_rows > 0 {
+            SPELL_GAP + SPELL_CELL * spell_rows
+        } else {
+            0
+        };
+        let expanded_content_h = BASE_CONTENT_H + spell_h;
         let content_h = if expanded {
-            (draw_height as i32).max(EXPANDED_CONTENT_H)
+            (draw_height as i32).max(expanded_content_h)
         } else {
             draw_height as i32
         };
         let h = PANEL_PADDING * 2 + content_h;
         let right_content_w = if expanded {
-            BAR_WIDTH.max(SPELL_COLS * SPELL_CELL)
+            if spell_rows > 0 {
+                BAR_WIDTH.max(SPELL_COLS * SPELL_CELL)
+            } else {
+                BAR_WIDTH
+            }
         } else {
             0
         };
@@ -233,12 +238,26 @@ impl StatusPanel {
         Bounds::new(x, y, w as u32, h as u32)
     }
 
-    /// Recomputes `self.bounds` from the current position, expansion state, and
-    /// sigil draw height.  Call this whenever any of those inputs change.
+    /// Number of occupied spell grid rows (0 when no spells are learned).
+    fn spell_rows(&self) -> i32 {
+        match self.stats.spell.iter().rposition(|s| *s > 0) {
+            Some(idx) => (idx as i32 / SPELL_COLS) + 1,
+            None => 0,
+        }
+    }
+
+    /// Recomputes `self.bounds` from the current position, expansion state,
+    /// sigil draw height, and occupied spell rows.
     fn rebuild_bounds(&mut self) {
         let (_, draw_height) = self.sigil_draw_metrics();
-        self.bounds =
-            Self::compute_bounds(self.bounds.x, self.bounds.y, self.expanded, draw_height);
+        let spell_rows = self.spell_rows();
+        self.bounds = Self::compute_bounds(
+            self.bounds.x,
+            self.bounds.y,
+            self.expanded,
+            draw_height,
+            spell_rows,
+        );
     }
 
     /// Returns the bounding rectangle of just the sigil icon (for hit-testing
@@ -529,10 +548,10 @@ mod tests {
 
     #[test]
     fn collapsed_bounds_smaller_than_expanded() {
-        // Use a draw_height below EXPANDED_CONTENT_H so the expanded panel must grow.
+        // Use a draw_height below BASE_CONTENT_H so the expanded panel must grow.
         let draw_height = 36u32;
-        let expanded = StatusPanel::compute_bounds(4, 4, true, draw_height);
-        let collapsed = StatusPanel::compute_bounds(4, 4, false, draw_height);
+        let expanded = StatusPanel::compute_bounds(4, 4, true, draw_height, 0);
+        let collapsed = StatusPanel::compute_bounds(4, 4, false, draw_height, 0);
         assert!(collapsed.width < expanded.width);
         assert!(collapsed.height < expanded.height);
     }
@@ -541,7 +560,7 @@ mod tests {
     fn collapsed_bounds_sized_to_draw_height() {
         let (trim_top, trim_bottom) = SIGIL_TRIM_ROWS[0];
         let draw_height = SIGIL_HEIGHT as u32 - trim_top - trim_bottom;
-        let collapsed = StatusPanel::compute_bounds(4, 4, false, draw_height);
+        let collapsed = StatusPanel::compute_bounds(4, 4, false, draw_height, 0);
         assert_eq!(collapsed.height, PANEL_PADDING as u32 * 2 + draw_height);
         assert_eq!(collapsed.width as i32, PANEL_PADDING * 2 + SIGIL_WIDTH);
     }

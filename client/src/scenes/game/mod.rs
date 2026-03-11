@@ -169,7 +169,7 @@ const HUD_PANEL_W: u32 = 300;
 /// Height of each togglable HUD panel.
 const HUD_PANEL_H: u32 = 250;
 /// Wider width for the inventory panel (two grids + scrollbar + gap).
-const INV_PANEL_W: u32 = 350;
+const INV_PANEL_W: u32 = 190;
 /// Taller height for the inventory panel.
 const INV_PANEL_H: u32 = 280;
 /// Semi-transparent background color shared by all HUD panels.

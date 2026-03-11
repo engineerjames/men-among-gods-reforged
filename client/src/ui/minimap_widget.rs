@@ -103,8 +103,9 @@ impl MinimapWidget {
         let panel_w = view + 2 * (PANEL_PADDING + PANEL_BORDER);
         let panel_h = panel_w; // square
 
-        // Center the panel horizontally below the button.
-        let panel_x = button_cx - panel_w as i32 / 2;
+        // Center the panel horizontally below the button, clamped to screen.
+        let screen_w = crate::constants::TARGET_WIDTH_INT as i32;
+        let panel_x = (button_cx - panel_w as i32 / 2).min(screen_w - panel_w as i32);
         let panel_y = button_cy + button_radius as i32 + BUTTON_MAP_GAP;
 
         let bounds_collapsed = Bounds::new(

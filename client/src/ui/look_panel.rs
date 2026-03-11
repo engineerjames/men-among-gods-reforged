@@ -229,6 +229,9 @@ impl Widget for LookPanel {
 
     /// Draw the look panel.
     ///
+    /// The background height is computed dynamically from the actual sprite
+    /// dimensions and content, so it always wraps the drawn elements tightly.
+    ///
     /// # Arguments
     ///
     /// * `ctx` - Mutable render context (canvas + graphics cache).
@@ -240,6 +243,22 @@ impl Widget for LookPanel {
         if !self.snap.visible {
             return Ok(());
         }
+
+        // Pre-compute content height so the background fits tightly.
+        let sprite_h = if self.snap.sprite_id > 0 {
+            let tex = ctx.gfx.get_texture(self.snap.sprite_id as usize);
+            let q = tex.query();
+            (q.height * SPRITE_ZOOM) as i32 + GAP
+        } else {
+            0
+        };
+        let content_h = PAD
+            + font_cache::BITMAP_GLYPH_H as i32 + GAP   // name
+            + sprite_h                                     // sprite + gap
+            + EQUIP_ROWS * EQUIP_CELL + GAP               // equipment grid
+            + (BAR_H + BAR_GAP) * 3 - BAR_GAP             // 3 bars
+            + PAD;
+        self.bounds.height = content_h as u32;
 
         // Background
         ctx.canvas.set_blend_mode(BlendMode::Blend);

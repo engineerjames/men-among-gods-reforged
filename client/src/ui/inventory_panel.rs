@@ -38,7 +38,10 @@ const INV_GRID_PAD_X: i32 = 10;
 const INV_GRID_PAD_Y: i32 = 36;
 
 /// Horizontal gap between the inventory grid and the equipment grid.
-const GRID_GAP: i32 = 30;
+const GRID_GAP: i32 = 20;
+
+/// Horizontal gap between the two equipment columns.
+const EQUIP_COL_GAP: i32 = 8;
 
 /// Equipment grid rows (2 columns × 6 rows = 12 slots).
 const EQUIP_ROWS: usize = 6;
@@ -215,6 +218,9 @@ impl InventoryPanel {
     }
 
     /// Returns which equipment grid position (0..11) the mouse is hovering.
+    ///
+    /// Accounts for `EQUIP_COL_GAP` between the two columns: clicks in the
+    /// gap region return `None`.
     fn hovered_equip_pos(&self) -> Option<usize> {
         let (ox, oy) = self.equip_origin();
         let mx = self.mouse_x - ox;
@@ -222,9 +228,15 @@ impl InventoryPanel {
         if mx < 0 || my < 0 {
             return None;
         }
-        let col = (mx / CELL) as usize;
+        let col = if mx < CELL {
+            0usize
+        } else if mx >= CELL + EQUIP_COL_GAP && mx < 2 * CELL + EQUIP_COL_GAP {
+            1usize
+        } else {
+            return None;
+        };
         let row = (my / CELL) as usize;
-        if col < 2 && row < EQUIP_ROWS && mx < 2 * CELL && my < (EQUIP_ROWS as i32) * CELL {
+        if row < EQUIP_ROWS && my < (EQUIP_ROWS as i32) * CELL {
             Some(row * 2 + col)
         } else {
             None
@@ -520,7 +532,7 @@ impl Widget for InventoryPanel {
             let sprite = data.worn[worn_index];
             let col = (n % 2) as i32;
             let row = (n / 2) as i32;
-            let x = eq_x + col * CELL;
+            let x = eq_x + col * (CELL + EQUIP_COL_GAP);
             let y = eq_y + row * CELL;
 
             if sprite > 0 {
