@@ -121,8 +121,17 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
 
 /// Returns the byte length of a `SV_SETMAP3`-style lighting command with the
 /// given tile count.
+///
+/// The new light packet format is: `[opcode, idx_lo, idx_hi, base_light, nibble_pairs...]`
+/// — a 4-byte header followed by `cnt / 2` nibble-pair bytes.
+///
+/// Opcode→cnt mapping (matching server-side `cl_light_*` functions):
+/// * `SV_SETMAP4` (`cl_light_one`, 1 tile)  → `sv_setmap3_len(0)` = 4
+/// * `SV_SETMAP5` (`cl_light_three`, 3 tiles) → `sv_setmap3_len(2)` = 5
+/// * `SV_SETMAP6` (`cl_light_seven`, 7 tiles) → `sv_setmap3_len(6)` = 7
+/// * `SV_SETMAP3` (`cl_light_26`, 26 tiles) → `sv_setmap3_len(26)` = 17
 fn sv_setmap3_len(cnt: usize) -> usize {
-    3 + (cnt / 2)
+    4 + (cnt / 2)
 }
 
 /// Returns the total byte length of the server command starting at
@@ -234,4 +243,83 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
     }
 
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mag_core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6, SV_TICK};
+
+    /// Verify the new light-packet header lengths match what the server encodes.
+    /// Server: [opcode, idx_lo, idx_hi, base_light, nibble_pairs...]
+    #[test]
+    fn sv_setmap3_len_matches_server_buffers() {
+        // SV_SETMAP4 = cl_light_one (1 tile): 4-byte packet, no nibble pairs
+        assert_eq!(sv_setmap3_len(0), 4);
+        // SV_SETMAP5 = cl_light_three (3 tiles): 4 header + 1 nibble byte = 5
+        assert_eq!(sv_setmap3_len(2), 5);
+        // SV_SETMAP6 = cl_light_seven (7 tiles): 4 header + 3 nibble bytes = 7
+        assert_eq!(sv_setmap3_len(6), 7);
+        // SV_SETMAP3 = cl_light_26 (26 tiles): 4 header + 13 nibble bytes = 17
+        assert_eq!(sv_setmap3_len(26), 17);
+    }
+
+    /// `split_tick_payload` correctly splits a payload that mixes a SV_TICK (2
+    /// bytes) with one of each light command, all using the new 4-byte header.
+    #[test]
+    fn split_tick_payload_light_packets_new_format() {
+        let mut payload: Vec<u8> = Vec::new();
+
+        // SV_TICK (2 bytes)
+        payload.push(SV_TICK);
+        payload.push(0x05);
+
+        // SV_SETMAP4 / cl_light_one (4 bytes): [op, idx_lo, idx_hi, light]
+        payload.push(SV_SETMAP4);
+        payload.push(0x01); // idx = 1
+        payload.push(0x00);
+        payload.push(0x07); // light = 7
+
+        // SV_SETMAP5 / cl_light_three (5 bytes): [op, idx_lo, idx_hi, light, nibble]
+        payload.push(SV_SETMAP5);
+        payload.push(0x04);
+        payload.push(0x00);
+        payload.push(0x05);
+        payload.push(0x23); // nibble pair for tiles 5,6
+
+        // SV_SETMAP6 / cl_light_seven (7 bytes): [op, idx_lo, idx_hi, light, 3 nibbles]
+        payload.push(SV_SETMAP6);
+        payload.push(0x0A);
+        payload.push(0x00);
+        payload.push(0x03);
+        payload.push(0x45);
+        payload.push(0x67);
+        payload.push(0x89);
+
+        // SV_SETMAP3 / cl_light_26 (17 bytes): [op, idx_lo, idx_hi, light, 13 nibbles]
+        payload.push(SV_SETMAP3);
+        payload.push(0x10);
+        payload.push(0x00);
+        payload.push(0x0F);
+        for _ in 0..13 {
+            payload.push(0xAB);
+        }
+
+        let cmds = split_tick_payload(&payload).expect("should parse without error");
+        assert_eq!(cmds.len(), 5);
+        assert_eq!(cmds[0].len(), 2); // SV_TICK
+        assert_eq!(cmds[1].len(), 4); // SV_SETMAP4
+        assert_eq!(cmds[2].len(), 5); // SV_SETMAP5
+        assert_eq!(cmds[3].len(), 7); // SV_SETMAP6
+        assert_eq!(cmds[4].len(), 17); // SV_SETMAP3
+    }
+
+    /// Ensure a payload containing ONLY an old-format 3-byte SV_SETMAP4 produces
+    /// a truncation error (guards against regression to the old length).
+    #[test]
+    fn split_tick_payload_rejects_old_3byte_light_packet() {
+        let payload = vec![SV_SETMAP4, 0x01, 0x00]; // only 3 bytes — old format
+        let result = split_tick_payload(&payload);
+        assert!(result.is_err(), "3-byte SV_SETMAP4 should be rejected");
+    }
 }
