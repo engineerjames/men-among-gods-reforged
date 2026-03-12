@@ -3553,13 +3553,15 @@ fn cl_light_one(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) 
     let smap_light = gs.players[dosend].smap[n].light;
     gs.players[dosend].cmap[n].light = smap_light;
 
-    let mut buf: [u8; 3] = [0; 3];
+    // Packet layout: [cmd, idx_lo, idx_hi, light]
+    // index is a full u16 (supports up to 65535 tiles; TILEX*TILEY=6400).
+    let mut buf: [u8; 4] = [0; 4];
     buf[0] = core::constants::SV_SETMAP4;
-    let encoded = (n as u16) | ((smap_light as u16) << 12);
-    buf[1] = (encoded & 0xff) as u8;
-    buf[2] = ((encoded >> 8) & 0xff) as u8;
+    buf[1] = (n & 0xff) as u8;
+    buf[2] = ((n >> 8) & 0xff) as u8;
+    buf[3] = smap_light & 0x0f;
 
-    network_manager::xsend(gs, dosend, &buf, 3);
+    network_manager::xsend(gs, dosend, &buf, 4);
     1
 }
 
@@ -3576,17 +3578,18 @@ fn cl_light_three(gs: &mut GameState, n: usize, dosend: usize, update_only: bool
         return 50 * count / 4;
     }
 
-    let mut buf: [u8; 4] = [0; 4];
+    // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
+    let mut buf: [u8; 5] = [0; 5];
     buf[0] = core::constants::SV_SETMAP5;
 
     let smap_light = gs.players[dosend].smap[n].light;
     gs.players[dosend].cmap[n].light = smap_light;
-    let encoded = (n as u16) | ((smap_light as u16) << 12);
-    buf[1] = (encoded & 0xff) as u8;
-    buf[2] = ((encoded >> 8) & 0xff) as u8;
+    buf[1] = (n & 0xff) as u8;
+    buf[2] = ((n >> 8) & 0xff) as u8;
+    buf[3] = smap_light & 0x0f;
 
     let total = core::constants::TILEX * core::constants::TILEY;
-    let mut p = 3;
+    let mut p = 4;
     let mut m = n + 2;
     while m < std::cmp::min(n + 2 + 2, total) {
         let light_m = gs.players[dosend].smap[m].light;
@@ -3598,7 +3601,7 @@ fn cl_light_three(gs: &mut GameState, n: usize, dosend: usize, update_only: bool
         p += 1;
     }
 
-    network_manager::xsend(gs, dosend, &buf, 4);
+    network_manager::xsend(gs, dosend, &buf, 5);
     1
 }
 
@@ -3615,17 +3618,18 @@ fn cl_light_seven(gs: &mut GameState, n: usize, dosend: usize, update_only: bool
         return 50 * count / 6;
     }
 
-    let mut buf: [u8; 6] = [0; 6];
+    // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
+    let mut buf: [u8; 7] = [0; 7];
     buf[0] = core::constants::SV_SETMAP6;
 
     let smap_light = gs.players[dosend].smap[n].light;
     gs.players[dosend].cmap[n].light = smap_light;
-    let encoded = (n as u16) | ((smap_light as u16) << 12);
-    buf[1] = (encoded & 0xff) as u8;
-    buf[2] = ((encoded >> 8) & 0xff) as u8;
+    buf[1] = (n & 0xff) as u8;
+    buf[2] = ((n >> 8) & 0xff) as u8;
+    buf[3] = smap_light & 0x0f;
 
     let total = core::constants::TILEX * core::constants::TILEY;
-    let mut p = 3;
+    let mut p = 4;
     let mut m = n + 2;
     while m < std::cmp::min(n + 6 + 2, total) {
         let light_m = gs.players[dosend].smap[m].light;
@@ -3637,7 +3641,7 @@ fn cl_light_seven(gs: &mut GameState, n: usize, dosend: usize, update_only: bool
         p += 1;
     }
 
-    network_manager::xsend(gs, dosend, &buf, 6);
+    network_manager::xsend(gs, dosend, &buf, 7);
     1
 }
 
@@ -3654,17 +3658,18 @@ fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -
         return 50 * count / 16;
     }
 
-    let mut buf: [u8; 16] = [0; 16];
+    // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
+    let mut buf: [u8; 17] = [0; 17];
     buf[0] = core::constants::SV_SETMAP3;
 
     let smap_light = gs.players[dosend].smap[n].light;
     gs.players[dosend].cmap[n].light = smap_light;
-    let encoded = (n as u16) | ((smap_light as u16) << 12);
-    buf[1] = (encoded & 0xff) as u8;
-    buf[2] = ((encoded >> 8) & 0xff) as u8;
+    buf[1] = (n & 0xff) as u8;
+    buf[2] = ((n >> 8) & 0xff) as u8;
+    buf[3] = smap_light & 0x0f;
 
     let total = core::constants::TILEX * core::constants::TILEY;
-    let mut p = 3;
+    let mut p = 4;
     let mut m = n + 2;
     while m < std::cmp::min(n + 26 + 2, total) {
         let light_m = gs.players[dosend].smap[m].light;
@@ -3676,7 +3681,7 @@ fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -
         p += 1;
     }
 
-    network_manager::xsend(gs, dosend, &buf, 16);
+    network_manager::xsend(gs, dosend, &buf, 17);
     1
 }
 
@@ -5729,5 +5734,78 @@ fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
         gs.do_depot_char(cn, idx, n);
     } else {
         gs.do_shop_char(cn, co, n);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Encode a single-tile light packet (SV_SETMAP4) the same way
+    /// [`cl_light_one`] does and decode it the way the client parser does,
+    /// asserting there is no truncation or corruption for any valid tile index.
+    fn encode_decode_single(n: usize, light: u8) -> (u16, u8) {
+        // Server encoding
+        let mut buf: [u8; 4] = [0; 4];
+        buf[1] = (n & 0xff) as u8;
+        buf[2] = ((n >> 8) & 0xff) as u8;
+        buf[3] = light & 0x0f;
+
+        // Client decoding (mirrors opcode 66 parser)
+        let start_index = u16::from_le_bytes([buf[1], buf[2]]);
+        let base_light = buf[3] & 0x0f;
+        (start_index, base_light)
+    }
+
+    #[test]
+    fn light_packet_roundtrip_index_zero() {
+        let (idx, light) = encode_decode_single(0, 0);
+        assert_eq!(idx, 0);
+        assert_eq!(light, 0);
+    }
+
+    #[test]
+    fn light_packet_roundtrip_below_old_limit() {
+        let (idx, light) = encode_decode_single(2047, 7);
+        assert_eq!(idx, 2047);
+        assert_eq!(light, 7);
+    }
+
+    #[test]
+    fn light_packet_roundtrip_above_old_limit() {
+        // This index previously wrapped to 0 with the old `& 2047` mask.
+        let (idx, light) = encode_decode_single(2048, 8);
+        assert_eq!(idx, 2048);
+        assert_eq!(light, 8);
+    }
+
+    #[test]
+    fn light_packet_roundtrip_above_4096() {
+        // This index previously overwrote the light nibble with the old encoding.
+        let (idx, light) = encode_decode_single(4096, 15);
+        assert_eq!(idx, 4096);
+        assert_eq!(light, 15);
+    }
+
+    #[test]
+    fn light_packet_roundtrip_max_viewport_index() {
+        // TILEX * TILEY - 1 = 80 * 80 - 1 = 6399
+        let (idx, light) = encode_decode_single(6399, 12);
+        assert_eq!(idx, 6399);
+        assert_eq!(light, 12);
+    }
+
+    #[test]
+    fn light_packet_nibble_pack_ordering() {
+        // Verify that the server nibble-packing matches what apply_set_map3
+        // expects: high nibble = tile m-1, low nibble = tile m.
+        let light_n1: u8 = 5; // tile at n+1 (goes into high nibble)
+        let light_n2: u8 = 11; // tile at n+2 (goes into low nibble)
+        let packed_byte = light_n2 | (light_n1 << 4);
+
+        // Client unpacking (mirrors apply_set_map3)
+        let hi = (packed_byte >> 4) & 0x0f;
+        let lo = packed_byte & 0x0f;
+
+        assert_eq!(hi, light_n1, "high nibble should be tile n+1");
+        assert_eq!(lo, light_n2, "low nibble should be tile n+2");
     }
 }

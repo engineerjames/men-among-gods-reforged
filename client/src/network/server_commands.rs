@@ -647,15 +647,15 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             },
         )),
         45 => {
-            let packed = read_u16(bytes, 1)?;
-            let start_index = packed & 2047;
-            let base_light = ((packed >> 12) & 15) as u8;
+            // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
+            let start_index = read_u16(bytes, 1)?;
+            let base_light = *bytes.get(3)? & 0x0f;
             Some((
                 ServerCommandType::SetMap3,
                 ServerCommandData::SetMap3 {
                     start_index,
                     base_light,
-                    packed: bytes.get(3..)?.to_vec(),
+                    packed: bytes.get(4..)?.to_vec(),
                 },
             ))
         }
@@ -795,35 +795,35 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             },
         )),
         66 => {
-            let packed = read_u16(bytes, 1)?;
+            // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
             Some((
                 ServerCommandType::SetMap4,
                 ServerCommandData::SetMap3 {
-                    start_index: packed & 2047,
-                    base_light: ((packed >> 12) & 15) as u8,
-                    packed: bytes.get(3..)?.to_vec(),
+                    start_index: read_u16(bytes, 1)?,
+                    base_light: *bytes.get(3)? & 0x0f,
+                    packed: bytes.get(4..)?.to_vec(),
                 },
             ))
         }
         67 => {
-            let packed = read_u16(bytes, 1)?;
+            // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
             Some((
                 ServerCommandType::SetMap5,
                 ServerCommandData::SetMap3 {
-                    start_index: packed & 2047,
-                    base_light: ((packed >> 12) & 15) as u8,
-                    packed: bytes.get(3..)?.to_vec(),
+                    start_index: read_u16(bytes, 1)?,
+                    base_light: *bytes.get(3)? & 0x0f,
+                    packed: bytes.get(4..)?.to_vec(),
                 },
             ))
         }
         68 => {
-            let packed = read_u16(bytes, 1)?;
+            // Packet layout: [cmd, idx_lo, idx_hi, light, nibble_pairs...]
             Some((
                 ServerCommandType::SetMap6,
                 ServerCommandData::SetMap3 {
-                    start_index: packed & 2047,
-                    base_light: ((packed >> 12) & 15) as u8,
-                    packed: bytes.get(3..)?.to_vec(),
+                    start_index: read_u16(bytes, 1)?,
+                    base_light: *bytes.get(3)? & 0x0f,
+                    packed: bytes.get(4..)?.to_vec(),
                 },
             ))
         }
@@ -985,5 +985,84 @@ mod tests {
         let pkt = make_packet(34, &[]);
         let cmd = ServerCommand::from_bytes(&pkt).unwrap();
         assert!(matches!(cmd.header, ServerCommandType::LoginOk));
+    }
+
+    /// Helpers for light-packet parsing tests.
+    fn make_light_pkt(opcode: u8, tile_index: u16, base_light: u8, nibbles: &[u8]) -> Vec<u8> {
+        let mut pkt = vec![opcode];
+        pkt.extend_from_slice(&tile_index.to_le_bytes()); // bytes 1-2: index
+        pkt.push(base_light & 0x0f); // byte 3: light
+        pkt.extend_from_slice(nibbles); // optional packed nibbles
+                                        // Pad to at least 16 bytes so other parsers don't need special-casing
+        while pkt.len() < 16 {
+            pkt.push(0);
+        }
+        pkt
+    }
+
+    fn assert_setmap3(cmd: ServerCommand, expected_index: u16, expected_light: u8) {
+        match cmd.structured_data {
+            ServerCommandData::SetMap3 {
+                start_index,
+                base_light,
+                ..
+            } => {
+                assert_eq!(start_index, expected_index);
+                assert_eq!(base_light, expected_light);
+            }
+            _ => panic!("Expected SetMap3 variant"),
+        }
+    }
+
+    // -- SV_SETMAP3 (opcode 45) --
+
+    #[test]
+    fn parse_setmap3_low_index() {
+        let pkt = make_light_pkt(45, 100, 7, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_setmap3(cmd, 100, 7);
+    }
+
+    #[test]
+    fn parse_setmap3_index_above_old_2047_limit() {
+        let pkt = make_light_pkt(45, 2048, 8, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_setmap3(cmd, 2048, 8);
+    }
+
+    #[test]
+    fn parse_setmap3_max_viewport_index() {
+        // 80 * 80 - 1 = 6399
+        let pkt = make_light_pkt(45, 6399, 15, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_setmap3(cmd, 6399, 15);
+    }
+
+    // -- SV_SETMAP4 (opcode 66) --
+
+    #[test]
+    fn parse_setmap4_index_above_old_2047_limit() {
+        let pkt = make_light_pkt(66, 4096, 12, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_setmap3(cmd, 4096, 12);
+    }
+
+    // -- SV_SETMAP5 (opcode 67) --
+
+    #[test]
+    fn parse_setmap5_index_above_old_2047_limit() {
+        // One trailing nibble byte covers tiles n+1 and n+2
+        let pkt = make_light_pkt(67, 3000, 5, &[0xAB]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_setmap3(cmd, 3000, 5);
+    }
+
+    // -- SV_SETMAP6 (opcode 68) --
+
+    #[test]
+    fn parse_setmap6_index_above_old_2047_limit() {
+        let pkt = make_light_pkt(68, 6399, 0, &[]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_setmap3(cmd, 6399, 0);
     }
 }

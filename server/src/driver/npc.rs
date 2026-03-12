@@ -1737,8 +1737,8 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
 
     if data_55 != 0 && data_55 + (TICKS * 120) > ticker && data_54 != 0 {
         let m = data_54;
-        gs.characters[cn].goto_x = (m % SERVER_MAPX) as u16 + get_frust_x_off(ticker) as u16;
-        gs.characters[cn].goto_y = (m / SERVER_MAPX) as u16 + get_frust_y_off(ticker) as u16;
+        gs.characters[cn].goto_x = ((m % SERVER_MAPX) + get_frust_x_off(ticker)) as u16;
+        gs.characters[cn].goto_y = ((m / SERVER_MAPX) + get_frust_y_off(ticker)) as u16;
         gs.characters[cn].data[58] = 2;
         return;
     }
