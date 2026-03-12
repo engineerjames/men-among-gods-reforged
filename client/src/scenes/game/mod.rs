@@ -469,14 +469,19 @@ impl GameScene {
     ///
     /// * `ps` - The current player state with the authoritative message log.
     fn sync_chat_messages(&mut self, ps: &PlayerState) {
-        let total = ps.log_len();
-        if total <= self.last_synced_log_len {
+        let total_pushed = ps.log_total_pushed();
+        if total_pushed <= self.last_synced_log_len {
             return;
         }
-        let new_messages =
-            (self.last_synced_log_len..total).filter_map(|i| ps.log_message(i).cloned());
+        let new_count = total_pushed - self.last_synced_log_len;
+        let available = ps.log_len();
+        // If more messages arrived than the buffer can hold, we can only
+        // retrieve what's still in the buffer.
+        let fetchable = new_count.min(available);
+        let start = available - fetchable;
+        let new_messages = (start..available).filter_map(|i| ps.log_message(i).cloned());
         self.chat_box.push_messages(new_messages);
-        self.last_synced_log_len = total;
+        self.last_synced_log_len = total_pushed;
     }
 
     fn is_selected_visible(ps: &PlayerState) -> bool {
