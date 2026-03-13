@@ -28,6 +28,8 @@ use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 
+use mag_core::stat_buffer::StatisticsBuffer;
+
 use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
 use client::gfx_cache::GraphicsCache;
@@ -269,6 +271,26 @@ fn main() -> Result<(), String> {
         PANEL_BG,
     );
 
+    // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).
+    let mut t_label: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_rect_button: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_circle_button: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_checkbox: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_slider: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_dropdown: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_rank_arc: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_demo_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_chat_box: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_mode_button: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_minimap: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_status_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_hud_buttons: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_skills_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_inventory_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_settings_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_look_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_shop_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+
     // Track modifier state for UiEvent generation.
     let mut ctrl_held = false;
     let mut shift_held = false;
@@ -300,6 +322,28 @@ fn main() -> Result<(), String> {
                         Keycode::LShift | Keycode::RShift => shift_held = true,
                         Keycode::LAlt | Keycode::RAlt => alt_held = true,
                         Keycode::Escape => break 'running,
+                        Keycode::P => {
+                            print_render_stats(&[
+                                ("Label", &t_label),
+                                ("RectButton", &t_rect_button),
+                                ("CircleButton", &t_circle_button),
+                                ("Checkbox", &t_checkbox),
+                                ("Slider", &t_slider),
+                                ("Dropdown", &t_dropdown),
+                                ("RankArc", &t_rank_arc),
+                                ("Panel", &t_demo_panel),
+                                ("ChatBox", &t_chat_box),
+                                ("ModeButton", &t_mode_button),
+                                ("MinimapWidget", &t_minimap),
+                                ("StatusPanel", &t_status_panel),
+                                ("HudButtonBar", &t_hud_buttons),
+                                ("SkillsPanel", &t_skills_panel),
+                                ("InventoryPanel", &t_inventory_panel),
+                                ("SettingsPanel", &t_settings_panel),
+                                ("LookPanel", &t_look_panel),
+                                ("ShopPanel", &t_shop_panel),
+                            ]);
+                        }
                         // Toggle overlay panels.
                         Keycode::Num1 => {
                             skills_panel.toggle();
@@ -433,7 +477,7 @@ fn main() -> Result<(), String> {
             &mut shop_panel,
         );
 
-        // 4. Render.
+        // 4. Render — each call is individually timed (in microseconds).
         canvas.set_draw_color(CLEAR_COLOR);
         canvas.clear();
 
@@ -443,26 +487,26 @@ fn main() -> Result<(), String> {
         };
 
         // Render base-layer widgets.
-        let _ = label.render(&mut ctx);
-        let _ = rect_button.render(&mut ctx);
-        let _ = circle_button.render(&mut ctx);
-        let _ = checkbox.render(&mut ctx);
-        let _ = slider.render(&mut ctx);
-        let _ = dropdown.render(&mut ctx);
-        let _ = rank_arc.render(&mut ctx);
-        let _ = demo_panel.render(&mut ctx);
-        let _ = chat_box.render(&mut ctx);
-        let _ = mode_button.render(&mut ctx);
-        let _ = minimap_widget.render(&mut ctx);
-        let _ = status_panel.render(&mut ctx);
-        let _ = hud_buttons.render(&mut ctx);
+        timed_render(&mut label, &mut ctx, &mut t_label);
+        timed_render(&mut rect_button, &mut ctx, &mut t_rect_button);
+        timed_render(&mut circle_button, &mut ctx, &mut t_circle_button);
+        timed_render(&mut checkbox, &mut ctx, &mut t_checkbox);
+        timed_render(&mut slider, &mut ctx, &mut t_slider);
+        timed_render(&mut dropdown, &mut ctx, &mut t_dropdown);
+        timed_render(&mut rank_arc, &mut ctx, &mut t_rank_arc);
+        timed_render(&mut demo_panel, &mut ctx, &mut t_demo_panel);
+        timed_render(&mut chat_box, &mut ctx, &mut t_chat_box);
+        timed_render(&mut mode_button, &mut ctx, &mut t_mode_button);
+        timed_render(&mut minimap_widget, &mut ctx, &mut t_minimap);
+        timed_render(&mut status_panel, &mut ctx, &mut t_status_panel);
+        timed_render(&mut hud_buttons, &mut ctx, &mut t_hud_buttons);
 
         // Render overlay panels (order matches visual stacking).
-        let _ = skills_panel.render(&mut ctx);
-        let _ = inventory_panel.render(&mut ctx);
-        let _ = settings_panel.render(&mut ctx);
-        let _ = look_panel.render(&mut ctx);
-        let _ = shop_panel.render(&mut ctx);
+        timed_render(&mut skills_panel, &mut ctx, &mut t_skills_panel);
+        timed_render(&mut inventory_panel, &mut ctx, &mut t_inventory_panel);
+        timed_render(&mut settings_panel, &mut ctx, &mut t_settings_panel);
+        timed_render(&mut look_panel, &mut ctx, &mut t_look_panel);
+        timed_render(&mut shop_panel, &mut ctx, &mut t_shop_panel);
 
         ctx.canvas.present();
 
@@ -531,4 +575,46 @@ fn update_all(
     settings_panel.update(dt);
     look_panel.update(dt);
     shop_panel.update(dt);
+}
+
+/// Calls `widget.render()`, measures the elapsed wall-clock time in
+/// microseconds, and pushes the sample into `buf`.
+///
+/// Render errors are silently discarded (same as the previous `let _ =` calls).
+///
+/// # Arguments
+///
+/// * `widget` - The widget to render.
+/// * `ctx` - SDL2 render context.
+/// * `buf` - Per-widget timing buffer to record the sample into.
+fn timed_render(widget: &mut dyn Widget, ctx: &mut RenderContext, buf: &mut StatisticsBuffer<f32>) {
+    let t0 = Instant::now();
+    let _ = widget.render(ctx);
+    buf.push(t0.elapsed().as_micros() as f32);
+}
+
+/// Prints a formatted render-timing comparison table to stdout.
+///
+/// # Arguments
+///
+/// * `entries` - Slice of `(name, buffer)` pairs, one per widget.
+fn print_render_stats(entries: &[(&str, &StatisticsBuffer<f32>)]) {
+    println!(
+        "\n{:<20} {:>7}  {:>9}  {:>9}  {:>9}  {:>9}",
+        "Widget", "samples", "mean µs", "std µs", "min µs", "max µs"
+    );
+    println!("{}", "-".repeat(72));
+    for (name, buf) in entries {
+        let s = buf.stats();
+        println!(
+            "{:<20} {:>7}  {:>9.2}  {:>9.2}  {:>9.2}  {:>9.2}",
+            name,
+            buf.len(),
+            s.mean,
+            s.std,
+            s.min,
+            s.max,
+        );
+    }
+    println!();
 }
