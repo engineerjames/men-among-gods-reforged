@@ -29,6 +29,8 @@ pub struct Slider {
     min: f32,
     max: f32,
     hovered: bool,
+    /// Whether the left mouse button is currently held down over the track.
+    dragging: bool,
     /// One-shot flag indicating the value changed since last read.
     changed: bool,
     /// Additive tint alpha applied on hover (0–255).
@@ -59,6 +61,7 @@ impl Slider {
             min,
             max,
             hovered: false,
+            dragging: false,
             changed: false,
             hover_alpha: 48,
         }
@@ -124,15 +127,24 @@ impl Widget for Slider {
         match event {
             UiEvent::MouseMove { x, y } => {
                 self.hovered = self.bounds.contains_point(*x, *y);
+                if self.dragging {
+                    let new_val = self.x_to_value(*x);
+                    if (new_val - self.value).abs() > f32::EPSILON {
+                        self.value = new_val;
+                        self.changed = true;
+                    }
+                    return EventResponse::Consumed;
+                }
                 EventResponse::Ignored
             }
-            UiEvent::MouseClick {
+            UiEvent::MouseDown {
                 x,
                 y,
                 button: MouseButton::Left,
                 ..
             } => {
                 if self.bounds.contains_point(*x, *y) {
+                    self.dragging = true;
                     let new_val = self.x_to_value(*x);
                     if (new_val - self.value).abs() > f32::EPSILON {
                         self.value = new_val;
@@ -142,6 +154,13 @@ impl Widget for Slider {
                 } else {
                     EventResponse::Ignored
                 }
+            }
+            UiEvent::MouseClick {
+                button: MouseButton::Left,
+                ..
+            } => {
+                self.dragging = false;
+                EventResponse::Ignored
             }
             _ => EventResponse::Ignored,
         }

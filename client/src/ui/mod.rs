@@ -86,6 +86,22 @@ pub fn sdl_to_ui_event(
             y: mouse_y,
             delta: *y,
         }),
+        Event::MouseButtonDown {
+            mouse_btn, x, y, ..
+        } => {
+            let button = match mouse_btn {
+                MouseButton::Left => UiMouseButton::Left,
+                MouseButton::Right => UiMouseButton::Right,
+                MouseButton::Middle => UiMouseButton::Middle,
+                _ => return None,
+            };
+            Some(UiEvent::MouseDown {
+                x: *x,
+                y: *y,
+                button,
+                modifiers,
+            })
+        }
         Event::MouseButtonUp {
             mouse_btn, x, y, ..
         } => {

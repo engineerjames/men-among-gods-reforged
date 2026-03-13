@@ -334,7 +334,7 @@ impl Widget for ChatBox {
                 }
             }
 
-            UiEvent::MouseMove { .. } => EventResponse::Ignored,
+            UiEvent::MouseMove { .. } | UiEvent::MouseDown { .. } => EventResponse::Ignored,
         }
     }
 
