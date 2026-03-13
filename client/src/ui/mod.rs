@@ -74,7 +74,7 @@ pub struct RenderContext<'a> {
 /// # Returns
 ///
 /// `Some(UiEvent)` for events the widget system cares about, `None` otherwise.
-pub(crate) fn sdl_to_ui_event(
+pub fn sdl_to_ui_event(
     event: &Event,
     mouse_x: i32,
     mouse_y: i32,

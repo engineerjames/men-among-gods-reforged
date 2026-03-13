@@ -1,5 +1,7 @@
 //! Rectangular and circular button widgets.
 
+use std::collections::HashMap;
+
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
@@ -276,12 +278,21 @@ impl CircleButton {
 
     /// Draws a filled circle using the midpoint algorithm + horizontal
     /// scanlines.
+    ///
+    /// Spans are collected into a `HashMap` keyed by row Y before any drawing
+    /// occurs, so each row is painted exactly once regardless of how many
+    /// octant passes would have covered it.  This prevents double-alpha
+    /// artefacts under `BlendMode::Add` (e.g. bright bands at the centre row
+    /// or at the 45° diagonals).
     fn fill_circle(
         canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
         cx: i32,
         cy: i32,
         r: u32,
     ) -> Result<(), String> {
+        // TODO: It's probably not ideal that we're calculating this from scratch every
+        // frame; this is a huge potential for optimization in the future if it becomes a
+        // bottleneck.
         if r == 0 {
             return canvas.draw_point(sdl2::rect::Point::new(cx, cy));
         }
@@ -290,24 +301,15 @@ impl CircleButton {
         let mut y: i32 = 0;
         let mut err = 1 - r;
 
+        let mut rows: HashMap<i32, i32> = HashMap::new();
+
         while x >= y {
-            // Draw horizontal spans for each octant pair.
-            canvas.draw_line(
-                sdl2::rect::Point::new(cx - x, cy + y),
-                sdl2::rect::Point::new(cx + x, cy + y),
-            )?;
-            canvas.draw_line(
-                sdl2::rect::Point::new(cx - x, cy - y),
-                sdl2::rect::Point::new(cx + x, cy - y),
-            )?;
-            canvas.draw_line(
-                sdl2::rect::Point::new(cx - y, cy + x),
-                sdl2::rect::Point::new(cx + y, cy + x),
-            )?;
-            canvas.draw_line(
-                sdl2::rect::Point::new(cx - y, cy - x),
-                sdl2::rect::Point::new(cx + y, cy - x),
-            )?;
+            // Each iteration contributes up to four unique rows.
+            for (row_y, half_w) in [(cy + y, x), (cy - y, x), (cy + x, y), (cy - x, y)] {
+                rows.entry(row_y)
+                    .and_modify(|w| *w = (*w).max(half_w))
+                    .or_insert(half_w);
+            }
 
             y += 1;
             if err < 0 {
@@ -317,6 +319,23 @@ impl CircleButton {
                 err += 2 * (y - x) + 1;
             }
         }
+
+        // Expand each row into its two endpoints and draw everything in one
+        // pass so each pixel is touched exactly once.
+        let points: Vec<sdl2::rect::Point> = rows
+            .into_iter()
+            .flat_map(|(row_y, half_w)| {
+                [
+                    sdl2::rect::Point::new(cx - half_w, row_y),
+                    sdl2::rect::Point::new(cx + half_w, row_y),
+                ]
+            })
+            .collect();
+
+        for pair in points.chunks(2) {
+            canvas.draw_line(pair[0], pair[1])?;
+        }
+
         Ok(())
     }
 
