@@ -65,6 +65,7 @@ const CLEAR_COLOR: Color = Color::RGB(30, 30, 40);
 // Column X offsets for the gallery grid.
 const COL1_X: i32 = 10;
 const COL2_X: i32 = 230;
+const COL3_X: i32 = 500;
 
 // HUD arc parameters (mirrored from the game scene).
 const HUD_ARC_CENTER_X: i32 = TARGET_WIDTH_INT as i32 / 2;
@@ -190,7 +191,7 @@ fn main() -> Result<(), String> {
         color: LogMessageColor::Blue,
     });
 
-    let mut mode_button = ModeButton::new(COL2_X + 30, 250, 18);
+    let mut mode_button = ModeButton::new(COL3_X + 30, 250, 18);
 
     let mut minimap_widget = MinimapWidget::new(TARGET_WIDTH_INT as i32 - 30, 30, 14);
 

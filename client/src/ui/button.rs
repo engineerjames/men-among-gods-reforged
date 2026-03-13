@@ -340,6 +340,9 @@ impl CircleButton {
     }
 
     /// Draws a circle outline using the midpoint algorithm.
+    /// TODO: We're already using SDL's gfx library; we should
+    /// probably just use it instead of reimplementing algorithms
+    /// to draw circles from scratch...
     fn draw_circle_outline(
         canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
         cx: i32,
