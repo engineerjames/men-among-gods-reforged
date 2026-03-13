@@ -156,11 +156,22 @@ impl Widget for Slider {
                 }
             }
             UiEvent::MouseClick {
+                x,
+                y,
                 button: MouseButton::Left,
                 ..
             } => {
                 self.dragging = false;
-                EventResponse::Ignored
+                if self.bounds.contains_point(*x, *y) {
+                    let new_val = self.x_to_value(*x);
+                    if (new_val - self.value).abs() > f32::EPSILON {
+                        self.value = new_val;
+                        self.changed = true;
+                    }
+                    EventResponse::Consumed
+                } else {
+                    EventResponse::Ignored
+                }
             }
             _ => EventResponse::Ignored,
         }
