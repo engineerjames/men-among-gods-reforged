@@ -93,6 +93,14 @@ impl PlayerState {
         self.message_log.len()
     }
 
+    /// Returns the total number of messages ever pushed to the chat log.
+    ///
+    /// Unlike `log_len()`, this counter increases monotonically and does not
+    /// saturate at the buffer capacity.
+    pub fn log_total_pushed(&self) -> usize {
+        self.message_log.total_pushed()
+    }
+
     /// Takes and returns the pending server-requested exit reason, if any.
     ///
     /// # Returns

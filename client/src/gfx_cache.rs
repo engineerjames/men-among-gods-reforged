@@ -133,7 +133,8 @@ impl GraphicsCache {
                 .creator
                 .create_texture_streaming(Some(PixelFormatEnum::ABGR8888), 128, 128)
             {
-                Ok(tex) => {
+                Ok(mut tex) => {
+                    tex.set_blend_mode(sdl2::render::BlendMode::Blend);
                     self.minimap_texture = Some(tex);
                 }
                 Err(e) => {

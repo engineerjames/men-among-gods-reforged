@@ -3,6 +3,7 @@ pub struct CircularBuffer<T> {
     buffer: Vec<Option<T>>,
     head: usize,
     capacity: usize,
+    total_pushed: usize,
 }
 
 impl<T> CircularBuffer<T> {
@@ -15,6 +16,7 @@ impl<T> CircularBuffer<T> {
             buffer,
             head: 0,
             capacity,
+            total_pushed: 0,
         }
     }
 
@@ -22,6 +24,7 @@ impl<T> CircularBuffer<T> {
     pub fn push(&mut self, item: T) {
         self.buffer[self.head] = Some(item);
         self.head = (self.head + 1) % self.capacity;
+        self.total_pushed += 1;
     }
 
     /// Retrieves an item by its index, where 0 is the most recently added item.
@@ -38,11 +41,22 @@ impl<T> CircularBuffer<T> {
         for slot in self.buffer.iter_mut() {
             *slot = None;
         }
+        self.total_pushed = 0;
     }
 
     /// Returns the number of elements currently stored in the buffer.
     pub fn len(&self) -> usize {
         self.buffer.iter().filter(|item| item.is_some()).count()
+    }
+
+    /// Returns the total number of items ever pushed into the buffer.
+    ///
+    /// This counter increases monotonically with each `push` and resets
+    /// to zero on `clear`.  It is useful for detecting new arrivals even
+    /// after the buffer has wrapped around and `len()` is saturated at
+    /// capacity.
+    pub fn total_pushed(&self) -> usize {
+        self.total_pushed
     }
 }
 
@@ -176,5 +190,38 @@ mod tests {
 
         buf.clear();
         assert_eq!(buf.len(), 0);
+    }
+
+    #[test]
+    fn total_pushed_increases_monotonically() {
+        let mut buf = CircularBuffer::new(3);
+        assert_eq!(buf.total_pushed(), 0);
+
+        buf.push(1);
+        assert_eq!(buf.total_pushed(), 1);
+
+        buf.push(2);
+        buf.push(3);
+        assert_eq!(buf.total_pushed(), 3);
+
+        // Overwrites oldest — total_pushed keeps climbing
+        buf.push(4);
+        assert_eq!(buf.total_pushed(), 4);
+        buf.push(5);
+        assert_eq!(buf.total_pushed(), 5);
+    }
+
+    #[test]
+    fn total_pushed_resets_on_clear() {
+        let mut buf = CircularBuffer::new(3);
+        buf.push(1);
+        buf.push(2);
+        assert_eq!(buf.total_pushed(), 2);
+
+        buf.clear();
+        assert_eq!(buf.total_pushed(), 0);
+
+        buf.push(9);
+        assert_eq!(buf.total_pushed(), 1);
     }
 }

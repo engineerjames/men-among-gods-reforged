@@ -79,6 +79,9 @@ impl GameScene {
                                     app_state.master_volume,
                                 );
                             }
+                            ServerCommandData::Exit { reason } => {
+                                log::info!("Received exit command from server: {}", reason);
+                            }
                             _ => {
                                 if let Some(ps) = app_state.player_state.as_mut() {
                                     ps.update_from_server_command(&cmd);

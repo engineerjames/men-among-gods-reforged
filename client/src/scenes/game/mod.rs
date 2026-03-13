@@ -469,14 +469,19 @@ impl GameScene {
     ///
     /// * `ps` - The current player state with the authoritative message log.
     fn sync_chat_messages(&mut self, ps: &PlayerState) {
-        let total = ps.log_len();
-        if total <= self.last_synced_log_len {
+        let total_pushed = ps.log_total_pushed();
+        if total_pushed <= self.last_synced_log_len {
             return;
         }
-        let new_messages =
-            (self.last_synced_log_len..total).filter_map(|i| ps.log_message(i).cloned());
+        let new_count = total_pushed - self.last_synced_log_len;
+        let available = ps.log_len();
+        // If more messages arrived than the buffer can hold, we can only
+        // retrieve what's still in the buffer.
+        let fetchable = new_count.min(available);
+        let start = available - fetchable;
+        let new_messages = (start..available).filter_map(|i| ps.log_message(i).cloned());
         self.chat_box.push_messages(new_messages);
-        self.last_synced_log_len = total;
+        self.last_synced_log_len = total_pushed;
     }
 
     fn is_selected_visible(ps: &PlayerState) -> bool {
@@ -580,20 +585,17 @@ impl GameScene {
                 }
                 let cell = (gy + gx * MINIMAP_WORLD_SIZE) * 4;
 
-                let back_id = tile.back.max(0) as usize;
+                // Use the network-authoritative ba_sprite rather than the
+                // engine_tick-computed `tile.back` — the latter is briefly
+                // zeroed during engine_tick phase 1 and introduces an ordering
+                // dependency we don't need.
+                let back_id = tile.ba_sprite.max(0) as usize;
                 if back_id != 0 {
-                    // Use the alpha byte as the "never visited" sentinel: the buffer is
-                    // zero-initialised, so alpha==0 means this cell has never been painted.
-                    // RGB-only checks incorrectly treated legitimately-black backgrounds as
-                    // blank, causing them to be re-queried on every step.
-                    let is_blank = self.minimap_xmap[cell + 3] == 0;
-                    // 0xFF marks the player position — always overwrite it so the old
-                    // white dot is replaced with the real tile color when the player moves.
-                    let is_player_marker = self.minimap_xmap[cell] == 0xFF
-                        && self.minimap_xmap[cell + 1] == 0xFF
-                        && self.minimap_xmap[cell + 2] == 0xFF;
-                    if is_blank || is_player_marker {
-                        let (r, g, b) = gfx.get_avg_color(back_id);
+                    let (r, g, b) = gfx.get_avg_color(back_id);
+                    // Guard against all-transparent sprites whose average color
+                    // is (0,0,0) — writing that would produce an opaque black
+                    // pixel indistinguishable from an unvisited cell.
+                    if (r | g | b) != 0 {
                         self.minimap_xmap[cell] = r;
                         self.minimap_xmap[cell + 1] = g;
                         self.minimap_xmap[cell + 2] = b;

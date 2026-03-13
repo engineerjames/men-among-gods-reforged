@@ -3,7 +3,7 @@
 
 /// Mirrors the original `LogoutReason` values used in the server protocol
 /// and internal logic. These codes indicate why a client/character was
-/// disconnected or removed.
+/// disconnected or removed. // TODO: Replace uses of LO_X constants with this
 pub enum LogoutReason {
     /// Unknown logout reason.
     Unknown = 0,

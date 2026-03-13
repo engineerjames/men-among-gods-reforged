@@ -291,6 +291,10 @@ impl Widget for MinimapWidget {
             let map_x = self.panel_x + inset as i32;
             let map_y = self.panel_y + inset as i32;
 
+            // Ensure we are in normal alpha-blend mode; prior render passes
+            // (e.g. spell effects) may have left the canvas in Add or None.
+            ctx.canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+
             ctx.gfx.ensure_minimap_texture();
             if let Some(tex) = ctx.gfx.minimap_texture.as_mut() {
                 let pitch = view as usize * 4;
