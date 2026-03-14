@@ -524,7 +524,11 @@ fn main() -> Result<(), String> {
         timed_render(&mut checkbox, &mut ctx, &mut t_checkbox);
         timed_render(&mut slider, &mut ctx, &mut t_slider);
         timed_render(&mut text_input_normal, &mut ctx, &mut t_text_input_normal);
-        timed_render(&mut text_input_password, &mut ctx, &mut t_text_input_password);
+        timed_render(
+            &mut text_input_password,
+            &mut ctx,
+            &mut t_text_input_password,
+        );
         timed_render(&mut dropdown, &mut ctx, &mut t_dropdown);
         timed_render(&mut rank_arc, &mut ctx, &mut t_rank_arc);
         timed_render(&mut demo_panel, &mut ctx, &mut t_demo_panel);

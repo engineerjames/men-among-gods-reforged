@@ -165,8 +165,7 @@ impl TextInput {
 
     /// Returns the number of characters that fit inside the text area.
     fn visible_char_count(&self) -> usize {
-        let inner_w = self.bounds.width as i32
-            - 2 * (self.border_width as i32 + INNER_PAD);
+        let inner_w = self.bounds.width as i32 - 2 * (self.border_width as i32 + INNER_PAD);
         (inner_w.max(0) as u32 / font_cache::BITMAP_GLYPH_ADVANCE) as usize
     }
 
@@ -175,11 +174,7 @@ impl TextInput {
     fn recalculate_view_offset(&mut self) {
         let visible = self.visible_char_count();
         let len = self.value.len();
-        self.view_offset = if len <= visible {
-            0
-        } else {
-            len - visible
-        };
+        self.view_offset = if len <= visible { 0 } else { len - visible };
     }
 
     /// Returns the display string for the current view window.
@@ -187,7 +182,12 @@ impl TextInput {
     /// In password mode every character is replaced by [`PASSWORD_CHAR`].
     fn display_slice(&self) -> String {
         let visible = self.visible_char_count();
-        let chars: Vec<char> = self.value.chars().skip(self.view_offset).take(visible).collect();
+        let chars: Vec<char> = self
+            .value
+            .chars()
+            .skip(self.view_offset)
+            .take(visible)
+            .collect();
         if self.password_mode {
             PASSWORD_CHAR.to_string().repeat(chars.len())
         } else {
@@ -319,8 +319,8 @@ impl Widget for TextInput {
 
         // ── 3. Text / placeholder ──────────────────────────────────────────
         let text_x = self.bounds.x + bw + INNER_PAD;
-        let text_y = self.bounds.y
-            + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
+        let text_y =
+            self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
 
         if self.value.is_empty() {
             font_cache::draw_text_faded(
@@ -340,7 +340,8 @@ impl Widget for TextInput {
         // ── 4. Cursor bar ──────────────────────────────────────────────────
         if self.focused && self.cursor_visible {
             let visible_count = self.value.len() - self.view_offset;
-            let cursor_x = text_x + (visible_count as i32) * font_cache::BITMAP_GLYPH_ADVANCE as i32;
+            let cursor_x =
+                text_x + (visible_count as i32) * font_cache::BITMAP_GLYPH_ADVANCE as i32;
             let cursor_h = font_cache::BITMAP_GLYPH_H as i32 + 2;
             let cursor_y = self.bounds.y + (self.bounds.height as i32 - cursor_h) / 2;
             let cursor_rect = sdl2::rect::Rect::new(cursor_x, cursor_y, 1, cursor_h as u32);
@@ -383,7 +384,11 @@ mod tests {
     }
 
     fn no_mods() -> KeyModifiers {
-        KeyModifiers { ctrl: false, shift: false, alt: false }
+        KeyModifiers {
+            ctrl: false,
+            shift: false,
+            alt: false,
+        }
     }
 
     fn text_event(s: &str) -> UiEvent {
@@ -391,7 +396,10 @@ mod tests {
     }
 
     fn key_event(kc: Keycode) -> UiEvent {
-        UiEvent::KeyDown { keycode: kc, modifiers: no_mods() }
+        UiEvent::KeyDown {
+            keycode: kc,
+            modifiers: no_mods(),
+        }
     }
 
     fn click_inside() -> UiEvent {
