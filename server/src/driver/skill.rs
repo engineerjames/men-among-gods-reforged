@@ -2812,7 +2812,8 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     spell_stun(gs, cn, co, power);
 
     let co_orig = co;
-    let m = gs.characters[cn].x + gs.characters[cn].y * core::constants::SERVER_MAPX as i16;
+    let m: usize = gs.characters[cn].x as usize
+        + gs.characters[cn].y as usize * core::constants::SERVER_MAPX as usize;
 
     let adj = [
         1isize,
