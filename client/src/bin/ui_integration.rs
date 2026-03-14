@@ -51,6 +51,7 @@ use client::ui::shop_panel::ShopPanel;
 use client::ui::skills_panel::{SkillsPanel, SkillsPanelData};
 use client::ui::slider::Slider;
 use client::ui::style::{Background, Border, Padding};
+use client::ui::text_input::TextInput;
 use client::ui::widget::{Bounds, EventResponse, HudPanel, Widget, WidgetAction};
 use client::ui::{sdl_to_ui_event, RenderContext};
 
@@ -143,6 +144,26 @@ fn main() -> Result<(), String> {
         100.0,
         50.0,
         0,
+    );
+
+    let mut text_input_normal = TextInput::new(
+        Bounds::new(COL1_X, 220, 200, 20),
+        "Username",
+        0,
+        32,
+        false,
+        Color::RGBA(100, 100, 120, 200),
+        Color::RGBA(100, 180, 255, 255),
+    );
+
+    let mut text_input_password = TextInput::new(
+        Bounds::new(COL1_X, 250, 200, 20),
+        "Password",
+        0,
+        32,
+        true,
+        Color::RGBA(100, 100, 120, 200),
+        Color::RGBA(100, 180, 255, 255),
     );
 
     let mut dropdown = Dropdown::new(
@@ -290,6 +311,8 @@ fn main() -> Result<(), String> {
     let mut t_settings_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_look_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_shop_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_text_input_normal: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_text_input_password: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
 
     // Track modifier state for UiEvent generation.
     let mut ctrl_held = false;
@@ -342,6 +365,8 @@ fn main() -> Result<(), String> {
                                 ("SettingsPanel", &t_settings_panel),
                                 ("LookPanel", &t_look_panel),
                                 ("ShopPanel", &t_shop_panel),
+                                ("TextInput (normal)", &t_text_input_normal),
+                                ("TextInput (password)", &t_text_input_password),
                             ]);
                         }
                         // Toggle overlay panels.
@@ -404,6 +429,8 @@ fn main() -> Result<(), String> {
                     &mut hud_buttons,
                     &mut minimap_widget,
                     &mut mode_button,
+                    &mut text_input_normal,
+                    &mut text_input_password,
                     &mut slider,
                     &mut checkbox,
                     &mut circle_button,
@@ -427,6 +454,8 @@ fn main() -> Result<(), String> {
         drain_and_log(&mut circle_button, "CircleButton");
         drain_and_log(&mut checkbox, "Checkbox");
         drain_and_log(&mut slider, "Slider");
+        drain_and_log(&mut text_input_normal, "TextInput(normal)");
+        drain_and_log(&mut text_input_password, "TextInput(password)");
         drain_and_log(&mut dropdown, "Dropdown");
         drain_and_log(&mut demo_panel, "Panel");
         drain_and_log(&mut chat_box, "ChatBox");
@@ -462,6 +491,8 @@ fn main() -> Result<(), String> {
             &mut circle_button,
             &mut checkbox,
             &mut slider,
+            &mut text_input_normal,
+            &mut text_input_password,
             &mut dropdown,
             &mut rank_arc,
             &mut demo_panel,
@@ -492,6 +523,8 @@ fn main() -> Result<(), String> {
         timed_render(&mut circle_button, &mut ctx, &mut t_circle_button);
         timed_render(&mut checkbox, &mut ctx, &mut t_checkbox);
         timed_render(&mut slider, &mut ctx, &mut t_slider);
+        timed_render(&mut text_input_normal, &mut ctx, &mut t_text_input_normal);
+        timed_render(&mut text_input_password, &mut ctx, &mut t_text_input_password);
         timed_render(&mut dropdown, &mut ctx, &mut t_dropdown);
         timed_render(&mut rank_arc, &mut ctx, &mut t_rank_arc);
         timed_render(&mut demo_panel, &mut ctx, &mut t_demo_panel);
@@ -543,6 +576,8 @@ fn update_all(
     circle_button: &mut CircleButton,
     checkbox: &mut Checkbox,
     slider: &mut Slider,
+    text_input_normal: &mut TextInput,
+    text_input_password: &mut TextInput,
     dropdown: &mut Dropdown,
     rank_arc: &mut RankArc,
     demo_panel: &mut Panel,
@@ -562,6 +597,8 @@ fn update_all(
     circle_button.update(dt);
     checkbox.update(dt);
     slider.update(dt);
+    text_input_normal.update(dt);
+    text_input_password.update(dt);
     dropdown.update(dt);
     rank_arc.update(dt);
     demo_panel.update(dt);

@@ -40,6 +40,8 @@ pub mod slider;
 #[allow(dead_code)]
 pub mod status_panel;
 #[allow(dead_code)]
+pub mod text_input;
+#[allow(dead_code)]
 pub mod style;
 #[allow(dead_code)]
 pub mod widget;
