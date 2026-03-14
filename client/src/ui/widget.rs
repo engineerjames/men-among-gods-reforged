@@ -139,7 +139,18 @@ impl KeyModifiers {
 /// An input event translated from SDL2 into widget-local terms.
 #[derive(Clone, Debug)]
 pub enum UiEvent {
-    /// A mouse button was pressed.
+    /// A mouse button was pressed down (before release).
+    MouseDown {
+        /// X in logical viewport coordinates.
+        x: i32,
+        /// Y in logical viewport coordinates.
+        y: i32,
+        /// Which button.
+        button: MouseButton,
+        /// Modifier key state at the time of the press.
+        modifiers: KeyModifiers,
+    },
+    /// A mouse button was released (completed click).
     MouseClick {
         /// X in logical viewport coordinates.
         x: i32,

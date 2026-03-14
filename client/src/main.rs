@@ -8,31 +8,12 @@ use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 use sdl2::video::FullscreenType;
 
-use crate::gfx_cache::GraphicsCache;
-use crate::preferences::DisplayMode;
-use crate::scenes::scene::SceneType;
-use crate::sfx_cache::SoundCache;
-use crate::state::{ApiTokenState, AppState, DisplayCommand};
-
-mod account_api;
-mod cert_trust;
-mod constants;
-mod dpi_scaling;
-mod filepaths;
-mod font_cache;
-mod game_map;
-mod gfx_cache;
-mod hosts;
-mod legacy_engine;
-mod network;
-mod platform;
-mod player_state;
-mod preferences;
-mod scenes;
-mod sfx_cache;
-mod state;
-mod types;
-mod ui;
+use client::gfx_cache::GraphicsCache;
+use client::preferences::DisplayMode;
+use client::scenes::scene::SceneType;
+use client::sfx_cache::SoundCache;
+use client::state::{ApiTokenState, AppState, DisplayCommand};
+use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
 
 /// Global flag ensuring the egui glyph warm-up runs exactly once.
 static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);

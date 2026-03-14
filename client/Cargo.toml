@@ -8,6 +8,10 @@ build = "build.rs"
 name = "men-among-gods-client"
 path = "src/main.rs"
 
+[[bin]]
+name = "ui-integration"
+path = "src/bin/ui_integration.rs"
+
 [dependencies]
 mag_core = { path = "../core", package = "core" }
 egui-sdl2 = "0.2.5"

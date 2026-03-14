@@ -131,6 +131,26 @@ impl ShopPanel {
         self.data.as_ref().map_or(false, |d| d.visible)
     }
 
+    /// Toggle the panel's visibility.
+    ///
+    /// If no data snapshot has been set yet, a default (empty) snapshot is
+    /// created with `visible = true`.
+    pub fn toggle(&mut self) {
+        match &mut self.data {
+            Some(d) => d.visible = !d.visible,
+            None => {
+                self.data = Some(ShopPanelData {
+                    items: [0; SHOP_SLOTS],
+                    prices: [0; SHOP_SLOTS],
+                    pl_price: 0,
+                    shop_nr: 0,
+                    citem: 0,
+                    visible: true,
+                });
+            }
+        }
+    }
+
     // ── Hit-testing helpers ─────────────────────────────────────────────
 
     /// Returns the grid slot index (0–61) under the current mouse position,

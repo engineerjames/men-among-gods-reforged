@@ -124,17 +124,22 @@ impl Widget for Checkbox {
         ctx.canvas.set_draw_color(Color::RGBA(180, 180, 200, 220));
         ctx.canvas.draw_rect(box_rect)?;
 
-        // Checkmark (filled inner rect when checked)
+        // Checkmark (X drawn from corner to corner of the inset area)
         if self.checked {
-            let inset = 2;
-            let inner = sdl2::rect::Rect::new(
-                box_x + inset,
-                box_y + inset,
-                BOX_SIZE - inset as u32 * 2,
-                BOX_SIZE - inset as u32 * 2,
-            );
+            let inset = 2_i32;
+            let x0 = box_x + inset;
+            let y0 = box_y + inset;
+            let x1 = box_x + BOX_SIZE as i32 - inset - 1;
+            let y1 = box_y + BOX_SIZE as i32 - inset - 1;
             ctx.canvas.set_draw_color(Color::RGBA(200, 220, 255, 240));
-            ctx.canvas.fill_rect(inner)?;
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(x0, y0),
+                sdl2::rect::Point::new(x1, y1),
+            )?;
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(x1, y0),
+                sdl2::rect::Point::new(x0, y1),
+            )?;
         }
 
         // Label text

@@ -188,6 +188,13 @@ impl LookPanel {
         }
     }
 
+    /// Toggle the panel's visibility.
+    ///
+    /// Useful for standalone test harnesses that lack a `PlayerState`.
+    pub fn toggle(&mut self) {
+        self.snap.visible = !self.snap.visible;
+    }
+
     /// Push the latest look target state into the widget.
     ///
     /// Reads the look target from `PlayerState` and finds the matching map
