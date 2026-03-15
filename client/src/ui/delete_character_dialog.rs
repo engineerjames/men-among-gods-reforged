@@ -91,10 +91,8 @@ impl DeleteCharacterDialog {
     ///
     /// A fully-initialised `DeleteCharacterDialog`.
     pub fn new() -> Self {
-        let panel_x =
-            (crate::constants::TARGET_WIDTH_INT - DIALOG_W) as i32 / 2;
-        let panel_y =
-            (crate::constants::TARGET_HEIGHT_INT - DIALOG_H) as i32 / 2;
+        let panel_x = (crate::constants::TARGET_WIDTH_INT - DIALOG_W) as i32 / 2;
+        let panel_y = (crate::constants::TARGET_HEIGHT_INT - DIALOG_H) as i32 / 2;
 
         let bounds = Bounds::new(panel_x, panel_y, DIALOG_W, DIALOG_H);
 
@@ -126,10 +124,9 @@ impl DeleteCharacterDialog {
         let btn_start_x = panel_x + (DIALOG_W as i32 - total_btn_w as i32) / 2;
         let btn_y = panel_y + DIALOG_H as i32 - BTN_H as i32 - 30;
 
-        let confirm_button =
-            RectButton::new(Bounds::new(btn_start_x, btn_y, 140, BTN_H), btn_bg)
-                .with_border(btn_border)
-                .with_label("Confirm delete", FONT);
+        let confirm_button = RectButton::new(Bounds::new(btn_start_x, btn_y, 140, BTN_H), btn_bg)
+            .with_border(btn_border)
+            .with_label("Confirm delete", FONT);
 
         let cancel_button = RectButton::new(
             Bounds::new(btn_start_x + 140 + BTN_GAP, btn_y, 140, BTN_H),
@@ -272,8 +269,7 @@ impl Widget for DeleteCharacterDialog {
         let (w, h) = ctx.canvas.output_size()?;
         ctx.canvas.set_blend_mode(BlendMode::Blend);
         ctx.canvas.set_draw_color(Color::RGBA(0, 0, 0, 140));
-        ctx.canvas
-            .fill_rect(sdl2::rect::Rect::new(0, 0, w, h))?;
+        ctx.canvas.fill_rect(sdl2::rect::Rect::new(0, 0, w, h))?;
 
         // Dialog background.
         let dialog_rect = sdl2::rect::Rect::new(
@@ -318,8 +314,7 @@ impl Widget for DeleteCharacterDialog {
 
         // Text input.
         let input_y = name_y + font_cache::BITMAP_GLYPH_H as i32 + 8;
-        self.name_input
-            .set_position(self.bounds.x + PAD_X, input_y);
+        self.name_input.set_position(self.bounds.x + PAD_X, input_y);
         self.name_input.render(ctx)?;
 
         // Buttons.
@@ -449,10 +444,7 @@ mod tests {
         });
         let actions = dialog.take_actions();
         assert_eq!(actions.len(), 1);
-        assert!(matches!(
-            &actions[0],
-            DeleteCharacterDialogAction::Cancel
-        ));
+        assert!(matches!(&actions[0], DeleteCharacterDialogAction::Cancel));
     }
 
     #[test]
