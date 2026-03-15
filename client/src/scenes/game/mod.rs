@@ -212,8 +212,6 @@ pub struct GameScene {
     pub(super) minimap_last_xy: Option<(u16, u16)>,
     pub(super) look_step: u32,
     pub(super) last_look_tick: u32,
-    /// Whether the escape/options menu overlay is currently visible.
-    pub(super) escape_menu_open: bool,
     /// Whether spell visual effects (EMAGIC/GMAGIC/CMAGIC glows) are rendered.
     pub(super) are_spell_effects_enabled: bool,
     /// Master volume multiplier (0.0 = muted, 1.0 = full).
@@ -302,7 +300,6 @@ impl GameScene {
             minimap_last_xy: None,
             look_step: 0,
             last_look_tick: 0,
-            escape_menu_open: false,
             are_spell_effects_enabled: true,
             master_volume: 1.0,
             pending_skill_assignment: None,
@@ -720,7 +717,6 @@ impl Scene for GameScene {
         self.minimap_last_xy = None;
         self.look_step = 0;
         self.last_look_tick = 0;
-        self.escape_menu_open = false;
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
 
@@ -792,16 +788,33 @@ impl Scene for GameScene {
             ..
         } = event
         {
-            // Always send CmdReset (preserving legacy behavior).
+            // Always send CmdReset (preserving legacy behavior for now...).
             if let Some(net) = app_state.network.as_ref() {
                 self.play_click_sound(app_state);
                 net.send(ClientCommand::new_reset());
             }
-            self.escape_menu_open = !self.escape_menu_open;
-            // Clear pending skill assignment when toggling menu.
-            if self.escape_menu_open {
-                self.pending_skill_assignment = None;
+
+            // If any windows are open, close them.
+            if self.shop_panel.is_visible() {
+                self.shop_panel.toggle();
             }
+
+            if self.settings_panel.is_visible() {
+                self.settings_panel.toggle();
+            }
+
+            if self.inventory_panel.is_visible() {
+                self.inventory_panel.toggle();
+            }
+
+            if self.skills_panel.is_visible() {
+                self.skills_panel.toggle();
+            }
+
+            if self.minimap_widget.is_visible() {
+                self.minimap_widget.toggle();
+            }
+
             return None;
         }
 
@@ -846,11 +859,6 @@ impl Scene for GameScene {
                 self.mouse_y = *y;
             }
             _ => {}
-        }
-
-        // --- When escape menu is open, block all other game input ---
-        if self.escape_menu_open {
-            return None;
         }
 
         // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
