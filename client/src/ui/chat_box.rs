@@ -575,7 +575,7 @@ mod tests {
     // -- focus --
 
     #[test]
-    fn click_inside_sets_focus() {
+    fn click_inside_is_ignored() {
         let mut cb = test_chat_box();
         cb.focused = false;
         let event = UiEvent::MouseClick {
@@ -585,12 +585,12 @@ mod tests {
             modifiers: super::super::widget::KeyModifiers::default(),
         };
         let resp = cb.handle_event(&event);
-        assert_eq!(resp, EventResponse::Consumed);
-        assert!(cb.focused);
+        assert_eq!(resp, EventResponse::Ignored);
+        assert!(!cb.focused);
     }
 
     #[test]
-    fn click_outside_clears_focus() {
+    fn click_outside_is_ignored() {
         let mut cb = test_chat_box();
         assert!(cb.focused);
         let event = UiEvent::MouseClick {
@@ -601,7 +601,7 @@ mod tests {
         };
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Ignored);
-        assert!(!cb.focused);
+        assert!(cb.focused);
     }
 
     // -- text input --
@@ -856,7 +856,7 @@ mod tests {
     }
 
     #[test]
-    fn update_reset_on_click_inside() {
+    fn update_not_reset_on_click_inside() {
         use std::time::Duration;
         let mut cb = test_chat_box();
         cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
@@ -869,6 +869,6 @@ mod tests {
             modifiers: super::super::widget::KeyModifiers::default(),
         });
         cb.update(Duration::ZERO);
-        assert_eq!(cb.alpha, 255);
+        assert_eq!(cb.alpha, 0);
     }
 }
