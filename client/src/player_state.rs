@@ -18,6 +18,10 @@ use crate::{
 /// dropped when they disconnect.
 pub struct PlayerState {
     map: GameMap,
+    /// Staging buffer for the Look1–6 sequence currently being received.
+    /// Committed to `look_target` at Look5 termination only when the sequence
+    /// is user-initiated (autoflag == 0).
+    incoming_look: Look,
     look_target: Look,
     shop_target: Look,
     player_info: PlayerData,
@@ -56,6 +60,7 @@ impl Default for PlayerState {
     fn default() -> Self {
         Self {
             map: GameMap::default(),
+            incoming_look: Look::default(),
             look_target: Look::default(),
             shop_target: Look::default(),
             player_info: PlayerData::default(),
@@ -582,14 +587,17 @@ impl PlayerState {
                 worn8,
                 autoflag,
             } => {
-                self.look_target.set_worn(0, *worn0);
-                self.look_target.set_worn(2, *worn2);
-                self.look_target.set_worn(3, *worn3);
-                self.look_target.set_worn(5, *worn5);
-                self.look_target.set_worn(6, *worn6);
-                self.look_target.set_worn(7, *worn7);
-                self.look_target.set_worn(8, *worn8);
-                self.look_target.set_autoflag(*autoflag);
+                // Start a fresh incoming sequence so stale data from a previous
+                // look doesn't bleed through if any Look2-6 packets are missing.
+                self.incoming_look = Look::default();
+                self.incoming_look.set_worn(0, *worn0);
+                self.incoming_look.set_worn(2, *worn2);
+                self.incoming_look.set_worn(3, *worn3);
+                self.incoming_look.set_worn(5, *worn5);
+                self.incoming_look.set_worn(6, *worn6);
+                self.incoming_look.set_worn(7, *worn7);
+                self.incoming_look.set_worn(8, *worn8);
+                self.incoming_look.set_autoflag(*autoflag);
             }
             ServerCommandData::Look2 {
                 worn9,
@@ -598,11 +606,11 @@ impl PlayerState {
                 hp,
                 worn10,
             } => {
-                self.look_target.set_worn(9, *worn9);
-                self.look_target.set_sprite(*sprite);
-                self.look_target.set_points(*points);
-                self.look_target.set_hp(*hp);
-                self.look_target.set_worn(10, *worn10);
+                self.incoming_look.set_worn(9, *worn9);
+                self.incoming_look.set_sprite(*sprite);
+                self.incoming_look.set_points(*points);
+                self.incoming_look.set_hp(*hp);
+                self.incoming_look.set_worn(10, *worn10);
             }
             ServerCommandData::Look3 {
                 end,
@@ -613,13 +621,13 @@ impl PlayerState {
                 mana,
                 a_mana,
             } => {
-                self.look_target.set_end(*end);
-                self.look_target.set_a_hp(*a_hp);
-                self.look_target.set_a_end(*a_end);
-                self.look_target.set_nr(*nr);
-                self.look_target.set_id(*id);
-                self.look_target.set_mana(*mana);
-                self.look_target.set_a_mana(*a_mana);
+                self.incoming_look.set_end(*end);
+                self.incoming_look.set_a_hp(*a_hp);
+                self.incoming_look.set_a_end(*a_end);
+                self.incoming_look.set_nr(*nr);
+                self.incoming_look.set_id(*id);
+                self.incoming_look.set_mana(*mana);
+                self.incoming_look.set_a_mana(*a_mana);
             }
             ServerCommandData::Look4 {
                 worn1,
@@ -630,36 +638,43 @@ impl PlayerState {
                 worn12,
                 worn13,
             } => {
-                self.look_target.set_worn(1, *worn1);
-                self.look_target.set_worn(4, *worn4);
-                self.look_target.set_extended(*extended);
-                self.look_target.set_pl_price(*pl_price);
-                self.look_target.set_worn(11, *worn11);
-                self.look_target.set_worn(12, *worn12);
-                self.look_target.set_worn(13, *worn13);
+                self.incoming_look.set_worn(1, *worn1);
+                self.incoming_look.set_worn(4, *worn4);
+                self.incoming_look.set_extended(*extended);
+                self.incoming_look.set_pl_price(*pl_price);
+                self.incoming_look.set_worn(11, *worn11);
+                self.incoming_look.set_worn(12, *worn12);
+                self.incoming_look.set_worn(13, *worn13);
             }
             ServerCommandData::Look5 { name } => {
-                self.look_target.set_name(name);
+                self.incoming_look.set_name(name);
 
-                let nr = self.look_target.nr();
-                let id = self.look_target.id();
+                let nr = self.incoming_look.nr();
+                let id = self.incoming_look.id();
+                // Always cache the name — autolook responses are for nameplate display.
                 if !name.is_empty() {
                     self.set_known_name(nr, id, name);
                 }
 
-                if !self.look_target.is_extended() && self.look_target.autoflag() == 0 {
-                    self.should_show_look = true;
-                    self.look_timer = (10 * TICKS) as f32;
+                // Only commit to look_target (and show the look panel) when this
+                // is a user-initiated look (autoflag == 0). Autolook responses
+                // must not overwrite the data the player explicitly requested.
+                if self.incoming_look.autoflag() == 0 {
+                    self.look_target = self.incoming_look;
+                    if !self.look_target.is_extended() {
+                        self.should_show_look = true;
+                        self.look_timer = (10 * TICKS) as f32;
+                    }
                 }
             }
             ServerCommandData::Look6 { start, entries } => {
                 for e in entries {
-                    self.look_target.set_shop_entry(e.index, e.item, e.price);
+                    self.incoming_look.set_shop_entry(e.index, e.item, e.price);
                 }
 
                 if start.saturating_add(2) >= 62 {
                     self.should_show_shop = true;
-                    self.shop_target = self.look_target;
+                    self.shop_target = self.incoming_look;
                 }
             }
             ServerCommandData::SetMap {
