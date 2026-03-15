@@ -282,12 +282,11 @@ impl Widget for ScrollableList {
             ctx.canvas.fill_rect(track_rect)?;
 
             let total = self.items.len() as f32;
-            let knob_h = ((visible as f32 / total) * track_h as f32)
-                .max(SCROLLBAR_KNOB_MIN_H as f32) as u32;
+            let knob_h =
+                ((visible as f32 / total) * track_h as f32).max(SCROLLBAR_KNOB_MIN_H as f32) as u32;
             let max_scroll = self.max_scroll().max(1) as f32;
             let knob_y = self.bounds.y
-                + ((self.scroll_offset as f32 / max_scroll)
-                    * (track_h - knob_h) as f32) as i32;
+                + ((self.scroll_offset as f32 / max_scroll) * (track_h - knob_h) as f32) as i32;
             let knob_rect = Rect::new(track_x, knob_y, SCROLLBAR_W, knob_h);
             ctx.canvas.set_draw_color(Color::RGBA(100, 100, 160, 200));
             ctx.canvas.fill_rect(knob_rect)?;
