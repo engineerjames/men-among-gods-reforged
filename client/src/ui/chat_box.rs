@@ -278,15 +278,9 @@ impl Widget for ChatBox {
                 EventResponse::Consumed
             }
 
-            UiEvent::MouseClick { x, y, .. } => {
-                if self.bounds.contains_point(*x, *y) {
-                    self.idle_elapsed = 0.0;
-                    self.focused = true;
-                    EventResponse::Consumed
-                } else {
-                    self.focused = false;
-                    EventResponse::Ignored
-                }
+            UiEvent::MouseClick { x: _, y: _, .. } => {
+                // Do nothing intentionally
+                EventResponse::Ignored
             }
 
             UiEvent::TextInput { text } => {

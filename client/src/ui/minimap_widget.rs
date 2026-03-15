@@ -244,16 +244,6 @@ impl Widget for MinimapWidget {
             }
         }
 
-        // When expanded, consume clicks inside the map panel so they don't
-        // pass through to the game world.
-        if self.visible {
-            if let UiEvent::MouseClick { x, y, .. } = event {
-                if self.panel_contains(*x, *y) {
-                    return EventResponse::Consumed;
-                }
-            }
-        }
-
         EventResponse::Ignored
     }
 
