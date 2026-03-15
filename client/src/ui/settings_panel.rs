@@ -38,23 +38,24 @@ const Y_SHADOWS: i32 = 36;
 const Y_SPELL_FX: i32 = 50;
 const Y_NAMES: i32 = 64;
 const Y_HEALTH: i32 = 78;
-const Y_WALLS: i32 = 92;
-const Y_AUDIO_HEADER: i32 = 110;
-const Y_VOLUME: i32 = 124;
-const Y_DISPLAY_HEADER: i32 = 142;
-const Y_DISPLAY_MODE: i32 = 156;
-const Y_PIXEL_PERFECT: i32 = 176;
-const Y_VSYNC: i32 = 190;
-const Y_DIAG_HEADER: i32 = 208;
-const Y_PING: i32 = 222;
-const Y_PROFILER_BTN: i32 = 238;
-const Y_LOGDIR_BTN: i32 = 258;
-const Y_SEPARATOR: i32 = 280;
-const Y_SESSION_BTNS: i32 = 292;
-const Y_RETURN_BTN: i32 = 314;
+const Y_HELPER_TEXT: i32 = 92;
+const Y_WALLS: i32 = 106;
+const Y_AUDIO_HEADER: i32 = 124;
+const Y_VOLUME: i32 = 138;
+const Y_DISPLAY_HEADER: i32 = 156;
+const Y_DISPLAY_MODE: i32 = 170;
+const Y_PIXEL_PERFECT: i32 = 190;
+const Y_VSYNC: i32 = 204;
+const Y_DIAG_HEADER: i32 = 222;
+const Y_PING: i32 = 236;
+const Y_PROFILER_BTN: i32 = 252;
+const Y_LOGDIR_BTN: i32 = 272;
+const Y_SEPARATOR: i32 = 294;
+const Y_SESSION_BTNS: i32 = 306;
+const Y_RETURN_BTN: i32 = 328;
 
 /// Total panel height needed to fit all controls.
-pub const SETTINGS_PANEL_H: u32 = 338;
+pub const SETTINGS_PANEL_H: u32 = 352;
 
 // ---------------------------------------------------------------------------
 // Data snapshot
@@ -75,6 +76,8 @@ pub struct SettingsPanelData {
     pub show_health_pct: bool,
     /// Whether walls are hidden.
     pub hide_walls: bool,
+    /// Whether context-sensitive helper text is shown near the cursor.
+    pub show_helper_text: bool,
     /// Master volume (0.0–1.0).
     pub master_volume: f32,
     /// Current display mode.
@@ -111,6 +114,7 @@ pub struct SettingsPanel {
     chk_spell_effects: Checkbox,
     chk_show_names: Checkbox,
     chk_show_health: Checkbox,
+    chk_helper_text: Checkbox,
     chk_hide_walls: Checkbox,
     sld_volume: Slider,
     drp_display_mode: Dropdown,
@@ -173,6 +177,11 @@ impl SettingsPanel {
             chk_show_health: Checkbox::new(
                 Bounds::new(x, bounds.y + Y_HEALTH, w, ROW_H as u32),
                 "Show % Health",
+                0,
+            ),
+            chk_helper_text: Checkbox::new(
+                Bounds::new(x, bounds.y + Y_HELPER_TEXT, w, ROW_H as u32),
+                "Show Helper Text",
                 0,
             ),
             chk_hide_walls: Checkbox::new(
@@ -261,6 +270,7 @@ impl SettingsPanel {
             .set_checked(data.spell_effects_enabled);
         self.chk_show_names.set_checked(data.show_names);
         self.chk_show_health.set_checked(data.show_health_pct);
+        self.chk_helper_text.set_checked(data.show_helper_text);
         self.chk_hide_walls.set_checked(data.hide_walls);
         self.sld_volume.set_value(data.master_volume);
         self.chk_pixel_perfect
@@ -340,6 +350,11 @@ impl SettingsPanel {
             self.pending_actions
                 .push(WidgetAction::SetHideWalls(self.chk_hide_walls.is_checked()));
         }
+        if self.chk_helper_text.was_toggled() {
+            self.pending_actions.push(WidgetAction::SetShowHelperText(
+                self.chk_helper_text.is_checked(),
+            ));
+        }
         if self.sld_volume.was_changed() {
             self.pending_actions
                 .push(WidgetAction::SetMasterVolume(self.sld_volume.value()));
@@ -394,6 +409,7 @@ impl Widget for SettingsPanel {
             self.chk_spell_effects.handle_event(event),
             self.chk_show_names.handle_event(event),
             self.chk_show_health.handle_event(event),
+            self.chk_helper_text.handle_event(event),
             self.chk_hide_walls.handle_event(event),
             self.sld_volume.handle_event(event),
             if !self.drp_display_mode.is_expanded() {
@@ -517,6 +533,7 @@ impl Widget for SettingsPanel {
         self.chk_spell_effects.render(ctx)?;
         self.chk_show_names.render(ctx)?;
         self.chk_show_health.render(ctx)?;
+        self.chk_helper_text.render(ctx)?;
         self.chk_hide_walls.render(ctx)?;
         self.sld_volume.render(ctx)?;
         self.chk_pixel_perfect.render(ctx)?;
@@ -617,6 +634,7 @@ mod tests {
             show_names: true,
             show_health_pct: true,
             hide_walls: false,
+            show_helper_text: true,
             master_volume: 0.75,
             display_mode: DisplayMode::Fullscreen,
             pixel_perfect_scaling: true,
@@ -630,6 +648,7 @@ mod tests {
         assert!(panel.chk_show_names.is_checked());
         assert!(panel.chk_show_health.is_checked());
         assert!(!panel.chk_hide_walls.is_checked());
+        assert!(panel.chk_helper_text.is_checked());
         assert!((panel.sld_volume.value() - 0.75).abs() < 0.01);
         assert_eq!(panel.drp_display_mode.selected_index(), 1); // Fullscreen
         assert!(panel.chk_pixel_perfect.is_checked());

@@ -64,6 +64,8 @@ pub struct RuntimeProfile {
     pub hide: i32,
     pub show_names: i32,
     pub show_proz: i32,
+    /// Whether context-sensitive helper text is shown near the cursor.
+    pub show_helper_text: bool,
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
     pub skill_keybinds: [Option<u32>; 9],
 }
@@ -107,6 +109,8 @@ struct CharacterProfile {
     hide: i32,
     show_names: i32,
     show_proz: i32,
+    #[serde(default = "default_true")]
+    show_helper_text: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -125,6 +129,9 @@ struct GlobalSettingsStorage {
     pixel_perfect_scaling: bool,
     #[serde(default)]
     vsync_enabled: bool,
+    /// Username most recently used for a successful login.
+    #[serde(default)]
+    last_username: Option<String>,
 }
 
 impl Default for GlobalSettingsStorage {
@@ -134,6 +141,7 @@ impl Default for GlobalSettingsStorage {
             display_mode: DisplayMode::default(),
             pixel_perfect_scaling: false,
             vsync_enabled: false,
+            last_username: None,
         }
     }
 }
@@ -163,7 +171,15 @@ fn from_global_settings(settings: &GlobalSettings) -> GlobalSettingsStorage {
         display_mode: settings.display_mode,
         pixel_perfect_scaling: settings.pixel_perfect_scaling,
         vsync_enabled: settings.vsync_enabled,
+        // last_username is not part of GlobalSettings; save_global_settings
+        // preserves the existing value by patching it back in after calling here.
+        last_username: None,
     }
+}
+
+/// Serde helper: returns `true` for default values of new boolean fields.
+fn default_true() -> bool {
+    true
 }
 
 /// Builds the BTreeMap key used to store a character's profile.
@@ -293,6 +309,7 @@ fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
         hide: profile.hide,
         show_names: profile.show_names,
         show_proz: profile.show_proz,
+        show_helper_text: profile.show_helper_text,
         skill_keybinds: keybinds,
     }
 }
@@ -326,6 +343,7 @@ fn from_runtime_profile(
         hide: runtime.hide,
         show_names: runtime.show_names,
         show_proz: runtime.show_proz,
+        show_helper_text: runtime.show_helper_text,
     }
 }
 
@@ -361,7 +379,31 @@ pub fn load_global_settings() -> GlobalSettings {
 pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), String> {
     let path = profile_file_path();
     let mut storage = read_storage(&path);
+    // Preserve last_username — it is managed independently by save_last_username.
+    let last_username = storage.global.last_username.take();
     storage.global = from_global_settings(settings);
+    storage.global.last_username = last_username;
+    write_storage(&path, &storage)
+}
+
+/// Returns the username from the most recent successful login, or `None` if
+/// no login has been saved yet.
+pub fn load_last_username() -> Option<String> {
+    let path = profile_file_path();
+    read_storage(&path).global.last_username
+}
+
+/// Persists `username` as the most recently used login name.
+///
+/// # Arguments
+/// * `username` - The account name to remember.
+///
+/// # Returns
+/// * `Ok(())` on success, `Err(String)` with a description on I/O failure.
+pub fn save_last_username(username: &str) -> Result<(), String> {
+    let path = profile_file_path();
+    let mut storage = read_storage(&path);
+    storage.global.last_username = Some(username.to_owned());
     write_storage(&path, &storage)
 }
 

@@ -212,8 +212,6 @@ pub struct GameScene {
     pub(super) minimap_last_xy: Option<(u16, u16)>,
     pub(super) look_step: u32,
     pub(super) last_look_tick: u32,
-    /// Whether the escape/options menu overlay is currently visible.
-    pub(super) escape_menu_open: bool,
     /// Whether spell visual effects (EMAGIC/GMAGIC/CMAGIC glows) are rendered.
     pub(super) are_spell_effects_enabled: bool,
     /// Master volume multiplier (0.0 = muted, 1.0 = full).
@@ -302,7 +300,6 @@ impl GameScene {
             minimap_last_xy: None,
             look_step: 0,
             last_look_tick: 0,
-            escape_menu_open: false,
             are_spell_effects_enabled: true,
             master_volume: 1.0,
             pending_skill_assignment: None,
@@ -340,7 +337,7 @@ impl GameScene {
     ///
     /// A snapshot suitable for [`SettingsPanel::sync_state`].
     fn build_settings_panel_data(&self, app_state: &AppState) -> SettingsPanelData {
-        let (shadows, show_names, show_health_pct, hide_walls) =
+        let (shadows, show_names, show_health_pct, hide_walls, show_helper_text) =
             if let Some(ps) = app_state.player_state.as_ref() {
                 let pd = ps.player_data();
                 (
@@ -348,9 +345,10 @@ impl GameScene {
                     pd.show_names != 0,
                     pd.show_proz != 0,
                     pd.hide != 0,
+                    pd.show_helper_text != 0,
                 )
             } else {
-                (false, false, false, false)
+                (false, false, false, false, true)
             };
 
         let last_rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
@@ -361,6 +359,7 @@ impl GameScene {
             show_names,
             show_health_pct,
             hide_walls,
+            show_helper_text,
             master_volume: self.master_volume,
             display_mode: app_state.display_mode,
             pixel_perfect_scaling: app_state.pixel_perfect_scaling,
@@ -416,6 +415,12 @@ impl GameScene {
                 WidgetAction::SetHideWalls(v) => {
                     if let Some(ps) = app_state.player_state.as_mut() {
                         ps.player_data_mut().hide = i32::from(v);
+                        profile_changed = true;
+                    }
+                }
+                WidgetAction::SetShowHelperText(v) => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.player_data_mut().show_helper_text = i32::from(v);
                         profile_changed = true;
                     }
                 }
@@ -539,6 +544,87 @@ impl GameScene {
                 q.height,
             )),
         )
+    }
+
+    /// Returns `true` when the mouse cursor is hovering over any visible UI
+    /// widget, in which case helper text should be suppressed.
+    fn is_mouse_over_ui(&self) -> bool {
+        let (mx, my) = (self.mouse_x, self.mouse_y);
+        if self.chat_box.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.status_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.hud_buttons.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.minimap_widget.is_visible() && self.minimap_widget.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.mode_button.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.rank_arc.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.inventory_panel.is_visible() && self.inventory_panel.bounds().contains_point(mx, my)
+        {
+            return true;
+        }
+        if self.settings_panel.is_visible() && self.settings_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
+        false
+    }
+
+    /// Draws context-sensitive helper text below and to the right of the
+    /// mouse cursor with a drop shadow, matching the nameplate style.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    /// * `gfx` - Graphics/texture cache.
+    /// * `ps` - Current player state.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn draw_helper_text(
+        &self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        if ps.player_data().show_helper_text == 0 {
+            return Ok(());
+        }
+        if self.is_mouse_over_ui() {
+            return Ok(());
+        }
+        let Some(text) = self.resolve_helper_text(ps) else {
+            return Ok(());
+        };
+        let x = self.mouse_x + 12;
+        let y = self.mouse_y + 16;
+        // Shadow pass (black, offset +1,+1)
+        crate::font_cache::draw_text_tinted(
+            canvas,
+            gfx,
+            1,
+            text,
+            x + 1,
+            y + 1,
+            Color::RGB(0, 0, 0),
+        )?;
+        // Foreground pass
+        crate::font_cache::draw_text(canvas, gfx, 1, text, x, y)
     }
 
     /// Repaint the persistent 1024×1024 world minimap buffer from the current
@@ -720,7 +806,6 @@ impl Scene for GameScene {
         self.minimap_last_xy = None;
         self.look_step = 0;
         self.last_look_tick = 0;
-        self.escape_menu_open = false;
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
 
@@ -792,16 +877,33 @@ impl Scene for GameScene {
             ..
         } = event
         {
-            // Always send CmdReset (preserving legacy behavior).
+            // Always send CmdReset (preserving legacy behavior for now...).
             if let Some(net) = app_state.network.as_ref() {
                 self.play_click_sound(app_state);
                 net.send(ClientCommand::new_reset());
             }
-            self.escape_menu_open = !self.escape_menu_open;
-            // Clear pending skill assignment when toggling menu.
-            if self.escape_menu_open {
-                self.pending_skill_assignment = None;
+
+            // If any windows are open, close them.
+            if self.shop_panel.is_visible() {
+                self.shop_panel.toggle();
             }
+
+            if self.settings_panel.is_visible() {
+                self.settings_panel.toggle();
+            }
+
+            if self.inventory_panel.is_visible() {
+                self.inventory_panel.toggle();
+            }
+
+            if self.skills_panel.is_visible() {
+                self.skills_panel.toggle();
+            }
+
+            if self.minimap_widget.is_visible() {
+                self.minimap_widget.toggle();
+            }
+
             return None;
         }
 
@@ -846,11 +948,6 @@ impl Scene for GameScene {
                 self.mouse_y = *y;
             }
             _ => {}
-        }
-
-        // --- When escape menu is open, block all other game input ---
-        if self.escape_menu_open {
-            return None;
         }
 
         // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
@@ -984,9 +1081,16 @@ impl Scene for GameScene {
                 let has_shift = self.shift_held;
                 let has_alt = self.alt_held;
 
+                // Read citem early so we can suppress ISITEM snapping when the
+                // player is carrying an item and wants to drop, not pick up.
+                let citem = ps.character_info().citem;
+
                 let snapped = if has_ctrl || has_alt {
                     Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).unwrap_or((mx, my))
-                } else if has_shift {
+                } else if has_shift && citem == 0 {
+                    // Only snap to the nearest item tile when the hand is empty.
+                    // With a citem held, use the raw tile so the drop lands where
+                    // the player clicked rather than locking onto a nearby item.
                     Self::nearest_tile_with_flag(ps, mx, my, ISITEM).unwrap_or((mx, my))
                 } else {
                     (mx, my)
@@ -997,7 +1101,7 @@ impl Scene for GameScene {
                 let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
                 let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
                 let (world_x, world_y) = tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
-                let citem = ps.character_info().citem;
+                // citem already read above.
                 let selected_char = ps.selected_char();
 
                 let Some(net) = app_state.network.as_ref() else {
@@ -1285,6 +1389,13 @@ impl Scene for GameScene {
             self.draw_carried_item(canvas, gfx_cache, ps)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawCarriedItem);
+
+        // 5f. Context-sensitive helper text near the cursor
+        self.perf_profiler.begin_sample(PerfLabel::DrawHelperText);
+        if let Some(ps) = app_state.player_state.as_ref() {
+            self.draw_helper_text(canvas, gfx_cache, ps)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawHelperText);
 
         self.perf_profiler.end_frame();
         Ok(())

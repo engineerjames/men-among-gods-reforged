@@ -278,15 +278,9 @@ impl Widget for ChatBox {
                 EventResponse::Consumed
             }
 
-            UiEvent::MouseClick { x, y, .. } => {
-                if self.bounds.contains_point(*x, *y) {
-                    self.idle_elapsed = 0.0;
-                    self.focused = true;
-                    EventResponse::Consumed
-                } else {
-                    self.focused = false;
-                    EventResponse::Ignored
-                }
+            UiEvent::MouseClick { x: _, y: _, .. } => {
+                // Do nothing intentionally
+                EventResponse::Ignored
             }
 
             UiEvent::TextInput { text } => {
@@ -408,12 +402,23 @@ impl Widget for ChatBox {
         )?;
 
         // 4. Input line below separator
+        // TODO: This is really inefficient to do this every frame;
+        // just cache a "visible input substring" that gets updated on input events.
+        const MAX_INPUT_TO_SHOW: usize = 43;
         let input_y = sep_y + 3; // 3px below separator
+        let input_text_to_render = if self.input_buf.len() > MAX_INPUT_TO_SHOW {
+            // Truncate input text if it's too long to fit (heuristic)
+            let start = self.input_buf.len() - MAX_INPUT_TO_SHOW;
+            format!("...{}", &self.input_buf[start..])
+        } else {
+            self.input_buf.clone()
+        };
+
         font_cache::draw_text_faded(
             ctx.canvas,
             ctx.gfx,
             INPUT_FONT,
-            &self.input_buf,
+            &input_text_to_render,
             inner.x,
             input_y,
             self.alpha,
@@ -570,7 +575,7 @@ mod tests {
     // -- focus --
 
     #[test]
-    fn click_inside_sets_focus() {
+    fn click_inside_is_ignored() {
         let mut cb = test_chat_box();
         cb.focused = false;
         let event = UiEvent::MouseClick {
@@ -580,12 +585,12 @@ mod tests {
             modifiers: super::super::widget::KeyModifiers::default(),
         };
         let resp = cb.handle_event(&event);
-        assert_eq!(resp, EventResponse::Consumed);
-        assert!(cb.focused);
+        assert_eq!(resp, EventResponse::Ignored);
+        assert!(!cb.focused);
     }
 
     #[test]
-    fn click_outside_clears_focus() {
+    fn click_outside_is_ignored() {
         let mut cb = test_chat_box();
         assert!(cb.focused);
         let event = UiEvent::MouseClick {
@@ -596,7 +601,7 @@ mod tests {
         };
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Ignored);
-        assert!(!cb.focused);
+        assert!(cb.focused);
     }
 
     // -- text input --
@@ -851,7 +856,7 @@ mod tests {
     }
 
     #[test]
-    fn update_reset_on_click_inside() {
+    fn update_not_reset_on_click_inside() {
         use std::time::Duration;
         let mut cb = test_chat_box();
         cb.idle_elapsed = IDLE_FADE_DELAY_SECS + IDLE_FADE_DURATION_SECS + 1.0;
@@ -864,6 +869,6 @@ mod tests {
             modifiers: super::super::widget::KeyModifiers::default(),
         });
         cb.update(Duration::ZERO);
-        assert_eq!(cb.alpha, 255);
+        assert_eq!(cb.alpha, 0);
     }
 }

@@ -25,6 +25,8 @@ impl GameScene {
                 ps.player_data_mut().hide = profile.hide;
                 ps.player_data_mut().show_names = profile.show_names;
                 ps.player_data_mut().show_proz = profile.show_proz;
+                ps.player_data_mut().show_helper_text =
+                    if profile.show_helper_text { 1 } else { 0 };
             }
             self.are_spell_effects_enabled = profile.spell_effects_enabled;
             self.master_volume = profile.master_volume;
@@ -52,6 +54,7 @@ impl GameScene {
             hide: pdata.hide,
             show_names: pdata.show_names,
             show_proz: pdata.show_proz,
+            show_helper_text: pdata.show_helper_text != 0,
             skill_keybinds: pdata.skill_keybinds,
         })
     }

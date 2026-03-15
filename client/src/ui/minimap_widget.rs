@@ -244,16 +244,6 @@ impl Widget for MinimapWidget {
             }
         }
 
-        // When expanded, consume clicks inside the map panel so they don't
-        // pass through to the game world.
-        if self.visible {
-            if let UiEvent::MouseClick { x, y, .. } = event {
-                if self.panel_contains(*x, *y) {
-                    return EventResponse::Consumed;
-                }
-            }
-        }
-
         EventResponse::Ignored
     }
 
@@ -400,7 +390,7 @@ mod tests {
     }
 
     #[test]
-    fn click_on_panel_consumed_when_visible() {
+    fn click_on_panel_ignored_when_visible() {
         let mut w = MinimapWidget::new(200, 30, 14);
         w.toggle();
         let click = UiEvent::MouseClick {
@@ -409,6 +399,6 @@ mod tests {
             button: MouseButton::Left,
             modifiers: Default::default(),
         };
-        assert_eq!(w.handle_event(&click), EventResponse::Consumed);
+        assert_eq!(w.handle_event(&click), EventResponse::Ignored);
     }
 }

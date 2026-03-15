@@ -163,6 +163,43 @@ pub fn draw_text_centered(
     draw_text(canvas, gfx_cache, font, text, center_x - width / 2, y)
 }
 
+/// Draws `text` centered horizontally around `center_x`, tinted to `color`.
+///
+/// # Arguments
+///
+/// * `canvas` - SDL2 canvas to draw onto.
+/// * `gfx_cache` - Graphics cache holding font textures.
+/// * `font` - Bitmap font index (0–3).
+/// * `text` - Text string to render.
+/// * `center_x` - Horizontal center of the rendered string in pixels.
+/// * `y` - Top edge of the glyph row in pixels.
+/// * `color` - Tint color applied via SDL texture color modulation.
+///
+/// # Returns
+///
+/// `Ok(())` on success, or an SDL2 error string.
+pub fn draw_text_centered_tinted(
+    // TODO: This is really stupidly redundant... but just leave it for now.
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    font: usize,
+    text: &str,
+    center_x: i32,
+    y: i32,
+    color: sdl2::pixels::Color,
+) -> Result<(), String> {
+    let width = text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
+    draw_text_tinted(
+        canvas,
+        gfx_cache,
+        font,
+        text,
+        center_x - width / 2,
+        y,
+        color,
+    )
+}
+
 /// Returns the pixel width of the given text string when rendered with the bitmap font.
 #[inline]
 pub fn text_width(text: &str) -> u32 {

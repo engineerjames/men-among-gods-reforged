@@ -36,6 +36,19 @@ pub fn rank_name(points: u32) -> &'static str {
     RANK_NAMES[idx]
 }
 
+/// Returns the human-readable rank name for the given rank index.
+/// Clamps out-of-range indices to the nearest valid rank.
+///
+/// Arguments:
+/// * `rank_idx` - Rank index (0-based)
+///
+/// Returns:
+/// * Rank name corresponding to the given index, or nearest valid rank if out of range.
+pub fn rank_name_by_index(rank_idx: usize) -> &'static str {
+    let idx = rank_idx.clamp(0, RANKS - 1);
+    RANK_NAMES[idx]
+}
+
 /// Map total points to a rank index.
 ///
 /// Implements the server's `points2rank` thresholds to convert experience

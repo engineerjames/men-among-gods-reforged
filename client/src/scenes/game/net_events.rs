@@ -81,6 +81,9 @@ impl GameScene {
                             }
                             ServerCommandData::Exit { reason } => {
                                 log::info!("Received exit command from server: {}", reason);
+                                if let Some(ps) = app_state.player_state.as_mut() {
+                                    ps.update_from_server_command(&cmd);
+                                }
                             }
                             _ => {
                                 if let Some(ps) = app_state.player_state.as_mut() {

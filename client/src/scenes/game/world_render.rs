@@ -346,7 +346,8 @@ impl GameScene {
                 y: sy,
                 alpha: 140,
             })
-        } else if self.shift_held {
+        } else if self.shift_held && ps.character_info().citem == 0 {
+            // Snap to nearest item tile only when the hand is empty.
             let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM)?;
             if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
                 return None;
@@ -397,6 +398,68 @@ impl GameScene {
                 alpha: 96,
             })
         }
+    }
+
+    /// Determines the context-sensitive helper text label to display near the
+    /// mouse cursor, based on the current modifier keys, hand state, and what
+    /// the cursor is hovering over.
+    ///
+    /// Returns `None` when no text should be shown (e.g. shop is open or
+    /// cursor is outside the map interaction area).
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - Current player state (map, character info).
+    ///
+    /// # Returns
+    ///
+    /// An action label string such as `"WALK"`, `"ATTACK"`, etc., or `None`.
+    pub(super) fn resolve_helper_text(&self, ps: &PlayerState) -> Option<&'static str> {
+        if ps.should_show_shop() {
+            return None;
+        }
+
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {
+            return None;
+        }
+        let (mx, my) = Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)?;
+
+        let citem = ps.character_info().citem;
+        let has_item = citem > 0;
+
+        if self.alt_held {
+            if Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
+                return Some("LOOK");
+            }
+        }
+
+        if self.ctrl_held {
+            if Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
+                return if has_item {
+                    Some("GIVE")
+                } else {
+                    Some("ATTACK")
+                };
+            }
+        }
+
+        if self.shift_held {
+            if has_item {
+                return Some("DROP");
+            }
+            // Empty hand — check for usable or item tiles nearby.
+            if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
+                if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
+                    if (tile.flags & ISUSABLE) != 0 {
+                        return Some("USE");
+                    }
+                }
+                return Some("PICK UP");
+            }
+        }
+
+        Some("WALK")
     }
 
     /// Render all world tiles in two painter-order passes (backgrounds, then
