@@ -57,30 +57,30 @@ const BASE_CONTENT_H: i32 = (BAR_HEIGHT + BAR_GAP) * 3
 /// drawing the sprite so you can tune away transparent padding without
 /// changing the panel's nominal 32×96 sigil footprint.
 const SIGIL_TRIM_ROWS: [(u32, u32); RANKS] = [
-    (30, 30), // Private
-    (20, 34), // Private First Class
-    (40, 26), // Lance Corporal
-    (40, 26), // Corporal
-    (42, 19), // Sergeant
-    (22, 19), // Staff Sergeant
-    (16, 19), // Master Sergeant
-    (7, 19),  // First Sergeant
-    (7, 19),  // Sergeant Major
-    (20, 30), // Second Lieutenant
-    (27, 27), // First Lieutenant
-    (27, 13), // Captain
-    (0, 64),  // Major
-    (0, 45),  // Lieutenant Colonel
-    (0, 27),  // Colonel
-    (0, 14),  // Brigadier General
-    (0, 0),   // Major General
-    (0, 24),  // Lieutenant General
-    (0, 14),  // General
-    (0, 14),  // Field Marshal
-    (0, 14),  // Knight
-    (0, 14),  // Baron
-    (0, 14),  // Earl
-    (0, 14),  // Warlord
+    (0, 0),   // Private        (sprite 10: fully transparent)
+    (46, 38), // Private First Class  (sprite 11: rows 46-57)
+    (26, 38), // Lance Corporal (sprite 12: rows 26-57)
+    (46, 30), // Corporal       (sprite 13: rows 46-65)
+    (46, 22), // Sergeant       (sprite 14: rows 46-73)
+    (26, 22), // Staff Sergeant (sprite 15: rows 26-73)
+    (18, 22), // Master Sergeant (sprite 16: rows 18-73)
+    (10, 22), // First Sergeant (sprite 17: rows 10-73)
+    (10, 22), // Sergeant Major (sprite 18: rows 10-73)
+    (34, 48), // Second Lieutenant (sprite 19: rows 34-47)
+    (34, 32), // First Lieutenant  (sprite 20: rows 34-63)
+    (34, 16), // Captain        (sprite 21: rows 34-79)
+    (0, 64),  // Major          (sprite 22: rows 0-31)
+    (0, 48),  // Lieutenant Colonel (sprite 23: rows 0-47)
+    (0, 32),  // Colonel        (sprite 24: rows 0-63)
+    (0, 16),  // Brigadier General (sprite 25: rows 0-79)
+    (0, 31),  // Major General  (sprite 26: rows 0-64)
+    (0, 16),  // Lieutenant General (sprite 27: rows 0-79)
+    (0, 16),  // General        (sprite 28: rows 0-79)
+    (1, 16),  // Field Marshal  (sprite 29: rows 1-79)
+    (1, 16),  // Knight         (sprite 30: rows 1-79)
+    (1, 16),  // Baron          (sprite 30: same as Knight)
+    (1, 16),  // Earl           (sprite 30: same as Knight)
+    (1, 16),  // Warlord        (sprite 30: same as Knight)
 ];
 
 /// Bitmap font index used for value text (yellow font).
@@ -322,10 +322,19 @@ impl StatusPanel {
             }
         }
 
-        // Centered text: "cur / max".
+        // Centered text: "cur / max" with a 1-pixel drop shadow.
         let text = format!("{} / {}", current, max);
         let center_x = x + BAR_WIDTH / 2;
         let text_y = y + (BAR_HEIGHT - font_cache::BITMAP_GLYPH_H as i32) / 2;
+        font_cache::draw_text_centered_tinted(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &text,
+            center_x + 1,
+            text_y + 1,
+            Color::RGB(0, 0, 0),
+        )?;
         font_cache::draw_text_centered(ctx.canvas, ctx.gfx, FONT, &text, center_x, text_y)?;
 
         Ok(())
