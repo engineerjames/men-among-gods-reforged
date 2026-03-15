@@ -3256,8 +3256,8 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             cn,
             core::types::FontColor::Green,
             &format!(
-                "You cannot use this pentagram. It is reserved for rank {} and below.\n",
-                r2
+                "You cannot use this pentagram. It is reserved for rank '{}' and below.\n",
+                core::ranks::rank_name_by_index(r2 as usize)
             ),
         );
         return false;
