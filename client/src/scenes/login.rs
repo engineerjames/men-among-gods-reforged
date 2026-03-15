@@ -32,10 +32,13 @@ pub struct LoginScene {
 
 impl LoginScene {
     /// Creates a new `LoginScene` with default field values and the configured server IP.
+    ///
+    /// The username field is pre-populated from the last successful login if one
+    /// was previously saved.
     pub fn new() -> Self {
         Self {
             server_ip: crate::hosts::get_server_ip(),
-            username: String::new(),
+            username: preferences::load_last_username().unwrap_or_default(),
             password: String::new(),
             attempted_unencrypted_login: false,
             is_submitting: false,
@@ -142,6 +145,9 @@ impl Scene for LoginScene {
                     Ok(token) => {
                         log::info!("Login successful!");
                         app_state.api.token = Some(token);
+                        if let Err(err) = preferences::save_last_username(&self.username) {
+                            log::warn!("Failed to save last username: {}", err);
+                        }
                         return Some(SceneType::CharacterSelection);
                     }
                     Err(error) => {
