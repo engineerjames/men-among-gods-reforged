@@ -1,6 +1,6 @@
 use crate::{
     gfx_cache::GraphicsCache, network::NetworkRuntime, player_state::PlayerState,
-    preferences::DisplayMode, sfx_cache::SoundCache,
+    preferences::DisplayMode, sfx_cache::SoundCache, ui::panning_background::PanningBackground,
 };
 
 /// A display-related change requested by a scene, to be applied by the main
@@ -73,6 +73,8 @@ pub struct AppState {
     pub vsync_enabled: bool,
     /// Pending display change to be applied by the main loop.
     pub display_command: Option<DisplayCommand>,
+    /// Shared panning background used by all pre-game scenes.
+    pub panning_background: PanningBackground,
 }
 
 impl AppState {
@@ -88,7 +90,12 @@ impl AppState {
     ///
     /// # Returns
     /// * A new `AppState` ready for use in the scene manager.
-    pub fn new(gfx_cache: GraphicsCache, sfx_cache: SoundCache, api: ApiTokenState) -> Self {
+    pub fn new(
+        gfx_cache: GraphicsCache,
+        sfx_cache: SoundCache,
+        api: ApiTokenState,
+        panning_background: PanningBackground,
+    ) -> Self {
         Self {
             gfx_cache,
             sfx_cache: sfx_cache,
@@ -101,6 +108,7 @@ impl AppState {
             pixel_perfect_scaling: false,
             vsync_enabled: false,
             display_command: None,
+            panning_background,
         }
     }
 }

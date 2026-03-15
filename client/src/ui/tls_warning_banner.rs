@@ -90,8 +90,10 @@ impl Widget for TlsWarningBanner {
         ctx.canvas.fill_rect(rect)?;
 
         let text = "UNENCRYPTED - Game traffic is not protected";
-        let text_x = self.bounds.x + (self.bounds.width as i32 - font_cache::text_width(text) as i32) / 2;
-        let text_y = self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
+        let text_x =
+            self.bounds.x + (self.bounds.width as i32 - font_cache::text_width(text) as i32) / 2;
+        let text_y =
+            self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
         font_cache::draw_text_tinted(
             ctx.canvas,
             ctx.gfx,

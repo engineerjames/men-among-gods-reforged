@@ -13,6 +13,8 @@ use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
+use client::ui::panning_background::PanningBackground;
+use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
 
 /// Global flag ensuring the egui glyph warm-up runs exactly once.
@@ -121,7 +123,22 @@ fn main() -> Result<(), String> {
         filepaths::get_music_directory(),
     );
     let api_state = ApiTokenState::new(hosts::get_api_base_url());
-    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state);
+
+    let bg_path = filepaths::get_asset_directory().join("gfx/login_pents.png");
+    let panning_background = PanningBackground::new(
+        Bounds::new(
+            0,
+            0,
+            constants::TARGET_WIDTH_INT,
+            constants::TARGET_HEIGHT_INT,
+        ),
+        bg_path,
+        6.0,
+        2.0,
+        Some(sdl2::pixels::Color::RGBA(10, 10, 30, 100)),
+    );
+
+    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state, panning_background);
 
     // --- Apply persisted display settings ---------------------------------
     let global_settings = preferences::load_global_settings();

@@ -162,10 +162,9 @@ impl NewAccountForm {
             width: 1,
         };
 
-        let create_button =
-            RectButton::new(Bounds::new(btn_start_x, cursor_y, 150, BTN_H), btn_bg)
-                .with_border(btn_border)
-                .with_label("Create", FONT);
+        let create_button = RectButton::new(Bounds::new(btn_start_x, cursor_y, 150, BTN_H), btn_bg)
+            .with_border(btn_border)
+            .with_label("Create", FONT);
 
         let cancel_button = RectButton::new(
             Bounds::new(btn_start_x + 150 + BTN_GAP, cursor_y, 150, BTN_H),

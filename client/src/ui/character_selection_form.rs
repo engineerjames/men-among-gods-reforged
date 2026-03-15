@@ -114,12 +114,8 @@ impl CharacterSelectionForm {
 
         // List starts after title + username + spacing
         let list_y = panel_y + 50;
-        let character_list = ScrollableList::new(Bounds::new(
-            panel_x + PAD_X,
-            list_y,
-            list_w,
-            LIST_H,
-        ));
+        let character_list =
+            ScrollableList::new(Bounds::new(panel_x + PAD_X, list_y, list_w, LIST_H));
 
         let btn_bg = Background::SolidColor(Color::RGBA(50, 50, 80, 200));
         let btn_border = Border {
@@ -146,12 +142,10 @@ impl CharacterSelectionForm {
                 .with_label("Continue to game", FONT);
         btn_y += BTN_H as i32 + BTN_GAP;
 
-        let delete_button = RectButton::new(
-            Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H),
-            delete_bg,
-        )
-        .with_border(delete_border)
-        .with_label("Delete character", FONT);
+        let delete_button =
+            RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), delete_bg)
+                .with_border(delete_border)
+                .with_label("Delete character", FONT);
         btn_y += BTN_H as i32 + BTN_GAP;
 
         let logout_button =
@@ -282,18 +276,13 @@ impl Widget for CharacterSelectionForm {
         if self.continue_button.handle_event(event) == EventResponse::Consumed {
             if let Some(id) = self.character_list.selected_id() {
                 self.actions
-                    .push(CharacterSelectionFormAction::ContinueToGame {
-                        character_id: id,
-                    });
+                    .push(CharacterSelectionFormAction::ContinueToGame { character_id: id });
             }
             return EventResponse::Consumed;
         }
         if self.delete_button.handle_event(event) == EventResponse::Consumed {
             if let Some(id) = self.character_list.selected_id() {
-                let name = self
-                    .character_name_for_id(id)
-                    .unwrap_or("")
-                    .to_owned();
+                let name = self.character_name_for_id(id).unwrap_or("").to_owned();
                 self.actions
                     .push(CharacterSelectionFormAction::DeleteCharacter {
                         character_id: id,
