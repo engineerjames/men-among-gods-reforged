@@ -992,9 +992,16 @@ impl Scene for GameScene {
                 let has_shift = self.shift_held;
                 let has_alt = self.alt_held;
 
+                // Read citem early so we can suppress ISITEM snapping when the
+                // player is carrying an item and wants to drop, not pick up.
+                let citem = ps.character_info().citem;
+
                 let snapped = if has_ctrl || has_alt {
                     Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).unwrap_or((mx, my))
-                } else if has_shift {
+                } else if has_shift && citem == 0 {
+                    // Only snap to the nearest item tile when the hand is empty.
+                    // With a citem held, use the raw tile so the drop lands where
+                    // the player clicked rather than locking onto a nearby item.
                     Self::nearest_tile_with_flag(ps, mx, my, ISITEM).unwrap_or((mx, my))
                 } else {
                     (mx, my)
@@ -1005,7 +1012,7 @@ impl Scene for GameScene {
                 let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
                 let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
                 let (world_x, world_y) = tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
-                let citem = ps.character_info().citem;
+                // citem already read above.
                 let selected_char = ps.selected_char();
 
                 let Some(net) = app_state.network.as_ref() else {

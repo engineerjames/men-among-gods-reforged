@@ -346,7 +346,8 @@ impl GameScene {
                 y: sy,
                 alpha: 140,
             })
-        } else if self.shift_held {
+        } else if self.shift_held && ps.character_info().citem == 0 {
+            // Snap to nearest item tile only when the hand is empty.
             let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM)?;
             if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
                 return None;
