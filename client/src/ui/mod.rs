@@ -42,6 +42,8 @@ pub mod status_panel;
 #[allow(dead_code)]
 pub mod style;
 #[allow(dead_code)]
+pub mod text_input;
+#[allow(dead_code)]
 pub mod widget;
 
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};
