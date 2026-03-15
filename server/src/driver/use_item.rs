@@ -3015,7 +3015,9 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     } else if data9 == 23 {
         24
     } else {
-        crate::helpers::random_mod(3) + data9 - 1
+        // TODO: Fix this
+        // crate::helpers::random_mod(3) + data9 - 1
+        24
     };
 
     // Create appropriate character template
