@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use sdl2::pixels::Color;
-use sdl2::rect::Rect;
+use sdl2::rect::{FRect, Rect};
 use sdl2::render::BlendMode;
 
 use super::widget::{Bounds, EventResponse, UiEvent, Widget};
@@ -168,26 +168,31 @@ impl Widget for PanningBackground {
 
         let tex_id = self.texture_id.unwrap();
 
-        // Work out the source sub-rectangle to sample.
-        let src_w = self.bounds.width.min(self.image_width);
-        let src_h = self.bounds.height.min(self.image_height);
-        let src_rect = Rect::new(self.pan_x as i32, self.pan_y as i32, src_w, src_h);
+        // Draw the full image offset by the negative pan position so that the
+        // visible viewport acts as a natural clip window.  Using an FRect
+        // destination instead of integer Rect gives true sub-pixel precision —
+        // the GPU moves the image continuously without 1-pixel stepping.
+        let dst_rect = FRect::new(
+            self.bounds.x as f32 - self.pan_x,
+            self.bounds.y as f32 - self.pan_y,
+            self.image_width as f32,
+            self.image_height as f32,
+        );
 
-        let dst_rect = Rect::new(
+        let texture = ctx.gfx.get_texture(tex_id);
+        ctx.canvas.copy_f(texture, None::<Rect>, Some(dst_rect))?;
+
+        // Tint overlay — drawn over the visible viewport area only.
+        let viewport = Rect::new(
             self.bounds.x,
             self.bounds.y,
             self.bounds.width,
             self.bounds.height,
         );
-
-        let texture = ctx.gfx.get_texture(tex_id);
-        ctx.canvas.copy(texture, Some(src_rect), Some(dst_rect))?;
-
-        // Tint overlay
         if let Some(tint) = self.tint {
             ctx.canvas.set_blend_mode(BlendMode::Blend);
             ctx.canvas.set_draw_color(tint);
-            ctx.canvas.fill_rect(dst_rect)?;
+            ctx.canvas.fill_rect(viewport)?;
         }
 
         Ok(())

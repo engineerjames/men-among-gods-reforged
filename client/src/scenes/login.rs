@@ -52,6 +52,7 @@ impl LoginScene {
     /// The username field is pre-populated from the last successful login if one
     /// was previously saved.
     pub fn new() -> Self {
+        // TODO: Cycle through multiple background images instead of hardcoding one here.
         let bg_path = filepaths::get_asset_directory().join("gfx/login_pents.png");
 
         let background = PanningBackground::new(
@@ -62,8 +63,8 @@ impl LoginScene {
                 crate::constants::TARGET_HEIGHT_INT,
             ),
             bg_path,
-            15.0,
-            3.0,
+            6.0,
+            2.0,
             Some(Color::RGBA(10, 10, 30, 100)),
         );
 
