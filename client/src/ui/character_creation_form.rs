@@ -238,6 +238,16 @@ impl CharacterCreationForm {
         self.sex_group.selected()
     }
 
+    /// Returns a reference to the current name input value.
+    pub fn name_input_value(&self) -> &str {
+        self.name_input.value()
+    }
+
+    /// Returns a reference to the current description input value.
+    pub fn description_input_value(&self) -> &str {
+        self.description_input.value()
+    }
+
     /// Sets the name field value (used by RandomName action handler).
     ///
     /// # Arguments

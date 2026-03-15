@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    account_api, cert_trust, filepaths, preferences,
+    account_api, cert_trust, preferences,
     scenes::scene::{Scene, SceneType},
     sfx_cache::MusicTrack,
     state::AppState,
@@ -12,8 +12,7 @@ use crate::{
         self,
         cert_dialog::{CertDialog, CertDialogAction},
         login_form::{LoginForm, LoginFormAction},
-        panning_background::PanningBackground,
-        widget::{Bounds, KeyModifiers, Widget},
+        widget::{KeyModifiers, Widget},
         RenderContext,
     },
 };
@@ -26,8 +25,6 @@ use sdl2::{event::Event, keyboard::Mod, pixels::Color, render::Canvas, video::Wi
 /// Login is performed on a background thread; the result is polled in `update`.
 /// On success the scene transitions to `CharacterSelection`.
 pub struct LoginScene {
-    /// Panning background image (login_pents.png).
-    background: PanningBackground,
     /// Login form panel with text inputs and buttons.
     login_form: LoginForm,
     /// Certificate-mismatch dialog (shown when server cert changes).
@@ -52,22 +49,6 @@ impl LoginScene {
     /// The username field is pre-populated from the last successful login if one
     /// was previously saved.
     pub fn new() -> Self {
-        // TODO: Cycle through multiple background images instead of hardcoding one here.
-        let bg_path = filepaths::get_asset_directory().join("gfx/login_pents.png");
-
-        let background = PanningBackground::new(
-            Bounds::new(
-                0,
-                0,
-                crate::constants::TARGET_WIDTH_INT,
-                crate::constants::TARGET_HEIGHT_INT,
-            ),
-            bg_path,
-            6.0,
-            2.0,
-            Some(Color::RGBA(10, 10, 30, 100)),
-        );
-
         let settings = preferences::load_global_settings();
         let login_form = LoginForm::new(
             &crate::hosts::get_server_ip(),
@@ -76,7 +57,6 @@ impl LoginScene {
         );
 
         Self {
-            background,
             login_form,
             cert_dialog: None,
             pending_scene: None,
@@ -300,7 +280,7 @@ impl Scene for LoginScene {
         self.ensure_music_initialized(app_state);
 
         // Animate background and form.
-        self.background.update(dt);
+        app_state.panning_background.update(dt);
         self.login_form.update(dt);
 
         // Poll async login result.
@@ -356,12 +336,17 @@ impl Scene for LoginScene {
         app_state: &mut AppState,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
+        let AppState {
+            ref mut panning_background,
+            ref mut gfx_cache,
+            ..
+        } = app_state;
         let mut ctx = RenderContext {
             canvas,
-            gfx: &mut app_state.gfx_cache,
+            gfx: gfx_cache,
         };
 
-        self.background.render(&mut ctx)?;
+        panning_background.render(&mut ctx)?;
         self.login_form.render(&mut ctx)?;
 
         if let Some(ref mut dialog) = self.cert_dialog {
