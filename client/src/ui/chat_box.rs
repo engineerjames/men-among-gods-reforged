@@ -408,12 +408,23 @@ impl Widget for ChatBox {
         )?;
 
         // 4. Input line below separator
+        // TODO: This is really inefficient to do this every frame;
+        // just cache a "visible input substring" that gets updated on input events.
+        const MAX_INPUT_TO_SHOW: usize = 43;
         let input_y = sep_y + 3; // 3px below separator
+        let input_text_to_render = if self.input_buf.len() > MAX_INPUT_TO_SHOW {
+            // Truncate input text if it's too long to fit (heuristic)
+            let start = self.input_buf.len() - MAX_INPUT_TO_SHOW;
+            format!("...{}", &self.input_buf[start..])
+        } else {
+            self.input_buf.clone()
+        };
+
         font_cache::draw_text_faded(
             ctx.canvas,
             ctx.gfx,
             INPUT_FONT,
-            &self.input_buf,
+            &input_text_to_render,
             inner.x,
             input_y,
             self.alpha,
