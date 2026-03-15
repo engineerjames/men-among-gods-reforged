@@ -367,14 +367,13 @@ impl Scene for CharacterSelectionScene {
                         let items: Vec<ListItem> = characters
                             .iter()
                             .map(|c| {
-                                let sprite_id = Some(
-                                    mag_core::traits::get_sprite_id_for_class_and_sex(
+                                let sprite_id =
+                                    Some(mag_core::traits::get_sprite_id_for_class_and_sex(
                                         c.class, c.sex,
-                                    ),
-                                );
+                                    ));
                                 ListItem {
                                     id: c.id,
-                                    label: format!("{} ({})", c.name, c.class),
+                                    label: format!("{} ({})", c.name, c.class.to_string()),
                                     sprite_id,
                                 }
                             })
@@ -522,7 +521,7 @@ impl Scene for CharacterSelectionScene {
             gfx: gfx_cache,
         };
 
-        panning_background.render(&mut render_ctx);
+        panning_background.render(&mut render_ctx)?;
 
         // Render selected character portrait.
         if let Some(selected_character_id) = self.selected_character_id {
@@ -531,10 +530,8 @@ impl Scene for CharacterSelectionScene {
                 .iter()
                 .find(|c| c.id == selected_character_id)
             {
-                let sprite_id = mag_core::traits::get_sprite_id_for_class_and_sex(
-                    selected.class,
-                    selected.sex,
-                );
+                let sprite_id =
+                    mag_core::traits::get_sprite_id_for_class_and_sex(selected.class, selected.sex);
                 let texture = render_ctx.gfx.get_texture(sprite_id);
                 let target_rect = Rect::new(400, 160, 160, 160);
 
@@ -550,8 +547,8 @@ impl Scene for CharacterSelectionScene {
             }
         }
 
-        self.form.render(&mut render_ctx);
-        self.delete_dialog.render(&mut render_ctx);
+        self.form.render(&mut render_ctx)?;
+        self.delete_dialog.render(&mut render_ctx)?;
 
         Ok(())
     }

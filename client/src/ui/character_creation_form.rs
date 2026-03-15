@@ -593,7 +593,10 @@ mod tests {
         assert_eq!(form.focused_field, 0);
         form.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Tab,
-            modifiers: KeyModifiers { shift: true },
+            modifiers: KeyModifiers {
+                shift: true,
+                ..Default::default()
+            },
         });
         assert_eq!(form.focused_field, 1);
     }

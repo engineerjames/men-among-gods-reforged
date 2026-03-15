@@ -20,8 +20,6 @@ pub mod chat_box;
 #[allow(dead_code)]
 pub mod checkbox;
 #[allow(dead_code)]
-pub mod checkbox;
-#[allow(dead_code)]
 pub mod delete_character_dialog;
 #[allow(dead_code)]
 pub mod dropdown;
