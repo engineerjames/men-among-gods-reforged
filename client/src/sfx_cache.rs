@@ -24,7 +24,8 @@ pub enum MusicTrack {
 
 impl SoundCache {
     fn convert_server_volume(vol: i32, master_volume: f32) -> i32 {
-        let master = master_volume.clamp(0.0, 1.0);
+        let linear = master_volume.clamp(0.0, 1.0);
+        let master = linear * linear;
 
         let base = if vol <= 0 {
             // Server commonly sends attenuation values in the range [-5000, 0].
@@ -194,5 +195,53 @@ impl SoundCache {
     /// Stops any currently playing music on the dedicated music channel.
     pub fn stop_music(&self) {
         Channel(LOGIN_MUSIC_CHANNEL).halt();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Helper: full pipeline result (scaled 0-127 before the *128/127 SDL step).
+    fn sdl_vol(server_vol: i32, master: f32) -> i32 {
+        let scaled = SoundCache::convert_server_volume(server_vol, master);
+        (scaled * 128 / 127).clamp(0, 128)
+    }
+
+    #[test]
+    fn full_volume_passes_through_unchanged() {
+        // At master=1.0 and server vol=0 (loudest), SDL volume must be 128.
+        assert_eq!(sdl_vol(0, 1.0), 128);
+    }
+
+    #[test]
+    fn muted_produces_zero() {
+        assert_eq!(sdl_vol(0, 0.0), 0);
+    }
+
+    #[test]
+    fn perceptual_curve_at_half() {
+        // Quadratic curve: 0.5^2 = 0.25 → SDL vol ≈ 32.
+        let v = sdl_vol(0, 0.5);
+        assert!((30..=34).contains(&v), "expected ~32, got {}", v);
+    }
+
+    #[test]
+    fn perceptual_curve_at_ten_percent() {
+        // Quadratic curve: 0.1^2 = 0.01 → SDL vol ≈ 1.
+        let v = sdl_vol(0, 0.1);
+        assert!(v <= 2, "expected ≤2, got {}", v);
+    }
+
+    #[test]
+    fn ten_percent_clearly_quieter_than_full() {
+        // The whole point of the curve: large audible gap between 10% and 100%.
+        assert!(sdl_vol(0, 0.1) * 10 < sdl_vol(0, 1.0));
+    }
+
+    #[test]
+    fn server_attenuation_still_applied() {
+        // Server vol -5000 (maximum attenuation) should produce near-zero even at master=1.
+        assert_eq!(sdl_vol(-5000, 1.0), 0);
     }
 }
