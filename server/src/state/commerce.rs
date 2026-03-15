@@ -450,8 +450,10 @@ impl GameState {
                         self.do_character_log(cn, FontColor::Yellow, &format!("{}:\n", item_name));
                         self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", item_desc));
                     }
-                } else if exam_nr < 61 {
-                    // Worn item description (only for corpses)
+                } else if exam_nr < 60 {
+                    // Worn item description (only for corpses), slots 0-19
+                    // Note: original C used < 61 (exam_nr 40-60 → worn_slot 0-20), which is a
+                    // buffer overread; citem description is handled in the else branch below.
                     if is_body {
                         let worn_slot = (exam_nr - 40) as usize;
                         let item_idx = self.characters[co].worn[worn_slot] as usize;
