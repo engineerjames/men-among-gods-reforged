@@ -30,13 +30,15 @@ pub(super) enum PerfLabel {
     DrawShopPanel,
     /// Carried-item sprite drawn under the mouse cursor.
     DrawCarriedItem,
+    /// Context-sensitive helper text rendered near the cursor.
+    DrawHelperText,
     /// egui overlay rendering (escape menu, certificate dialogs).
     RenderUi,
 }
 
 impl PerfLabel {
     /// All variants in the order they should appear in the summary.
-    const ALL: [PerfLabel; 8] = [
+    const ALL: [PerfLabel; 9] = [
         Self::DrawWorld,
         Self::DrawChat,
         Self::SyncAndDrawStatus,
@@ -44,6 +46,7 @@ impl PerfLabel {
         Self::DrawLookPanel,
         Self::DrawShopPanel,
         Self::DrawCarriedItem,
+        Self::DrawHelperText,
         Self::RenderUi,
     ];
 
@@ -56,6 +59,7 @@ impl PerfLabel {
             Self::DrawLookPanel => "draw_look_panel",
             Self::DrawShopPanel => "draw_shop_panel",
             Self::DrawCarriedItem => "draw_carried_item",
+            Self::DrawHelperText => "draw_helper_text",
             Self::RenderUi => "render_ui",
         }
     }
@@ -425,6 +429,7 @@ mod tests {
             (PerfLabel::DrawLookPanel, "draw_look_panel"),
             (PerfLabel::DrawShopPanel, "draw_shop_panel"),
             (PerfLabel::DrawCarriedItem, "draw_carried_item"),
+            (PerfLabel::DrawHelperText, "draw_helper_text"),
             (PerfLabel::RenderUi, "render_ui"),
         ];
         for (label, expected) in cases {
@@ -443,6 +448,7 @@ mod tests {
             PerfLabel::DrawLookPanel,
             PerfLabel::DrawShopPanel,
             PerfLabel::DrawCarriedItem,
+            PerfLabel::DrawHelperText,
             PerfLabel::RenderUi,
         ];
         assert_eq!(PerfLabel::ALL.len(), all_variants.len());

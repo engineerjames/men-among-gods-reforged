@@ -64,6 +64,8 @@ pub struct RuntimeProfile {
     pub hide: i32,
     pub show_names: i32,
     pub show_proz: i32,
+    /// Whether context-sensitive helper text is shown near the cursor.
+    pub show_helper_text: bool,
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
     pub skill_keybinds: [Option<u32>; 9],
 }
@@ -107,6 +109,8 @@ struct CharacterProfile {
     hide: i32,
     show_names: i32,
     show_proz: i32,
+    #[serde(default = "default_true")]
+    show_helper_text: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -171,6 +175,11 @@ fn from_global_settings(settings: &GlobalSettings) -> GlobalSettingsStorage {
         // preserves the existing value by patching it back in after calling here.
         last_username: None,
     }
+}
+
+/// Serde helper: returns `true` for default values of new boolean fields.
+fn default_true() -> bool {
+    true
 }
 
 /// Builds the BTreeMap key used to store a character's profile.
@@ -300,6 +309,7 @@ fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
         hide: profile.hide,
         show_names: profile.show_names,
         show_proz: profile.show_proz,
+        show_helper_text: profile.show_helper_text,
         skill_keybinds: keybinds,
     }
 }
@@ -333,6 +343,7 @@ fn from_runtime_profile(
         hide: runtime.hide,
         show_names: runtime.show_names,
         show_proz: runtime.show_proz,
+        show_helper_text: runtime.show_helper_text,
     }
 }
 

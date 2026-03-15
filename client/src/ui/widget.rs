@@ -315,6 +315,8 @@ pub enum WidgetAction {
     SetPixelPerfectScaling(bool),
     /// Toggle vertical sync.
     SetVSync(bool),
+    /// Toggle context-sensitive helper text near the cursor.
+    SetShowHelperText(bool),
 }
 
 // ---------------------------------------------------------------------------
