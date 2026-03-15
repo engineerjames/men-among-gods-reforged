@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs::File, io::Read, path::PathBuf};
 use sdl2::{
     image::{ImageRWops, LoadTexture},
     pixels::PixelFormatEnum,
-    render::{Texture, TextureCreator},
+    render::{Texture, TextureCreator, TextureQuery},
     rwops::RWops,
     video::WindowContext,
 };
@@ -33,6 +33,8 @@ pub struct GraphicsCache {
     index_to_filename: HashMap<usize, String>,
     /// Streaming texture used for minimap rendering (128x128 RGBA).
     pub minimap_texture: Option<Texture>,
+    /// Next synthetic sprite ID for textures loaded from the filesystem.
+    next_custom_id: usize,
 }
 
 impl GraphicsCache {
@@ -94,6 +96,7 @@ impl GraphicsCache {
             archive,
             index_to_filename,
             minimap_texture: None,
+            next_custom_id: 100_000,
         }
     }
 
@@ -179,6 +182,53 @@ impl GraphicsCache {
         }
 
         self.sprite_cache.get_mut(&id).unwrap()
+    }
+
+    /// Loads a texture from a filesystem path (not from the ZIP archive).
+    ///
+    /// The texture is assigned a synthetic sprite ID (starting at 100 000)
+    /// and cached like any other sprite.  Subsequent calls with the same ID
+    /// use the cached texture.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Filesystem path to a PNG (or other SDL2_image-supported) file.
+    ///
+    /// # Returns
+    ///
+    /// The assigned sprite ID on success, or an error message.
+    pub fn load_texture_from_path(&mut self, path: &std::path::Path) -> Result<usize, String> {
+        let mut file =
+            File::open(path).map_err(|e| format!("Failed to open {}: {}", path.display(), e))?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)
+            .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+        let texture = self
+            .creator
+            .load_texture_bytes(&buffer)
+            .map_err(|e| format!("Failed to decode texture from {}: {}", path.display(), e))?;
+        let id = self.next_custom_id;
+        self.next_custom_id += 1;
+        self.sprite_cache.insert(id, texture);
+        Ok(id)
+    }
+
+    /// Returns the pixel dimensions of a cached texture.
+    ///
+    /// # Arguments
+    ///
+    /// * `id` - Sprite ID (must already be loaded).
+    ///
+    /// # Returns
+    ///
+    /// `(width, height)` in pixels, or `(0, 0)` if the ID is not cached.
+    pub fn query_texture_size(&self, id: usize) -> (u32, u32) {
+        if let Some(tex) = self.sprite_cache.get(&id) {
+            let TextureQuery { width, height, .. } = tex.query();
+            (width, height)
+        } else {
+            (0, 0)
+        }
     }
 
     /// Loads and decodes a single sprite from the ZIP archive, caching its

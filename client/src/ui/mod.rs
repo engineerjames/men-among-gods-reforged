@@ -10,6 +10,8 @@ pub mod button;
 #[allow(dead_code)]
 pub mod button_arc;
 #[allow(dead_code)]
+pub mod cert_dialog;
+#[allow(dead_code)]
 pub mod chat_box;
 #[allow(dead_code)]
 pub mod checkbox;
@@ -20,6 +22,8 @@ pub mod inventory_panel;
 #[allow(dead_code)]
 pub mod label;
 #[allow(dead_code)]
+pub mod login_form;
+#[allow(dead_code)]
 pub mod look_panel;
 #[allow(dead_code)]
 pub mod minimap_widget;
@@ -27,6 +31,8 @@ pub mod minimap_widget;
 pub mod mode_button;
 #[allow(dead_code)]
 pub mod panel;
+#[allow(dead_code)]
+pub mod panning_background;
 #[allow(dead_code)]
 pub mod rank_arc;
 #[allow(dead_code)]
