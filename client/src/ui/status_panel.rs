@@ -329,18 +329,9 @@ impl StatusPanel {
             ctx.gfx,
             FONT,
             &text,
-            center_x + 1,
-            text_y + 1,
-            font_cache::TextStyle::centered().with_tint(Color::RGB(0, 0, 0)),
-        )?;
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            FONT,
-            &text,
             center_x,
             text_y,
-            font_cache::TextStyle::centered(),
+            font_cache::TextStyle::centered().with_drop_shadow(),
         )?;
 
         Ok(())

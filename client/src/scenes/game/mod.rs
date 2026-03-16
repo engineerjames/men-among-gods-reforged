@@ -623,17 +623,6 @@ impl GameScene {
         };
         let x = self.mouse_x + 12;
         let y = self.mouse_y + 16;
-        // Shadow pass (black, offset +1,+1)
-        crate::font_cache::draw_text(
-            canvas,
-            gfx,
-            1,
-            text,
-            x + 1,
-            y + 1,
-            crate::font_cache::TextStyle::tinted(Color::RGB(0, 0, 0)),
-        )?;
-        // Foreground pass
         crate::font_cache::draw_text(
             canvas,
             gfx,
@@ -641,7 +630,7 @@ impl GameScene {
             text,
             x,
             y,
-            crate::font_cache::TextStyle::PLAIN,
+            crate::font_cache::TextStyle::drop_shadow(),
         )
     }
 

@@ -32,6 +32,8 @@ pub struct TextStyle {
     pub alpha: Option<u8>,
     /// If true, `x` is treated as `center_x` and the text is centered horizontally.
     pub centered: bool,
+    /// If true, a 1-pixel black drop shadow is drawn at (+1, +1) behind the text.
+    pub drop_shadow: bool,
 }
 
 impl TextStyle {
@@ -40,6 +42,7 @@ impl TextStyle {
         tint: None,
         alpha: None,
         centered: false,
+        drop_shadow: false,
     };
 
     /// Creates a style with the given tint color.
@@ -82,6 +85,20 @@ impl TextStyle {
     pub fn with_tint(mut self, color: sdl2::pixels::Color) -> Self {
         self.tint = Some(color);
         self
+    }
+
+    /// Returns a copy of this style with a 1-pixel black drop shadow enabled.
+    pub fn with_drop_shadow(mut self) -> Self {
+        self.drop_shadow = true;
+        self
+    }
+
+    /// Creates a plain style with a 1-pixel black drop shadow.
+    pub fn drop_shadow() -> Self {
+        Self {
+            drop_shadow: true,
+            ..Self::PLAIN
+        }
     }
 }
 
@@ -136,6 +153,20 @@ pub fn draw_text(
     } else {
         x
     };
+
+    if style.drop_shadow {
+        draw_text_impl(
+            canvas,
+            gfx_cache,
+            font,
+            text,
+            draw_x + 1,
+            y + 1,
+            Some(sdl2::pixels::Color::RGB(0, 0, 0)),
+            style.alpha,
+        )?;
+    }
+
     draw_text_impl(
         canvas,
         gfx_cache,
