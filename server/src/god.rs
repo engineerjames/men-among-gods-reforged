@@ -3,7 +3,9 @@ use core::{
         character_flags_name, ArmorType, CharacterFlags, MagicArmorType, DX_DOWN, DX_LEFT,
         DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
     },
+    ranks,
     string_operations::c_string_to_str,
+    traits,
     types::{Character, Map},
 };
 
@@ -1696,8 +1698,7 @@ impl God {
 
         // Print header line depending on player or NPC
         if player_flag {
-            let rank = core::ranks::points2rank(pts as u32) as usize;
-            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank_short = ranks::rank_name_shortened(pts as u32);
             let target_name = gs.characters[co].get_name().to_string();
             gs.do_character_log(
                 cn,
@@ -1724,8 +1725,7 @@ impl God {
                     String::new()
                 }
             };
-            let rank = core::ranks::points2rank(pts as u32) as usize;
-            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank_short = ranks::rank_name_shortened(pts as u32);
             let target_name = gs.characters[co].get_name().to_string();
             gs.do_character_log(
                 cn,
@@ -1763,7 +1763,7 @@ impl God {
 
         // Last PvP attack for purple players
         if player_flag
-            && (kindred & core::constants::KIN_PURPLE as i32) != 0
+            && (kindred & traits::KIN_PURPLE as i32) != 0
             && data_vals[core::constants::CHD_ATTACKTIME] != 0
         {
             let dt = gs.globals.ticker - gs.characters[co].data[core::constants::CHD_ATTACKTIME];
@@ -2038,7 +2038,7 @@ impl God {
             if n_is_god && !cn_is_god {
                 showarea = false;
             }
-            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            let n_is_purple = (c.kindred as u32 & traits::KIN_PURPLE) != 0;
             if n_is_purple && !cn_is_god_imp_or_usurp {
                 showarea = false;
             }
@@ -2080,11 +2080,10 @@ impl God {
                 continue;
             }
 
-            let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
-            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank_short = ranks::rank_name_shortened(c.points_tot as u32);
             let name = c.get_name().to_string();
             let area_str = area::get_area_m(c.x as i32, c.y as i32, false);
-            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            let n_is_purple = (c.kindred as u32 & traits::KIN_PURPLE) != 0;
             let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
             let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
 
@@ -2164,7 +2163,7 @@ impl God {
             if n_is_god && !cn_is_god {
                 showarea = false;
             }
-            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            let n_is_purple = (c.kindred as u32 & traits::KIN_PURPLE) != 0;
             if n_is_purple && !cn_is_god_imp_or_usurp {
                 showarea = false;
             }
@@ -2258,13 +2257,12 @@ impl God {
             if n_is_god && !cn_is_god {
                 showarea = false;
             }
-            let n_is_purple = (c.kindred as u32 & core::constants::KIN_PURPLE) != 0;
+            let n_is_purple = (c.kindred as u32 & traits::KIN_PURPLE) != 0;
             if n_is_purple && !cn_is_god_imp_or_usurp {
                 showarea = false;
             }
 
-            let rank = core::ranks::points2rank(c.points_tot as u32) as usize;
-            let rank_short = helpers::WHO_RANK_NAME.get(rank).unwrap_or(&" ");
+            let rank_short = ranks::rank_name_shortened(c.points_tot as u32);
             let name = c.get_name().to_string();
             let area_str = if showarea {
                 area::get_area_m(c.x as i32, c.y as i32, false)
@@ -2720,7 +2718,7 @@ impl God {
                 .unwrap_or(false)
             {
                 if let Ok(rank) = spec2.parse::<usize>() {
-                    if rank >= core::constants::RANKS {
+                    if rank >= ranks::TOTAL_RANKS {
                         gs.do_character_log(
                             cn,
                             core::types::FontColor::Red,
@@ -2958,9 +2956,7 @@ impl God {
 
             // Calculate hand-to-hand skill based on kindred
             if target_kindred
-                & (core::constants::KIN_TEMPLAR
-                    | core::constants::KIN_ARCHTEMPLAR
-                    | core::constants::KIN_SEYAN_DU)
+                & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR | traits::KIN_SEYAN_DU)
                 != 0
             {
                 // TH -> hand2hand (str,str,agi)
@@ -2968,19 +2964,14 @@ impl God {
                     + bonus
                     + (target_attrib[4][0] as i32 - target_attrib[0][0] as i32) / 5)
                     .clamp(0, 255) as u8;
-            } else if target_kindred
-                & (core::constants::KIN_HARAKIM | core::constants::KIN_ARCHHARAKIM)
-                != 0
-            {
+            } else if target_kindred & (traits::KIN_HARAKIM | traits::KIN_ARCHHARAKIM) != 0 {
                 // Dag-> hand2hand (wil,agi,int)
                 mirror.skill[0][0] = (target_skill[2][0] as i32
                     + bonus
                     + (target_attrib[2][0] as i32 - target_attrib[4][0] as i32) / 5)
                     .clamp(0, 255) as u8;
             } else if target_kindred
-                & (core::constants::KIN_MERCENARY
-                    | core::constants::KIN_SORCERER
-                    | core::constants::KIN_WARRIOR)
+                & (traits::KIN_MERCENARY | traits::KIN_SORCERER | traits::KIN_WARRIOR)
                 != 0
             {
                 // Swo-> hand2hand (wil,agi,str)
@@ -4535,8 +4526,8 @@ impl God {
             character.mana[3] = template.mana[3];
             character.sprite = template.sprite;
 
-            if character.kindred & (core::constants::KIN_PURPLE as i32) != 0 {
-                character.kindred = template.kindred | (core::constants::KIN_PURPLE as i32);
+            if character.kindred & (traits::KIN_PURPLE as i32) != 0 {
+                character.kindred = template.kindred | (traits::KIN_PURPLE as i32);
             } else {
                 character.kindred = template.kindred;
             }

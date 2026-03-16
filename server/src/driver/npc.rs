@@ -7,7 +7,9 @@ use crate::helpers;
 use crate::player;
 use crate::populate;
 use core::constants::*;
+use core::skills;
 use core::string_operations::c_string_to_str;
+use core::traits;
 use core::types::skilltab;
 use core::types::Character;
 
@@ -654,26 +656,30 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
             let mut skill_nr = nr as usize;
             let co_kindred = gs.characters[co].kindred as u32;
 
-            if skill_nr == SK_STUN && (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0 {
-                skill_nr = SK_IMMUN;
-            }
-            if skill_nr == SK_CURSE && (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0 {
-                skill_nr = SK_SURROUND;
-            }
-            if skill_nr == SK_STUN
-                && (co_kindred & KIN_SEYAN_DU) != 0
-                && gs.characters[co].skill[SK_STUN][0] != 0
+            if skill_nr == skills::SK_STUN
+                && (co_kindred & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR)) != 0
             {
-                skill_nr = SK_IMMUN;
+                skill_nr = skills::SK_IMMUN;
             }
-            if skill_nr == SK_CURSE
-                && (co_kindred & KIN_SEYAN_DU) != 0
-                && gs.characters[co].skill[SK_CURSE][0] != 0
+            if skill_nr == skills::SK_CURSE
+                && (co_kindred & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR)) != 0
             {
-                skill_nr = SK_SURROUND;
+                skill_nr = skills::SK_SURROUND;
+            }
+            if skill_nr == skills::SK_STUN
+                && (co_kindred & traits::KIN_SEYAN_DU) != 0
+                && gs.characters[co].skill[skills::SK_STUN][0] != 0
+            {
+                skill_nr = skills::SK_IMMUN;
+            }
+            if skill_nr == skills::SK_CURSE
+                && (co_kindred & traits::KIN_SEYAN_DU) != 0
+                && gs.characters[co].skill[skills::SK_CURSE][0] != 0
+            {
+                skill_nr = skills::SK_SURROUND;
             }
 
-            if skill_nr == SK_STUN && (co_kindred & KIN_SEYAN_DU) != 0 {
+            if skill_nr == skills::SK_STUN && (co_kindred & traits::KIN_SEYAN_DU) != 0 {
                 gs.do_sayx(
                     cn,
                     &format!(
@@ -682,7 +688,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                     ),
                 );
             }
-            if skill_nr == SK_CURSE && (co_kindred & KIN_SEYAN_DU) != 0 {
+            if skill_nr == skills::SK_CURSE && (co_kindred & traits::KIN_SEYAN_DU) != 0 {
                 gs.do_sayx(
                     cn,
                     &format!(
@@ -937,32 +943,32 @@ pub fn npc_msg(
 
 pub fn get_spellcost(cn: &Character, spell: usize) -> i32 {
     (match spell {
-        SK_BLAST => cn.skill[SK_BLAST][5] / 5,
-        SK_IDENT => 50,
-        SK_CURSE => 35,
-        SK_BLESS => 35,
-        SK_ENHANCE => 15,
-        SK_PROTECT => 15,
-        SK_LIGHT => 5,
-        SK_STUN => 20,
-        SK_HEAL => 25,
-        SK_GHOST => 45,
-        SK_MSHIELD => 25,
-        SK_RECALL => 15,
+        skills::SK_BLAST => cn.skill[skills::SK_BLAST][5] / 5,
+        skills::SK_IDENT => 50,
+        skills::SK_CURSE => 35,
+        skills::SK_BLESS => 35,
+        skills::SK_ENHANCE => 15,
+        skills::SK_PROTECT => 15,
+        skills::SK_LIGHT => 5,
+        skills::SK_STUN => 20,
+        skills::SK_HEAL => 25,
+        skills::SK_GHOST => 45,
+        skills::SK_MSHIELD => 25,
+        skills::SK_RECALL => 15,
         _ => 255, // Originally was 9999 which is invalid for a u8
     }) as i32
 }
 
 pub fn spellflag(spell: usize) -> u32 {
     match spell {
-        SK_LIGHT => SP_LIGHT,
-        SK_PROTECT => SP_PROTECT,
-        SK_ENHANCE => SP_ENHANCE,
-        SK_BLESS => SP_BLESS,
-        SK_HEAL => SP_HEAL,
-        SK_CURSE => SP_CURSE,
-        SK_STUN => SP_STUN,
-        SK_DISPEL => SP_DISPEL,
+        skills::SK_LIGHT => SP_LIGHT,
+        skills::SK_PROTECT => SP_PROTECT,
+        skills::SK_ENHANCE => SP_ENHANCE,
+        skills::SK_BLESS => SP_BLESS,
+        skills::SK_HEAL => SP_HEAL,
+        skills::SK_CURSE => SP_CURSE,
+        skills::SK_STUN => SP_STUN,
+        skills::SK_DISPEL => SP_DISPEL,
         _ => 0,
     }
 }
@@ -1000,7 +1006,7 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
 pub fn npc_is_stunned(cn: &Character, items: &[core::types::Item]) -> bool {
     for n in 0..20 {
         let active_spell = cn.spell[n];
-        if active_spell != 0 && items[active_spell as usize].temp == SK_STUN as u16 {
+        if active_spell != 0 && items[active_spell as usize].temp == skills::SK_STUN as u16 {
             return true;
         }
     }
@@ -1011,7 +1017,7 @@ pub fn npc_is_stunned(cn: &Character, items: &[core::types::Item]) -> bool {
 pub fn npc_is_blessed(cn: &Character, items: &[core::types::Item]) -> bool {
     for n in 0..20 {
         let active_spell = cn.spell[n];
-        if active_spell != 0 && items[active_spell as usize].temp == SK_BLESS as u16 {
+        if active_spell != 0 && items[active_spell as usize].temp == skills::SK_BLESS as u16 {
             return true;
         }
     }
@@ -1037,21 +1043,19 @@ pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize)
     if co.flags & CharacterFlags::Stoned.bits() != 0 {
         return false;
     }
-    if spell == core::constants::SK_BLAST
-        && (cn.skill[core::constants::SK_BLAST][5] as i16 - co.armor) < 10
-    {
+    if spell == skills::SK_BLAST && (cn.skill[skills::SK_BLAST][5] as i16 - co.armor) < 10 {
         return false;
     }
-    if spell == core::constants::SK_CURSE
-        && 10 * cn.skill[core::constants::SK_CURSE][5] as i32
-            / (std::cmp::max(1, co.skill[core::constants::SK_RESIST][5]) as i32)
+    if spell == skills::SK_CURSE
+        && 10 * cn.skill[skills::SK_CURSE][5] as i32
+            / (std::cmp::max(1, co.skill[skills::SK_RESIST][5]) as i32)
             < 7
     {
         return false;
     }
-    if spell == core::constants::SK_STUN
-        && 10 * cn.skill[core::constants::SK_STUN][5] as i32
-            / (std::cmp::max(1, co.skill[core::constants::SK_RESIST][5]) as i32)
+    if spell == skills::SK_STUN
+        && 10 * cn.skill[skills::SK_STUN][5] as i32
+            / (std::cmp::max(1, co.skill[skills::SK_RESIST][5]) as i32)
             < 5
     {
         return false;
@@ -1070,7 +1074,7 @@ pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> 
         if item_index == 0 {
             continue;
         }
-        if gs.items[item_index as usize].temp as usize == core::constants::SK_BLAST {
+        if gs.items[item_index as usize].temp as usize == skills::SK_BLAST {
             should_return_false_early = true;
             break;
         }
@@ -1094,7 +1098,7 @@ pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> 
             && gs.items[item_index as usize].power + 10
                 >= spell_immunity(
                     gs.characters[cn].skill[spell][5] as i32,
-                    gs.characters[co].skill[core::constants::SK_IMMUN][5] as i32,
+                    gs.characters[co].skill[skills::SK_IMMUN][5] as i32,
                 ) as u32
             && gs.items[item_index as usize].active > gs.items[item_index as usize].duration / 2;
 
@@ -1310,7 +1314,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
         let a_hp = gs.characters[cn].a_hp;
         let hp5 = gs.characters[cn].hp[5];
         if a_hp < hp5 as i32 * 600 {
-            if npc_try_spell(gs, cn, cn, SK_HEAL) {
+            if npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
                 return true;
             }
         }
@@ -1364,21 +1368,21 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     // generic spell management
     {
         let a_mana = gs.characters[cn].a_mana;
-        let med_skill = gs.characters[cn].skill[SK_MEDIT][0];
+        let med_skill = gs.characters[cn].skill[skills::SK_MEDIT][0];
         if a_mana > (gs.characters[cn].mana[5] as i32) * 850 && med_skill != 0 {
-            if a_mana > 75000 && npc_try_spell(gs, cn, cn, SK_BLESS) {
+            if a_mana > 75000 && npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_PROTECT) {
+            if npc_try_spell(gs, cn, cn, skills::SK_PROTECT) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_MSHIELD) {
+            if npc_try_spell(gs, cn, cn, skills::SK_MSHIELD) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_ENHANCE) {
+            if npc_try_spell(gs, cn, cn, skills::SK_ENHANCE) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_BLESS) {
+            if npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
                 return true;
             }
         }
@@ -1417,7 +1421,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             let idx = cx + cy * SERVER_MAPX as usize;
             let map_light = gs.map[idx].light;
             if light < 20 && map_light < 20 {
-                if npc_try_spell(gs, cn, cn, SK_LIGHT) {
+                if npc_try_spell(gs, cn, cn, skills::SK_LIGHT) {
                     return true;
                 }
             }
@@ -1431,7 +1435,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             let a_hp = gs.characters[co].a_hp;
             let hp5 = gs.characters[co].hp[5];
             if a_hp < hp5 as i32 * 600 {
-                if npc_try_spell(gs, cn, co, SK_HEAL) {
+                if npc_try_spell(gs, cn, co, skills::SK_HEAL) {
                     return true;
                 }
             }
@@ -1445,33 +1449,33 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             let cc = gs.characters[co].attack_cn as usize;
 
             if gs.characters[cn].a_mana
-                > (get_spellcost(&gs.characters[cn], SK_BLESS) * 2
-                    + get_spellcost(&gs.characters[cn], SK_PROTECT)
-                    + get_spellcost(&gs.characters[cn], SK_ENHANCE))
+                > (get_spellcost(&gs.characters[cn], skills::SK_BLESS) * 2
+                    + get_spellcost(&gs.characters[cn], skills::SK_PROTECT)
+                    + get_spellcost(&gs.characters[cn], skills::SK_ENHANCE))
             {
-                if npc_try_spell(gs, cn, cn, SK_BLESS) {
+                if npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
                     return true;
                 }
             }
 
             if gs.characters[co].a_hp < gs.characters[co].hp[5] as i32 * 600 {
-                if npc_try_spell(gs, cn, co, SK_HEAL) {
+                if npc_try_spell(gs, cn, co, skills::SK_HEAL) {
                     return true;
                 }
             }
 
-            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], SK_PROTECT)
-                && npc_try_spell(gs, cn, co, SK_PROTECT)
+            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], skills::SK_PROTECT)
+                && npc_try_spell(gs, cn, co, skills::SK_PROTECT)
             {
                 return true;
             }
-            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], SK_ENHANCE)
-                && npc_try_spell(gs, cn, co, SK_ENHANCE)
+            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], skills::SK_ENHANCE)
+                && npc_try_spell(gs, cn, co, skills::SK_ENHANCE)
             {
                 return true;
             }
-            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], SK_BLESS)
-                && npc_try_spell(gs, cn, co, SK_BLESS)
+            if !npc_can_spell(&gs.characters[co], &gs.characters[cn], skills::SK_BLESS)
+                && npc_try_spell(gs, cn, co, skills::SK_BLESS)
             {
                 return true;
             }
@@ -1480,7 +1484,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                 && gs.characters[co].a_hp < gs.characters[co].hp[5] as i32 * 650
                 && npc_is_enemy(&gs.characters[cn], &gs.characters[cc], cc)
             {
-                if npc_try_spell(gs, cn, cc, SK_BLAST) {
+                if npc_try_spell(gs, cn, cc, skills::SK_BLAST) {
                     return true;
                 }
             }
@@ -1504,47 +1508,48 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                 && (gs.characters[cn].a_hp < gs.characters[cn].hp[5] as i32 * 600
                     || helpers::random_mod_i32(10) == 0)
             {
-                if npc_try_spell(gs, cn, co, SK_BLAST) {
+                if npc_try_spell(gs, cn, co, skills::SK_BLAST) {
                     return true;
                 }
             }
 
             if co != 0 && gs.globals.ticker > gs.characters[cn].data[75] {
-                if npc_try_spell(gs, cn, co, SK_STUN) {
-                    gs.characters[cn].data[75] =
-                        gs.globals.ticker + gs.characters[cn].skill[SK_STUN][5] as i32 + TICKS * 8;
+                if npc_try_spell(gs, cn, co, skills::SK_STUN) {
+                    gs.characters[cn].data[75] = gs.globals.ticker
+                        + gs.characters[cn].skill[skills::SK_STUN][5] as i32
+                        + TICKS * 8;
                     return true;
                 }
             }
 
-            if gs.characters[cn].a_mana > 75000 && npc_try_spell(gs, cn, cn, SK_BLESS) {
+            if gs.characters[cn].a_mana > 75000 && npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_PROTECT) {
+            if npc_try_spell(gs, cn, cn, skills::SK_PROTECT) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_MSHIELD) {
+            if npc_try_spell(gs, cn, cn, skills::SK_MSHIELD) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_ENHANCE) {
+            if npc_try_spell(gs, cn, cn, skills::SK_ENHANCE) {
                 return true;
             }
-            if npc_try_spell(gs, cn, cn, SK_BLESS) {
+            if npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
                 return true;
             }
-            if co != 0 && npc_try_spell(gs, cn, co, SK_CURSE) {
+            if co != 0 && npc_try_spell(gs, cn, co, skills::SK_CURSE) {
                 return true;
             }
             if co != 0
                 && gs.globals.ticker > gs.characters[cn].data[74] + (TICKS * 10)
-                && npc_try_spell(gs, cn, co, SK_GHOST)
+                && npc_try_spell(gs, cn, co, skills::SK_GHOST)
             {
                 gs.characters[cn].data[74] = gs.globals.ticker;
                 return true;
             }
 
             if co != 0 && gs.characters[co].armor + 5 > gs.characters[cn].weapon {
-                if npc_try_spell(gs, cn, co, SK_BLAST) {
+                if npc_try_spell(gs, cn, co, skills::SK_BLAST) {
                     return true;
                 }
             }
@@ -2930,8 +2935,8 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
             let co_skill_19 = gs.characters[co].skill[19][0];
 
             if text_2_str == "#stunspec\0" || text_2_str.starts_with("#stunspec") {
-                let message = if (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0
-                    || ((co_kindred & KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
+                let message = if (co_kindred & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR)) != 0
+                    || ((co_kindred & traits::KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
                 {
                     format!("Hello, {}. I'll teach you Immunity, if you bring me the potion from the Skeleton Lord.", co_name)
                 } else {
@@ -2942,8 +2947,8 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
                 };
                 gs.do_sayx(cn, &message);
             } else if text_2_str == "#cursespec\0" || text_2_str.starts_with("#cursespec") {
-                let message = if (co_kindred & (KIN_TEMPLAR | KIN_ARCHTEMPLAR)) != 0
-                    || ((co_kindred & KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
+                let message = if (co_kindred & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR)) != 0
+                    || ((co_kindred & traits::KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
                 {
                     format!(
                         "Hi, {}. Bring me a Potion of Life and I'll teach you Surround Hit.",
@@ -2958,7 +2963,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
                 gs.do_sayx(cn, &message);
             } else {
                 let cn_temp = gs.characters[cn].temp;
-                if cn_temp == 180 && (co_kindred & KIN_PURPLE) != 0 {
+                if cn_temp == 180 && (co_kindred & traits::KIN_PURPLE) != 0 {
                     gs.do_sayx(cn, &format!("Greetings, {}!", co_name));
                 } else {
                     npc_saytext_n(gs, cn, 2, Some(&co_name));

@@ -421,13 +421,6 @@ pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
     tmp != 0
 }
 
-/// Short rank names used in compact `who` displays.
-pub const WHO_RANK_NAME: [&str; core::constants::RANKS] = [
-    " Pvt ", " PFC ", " LCp ", " Cpl ", " Sgt ", " SSg ", " MSg ", " 1Sg ", " SgM ", "2Lieu",
-    "1Lieu", "Captn", "Major", "LtCol", "Colnl", "BrGen", "MaGen", "LtGen", "Genrl", "FDMAR",
-    "KNIGT", "BARON", " EARL", "WARLD",
-];
-
 /// Port of `ago_string` utility.
 ///
 /// Converts a tick delta into a human-friendly relative time string (for

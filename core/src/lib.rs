@@ -20,6 +20,7 @@ pub mod constants;
 pub mod encrypt;
 pub mod names;
 pub mod ranks;
+pub mod skills;
 pub mod stat_buffer;
 pub mod string_operations;
 pub mod traits;

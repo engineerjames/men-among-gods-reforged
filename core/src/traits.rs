@@ -1,10 +1,19 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::constants::{
-    KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_FEMALE, KIN_HARAKIM, KIN_MALE, KIN_MERCENARY,
-    KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
-};
+// Kindred flags
+pub const KIN_MERCENARY: u32 = 1 << 0;
+pub const KIN_SEYAN_DU: u32 = 1 << 1;
+pub const KIN_PURPLE: u32 = 1 << 2;
+pub const KIN_MONSTER: u32 = 1 << 3;
+pub const KIN_TEMPLAR: u32 = 1 << 4;
+pub const KIN_ARCHTEMPLAR: u32 = 1 << 5;
+pub const KIN_HARAKIM: u32 = 1 << 6;
+pub const KIN_MALE: u32 = 1 << 7;
+pub const KIN_FEMALE: u32 = 1 << 8;
+pub const KIN_ARCHHARAKIM: u32 = 1 << 9;
+pub const KIN_WARRIOR: u32 = 1 << 10;
+pub const KIN_SORCERER: u32 = 1 << 11;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]

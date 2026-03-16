@@ -3,6 +3,7 @@
 use crate::{
     constants::{CharacterFlags, USE_EMPTY},
     string_operations::c_string_to_str,
+    traits,
 };
 use bincode::{Decode, Encode};
 
@@ -351,7 +352,7 @@ impl Character {
     }
 
     pub fn is_monster(&self) -> bool {
-        (self.kindred as u32 & crate::constants::KIN_MONSTER) != 0
+        (self.kindred as u32 & traits::KIN_MONSTER) != 0
     }
 
     pub fn is_usurp_or_thrall(&self) -> bool {
@@ -364,13 +365,13 @@ impl Character {
 
     pub fn get_kindred_as_string(&self) -> String {
         let kindred = self.kindred as u32;
-        if kindred & crate::constants::KIN_TEMPLAR != 0 {
+        if kindred & traits::KIN_TEMPLAR != 0 {
             "Templar".to_string()
-        } else if kindred & crate::constants::KIN_HARAKIM != 0 {
+        } else if kindred & traits::KIN_HARAKIM != 0 {
             "Harakim".to_string()
-        } else if kindred & crate::constants::KIN_MERCENARY != 0 {
+        } else if kindred & traits::KIN_MERCENARY != 0 {
             "Monster".to_string()
-        } else if kindred & crate::constants::KIN_SEYAN_DU != 0 {
+        } else if kindred & traits::KIN_SEYAN_DU != 0 {
             "Seyan'Du".to_string()
         } else {
             "Monster".to_string()
@@ -378,10 +379,11 @@ impl Character {
     }
 
     pub fn get_gender_as_string(&self) -> String {
+        // TODO: Rework to utilize the values in the traits module
         let kindred = self.kindred as u32;
-        if kindred & crate::constants::KIN_FEMALE != 0 {
+        if kindred & traits::KIN_FEMALE != 0 {
             "Female".to_string()
-        } else if kindred & crate::constants::KIN_MALE != 0 {
+        } else if kindred & traits::KIN_MALE != 0 {
             "Male".to_string()
         } else {
             "It".to_string()
@@ -689,7 +691,7 @@ mod tests {
         character.kindred = 0;
         assert!(!character.is_monster());
 
-        character.kindred = crate::constants::KIN_MONSTER as i32;
+        character.kindred = traits::KIN_MONSTER as i32;
         assert!(character.is_monster());
     }
 
@@ -723,16 +725,16 @@ mod tests {
     fn test_get_kindred_as_string() {
         let mut character = Character::default();
 
-        character.kindred = crate::constants::KIN_TEMPLAR as i32;
+        character.kindred = traits::KIN_TEMPLAR as i32;
         assert_eq!(character.get_kindred_as_string(), "Templar");
 
-        character.kindred = crate::constants::KIN_HARAKIM as i32;
+        character.kindred = traits::KIN_HARAKIM as i32;
         assert_eq!(character.get_kindred_as_string(), "Harakim");
 
-        character.kindred = crate::constants::KIN_MERCENARY as i32;
+        character.kindred = traits::KIN_MERCENARY as i32;
         assert_eq!(character.get_kindred_as_string(), "Monster");
 
-        character.kindred = crate::constants::KIN_SEYAN_DU as i32;
+        character.kindred = traits::KIN_SEYAN_DU as i32;
         assert_eq!(character.get_kindred_as_string(), "Seyan'Du");
 
         character.kindred = 0;
@@ -743,10 +745,10 @@ mod tests {
     fn test_get_gender_as_string() {
         let mut character = Character::default();
 
-        character.kindred = crate::constants::KIN_FEMALE as i32;
+        character.kindred = traits::KIN_FEMALE as i32;
         assert_eq!(character.get_gender_as_string(), "Female");
 
-        character.kindred = crate::constants::KIN_MALE as i32;
+        character.kindred = traits::KIN_MALE as i32;
         assert_eq!(character.get_gender_as_string(), "Male");
 
         character.kindred = 0;
@@ -757,8 +759,7 @@ mod tests {
     fn test_get_default_description() {
         let mut character = Character::default();
         character.set_name("TestHero");
-        character.kindred =
-            crate::constants::KIN_TEMPLAR as i32 | crate::constants::KIN_MALE as i32;
+        character.kindred = traits::KIN_TEMPLAR as i32 | traits::KIN_MALE as i32;
 
         let desc = character.get_default_description();
         assert!(desc.contains("TestHero"));

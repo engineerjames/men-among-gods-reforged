@@ -6,8 +6,9 @@ use core::{
         UWATER,
     },
     encrypt::xcrypt,
+    skills,
     string_operations::{c_string_to_str, write_ascii_into_fixed},
-    traits::{get_race_integer, Sex},
+    traits::{self, get_race_integer, Sex},
 };
 
 use crate::{
@@ -2799,7 +2800,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
         let has_recall = gs.characters[cn].spell[i] != 0;
         if has_recall {
             let spell_idx = gs.characters[cn].spell[i] as usize;
-            let is_recall = gs.items[spell_idx].temp == core::constants::SK_RECALL as u16;
+            let is_recall = gs.items[spell_idx].temp == skills::SK_RECALL as u16;
             if is_recall {
                 gs.items[spell_idx].used = core::constants::USE_EMPTY;
                 gs.characters[cn].spell[i] = 0;
@@ -4914,41 +4915,25 @@ fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
 
                     if let Some(reason) = desc_reason {
                         // pick race name
-                        let race_name = if (gs.characters[cn].kindred
-                            & core::constants::KIN_TEMPLAR as i32)
+                        let race_name = if (gs.characters[cn].kindred & traits::KIN_TEMPLAR as i32)
                             != 0
                         {
                             "a Templar"
-                        } else if (gs.characters[cn].kindred & core::constants::KIN_HARAKIM as i32)
-                            != 0
-                        {
+                        } else if (gs.characters[cn].kindred & traits::KIN_HARAKIM as i32) != 0 {
                             "a Harakim"
-                        } else if (gs.characters[cn].kindred
-                            & core::constants::KIN_MERCENARY as i32)
-                            != 0
-                        {
+                        } else if (gs.characters[cn].kindred & traits::KIN_MERCENARY as i32) != 0 {
                             "a Mercenary"
-                        } else if (gs.characters[cn].kindred & core::constants::KIN_SEYAN_DU as i32)
-                            != 0
-                        {
+                        } else if (gs.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) != 0 {
                             "a Seyan'Du"
-                        } else if (gs.characters[cn].kindred
-                            & core::constants::KIN_ARCHHARAKIM as i32)
-                            != 0
+                        } else if (gs.characters[cn].kindred & traits::KIN_ARCHHARAKIM as i32) != 0
                         {
                             "an Arch Harakim"
-                        } else if (gs.characters[cn].kindred
-                            & core::constants::KIN_ARCHTEMPLAR as i32)
-                            != 0
+                        } else if (gs.characters[cn].kindred & traits::KIN_ARCHTEMPLAR as i32) != 0
                         {
                             "an Arch Templar"
-                        } else if (gs.characters[cn].kindred & core::constants::KIN_WARRIOR as i32)
-                            != 0
-                        {
+                        } else if (gs.characters[cn].kindred & traits::KIN_WARRIOR as i32) != 0 {
                             "a Warrior"
-                        } else if (gs.characters[cn].kindred & core::constants::KIN_SORCERER as i32)
-                            != 0
-                        {
+                        } else if (gs.characters[cn].kindred & traits::KIN_SORCERER as i32) != 0 {
                             "a Sorcerer"
                         } else {
                             "a strange figure"
@@ -4965,14 +4950,12 @@ fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
 
                         // fallback description
                         let name_str = c_string_to_str(&gs.characters[cn].name).to_string();
-                        let pronoun = if (gs.characters[cn].kindred
-                            & core::constants::KIN_FEMALE as i32)
-                            != 0
-                        {
-                            "She"
-                        } else {
-                            "He"
-                        };
+                        let pronoun =
+                            if (gs.characters[cn].kindred & traits::KIN_FEMALE as i32) != 0 {
+                                "She"
+                            } else {
+                                "He"
+                            };
                         let fallback = format!(
                             "{} is {}. {} looks somewhat nondescript.",
                             name_str, race_name, pronoun

@@ -4,11 +4,10 @@
 //! The sigil is always visible. Clicking it toggles the stat bars and
 //! weapon/armor text on or off. Bars are shown by default.
 
-use mag_core::constants::RANKS;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::ranks;
+use mag_core::ranks::{self, TOTAL_RANKS};
 
 use crate::font_cache;
 use crate::player_state::PlayerState;
@@ -54,7 +53,7 @@ const BASE_CONTENT_H: i32 = (BAR_HEIGHT + BAR_GAP) * 3
 /// Each tuple is `(top_rows, bottom_rows)`. These are applied only when
 /// drawing the sprite so you can tune away transparent padding without
 /// changing the panel's nominal 32×96 sigil footprint.
-const SIGIL_TRIM_ROWS: [(u32, u32); RANKS] = [
+const SIGIL_TRIM_ROWS: [(u32, u32); TOTAL_RANKS] = [
     (0, 0),   // Private        (sprite 10: fully transparent)
     (46, 38), // Private First Class  (sprite 11: rows 46-57)
     (26, 38), // Lance Corporal (sprite 12: rows 26-57)

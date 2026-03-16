@@ -6,14 +6,13 @@ use crate::god::God;
 use crate::helpers::{self};
 use crate::{chlog, driver, player, populate};
 use core::constants::{
-    CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, KIN_HARAKIM, KIN_MALE,
-    KIN_MERCENARY, KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR, MAXITEM, MAXSKILL,
-    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, SK_BLAST, SK_BLESS, SK_CONCEN,
-    SK_CURSE, SK_DAGGER, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MSHIELD,
-    SK_PROTECT, SK_RECALL, SK_RESIST, SK_STEALTH, SK_STUN, SK_SURROUND, SK_SWORD, SK_TWOHAND,
-    SK_WARCRY, TICKS, USE_ACTIVE, USE_EMPTY, WN_RHAND,
+    CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, MAXITEM, MAXSKILL,
+    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
+    WN_RHAND,
 };
+use core::skills::{self, attribute_name};
 use core::string_operations::c_string_to_str;
+use core::traits;
 use core::types::FontColor;
 
 // Helper function to take an item from a character
@@ -130,7 +129,8 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
                 if !lock {
                     let citem = character.citem as usize;
                     if citem != 0 && (citem & 0x80000000) == 0 && gs.items[citem].driver == 3 {
-                        let skill = character.skill[SK_LOCK][5] + gs.items[citem].data[0] as u8;
+                        let skill =
+                            character.skill[skills::SK_LOCK][5] + gs.items[citem].data[0] as u8;
                         let power = gs.items[item_idx].data[2];
 
                         if power == 0 || skill >= (power + helpers::random_mod(20)) as u8 {
@@ -891,7 +891,7 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     for n in 0..20 {
         let spell_idx = gs.characters[cn].spell[n] as usize;
         if spell_idx != 0 {
-            if gs.items[spell_idx].temp == core::constants::SK_RECALL as u16 {
+            if gs.items[spell_idx].temp == skills::SK_RECALL as u16 {
                 gs.characters[cn].spell[n] = 0;
                 gs.items[spell_idx].used = USE_EMPTY;
             }
@@ -965,7 +965,7 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         spell.sprite[1] = 90;
         spell.duration = 180;
         spell.active = 180;
-        spell.temp = SK_RECALL as u16;
+        spell.temp = skills::SK_RECALL as u16;
         spell.power = power;
         spell.data[0] = dest_x;
         spell.data[1] = dest_y;
@@ -1020,7 +1020,7 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     for n in 0..20 {
         let spell_idx = gs.characters[cn].spell[n] as usize;
         if spell_idx != 0 {
-            if gs.items[spell_idx].temp == SK_RECALL as u16 {
+            if gs.items[spell_idx].temp == skills::SK_RECALL as u16 {
                 gs.characters[cn].spell[n] = 0;
                 gs.items[spell_idx].used = USE_EMPTY;
             }
@@ -1099,8 +1099,7 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
         if !may_attack && allowed_cn != cn {
             let owner_name = c_string_to_str(&gs.characters[owner].name).to_string();
-            let owner_is_male =
-                (gs.characters[owner].kindred & core::constants::KIN_MALE as i32) != 0;
+            let owner_is_male = (gs.characters[owner].kindred & traits::KIN_MALE as i32) != 0;
             let owner_pronoun = if owner_is_male { "his" } else { "her" };
 
             gs.do_character_log(
@@ -1221,9 +1220,6 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 }
 
 pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
-    // TODO: Move these to core library
-    const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
-
     let attrib_nr = gs.items[item_idx].data[0] as usize;
     let current_val = gs.characters[cn].attrib[attrib_nr][0];
     let max_val = gs.characters[cn].attrib[attrib_nr][2];
@@ -1235,7 +1231,7 @@ pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             core::types::FontColor::Green,
             &format!(
                 "You cannot raise attribute {} any higher.\n",
-                AT_NAME[attrib_nr]
+                attribute_name(attrib_nr)
             ),
         );
         return false;
@@ -1249,12 +1245,12 @@ pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
-        &format!("Raised attribute {} by one.\n", AT_NAME[attrib_nr]),
+        &format!("Raised attribute {} by one.\n", attribute_name(attrib_nr)),
     );
     chlog!(
         cn,
         "used a scroll to raise attribute {} (pts={})",
-        AT_NAME[attrib_nr],
+        attribute_name(attrib_nr),
         pts
     );
 
@@ -1554,7 +1550,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         ch.gold = base * base + 1;
         ch.a_hp = 999999;
         ch.a_end = 999999;
-        if ch.skill[core::constants::SK_MEDIT][0] > 0 {
+        if ch.skill[skills::SK_MEDIT][0] > 0 {
             ch.a_mana = 1000000;
         } else {
             let mut v = 1i32;
@@ -1810,7 +1806,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
             }
 
             // choose weapon based on skills/attribs (partial port of original logic)
-            if gs.characters[cc].skill[core::constants::SK_TWOHAND][0] as i32 >= 60
+            if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 60
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 50
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 75
             {
@@ -1819,7 +1815,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[core::constants::SK_TWOHAND][0] as i32 >= 45
+            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 45
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 60
             {
@@ -1828,7 +1824,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[core::constants::SK_TWOHAND][0] as i32 >= 30
+            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 30
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 30
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 40
             {
@@ -1837,7 +1833,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[core::constants::SK_TWOHAND][0] as i32 >= 15
+            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 15
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 20
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 24
             {
@@ -1846,7 +1842,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[core::constants::SK_TWOHAND][0] as i32 >= 1
+            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 1
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 12
             {
@@ -3862,7 +3858,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         let in2 = gs.characters[cn].spell[n] as usize;
         if in2 != 0 {
             let temp = gs.items[in2].temp;
-            if temp as usize == SK_RECALL {
+            if temp as usize == skills::SK_RECALL {
                 {
                     gs.characters[cn].spell[n] = 0;
                 };
@@ -4015,7 +4011,7 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     }
 
     // Check if character is Seyan'Du
-    let is_seyan = { (gs.characters[cn].kindred & KIN_SEYAN_DU as i32) != 0 };
+    let is_seyan = { (gs.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) != 0 };
 
     if !is_seyan {
         gs.do_character_log(
@@ -4167,7 +4163,7 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 pub fn use_seyan_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn != 0 {
         // Check if character is Seyan'Du
-        let is_seyan = { (gs.characters[cn].kindred & KIN_SEYAN_DU as i32) != 0 };
+        let is_seyan = { (gs.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) != 0 };
         if !is_seyan {
             gs.do_character_log(
                 cn,
@@ -4188,8 +4184,8 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 
     let (is_seyan, is_male, cn_name) = {
         (
-            (gs.characters[cn].kindred & KIN_SEYAN_DU as i32) != 0,
-            (gs.characters[cn].kindred & KIN_MALE as i32) != 0,
+            (gs.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) != 0,
+            (gs.characters[cn].kindred & traits::KIN_MALE as i32) != 0,
             gs.characters[cn].get_name().to_string(),
         )
     };
@@ -4362,7 +4358,7 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     // Check attack spells for may_attack
-    if spell as usize == SK_CURSE || spell as usize == SK_STUN {
+    if spell as usize == skills::SK_CURSE || spell as usize == skills::SK_STUN {
         if !gs.may_attack_msg(cn, co, true) {
             log::info!("Prevented from attacking target {}", co);
             return false;
@@ -4376,36 +4372,36 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     // Cast spell
     let ret: bool = match spell as usize {
-        SK_LIGHT => {
+        skills::SK_LIGHT => {
             driver::spell_light(gs, cn, co, power as i32);
             true
         }
-        SK_ENHANCE => {
+        skills::SK_ENHANCE => {
             driver::spell_enhance(gs, cn, co, power as i32);
             true
         }
-        SK_PROTECT => {
+        skills::SK_PROTECT => {
             driver::spell_protect(gs, cn, co, power as i32);
             true
         }
-        SK_BLESS => {
+        skills::SK_BLESS => {
             driver::spell_bless(gs, cn, co, power as i32);
             true
         }
-        SK_MSHIELD => {
+        skills::SK_MSHIELD => {
             driver::spell_mshield(gs, cn, co, power as i32);
             true
         }
-        SK_CURSE => {
-            let target_resistance = gs.characters[co].skill[SK_RESIST][5];
+        skills::SK_CURSE => {
+            let target_resistance = gs.characters[co].skill[skills::SK_RESIST][5];
             if driver::chance_base(gs, cn, power as i32, 10, target_resistance as i32) != 0 {
                 true
             } else {
                 driver::spell_curse(gs, cn, co, power as i32)
             }
         }
-        SK_STUN => {
-            let target_resistance = gs.characters[co].skill[SK_RESIST][5];
+        skills::SK_STUN => {
+            let target_resistance = gs.characters[co].skill[skills::SK_RESIST][5];
             if driver::chance_base(gs, cn, power as i32, 12, target_resistance as i32) != 0 {
                 true
             } else {
@@ -4769,7 +4765,7 @@ pub fn change_to_archtemplar(gs: &mut GameState, cn: usize) {
     // Change race based on gender
     let (is_male, name) = {
         (
-            (gs.characters[cn].kindred as u32 & KIN_MALE) != 0,
+            (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
             gs.characters[cn].get_name().to_string(),
         )
     };
@@ -4812,7 +4808,7 @@ pub fn change_to_archharakim(gs: &mut GameState, cn: usize) {
     // Change race based on gender
     let (is_male, name) = {
         (
-            (gs.characters[cn].kindred as u32 & KIN_MALE) != 0,
+            (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
             gs.characters[cn].get_name().to_string(),
         )
     };
@@ -4856,7 +4852,7 @@ pub fn change_to_warrior(gs: &mut GameState, cn: usize) {
     // Change race based on gender
     let (is_male, name) = {
         (
-            (gs.characters[cn].kindred as u32 & KIN_MALE) != 0,
+            (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
             gs.characters[cn].get_name().to_string(),
         )
     };
@@ -4900,7 +4896,7 @@ pub fn change_to_sorcerer(gs: &mut GameState, cn: usize) {
     // Change race based on gender
     let (is_male, name) = {
         (
-            (gs.characters[cn].kindred as u32 & KIN_MALE) != 0,
+            (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
             gs.characters[cn].get_name().to_string(),
         )
     };
@@ -4946,9 +4942,9 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool
 
     // Potion of life -> Archtemplar/Archharakim
     if citem_temp == 148 {
-        if (kindred as u32 & KIN_TEMPLAR) != 0 {
+        if (kindred as u32 & traits::KIN_TEMPLAR) != 0 {
             change_to_archtemplar(gs, cn);
-        } else if (kindred as u32 & KIN_HARAKIM) != 0 {
+        } else if (kindred as u32 & traits::KIN_HARAKIM) != 0 {
             change_to_archharakim(gs, cn);
         } else {
             gs.do_character_log(
@@ -4962,7 +4958,7 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool
 
     // Greater healing potion -> Warrior
     if citem_temp == 127 || citem_temp == 274 {
-        if (kindred as u32 & KIN_MERCENARY) != 0 {
+        if (kindred as u32 & traits::KIN_MERCENARY) != 0 {
             change_to_warrior(gs, cn);
         } else {
             gs.do_character_log(
@@ -4976,7 +4972,7 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool
 
     // Greater mana potion -> Sorcerer
     if citem_temp == 131 || citem_temp == 273 {
-        if (kindred as u32 & KIN_MERCENARY) != 0 {
+        if (kindred as u32 & traits::KIN_MERCENARY) != 0 {
             change_to_sorcerer(gs, cn);
         } else {
             gs.do_character_log(
@@ -5653,100 +5649,130 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
                         item.attrib[attr_idx][0].saturating_add((stren / 2) as i8);
                 }
                 7 => {
-                    let current = item.skill[SK_DAGGER][2] as u32;
-                    item.skill[SK_DAGGER][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_DAGGER][0] = item.skill[SK_DAGGER][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_DAGGER][2] as u32;
+                    item.skill[skills::SK_DAGGER][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_DAGGER][0] =
+                        item.skill[skills::SK_DAGGER][0].saturating_add(stren as i8);
                 }
                 8 => {
-                    let current = item.skill[SK_SWORD][2] as u32;
-                    item.skill[SK_SWORD][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_SWORD][0] = item.skill[SK_SWORD][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_SWORD][2] as u32;
+                    item.skill[skills::SK_SWORD][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_SWORD][0] =
+                        item.skill[skills::SK_SWORD][0].saturating_add(stren as i8);
                 }
                 9 => {
-                    let current = item.skill[SK_TWOHAND][2] as u32;
-                    item.skill[SK_TWOHAND][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_TWOHAND][0] =
-                        item.skill[SK_TWOHAND][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_TWOHAND][2] as u32;
+                    item.skill[skills::SK_TWOHAND][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_TWOHAND][0] =
+                        item.skill[skills::SK_TWOHAND][0].saturating_add(stren as i8);
                 }
                 10 => {
-                    let current = item.skill[SK_STEALTH][2] as u32;
-                    item.skill[SK_STEALTH][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_STEALTH][0] =
-                        item.skill[SK_STEALTH][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_STEALTH][2] as u32;
+                    item.skill[skills::SK_STEALTH][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_STEALTH][0] =
+                        item.skill[skills::SK_STEALTH][0].saturating_add(stren as i8);
                 }
                 11 => {
-                    let current = item.skill[SK_MSHIELD][2] as u32;
-                    item.skill[SK_MSHIELD][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_MSHIELD][0] =
-                        item.skill[SK_MSHIELD][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_MSHIELD][2] as u32;
+                    item.skill[skills::SK_MSHIELD][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_MSHIELD][0] =
+                        item.skill[skills::SK_MSHIELD][0].saturating_add(stren as i8);
                 }
                 12 => {
-                    let current = item.skill[SK_PROTECT][2] as u32;
-                    item.skill[SK_PROTECT][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_PROTECT][0] =
-                        item.skill[SK_PROTECT][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_PROTECT][2] as u32;
+                    item.skill[skills::SK_PROTECT][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_PROTECT][0] =
+                        item.skill[skills::SK_PROTECT][0].saturating_add(stren as i8);
                 }
                 13 => {
-                    let current = item.skill[SK_ENHANCE][2] as u32;
-                    item.skill[SK_ENHANCE][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_ENHANCE][0] =
-                        item.skill[SK_ENHANCE][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_ENHANCE][2] as u32;
+                    item.skill[skills::SK_ENHANCE][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_ENHANCE][0] =
+                        item.skill[skills::SK_ENHANCE][0].saturating_add(stren as i8);
                 }
                 14 => {
-                    let current = item.skill[SK_STUN][2] as u32;
-                    item.skill[SK_STUN][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_STUN][0] = item.skill[SK_STUN][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_STUN][2] as u32;
+                    item.skill[skills::SK_STUN][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_STUN][0] =
+                        item.skill[skills::SK_STUN][0].saturating_add(stren as i8);
                 }
                 15 => {
-                    let current = item.skill[SK_CURSE][2] as u32;
-                    item.skill[SK_CURSE][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_CURSE][0] = item.skill[SK_CURSE][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_CURSE][2] as u32;
+                    item.skill[skills::SK_CURSE][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_CURSE][0] =
+                        item.skill[skills::SK_CURSE][0].saturating_add(stren as i8);
                 }
                 16 => {
-                    let current = item.skill[SK_BLESS][2] as u32;
-                    item.skill[SK_BLESS][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_BLESS][0] = item.skill[SK_BLESS][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_BLESS][2] as u32;
+                    item.skill[skills::SK_BLESS][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_BLESS][0] =
+                        item.skill[skills::SK_BLESS][0].saturating_add(stren as i8);
                 }
                 17 => {
-                    let current = item.skill[SK_RESIST][2] as u32;
-                    item.skill[SK_RESIST][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_RESIST][0] = item.skill[SK_RESIST][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_RESIST][2] as u32;
+                    item.skill[skills::SK_RESIST][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_RESIST][0] =
+                        item.skill[skills::SK_RESIST][0].saturating_add(stren as i8);
                 }
                 18 => {
-                    let current = item.skill[SK_BLAST][2] as u32;
-                    item.skill[SK_BLAST][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_BLAST][0] = item.skill[SK_BLAST][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_BLAST][2] as u32;
+                    item.skill[skills::SK_BLAST][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_BLAST][0] =
+                        item.skill[skills::SK_BLAST][0].saturating_add(stren as i8);
                 }
                 19 => {
-                    let current = item.skill[SK_HEAL][2] as u32;
-                    item.skill[SK_HEAL][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_HEAL][0] = item.skill[SK_HEAL][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_HEAL][2] as u32;
+                    item.skill[skills::SK_HEAL][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_HEAL][0] =
+                        item.skill[skills::SK_HEAL][0].saturating_add(stren as i8);
                 }
                 20 => {
-                    let current = item.skill[SK_GHOST][2] as u32;
-                    item.skill[SK_GHOST][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_GHOST][0] = item.skill[SK_GHOST][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_GHOST][2] as u32;
+                    item.skill[skills::SK_GHOST][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_GHOST][0] =
+                        item.skill[skills::SK_GHOST][0].saturating_add(stren as i8);
                 }
                 21 => {
-                    let current = item.skill[SK_IMMUN][2] as u32;
-                    item.skill[SK_IMMUN][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_IMMUN][0] = item.skill[SK_IMMUN][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_IMMUN][2] as u32;
+                    item.skill[skills::SK_IMMUN][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_IMMUN][0] =
+                        item.skill[skills::SK_IMMUN][0].saturating_add(stren as i8);
                 }
                 22 => {
-                    let current = item.skill[SK_SURROUND][2] as u32;
-                    item.skill[SK_SURROUND][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_SURROUND][0] =
-                        item.skill[SK_SURROUND][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_SURROUND][2] as u32;
+                    item.skill[skills::SK_SURROUND][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_SURROUND][0] =
+                        item.skill[skills::SK_SURROUND][0].saturating_add(stren as i8);
                 }
                 23 => {
-                    let current = item.skill[SK_CONCEN][2] as u32;
-                    item.skill[SK_CONCEN][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_CONCEN][0] = item.skill[SK_CONCEN][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_CONCEN][2] as u32;
+                    item.skill[skills::SK_CONCEN][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_CONCEN][0] =
+                        item.skill[skills::SK_CONCEN][0].saturating_add(stren as i8);
                 }
                 24 => {
-                    let current = item.skill[SK_WARCRY][2] as u32;
-                    item.skill[SK_WARCRY][2] = std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[SK_WARCRY][0] = item.skill[SK_WARCRY][0].saturating_add(stren as i8);
+                    let current = item.skill[skills::SK_WARCRY][2] as u32;
+                    item.skill[skills::SK_WARCRY][2] =
+                        std::cmp::min(120, current + (stren * 5)) as i8;
+                    item.skill[skills::SK_WARCRY][0] =
+                        item.skill[skills::SK_WARCRY][0].saturating_add(stren as i8);
                 }
                 25 => {
                     item.armor[0] = item.armor[0].saturating_add((stren / 2) as i8);
@@ -7127,11 +7153,11 @@ pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
 pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     // Check kindred
     let kindred = gs.characters[cn].kindred as u32;
-    if (kindred & KIN_HARAKIM) == 0
-        && (kindred & KIN_TEMPLAR) == 0
-        && (kindred & KIN_MERCENARY) == 0
-        && (kindred & KIN_SORCERER) == 0
-        && (kindred & KIN_WARRIOR) == 0
+    if (kindred & traits::KIN_HARAKIM) == 0
+        && (kindred & traits::KIN_TEMPLAR) == 0
+        && (kindred & traits::KIN_MERCENARY) == 0
+        && (kindred & traits::KIN_SORCERER) == 0
+        && (kindred & traits::KIN_WARRIOR) == 0
     {
         gs.do_character_log(
             cn,

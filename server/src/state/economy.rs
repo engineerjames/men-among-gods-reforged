@@ -1,4 +1,5 @@
 use core::constants::TICKS;
+use core::ranks;
 
 use crate::game_state::GameState;
 use crate::god::God;
@@ -372,9 +373,7 @@ impl GameState {
         let current_rank = core::ranks::points2rank(self.characters[cn].points_tot as u32) as usize;
         let exp_to_next = self.rank2points(current_rank as i32);
         let exp_needed = exp_to_next - self.characters[cn].points_tot;
-        let next_name = core::ranks::RANK_NAMES
-            .get(current_rank + 1)
-            .unwrap_or(&"Unknown");
+        let next_name = ranks::rank_name_by_index(current_rank + 1);
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,

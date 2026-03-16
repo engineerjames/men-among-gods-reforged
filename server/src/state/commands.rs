@@ -1,11 +1,12 @@
 use core::constants::{CharacterFlags, GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
+use core::{skills, traits};
 
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
-use crate::{driver, helpers};
+use crate::helpers;
 
 fn atoi_i32(s: &str) -> i32 {
     let bytes = s.as_bytes();
@@ -373,7 +374,7 @@ impl GameState {
     /// Transform character into a Skua.
     pub(crate) fn do_become_skua(&mut self, cn: usize) {
         // Ported from svr_do.cpp
-        let is_purple = (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
+        let is_purple = (self.characters[cn].kindred & traits::KIN_PURPLE as i32) != 0;
 
         if !is_purple {
             self.do_character_log(cn, FontColor::Red, "Hmm. Nothing happened.\n");
@@ -411,7 +412,7 @@ impl GameState {
 
         let (x, y) = (self.characters[cn].x, self.characters[cn].y);
 
-        self.characters[cn].kindred &= !(core::constants::KIN_PURPLE as i32);
+        self.characters[cn].kindred &= !(traits::KIN_PURPLE as i32);
         self.characters[cn].data[core::constants::CHD_ATTACKTIME] = 0;
         self.characters[cn].data[core::constants::CHD_ATTACKVICT] = 0;
         self.characters[cn].temple_x = 512;
@@ -724,7 +725,7 @@ impl GameState {
         // Ported from svr_do.cpp
         let ticker = self.globals.ticker;
         let last = self.characters[cn].data[core::constants::CHD_RIDDLER];
-        let is_purple = (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0;
+        let is_purple = (self.characters[cn].kindred & traits::KIN_PURPLE as i32) != 0;
 
         if ticker - last < core::constants::TICKS * 60 && !is_purple {
             self.do_character_log(cn, FontColor::Red, " \n");
@@ -755,7 +756,7 @@ impl GameState {
 
             let (x, y) = (self.characters[cn].x, self.characters[cn].y);
 
-            self.characters[cn].kindred |= core::constants::KIN_PURPLE as i32;
+            self.characters[cn].kindred |= traits::KIN_PURPLE as i32;
             self.characters[cn].temple_x = 558;
             self.characters[cn].temple_y = 542;
 
@@ -1394,7 +1395,7 @@ impl GameState {
                     self,
                     cn,
                     parse_usize(arg_get(1)),
-                    driver::skill_lookup(arg_get(2)),
+                    skills::skill_lookup(arg_get(2)),
                     parse_i32(arg_get(3)),
                 );
                 return;

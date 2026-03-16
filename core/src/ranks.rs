@@ -1,7 +1,7 @@
-use crate::constants::RANKS;
+pub const TOTAL_RANKS: usize = 24;
 
 /// Full rank names matching `WHO_RANK_NAME` indices.
-pub const RANK_NAMES: [&str; RANKS] = [
+const RANK_NAMES: [&str; TOTAL_RANKS] = [
     "Private",
     "Private First Class",
     "Lance Corporal",
@@ -32,9 +32,25 @@ pub const RANK_NAMES: [&str; RANKS] = [
 pub fn rank_name(points: u32) -> &'static str {
     // NOTE: `points2rank` already clamps via the returned range, but we still clamp
     // here defensively to ensure indexing safety if thresholds change.
-    let idx = points2rank(points).clamp(0, RANKS as u32 - 1) as usize;
+    let idx = points2rank(points).clamp(0, TOTAL_RANKS as u32 - 1) as usize;
     RANK_NAMES[idx]
 }
+
+pub fn ranks() -> &'static [&'static str; TOTAL_RANKS] {
+    &RANK_NAMES
+}
+
+pub fn rank_name_shortened(points: u32) -> &'static str {
+    let idx = points2rank(points).clamp(0, TOTAL_RANKS as u32 - 1) as usize;
+    WHO_RANK_NAME[idx]
+}
+
+/// Short rank names used in compact `who` displays.
+const WHO_RANK_NAME: [&str; TOTAL_RANKS] = [
+    " Pvt ", " PFC ", " LCp ", " Cpl ", " Sgt ", " SSg ", " MSg ", " 1Sg ", " SgM ", "2Lieu",
+    "1Lieu", "Captn", "Major", "LtCol", "Colnl", "BrGen", "MaGen", "LtGen", "Genrl", "FDMAR",
+    "KNIGT", "BARON", " EARL", "WARLD",
+];
 
 /// Returns the human-readable rank name for the given rank index.
 /// Clamps out-of-range indices to the nearest valid rank.
@@ -45,7 +61,7 @@ pub fn rank_name(points: u32) -> &'static str {
 /// Returns:
 /// * Rank name corresponding to the given index, or nearest valid rank if out of range.
 pub fn rank_name_by_index(rank_idx: usize) -> &'static str {
-    let idx = rank_idx.clamp(0, RANKS - 1);
+    let idx = rank_idx.clamp(0, TOTAL_RANKS - 1);
     RANK_NAMES[idx]
 }
 

@@ -6,13 +6,13 @@
 //! HP/Endurance/Mana bars.
 
 use mag_core::constants::{
-    RANKS, TILEX, TILEY, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND,
+    TILEX, TILEY, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND,
     WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::ranks;
+use mag_core::ranks::{self, TOTAL_RANKS};
 
 use crate::font_cache;
 use crate::player_state::PlayerState;
@@ -54,7 +54,7 @@ const SIGIL_H: i32 = 96;
 ///
 /// Each tuple is `(top_rows, bottom_rows)`. Mirrors `SIGIL_TRIM_ROWS` in
 /// `status_panel`; kept here so the look panel has no dependency on it.
-const SIGIL_TRIM_ROWS: [(u32, u32); RANKS] = [
+const SIGIL_TRIM_ROWS: [(u32, u32); TOTAL_RANKS] = [
     (0, 0),   // Private        (sprite 10: fully transparent)
     (46, 38), // Private First Class  (sprite 11: rows 46-57)
     (26, 38), // Lance Corporal (sprite 12: rows 26-57)
@@ -152,7 +152,7 @@ impl Default for LookSnapshot {
             a_mana: 0,
             mana: 0,
             rank_index: 0,
-            rank_name: ranks::RANK_NAMES[0],
+            rank_name: ranks::rank_name_by_index(0),
         }
     }
 }
@@ -239,7 +239,7 @@ impl LookPanel {
         }
 
         let points = look.points();
-        let rank_index = ranks::points2rank(points).min((RANKS - 1) as u32) as usize;
+        let rank_index = ranks::points2rank(points).min((TOTAL_RANKS - 1) as u32) as usize;
 
         self.snap = LookSnapshot {
             visible: true,

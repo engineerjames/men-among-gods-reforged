@@ -1,5 +1,6 @@
 use core::constants::{CharacterFlags, CHD_CORPSEOWNER, MAXCHARS, USE_EMPTY};
 use core::types::{Character, FontColor};
+use core::{skills, traits};
 
 use crate::effect::EffectManager;
 use crate::god::God;
@@ -131,7 +132,7 @@ impl GameState {
                 if co_temp == core::constants::CT_PRIEST as u16 {
                     let killer_kindred = self.characters[killer_id].kindred;
 
-                    if killer_kindred as u32 & core::constants::KIN_PURPLE != 0 {
+                    if killer_kindred as u32 & traits::KIN_PURPLE != 0 {
                         self.do_character_log(
                             killer_id,
                             core::types::FontColor::Yellow,
@@ -392,7 +393,7 @@ impl GameState {
                             self.items[item_idx].get_name(),
                             power_to_print
                         );
-                        if self.items[item_idx].temp == core::constants::SK_WIMPY as u16 {
+                        if self.items[item_idx].temp == skills::SK_WIMPY as u16 {
                             wimp_power = self.items[item_idx].power / 2;
                         }
                     }

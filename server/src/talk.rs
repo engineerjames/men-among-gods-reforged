@@ -1,5 +1,6 @@
 use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS};
 use core::string_operations::c_string_to_str;
+use core::traits;
 
 use crate::game_state::GameState;
 use core::types::Character;
@@ -2342,7 +2343,7 @@ pub fn answer_greeting(gs: &mut GameState, cn: usize, co: usize) {
 
     if !greeting_text.is_empty() && !greeting_text.starts_with('#') {
         // Special case for Purple One cultist (temp 180)
-        if ch_cn.temp == 180 && (ch_co.kindred & (core::constants::KIN_PURPLE as i32)) != 0 {
+        if ch_cn.temp == 180 && (ch_co.kindred & (traits::KIN_PURPLE as i32)) != 0 {
             gs.do_sayx(cn, &format!("Greetings, {}!", ch_co.get_name()));
             return;
         }
