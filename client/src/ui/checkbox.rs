@@ -146,7 +146,15 @@ impl Widget for Checkbox {
         let text_x = box_x + BOX_SIZE as i32 + LABEL_GAP;
         let text_y =
             self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
-        font_cache::draw_text(ctx.canvas, ctx.gfx, self.font, &self.label, text_x, text_y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            self.font,
+            &self.label,
+            text_x,
+            text_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
 
         // Hover highlight
         if self.hovered {

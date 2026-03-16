@@ -146,13 +146,14 @@ impl Widget for RectButton {
             let center_x = self.bounds.x + self.bounds.width as i32 / 2;
             let center_y =
                 self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
-            font_cache::draw_text_centered(
+            font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 self.label_font,
                 text,
                 center_x,
                 center_y,
+                font_cache::TextStyle::centered(),
             )?;
         }
 

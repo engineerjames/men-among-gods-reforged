@@ -459,26 +459,28 @@ impl Widget for InventoryPanel {
         // --- Title ---
         let title_x = self.bounds.x + self.bounds.width as i32 / 2;
         let title_y = self.bounds.y + 4;
-        font_cache::draw_text_centered(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             UI_FONT,
             "Inventory",
             title_x,
             title_y,
+            font_cache::TextStyle::centered(),
         )?;
 
         // --- Money line ---
         let gold = data.gold / 100;
         let silver = data.gold % 100;
         let money_text = format!("{}G {}S", gold, silver);
-        font_cache::draw_text_centered(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             UI_FONT,
             &money_text,
             title_x,
             title_y + 14,
+            font_cache::TextStyle::centered(),
         )?;
 
         // --- Inventory grid (left, scrollable) ---
@@ -543,13 +545,14 @@ impl Widget for InventoryPanel {
                 let cx = x + CELL / 2;
                 let cy = y + CELL / 2 - 5;
                 ctx.canvas.set_draw_color(SLOT_LABEL_COLOR);
-                font_cache::draw_text_centered(
+                font_cache::draw_text(
                     ctx.canvas,
                     ctx.gfx,
                     UI_FONT,
                     EQUIP_LABELS[n],
                     cx,
                     cy,
+                    font_cache::TextStyle::centered(),
                 )?;
             }
 

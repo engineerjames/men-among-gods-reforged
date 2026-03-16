@@ -718,7 +718,7 @@ impl GameScene {
                         let text_len = text.len() as i32;
                         let np_rx = ground_x - (text_len * 5 / 2) + ch_xoff;
                         let np_ry = ground_y - 48 + ch_yoff;
-                        font_cache::draw_text_tinted(
+                        font_cache::draw_text(
                             // TODO: Refactor this to a new function in the font_cache
                             canvas,
                             gfx,
@@ -726,9 +726,17 @@ impl GameScene {
                             &text,
                             np_rx + 1,
                             np_ry + 1,
-                            Color::RGB(0, 0, 0),
+                            font_cache::TextStyle::tinted(Color::RGB(0, 0, 0)),
                         )?;
-                        font_cache::draw_text(canvas, gfx, 1, &text, np_rx, np_ry)?;
+                        font_cache::draw_text(
+                            canvas,
+                            gfx,
+                            1,
+                            &text,
+                            np_rx,
+                            np_ry,
+                            font_cache::TextStyle::PLAIN,
+                        )?;
                     }
                 }
 

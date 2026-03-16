@@ -284,7 +284,15 @@ impl LookPanel {
         let text = format!("{}/{}", current, max);
         let cx = x + BAR_W / 2;
         let ty = y + (BAR_H - font_cache::BITMAP_GLYPH_H as i32) / 2;
-        font_cache::draw_text_centered(ctx.canvas, ctx.gfx, FONT, &text, cx, ty)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &text,
+            cx,
+            ty,
+            font_cache::TextStyle::centered(),
+        )?;
         Ok(())
     }
 }
@@ -399,6 +407,7 @@ impl Widget for LookPanel {
             &self.snap.name.clone(),
             text_x,
             text_block_y,
+            font_cache::TextStyle::PLAIN,
         )?;
         font_cache::draw_text(
             ctx.canvas,
@@ -407,6 +416,7 @@ impl Widget for LookPanel {
             self.snap.rank_name,
             text_x,
             text_block_y + font_cache::BITMAP_GLYPH_H as i32 + GAP,
+            font_cache::TextStyle::PLAIN,
         )?;
         y += header_h + GAP;
 

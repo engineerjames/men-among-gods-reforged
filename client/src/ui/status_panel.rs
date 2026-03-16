@@ -324,16 +324,24 @@ impl StatusPanel {
         let text = format!("{} / {}", current, max);
         let center_x = x + BAR_WIDTH / 2;
         let text_y = y + (BAR_HEIGHT - font_cache::BITMAP_GLYPH_H as i32) / 2;
-        font_cache::draw_text_centered_tinted(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
             &text,
             center_x + 1,
             text_y + 1,
-            Color::RGB(0, 0, 0),
+            font_cache::TextStyle::centered().with_tint(Color::RGB(0, 0, 0)),
         )?;
-        font_cache::draw_text_centered(ctx.canvas, ctx.gfx, FONT, &text, center_x, text_y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &text,
+            center_x,
+            text_y,
+            font_cache::TextStyle::centered(),
+        )?;
 
         Ok(())
     }
@@ -461,7 +469,15 @@ impl Widget for StatusPanel {
         // Weapon / Armor text row below bars
         let wv_y = bar_y_start + (BAR_HEIGHT + BAR_GAP) * 3;
         let wv_text = format!("WV: {}  AV: {}", self.stats.weapon, self.stats.armor);
-        font_cache::draw_text(ctx.canvas, ctx.gfx, FONT, &wv_text, bar_x, wv_y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &wv_text,
+            bar_x,
+            wv_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
 
         let rank_label_y = wv_y + font_cache::BITMAP_GLYPH_H as i32 + RANK_LABEL_GAP;
         font_cache::draw_text(
@@ -471,6 +487,7 @@ impl Widget for StatusPanel {
             self.stats.rank_name,
             bar_x,
             rank_label_y,
+            font_cache::TextStyle::PLAIN,
         )?;
 
         // Spell grid (5 cols × 4 rows of 24×24 icons)

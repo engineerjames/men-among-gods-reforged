@@ -287,7 +287,15 @@ impl Widget for DeleteCharacterDialog {
         let title = "Delete Character";
         let title_cx = self.bounds.x + self.bounds.width as i32 / 2;
         let title_y = self.bounds.y + 12;
-        font_cache::draw_text_centered(ctx.canvas, ctx.gfx, FONT, title, title_cx, title_y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            title,
+            title_cx,
+            title_y,
+            font_cache::TextStyle::centered(),
+        )?;
 
         // Instruction label.
         let instr_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 10;
@@ -298,18 +306,19 @@ impl Widget for DeleteCharacterDialog {
             "Type the character name to confirm:",
             self.bounds.x + PAD_X,
             instr_y,
+            font_cache::TextStyle::PLAIN,
         )?;
 
         // Expected name in red.
         let name_y = instr_y + font_cache::BITMAP_GLYPH_H as i32 + 4;
-        font_cache::draw_text_tinted(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
             &self.expected_name,
             self.bounds.x + PAD_X,
             name_y,
-            Color::RGB(255, 100, 100),
+            font_cache::TextStyle::tinted(Color::RGB(255, 100, 100)),
         )?;
 
         // Text input.
@@ -330,26 +339,26 @@ impl Widget for DeleteCharacterDialog {
         // Hint text below buttons.
         let hint_y = btn_y + BTN_H as i32 + 4;
         if !self.name_matches() {
-            font_cache::draw_text_tinted(
+            font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 "Name must match exactly to enable deletion.",
                 self.bounds.x + PAD_X,
                 hint_y,
-                Color::RGB(160, 160, 160),
+                font_cache::TextStyle::tinted(Color::RGB(160, 160, 160)),
             )?;
         }
 
         if self.is_deleting {
-            font_cache::draw_text_tinted(
+            font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 "Deleting character...",
                 self.bounds.x + PAD_X,
                 hint_y,
-                Color::RGB(255, 180, 100),
+                font_cache::TextStyle::tinted(Color::RGB(255, 180, 100)),
             )?;
         }
 

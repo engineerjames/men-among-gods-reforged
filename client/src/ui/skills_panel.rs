@@ -676,13 +676,14 @@ impl Widget for SkillsPanel {
         let cb = self.content_bounds();
         let title_x = cb.x + cb.width as i32 / 2;
         let title_y = cb.y;
-        font_cache::draw_text_centered(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             PANEL_FONT,
             "Skills & Attributes",
             title_x,
             title_y,
+            font_cache::TextStyle::centered(),
         )?;
 
         let data = match self.data.as_ref() {
@@ -702,7 +703,15 @@ impl Widget for SkillsPanel {
             let cost = Self::attrib_cost(data, n, value_bare);
 
             let line = format!("{:<14} {:3}", ATTR_NAMES[n], value_total);
-            font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &line, name_x, y)?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                &line,
+                name_x,
+                y,
+                font_cache::TextStyle::PLAIN,
+            )?;
 
             let plus = if cost != i32::MAX && cost <= available_points {
                 "+"
@@ -710,11 +719,35 @@ impl Widget for SkillsPanel {
                 ""
             };
             let minus = if raised > 0 { "-" } else { "" };
-            font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, plus, plus_x, y)?;
-            font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, minus, minus_x, y)?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                plus,
+                plus_x,
+                y,
+                font_cache::TextStyle::PLAIN,
+            )?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                minus,
+                minus_x,
+                y,
+                font_cache::TextStyle::PLAIN,
+            )?;
             if cost != i32::MAX {
                 let cost_text = format!("{:>7}", cost);
-                font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &cost_text, cost_x, y)?;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    &cost_text,
+                    cost_x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
             }
         }
 
@@ -745,7 +778,15 @@ impl Widget for SkillsPanel {
             let raised = self.stat_raised[*stat_idx];
 
             let line = format!("{:<14} {:3}", name, value);
-            font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &line, name_x, y)?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                &line,
+                name_x,
+                y,
+                font_cache::TextStyle::PLAIN,
+            )?;
 
             let plus = if *cost != i32::MAX && *cost <= available_points {
                 "+"
@@ -753,11 +794,35 @@ impl Widget for SkillsPanel {
                 ""
             };
             let minus = if raised > 0 { "-" } else { "" };
-            font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, plus, plus_x, y)?;
-            font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, minus, minus_x, y)?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                plus,
+                plus_x,
+                y,
+                font_cache::TextStyle::PLAIN,
+            )?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                minus,
+                minus_x,
+                y,
+                font_cache::TextStyle::PLAIN,
+            )?;
             if *cost != i32::MAX {
                 let cost_text = format!("{:>7}", cost);
-                font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &cost_text, cost_x, y)?;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    &cost_text,
+                    cost_x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
             }
         }
 
@@ -816,7 +881,15 @@ impl Widget for SkillsPanel {
                     String::new()
                 };
                 if !label.is_empty() {
-                    font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &label, bind_x + 4, y)?;
+                    font_cache::draw_text(
+                        ctx.canvas,
+                        ctx.gfx,
+                        PANEL_FONT,
+                        &label,
+                        bind_x + 4,
+                        y,
+                        font_cache::TextStyle::PLAIN,
+                    )?;
                 }
 
                 let raised = self.stat_raised[raised_idx];
@@ -825,7 +898,15 @@ impl Widget for SkillsPanel {
                 let cost = Self::skill_cost(data, skill_id, value_bare);
 
                 let line = format!("{:<14} {:3}", name, value_total);
-                font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &line, name_x, y)?;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    &line,
+                    name_x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
 
                 let plus = if cost != i32::MAX && cost <= available_points {
                     "+"
@@ -833,11 +914,35 @@ impl Widget for SkillsPanel {
                     ""
                 };
                 let minus = if raised > 0 { "-" } else { "" };
-                font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, plus, plus_x, y)?;
-                font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, minus, minus_x, y)?;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    plus,
+                    plus_x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    minus,
+                    minus_x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
                 if cost != i32::MAX {
                     let cost_text = format!("{:>7}", cost);
-                    font_cache::draw_text(ctx.canvas, ctx.gfx, PANEL_FONT, &cost_text, cost_x, y)?;
+                    font_cache::draw_text(
+                        ctx.canvas,
+                        ctx.gfx,
+                        PANEL_FONT,
+                        &cost_text,
+                        cost_x,
+                        y,
+                        font_cache::TextStyle::PLAIN,
+                    )?;
                 }
             }
         }
@@ -877,6 +982,7 @@ impl Widget for SkillsPanel {
             "Update",
             cb.x + 80,
             update_y,
+            font_cache::TextStyle::PLAIN,
         )?;
         let pts_text = format!("{:>7}", available_points);
         font_cache::draw_text(
@@ -886,6 +992,7 @@ impl Widget for SkillsPanel {
             &pts_text,
             cb.x + 140,
             update_y,
+            font_cache::TextStyle::PLAIN,
         )?;
 
         Ok(())

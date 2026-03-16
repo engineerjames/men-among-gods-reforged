@@ -16,6 +16,81 @@ pub const BITMAP_GLYPH_Y_OFFSET: i32 = 1;
 /// Returns the advance width of a single glyph (rendered width is 5px, advance is 6px).
 pub const BITMAP_GLYPH_ADVANCE: u32 = BITMAP_GLYPH_W;
 
+/// Styling options for bitmap text rendering.
+///
+/// Use the associated constants and builder methods to construct styles:
+/// - `TextStyle::PLAIN` — no tint, no alpha, left-aligned.
+/// - `TextStyle::tinted(color)` — color-modulated text.
+/// - `TextStyle::faded(alpha)` — semi-transparent text.
+/// - `TextStyle::centered()` — horizontally centered around `x`.
+/// - Chain with `.with_tint()` for combined styles.
+#[derive(Clone, Copy, Debug)]
+pub struct TextStyle {
+    /// Optional tint color applied via SDL texture color modulation.
+    pub tint: Option<sdl2::pixels::Color>,
+    /// Optional alpha for transparency (255 = opaque, 0 = invisible).
+    pub alpha: Option<u8>,
+    /// If true, `x` is treated as `center_x` and the text is centered horizontally.
+    pub centered: bool,
+}
+
+impl TextStyle {
+    /// Plain text: no tint, no alpha, left-aligned.
+    pub const PLAIN: Self = Self {
+        tint: None,
+        alpha: None,
+        centered: false,
+    };
+
+    /// Creates a style with the given tint color.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - Tint color applied via SDL texture color modulation.
+    pub fn tinted(color: sdl2::pixels::Color) -> Self {
+        Self {
+            tint: Some(color),
+            ..Self::PLAIN
+        }
+    }
+
+    /// Creates a style with the given alpha value.
+    ///
+    /// # Arguments
+    ///
+    /// * `alpha` - Opacity: 255 = fully opaque, 0 = invisible.
+    pub fn faded(alpha: u8) -> Self {
+        Self {
+            alpha: Some(alpha),
+            ..Self::PLAIN
+        }
+    }
+
+    /// Creates a centered style with no tint or alpha.
+    pub fn centered() -> Self {
+        Self {
+            centered: true,
+            ..Self::PLAIN
+        }
+    }
+
+    /// Returns a copy of this style with the given tint color applied.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - Tint color applied via SDL texture color modulation.
+    pub fn with_tint(mut self, color: sdl2::pixels::Color) -> Self {
+        self.tint = Some(color);
+        self
+    }
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self::PLAIN
+    }
+}
+
 /// Returns the 0-based glyph index for the given ASCII character.
 ///
 /// Returns -1 for characters outside the printable range.
@@ -30,37 +105,8 @@ pub fn glyph_index(ch: char) -> i32 {
 
 /// Draws a text string onto `canvas` using the bitmap font.
 ///
-/// Each character advances `BITMAP_GLYPH_ADVANCE` pixels horizontally.
-pub fn draw_text(
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
-    font: usize,
-    text: &str,
-    x: i32,
-    y: i32,
-) -> Result<(), String> {
-    draw_text_impl(canvas, gfx_cache, font, text, x, y, None, None)
-}
-
-/// Draws a text string using `font`, tinted to `color`.
-///
-/// This uses SDL texture color modulation and restores the texture state before returning.
-pub fn draw_text_tinted(
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
-    font: usize,
-    text: &str,
-    x: i32,
-    y: i32,
-    color: sdl2::pixels::Color,
-) -> Result<(), String> {
-    draw_text_impl(canvas, gfx_cache, font, text, x, y, Some(color), None)
-}
-
-/// Draws `text` using `font` at reduced opacity.
-///
-/// `alpha = 255` is fully opaque; `alpha = 0` is invisible. This uses SDL
-/// texture alpha modulation and restores the texture state before returning.
+/// When `style.centered` is true, `x` is treated as the horizontal center
+/// and the text is drawn centered around it. Otherwise `x` is the left edge.
 ///
 /// # Arguments
 ///
@@ -68,23 +114,38 @@ pub fn draw_text_tinted(
 /// * `gfx_cache` - Graphics cache holding font textures.
 /// * `font` - Bitmap font index (0–3).
 /// * `text` - Text string to render.
-/// * `x` - Left edge of the first glyph in pixels.
+/// * `x` - Left edge, or horizontal center when `style.centered` is true.
 /// * `y` - Top edge of the glyph row in pixels.
-/// * `alpha` - Opacity: 255 = fully opaque, 0 = invisible.
+/// * `style` - Rendering style (tint, alpha, centering).
 ///
 /// # Returns
 ///
 /// `Ok(())` on success, or an SDL2 error string.
-pub fn draw_text_faded(
+pub fn draw_text(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
     x: i32,
     y: i32,
-    alpha: u8,
+    style: TextStyle,
 ) -> Result<(), String> {
-    draw_text_impl(canvas, gfx_cache, font, text, x, y, None, Some(alpha))
+    let draw_x = if style.centered {
+        let width = text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
+        x - width / 2
+    } else {
+        x
+    };
+    draw_text_impl(
+        canvas,
+        gfx_cache,
+        font,
+        text,
+        draw_x,
+        y,
+        style.tint,
+        style.alpha,
+    )
 }
 
 fn draw_text_impl(
@@ -148,56 +209,6 @@ fn draw_text_impl(
     }
 
     Ok(())
-}
-
-/// Draws `text` centered horizontally around `center_x`.
-pub fn draw_text_centered(
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
-    font: usize,
-    text: &str,
-    center_x: i32,
-    y: i32,
-) -> Result<(), String> {
-    let width = text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
-    draw_text(canvas, gfx_cache, font, text, center_x - width / 2, y)
-}
-
-/// Draws `text` centered horizontally around `center_x`, tinted to `color`.
-///
-/// # Arguments
-///
-/// * `canvas` - SDL2 canvas to draw onto.
-/// * `gfx_cache` - Graphics cache holding font textures.
-/// * `font` - Bitmap font index (0–3).
-/// * `text` - Text string to render.
-/// * `center_x` - Horizontal center of the rendered string in pixels.
-/// * `y` - Top edge of the glyph row in pixels.
-/// * `color` - Tint color applied via SDL texture color modulation.
-///
-/// # Returns
-///
-/// `Ok(())` on success, or an SDL2 error string.
-pub fn draw_text_centered_tinted(
-    // TODO: This is really stupidly redundant... but just leave it for now.
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
-    font: usize,
-    text: &str,
-    center_x: i32,
-    y: i32,
-    color: sdl2::pixels::Color,
-) -> Result<(), String> {
-    let width = text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
-    draw_text_tinted(
-        canvas,
-        gfx_cache,
-        font,
-        text,
-        center_x - width / 2,
-        y,
-        color,
-    )
 }
 
 /// Returns the pixel width of the given text string when rendered with the bitmap font.

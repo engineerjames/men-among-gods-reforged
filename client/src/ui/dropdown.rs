@@ -229,6 +229,7 @@ impl Widget for Dropdown {
                 text,
                 self.bounds.x + H_PAD,
                 text_y,
+                font_cache::TextStyle::PLAIN,
             )?;
         }
 
@@ -237,7 +238,15 @@ impl Widget for Dropdown {
         let arrow_x = self.bounds.x + self.bounds.width as i32
             - font_cache::text_width(arrow_text) as i32
             - H_PAD;
-        font_cache::draw_text(ctx.canvas, ctx.gfx, self.font, arrow_text, arrow_x, text_y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            self.font,
+            arrow_text,
+            arrow_x,
+            text_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
 
         // --- Expanded option list ---
         if self.expanded {
@@ -285,6 +294,7 @@ impl Widget for Dropdown {
                     option,
                     self.bounds.x + H_PAD,
                     opt_text_y,
+                    font_cache::TextStyle::PLAIN,
                 )?;
             }
         }

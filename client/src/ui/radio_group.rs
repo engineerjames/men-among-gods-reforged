@@ -244,7 +244,15 @@ impl<T: Copy + PartialEq + Debug> Widget for RadioGroup<T> {
             // Label text.
             let text_x = ob.x + RADIO_RADIUS * 2 + LABEL_GAP;
             let text_y = circle_cy - font_cache::BITMAP_GLYPH_H as i32 / 2;
-            font_cache::draw_text(ctx.canvas, ctx.gfx, FONT, &opt.label, text_x, text_y)?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                FONT,
+                &opt.label,
+                text_x,
+                text_y,
+                font_cache::TextStyle::PLAIN,
+            )?;
         }
 
         Ok(())
