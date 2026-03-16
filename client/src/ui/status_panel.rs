@@ -40,8 +40,6 @@ const RANK_LABEL_GAP: i32 = 3;
 const SPELL_CELL: i32 = 24;
 /// Columns in the spell grid.
 const SPELL_COLS: i32 = 5;
-/// Rows in the spell grid.
-const SPELL_ROWS: i32 = 4;
 /// Vertical gap between the rank label and the spell grid.
 const SPELL_GAP: i32 = 4;
 

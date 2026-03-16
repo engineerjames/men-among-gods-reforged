@@ -5,65 +5,35 @@
 //! [`ChatBox`].  All rendering is done via SDL2 primitives and the existing
 //! bitmap font system — no additional dependencies are required.
 
-#[allow(dead_code)]
 pub mod button;
-#[allow(dead_code)]
 pub mod button_arc;
-#[allow(dead_code)]
 pub mod cert_dialog;
-#[allow(dead_code)]
 pub mod character_creation_form;
-#[allow(dead_code)]
 pub mod character_selection_form;
-#[allow(dead_code)]
 pub mod chat_box;
-#[allow(dead_code)]
 pub mod checkbox;
-#[allow(dead_code)]
 pub mod delete_character_dialog;
-#[allow(dead_code)]
 pub mod dropdown;
-#[allow(dead_code)]
 pub mod inventory_panel;
-#[allow(dead_code)]
 pub mod label;
-#[allow(dead_code)]
 pub mod login_form;
-#[allow(dead_code)]
 pub mod look_panel;
-#[allow(dead_code)]
 pub mod minimap_widget;
-#[allow(dead_code)]
 pub mod mode_button;
-#[allow(dead_code)]
 pub mod new_account_form;
-#[allow(dead_code)]
 pub mod panel;
-#[allow(dead_code)]
 pub mod panning_background;
-#[allow(dead_code)]
 pub mod radio_group;
-#[allow(dead_code)]
 pub mod rank_arc;
-#[allow(dead_code)]
 pub mod scrollable_list;
-#[allow(dead_code)]
 pub mod settings_panel;
-#[allow(dead_code)]
 pub mod shop_panel;
-#[allow(dead_code)]
 pub mod skills_panel;
-#[allow(dead_code)]
 pub mod slider;
-#[allow(dead_code)]
 pub mod status_panel;
-#[allow(dead_code)]
 pub mod style;
-#[allow(dead_code)]
 pub mod text_input;
-#[allow(dead_code)]
 pub mod tls_warning_banner;
-#[allow(dead_code)]
 pub mod widget;
 
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};

@@ -199,6 +199,7 @@ impl MinimapWidget {
     }
 
     /// Returns `true` if `(px, py)` lands inside the map panel rectangle.
+    #[allow(dead_code)]
     fn panel_contains(&self, px: i32, py: i32) -> bool {
         px >= self.panel_x
             && py >= self.panel_y
