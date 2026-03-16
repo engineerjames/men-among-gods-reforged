@@ -370,7 +370,7 @@ pub trait Widget {
     /// # Returns
     ///
     /// `Ok(())` on success, or an SDL2 error string.
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String>;
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String>;
 
     /// Drain any pending actions that this widget produced since the last call.
     ///

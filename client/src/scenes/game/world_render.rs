@@ -40,7 +40,7 @@ impl GameScene {
     /// Applies darkness modulation from the tile `light` value.
     pub(super) fn draw_world_sprite(
         canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
@@ -90,7 +90,7 @@ impl GameScene {
     /// Draw a sprite with an additive highlight (used for hover effects).
     pub(super) fn draw_world_sprite_highlight(
         canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
@@ -128,7 +128,7 @@ impl GameScene {
     /// Draw a sprite highlight with a custom additive tint color.
     pub(super) fn draw_world_sprite_tinted_highlight(
         canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
@@ -170,7 +170,7 @@ impl GameScene {
     /// Ported from dd_shadow() in the original dd.c.
     pub(super) fn draw_shadow(
         canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
@@ -467,7 +467,7 @@ impl GameScene {
     pub(super) fn draw_world(
         &self,
         canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
         shadows_enabled: bool,
         spell_effects_enabled: bool,

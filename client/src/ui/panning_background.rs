@@ -140,7 +140,7 @@ impl Widget for PanningBackground {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // Lazy-load the texture on first render.
         if self.texture_id.is_none() {
             match ctx.gfx.load_texture_from_path(&self.texture_path) {

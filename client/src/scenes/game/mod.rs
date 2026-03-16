@@ -391,7 +391,7 @@ impl GameScene {
     /// # Returns
     ///
     /// `Some(SceneType)` if the user chose to disconnect or quit.
-    fn process_settings_panel_actions(&mut self, app_state: &mut AppState) -> Option<SceneType> {
+    fn process_settings_panel_actions(&mut self, app_state: &mut AppState<'_>) -> Option<SceneType> {
         let mut scene_change: Option<SceneType> = None;
         let mut profile_changed = false;
 
@@ -532,7 +532,7 @@ impl GameScene {
     fn draw_carried_item(
         &self,
         canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
     ) -> Result<(), String> {
         let citem = ps.character_info().citem;
@@ -606,7 +606,7 @@ impl GameScene {
     fn draw_helper_text(
         &self,
         canvas: &mut Canvas<Window>,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
     ) -> Result<(), String> {
         if ps.player_data().show_helper_text == 0 {
@@ -651,7 +651,7 @@ impl GameScene {
     /// the center tile is unavailable.
     fn update_minimap_xmap(
         &mut self,
-        gfx: &mut GraphicsCache,
+        gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
     ) -> Option<(u16, u16)> {
         let map = ps.map();
@@ -739,7 +739,7 @@ impl GameScene {
     ///
     /// * `Ok(())` if the network runtime is started.
     /// * `Err(String)` when required login target data is missing.
-    fn start_game_network_session(&mut self, app_state: &mut AppState) -> Result<(), String> {
+    fn start_game_network_session(&mut self, app_state: &mut AppState<'_>) -> Result<(), String> {
         let login_target = app_state
             .api
             .login_target
@@ -791,7 +791,7 @@ impl Scene for GameScene {
     /// Initialise the game scene: reset all transient state, establish a TCP
     /// connection to the game server via the login ticket, and load the
     /// player's saved profile (skill-button assignments, volume, etc.).
-    fn on_enter(&mut self, app_state: &mut AppState) {
+    fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         self.chat_box = ChatBox::new(
             Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
             Color::RGBA(10, 10, 30, 180),
@@ -856,7 +856,7 @@ impl Scene for GameScene {
     }
 
     /// Clean up: persist the active profile and shut down the network connection.
-    fn on_exit(&mut self, app_state: &mut AppState) {
+    fn on_exit(&mut self, app_state: &mut AppState<'_>) {
         self.save_active_profile(app_state);
 
         if let Some(mut net) = app_state.network.take() {
@@ -879,7 +879,7 @@ impl Scene for GameScene {
     /// # Returns
     ///
     /// `Some(SceneType)` to trigger a scene transition, or `None` to stay.
-    fn handle_event(&mut self, app_state: &mut AppState, event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
         // --- Escape key: always processed regardless of menu state ---
         if let Event::KeyDown {
             keycode: Some(Keycode::Escape),
@@ -1235,7 +1235,7 @@ impl Scene for GameScene {
     /// # Returns
     ///
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
-    fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
         self.chat_box.update(dt);
         self.status_panel.update(dt);
         self.skills_panel.update(dt);
@@ -1298,7 +1298,7 @@ impl Scene for GameScene {
     /// Render the isometric world, all HUD panels, and overlay effects.
     fn render_world(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         canvas.set_draw_color(Color::RGB(0, 0, 0));

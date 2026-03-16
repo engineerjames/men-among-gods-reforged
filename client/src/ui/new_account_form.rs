@@ -360,7 +360,7 @@ impl Widget for NewAccountForm {
         self.password_input.update(dt);
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // Panel background.
         let panel_rect = sdl2::rect::Rect::new(
             self.bounds.x,

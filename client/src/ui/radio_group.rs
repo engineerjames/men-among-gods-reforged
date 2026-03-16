@@ -212,7 +212,7 @@ impl<T: Copy + PartialEq + Debug> Widget for RadioGroup<T> {
         // No time-based state.
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         ctx.canvas.set_blend_mode(BlendMode::Blend);
 
         for (i, opt) in self.options.iter().enumerate() {

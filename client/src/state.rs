@@ -56,8 +56,11 @@ impl ApiTokenState {
 /// Owns the graphics cache, sound cache, API auth state, and the optional
 /// network runtime and player state that exist only while connected to the
 /// game server.
-pub struct AppState {
-    pub gfx_cache: GraphicsCache,
+///
+/// The lifetime `'tc` ties the graphics cache (and its GPU textures) to the
+/// [`TextureCreator`](sdl2::render::TextureCreator) that lives in `main()`.
+pub struct AppState<'tc> {
+    pub gfx_cache: GraphicsCache<'tc>,
     pub sfx_cache: SoundCache,
     pub api: ApiTokenState,
     pub network: Option<NetworkRuntime>,
@@ -77,7 +80,7 @@ pub struct AppState {
     pub panning_background: PanningBackground,
 }
 
-impl AppState {
+impl<'tc> AppState<'tc> {
     /// Creates a new `AppState` with the given caches and API state.
     ///
     /// Network and player state start as `None`; they are set when the client
@@ -91,7 +94,7 @@ impl AppState {
     /// # Returns
     /// * A new `AppState` ready for use in the scene manager.
     pub fn new(
-        gfx_cache: GraphicsCache,
+        gfx_cache: GraphicsCache<'tc>,
         sfx_cache: SoundCache,
         api: ApiTokenState,
         panning_background: PanningBackground,

@@ -286,7 +286,7 @@ impl Widget for TextInput {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         let bw = self.border_width as i32;
 
         // ── 1. Background fill ─────────────────────────────────────────────

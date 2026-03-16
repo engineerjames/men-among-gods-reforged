@@ -117,7 +117,7 @@ impl Widget for RectButton {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         let rect = sdl2::rect::Rect::new(
             self.bounds.x,
             self.bounds.y,
@@ -415,7 +415,7 @@ impl Widget for CircleButton {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // Fill
         ctx.canvas.set_blend_mode(BlendMode::Blend);
         ctx.canvas.set_draw_color(self.fill_color);

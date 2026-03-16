@@ -199,7 +199,7 @@ impl Widget for Dropdown {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         ctx.canvas.set_blend_mode(BlendMode::Blend);
 
         // --- Header ---

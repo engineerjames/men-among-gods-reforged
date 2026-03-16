@@ -247,7 +247,7 @@ impl Widget for MinimapWidget {
         EventResponse::Ignored
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // Always draw the toggle button.
         self.button.render(ctx)?;
 

@@ -24,20 +24,23 @@ pub struct CachedRgbaImage {
 /// Textures are loaded from `images.zip` on first access and kept in memory
 /// for the lifetime of the cache. Average per-sprite colours and raw RGBA
 /// pixel data are also cached for minimap and hit-test use.
-pub struct GraphicsCache {
-    sprite_cache: HashMap<usize, Texture>,
+///
+/// The lifetime `'tc` ties all GPU textures to the [`TextureCreator`] that
+/// produced them, ensuring they cannot outlive the renderer.
+pub struct GraphicsCache<'tc> {
+    sprite_cache: HashMap<usize, Texture<'tc>>,
     avg_color_cache: HashMap<usize, (u8, u8, u8)>,
     rgba_image_cache: HashMap<usize, CachedRgbaImage>,
-    creator: TextureCreator<WindowContext>,
+    creator: &'tc TextureCreator<WindowContext>,
     archive: ZipArchive<File>,
     index_to_filename: HashMap<usize, String>,
     /// Streaming texture used for minimap rendering (128x128 RGBA).
-    pub minimap_texture: Option<Texture>,
+    pub minimap_texture: Option<Texture<'tc>>,
     /// Next synthetic sprite ID for textures loaded from the filesystem.
     next_custom_id: usize,
 }
 
-impl GraphicsCache {
+impl<'tc> GraphicsCache<'tc> {
     /// Opens `images.zip` at the given path and builds a sprite-ID-to-filename
     /// index for lazy texture loading.
     ///
@@ -47,7 +50,7 @@ impl GraphicsCache {
     ///
     /// # Returns
     /// * A new `GraphicsCache`. Panics if the archive cannot be opened.
-    pub fn new(path_to_zip: PathBuf, creator: TextureCreator<WindowContext>) -> Self {
+    pub fn new(path_to_zip: PathBuf, creator: &'tc TextureCreator<WindowContext>) -> Self {
         let file = match File::open(path_to_zip) {
             Ok(f) => f,
             Err(e) => {
@@ -157,9 +160,9 @@ impl GraphicsCache {
     /// * `id` - Numeric sprite ID.
     ///
     /// # Returns
-    /// * `&mut Texture` — the caller may set blend/color/alpha modulation
+    /// * `&mut Texture<'tc>` — the caller may set blend/color/alpha modulation
     ///   but must reset it before yielding control.
-    pub fn get_texture(&mut self, id: usize) -> &mut Texture {
+    pub fn get_texture(&mut self, id: usize) -> &mut Texture<'tc> {
         const ERROR_SPRITE_ID: usize = 128;
         if !self.sprite_cache.contains_key(&id) {
             let texture = self.load_texture_from_zip(id);
@@ -240,7 +243,7 @@ impl GraphicsCache {
     /// # Returns
     /// * `Some(Texture)` on success, `None` if the sprite is not in the archive
     ///   or decoding fails.
-    fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture> {
+    fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture<'tc>> {
         if let Some(filename) = self.index_to_filename.get(&id) {
             if let Ok(mut file) = self.archive.by_name(filename) {
                 let mut buffer = Vec::new();

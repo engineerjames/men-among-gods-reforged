@@ -177,7 +177,7 @@ impl Widget for Slider {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         let (track_x_start, track_x_end, track_y_center) = self.track_geometry();
         let track_w = (track_x_end - track_x_start).max(1) as u32;
 

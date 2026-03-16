@@ -391,7 +391,7 @@ impl Widget for StatusPanel {
     /// # Returns
     ///
     /// `Ok(())` on success, or an SDL2 error string.
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // Semi-transparent background
         ctx.canvas.set_blend_mode(BlendMode::Blend);
         ctx.canvas.set_draw_color(self.bg_color);

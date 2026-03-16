@@ -11,21 +11,21 @@ use crate::state::AppState;
 /// from any frame method triggers a scene transition.
 pub trait Scene {
     /// Called once when the scene becomes active.
-    fn on_enter(&mut self, _app_state: &mut AppState) {}
+    fn on_enter(&mut self, _app_state: &mut AppState<'_>) {}
 
     /// Called once when the scene is about to be replaced by another.
-    fn on_exit(&mut self, _app_state: &mut AppState) {}
+    fn on_exit(&mut self, _app_state: &mut AppState<'_>) {}
 
     /// Processes a single SDL event. Returns `Some(SceneType)` to request a scene change.
-    fn handle_event(&mut self, app_state: &mut AppState, event: &Event) -> Option<SceneType>;
+    fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType>;
 
     /// Per-frame logic update. `dt` is the time elapsed since the last frame.
-    fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType>;
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType>;
 
     /// Renders non-UI world elements (tiles, sprites) onto the SDL canvas.
     fn render_world(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String>;
 }
@@ -99,7 +99,7 @@ impl SceneManager {
     }
 
     /// Forwards an SDL event to the active scene and applies any resulting scene change.
-    pub fn handle_event(&mut self, app_state: &mut AppState, event: &Event) {
+    pub fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) {
         if self.active_scene == SceneType::Exit {
             return;
         }
@@ -114,7 +114,7 @@ impl SceneManager {
     }
 
     /// Runs the active scene's per-frame update and applies any resulting scene change.
-    pub fn update(&mut self, app_state: &mut AppState, dt: Duration) {
+    pub fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) {
         if self.active_scene == SceneType::Exit {
             return;
         }
@@ -129,7 +129,7 @@ impl SceneManager {
     }
 
     /// Delegates world rendering to the active scene.
-    pub fn render_world(&mut self, app_state: &mut AppState, canvas: &mut Canvas<Window>) {
+    pub fn render_world(&mut self, app_state: &mut AppState<'_>, canvas: &mut Canvas<Window>) {
         if self.active_scene == SceneType::Exit {
             return;
         }
@@ -142,13 +142,13 @@ impl SceneManager {
     }
 
     /// Externally requests a scene transition (e.g. from the main loop on quit).
-    pub fn request_scene_change(&mut self, scene_type: SceneType, app_state: &mut AppState) {
+    pub fn request_scene_change(&mut self, scene_type: SceneType, app_state: &mut AppState<'_>) {
         self.apply_scene_change(Some(scene_type), app_state);
     }
 
     /// Performs the actual scene switch: calls `on_exit` on the current scene, swaps the
     /// active scene type, and calls `on_enter` on the new scene.
-    pub fn set_scene(&mut self, scene_type: SceneType, app_state: &mut AppState) {
+    pub fn set_scene(&mut self, scene_type: SceneType, app_state: &mut AppState<'_>) {
         if scene_type == self.active_scene {
             return;
         }
@@ -174,7 +174,7 @@ impl SceneManager {
     }
 
     /// If `next_scene` is `Some`, delegates to `set_scene` to perform the transition.
-    fn apply_scene_change(&mut self, next_scene: Option<SceneType>, app_state: &mut AppState) {
+    fn apply_scene_change(&mut self, next_scene: Option<SceneType>, app_state: &mut AppState<'_>) {
         let Some(scene) = next_scene else {
             return;
         };

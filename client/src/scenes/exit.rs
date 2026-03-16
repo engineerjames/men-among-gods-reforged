@@ -23,17 +23,17 @@ impl ExitScene {
 }
 
 impl Scene for ExitScene {
-    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, _app_state: &mut AppState<'_>, _event: &Event) -> Option<SceneType> {
         None
     }
 
-    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, _app_state: &mut AppState<'_>, _dt: Duration) -> Option<SceneType> {
         None
     }
 
     fn render_world(
         &mut self,
-        _app_state: &mut AppState,
+        _app_state: &mut AppState<'_>,
         _canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         Ok(())

@@ -69,7 +69,7 @@ impl LoginScene {
     }
 
     /// Lazily starts the login-screen music track if it hasn't been started yet.
-    fn ensure_music_initialized(&mut self, app_state: &mut AppState) {
+    fn ensure_music_initialized(&mut self, app_state: &mut AppState<'_>) {
         if self.music_initialized {
             return;
         }
@@ -106,7 +106,7 @@ impl LoginScene {
     /// * `password` - Account password (plain-text; hashed by `account_api::login`).
     fn begin_login_request(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         api_base_url: String,
         username: String,
         password: String,
@@ -142,7 +142,7 @@ impl LoginScene {
     /// * `password` - Password from the form.
     fn handle_login_action(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         ip: String,
         username: String,
         password: String,
@@ -171,15 +171,15 @@ impl LoginScene {
 }
 
 impl Scene for LoginScene {
-    fn on_enter(&mut self, app_state: &mut AppState) {
+    fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         self.ensure_music_initialized(app_state);
     }
 
-    fn on_exit(&mut self, app_state: &mut AppState) {
+    fn on_exit(&mut self, app_state: &mut AppState<'_>) {
         app_state.sfx_cache.stop_music();
     }
 
-    fn handle_event(&mut self, app_state: &mut AppState, event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
         // Track mouse position for the SDL→UiEvent conversion.
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;
@@ -275,7 +275,7 @@ impl Scene for LoginScene {
         self.pending_scene.take()
     }
 
-    fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
         self.ensure_music_initialized(app_state);
 
         // Animate background and form.
@@ -332,7 +332,7 @@ impl Scene for LoginScene {
 
     fn render_world(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {

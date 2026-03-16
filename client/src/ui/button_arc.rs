@@ -133,7 +133,7 @@ impl Widget for HudButtonBar {
         EventResponse::Ignored
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         for btn in &mut self.buttons {
             btn.render(ctx)?;
         }

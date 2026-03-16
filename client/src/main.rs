@@ -70,7 +70,8 @@ fn main() -> Result<(), String> {
     let mut event_pump = sdl_context.event_pump()?;
 
     log::info!("Initializing graphics and sound caches...");
-    let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), canvas.texture_creator());
+    let texture_creator = canvas.texture_creator();
+    let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
     let sfx_cache = SoundCache::new(
         filepaths::get_sfx_directory(),
         filepaths::get_music_directory(),
@@ -274,7 +275,7 @@ fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool
 
 /// Persists current display-related settings from [`AppState`] into the
 /// global profile.
-fn save_global_display_settings(app_state: &AppState) {
+fn save_global_display_settings(app_state: &AppState<'_>) {
     let settings = preferences::GlobalSettings {
         music_enabled: app_state.music_enabled,
         display_mode: app_state.display_mode,

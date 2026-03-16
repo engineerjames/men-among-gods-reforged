@@ -51,7 +51,7 @@ impl CharacterCreationScene {
 }
 
 impl Scene for CharacterCreationScene {
-    fn handle_event(&mut self, _app_state: &mut AppState, event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, _app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;
             self.mouse_y = *y;
@@ -100,7 +100,7 @@ impl Scene for CharacterCreationScene {
         self.pending_scene.take()
     }
 
-    fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
         app_state.panning_background.update(dt);
         self.form.update(dt);
 
@@ -186,11 +186,11 @@ impl Scene for CharacterCreationScene {
         }
     }
 
-    fn on_enter(&mut self, _app_state: &mut AppState) {}
+    fn on_enter(&mut self, _app_state: &mut AppState<'_>) {}
 
     fn render_world(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         // Render panning background.

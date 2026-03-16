@@ -134,7 +134,7 @@ impl CharacterSelectionScene {
 }
 
 impl Scene for CharacterSelectionScene {
-    fn on_enter(&mut self, app_state: &mut AppState) {
+    fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         Self::cleanup_finished_thread(&mut self.characters_thread, "character loading");
         Self::cleanup_finished_thread(&mut self.login_thread, "game login");
         Self::cleanup_finished_thread(&mut self.delete_thread, "character delete");
@@ -178,7 +178,7 @@ impl Scene for CharacterSelectionScene {
         self.characters_rx = Some(rx);
     }
 
-    fn on_exit(&mut self, _app_state: &mut AppState) {
+    fn on_exit(&mut self, _app_state: &mut AppState<'_>) {
         self.characters_rx = None;
         self.login_rx = None;
         self.delete_rx = None;
@@ -195,7 +195,7 @@ impl Scene for CharacterSelectionScene {
         Self::drop_or_join_thread(&mut self.delete_thread, "character delete");
     }
 
-    fn handle_event(&mut self, app_state: &mut AppState, event: &Event) -> Option<SceneType> {
+    fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;
             self.mouse_y = *y;
@@ -332,7 +332,7 @@ impl Scene for CharacterSelectionScene {
         self.pending_scene.take()
     }
 
-    fn update(&mut self, app_state: &mut AppState, dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
         app_state.panning_background.update(dt);
         self.form.update(dt);
         self.delete_dialog.update(dt);
@@ -506,7 +506,7 @@ impl Scene for CharacterSelectionScene {
 
     fn render_world(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {

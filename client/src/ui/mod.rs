@@ -77,11 +77,15 @@ use crate::{
 ///
 /// Bundles the SDL2 canvas and the sprite/texture cache so that widgets can
 /// draw without needing direct access to `AppState`.
-pub struct RenderContext<'a> {
+///
+/// Two lifetimes avoid the `&'a mut T<'a>` invariance footgun:
+/// * `'f` — frame/function borrow (how long this context reference lives).
+/// * `'tc` — texture-creator lifetime (how long the GPU textures are valid).
+pub struct RenderContext<'f, 'tc> {
     /// The SDL2 canvas for the current frame.
-    pub canvas: &'a mut Canvas<Window>,
+    pub canvas: &'f mut Canvas<Window>,
     /// The lazy-loading sprite cache (fonts, sprites, minimap texture).
-    pub gfx: &'a mut GraphicsCache,
+    pub gfx: &'f mut GraphicsCache<'tc>,
 }
 
 /// Translate an SDL2 event into a UI-framework `UiEvent`, if applicable.

@@ -143,7 +143,7 @@ impl Widget for CertDialog {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // ── Dim background ──────────────────────────────────────────────
         let screen = sdl2::rect::Rect::new(
             0,

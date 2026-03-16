@@ -260,7 +260,7 @@ impl Widget for DeleteCharacterDialog {
         }
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         if !self.visible {
             return Ok(());
         }
