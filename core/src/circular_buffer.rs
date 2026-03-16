@@ -1,4 +1,7 @@
 /// A simple circular buffer implementation.
+///
+/// Stores up to `capacity` elements. Once full, new pushes overwrite
+/// the oldest entries.
 pub struct CircularBuffer<T> {
     buffer: Vec<Option<T>>,
     head: usize,
@@ -7,7 +10,19 @@ pub struct CircularBuffer<T> {
 }
 
 impl<T> CircularBuffer<T> {
-    /// Creates a new CircularBuffer with the specified capacity.
+    /// Creates a new `CircularBuffer` with the specified capacity.
+    ///
+    /// # Arguments
+    ///
+    /// * `capacity` - Maximum number of elements the buffer can hold. Must be > 0.
+    ///
+    /// # Returns
+    ///
+    /// * A new empty `CircularBuffer`.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if `capacity` is 0.
     pub fn new(capacity: usize) -> Self {
         assert!(capacity > 0, "capacity must be > 0");
         let mut buffer: Vec<Option<T>> = Vec::with_capacity(capacity);
@@ -21,6 +36,10 @@ impl<T> CircularBuffer<T> {
     }
 
     /// Adds an item to the circular buffer, overwriting the oldest item if full.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - The element to insert.
     pub fn push(&mut self, item: T) {
         self.buffer[self.head] = Some(item);
         self.head = (self.head + 1) % self.capacity;
@@ -28,6 +47,15 @@ impl<T> CircularBuffer<T> {
     }
 
     /// Retrieves an item by its index, where 0 is the most recently added item.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Reverse-chronological index (0 = newest).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&T)` if the slot is occupied, `None` if the index is out of range
+    ///   or the slot has not been written yet.
     pub fn get(&self, index: usize) -> Option<&T> {
         if index >= self.capacity {
             return None;
@@ -45,6 +73,10 @@ impl<T> CircularBuffer<T> {
     }
 
     /// Returns the number of elements currently stored in the buffer.
+    ///
+    /// # Returns
+    ///
+    /// * The count of occupied slots (0..=capacity).
     pub fn len(&self) -> usize {
         self.buffer.iter().filter(|item| item.is_some()).count()
     }
@@ -55,6 +87,10 @@ impl<T> CircularBuffer<T> {
     /// to zero on `clear`.  It is useful for detecting new arrivals even
     /// after the buffer has wrapped around and `len()` is saturated at
     /// capacity.
+    ///
+    /// # Returns
+    ///
+    /// * Cumulative push count since creation or last `clear`.
     pub fn total_pushed(&self) -> usize {
         self.total_pushed
     }

@@ -2,17 +2,20 @@ use serde::{Deserialize, Serialize};
 
 pub use crate::traits::{Class, Sex};
 
+/// Client login credentials.
 #[derive(Serialize, Deserialize)]
 pub struct LoginRequest {
     pub username: String,
     pub password: String,
 }
 
+/// JWT token returned on successful login.
 #[derive(Serialize, Deserialize)]
 pub struct LoginResponse {
     pub token: String,
 }
 
+/// New account registration payload.
 #[derive(Serialize, Deserialize)]
 pub struct CreateAccountRequest {
     pub email: String,
@@ -20,6 +23,7 @@ pub struct CreateAccountRequest {
     pub password: String,
 }
 
+/// Result of creating a new account.
 #[derive(Serialize, Deserialize)]
 pub struct CreateAccountResponse {
     pub id: Option<u64>,
@@ -28,17 +32,20 @@ pub struct CreateAccountResponse {
     pub email: String,
 }
 
+/// Request a one-time ticket to log into the game server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateGameLoginTicketRequest {
     pub character_id: u64,
 }
 
+/// Response containing a one-time game login ticket.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateGameLoginTicketResponse {
     pub ticket: Option<u64>,
     pub error: Option<String>,
 }
 
+/// Summary of a character owned by an account.
 // TODO: Set max lengths for name and description, and enforce them in the database and API validation
 #[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -75,11 +82,13 @@ impl Default for CharacterSummary {
     }
 }
 
+/// List of characters belonging to an account.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct GetCharactersResponse {
     pub characters: Vec<CharacterSummary>,
 }
 
+/// Request to create a new character.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateCharacterRequest {
     pub name: String,
@@ -89,6 +98,13 @@ pub struct CreateCharacterRequest {
 }
 
 impl CreateCharacterRequest {
+    /// Validates that the requested class is eligible for creation.
+    ///
+    /// Advanced classes that can only be achieved in-game are rejected.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the request passes validation.
     pub fn validate(&self) -> bool {
         if [
             Class::SeyanDu,

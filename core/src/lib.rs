@@ -70,6 +70,21 @@ impl Encode for BacktracePatternEncoder {
     }
 }
 
+/// Initializes the global logger with stderr output and an optional log file.
+///
+/// Stderr always receives messages at `log_level` or above. When
+/// `file_path` is provided and writable, log output is also written
+/// to that file. If the file cannot be opened, logging silently
+/// falls back to stderr only.
+///
+/// # Arguments
+///
+/// * `log_level` - Minimum severity that reaches stderr.
+/// * `file_path` - Optional path to a log file.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or a `SetLoggerError` if a logger was already set.
 pub fn initialize_logger(
     log_level: LevelFilter,
     file_path: Option<&str>,

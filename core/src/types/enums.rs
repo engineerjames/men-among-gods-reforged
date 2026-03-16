@@ -1,3 +1,4 @@
+/// Message log font color variants.
 #[repr(i32)]
 #[derive(Debug, Clone, Copy)]
 pub enum FontColor {

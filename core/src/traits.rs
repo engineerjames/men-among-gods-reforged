@@ -15,6 +15,7 @@ pub const KIN_ARCHHARAKIM: u32 = 1 << 9;
 pub const KIN_WARRIOR: u32 = 1 << 10;
 pub const KIN_SORCERER: u32 = 1 << 11;
 
+/// Character sex/gender.
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
 pub enum Sex {
@@ -22,6 +23,7 @@ pub enum Sex {
     Female = KIN_FEMALE,
 }
 
+/// Character class/profession.
 #[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Debug, Clone, Copy)]
 #[repr(u32)]
 pub enum Class {
@@ -39,6 +41,15 @@ pub enum Class {
 ///
 /// This is a UI-only mapping (it does not affect server-side appearance). For any unsupported
 /// combination, it falls back to the mercenary male sprite.
+///
+/// # Arguments
+///
+/// * `class` - The character class.
+/// * `sex` - The character sex.
+///
+/// # Returns
+///
+/// * Sprite ID for the selection screen.
 pub fn get_sprite_id_for_class_and_sex(class: Class, sex: Sex) -> usize {
     match (class, sex) {
         (Class::Harakim, Sex::Male) => 4048,
@@ -192,7 +203,7 @@ impl Sex {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_race_integer, get_sex_and_class, Class, Sex};
+    use super::{get_race_integer, get_sex_and_class, get_sprite_id_for_class_and_sex, Class, Sex};
 
     #[test]
     fn race_mapping_roundtrips_for_all_classes_and_sexes() {
@@ -268,5 +279,30 @@ mod tests {
         assert_eq!(Class::SeyanDu.to_string(), "Seyan Du");
         assert_eq!(Sex::Male.to_string(), "Male");
         assert_eq!(Sex::Female.to_string(), "Female");
+    }
+
+    #[test]
+    fn sprite_id_returns_known_values() {
+        assert_eq!(
+            get_sprite_id_for_class_and_sex(Class::Mercenary, Sex::Male),
+            5072
+        );
+        assert_eq!(
+            get_sprite_id_for_class_and_sex(Class::Templar, Sex::Female),
+            8144
+        );
+        assert_eq!(
+            get_sprite_id_for_class_and_sex(Class::Harakim, Sex::Male),
+            4048
+        );
+    }
+
+    #[test]
+    fn sprite_id_falls_back_for_unsupported_combo() {
+        // ArchTemplar has no explicit mapping — should fall back to male mercenary
+        assert_eq!(
+            get_sprite_id_for_class_and_sex(Class::ArchTemplar, Sex::Male),
+            5072
+        );
     }
 }

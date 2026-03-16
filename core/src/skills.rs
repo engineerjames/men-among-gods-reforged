@@ -37,8 +37,13 @@ pub const SK_WARCRY: usize = 35;
 pub const SK_WARCRY2: usize = SK_WARCRY + 100;
 
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
+/// Maximum number of skill slots.
 pub const MAX_SKILLS: usize = 50;
 
+/// A skill definition entry describing one learnable ability.
+///
+/// Each entry records the skill's index, category code, name,
+/// description, and the three attribute indices that govern it.
 #[derive(Copy, Clone)]
 pub struct SkillTab {
     nr: usize,
@@ -49,6 +54,21 @@ pub struct SkillTab {
 }
 
 impl SkillTab {
+    /// Creates a new `SkillTab` entry.
+    ///
+    /// # Arguments
+    ///
+    /// * `nr` - Skill index.
+    /// * `cat` - Category code (`'C'`ombat, `'G'`eneral, `'R'`(magic), `'B'`ody, `'M'`isc, `'Z'`(empty)).
+    /// * `_name` - Display name.
+    /// * `desc` - In-game description text.
+    /// * `a0` - First governing attribute index.
+    /// * `a1` - Second governing attribute index.
+    /// * `a2` - Third governing attribute index.
+    ///
+    /// # Returns
+    ///
+    /// * A new `SkillTab` entry.
     pub const fn new(
         nr: usize,
         cat: char,
@@ -80,6 +100,7 @@ impl Default for SkillTab {
     }
 }
 
+/// Static lookup table of all 50 skill definitions.
 pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     SkillTab::new(0, 'C', "Hand to Hand", "Fighting without weapons.", 0, 3, 4),
     SkillTab::new(
@@ -374,11 +395,28 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     SkillTab::new(49, 'Z', "", "", 0, 0, 0),
 ];
 
+/// Returns the canonical skill number for a given slot index.
+///
+/// # Arguments
+///
+/// * `skill_id` - Slot index into `SKILLTAB`.
+///
+/// # Returns
+///
+/// * The skill's `nr` field, or `skill_id` unchanged if out of bounds.
 pub fn get_skill_nr(skill_id: usize) -> usize {
     SKILLTAB.get(skill_id).map(|s| s.nr).unwrap_or(skill_id)
 }
 
-/// Safely get the attribute indices for a skill. Returns (0,0,0) on invalid index.
+/// Safely get the attribute indices for a skill.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index.
+///
+/// # Returns
+///
+/// * `[a0, a1, a2]` attribute indices, or `[0, 0, 0]` on invalid index.
 pub fn get_skill_attribs(skill: usize) -> [usize; 3] {
     if skill < MAX_SKILLS {
         SKILLTAB[skill].attrib
@@ -404,7 +442,15 @@ pub fn get_skill_name(n: usize) -> &'static str {
     }
 }
 
-/// Safely get the skill description (empty string on invalid index)
+/// Returns the in-game description for a skill.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index.
+///
+/// # Returns
+///
+/// * The description string, or an empty string on invalid index.
 pub fn get_skill_desc(skill: usize) -> &'static str {
     if skill < MAX_SKILLS {
         SKILLTAB[skill].desc
@@ -413,7 +459,15 @@ pub fn get_skill_desc(skill: usize) -> &'static str {
     }
 }
 
-/// Safely get the skill sort key / category (defaults to 'Z' on invalid index)
+/// Returns the category/sort-key character for a skill.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index.
+///
+/// # Returns
+///
+/// * The category char, or `'Z'` on invalid index.
 pub fn get_skill_sortkey(skill: usize) -> char {
     if skill < MAX_SKILLS {
         SKILLTAB[skill].cat
@@ -422,6 +476,15 @@ pub fn get_skill_sortkey(skill: usize) -> char {
     }
 }
 
+/// Returns the display name for an attribute index.
+///
+/// # Arguments
+///
+/// * `n` - Attribute index (0..4).
+///
+/// # Returns
+///
+/// * The attribute name (e.g. `"Strength"`), or an empty string if out of bounds.
 pub fn attribute_name(n: usize) -> &'static str {
     if n < AT_NAME.len() {
         AT_NAME[n]
@@ -484,6 +547,18 @@ const SKILL_NAMES: [&str; 50] = [
     "",
 ];
 
+/// Looks up a skill by name or numeric string.
+///
+/// Matching is case-insensitive and prefix-based: `"sw"` matches `"Sword"`.
+/// A numeric string is interpreted as a direct skill index.
+///
+/// # Arguments
+///
+/// * `name` - Skill name, prefix, or numeric index string.
+///
+/// # Returns
+///
+/// * The matching skill index (≥ 0), or `-1` if not found.
 pub fn skill_lookup(name: &str) -> i32 {
     // Full implementation ported from original C++ skill_lookup
     let name = name.trim();
@@ -769,5 +844,83 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_skill_lookup_by_name() {
+        assert_eq!(skill_lookup("Sword"), 3);
+        assert_eq!(skill_lookup("sw"), 3);
+        assert_eq!(skill_lookup("Hand"), 0);
+        assert_eq!(skill_lookup("Heal"), 26);
+    }
+
+    #[test]
+    fn test_skill_lookup_by_number() {
+        assert_eq!(skill_lookup("0"), 0);
+        assert_eq!(skill_lookup("3"), 3);
+        assert_eq!(skill_lookup("26"), 26);
+    }
+
+    #[test]
+    fn test_skill_lookup_invalid() {
+        assert_eq!(skill_lookup(""), -1);
+        assert_eq!(skill_lookup("nonexistent"), -1);
+        assert_eq!(skill_lookup("999"), -1);
+    }
+
+    #[test]
+    fn test_attribute_name_valid() {
+        assert_eq!(attribute_name(0), "Braveness");
+        assert_eq!(attribute_name(1), "Willpower");
+        assert_eq!(attribute_name(2), "Intuition");
+        assert_eq!(attribute_name(3), "Agility");
+        assert_eq!(attribute_name(4), "Strength");
+    }
+
+    #[test]
+    fn test_attribute_name_out_of_bounds() {
+        assert_eq!(attribute_name(5), "");
+        assert_eq!(attribute_name(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_get_skill_desc_valid() {
+        assert!(get_skill_desc(0).contains("Fighting without weapons"));
+        assert!(get_skill_desc(26).contains("Heal"));
+    }
+
+    #[test]
+    fn test_get_skill_desc_invalid() {
+        assert_eq!(get_skill_desc(MAX_SKILLS), "");
+        assert_eq!(get_skill_desc(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_get_skill_sortkey_valid() {
+        assert_eq!(get_skill_sortkey(0), 'C');
+        assert_eq!(get_skill_sortkey(7), 'G');
+        assert_eq!(get_skill_sortkey(10), 'M');
+        assert_eq!(get_skill_sortkey(11), 'R');
+        assert_eq!(get_skill_sortkey(28), 'B');
+        assert_eq!(get_skill_sortkey(36), 'Z');
+    }
+
+    #[test]
+    fn test_get_skill_sortkey_invalid() {
+        assert_eq!(get_skill_sortkey(MAX_SKILLS), 'Z');
+        assert_eq!(get_skill_sortkey(usize::MAX), 'Z');
+    }
+
+    #[test]
+    fn test_get_skill_nr_matches_index() {
+        for i in 0..MAX_SKILLS {
+            assert_eq!(get_skill_nr(i), i);
+        }
+    }
+
+    #[test]
+    fn test_get_skill_nr_out_of_bounds() {
+        assert_eq!(get_skill_nr(MAX_SKILLS), MAX_SKILLS);
+        assert_eq!(get_skill_nr(100), 100);
     }
 }

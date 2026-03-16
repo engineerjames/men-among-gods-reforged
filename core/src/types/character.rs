@@ -296,11 +296,29 @@ impl Character {
         (self.flags & CharacterFlags::Profile.bits()) != 0
     }
 
+    /// Serializes this character to a byte vector.
+    ///
+    /// # Returns
+    ///
+    /// * Encoded bytes.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if encoding fails (should not happen for a valid `Character`).
     pub fn to_bytes(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, bincode::config::standard())
             .expect("Character::to_bytes failed")
     }
 
+    /// Deserializes a character from a byte slice.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Encoded character data.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Character)` on success, `None` if the data is invalid or the wrong length.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let (value, consumed): (Self, usize) =
             bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;
@@ -311,12 +329,26 @@ impl Character {
         }
     }
 
+    /// Returns `true` if this character is within 10 Manhattan-distance tiles of its temple.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when close to the temple.
     pub fn is_close_to_temple(&self) -> bool {
         let dx = (self.x as i32 - self.temple_x as i32).abs();
         let dy = (self.y as i32 - self.temple_y as i32).abs();
         (dx + dy) <= 10
     }
 
+    /// Returns `true` if the character is on a no-lag-scroll map tile.
+    ///
+    /// # Arguments
+    ///
+    /// * `map_tiles` - The full server map array.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the tile has `MF_NOLAG` set.
     pub fn in_no_lag_scroll_area(
         &self,
         map_tiles: &[crate::types::Map;
@@ -329,14 +361,37 @@ impl Character {
         map_tiles[map_index].flags & crate::constants::MF_NOLAG as u64 != 0
     }
 
+    /// Returns `true` if `char_id` is a valid character slot index.
+    ///
+    /// # Arguments
+    ///
+    /// * `char_id` - Slot index to check.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `char_id` is in `1..MAXCHARS`.
     pub fn is_sane_character(char_id: usize) -> bool {
         char_id > 0 && char_id < crate::constants::MAXCHARS
     }
 
+    /// Returns `true` if this character is alive (used and sane).
+    ///
+    /// # Arguments
+    ///
+    /// * `char_id` - Slot index for the sanity check.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the slot is sane and the character is in use.
     pub fn is_living_character(&self, char_id: usize) -> bool {
         Self::is_sane_character(char_id) && self.used != crate::constants::USE_EMPTY
     }
 
+    /// Returns the first empty inventory slot index, or `None` if full.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(index)` of the first free item slot, or `None`.
     pub fn get_next_inventory_slot(&self) -> Option<usize> {
         let inventory = self.item;
         for (i, &item_id) in inventory.iter().enumerate() {
@@ -407,6 +462,14 @@ impl Character {
         character_id > 0 && character_id < crate::constants::MAXCHARS && !character.is_player()
     }
 
+    /// Returns the character's invisibility privilege level.
+    ///
+    /// Higher values indicate stronger invisibility (15 = Greater Inv,
+    /// 10 = God, 5 = Imp/Usurp, 2 = Staff, 1 = normal).
+    ///
+    /// # Returns
+    ///
+    /// * An integer invisibility tier.
     pub fn get_invisibility_level(&self) -> i32 {
         if self.flags & CharacterFlags::GreaterInv.bits() != 0 {
             return 15;
@@ -427,6 +490,11 @@ impl Character {
         1
     }
 
+    /// Sets the character's display name.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_name` - The name to set (truncated to buffer length if too long).
     pub fn set_name(&mut self, new_name: &str) {
         let bytes = new_name.as_bytes();
         let limit = if bytes.len() < self.name.len() {
@@ -442,6 +510,11 @@ impl Character {
         self.name[..limit].copy_from_slice(&bytes[..limit]);
     }
 
+    /// Sets the character's reference text.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_reference` - The reference string (truncated to buffer length if too long).
     pub fn set_reference(&mut self, new_reference: &str) {
         let bytes = new_reference.as_bytes();
         let limit = if bytes.len() < self.reference.len() {
@@ -457,6 +530,11 @@ impl Character {
         self.reference[..limit].copy_from_slice(&bytes[..limit]);
     }
 
+    /// Sets the character's description text.
+    ///
+    /// # Arguments
+    ///
+    /// * `new_description` - The description string (truncated to buffer length if too long).
     pub fn set_description(&mut self, new_description: &str) {
         let bytes = new_description.as_bytes();
         let limit = if bytes.len() < self.description.len() {

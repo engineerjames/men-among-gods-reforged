@@ -1,3 +1,4 @@
+/// Total number of distinct ranks in the game.
 pub const TOTAL_RANKS: usize = 24;
 
 /// Full rank names matching `WHO_RANK_NAME` indices.
@@ -29,6 +30,14 @@ const RANK_NAMES: [&str; TOTAL_RANKS] = [
 ];
 
 /// Returns the human-readable rank name for the given total points.
+///
+/// # Arguments
+///
+/// * `points` - Total experience points.
+///
+/// # Returns
+///
+/// * The full rank display name (e.g. `"Private"`, `"Warlord"`).
 pub fn rank_name(points: u32) -> &'static str {
     // NOTE: `points2rank` already clamps via the returned range, but we still clamp
     // here defensively to ensure indexing safety if thresholds change.
@@ -36,10 +45,24 @@ pub fn rank_name(points: u32) -> &'static str {
     RANK_NAMES[idx]
 }
 
+/// Returns a reference to the full array of rank display names.
+///
+/// # Returns
+///
+/// * A static reference to all 24 rank names.
 pub fn ranks() -> &'static [&'static str; TOTAL_RANKS] {
     &RANK_NAMES
 }
 
+/// Returns the shortened rank abbreviation for the given total points.
+///
+/// # Arguments
+///
+/// * `points` - Total experience points.
+///
+/// # Returns
+///
+/// * A compact rank label (e.g. `" Pvt "`, `"WARLD"`).
 pub fn rank_name_shortened(points: u32) -> &'static str {
     let idx = points2rank(points).clamp(0, TOTAL_RANKS as u32 - 1) as usize;
     WHO_RANK_NAME[idx]
@@ -53,25 +76,33 @@ const WHO_RANK_NAME: [&str; TOTAL_RANKS] = [
 ];
 
 /// Returns the human-readable rank name for the given rank index.
+///
 /// Clamps out-of-range indices to the nearest valid rank.
 ///
-/// Arguments:
-/// * `rank_idx` - Rank index (0-based)
+/// # Arguments
 ///
-/// Returns:
+/// * `rank_idx` - Rank index (0-based).
+///
+/// # Returns
+///
 /// * Rank name corresponding to the given index, or nearest valid rank if out of range.
 pub fn rank_name_by_index(rank_idx: usize) -> &'static str {
     let idx = rank_idx.clamp(0, TOTAL_RANKS - 1);
     RANK_NAMES[idx]
 }
 
-/// Map total points to a rank index.
+/// Maps total points to a rank index.
 ///
 /// Implements the server's `points2rank` thresholds to convert experience
 /// points into a discrete rank used for comparison and display.
 ///
 /// # Arguments
-/// * `value` - Total experience points
+///
+/// * `value` - Total experience points.
+///
+/// # Returns
+///
+/// * A rank index in `0..=23`.
 pub fn points2rank(value: u32) -> u32 {
     match value {
         0..50 => 0,
@@ -138,7 +169,10 @@ pub fn rank_progress(points: u32) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{points2rank, rank_name, rank_progress, RANK_NAMES, RANK_THRESHOLDS};
+    use super::{
+        points2rank, rank_name, rank_name_by_index, rank_name_shortened, rank_progress, ranks,
+        RANK_NAMES, RANK_THRESHOLDS, TOTAL_RANKS,
+    };
 
     #[test]
     fn points2rank_respects_threshold_boundaries() {
@@ -198,5 +232,26 @@ mod tests {
         for w in RANK_THRESHOLDS.windows(2) {
             assert!(w[0] < w[1], "thresholds not sorted: {} >= {}", w[0], w[1]);
         }
+    }
+
+    #[test]
+    fn ranks_returns_all_rank_names() {
+        let all = ranks();
+        assert_eq!(all.len(), TOTAL_RANKS);
+        assert_eq!(all[0], "Private");
+        assert_eq!(all[TOTAL_RANKS - 1], "Warlord");
+    }
+
+    #[test]
+    fn rank_name_shortened_matches_known_values() {
+        assert_eq!(rank_name_shortened(0), " Pvt ");
+        assert_eq!(rank_name_shortened(u32::MAX), "WARLD");
+    }
+
+    #[test]
+    fn rank_name_by_index_clamps_out_of_range() {
+        assert_eq!(rank_name_by_index(0), "Private");
+        assert_eq!(rank_name_by_index(23), "Warlord");
+        assert_eq!(rank_name_by_index(999), "Warlord");
     }
 }
