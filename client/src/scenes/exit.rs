@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use egui_sdl2::egui;
 use sdl2::{event::Event, render::Canvas, video::Window};
 
 use crate::{
@@ -38,9 +37,5 @@ impl Scene for ExitScene {
         _canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         Ok(())
-    }
-
-    fn render_ui(&mut self, _app_state: &mut AppState, _ctx: &egui::Context) -> Option<SceneType> {
-        None
     }
 }

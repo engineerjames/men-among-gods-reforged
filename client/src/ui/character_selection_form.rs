@@ -128,7 +128,7 @@ impl CharacterSelectionForm {
             width: 1,
         };
 
-        let mut btn_y = list_y as i32 + LIST_H as i32 + 12;
+        let mut btn_y = list_y + LIST_H as i32 + 12;
 
         let create_button =
             RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), btn_bg)

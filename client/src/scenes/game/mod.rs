@@ -21,7 +21,6 @@ use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::time::Duration;
 
-use egui_sdl2::egui;
 use sdl2::{
     event::Event, keyboard::Keycode, mouse::MouseButton, pixels::Color, render::Canvas,
     video::Window,
@@ -41,6 +40,7 @@ use crate::{
     ui::{
         self,
         button_arc::HudButtonBar,
+        cert_dialog::{CertDialog, CertDialogAction},
         chat_box::ChatBox,
         inventory_panel::InventoryPanel,
         look_panel::LookPanel,
@@ -52,6 +52,7 @@ use crate::{
         skills_panel::SkillsPanel,
         status_panel::StatusPanel,
         style::Padding,
+        tls_warning_banner::TlsWarningBanner,
         widget::{Bounds, EventResponse, HudPanel, KeyModifiers, Widget, WidgetAction},
         RenderContext,
     },
@@ -193,6 +194,10 @@ pub struct GameScene {
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
+    /// SDL2 certificate-mismatch dialog (created on demand when a mismatch is detected).
+    cert_dialog: Option<CertDialog>,
+    /// Non-interactive TLS warning banner shown when the connection is unencrypted.
+    tls_banner: TlsWarningBanner,
     pub(super) ctrl_held: bool,
     pub(super) shift_held: bool,
     pub(super) alt_held: bool,
@@ -287,6 +292,8 @@ impl GameScene {
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
+            cert_dialog: None,
+            tls_banner: TlsWarningBanner::new(),
             ctrl_held: false,
             shift_held: false,
             alt_held: false,
@@ -793,6 +800,8 @@ impl Scene for GameScene {
         self.last_synced_log_len = 0;
         self.pending_exit = None;
         self.certificate_mismatch = None;
+        self.cert_dialog = None;
+        self.tls_banner.set_visible(false);
         self.ctrl_held = false;
         self.shift_held = false;
         self.alt_held = false;
@@ -961,6 +970,45 @@ impl Scene for GameScene {
                 alt: self.alt_held,
             },
         ) {
+            // --- Certificate mismatch dialog (modal, blocks all other input) ---
+            if let Some(ref mut dialog) = self.cert_dialog {
+                dialog.handle_event(&ui_event);
+                for action in dialog.take_cert_actions() {
+                    match action {
+                        CertDialogAction::Accept => {
+                            if let Some(mismatch) = self.certificate_mismatch.take() {
+                                match cert_trust::trust_fingerprint(
+                                    &mismatch.host,
+                                    &mismatch.received_fingerprint,
+                                ) {
+                                    Ok(()) => {
+                                        self.cert_dialog = None;
+                                        if let Err(err) = self.start_game_network_session(app_state)
+                                        {
+                                            self.pending_exit = Some(err);
+                                            return Some(SceneType::CharacterSelection);
+                                        }
+                                        return None;
+                                    }
+                                    Err(err) => {
+                                        self.cert_dialog = None;
+                                        self.pending_exit =
+                                            Some(format!("Failed to update known hosts: {err}"));
+                                        return Some(SceneType::CharacterSelection);
+                                    }
+                                }
+                            }
+                        }
+                        CertDialogAction::Reject => {
+                            self.certificate_mismatch = None;
+                            self.cert_dialog = None;
+                            return Some(SceneType::CharacterSelection);
+                        }
+                    }
+                }
+                return None;
+            }
+
             // --- StatusPanel toggle (upper-left sigil) ---
             if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 return None;
@@ -1209,6 +1257,23 @@ impl Scene for GameScene {
         self.mode_button.update(dt);
         self.shop_panel.update(dt);
         self.perf_profiler.check_expired();
+        // Create the cert dialog widget when a mismatch is first detected.
+        if self.certificate_mismatch.is_some() && self.cert_dialog.is_none() {
+            let m = self.certificate_mismatch.as_ref().unwrap();
+            self.cert_dialog = Some(CertDialog::new(
+                &m.host,
+                &m.expected_fingerprint,
+                &m.received_fingerprint,
+            ));
+        }
+
+        // Update TLS warning banner visibility.
+        let is_unencrypted = app_state
+            .network
+            .as_ref()
+            .map_or(false, |n| n.logged_in && !n.tls_active);
+        self.tls_banner.set_visible(is_unencrypted);
+
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut() {
@@ -1398,93 +1463,19 @@ impl Scene for GameScene {
         self.perf_profiler.end_sample(PerfLabel::DrawHelperText);
 
         self.perf_profiler.end_frame();
-        Ok(())
-    }
 
-    /// Render the egui escape/options overlay (shadows, effects, volume, disconnect/quit).
-    ///
-    /// # Returns
-    ///
-    /// `Some(SceneType)` if the player chose to disconnect or quit, otherwise `None`.
-    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
-        let mut cert_accept_clicked = false;
-        let mut cert_reject_clicked = false;
-
-        if let Some(mismatch) = self.certificate_mismatch.as_ref() {
-            egui::Window::new("Game Server Certificate Changed")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    ui.label("The game server certificate fingerprint changed.");
-                    ui.colored_label(
-                        egui::Color32::YELLOW,
-                        "This may indicate a man-in-the-middle attack unless you intentionally rotated certificates.",
-                    );
-                    ui.add_space(8.0);
-                    ui.label(format!("Host: {}", mismatch.host));
-                    ui.label("Previously trusted fingerprint:");
-                    ui.monospace(&mismatch.expected_fingerprint);
-                    ui.add_space(4.0);
-                    ui.label("New fingerprint presented by server:");
-                    ui.monospace(&mismatch.received_fingerprint);
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Accept New Certificate").clicked() {
-                            cert_accept_clicked = true;
-                        }
-                        if ui.button("Reject").clicked() {
-                            cert_reject_clicked = true;
-                        }
-                    });
-                });
-        }
-
-        if cert_accept_clicked {
-            if let Some(mismatch) = self.certificate_mismatch.take() {
-                match cert_trust::trust_fingerprint(&mismatch.host, &mismatch.received_fingerprint)
-                {
-                    Ok(()) => {
-                        if let Err(err) = self.start_game_network_session(app_state) {
-                            self.pending_exit = Some(err);
-                            return Some(SceneType::CharacterSelection);
-                        }
-                        return None;
-                    }
-                    Err(err) => {
-                        self.pending_exit = Some(format!("Failed to update known hosts: {err}"));
-                        return Some(SceneType::CharacterSelection);
-                    }
-                }
+        // Render TLS warning banner and cert dialog as final overlays.
+        {
+            let mut ctx = RenderContext {
+                canvas,
+                gfx: gfx_cache,
+            };
+            self.tls_banner.render(&mut ctx)?;
+            if let Some(ref mut dialog) = self.cert_dialog {
+                dialog.render(&mut ctx)?;
             }
-        } else if cert_reject_clicked {
-            self.certificate_mismatch = None;
-            return Some(SceneType::CharacterSelection);
         }
 
-        // Show an unencrypted-connection warning banner only after the game
-        // session is actually logged in.
-        let is_unencrypted = app_state
-            .network
-            .as_ref()
-            .map_or(false, |n| n.logged_in && !n.tls_active);
-        if is_unencrypted {
-            egui::Area::new(egui::Id::new("tls_warning_banner"))
-                .anchor(egui::Align2::CENTER_TOP, [0.0, 4.0])
-                .interactable(false)
-                .show(ctx, |ui| {
-                    egui::Frame::new()
-                        .fill(egui::Color32::from_rgba_premultiplied(40, 30, 0, 200))
-                        .inner_margin(egui::Margin::symmetric(12, 4))
-                        .corner_radius(4.0)
-                        .show(ui, |ui| {
-                            ui.colored_label(
-                                egui::Color32::YELLOW,
-                                "UNENCRYPTED - Game traffic is not protected",
-                            );
-                        });
-                });
-        }
-        None
+        Ok(())
     }
 }

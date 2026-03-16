@@ -1,6 +1,5 @@
 use std::{collections::HashMap, time::Duration};
 
-use egui_sdl2::egui;
 use sdl2::{event::Event, render::Canvas, video::Window};
 
 use crate::state::AppState;
@@ -8,7 +7,7 @@ use crate::state::AppState;
 /// Trait implemented by each game scene (login, character selection, gameplay, etc.).
 ///
 /// The scene manager drives the lifecycle: `on_enter` → frame loop (`handle_event`,
-/// `update`, `render_world`, `render_ui`) → `on_exit`. Returning `Some(SceneType)`
+/// `update`, `render_world`) → `on_exit`. Returning `Some(SceneType)`
 /// from any frame method triggers a scene transition.
 pub trait Scene {
     /// Called once when the scene becomes active.
@@ -29,9 +28,6 @@ pub trait Scene {
         app_state: &mut AppState,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String>;
-
-    /// Renders the egui immediate-mode UI overlay. Returns `Some(SceneType)` to request a scene change.
-    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType>;
 }
 
 /// Identifies which scene is active. Used as `HashMap` keys and for scene transition requests.
@@ -143,21 +139,6 @@ impl SceneManager {
             .unwrap()
             .render_world(app_state, canvas)
             .unwrap_or_else(|err| log::error!("Error rendering world: {}", err));
-    }
-
-    /// Delegates UI rendering to the active scene and applies any resulting scene change.
-    pub fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) {
-        if self.active_scene == SceneType::Exit {
-            return;
-        }
-
-        let possible_next_scene = self
-            .scenes
-            .get_mut(&self.active_scene)
-            .unwrap()
-            .render_ui(app_state, ctx);
-
-        self.apply_scene_change(possible_next_scene, app_state);
     }
 
     /// Externally requests a scene transition (e.g. from the main loop on quit).

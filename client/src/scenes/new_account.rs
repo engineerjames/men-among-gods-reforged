@@ -3,7 +3,6 @@ use std::{
     time::Duration,
 };
 
-use egui_sdl2::egui;
 use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
@@ -178,7 +177,7 @@ impl Scene for NewAccountScene {
                     NewAccountFormAction::Create {
                         email,
                         username,
-                        password,
+                        password: _,
                     } => {
                         log::info!(
                             "Create new account clicked with email={}, username={}",
@@ -262,10 +261,5 @@ impl Scene for NewAccountScene {
         }
 
         Ok(())
-    }
-
-    fn render_ui(&mut self, _app_state: &mut AppState, _ctx: &egui::Context) -> Option<SceneType> {
-        // All UI is rendered via custom widgets in render_world.
-        None
     }
 }

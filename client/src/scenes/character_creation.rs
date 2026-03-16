@@ -3,11 +3,7 @@ use std::{
     time::Duration,
 };
 
-use egui_sdl2::egui;
-use mag_core::{
-    names,
-    types::{Class, Sex},
-};
+use mag_core::{names, types::Class};
 use sdl2::{event::Event, keyboard::Mod, pixels::Color, rect::Rect, render::Canvas, video::Window};
 
 use crate::{
@@ -71,7 +67,7 @@ impl Scene for CharacterCreationScene {
                 match action {
                     CharacterCreationFormAction::Create {
                         name,
-                        description,
+                        description: _,
                         class: _,
                         sex: _,
                     } => {
@@ -245,10 +241,5 @@ impl Scene for CharacterCreationScene {
         self.form.render(&mut ctx)?;
 
         Ok(())
-    }
-
-    fn render_ui(&mut self, _app_state: &mut AppState, _ctx: &egui::Context) -> Option<SceneType> {
-        // All UI is rendered via custom widgets in render_world.
-        None
     }
 }

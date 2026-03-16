@@ -269,7 +269,6 @@ fn main() -> Result<(), String> {
 
         egui.run(|ctx: &egui::Context| {
             warm_egui_glyph_cache(ctx);
-            scene_manager.render_ui(&mut app_state, ctx);
         });
 
         if scene_manager.get_scene() == SceneType::Exit {

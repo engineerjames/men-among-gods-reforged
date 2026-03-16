@@ -3,7 +3,6 @@ use std::{
     time::Duration,
 };
 
-use egui_sdl2::egui;
 use mag_core::{traits, types::CharacterSummary};
 use sdl2::{event::Event, keyboard::Mod, rect::Rect, render::Canvas, video::Window};
 
@@ -551,9 +550,5 @@ impl Scene for CharacterSelectionScene {
         self.delete_dialog.render(&mut render_ctx)?;
 
         Ok(())
-    }
-
-    fn render_ui(&mut self, _app_state: &mut AppState, _ctx: &egui::Context) -> Option<SceneType> {
-        None
     }
 }

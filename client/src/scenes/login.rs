@@ -16,8 +16,7 @@ use crate::{
         RenderContext,
     },
 };
-use egui_sdl2::egui;
-use sdl2::{event::Event, keyboard::Mod, pixels::Color, render::Canvas, video::Window};
+use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 /// Scene that presents the account login form.
 ///
@@ -354,10 +353,5 @@ impl Scene for LoginScene {
         }
 
         Ok(())
-    }
-
-    fn render_ui(&mut self, _app_state: &mut AppState, _ctx: &egui::Context) -> Option<SceneType> {
-        // All UI is rendered via custom widgets in render_world.
-        None
     }
 }

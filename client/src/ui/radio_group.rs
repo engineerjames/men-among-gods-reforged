@@ -168,7 +168,7 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
                 let mut x = self.bounds.x;
                 for i in 0..index {
                     let lw = font_cache::text_width(&self.options[i].label);
-                    x += RADIO_RADIUS as i32 * 2 + LABEL_GAP + lw as i32 + OPTION_GAP_H;
+                    x += RADIO_RADIUS * 2 + LABEL_GAP + lw as i32 + OPTION_GAP_H;
                 }
                 Bounds::new(x, self.bounds.y, item_w, row_h as u32)
             }

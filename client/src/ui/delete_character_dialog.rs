@@ -13,7 +13,7 @@ use sdl2::render::BlendMode;
 use super::button::RectButton;
 use super::style::{Background, Border};
 use super::text_input::TextInput;
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
 use crate::font_cache;
 
