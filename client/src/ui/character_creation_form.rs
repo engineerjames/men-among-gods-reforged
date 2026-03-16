@@ -19,6 +19,7 @@ use super::style::{Background, Border};
 use super::text_input::TextInput;
 use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use super::RenderContext;
+use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------
@@ -34,6 +35,15 @@ const PAD_X: i32 = 20;
 
 /// Width of text input fields.
 const INPUT_W: u32 = PANEL_W - (PAD_X as u32) * 2;
+
+/// Size of the portrait sprite preview next to the race selection.
+const SPRITE_PREVIEW_SIZE: u32 = 64;
+
+/// Gap between the race radio group and the sprite preview.
+const SPRITE_PREVIEW_GAP: u32 = 8;
+
+/// Width of the race radio group (narrowed to make room for the sprite preview).
+const CLASS_GROUP_W: u32 = INPUT_W - SPRITE_PREVIEW_SIZE - SPRITE_PREVIEW_GAP;
 
 /// Height of each text input field.
 const INPUT_H: u32 = 16;
@@ -109,14 +119,14 @@ pub struct CharacterCreationForm {
 }
 
 impl CharacterCreationForm {
-    /// Creates a new character creation form at the left side of the screen.
+    /// Creates a new character creation form centered on screen.
     ///
     /// # Returns
     ///
     /// A fully-initialised `CharacterCreationForm`.
     pub fn new() -> Self {
-        let panel_x = 10;
-        let panel_y = 10;
+        let panel_x = (TARGET_WIDTH_INT as i32 - PANEL_W as i32) / 2;
+        let panel_y = (TARGET_HEIGHT_INT as i32 - PANEL_H as i32) / 2;
 
         let bounds = Bounds::new(panel_x, panel_y, PANEL_W, PANEL_H);
 
@@ -175,7 +185,7 @@ impl CharacterCreationForm {
         let class_label_y = cursor_y;
         cursor_y = class_label_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let class_group = RadioGroup::new(
-            Bounds::new(panel_x + PAD_X, cursor_y, INPUT_W, 60),
+            Bounds::new(panel_x + PAD_X, cursor_y, CLASS_GROUP_W, 60),
             &[
                 (Class::Harakim, "Harakim"),
                 (Class::Templar, "Templar"),
@@ -486,9 +496,25 @@ impl Widget for CharacterCreationForm {
             cursor_y,
         )?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
+        let class_group_y = cursor_y;
         self.class_group
             .set_position(self.bounds.x + PAD_X, cursor_y);
         self.class_group.render(ctx)?;
+
+        // Portrait sprite preview to the right of the race radio group.
+        let sprite_id = mag_core::traits::get_sprite_id_for_class_and_sex(
+            self.class_group.selected(),
+            self.sex_group.selected(),
+        );
+        let sprite_x = self.bounds.x + PAD_X + CLASS_GROUP_W as i32 + SPRITE_PREVIEW_GAP as i32;
+        let sprite_rect = sdl2::rect::Rect::new(
+            sprite_x,
+            class_group_y,
+            SPRITE_PREVIEW_SIZE,
+            SPRITE_PREVIEW_SIZE,
+        );
+        let texture = ctx.gfx.get_texture(sprite_id);
+        let _ = ctx.canvas.copy(texture, None, sprite_rect);
         cursor_y += 60 + FIELD_GAP;
 
         // Sex radio group.

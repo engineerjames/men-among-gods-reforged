@@ -16,6 +16,7 @@ use super::scrollable_list::{ListItem, ScrollableList};
 use super::style::{Background, Border};
 use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------
@@ -24,13 +25,13 @@ use crate::font_cache;
 
 /// Panel dimensions.
 const PANEL_W: u32 = 360;
-const PANEL_H: u32 = 440;
+const PANEL_H: u32 = 464;
 
 /// Horizontal padding inside the panel.
 const PAD_X: i32 = 20;
 
-/// Height of the scrollable character list.
-const LIST_H: u32 = 180;
+/// Height of the scrollable character list (3 rows × 68 px).
+const LIST_H: u32 = 204;
 
 /// Width of action buttons.
 const BTN_W: u32 = PANEL_W - (PAD_X as u32) * 2;
@@ -99,14 +100,14 @@ pub struct CharacterSelectionForm {
 }
 
 impl CharacterSelectionForm {
-    /// Creates a new character selection form at the left side of the screen.
+    /// Creates a new character selection form centered on screen.
     ///
     /// # Returns
     ///
     /// A fully-initialised `CharacterSelectionForm`.
     pub fn new() -> Self {
-        let panel_x = 10;
-        let panel_y = 10;
+        let panel_x = (TARGET_WIDTH_INT as i32 - PANEL_W as i32) / 2;
+        let panel_y = (TARGET_HEIGHT_INT as i32 - PANEL_H as i32) / 2;
 
         let bounds = Bounds::new(panel_x, panel_y, PANEL_W, PANEL_H);
 

@@ -19,10 +19,10 @@ use crate::font_cache;
 // ---------------------------------------------------------------------------
 
 /// Row height in pixels (sprite thumbnail + label).
-const ROW_H: i32 = 24;
+const ROW_H: i32 = 68;
 
 /// Size of the sprite thumbnail square.
-const THUMB_SIZE: u32 = 20;
+const THUMB_SIZE: u32 = 64;
 
 /// Horizontal gap between thumbnail and label text.
 const THUMB_TEXT_GAP: i32 = 6;
@@ -234,7 +234,12 @@ impl Widget for ScrollableList {
         ctx.canvas.draw_rect(bg_rect)?;
 
         let visible = self.visible_rows();
-        let content_w = self.bounds.width.saturating_sub(SCROLLBAR_W + 2);
+        let needs_scrollbar = self.items.len() > visible;
+        let content_w = if needs_scrollbar {
+            self.bounds.width.saturating_sub(SCROLLBAR_W + 2)
+        } else {
+            self.bounds.width
+        };
 
         for i in 0..visible {
             let index = self.scroll_offset + i;
@@ -274,7 +279,7 @@ impl Widget for ScrollableList {
         }
 
         // ── Scrollbar ───────────────────────────────────────────────────
-        if self.items.len() > visible {
+        if needs_scrollbar {
             let track_x = self.bounds.x + self.bounds.width as i32 - SCROLLBAR_W as i32 - 1;
             let track_h = self.bounds.height;
             let track_rect = Rect::new(track_x, self.bounds.y, SCROLLBAR_W, track_h);
@@ -305,7 +310,7 @@ mod tests {
     use super::*;
 
     fn make_list(n: usize) -> ScrollableList {
-        let mut list = ScrollableList::new(Bounds::new(0, 0, 200, 72)); // 3 rows visible
+        let mut list = ScrollableList::new(Bounds::new(0, 0, 200, 204)); // 3 rows visible (3 × 68)
         let items: Vec<ListItem> = (0..n)
             .map(|i| ListItem {
                 id: i as u64,
@@ -325,7 +330,7 @@ mod tests {
 
     #[test]
     fn empty_list_has_no_selection() {
-        let list = ScrollableList::new(Bounds::new(0, 0, 200, 72));
+        let list = ScrollableList::new(Bounds::new(0, 0, 200, 204));
         assert_eq!(list.selected_id(), None);
     }
 

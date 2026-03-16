@@ -3,8 +3,8 @@ use std::{
     time::Duration,
 };
 
-use mag_core::{names, types::Class};
-use sdl2::{event::Event, keyboard::Mod, pixels::Color, rect::Rect, render::Canvas, video::Window};
+use mag_core::names;
+use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
     account_api,
@@ -205,37 +205,6 @@ impl Scene for CharacterCreationScene {
         };
 
         panning_background.render(&mut ctx)?;
-
-        // Render class portraits on the right side.
-        let selected_sex = self.form.selected_sex();
-        let selected_class = self.form.selected_class();
-
-        let portrait_slots = [
-            (Class::Harakim, Rect::new(400, 50, 160, 160)),
-            (Class::Templar, Rect::new(400, 220, 160, 160)),
-            (Class::Mercenary, Rect::new(400, 390, 160, 160)),
-        ];
-
-        for (class, target_rect) in portrait_slots {
-            let sprite_id = mag_core::traits::get_sprite_id_for_class_and_sex(class, selected_sex);
-            let texture = ctx.gfx.get_texture(sprite_id);
-            if let Err(error) = ctx.canvas.copy(texture, None, target_rect) {
-                log::error!(
-                    "Failed to render portrait for class {:?}, sex {:?} (sprite ID {}): {}",
-                    class,
-                    selected_sex,
-                    sprite_id,
-                    error
-                );
-            }
-
-            if class == selected_class {
-                ctx.canvas.set_draw_color(Color::RGB(200, 200, 220));
-                if let Err(error) = ctx.canvas.draw_rect(target_rect) {
-                    log::error!("Failed to draw selected portrait outline: {}", error);
-                }
-            }
-        }
 
         // Render the form.
         self.form.render(&mut ctx)?;

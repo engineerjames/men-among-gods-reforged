@@ -4,7 +4,7 @@ use std::{
 };
 
 use mag_core::{traits, types::CharacterSummary};
-use sdl2::{event::Event, keyboard::Mod, rect::Rect, render::Canvas, video::Window};
+use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
     account_api,
@@ -521,30 +521,6 @@ impl Scene for CharacterSelectionScene {
         };
 
         panning_background.render(&mut render_ctx)?;
-
-        // Render selected character portrait.
-        if let Some(selected_character_id) = self.selected_character_id {
-            if let Some(selected) = self
-                .characters
-                .iter()
-                .find(|c| c.id == selected_character_id)
-            {
-                let sprite_id =
-                    mag_core::traits::get_sprite_id_for_class_and_sex(selected.class, selected.sex);
-                let texture = render_ctx.gfx.get_texture(sprite_id);
-                let target_rect = Rect::new(400, 160, 160, 160);
-
-                if let Err(error) = render_ctx.canvas.copy(texture, None, target_rect) {
-                    log::error!(
-                        "Failed to render selected portrait for class {:?}, sex {:?} (sprite ID {}): {}",
-                        selected.class,
-                        selected.sex,
-                        sprite_id,
-                        error
-                    );
-                }
-            }
-        }
 
         self.form.render(&mut render_ctx)?;
         self.delete_dialog.render(&mut render_ctx)?;
