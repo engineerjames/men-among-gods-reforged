@@ -78,7 +78,14 @@ fn main() -> Result<(), String> {
     );
     let api_state = ApiTokenState::new(hosts::get_api_base_url());
 
-    let bg_path = filepaths::get_asset_directory().join("gfx/login_pents.png");
+    let asset_gfx = filepaths::get_asset_directory().join("gfx");
+    let bg_paths = vec![
+        asset_gfx.join("login_pents.png"),
+        asset_gfx.join("login_black_stronghold.png"),
+        asset_gfx.join("login_last_gate.png"),
+        asset_gfx.join("login_skua_temple.png"),
+        asset_gfx.join("login_tower.png"),
+    ];
     let panning_background = PanningBackground::new(
         Bounds::new(
             0,
@@ -86,7 +93,7 @@ fn main() -> Result<(), String> {
             constants::TARGET_WIDTH_INT,
             constants::TARGET_HEIGHT_INT,
         ),
-        bg_path,
+        bg_paths,
         6.0,
         2.0,
         Some(sdl2::pixels::Color::RGBA(10, 10, 30, 100)),
