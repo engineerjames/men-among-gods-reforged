@@ -16,7 +16,7 @@ path = "src/bin/ui_integration.rs"
 mag_core = { path = "../core", package = "core" }
 # SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –
 # no system SDL2 installation required.
-sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
+sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link", "unsafe_textures"] }
 log = "0.4.29"
 log4rs = "1.4.0"
 zip = "0.6.6"
