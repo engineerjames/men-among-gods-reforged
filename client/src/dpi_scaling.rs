@@ -154,91 +154,6 @@ fn hidpi_scale(window: &Window) -> (f32, f32) {
     (scale_x, scale_y)
 }
 
-/// Scales an integer coordinate by a floating-point factor, rounding to the
-/// nearest integer.
-///
-/// # Arguments
-/// * `value` - The coordinate value to scale.
-/// * `scale` - The multiplier.
-///
-/// # Returns
-/// * The scaled value as `i32`.
-fn scale_coord(value: i32, scale: f32) -> i32 {
-    ((value as f32) * scale).round() as i32
-}
-
-/// Re-maps mouse event coordinates for egui on HiDPI displays.
-///
-/// egui expects coordinates in physical (drawable) pixels, so this multiplies
-/// the SDL2 window-space coordinates by the HiDPI scale factor.
-///
-/// # Arguments
-/// * `event` - The original SDL2 mouse event.
-/// * `window` - The SDL2 window for scale calculation.
-///
-/// # Returns
-/// * A new `Event` with scaled coordinates.
-pub fn adjust_mouse_event_for_egui_hidpi(event: &Event, window: &Window) -> Event {
-    let (scale_x, scale_y) = hidpi_scale(window);
-
-    match event.clone() {
-        Event::MouseMotion {
-            timestamp,
-            window_id,
-            which,
-            mousestate,
-            x,
-            y,
-            xrel,
-            yrel,
-        } => Event::MouseMotion {
-            timestamp,
-            window_id,
-            which,
-            mousestate,
-            x: scale_coord(x, scale_x),
-            y: scale_coord(y, scale_y),
-            xrel: scale_coord(xrel, scale_x),
-            yrel: scale_coord(yrel, scale_y),
-        },
-        Event::MouseButtonDown {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x,
-            y,
-        } => Event::MouseButtonDown {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x: scale_coord(x, scale_x),
-            y: scale_coord(y, scale_y),
-        },
-        Event::MouseButtonUp {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x,
-            y,
-        } => Event::MouseButtonUp {
-            timestamp,
-            window_id,
-            which,
-            mouse_btn,
-            clicks,
-            x: scale_coord(x, scale_x),
-            y: scale_coord(y, scale_y),
-        },
-        other => other,
-    }
-}
-
 /// Re-maps mouse event coordinates from physical window space to the 1920×1080
 /// logical coordinate space used by the game renderer.
 ///
@@ -351,36 +266,5 @@ pub fn adjust_mouse_event_for_hidpi(
             }
         }
         other => other,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scale_coord_identity() {
-        assert_eq!(scale_coord(100, 1.0), 100);
-    }
-
-    #[test]
-    fn scale_coord_double() {
-        assert_eq!(scale_coord(100, 2.0), 200);
-    }
-
-    #[test]
-    fn scale_coord_half_rounds() {
-        // 3 * 0.5 = 1.5, rounds to 2
-        assert_eq!(scale_coord(3, 0.5), 2);
-    }
-
-    #[test]
-    fn scale_coord_zero() {
-        assert_eq!(scale_coord(0, 5.0), 0);
-    }
-
-    #[test]
-    fn scale_coord_negative() {
-        assert_eq!(scale_coord(-10, 2.0), -20);
     }
 }
