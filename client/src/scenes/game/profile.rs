@@ -1,5 +1,5 @@
 use crate::{
-    preferences::{self, CharacterIdentity, RuntimeProfile},
+    preferences::{self, CharacterIdentity, Settings},
     state::AppState,
 };
 
@@ -17,20 +17,20 @@ impl GameScene {
         app_state: &mut AppState<'_>,
         identity: &CharacterIdentity,
     ) {
-        if let Some(profile) = preferences::load_profile(identity) {
+        if let Some(settings) = preferences::load_settings(identity) {
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.player_data_mut().skill_keybinds = profile.skill_keybinds;
+                ps.player_data_mut().skill_keybinds = settings.skill_keybinds;
                 ps.player_data_mut().are_shadows_enabled =
-                    if profile.shadows_enabled { 1 } else { 0 };
-                ps.player_data_mut().hide = profile.hide;
-                ps.player_data_mut().show_names = profile.show_names;
-                ps.player_data_mut().show_proz = profile.show_proz;
+                    if settings.shadows_enabled { 1 } else { 0 };
+                ps.player_data_mut().hide = settings.hide;
+                ps.player_data_mut().show_names = settings.show_names;
+                ps.player_data_mut().show_proz = settings.show_proz;
                 ps.player_data_mut().show_helper_text =
-                    if profile.show_helper_text { 1 } else { 0 };
+                    if settings.show_helper_text { 1 } else { 0 };
             }
-            self.are_spell_effects_enabled = profile.spell_effects_enabled;
-            self.master_volume = profile.master_volume;
-            app_state.master_volume = profile.master_volume;
+            self.are_spell_effects_enabled = settings.spell_effects_enabled;
+            self.master_volume = settings.master_volume;
+            app_state.master_volume = settings.master_volume;
             log::info!(
                 "Loaded persisted SDL profile for character '{}' (id={})",
                 identity.name,
@@ -39,15 +39,19 @@ impl GameScene {
         }
     }
 
-    /// Builds a `RuntimeProfile` snapshot from current in-game settings.
+    /// Builds a [`Settings`] snapshot from current in-game settings.
     ///
     /// # Returns
-    /// `Some(RuntimeProfile)` if player state is available, `None` otherwise.
-    pub(super) fn build_runtime_profile(&self, app_state: &AppState) -> Option<RuntimeProfile> {
+    /// `Some(Settings)` if player state is available, `None` otherwise.
+    pub(super) fn build_settings_snapshot(&self, app_state: &AppState) -> Option<Settings> {
         let ps = app_state.player_state.as_ref()?;
         let pdata = ps.player_data();
 
-        Some(RuntimeProfile {
+        Some(Settings {
+            music_enabled: app_state.music_enabled,
+            display_mode: app_state.display_mode,
+            pixel_perfect_scaling: app_state.pixel_perfect_scaling,
+            vsync_enabled: app_state.vsync_enabled,
             shadows_enabled: pdata.are_shadows_enabled != 0,
             spell_effects_enabled: self.are_spell_effects_enabled,
             master_volume: self.master_volume,
@@ -59,16 +63,16 @@ impl GameScene {
         })
     }
 
-    /// Saves the current profile to disk for the active character.
+    /// Saves the current settings to disk for the active character.
     pub(super) fn save_active_profile(&self, app_state: &AppState) {
         let Some(identity) = self.active_profile_character.as_ref() else {
             return;
         };
-        let Some(runtime) = self.build_runtime_profile(app_state) else {
+        let Some(settings) = self.build_settings_snapshot(app_state) else {
             return;
         };
 
-        if let Err(err) = preferences::save_profile(identity, &runtime) {
+        if let Err(err) = preferences::save_settings(identity, &settings) {
             log::warn!(
                 "Failed to persist SDL profile for '{}': {}",
                 identity.name,
