@@ -2,8 +2,8 @@ use super::graphics::GraphicsZipCache;
 use crate::DataSource;
 use eframe::egui;
 use egui::Vec2;
+use mag_core::skills;
 use mag_core::string_operations::c_string_to_str;
-use mag_core::types::skilltab::get_skill_name;
 use mag_core::{ranks, traits};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -1254,7 +1254,7 @@ impl TemplateViewerApp {
 
                     for i in 0..skill.len() {
                         crate::centered_label(ui, format!("{}", i));
-                        ui.label(get_skill_name(i));
+                        ui.label(skills::get_skill_name(i));
                         for j in 0..3 {
                             let mut v = skill[i][j] as i32;
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
@@ -1833,7 +1833,7 @@ impl TemplateViewerApp {
 
                     for (i, _skill) in character.skill.iter().enumerate() {
                         crate::centered_label(ui, format!("{}", i));
-                        ui.label(get_skill_name(i));
+                        ui.label(skills::get_skill_name(i));
                         for j in 0..6 {
                             let mut v = skills[i][j] as i32;
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {

@@ -3691,7 +3691,7 @@ impl God {
 
         let val = val.clamp(0, 127);
 
-        let skill_name = core::types::skilltab::get_skill_name(n as usize);
+        let skill_name = core::skills::get_skill_name(n as usize);
 
         let target_name = gs.characters[co].get_name().to_string();
         let target = &mut gs.characters[co];

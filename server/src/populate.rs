@@ -10,11 +10,7 @@ use core::{
 use {core::constants::CharacterFlags, core::constants::ItemFlags};
 
 use crate::{
-    driver::{self, use_item},
-    effect::EffectManager,
-    game_state::GameState,
-    god::God,
-    helpers, player,
+    driver::use_item, effect::EffectManager, game_state::GameState, god::God, helpers, player,
 };
 
 /// Port of `init_lights` from `populate.cpp`
@@ -1008,7 +1004,7 @@ pub fn pop_skill(gs: &mut GameState) {
 
             if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
                 ch.skill[n][0] = temp_skill[0];
-                log::info!("added {} to {}", skills::skill_name(n), ch.get_name());
+                log::info!("added {} to {}", skills::get_skill_name(n), ch.get_name());
             }
 
             if temp_skill[2] < ch.skill[n][0] {
@@ -1019,7 +1015,7 @@ pub fn pop_skill(gs: &mut GameState) {
                 );
                 log::info!(
                     "reduced {} on {} from {} to {}, added {} exp",
-                    skills::skill_name(n),
+                    skills::get_skill_name(n),
                     ch.get_name(),
                     ch.skill[n][0],
                     temp_skill[2],

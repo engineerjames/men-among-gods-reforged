@@ -10,7 +10,6 @@ use core::constants::*;
 use core::skills;
 use core::string_operations::c_string_to_str;
 use core::traits;
-use core::types::skilltab;
 use core::types::Character;
 
 // Helper functions
@@ -698,7 +697,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                 );
             }
 
-            let skill_name = skilltab::get_skill_name(skill_nr);
+            let skill_name = skills::get_skill_name(skill_nr);
             gs.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
 
             if gs.characters[co].skill[skill_nr][0] != 0 {

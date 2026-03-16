@@ -1891,8 +1891,6 @@ pub fn skill_warcry(gs: &mut GameState, cn: usize) {
 }
 
 pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
-    let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
-
     // Name
     let name = gs.items[in_].name;
     gs.do_character_log(
@@ -1916,7 +1914,13 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
         gs.do_character_log(
             cn,
             FontColor::Green,
-            &format!("{:<12.12} {:+4} {:+4} {:3}\n", at_name[n], a0, a1, a2),
+            &format!(
+                "{:<12.12} {:+4} {:+4} {:3}\n",
+                skills::attribute_name(n),
+                a0,
+                a1,
+                a2
+            ),
         );
     }
 
@@ -1970,7 +1974,7 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
         if s0 == 0 && s1 == 0 && s2 == 0 {
             continue;
         }
-        let skill_label = skills::skill_name(n);
+        let skill_label = skills::get_skill_name(n);
         gs.do_character_log(
             cn,
             FontColor::Green,
@@ -2023,8 +2027,6 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
 }
 
 pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
-    let at_name = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
-
     // Header
     let name_bytes = gs.characters[co].name;
     gs.do_character_log(
@@ -2076,8 +2078,8 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
             let s1_5 = gs.characters[co].skill[n1 as usize][5];
             let s2_0 = gs.characters[co].skill[n2 as usize][0];
             let s2_5 = gs.characters[co].skill[n2 as usize][5];
-            let name1 = skills::skill_name(n1 as usize);
-            let name2 = skills::skill_name(n2 as usize);
+            let name1 = skills::get_skill_name(n1 as usize);
+            let name2 = skills::get_skill_name(n2 as usize);
             gs.do_character_log(
                 cn,
                 FontColor::Green,
@@ -2094,7 +2096,7 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
     if n1 != -1 {
         let s1_0 = gs.characters[co].skill[n1 as usize][0];
         let s1_5 = gs.characters[co].skill[n1 as usize][5];
-        let name1 = skills::skill_name(n1 as usize);
+        let name1 = skills::get_skill_name(n1 as usize);
         gs.do_character_log(
             cn,
             FontColor::Green,
@@ -2112,7 +2114,12 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
         FontColor::Green,
         &format!(
             "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
-            at_name[0], a0_0, a0_5, at_name[1], a1_0, a1_5
+            skills::attribute_name(0),
+            a0_0,
+            a0_5,
+            skills::attribute_name(1),
+            a1_0,
+            a1_5
         ),
     );
     let a2_0 = gs.characters[co].attrib[2][0];
@@ -2124,7 +2131,12 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
         FontColor::Green,
         &format!(
             "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
-            at_name[2], a2_0, a2_5, at_name[3], a3_0, a3_5
+            skills::attribute_name(2),
+            a2_0,
+            a2_5,
+            skills::attribute_name(3),
+            a3_0,
+            a3_5
         ),
     );
     let a4_0 = gs.characters[co].attrib[4][0];
@@ -2132,7 +2144,12 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
     gs.do_character_log(
         cn,
         FontColor::Green,
-        &format!("{:<12.12} {:3}/{:3}\n", at_name[4], a4_0, a4_5),
+        &format!(
+            "{:<12.12} {:3}/{:3}\n",
+            skills::attribute_name(4),
+            a4_0,
+            a4_5
+        ),
     );
 
     gs.do_character_log(cn, FontColor::Green, " \n");

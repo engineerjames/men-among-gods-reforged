@@ -11,7 +11,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::types::skilltab::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
+use mag_core::skills::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
 use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;

@@ -1,5 +1,4 @@
 use crate::area;
-use crate::core::types::skilltab;
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
@@ -1155,7 +1154,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     if current_val != 0 {
         if teaches_only {
-            let name = skilltab::get_skill_name(skill_nr);
+            let name = skills::get_skill_name(skill_nr);
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1165,7 +1164,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         }
 
         if current_val >= max_val {
-            let name = skilltab::get_skill_name(skill_nr);
+            let name = skills::get_skill_name(skill_nr);
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1174,7 +1173,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             return false;
         }
 
-        let name = skilltab::get_skill_name(skill_nr);
+        let name = skills::get_skill_name(skill_nr);
         gs.do_character_log(
             cn,
             core::types::FontColor::Green,
@@ -1194,7 +1193,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             pts
         );
     } else if max_val == 0 {
-        let name = skilltab::get_skill_name(skill_nr);
+        let name = skills::get_skill_name(skill_nr);
         gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -1203,7 +1202,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     } else {
         gs.characters[cn].skill[skill_nr][0] = 1;
-        let name = skilltab::get_skill_name(skill_nr);
+        let name = skills::get_skill_name(skill_nr);
         gs.do_character_log(
             cn,
             core::types::FontColor::Green,

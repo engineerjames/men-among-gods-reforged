@@ -1,11 +1,10 @@
 use core::constants::{
     CharacterFlags, ItemFlags, MAXCHARS, MAX_SPEEDTAB_SPEED_INDEX, MIN_SPEEDTAB_INDEX,
 };
-use core::ranks::{self, TOTAL_RANKS};
+use core::ranks;
 use core::types::FontColor;
 use core::{skills, traits};
 
-use crate::core::types::skilltab;
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
@@ -309,8 +308,8 @@ impl GameState {
                 + self.characters[cn].skill[z][1] as i32
                 + skill_bonus[z];
 
-            // Add attribute bonuses using the proper skill->attribute mapping from `skilltab`
-            let attrs = skilltab::get_skill_attribs(z);
+            // Add attribute bonuses using the proper skill->attribute mapping from `skills`
+            let attrs = skills::get_skill_attribs(z);
             let attrib_contribution = (self.characters[cn].attrib[attrs[0]][5] as i32
                 + self.characters[cn].attrib[attrs[1]][5] as i32
                 + self.characters[cn].attrib[attrs[2]][5] as i32)
