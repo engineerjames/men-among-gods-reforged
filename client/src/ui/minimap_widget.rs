@@ -199,6 +199,7 @@ impl MinimapWidget {
     }
 
     /// Returns `true` if `(px, py)` lands inside the map panel rectangle.
+    #[allow(dead_code)]
     fn panel_contains(&self, px: i32, py: i32) -> bool {
         px >= self.panel_x
             && py >= self.panel_y
@@ -247,7 +248,7 @@ impl Widget for MinimapWidget {
         EventResponse::Ignored
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // Always draw the toggle button.
         self.button.render(ctx)?;
 

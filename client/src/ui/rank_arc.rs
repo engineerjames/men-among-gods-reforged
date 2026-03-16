@@ -160,7 +160,7 @@ impl Widget for RankArc {
         EventResponse::Ignored
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         // Full semicircle spans from π (left) to 0 (right) upward.
         // In our convention: angle_start = 0, angle_end = π  (we draw counter-clockwise).
         // Progress fills left-to-right: filled = [0, progress * π],

@@ -434,7 +434,7 @@ impl Widget for InventoryPanel {
         std::mem::take(&mut self.actions)
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         if !self.visible {
             return Ok(());
         }

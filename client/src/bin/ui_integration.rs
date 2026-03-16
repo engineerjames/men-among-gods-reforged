@@ -115,7 +115,7 @@ fn main() -> Result<(), String> {
     let mut event_pump = sdl_context.event_pump()?;
     let texture_creator = canvas.texture_creator();
 
-    let mut gfx = GraphicsCache::new(filepaths::get_gfx_zipfile(), texture_creator);
+    let mut gfx = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
 
     // --- Instantiate every widget ----------------------------------------
 

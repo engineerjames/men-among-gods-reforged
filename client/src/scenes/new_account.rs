@@ -3,13 +3,19 @@ use std::{
     time::Duration,
 };
 
-use egui_sdl2::egui::{self, Align2, Vec2};
-use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
+use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
     account_api, cert_trust,
     scenes::scene::{Scene, SceneType},
     state::AppState,
+    ui::{
+        self,
+        cert_dialog::{CertDialog, CertDialogAction},
+        new_account_form::{NewAccountForm, NewAccountFormAction},
+        widget::{KeyModifiers, Widget},
+        RenderContext,
+    },
 };
 
 /// Scene that presents the new-account registration form.
@@ -18,28 +24,33 @@ use crate::{
 /// on a background thread via the REST API. On success, transitions
 /// back to `SceneType::Login`.
 pub struct NewAccountScene {
-    email: String,
-    username: String,
-    password: String,
+    /// The account registration form widget.
+    form: NewAccountForm,
+    /// Certificate-mismatch dialog (shown when server cert changes).
+    cert_dialog: Option<CertDialog>,
+    /// Queued scene transition from widget actions.
+    pending_scene: Option<SceneType>,
+
     is_submitting: bool,
     api_result_rx: Option<Receiver<Result<(), String>>>,
-    error_message: Option<String>,
-    certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
     account_thread: Option<std::thread::JoinHandle<()>>,
+
+    mouse_x: i32,
+    mouse_y: i32,
 }
 
 impl NewAccountScene {
     /// Creates a new `NewAccountScene` with empty form fields.
     pub fn new() -> Self {
         NewAccountScene {
-            email: String::new(),
-            username: String::new(),
-            password: String::new(),
+            form: NewAccountForm::new(),
+            cert_dialog: None,
+            pending_scene: None,
             is_submitting: false,
             api_result_rx: None,
-            error_message: None,
-            certificate_mismatch: None,
             account_thread: None,
+            mouse_x: 0,
+            mouse_y: 0,
         }
     }
 
@@ -86,14 +97,15 @@ impl NewAccountScene {
     fn begin_account_creation_request(&mut self, app_state: &AppState) {
         let (sender, receiver) = mpsc::channel::<Result<(), String>>();
 
-        self.error_message = None;
+        self.form.set_error(None);
         self.is_submitting = true;
+        self.form.set_submitting(true);
         self.api_result_rx = Some(receiver);
 
         let base_url = app_state.api.base_url.clone();
-        let email = self.email.clone();
-        let username = self.username.clone();
-        let password = self.password.clone();
+        let email = self.form.email().to_owned();
+        let username = self.form.username().to_owned();
+        let password = self.form.password().to_owned();
 
         self.account_thread = Some(std::thread::spawn(move || {
             let result = Self::create_account(&base_url, &email, &username, &password);
@@ -105,11 +117,90 @@ impl NewAccountScene {
 }
 
 impl Scene for NewAccountScene {
-    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
-        None
+    fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
+        if let Event::MouseMotion { x, y, .. } = event {
+            self.mouse_x = *x;
+            self.mouse_y = *y;
+        }
+
+        let modifiers =
+            KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
+
+        if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
+            // Certificate dialog blocks all input to the form behind it.
+            if self.cert_dialog.is_some() {
+                let dialog = self.cert_dialog.as_mut().unwrap();
+                dialog.handle_event(&ui_event);
+                let actions = dialog.take_cert_actions();
+
+                let mut accept_data: Option<(String, String)> = None;
+                let mut reject = false;
+
+                for action in actions {
+                    match action {
+                        CertDialogAction::Accept => {
+                            let d = self.cert_dialog.as_ref().unwrap();
+                            accept_data = Some((d.host.clone(), d.received_fp.clone()));
+                        }
+                        CertDialogAction::Reject => {
+                            reject = true;
+                        }
+                    }
+                }
+
+                if let Some((host, fp)) = accept_data {
+                    self.cert_dialog = None;
+                    match cert_trust::trust_fingerprint(&host, &fp) {
+                        Ok(()) => {
+                            self.begin_account_creation_request(app_state);
+                        }
+                        Err(err) => {
+                            self.form
+                                .set_error(Some(format!("Failed to update known hosts: {err}")));
+                        }
+                    }
+                }
+
+                if reject {
+                    self.cert_dialog = None;
+                }
+
+                return self.pending_scene.take();
+            }
+
+            // Forward to form.
+            self.form.handle_event(&ui_event);
+
+            // Process form actions.
+            for action in self.form.take_actions() {
+                match action {
+                    NewAccountFormAction::Create {
+                        email,
+                        username,
+                        password: _,
+                    } => {
+                        log::info!(
+                            "Create new account clicked with email={}, username={}",
+                            email,
+                            username
+                        );
+                        self.begin_account_creation_request(app_state);
+                    }
+                    NewAccountFormAction::Cancel => {
+                        log::info!("Cancel clicked");
+                        self.pending_scene = Some(SceneType::Login);
+                    }
+                }
+            }
+        }
+
+        self.pending_scene.take()
     }
 
-    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
+        app_state.panning_background.update(dt);
+        self.form.update(dt);
+
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {
                 match receiver.try_recv() {
@@ -125,15 +216,20 @@ impl Scene for NewAccountScene {
 
             if let Some(result) = result {
                 self.is_submitting = false;
+                self.form.set_submitting(false);
                 self.api_result_rx = None;
 
                 match result {
                     Ok(()) => return Some(SceneType::Login),
                     Err(error) => {
                         if let Some(mismatch) = cert_trust::take_last_fingerprint_mismatch() {
-                            self.certificate_mismatch = Some(mismatch);
+                            self.cert_dialog = Some(CertDialog::new(
+                                &mismatch.host,
+                                &mismatch.expected_fingerprint,
+                                &mismatch.received_fingerprint,
+                            ));
                         }
-                        self.error_message = Some(error);
+                        self.form.set_error(Some(error));
                     }
                 }
             }
@@ -144,142 +240,26 @@ impl Scene for NewAccountScene {
 
     fn render_world(
         &mut self,
-        _app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
-        canvas.set_draw_color(Color::RGB(20, 20, 28));
-        canvas.clear();
+        let AppState {
+            ref mut panning_background,
+            ref mut gfx_cache,
+            ..
+        } = app_state;
+        let mut ctx = RenderContext {
+            canvas,
+            gfx: gfx_cache,
+        };
+
+        panning_background.render(&mut ctx)?;
+        self.form.render(&mut ctx)?;
+
+        if let Some(ref mut dialog) = self.cert_dialog {
+            dialog.render(&mut ctx)?;
+        }
+
         Ok(())
-    }
-
-    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
-        let mut next = None;
-
-        egui::Window::new("Men Among Gods - Reforged")
-            .default_height(430.0)
-            .default_width(430.0)
-            .anchor(Align2::CENTER_CENTER, Vec2::new(0.0, 0.0))
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                let (create_clicked, cancel_clicked) = ui
-                    .add_enabled_ui(!self.is_submitting, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                            ui.heading("Create Account");
-                        });
-                        ui.add_space(10.0);
-
-                        ui.label("E-mail");
-                        ui.add(egui::TextEdit::singleline(&mut self.email).desired_width(260.0));
-                        ui.add_space(10.0);
-
-                        ui.label("Username");
-                        ui.add(egui::TextEdit::singleline(&mut self.username).desired_width(260.0));
-                        ui.add_space(8.0);
-
-                        ui.label("Password");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.password)
-                                .password(true)
-                                .desired_width(260.0),
-                        );
-                        ui.add_space(12.0);
-
-                        ui.horizontal(|ui| {
-                            let create_clicked = ui
-                                .add(egui::Button::new("Create").min_size([180.0, 32.0].into()))
-                                .clicked();
-
-                            let cancel_clicked = ui
-                                .add(egui::Button::new("Cancel").min_size([180.0, 32.0].into()))
-                                .clicked();
-
-                            (create_clicked, cancel_clicked)
-                        })
-                        .inner
-                    })
-                    .inner;
-
-                if self.is_submitting {
-                    ui.add_space(8.0);
-                    ui.label("Creating account...");
-
-                    // Clear error message if the user re-submits while an error is displayed
-                    if self.error_message.is_some() {
-                        self.error_message = None;
-                    }
-                }
-
-                if let Some(error_message) = &self.error_message {
-                    ui.add_space(8.0);
-                    ui.colored_label(egui::Color32::RED, error_message);
-                }
-
-                if cancel_clicked {
-                    log::info!("Cancel clicked");
-                    next = Some(SceneType::Login);
-                }
-
-                if create_clicked {
-                    log::info!(
-                        "Create new account clicked with email={}, username={}",
-                        self.email,
-                        self.username
-                    );
-
-                    self.begin_account_creation_request(app_state);
-                }
-            });
-
-        let mut accept_new_cert = false;
-        let mut dismiss_cert_dialog = false;
-
-        if let Some(mismatch) = self.certificate_mismatch.as_ref() {
-            egui::Window::new("Server Certificate Changed")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(Align2::CENTER_CENTER, Vec2::new(0.0, 0.0))
-                .show(ctx, |ui| {
-                    ui.label("The server certificate fingerprint changed.");
-                    ui.colored_label(
-                        egui::Color32::YELLOW,
-                        "This may indicate a man-in-the-middle attack unless you intentionally rotated certificates.",
-                    );
-                    ui.add_space(8.0);
-                    ui.label(format!("Host: {}", mismatch.host));
-                    ui.label("Previously trusted fingerprint:");
-                    ui.monospace(&mismatch.expected_fingerprint);
-                    ui.add_space(4.0);
-                    ui.label("New fingerprint presented by server:");
-                    ui.monospace(&mismatch.received_fingerprint);
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Accept New Certificate").clicked() {
-                            accept_new_cert = true;
-                        }
-                        if ui.button("Reject").clicked() {
-                            dismiss_cert_dialog = true;
-                        }
-                    });
-                });
-        }
-
-        if accept_new_cert {
-            if let Some(mismatch) = self.certificate_mismatch.take() {
-                match cert_trust::trust_fingerprint(&mismatch.host, &mismatch.received_fingerprint)
-                {
-                    Ok(()) => {
-                        self.begin_account_creation_request(app_state);
-                    }
-                    Err(err) => {
-                        self.error_message = Some(format!("Failed to update known hosts: {err}"));
-                    }
-                }
-            }
-        } else if dismiss_cert_dialog {
-            self.certificate_mismatch = None;
-        }
-
-        next
     }
 }

@@ -206,7 +206,7 @@ impl Widget for ModeButton {
     /// # Returns
     ///
     /// `Ok(())` on success, or an SDL2 error string.
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         if self.alpha == 0 {
             return Ok(());
         }

@@ -24,7 +24,7 @@ fn exe_directory() -> PathBuf {
 ///
 /// # Returns
 /// * `PathBuf` pointing to `assets/`.
-fn get_asset_directory() -> PathBuf {
+pub fn get_asset_directory() -> PathBuf {
     if std::env::var("CARGO_MANIFEST_DIR").is_ok() {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets")
     } else {

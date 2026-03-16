@@ -14,7 +14,7 @@ impl GameScene {
     /// * `identity` – identifies which character's profile to load from disk.
     pub(super) fn apply_loaded_profile(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         identity: &CharacterIdentity,
     ) {
         if let Some(profile) = preferences::load_profile(identity) {

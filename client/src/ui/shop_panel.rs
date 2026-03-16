@@ -289,7 +289,7 @@ impl Widget for ShopPanel {
     /// # Returns
     ///
     /// `Ok(())` on success, or an SDL2 error string.
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         let data = match self.data.as_ref() {
             Some(d) if d.visible => d,
             _ => return Ok(()),

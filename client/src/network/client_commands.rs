@@ -287,7 +287,6 @@ impl ClientCommand {
     }
 
     /// Creates a graceful disconnect command.
-    #[allow(dead_code)]
     pub fn new_exit() -> Self {
         let cmd = Self::cmd_u32(ClientCommandType::CmdExit, 0);
         cmd

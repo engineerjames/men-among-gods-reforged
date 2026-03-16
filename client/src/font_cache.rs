@@ -33,7 +33,7 @@ pub fn glyph_index(ch: char) -> i32 {
 /// Each character advances `BITMAP_GLYPH_ADVANCE` pixels horizontally.
 pub fn draw_text(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
     x: i32,
@@ -47,7 +47,7 @@ pub fn draw_text(
 /// This uses SDL texture color modulation and restores the texture state before returning.
 pub fn draw_text_tinted(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
     x: i32,
@@ -77,7 +77,7 @@ pub fn draw_text_tinted(
 /// `Ok(())` on success, or an SDL2 error string.
 pub fn draw_text_faded(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
     x: i32,
@@ -89,7 +89,7 @@ pub fn draw_text_faded(
 
 fn draw_text_impl(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
     x: i32,
@@ -153,7 +153,7 @@ fn draw_text_impl(
 /// Draws `text` centered horizontally around `center_x`.
 pub fn draw_text_centered(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
     center_x: i32,
@@ -181,7 +181,7 @@ pub fn draw_text_centered(
 pub fn draw_text_centered_tinted(
     // TODO: This is really stupidly redundant... but just leave it for now.
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    gfx_cache: &mut crate::gfx_cache::GraphicsCache,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
     font: usize,
     text: &str,
     center_x: i32,

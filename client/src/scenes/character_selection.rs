@@ -3,15 +3,21 @@ use std::{
     time::Duration,
 };
 
-use egui_sdl2::egui;
 use mag_core::{traits, types::CharacterSummary};
-use sdl2::pixels::Color;
-use sdl2::{event::Event, rect::Rect, render::Canvas, video::Window};
+use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
     account_api,
     scenes::scene::{Scene, SceneType},
     state::{AppState, GameLoginTarget},
+    ui::{
+        self,
+        character_selection_form::{CharacterSelectionForm, CharacterSelectionFormAction},
+        delete_character_dialog::{DeleteCharacterDialog, DeleteCharacterDialogAction},
+        scrollable_list::ListItem,
+        widget::{KeyModifiers, Widget},
+        RenderContext,
+    },
 };
 
 /// Scene that lists the player's characters and lets them pick one to enter the game.
@@ -24,10 +30,13 @@ pub struct CharacterSelectionScene {
     last_error: Option<String>,
     is_loading_characters: bool,
     characters: Vec<CharacterSummary>,
-    character_textures: Vec<Option<egui::TextureId>>,
     selected_character_id: Option<u64>,
-    show_delete_dialog: bool,
-    delete_input_name: String,
+
+    /// The selection form widget.
+    form: CharacterSelectionForm,
+    /// The delete confirmation dialog widget.
+    delete_dialog: DeleteCharacterDialog,
+
     deleting_character: bool,
 
     characters_rx: Option<std::sync::mpsc::Receiver<Result<Vec<CharacterSummary>, String>>>,
@@ -43,6 +52,10 @@ pub struct CharacterSelectionScene {
     pending_race: Option<i32>,
     pending_delete_character_id: Option<u64>,
     pending_delete_character_name: Option<String>,
+    pending_scene: Option<SceneType>,
+
+    mouse_x: i32,
+    mouse_y: i32,
 }
 
 impl CharacterSelectionScene {
@@ -53,12 +66,13 @@ impl CharacterSelectionScene {
             is_loading_characters: true,
 
             characters: Vec::new(),
-            character_textures: Vec::new(),
 
             selected_character_id: None,
-            show_delete_dialog: false,
-            delete_input_name: String::new(),
             deleting_character: false,
+
+            form: CharacterSelectionForm::new(),
+            delete_dialog: DeleteCharacterDialog::new(),
+
             characters_rx: None,
             characters_thread: None,
             login_rx: None,
@@ -69,6 +83,9 @@ impl CharacterSelectionScene {
             pending_race: None,
             pending_delete_character_id: None,
             pending_delete_character_name: None,
+            pending_scene: None,
+            mouse_x: 0,
+            mouse_y: 0,
         }
     }
 
@@ -117,7 +134,7 @@ impl CharacterSelectionScene {
 }
 
 impl Scene for CharacterSelectionScene {
-    fn on_enter(&mut self, app_state: &mut AppState) {
+    fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         Self::cleanup_finished_thread(&mut self.characters_thread, "character loading");
         Self::cleanup_finished_thread(&mut self.login_thread, "game login");
         Self::cleanup_finished_thread(&mut self.delete_thread, "character delete");
@@ -130,19 +147,22 @@ impl Scene for CharacterSelectionScene {
         self.last_error = None;
         self.is_loading_characters = true;
         self.characters.clear();
-        self.character_textures.clear();
         self.selected_character_id = None;
-        self.show_delete_dialog = false;
-        self.delete_input_name.clear();
         self.deleting_character = false;
         self.characters_rx = None;
         self.delete_rx = None;
         self.pending_delete_character_id = None;
         self.pending_delete_character_name = None;
+        self.delete_dialog.hide();
+        self.form
+            .set_status(Some("Loading characters...".to_string()));
+        self.form.set_error(None);
+        self.form.set_username(app_state.api.username.clone());
 
         let Some(token) = app_state.api.token.as_deref() else {
             self.is_loading_characters = false;
             self.last_error = Some("Missing account session token".to_string());
+            self.form.set_error(self.last_error.clone());
             return;
         };
 
@@ -158,7 +178,7 @@ impl Scene for CharacterSelectionScene {
         self.characters_rx = Some(rx);
     }
 
-    fn on_exit(&mut self, _app_state: &mut AppState) {
+    fn on_exit(&mut self, _app_state: &mut AppState<'_>) {
         self.characters_rx = None;
         self.login_rx = None;
         self.delete_rx = None;
@@ -168,20 +188,155 @@ impl Scene for CharacterSelectionScene {
         self.pending_race = None;
         self.pending_delete_character_id = None;
         self.pending_delete_character_name = None;
-        self.show_delete_dialog = false;
-        self.delete_input_name.clear();
+        self.delete_dialog.hide();
 
         Self::drop_or_join_thread(&mut self.characters_thread, "character loading");
         Self::drop_or_join_thread(&mut self.login_thread, "game login");
         Self::drop_or_join_thread(&mut self.delete_thread, "character delete");
     }
 
-    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
-        // Handle input events for character selection
-        None
+    fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
+        if let Event::MouseMotion { x, y, .. } = event {
+            self.mouse_x = *x;
+            self.mouse_y = *y;
+        }
+
+        let modifiers =
+            KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
+
+        if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
+            // Delete dialog is modal: blocks form input.
+            if self.delete_dialog.is_visible() {
+                self.delete_dialog.handle_event(&ui_event);
+
+                for action in self.delete_dialog.take_actions() {
+                    match action {
+                        DeleteCharacterDialogAction::Confirm { character_id } => {
+                            if Self::is_thread_running(&self.delete_thread) {
+                                self.form.set_error(Some(
+                                    "Character delete already in progress".to_string(),
+                                ));
+                                continue;
+                            }
+
+                            let Some(token) = app_state.api.token.as_deref() else {
+                                self.form
+                                    .set_error(Some("Missing account session token".to_string()));
+                                continue;
+                            };
+
+                            let base_url = app_state.api.base_url.clone();
+                            let token = token.to_string();
+                            let (tx, rx) = mpsc::channel();
+                            self.delete_thread = Some(std::thread::spawn(move || {
+                                let result =
+                                    account_api::delete_character(&base_url, &token, character_id);
+                                if let Err(err) = tx.send(result) {
+                                    log::error!("Failed to send delete result: {}", err);
+                                }
+                            }));
+
+                            self.delete_rx = Some(rx);
+                            self.deleting_character = true;
+                            self.delete_dialog.set_deleting(true);
+                            self.form.set_error(None);
+                        }
+                        DeleteCharacterDialogAction::Cancel => {
+                            self.delete_dialog.hide();
+                            self.pending_delete_character_id = None;
+                            self.pending_delete_character_name = None;
+                        }
+                    }
+                }
+
+                return self.pending_scene.take();
+            }
+
+            // Forward to form.
+            self.form.handle_event(&ui_event);
+
+            // Track selection changes.
+            self.selected_character_id = self.form.selected_character_id();
+
+            // Process form actions.
+            for action in self.form.take_actions() {
+                match action {
+                    CharacterSelectionFormAction::CreateNew => {
+                        self.last_error = None;
+                        self.pending_scene = Some(SceneType::CharacterCreation);
+                    }
+                    CharacterSelectionFormAction::ContinueToGame { character_id } => {
+                        if self.logging_in || Self::is_thread_running(&self.login_thread) {
+                            self.form
+                                .set_error(Some("Login already in progress".to_string()));
+                            continue;
+                        }
+
+                        let Some(token) = app_state.api.token.as_deref() else {
+                            self.form
+                                .set_error(Some("Missing account session token".to_string()));
+                            continue;
+                        };
+
+                        let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
+                        else {
+                            self.form
+                                .set_error(Some("Selected character not found".to_string()));
+                            continue;
+                        };
+
+                        let race_int = traits::get_race_integer(
+                            selected.sex == traits::Sex::Male,
+                            selected.class,
+                        );
+
+                        self.pending_race = Some(race_int);
+                        self.form.set_error(None);
+
+                        let base_url = app_state.api.base_url.clone();
+                        let token = token.to_string();
+                        let (tx, rx) = mpsc::channel();
+                        self.login_thread = Some(std::thread::spawn(move || {
+                            let result = account_api::create_game_login_ticket(
+                                &base_url,
+                                &token,
+                                character_id,
+                            );
+                            if let Err(err) = tx.send(result) {
+                                log::error!("Failed to send login result: {}", err);
+                            }
+                        }));
+
+                        self.login_rx = Some(rx);
+                        self.logging_in = true;
+                    }
+                    CharacterSelectionFormAction::DeleteCharacter {
+                        character_id,
+                        character_name,
+                    } => {
+                        self.pending_delete_character_id = Some(character_id);
+                        self.pending_delete_character_name = Some(character_name.clone());
+                        self.delete_dialog.show(character_id, &character_name);
+                        self.form.set_error(None);
+                    }
+                    CharacterSelectionFormAction::LogOut => {
+                        app_state.api.token = None;
+                        app_state.api.username = None;
+                        self.last_error = None;
+                        self.pending_scene = Some(SceneType::Login);
+                    }
+                }
+            }
+        }
+
+        self.pending_scene.take()
     }
 
-    fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
+        app_state.panning_background.update(dt);
+        self.form.update(dt);
+        self.delete_dialog.update(dt);
+
         Self::cleanup_finished_thread(&mut self.characters_thread, "character loading");
         Self::cleanup_finished_thread(&mut self.login_thread, "game login");
         Self::cleanup_finished_thread(&mut self.delete_thread, "character delete");
@@ -207,16 +362,41 @@ impl Scene for CharacterSelectionScene {
                     Ok(characters) => {
                         log::info!("Loaded {} characters", characters.len());
                         self.selected_character_id = characters.first().map(|c| c.id);
-                        self.character_textures = vec![None; characters.len()];
+
+                        let items: Vec<ListItem> = characters
+                            .iter()
+                            .map(|c| {
+                                let sprite_id =
+                                    Some(mag_core::traits::get_sprite_id_for_class_and_sex(
+                                        c.class, c.sex,
+                                    ));
+                                ListItem {
+                                    id: c.id,
+                                    label: format!("{} ({})", c.name, c.class.to_string()),
+                                    sprite_id,
+                                }
+                            })
+                            .collect();
+
+                        let names: Vec<(u64, String)> =
+                            characters.iter().map(|c| (c.id, c.name.clone())).collect();
+
+                        self.form.set_characters(items, names);
+                        if let Some(id) = self.selected_character_id {
+                            self.form.set_selected(Some(id));
+                        }
+                        self.form.set_status(None);
+
                         self.characters = characters;
                         self.last_error = None;
                     }
                     Err(error) => {
                         log::error!("Failed to load characters: {}", error);
                         self.characters.clear();
-                        self.character_textures.clear();
                         self.selected_character_id = None;
-                        self.last_error = Some(error);
+                        self.last_error = Some(error.clone());
+                        self.form.set_error(Some(error));
+                        self.form.set_status(None);
                     }
                 }
             }
@@ -243,13 +423,15 @@ impl Scene for CharacterSelectionScene {
                     Ok(ticket) => {
                         log::info!("Created game login ticket {}", ticket);
                         let Some(character_id) = self.selected_character_id else {
-                            self.last_error = Some("Select a character first".to_string());
+                            self.form
+                                .set_error(Some("Select a character first".to_string()));
                             return None;
                         };
 
                         let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
                         else {
-                            self.last_error = Some("Selected character not found".to_string());
+                            self.form
+                                .set_error(Some("Selected character not found".to_string()));
                             return None;
                         };
 
@@ -264,7 +446,8 @@ impl Scene for CharacterSelectionScene {
                     }
                     Err(error) => {
                         log::error!("Failed to create game login ticket: {}", error);
-                        self.last_error = Some(error);
+                        self.last_error = Some(error.clone());
+                        self.form.set_error(Some(error));
                     }
                 }
             }
@@ -296,27 +479,23 @@ impl Scene for CharacterSelectionScene {
                             .unwrap_or_else(|| "<unknown>".to_string());
 
                         if let Some(character_id) = deleted_character_id {
-                            if let Some(index) =
-                                self.characters.iter().position(|c| c.id == character_id)
-                            {
-                                self.characters.remove(index);
-                                if index < self.character_textures.len() {
-                                    self.character_textures.remove(index);
-                                }
-                            }
+                            self.characters.retain(|c| c.id != character_id);
+                            self.form.remove_character(character_id);
                         }
 
                         self.selected_character_id = self.characters.first().map(|c| c.id);
+                        self.form.set_selected(self.selected_character_id);
                         self.last_error = None;
-                        self.show_delete_dialog = false;
-                        self.delete_input_name.clear();
+                        self.delete_dialog.hide();
                         self.pending_delete_character_id = None;
                         self.pending_delete_character_name = None;
                         log::info!("Deleted character {}", deleted_character_name);
                     }
                     Err(error) => {
                         log::error!("Failed to delete character: {}", error);
-                        self.last_error = Some(error);
+                        self.last_error = Some(error.clone());
+                        self.form.set_error(Some(error));
+                        self.delete_dialog.hide();
                     }
                 }
             }
@@ -327,314 +506,25 @@ impl Scene for CharacterSelectionScene {
 
     fn render_world(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
-        canvas.set_draw_color(Color::RGB(20, 20, 28));
-        canvas.clear();
+        let AppState {
+            ref mut panning_background,
+            ref mut gfx_cache,
+            ..
+        } = app_state;
 
-        let Some(selected_character_id) = self.selected_character_id else {
-            return Ok(());
+        let mut render_ctx = RenderContext {
+            canvas,
+            gfx: gfx_cache,
         };
 
-        let Some(selected_character) = self
-            .characters
-            .iter()
-            .find(|character| character.id == selected_character_id)
-        else {
-            return Ok(());
-        };
+        panning_background.render(&mut render_ctx)?;
 
-        let sprite_id = mag_core::traits::get_sprite_id_for_class_and_sex(
-            selected_character.class,
-            selected_character.sex,
-        );
-        let texture = app_state.gfx_cache.get_texture(sprite_id);
-        let target_rect = Rect::new(400, 160, 160, 160);
-
-        if let Err(error) = canvas.copy(texture, None, target_rect) {
-            log::error!(
-                "Failed to render selected portrait for class {:?}, sex {:?} (sprite ID {}): {}",
-                selected_character.class,
-                selected_character.sex,
-                sprite_id,
-                error
-            );
-        }
+        self.form.render(&mut render_ctx)?;
+        self.delete_dialog.render(&mut render_ctx)?;
 
         Ok(())
-    }
-
-    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
-        let mut next_scene: Option<SceneType> = None;
-        let actions_disabled = self.show_delete_dialog;
-
-        egui::Window::new("Character Selection")
-            .default_height(800.0)
-            .default_width(600.0)
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.heading("Character selection");
-
-                if let Some(username) = app_state.api.username.as_deref() {
-                    ui.label(format!("Logged in as: {username}"));
-                } else {
-                    ui.label("No account session available");
-                }
-
-                if let Some(err) = self.last_error.as_deref() {
-                    ui.colored_label(egui::Color32::LIGHT_RED, err);
-                }
-
-                ui.add_space(12.0);
-                ui.label("Characters");
-
-                if self.is_loading_characters {
-                    ui.label("Loading characters...");
-                } else if self.characters.is_empty() {
-                    ui.label("No characters found");
-                } else {
-                    egui::ScrollArea::vertical()
-                        .max_height(180.0)
-                        .show(ui, |ui| {
-                            let mut character_selected_this_frame = self.selected_character_id;
-
-                            for (index, character) in self.characters.iter().enumerate() {
-                                let texture_id =
-                                    self.character_textures.get(index).copied().flatten();
-
-                                let label =
-                                    format!("{} ({})", character.name, character.class.to_string());
-                                let selected = character_selected_this_frame == Some(character.id);
-
-                                ui.horizontal(|ui| {
-                                    if let Some(texture_id) = texture_id {
-                                        let size = egui::vec2(48.0, 48.0);
-                                        let textured =
-                                            egui::load::SizedTexture::new(texture_id, size);
-                                        let img_resp = ui.add_enabled(
-                                            !actions_disabled,
-                                            egui::Image::new(textured),
-                                        );
-                                        if img_resp.clicked() {
-                                            log::info!("Selected character: {}", character.name);
-                                            character_selected_this_frame = Some(character.id);
-                                        }
-                                    }
-
-                                    let resp = ui.add_enabled(
-                                        !actions_disabled,
-                                        egui::Button::selectable(selected, &label),
-                                    );
-                                    if resp.clicked() {
-                                        log::info!("Selected character: {}", character.name);
-                                        character_selected_this_frame = Some(character.id);
-                                    }
-                                });
-                            }
-
-                            self.selected_character_id = character_selected_this_frame;
-                        });
-                }
-
-                ui.add_space(12.0);
-
-                if ui
-                    .add_enabled(
-                        !actions_disabled,
-                        egui::Button::new("Create new character").min_size([200.0, 32.0].into()),
-                    )
-                    .clicked()
-                {
-                    self.last_error = None;
-                    next_scene = Some(SceneType::CharacterCreation);
-                    return;
-                }
-
-                if ui
-                    .add_enabled(
-                        !actions_disabled,
-                        egui::Button::new("Continue to game login").min_size([200.0, 32.0].into()),
-                    )
-                    .clicked()
-                {
-                    if self.logging_in || Self::is_thread_running(&self.login_thread) {
-                        self.last_error = Some("Login already in progress".to_string());
-                    } else {
-                        let Some(token) = app_state.api.token.as_deref() else {
-                            self.last_error = Some("Missing account session token".to_string());
-                            return;
-                        };
-
-                        let Some(character_id) = self.selected_character_id else {
-                            self.last_error = Some("Select a character first".to_string());
-                            return;
-                        };
-
-                        let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
-                        else {
-                            self.last_error = Some("Selected character not found".to_string());
-                            return;
-                        };
-
-                        let race_int = traits::get_race_integer(
-                            selected.sex == traits::Sex::Male,
-                            selected.class,
-                        );
-
-                        self.pending_race = Some(race_int);
-
-                        self.last_error = None;
-
-                        let base_url = app_state.api.base_url.clone();
-                        let token = token.to_string();
-                        let (tx, rx) = mpsc::channel();
-                        self.login_thread = Some(std::thread::spawn(move || {
-                            let result = account_api::create_game_login_ticket(
-                                &base_url,
-                                &token,
-                                character_id,
-                            );
-                            if let Err(err) = tx.send(result) {
-                                log::error!("Failed to send login result: {}", err);
-                            }
-                        }));
-
-                        self.login_rx = Some(rx);
-                        self.logging_in = true;
-                    }
-                }
-
-                let can_delete_character = self.selected_character_id.is_some();
-                let delete_button = egui::Button::new(
-                    egui::RichText::new("Delete character").color(egui::Color32::LIGHT_RED),
-                )
-                .min_size([200.0, 32.0].into());
-
-                if ui
-                    .add_enabled(
-                        !actions_disabled && can_delete_character && !self.deleting_character,
-                        delete_button,
-                    )
-                    .clicked()
-                {
-                    let Some(character_id) = self.selected_character_id else {
-                        self.last_error = Some("Select a character first".to_string());
-                        return;
-                    };
-
-                    let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
-                    else {
-                        self.last_error = Some("Selected character not found".to_string());
-                        return;
-                    };
-
-                    self.pending_delete_character_id = Some(character_id);
-                    self.pending_delete_character_name = Some(selected.name.clone());
-                    self.delete_input_name.clear();
-                    self.show_delete_dialog = true;
-                    self.last_error = None;
-                }
-
-                if ui
-                    .add_enabled(
-                        !actions_disabled,
-                        egui::Button::new("Log out").min_size([200.0, 32.0].into()),
-                    )
-                    .clicked()
-                {
-                    app_state.api.token = None;
-                    app_state.api.username = None;
-                    self.last_error = None;
-                    next_scene = Some(SceneType::Login);
-                }
-            });
-
-        if self.show_delete_dialog {
-            egui::Window::new("Delete character")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-                .show(ctx, |ui| {
-                    let expected_name = self
-                        .pending_delete_character_name
-                        .as_deref()
-                        .unwrap_or_default();
-
-                    ui.label("Type the character name to confirm deletion:");
-                    ui.colored_label(egui::Color32::LIGHT_RED, expected_name);
-                    ui.add_space(8.0);
-                    ui.text_edit_singleline(&mut self.delete_input_name);
-
-                    let matches_name = self.delete_input_name == expected_name;
-                    ui.add_space(8.0);
-                    ui.horizontal(|ui| {
-                        let confirm_clicked = ui
-                            .add_enabled(
-                                !self.deleting_character && matches_name,
-                                egui::Button::new(
-                                    egui::RichText::new("Confirm delete")
-                                        .color(egui::Color32::LIGHT_RED),
-                                ),
-                            )
-                            .clicked();
-
-                        if confirm_clicked {
-                            if Self::is_thread_running(&self.delete_thread) {
-                                self.last_error =
-                                    Some("Character delete already in progress".to_string());
-                                return;
-                            }
-
-                            let Some(token) = app_state.api.token.as_deref() else {
-                                self.last_error = Some("Missing account session token".to_string());
-                                return;
-                            };
-
-                            let Some(character_id) = self.pending_delete_character_id else {
-                                self.last_error =
-                                    Some("No character selected for deletion".to_string());
-                                return;
-                            };
-
-                            let base_url = app_state.api.base_url.clone();
-                            let token = token.to_string();
-                            let (tx, rx) = mpsc::channel();
-                            self.delete_thread = Some(std::thread::spawn(move || {
-                                let result =
-                                    account_api::delete_character(&base_url, &token, character_id);
-                                if let Err(err) = tx.send(result) {
-                                    log::error!("Failed to send delete result: {}", err);
-                                }
-                            }));
-
-                            self.delete_rx = Some(rx);
-                            self.deleting_character = true;
-                            self.last_error = None;
-                        }
-
-                        if ui
-                            .add_enabled(!self.deleting_character, egui::Button::new("Cancel"))
-                            .clicked()
-                        {
-                            self.show_delete_dialog = false;
-                            self.delete_input_name.clear();
-                            self.pending_delete_character_id = None;
-                            self.pending_delete_character_name = None;
-                        }
-                    });
-
-                    if !matches_name {
-                        ui.small("Name must match exactly to enable deletion.");
-                    }
-
-                    if self.deleting_character {
-                        ui.small("Deleting character...");
-                    }
-                });
-        }
-
-        next_scene
     }
 }

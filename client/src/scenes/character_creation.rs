@@ -3,17 +3,19 @@ use std::{
     time::Duration,
 };
 
-use egui_sdl2::egui::{self, Pos2};
-use mag_core::{
-    names,
-    types::{Class, Sex},
-};
-use sdl2::{event::Event, pixels::Color, rect::Rect, render::Canvas, video::Window};
+use mag_core::names;
+use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
     account_api,
     scenes::scene::{Scene, SceneType},
     state::AppState,
+    ui::{
+        self,
+        character_creation_form::{CharacterCreationForm, CharacterCreationFormAction},
+        widget::{KeyModifiers, Widget},
+        RenderContext,
+    },
 };
 
 /// Scene for creating a new in-game character.
@@ -23,13 +25,13 @@ use crate::{
 /// scene transitions to `CharacterSelection`.
 pub struct CharacterCreationScene {
     error: Option<String>,
-    name: String,
-    description: String,
-    selected_class: Class,
-    selected_sex: Sex,
+    form: CharacterCreationForm,
     is_busy: bool,
     account_rx: Option<mpsc::Receiver<Result<account_api::CharacterSummary, String>>>,
     account_thread: Option<std::thread::JoinHandle<()>>,
+    pending_scene: Option<SceneType>,
+    mouse_x: i32,
+    mouse_y: i32,
 }
 
 impl CharacterCreationScene {
@@ -37,24 +39,110 @@ impl CharacterCreationScene {
     pub fn new() -> Self {
         Self {
             error: None,
-            name: String::new(),
-            description: String::new(),
-            selected_class: Class::Mercenary,
-            selected_sex: Sex::Male,
+            form: CharacterCreationForm::new(),
             is_busy: false,
             account_rx: None,
             account_thread: None,
+            pending_scene: None,
+            mouse_x: 0,
+            mouse_y: 0,
         }
     }
 }
 
 impl Scene for CharacterCreationScene {
-    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
-        // Handle input events for character creation
-        None
+    fn handle_event(&mut self, _app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
+        if let Event::MouseMotion { x, y, .. } = event {
+            self.mouse_x = *x;
+            self.mouse_y = *y;
+        }
+
+        let modifiers =
+            KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
+
+        if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
+            self.form.handle_event(&ui_event);
+
+            for action in self.form.take_actions() {
+                match action {
+                    CharacterCreationFormAction::Create {
+                        name,
+                        description: _,
+                        class: _,
+                        sex: _,
+                    } => {
+                        let name = name.trim().to_string();
+
+                        if name.is_empty() {
+                            self.form
+                                .set_error(Some("Character name is required".to_string()));
+                            continue;
+                        }
+
+                        self.is_busy = true;
+                        self.form.set_busy(true);
+                        self.form.set_error(None);
+                        self.error = None;
+                        // Thread spawn deferred to update() which has app_state.
+                    }
+                    CharacterCreationFormAction::RandomName => {
+                        let new_name = names::randomly_generate_name();
+                        self.form.set_name(&new_name);
+                    }
+                    CharacterCreationFormAction::Back => {
+                        self.error = None;
+                        self.pending_scene = Some(SceneType::CharacterSelection);
+                    }
+                }
+            }
+        }
+
+        self.pending_scene.take()
     }
 
-    fn update(&mut self, _app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
+        app_state.panning_background.update(dt);
+        self.form.update(dt);
+
+        // If the form submitted a create action and we haven't started the thread yet
+        if self.is_busy && self.account_rx.is_none() && self.account_thread.is_none() {
+            let Some(token) = app_state.api.token.as_deref() else {
+                self.form
+                    .set_error(Some("Missing account session token".to_string()));
+                self.is_busy = false;
+                self.form.set_busy(false);
+                return None;
+            };
+
+            let base_url = app_state.api.base_url.clone();
+            let token = token.to_string();
+            let name = self.form.name_input_value().to_owned();
+            let description = {
+                let d = self.form.description_input_value().trim().to_string();
+                if d.is_empty() {
+                    None
+                } else {
+                    Some(d)
+                }
+            };
+            let sex = self.form.selected_sex();
+            let race = self.form.selected_class();
+
+            let (tx, rx) = mpsc::channel();
+            self.account_thread = Some(std::thread::spawn(move || {
+                let result = account_api::create_character(
+                    &base_url,
+                    &token,
+                    &name,
+                    description.as_deref(),
+                    sex,
+                    race,
+                );
+                let _ = tx.send(result);
+            }));
+            self.account_rx = Some(rx);
+        }
+
         if !self.is_busy {
             return None;
         }
@@ -76,6 +164,7 @@ impl Scene for CharacterCreationScene {
         };
 
         self.is_busy = false;
+        self.form.set_busy(false);
         self.account_rx = None;
 
         if let Some(thread) = self.account_thread.take() {
@@ -91,198 +180,35 @@ impl Scene for CharacterCreationScene {
                 Some(SceneType::CharacterSelection)
             }
             Err(err) => {
-                self.error = Some(err);
+                self.form.set_error(Some(err));
                 None
             }
         }
     }
 
-    fn on_enter(&mut self, _app_state: &mut AppState) {}
+    fn on_enter(&mut self, _app_state: &mut AppState<'_>) {}
 
     fn render_world(
         &mut self,
-        app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
-        canvas.set_draw_color(Color::RGB(20, 20, 28));
-        canvas.clear();
+        // Render panning background.
+        let AppState {
+            ref mut panning_background,
+            ref mut gfx_cache,
+            ..
+        } = app_state;
+        let mut ctx = RenderContext {
+            canvas,
+            gfx: gfx_cache,
+        };
 
-        let portrait_slots = [
-            (Class::Harakim, Rect::new(400, 50, 160, 160)),
-            (Class::Templar, Rect::new(400, 220, 160, 160)),
-            (Class::Mercenary, Rect::new(400, 390, 160, 160)),
-        ];
+        panning_background.render(&mut ctx)?;
 
-        for (class, target_rect) in portrait_slots {
-            let sprite_id =
-                mag_core::traits::get_sprite_id_for_class_and_sex(class, self.selected_sex);
-            let texture = app_state.gfx_cache.get_texture(sprite_id);
-            if let Err(error) = canvas.copy(texture, None, target_rect) {
-                log::error!(
-                    "Failed to render portrait for class {:?}, sex {:?} (sprite ID {}): {}",
-                    class,
-                    self.selected_sex,
-                    sprite_id,
-                    error
-                );
-            }
-
-            if class == self.selected_class {
-                canvas.set_draw_color(Color::RGB(200, 200, 220));
-                if let Err(error) = canvas.draw_rect(target_rect) {
-                    log::error!("Failed to draw selected portrait outline: {}", error);
-                }
-            }
-        }
+        // Render the form.
+        self.form.render(&mut ctx)?;
 
         Ok(())
     }
-
-    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
-        let mut next = None;
-
-        let username = app_state.api.username.clone();
-        let token = app_state.api.token.clone();
-        let base_url = app_state.api.base_url.clone();
-
-        egui::Window::new("Create Character")
-            .default_height(800.0)
-            .default_width(500.0)
-            .fixed_pos(Pos2::new(0.0, 0.0))
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                ui.heading("Create character");
-
-                if let Some(username) = username.as_deref() {
-                    ui.label(format!("Logged in as: {username}"));
-                } else {
-                    ui.label("No account session available");
-                }
-
-                if let Some(err) = self.error.as_deref() {
-                    ui.colored_label(egui::Color32::LIGHT_RED, err);
-                }
-
-                ui.add_space(12.0);
-                ui.label("Name");
-                ui.add_enabled(
-                    !self.is_busy,
-                    egui::TextEdit::singleline(&mut self.name).desired_width(260.0),
-                );
-
-                if ui
-                    .add_enabled(!self.is_busy, egui::Button::new("Random name"))
-                    .clicked()
-                {
-                    self.name = names::randomly_generate_name();
-                }
-
-                ui.add_space(8.0);
-                ui.label("Description");
-                ui.add_enabled(
-                    !self.is_busy,
-                    egui::TextEdit::multiline(&mut self.description)
-                        .desired_rows(3)
-                        .desired_width(260.0),
-                );
-
-                ui.add_space(12.0);
-                ui.label("Race");
-
-                ui.group(|ui| {
-                    ui.vertical(|ui| {
-                        race_option_ui(ui, &mut self.selected_class, Class::Harakim, "Harakim");
-                        race_option_ui(ui, &mut self.selected_class, Class::Templar, "Templar");
-                        race_option_ui(ui, &mut self.selected_class, Class::Mercenary, "Mercenary");
-                    });
-                });
-
-                ui.add_space(12.0);
-                ui.label("Sex");
-
-                ui.group(|ui| {
-                    ui.horizontal(|ui| {
-                        ui.radio_value(&mut self.selected_sex, Sex::Male, "Male");
-                        ui.radio_value(&mut self.selected_sex, Sex::Female, "Female");
-                    });
-                });
-
-                ui.add_space(16.0);
-
-                let create_clicked = ui
-                    .add_enabled(
-                        !self.is_busy,
-                        egui::Button::new("Create character").min_size([180.0, 32.0].into()),
-                    )
-                    .clicked();
-
-                let back_clicked = ui
-                    .add_enabled(
-                        !self.is_busy,
-                        egui::Button::new("Back").min_size([180.0, 32.0].into()),
-                    )
-                    .clicked();
-
-                if create_clicked {
-                    let name = self.name.trim().to_string();
-                    let description = self.description.trim().to_string();
-
-                    let Some(token) = token.as_deref() else {
-                        self.error = Some("Missing account session token".to_string());
-                        return;
-                    };
-
-                    if name.is_empty() {
-                        self.error = Some("Character name is required".to_string());
-                        return;
-                    }
-
-                    self.is_busy = true;
-                    self.error = None;
-
-                    let base_url = base_url.clone();
-                    let token = token.to_string();
-                    let race = self.selected_class;
-                    let sex = self.selected_sex;
-                    let description = if description.is_empty() {
-                        None
-                    } else {
-                        Some(description)
-                    };
-
-                    let (tx, rx) = mpsc::channel();
-                    self.account_thread = Some(std::thread::spawn(move || {
-                        let result = account_api::create_character(
-                            &base_url,
-                            &token,
-                            &name,
-                            description.as_deref(),
-                            sex,
-                            race,
-                        );
-                        let _ = tx.send(result);
-                    }));
-                    self.account_rx = Some(rx);
-                }
-
-                if back_clicked {
-                    self.error = None;
-                    next = Some(SceneType::CharacterSelection);
-                }
-            });
-
-        next
-    }
-}
-
-/// Renders a single radio-button option for a character class.
-///
-/// # Arguments
-/// * `ui` – the egui `Ui` context.
-/// * `selected_class` – mutable reference to the currently selected class.
-/// * `class` – the `Class` value this radio button represents.
-/// * `label` – display text for the radio button.
-fn race_option_ui(ui: &mut egui::Ui, selected_class: &mut Class, class: Class, label: &str) {
-    ui.radio_value(selected_class, class, label);
 }

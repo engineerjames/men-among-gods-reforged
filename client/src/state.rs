@@ -1,6 +1,6 @@
 use crate::{
     gfx_cache::GraphicsCache, network::NetworkRuntime, player_state::PlayerState,
-    preferences::DisplayMode, sfx_cache::SoundCache,
+    preferences::DisplayMode, sfx_cache::SoundCache, ui::panning_background::PanningBackground,
 };
 
 /// A display-related change requested by a scene, to be applied by the main
@@ -56,8 +56,11 @@ impl ApiTokenState {
 /// Owns the graphics cache, sound cache, API auth state, and the optional
 /// network runtime and player state that exist only while connected to the
 /// game server.
-pub struct AppState {
-    pub gfx_cache: GraphicsCache,
+///
+/// The lifetime `'tc` ties the graphics cache (and its GPU textures) to the
+/// [`TextureCreator`](sdl2::render::TextureCreator) that lives in `main()`.
+pub struct AppState<'tc> {
+    pub gfx_cache: GraphicsCache<'tc>,
     pub sfx_cache: SoundCache,
     pub api: ApiTokenState,
     pub network: Option<NetworkRuntime>,
@@ -73,9 +76,11 @@ pub struct AppState {
     pub vsync_enabled: bool,
     /// Pending display change to be applied by the main loop.
     pub display_command: Option<DisplayCommand>,
+    /// Shared panning background used by all pre-game scenes.
+    pub panning_background: PanningBackground,
 }
 
-impl AppState {
+impl<'tc> AppState<'tc> {
     /// Creates a new `AppState` with the given caches and API state.
     ///
     /// Network and player state start as `None`; they are set when the client
@@ -88,7 +93,12 @@ impl AppState {
     ///
     /// # Returns
     /// * A new `AppState` ready for use in the scene manager.
-    pub fn new(gfx_cache: GraphicsCache, sfx_cache: SoundCache, api: ApiTokenState) -> Self {
+    pub fn new(
+        gfx_cache: GraphicsCache<'tc>,
+        sfx_cache: SoundCache,
+        api: ApiTokenState,
+        panning_background: PanningBackground,
+    ) -> Self {
         Self {
             gfx_cache,
             sfx_cache: sfx_cache,
@@ -101,6 +111,7 @@ impl AppState {
             pixel_perfect_scaling: false,
             vsync_enabled: false,
             display_command: None,
+            panning_background,
         }
     }
 }

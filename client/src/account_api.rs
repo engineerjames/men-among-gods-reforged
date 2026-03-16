@@ -278,7 +278,6 @@ pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummar
 /// # Returns
 /// * `Ok(())` on success.
 /// * `Err(String)` when the request fails.
-#[allow(dead_code)]
 pub fn delete_character(base_url: &str, token: &str, character_id: u64) -> Result<(), String> {
     let client = build_http_client()?;
 

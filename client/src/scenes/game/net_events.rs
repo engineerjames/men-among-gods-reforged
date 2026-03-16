@@ -17,7 +17,10 @@ impl GameScene {
     /// # Returns
     /// `Some(SceneType)` if the scene should change (e.g. on disconnect),
     /// `None` to stay in-game.
-    pub(super) fn process_network_events(&mut self, app_state: &mut AppState) -> Option<SceneType> {
+    pub(super) fn process_network_events(
+        &mut self,
+        app_state: &mut AppState<'_>,
+    ) -> Option<SceneType> {
         let mut tick_groups_processed = 0usize;
 
         loop {
@@ -127,7 +130,7 @@ impl GameScene {
     /// Called once per server tick. Increments an internal step counter and fires
     /// `CL_CMD_AUTOLOOK` every `QSIZE * 3` steps for the first character whose
     /// name is not yet known.
-    pub(super) fn maybe_send_autolook_and_shop_refresh(&mut self, app_state: &mut AppState) {
+    pub(super) fn maybe_send_autolook_and_shop_refresh(&mut self, app_state: &mut AppState<'_>) {
         let (Some(net), Some(ps)) = (app_state.network.as_ref(), app_state.player_state.as_ref())
         else {
             return;
@@ -188,7 +191,7 @@ impl GameScene {
     /// # Arguments
     ///
     /// * `app_state` - Shared application state (network access).
-    pub(crate) fn process_skills_panel_actions(&mut self, app_state: &mut AppState) {
+    pub(crate) fn process_skills_panel_actions(&mut self, app_state: &mut AppState<'_>) {
         for action in self.skills_panel.take_actions() {
             match action {
                 WidgetAction::CommitStats { raises } => {
@@ -265,7 +268,7 @@ impl GameScene {
     /// # Arguments
     ///
     /// * `app_state` - Shared application state (network + player state).
-    pub(crate) fn process_shop_panel_actions(&mut self, app_state: &mut AppState) {
+    pub(crate) fn process_shop_panel_actions(&mut self, app_state: &mut AppState<'_>) {
         for action in self.shop_panel.take_actions() {
             match action {
                 WidgetAction::ShopAction { shop_nr, action } => {

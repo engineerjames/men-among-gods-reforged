@@ -5,45 +5,35 @@
 //! [`ChatBox`].  All rendering is done via SDL2 primitives and the existing
 //! bitmap font system — no additional dependencies are required.
 
-#[allow(dead_code)]
 pub mod button;
-#[allow(dead_code)]
 pub mod button_arc;
-#[allow(dead_code)]
+pub mod cert_dialog;
+pub mod character_creation_form;
+pub mod character_selection_form;
 pub mod chat_box;
-#[allow(dead_code)]
 pub mod checkbox;
-#[allow(dead_code)]
+pub mod delete_character_dialog;
 pub mod dropdown;
-#[allow(dead_code)]
 pub mod inventory_panel;
-#[allow(dead_code)]
 pub mod label;
-#[allow(dead_code)]
+pub mod login_form;
 pub mod look_panel;
-#[allow(dead_code)]
 pub mod minimap_widget;
-#[allow(dead_code)]
 pub mod mode_button;
-#[allow(dead_code)]
+pub mod new_account_form;
 pub mod panel;
-#[allow(dead_code)]
+pub mod panning_background;
+pub mod radio_group;
 pub mod rank_arc;
-#[allow(dead_code)]
+pub mod scrollable_list;
 pub mod settings_panel;
-#[allow(dead_code)]
 pub mod shop_panel;
-#[allow(dead_code)]
 pub mod skills_panel;
-#[allow(dead_code)]
 pub mod slider;
-#[allow(dead_code)]
 pub mod status_panel;
-#[allow(dead_code)]
 pub mod style;
-#[allow(dead_code)]
 pub mod text_input;
-#[allow(dead_code)]
+pub mod tls_warning_banner;
 pub mod widget;
 
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};
@@ -57,11 +47,15 @@ use crate::{
 ///
 /// Bundles the SDL2 canvas and the sprite/texture cache so that widgets can
 /// draw without needing direct access to `AppState`.
-pub struct RenderContext<'a> {
+///
+/// Two lifetimes avoid the `&'a mut T<'a>` invariance footgun:
+/// * `'f` — frame/function borrow (how long this context reference lives).
+/// * `'tc` — texture-creator lifetime (how long the GPU textures are valid).
+pub struct RenderContext<'f, 'tc> {
     /// The SDL2 canvas for the current frame.
-    pub canvas: &'a mut Canvas<Window>,
+    pub canvas: &'f mut Canvas<Window>,
     /// The lazy-loading sprite cache (fonts, sprites, minimap texture).
-    pub gfx: &'a mut GraphicsCache,
+    pub gfx: &'f mut GraphicsCache<'tc>,
 }
 
 /// Translate an SDL2 event into a UI-framework `UiEvent`, if applicable.

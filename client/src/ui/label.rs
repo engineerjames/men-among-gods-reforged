@@ -91,7 +91,7 @@ impl Widget for Label {
         EventResponse::Ignored
     }
 
-    fn render(&mut self, ctx: &mut RenderContext) -> Result<(), String> {
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         match self.tint {
             Some(color) => font_cache::draw_text_tinted(
                 ctx.canvas,

@@ -1,8 +1,6 @@
 use std::process;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use egui_sdl2::egui;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
@@ -13,48 +11,9 @@ use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
+use client::ui::panning_background::PanningBackground;
+use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
-
-/// Global flag ensuring the egui glyph warm-up runs exactly once.
-static EGUI_GLYPH_WARMED: AtomicBool = AtomicBool::new(false);
-
-/// Pre-renders glyphs and common text styles into egui's texture atlas.
-///
-/// This reduces the chance of mid-session atlas growth, which can trigger
-/// text corruption with some SDL2-based egui backends when texture sizes
-/// change at runtime.
-///
-/// # Arguments
-/// * `ctx` – the egui context whose font atlas will be primed.
-fn warm_egui_glyph_cache(ctx: &egui::Context) {
-    if EGUI_GLYPH_WARMED.swap(true, Ordering::Relaxed) {
-        return;
-    }
-
-    let ascii_glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 \
-!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
-    let cert_dialog_text = "Server Certificate Changed Host: 127.0.0.1 \
-Previously trusted fingerprint New fingerprint presented by server \
-Accept New Certificate Reject";
-    let fingerprint_sample = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    let status_text = "UNENCRYPTED - Game traffic is not protected Profiling... 60s remaining";
-    let combined =
-        format!("{ascii_glyphs}\n{cert_dialog_text}\n{fingerprint_sample}\n{status_text}");
-
-    egui::Area::new("glyph_warmup_area".into())
-        .fixed_pos(egui::Pos2::new(-10_000.0, -10_000.0))
-        .show(ctx, |ui| {
-            ui.label(&combined);
-            ui.heading(&combined);
-            ui.monospace(&combined);
-            ui.add(egui::Label::new(
-                egui::RichText::new(&combined).text_style(egui::TextStyle::Button),
-            ));
-            ui.add(egui::Label::new(
-                egui::RichText::new(&combined).text_style(egui::TextStyle::Small),
-            ));
-        });
-}
 
 /// Application entry point.
 ///
@@ -106,22 +65,41 @@ fn main() -> Result<(), String> {
 
     let _ = window.set_minimum_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
 
+    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+
     let mut event_pump = sdl_context.event_pump()?;
 
-    log::info!("Initializing canvas...");
-    let mut egui = egui_sdl2::EguiCanvas::new(window);
-
     log::info!("Initializing graphics and sound caches...");
-    let gfx_cache = GraphicsCache::new(
-        filepaths::get_gfx_zipfile(),
-        egui.painter.canvas.texture_creator(),
-    );
+    let texture_creator = canvas.texture_creator();
+    let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
     let sfx_cache = SoundCache::new(
         filepaths::get_sfx_directory(),
         filepaths::get_music_directory(),
     );
     let api_state = ApiTokenState::new(hosts::get_api_base_url());
-    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state);
+
+    let asset_gfx = filepaths::get_asset_directory().join("gfx");
+    let bg_paths = vec![
+        asset_gfx.join("login_pents.png"),
+        asset_gfx.join("login_black_stronghold.png"),
+        asset_gfx.join("login_last_gate.png"),
+        asset_gfx.join("login_skua_temple.png"),
+        asset_gfx.join("login_tower.png"),
+    ];
+    let panning_background = PanningBackground::new(
+        Bounds::new(
+            0,
+            0,
+            constants::TARGET_WIDTH_INT,
+            constants::TARGET_HEIGHT_INT,
+        ),
+        bg_paths,
+        6.0,
+        2.0,
+        Some(sdl2::pixels::Color::RGBA(10, 10, 30, 100)),
+    );
+
+    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state, panning_background);
 
     // --- Apply persisted display settings ---------------------------------
     let global_settings = preferences::load_global_settings();
@@ -131,14 +109,14 @@ fn main() -> Result<(), String> {
     app_state.vsync_enabled = global_settings.vsync_enabled;
 
     // Display mode
-    let applied_startup_mode = apply_display_mode(&mut egui.painter.canvas, app_state.display_mode);
+    let applied_startup_mode = apply_display_mode(&mut canvas, app_state.display_mode);
     app_state.display_mode = applied_startup_mode;
     if applied_startup_mode != global_settings.display_mode {
         save_global_display_settings(&app_state);
     }
 
     // VSync (runtime toggle via raw SDL2 FFI)
-    apply_vsync(&egui.painter.canvas, app_state.vsync_enabled);
+    apply_vsync(&canvas, app_state.vsync_enabled);
     // ----------------------------------------------------------------------
 
     let mut scene_manager = scenes::scene::SceneManager::new();
@@ -181,20 +159,15 @@ fn main() -> Result<(), String> {
         let dt = now.duration_since(last_frame);
         last_frame = now;
 
-        // Poll events once, handle quit and forward to egui
+        // Poll events
         for event in event_pump.poll_iter() {
             if let sdl2::event::Event::Quit { .. } = event {
                 scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
             }
-            let egui_event = dpi_scaling::adjust_mouse_event_for_egui_hidpi(
-                &event,
-                egui.painter.canvas.window(),
-            );
-            let _ = egui.on_event(&egui_event);
 
             let event = dpi_scaling::adjust_mouse_event_for_hidpi(
                 event,
-                egui.painter.canvas.window(),
+                canvas.window(),
                 constants::TARGET_WIDTH,
                 constants::TARGET_HEIGHT,
                 app_state.pixel_perfect_scaling,
@@ -213,7 +186,7 @@ fn main() -> Result<(), String> {
         if let Some(cmd) = app_state.display_command.take() {
             match cmd {
                 DisplayCommand::SetDisplayMode(mode) => {
-                    let applied_mode = apply_display_mode(&mut egui.painter.canvas, mode);
+                    let applied_mode = apply_display_mode(&mut canvas, mode);
                     if applied_mode != mode {
                         log::warn!(
                             "Requested display mode {} adjusted to {}",
@@ -229,38 +202,26 @@ fn main() -> Result<(), String> {
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetVSync(enabled) => {
-                    apply_vsync(&egui.painter.canvas, enabled);
+                    apply_vsync(&canvas, enabled);
                     app_state.vsync_enabled = enabled;
                     save_global_display_settings(&app_state);
                 }
             }
         }
         // ------------------------------------------------------------------
-        let _ = egui
-            .painter
-            .canvas
-            .set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
+        let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
         // Integer scale → pixel-perfect (nearest integer multiplier) when on.
-        let _ = egui
-            .painter
-            .canvas
-            .set_integer_scale(app_state.pixel_perfect_scaling);
-        scene_manager.render_world(&mut app_state, &mut egui.painter.canvas);
-        // Logical size off → egui painter uses raw physical pixels.
-        let _ = egui.painter.canvas.set_integer_scale(false);
-        let _ = egui.painter.canvas.set_logical_size(0, 0);
-
-        egui.run(|ctx: &egui::Context| {
-            warm_egui_glyph_cache(ctx);
-            scene_manager.render_ui(&mut app_state, ctx);
-        });
+        let _ = canvas.set_integer_scale(app_state.pixel_perfect_scaling);
+        scene_manager.render_world(&mut app_state, &mut canvas);
+        // Logical size off → raw physical pixels.
+        let _ = canvas.set_integer_scale(false);
+        let _ = canvas.set_logical_size(0, 0);
 
         if scene_manager.get_scene() == SceneType::Exit {
             break 'running;
         }
 
-        egui.paint();
-        egui.present();
+        canvas.present();
 
         fps_manager.delay();
     }
@@ -321,7 +282,7 @@ fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool
 
 /// Persists current display-related settings from [`AppState`] into the
 /// global profile.
-fn save_global_display_settings(app_state: &AppState) {
+fn save_global_display_settings(app_state: &AppState<'_>) {
     let settings = preferences::GlobalSettings {
         music_enabled: app_state.music_enabled,
         display_mode: app_state.display_mode,

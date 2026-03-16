@@ -8,9 +8,15 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     sfx_cache::MusicTrack,
     state::AppState,
+    ui::{
+        self,
+        cert_dialog::{CertDialog, CertDialogAction},
+        login_form::{LoginForm, LoginFormAction},
+        widget::{KeyModifiers, Widget},
+        RenderContext,
+    },
 };
-use egui_sdl2::egui::{self, Align2, Vec2};
-use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
+use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 /// Scene that presents the account login form.
 ///
@@ -18,16 +24,22 @@ use sdl2::{event::Event, pixels::Color, render::Canvas, video::Window};
 /// Login is performed on a background thread; the result is polled in `update`.
 /// On success the scene transitions to `CharacterSelection`.
 pub struct LoginScene {
-    server_ip: String,
-    username: String,
-    password: String,
-    attempted_unencrypted_login: bool,
+    /// Login form panel with text inputs and buttons.
+    login_form: LoginForm,
+    /// Certificate-mismatch dialog (shown when server cert changes).
+    cert_dialog: Option<CertDialog>,
+    /// Queued scene transition from widget actions.
+    pending_scene: Option<SceneType>,
+
+    // -- Async login state (unchanged from the egui version) --
     is_submitting: bool,
     api_result_rx: Option<std::sync::mpsc::Receiver<Result<String, String>>>,
-    error_message: Option<String>,
-    certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
     login_thread: Option<std::thread::JoinHandle<()>>,
     music_initialized: bool,
+
+    // -- Mouse position for SDL→UiEvent conversion --
+    mouse_x: i32,
+    mouse_y: i32,
 }
 
 impl LoginScene {
@@ -36,22 +48,28 @@ impl LoginScene {
     /// The username field is pre-populated from the last successful login if one
     /// was previously saved.
     pub fn new() -> Self {
+        let settings = preferences::load_global_settings();
+        let login_form = LoginForm::new(
+            &crate::hosts::get_server_ip(),
+            &preferences::load_last_username().unwrap_or_default(),
+            settings.music_enabled,
+        );
+
         Self {
-            server_ip: crate::hosts::get_server_ip(),
-            username: preferences::load_last_username().unwrap_or_default(),
-            password: String::new(),
-            attempted_unencrypted_login: false,
+            login_form,
+            cert_dialog: None,
+            pending_scene: None,
             is_submitting: false,
             api_result_rx: None,
-            error_message: None,
-            certificate_mismatch: None,
             login_thread: None,
             music_initialized: false,
+            mouse_x: 0,
+            mouse_y: 0,
         }
     }
 
     /// Lazily starts the login-screen music track if it hasn't been started yet.
-    fn ensure_music_initialized(&mut self, app_state: &mut AppState) {
+    fn ensure_music_initialized(&mut self, app_state: &mut AppState<'_>) {
         if self.music_initialized {
             return;
         }
@@ -78,21 +96,28 @@ impl LoginScene {
         }
     }
 
-    /// Starts an asynchronous login request using the current username/password.
+    /// Starts an asynchronous login request using the current form values.
     ///
     /// # Arguments
     ///
     /// * `app_state` - Shared application state used to persist API session fields.
     /// * `api_base_url` - Resolved API base URL for the request.
-    fn begin_login_request(&mut self, app_state: &mut AppState, api_base_url: String) {
+    /// * `username` - Account username.
+    /// * `password` - Account password (plain-text; hashed by `account_api::login`).
+    fn begin_login_request(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        api_base_url: String,
+        username: String,
+        password: String,
+    ) {
         let (sender, receiver) = mpsc::channel::<Result<String, String>>();
 
-        self.error_message = None;
+        self.login_form.set_error(None);
         self.is_submitting = true;
+        self.login_form.set_submitting(true);
         self.api_result_rx = Some(receiver);
 
-        let username = self.username.clone();
-        let password = self.password.clone();
         let base_url = api_base_url;
 
         app_state.api.base_url = base_url.clone();
@@ -105,24 +130,159 @@ impl LoginScene {
             }
         }));
     }
+
+    /// Processes a [`LoginFormAction::Login`] — validates input, resolves the
+    /// API base URL and fires the async request.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    /// * `ip` - Server IP / hostname from the form.
+    /// * `username` - Username from the form.
+    /// * `password` - Password from the form.
+    fn handle_login_action(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        ip: String,
+        username: String,
+        password: String,
+    ) {
+        log::info!("Login clicked: ip={}, username={}", ip, username);
+
+        let entered_host = ip.trim();
+        if entered_host.is_empty() {
+            self.login_form
+                .set_error(Some("Please enter an IP address or hostname".to_string()));
+            return;
+        }
+
+        let api_base_url =
+            if entered_host.starts_with("http://") || entered_host.starts_with("https://") {
+                entered_host.trim_end_matches('/').to_string()
+            } else {
+                format!("https://{}:5554", entered_host)
+            };
+
+        self.login_form
+            .set_unencrypted_warning(api_base_url.to_ascii_lowercase().starts_with("http://"));
+
+        self.begin_login_request(app_state, api_base_url, username, password);
+    }
 }
 
 impl Scene for LoginScene {
-    fn on_enter(&mut self, app_state: &mut AppState) {
+    fn on_enter(&mut self, app_state: &mut AppState<'_>) {
         self.ensure_music_initialized(app_state);
     }
 
-    fn on_exit(&mut self, app_state: &mut AppState) {
+    fn on_exit(&mut self, app_state: &mut AppState<'_>) {
         app_state.sfx_cache.stop_music();
     }
 
-    fn handle_event(&mut self, _app_state: &mut AppState, _event: &Event) -> Option<SceneType> {
-        None
+    fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
+        // Track mouse position for the SDL→UiEvent conversion.
+        if let Event::MouseMotion { x, y, .. } = event {
+            self.mouse_x = *x;
+            self.mouse_y = *y;
+        }
+
+        let modifiers =
+            KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
+
+        // Build UiEvent from the raw SDL event.
+        if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
+            // Certificate dialog blocks all input to the form behind it.
+            if self.cert_dialog.is_some() {
+                let dialog = self.cert_dialog.as_mut().unwrap();
+                dialog.handle_event(&ui_event);
+                let actions = dialog.take_cert_actions();
+
+                // Collect data we need before dropping the borrow.
+                let mut accept_data: Option<(String, String)> = None;
+                let mut reject = false;
+
+                for action in actions {
+                    match action {
+                        CertDialogAction::Accept => {
+                            let d = self.cert_dialog.as_ref().unwrap();
+                            accept_data = Some((d.host.clone(), d.received_fp.clone()));
+                        }
+                        CertDialogAction::Reject => {
+                            reject = true;
+                        }
+                    }
+                }
+
+                if let Some((host, fp)) = accept_data {
+                    self.cert_dialog = None;
+                    match cert_trust::trust_fingerprint(&host, &fp) {
+                        Ok(()) => {
+                            let retry_url = app_state.api.base_url.clone();
+                            if retry_url.trim().is_empty() {
+                                self.login_form.set_error(Some(
+                                    "Accepted new certificate. Click Login again.".to_string(),
+                                ));
+                            } else {
+                                let username = self.login_form.username().to_owned();
+                                let password = self.login_form.password().to_owned();
+                                self.begin_login_request(app_state, retry_url, username, password);
+                            }
+                        }
+                        Err(err) => {
+                            self.login_form
+                                .set_error(Some(format!("Failed to update known hosts: {err}")));
+                        }
+                    }
+                } else if reject {
+                    self.cert_dialog = None;
+                }
+
+                return self.pending_scene.take();
+            }
+
+            // ── Normal (no dialog) ──────────────────────────────────────
+            self.login_form.handle_event(&ui_event);
+
+            for action in self.login_form.take_login_actions() {
+                match action {
+                    LoginFormAction::Login {
+                        ip,
+                        username,
+                        password,
+                    } => {
+                        self.handle_login_action(app_state, ip, username, password);
+                    }
+                    LoginFormAction::CreateAccount => {
+                        log::info!("Create new account clicked");
+                        return Some(SceneType::NewAccount);
+                    }
+                    LoginFormAction::Quit => {
+                        return Some(SceneType::Exit);
+                    }
+                    LoginFormAction::ToggleMusic(enabled) => {
+                        app_state.music_enabled = enabled;
+                        if enabled {
+                            app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+                        } else {
+                            app_state.sfx_cache.stop_music();
+                        }
+                        self.save_music_setting(enabled);
+                    }
+                }
+            }
+        }
+
+        self.pending_scene.take()
     }
 
-    fn update(&mut self, app_state: &mut AppState, _dt: Duration) -> Option<SceneType> {
+    fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
         self.ensure_music_initialized(app_state);
 
+        // Animate background and form.
+        app_state.panning_background.update(dt);
+        self.login_form.update(dt);
+
+        // Poll async login result.
         if self.is_submitting {
             let result = if let Some(receiver) = &self.api_result_rx {
                 match receiver.try_recv() {
@@ -139,13 +299,15 @@ impl Scene for LoginScene {
 
             if let Some(result) = result {
                 self.is_submitting = false;
+                self.login_form.set_submitting(false);
                 self.api_result_rx = None;
 
                 match result {
                     Ok(token) => {
                         log::info!("Login successful!");
                         app_state.api.token = Some(token);
-                        if let Err(err) = preferences::save_last_username(&self.username) {
+                        let username = self.login_form.username().to_owned();
+                        if let Err(err) = preferences::save_last_username(&username) {
                             log::warn!("Failed to save last username: {}", err);
                         }
                         return Some(SceneType::CharacterSelection);
@@ -154,9 +316,13 @@ impl Scene for LoginScene {
                         log::error!("Login failed: {}", error);
                         app_state.api.token = None;
                         if let Some(mismatch) = cert_trust::take_last_fingerprint_mismatch() {
-                            self.certificate_mismatch = Some(mismatch);
+                            self.cert_dialog = Some(CertDialog::new(
+                                &mismatch.host,
+                                &mismatch.expected_fingerprint,
+                                &mismatch.received_fingerprint,
+                            ));
                         }
-                        self.error_message = Some(error);
+                        self.login_form.set_error(Some(error));
                     }
                 }
             }
@@ -166,212 +332,26 @@ impl Scene for LoginScene {
 
     fn render_world(
         &mut self,
-        _app_state: &mut AppState,
+        app_state: &mut AppState<'_>,
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
-        canvas.set_draw_color(Color::RGB(20, 20, 28));
-        canvas.clear();
+        let AppState {
+            ref mut panning_background,
+            ref mut gfx_cache,
+            ..
+        } = app_state;
+        let mut ctx = RenderContext {
+            canvas,
+            gfx: gfx_cache,
+        };
+
+        panning_background.render(&mut ctx)?;
+        self.login_form.render(&mut ctx)?;
+
+        if let Some(ref mut dialog) = self.cert_dialog {
+            dialog.render(&mut ctx)?;
+        }
+
         Ok(())
-    }
-
-    fn render_ui(&mut self, app_state: &mut AppState, ctx: &egui::Context) -> Option<SceneType> {
-        self.ensure_music_initialized(app_state);
-        let mut next = None;
-
-        egui::Window::new("Men Among Gods - Reforged")
-            .default_height(430.0)
-            .default_width(430.0)
-            .anchor(Align2::CENTER_CENTER, Vec2::new(0.0, 0.0))
-            .collapsible(false)
-            .resizable(false)
-            .show(ctx, |ui| {
-                let (login_clicked, create_clicked, quit_clicked) = ui
-                    .add_enabled_ui(!self.is_submitting, |ui| {
-                        ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                            ui.heading("Account Login");
-                        });
-                        ui.add_space(10.0);
-
-                        // Show a warning banner only after a login attempt that explicitly
-                        // used an unencrypted HTTP URL.
-                        if self.attempted_unencrypted_login {
-                            egui::Frame::new()
-                                .fill(egui::Color32::from_rgba_premultiplied(60, 50, 0, 220))
-                                .inner_margin(6.0)
-                                .corner_radius(4.0)
-                                .show(ui, |ui| {
-                                    ui.colored_label(
-                                        egui::Color32::YELLOW,
-                                        "\u{26A0} Connection is not encrypted. Traffic may be intercepted.",
-                                    );
-                                });
-                            ui.add_space(6.0);
-                        }
-
-                        ui.label("IP Address (IPv4)");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.server_ip).desired_width(260.0),
-                        );
-                        ui.add_space(10.0);
-
-                        ui.label("Username");
-                        ui.add(egui::TextEdit::singleline(&mut self.username).desired_width(260.0));
-                        ui.add_space(8.0);
-
-                        ui.label("Password");
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.password)
-                                .password(true)
-                                .desired_width(260.0),
-                        );
-                        ui.add_space(8.0);
-
-                        if ui
-                            .checkbox(&mut app_state.music_enabled, "Enable Login Music")
-                            .changed()
-                        {
-                            if app_state.music_enabled {
-                                app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
-                            } else {
-                                app_state.sfx_cache.stop_music();
-                            }
-                            self.save_music_setting(app_state.music_enabled);
-                        }
-
-                        ui.add_space(12.0);
-
-                        ui.horizontal(|ui| {
-                            let login_clicked = ui
-                                .add(egui::Button::new("Login").min_size([180.0, 32.0].into()))
-                                .clicked();
-
-                            let create_clicked = ui
-                                .add(
-                                    egui::Button::new("Create new account")
-                                        .min_size([180.0, 32.0].into()),
-                                )
-                                .clicked();
-
-                            let quit_clicked = ui
-                                .add(egui::Button::new("Quit").min_size([120.0, 32.0].into()))
-                                .clicked();
-
-                            (login_clicked, create_clicked, quit_clicked)
-                        })
-                        .inner
-                    })
-                    .inner;
-
-                if self.is_submitting {
-                    ui.add_space(8.0);
-                    ui.label("Logging in...");
-
-                    if self.error_message.is_some() {
-                        self.error_message = None;
-                    }
-                }
-
-                if let Some(error_message) = &self.error_message {
-                    ui.add_space(8.0);
-                    ui.colored_label(egui::Color32::RED, error_message);
-                }
-
-                if login_clicked {
-                    log::info!(
-                        "Login clicked: ip={}, username={}",
-                        self.server_ip,
-                        self.username
-                    );
-
-                    let entered_host = self.server_ip.trim();
-                    if entered_host.is_empty() {
-                        self.error_message =
-                            Some("Please enter an IP address or hostname".to_string());
-                        return;
-                    }
-
-                    let api_base_url = if entered_host.starts_with("http://")
-                        || entered_host.starts_with("https://")
-                    {
-                        entered_host.trim_end_matches('/').to_string()
-                    } else {
-                        format!("https://{}:5554", entered_host)
-                    };
-
-                    self.attempted_unencrypted_login = api_base_url
-                        .to_ascii_lowercase()
-                        .starts_with("http://");
-
-                    self.begin_login_request(app_state, api_base_url);
-                }
-
-                if create_clicked {
-                    log::info!("Create new account clicked");
-                    next = Some(SceneType::NewAccount);
-                }
-
-                if quit_clicked {
-                    next = Some(SceneType::Exit);
-                }
-            });
-
-        let mut accept_new_cert = false;
-        let mut dismiss_cert_dialog = false;
-
-        if let Some(mismatch) = self.certificate_mismatch.as_ref() {
-            egui::Window::new("Server Certificate Changed")
-                .collapsible(false)
-                .resizable(false)
-                .anchor(Align2::CENTER_CENTER, Vec2::new(0.0, 0.0))
-                .show(ctx, |ui| {
-                    ui.label("The server certificate fingerprint changed.");
-                    ui.colored_label(
-                        egui::Color32::YELLOW,
-                        "This may indicate a man-in-the-middle attack unless you intentionally rotated certificates.",
-                    );
-                    ui.add_space(8.0);
-                    ui.label(format!("Host: {}", mismatch.host));
-                    ui.label("Previously trusted fingerprint:");
-                    ui.monospace(&mismatch.expected_fingerprint);
-                    ui.add_space(4.0);
-                    ui.label("New fingerprint presented by server:");
-                    ui.monospace(&mismatch.received_fingerprint);
-                    ui.add_space(10.0);
-                    ui.horizontal(|ui| {
-                        if ui.button("Accept New Certificate").clicked() {
-                            accept_new_cert = true;
-                        }
-                        if ui.button("Reject").clicked() {
-                            dismiss_cert_dialog = true;
-                        }
-                    });
-                });
-        }
-
-        if accept_new_cert {
-            if let Some(mismatch) = self.certificate_mismatch.take() {
-                match cert_trust::trust_fingerprint(&mismatch.host, &mismatch.received_fingerprint)
-                {
-                    Ok(()) => {
-                        let retry_base_url = app_state.api.base_url.clone();
-                        if retry_base_url.trim().is_empty() {
-                            self.error_message = Some(
-                                "Accepted new server certificate. Please click Login again."
-                                    .to_string(),
-                            );
-                        } else {
-                            self.begin_login_request(app_state, retry_base_url);
-                        }
-                    }
-                    Err(err) => {
-                        self.error_message = Some(format!("Failed to update known hosts: {err}"));
-                    }
-                }
-            }
-        } else if dismiss_cert_dialog {
-            self.certificate_mismatch = None;
-        }
-
-        next
     }
 }
