@@ -1,7 +1,5 @@
-use std::path::PathBuf;
-
-use egui_sdl2::egui::ahash::{HashMap, HashMapExt};
 use sdl2::mixer::{Channel, Chunk};
+use std::{collections::HashMap, path::PathBuf};
 
 const LOGIN_MUSIC_CHANNEL: i32 = 0;
 

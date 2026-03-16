@@ -14,7 +14,6 @@ path = "src/bin/ui_integration.rs"
 
 [dependencies]
 mag_core = { path = "../core", package = "core" }
-egui-sdl2 = "0.2.5"
 # SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –
 # no system SDL2 installation required.
 sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
