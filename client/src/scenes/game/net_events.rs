@@ -17,7 +17,10 @@ impl GameScene {
     /// # Returns
     /// `Some(SceneType)` if the scene should change (e.g. on disconnect),
     /// `None` to stay in-game.
-    pub(super) fn process_network_events(&mut self, app_state: &mut AppState<'_>) -> Option<SceneType> {
+    pub(super) fn process_network_events(
+        &mut self,
+        app_state: &mut AppState<'_>,
+    ) -> Option<SceneType> {
         let mut tick_groups_processed = 0usize;
 
         loop {

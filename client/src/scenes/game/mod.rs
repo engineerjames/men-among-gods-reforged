@@ -391,7 +391,10 @@ impl GameScene {
     /// # Returns
     ///
     /// `Some(SceneType)` if the user chose to disconnect or quit.
-    fn process_settings_panel_actions(&mut self, app_state: &mut AppState<'_>) -> Option<SceneType> {
+    fn process_settings_panel_actions(
+        &mut self,
+        app_state: &mut AppState<'_>,
+    ) -> Option<SceneType> {
         let mut scene_change: Option<SceneType> = None;
         let mut profile_changed = false;
 
