@@ -2,8 +2,8 @@ use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
 use crate::{driver, player};
-use core::constants::*;
 use core::types::Character;
+use core::{constants::*, skills};
 
 struct Seen {
     co: usize,
@@ -56,8 +56,8 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
                 seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
                 seen[maxseen].is_friend = false;
                 if !driver::npc_is_stunned(&gs.characters[co], &gs.items) {
-                    let can_stun = gs.characters[cn].skill[SK_STUN][5] * 12
-                        > gs.characters[co].skill[SK_RESIST][5] * 10;
+                    let can_stun = gs.characters[cn].skill[skills::SK_STUN][5] * 12
+                        > gs.characters[co].skill[skills::SK_RESIST][5] * 10;
                     seen[maxseen].stun = if can_stun { 1 } else { 0 };
                 } else {
                     seen[maxseen].stun = 0;
@@ -125,8 +125,8 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             seen[maxseen].co = co;
             seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
             seen[maxseen].is_friend = false;
-            let can_stun = gs.characters[cn].skill[SK_STUN][5] * 12
-                > gs.characters[co].skill[SK_RESIST][5] * 10;
+            let can_stun = gs.characters[cn].skill[skills::SK_STUN][5] * 12
+                > gs.characters[co].skill[skills::SK_RESIST][5] * 10;
             seen[maxseen].stun = if can_stun { 1 } else { 0 };
             if seen[maxseen].stun != 0 {
                 seen[maxseen].stun += 5;
@@ -160,7 +160,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
     }
 
     if !done && low_hp {
-        done = driver::npc_try_spell(gs, cn, cn, SK_HEAL);
+        done = driver::npc_try_spell(gs, cn, cn, skills::SK_HEAL);
     }
 
     let high_endurance = gs.characters[cn].a_end > 15000;
@@ -342,23 +342,23 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             let co = gs.characters[cn].data[20] as usize;
             if co != 0 {
                 gs.characters[cn].attack_cn = co as u16;
-                driver::npc_try_spell(gs, cn, co, SK_STUN);
+                driver::npc_try_spell(gs, cn, co, skills::SK_STUN);
                 done = true;
             }
         }
     }
 
     if !done {
-        done = driver::npc_try_spell(gs, cn, cn, SK_BLESS);
+        done = driver::npc_try_spell(gs, cn, cn, skills::SK_BLESS);
     }
     if !done {
-        done = driver::npc_try_spell(gs, cn, cn, SK_MSHIELD);
+        done = driver::npc_try_spell(gs, cn, cn, skills::SK_MSHIELD);
     }
     if !done {
-        done = driver::npc_try_spell(gs, cn, cn, SK_PROTECT);
+        done = driver::npc_try_spell(gs, cn, cn, skills::SK_PROTECT);
     }
     if !done {
-        done = driver::npc_try_spell(gs, cn, cn, SK_ENHANCE);
+        done = driver::npc_try_spell(gs, cn, cn, skills::SK_ENHANCE);
     }
 
     if !done && stun > 1 && stun >= help {
@@ -373,9 +373,9 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             }
         }
         if tmp > 0 {
-            done = driver::npc_try_spell(gs, cn, seen[m].co, SK_STUN);
+            done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_STUN);
             if !done {
-                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_CURSE);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_CURSE);
             }
             gs.characters[cn].data[24] = gs.globals.ticker;
         }
@@ -401,16 +401,16 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             let low_hp =
                 gs.characters[seen[m].co].a_hp < (gs.characters[seen[m].co].hp[5] * 400) as i32;
             if low_hp {
-                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_HEAL);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_HEAL);
             }
             if !done {
-                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_BLESS);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_BLESS);
             }
             if !done {
-                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_PROTECT);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_PROTECT);
             }
             if !done {
-                done = driver::npc_try_spell(gs, cn, seen[m].co, SK_ENHANCE);
+                done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_ENHANCE);
             }
             gs.characters[cn].data[24] = gs.globals.ticker;
         }
@@ -631,27 +631,27 @@ pub fn npc_stunrun_msg(
 
 pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
     let low_hp = gs.characters[cn].a_hp < (gs.characters[cn].hp[5] * 600) as i32;
-    if low_hp && driver::npc_try_spell(gs, cn, cn, SK_HEAL) {
+    if low_hp && driver::npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
         return true;
     }
 
     let high_mana = gs.characters[cn].a_mana > (gs.characters[cn].mana[5] as i32 * 850);
-    let has_medit = gs.characters[cn].skill[SK_MEDIT][0] != 0;
+    let has_medit = gs.characters[cn].skill[skills::SK_MEDIT][0] != 0;
     if high_mana && has_medit {
         let very_high_mana = gs.characters[cn].a_mana > 75000;
-        if very_high_mana && driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
+        if very_high_mana && driver::npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_PROTECT) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_PROTECT) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_MSHIELD) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_MSHIELD) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_ENHANCE) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_ENHANCE) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
             return true;
         }
     }
@@ -678,46 +678,48 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
     let co = gs.characters[cn].attack_cn;
     if co != 0 {
         let losing = gs.characters[cn].a_hp < (gs.characters[cn].hp[5] * 600) as i32;
-        if losing && driver::npc_try_spell(gs, cn, co as usize, SK_BLAST) {
+        if losing && driver::npc_try_spell(gs, cn, co as usize, skills::SK_BLAST) {
             return true;
         }
 
         let ticker = gs.globals.ticker;
         let data_75 = gs.characters[cn].data[75];
-        if ticker > data_75 && driver::npc_try_spell(gs, cn, co as usize, SK_STUN) {
+        if ticker > data_75 && driver::npc_try_spell(gs, cn, co as usize, skills::SK_STUN) {
             gs.characters[cn].data[75] =
-                ticker + gs.characters[cn].skill[SK_STUN][5] as i32 + TICKS * 8;
+                ticker + gs.characters[cn].skill[skills::SK_STUN][5] as i32 + TICKS * 8;
             return true;
         }
 
         let very_high_mana = gs.characters[cn].a_mana > 75000;
-        if very_high_mana && driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
+        if very_high_mana && driver::npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_PROTECT) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_PROTECT) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_MSHIELD) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_MSHIELD) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_ENHANCE) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_ENHANCE) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, cn, SK_BLESS) {
+        if driver::npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
             return true;
         }
-        if driver::npc_try_spell(gs, cn, co as usize, SK_CURSE) {
+        if driver::npc_try_spell(gs, cn, co as usize, skills::SK_CURSE) {
             return true;
         }
 
         let data_74 = gs.characters[cn].data[74];
-        if ticker > data_74 + TICKS * 10 && driver::npc_try_spell(gs, cn, co as usize, SK_GHOST) {
+        if ticker > data_74 + TICKS * 10
+            && driver::npc_try_spell(gs, cn, co as usize, skills::SK_GHOST)
+        {
             gs.characters[cn].data[74] = ticker;
             return true;
         }
 
         let cannot_hurt = gs.characters[co as usize].armor + 5 > gs.characters[cn].weapon;
-        if cannot_hurt && driver::npc_try_spell(gs, cn, co as usize, SK_BLAST) {
+        if cannot_hurt && driver::npc_try_spell(gs, cn, co as usize, skills::SK_BLAST) {
             return true;
         }
     }

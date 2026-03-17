@@ -323,7 +323,15 @@ impl SettingsPanel {
         center_x: i32,
         y: i32,
     ) -> Result<(), String> {
-        font_cache::draw_text_centered(ctx.canvas, ctx.gfx, 1, text, center_x, y)
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            1,
+            text,
+            center_x,
+            y,
+            font_cache::TextStyle::centered(),
+        )
     }
 
     /// Collects `WidgetAction`s from all child widgets that report changes.
@@ -490,13 +498,14 @@ impl Widget for SettingsPanel {
         let center_x = self.bounds.x + self.bounds.width as i32 / 2;
 
         // Title
-        font_cache::draw_text_centered(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             1,
             "Settings",
             center_x,
             self.bounds.y + Y_TITLE,
+            font_cache::TextStyle::centered(),
         )?;
 
         // Section headers

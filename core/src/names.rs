@@ -15,6 +15,14 @@ const SYL2: [&str; 9] = [
 ];
 const SYL3: [&str; 5] = ["a", "e", "i", "o", "u"];
 
+/// Generates a random character name by concatenating syllables.
+///
+/// Names are built from two or three syllable tables (`SYL1`, `SYL2`,
+/// and optionally `SYL3`) and are always title-cased ASCII.
+///
+/// # Returns
+///
+/// * A random name string (e.g. `"Arturo"`, `"Nimkan"`).
 pub fn randomly_generate_name() -> String {
     let mut rng = rand::thread_rng();
 

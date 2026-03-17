@@ -1,20 +1,16 @@
-use core::constants::{
-    AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, DX_DOWN, MAXCHARS, MAXEFFECT, MAXITEM, MAXTCHARS,
-    MAXTITEM, MF_INDOORS, MF_MOVEBLOCK, MF_SIGHTBLOCK, SERVER_MAPX, SERVER_MAPY, SK_BARTER,
-    SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HAND,
-    SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PERCEPT, SK_PROTECT,
-    SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_SENSE, SK_STEALTH, SK_STUN, SK_SURROUND,
-    SK_SWORD, SK_TWOHAND, SK_WARCRY, TICKS, USE_ACTIVE, USE_EMPTY,
+use core::{
+    constants::{
+        AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, DX_DOWN, MAXCHARS, MAXEFFECT, MAXITEM,
+        MAXTCHARS, MAXTITEM, MF_INDOORS, MF_MOVEBLOCK, MF_SIGHTBLOCK, SERVER_MAPX, SERVER_MAPY,
+        TICKS, USE_ACTIVE, USE_EMPTY,
+    },
+    skills,
 };
 
 use {core::constants::CharacterFlags, core::constants::ItemFlags};
 
 use crate::{
-    driver::{self, use_item},
-    effect::EffectManager,
-    game_state::GameState,
-    god::God,
-    helpers, player,
+    driver::use_item, effect::EffectManager, game_state::GameState, god::God, helpers, player,
 };
 
 /// Port of `init_lights` from `populate.cpp`
@@ -448,249 +444,249 @@ pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
                 }
                 // Warcry
                 9 => {
-                    item.skill[SK_WARCRY][0] += skill_value as i8;
-                    if item.skill[SK_WARCRY][0] > 12 {
-                        item.skill[SK_WARCRY][0] = 12;
+                    item.skill[skills::SK_WARCRY][0] += skill_value as i8;
+                    if item.skill[skills::SK_WARCRY][0] > 12 {
+                        item.skill[skills::SK_WARCRY][0] = 12;
                     }
                 }
                 // Hand to Hand
                 10 => {
-                    item.skill[SK_HAND][0] += skill_value as i8;
-                    if item.skill[SK_HAND][0] > 12 {
-                        item.skill[SK_HAND][0] = 12;
+                    item.skill[skills::SK_HAND][0] += skill_value as i8;
+                    if item.skill[skills::SK_HAND][0] > 12 {
+                        item.skill[skills::SK_HAND][0] = 12;
                     }
-                    item.skill[SK_HAND][2] =
-                        (item.skill[SK_HAND][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_HAND][2] =
+                        (item.skill[skills::SK_HAND][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Sword
                 11 => {
-                    item.skill[SK_SWORD][0] += skill_value as i8;
-                    if item.skill[SK_SWORD][0] > 12 {
-                        item.skill[SK_SWORD][0] = 12;
+                    item.skill[skills::SK_SWORD][0] += skill_value as i8;
+                    if item.skill[skills::SK_SWORD][0] > 12 {
+                        item.skill[skills::SK_SWORD][0] = 12;
                     }
                 }
                 // Dagger
                 12 => {
-                    item.skill[SK_DAGGER][0] += skill_value as i8;
-                    if item.skill[SK_DAGGER][0] > 12 {
-                        item.skill[SK_DAGGER][0] = 12;
+                    item.skill[skills::SK_DAGGER][0] += skill_value as i8;
+                    if item.skill[skills::SK_DAGGER][0] > 12 {
+                        item.skill[skills::SK_DAGGER][0] = 12;
                     }
                 }
                 // Two-Handed
                 13 => {
-                    item.skill[SK_TWOHAND][0] += skill_value as i8;
-                    if item.skill[SK_TWOHAND][0] > 12 {
-                        item.skill[SK_TWOHAND][0] = 12;
+                    item.skill[skills::SK_TWOHAND][0] += skill_value as i8;
+                    if item.skill[skills::SK_TWOHAND][0] > 12 {
+                        item.skill[skills::SK_TWOHAND][0] = 12;
                     }
                 }
                 // Lockpick
                 14 => {
-                    item.skill[SK_LOCK][0] += skill_value as i8;
-                    if item.skill[SK_LOCK][0] > 12 {
-                        item.skill[SK_LOCK][0] = 12;
+                    item.skill[skills::SK_LOCK][0] += skill_value as i8;
+                    if item.skill[skills::SK_LOCK][0] > 12 {
+                        item.skill[skills::SK_LOCK][0] = 12;
                     }
-                    item.skill[SK_LOCK][2] =
-                        (item.skill[SK_LOCK][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_LOCK][2] =
+                        (item.skill[skills::SK_LOCK][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Stealth
                 15 => {
-                    item.skill[SK_STEALTH][0] += skill_value as i8;
-                    if item.skill[SK_STEALTH][0] > 12 {
-                        item.skill[SK_STEALTH][0] = 12;
+                    item.skill[skills::SK_STEALTH][0] += skill_value as i8;
+                    if item.skill[skills::SK_STEALTH][0] > 12 {
+                        item.skill[skills::SK_STEALTH][0] = 12;
                     }
                 }
                 // Perception
                 16 => {
-                    item.skill[SK_PERCEPT][0] += skill_value as i8;
-                    if item.skill[SK_PERCEPT][0] > 12 {
-                        item.skill[SK_PERCEPT][0] = 12;
+                    item.skill[skills::SK_PERCEPT][0] += skill_value as i8;
+                    if item.skill[skills::SK_PERCEPT][0] > 12 {
+                        item.skill[skills::SK_PERCEPT][0] = 12;
                     }
-                    item.skill[SK_PERCEPT][2] =
-                        (item.skill[SK_PERCEPT][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_PERCEPT][2] =
+                        (item.skill[skills::SK_PERCEPT][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Magic Shield
                 17 => {
-                    item.skill[SK_MSHIELD][0] += skill_value as i8;
-                    if item.skill[SK_MSHIELD][0] > 12 {
-                        item.skill[SK_MSHIELD][0] = 12;
+                    item.skill[skills::SK_MSHIELD][0] += skill_value as i8;
+                    if item.skill[skills::SK_MSHIELD][0] > 12 {
+                        item.skill[skills::SK_MSHIELD][0] = 12;
                     }
                 }
                 // Barter
                 18 => {
-                    item.skill[SK_BARTER][0] += skill_value as i8;
-                    if item.skill[SK_BARTER][0] > 12 {
-                        item.skill[SK_BARTER][0] = 12;
+                    item.skill[skills::SK_BARTER][0] += skill_value as i8;
+                    if item.skill[skills::SK_BARTER][0] > 12 {
+                        item.skill[skills::SK_BARTER][0] = 12;
                     }
-                    item.skill[SK_BARTER][2] =
-                        (item.skill[SK_BARTER][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_BARTER][2] =
+                        (item.skill[skills::SK_BARTER][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Repair
                 19 => {
-                    item.skill[SK_REPAIR][0] += skill_value as i8;
-                    if item.skill[SK_REPAIR][0] > 12 {
-                        item.skill[SK_REPAIR][0] = 12;
+                    item.skill[skills::SK_REPAIR][0] += skill_value as i8;
+                    if item.skill[skills::SK_REPAIR][0] > 12 {
+                        item.skill[skills::SK_REPAIR][0] = 12;
                     }
-                    item.skill[SK_REPAIR][2] =
-                        (item.skill[SK_REPAIR][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_REPAIR][2] =
+                        (item.skill[skills::SK_REPAIR][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Light
                 20 => {
-                    item.skill[SK_LIGHT][0] += skill_value as i8;
-                    if item.skill[SK_LIGHT][0] > 12 {
-                        item.skill[SK_LIGHT][0] = 12;
+                    item.skill[skills::SK_LIGHT][0] += skill_value as i8;
+                    if item.skill[skills::SK_LIGHT][0] > 12 {
+                        item.skill[skills::SK_LIGHT][0] = 12;
                     }
-                    item.skill[SK_LIGHT][2] =
-                        (item.skill[SK_LIGHT][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_LIGHT][2] =
+                        (item.skill[skills::SK_LIGHT][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Recall
                 21 => {
-                    item.skill[SK_RECALL][0] += skill_value as i8;
-                    if item.skill[SK_RECALL][0] > 12 {
-                        item.skill[SK_RECALL][0] = 12;
+                    item.skill[skills::SK_RECALL][0] += skill_value as i8;
+                    if item.skill[skills::SK_RECALL][0] > 12 {
+                        item.skill[skills::SK_RECALL][0] = 12;
                     }
-                    item.skill[SK_RECALL][2] =
-                        (item.skill[SK_RECALL][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_RECALL][2] =
+                        (item.skill[skills::SK_RECALL][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Protect
                 22 => {
-                    item.skill[SK_PROTECT][0] += skill_value as i8;
-                    if item.skill[SK_PROTECT][0] > 12 {
-                        item.skill[SK_PROTECT][0] = 12;
+                    item.skill[skills::SK_PROTECT][0] += skill_value as i8;
+                    if item.skill[skills::SK_PROTECT][0] > 12 {
+                        item.skill[skills::SK_PROTECT][0] = 12;
                     }
-                    item.skill[SK_PROTECT][2] =
-                        (item.skill[SK_PROTECT][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_PROTECT][2] =
+                        (item.skill[skills::SK_PROTECT][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Enhance
                 23 => {
-                    item.skill[SK_ENHANCE][0] += skill_value as i8;
-                    if item.skill[SK_ENHANCE][0] > 12 {
-                        item.skill[SK_ENHANCE][0] = 12;
+                    item.skill[skills::SK_ENHANCE][0] += skill_value as i8;
+                    if item.skill[skills::SK_ENHANCE][0] > 12 {
+                        item.skill[skills::SK_ENHANCE][0] = 12;
                     }
-                    item.skill[SK_ENHANCE][2] =
-                        (item.skill[SK_ENHANCE][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_ENHANCE][2] =
+                        (item.skill[skills::SK_ENHANCE][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Stun
                 24 => {
-                    item.skill[SK_STUN][0] += skill_value as i8;
-                    if item.skill[SK_STUN][0] > 12 {
-                        item.skill[SK_STUN][0] = 12;
+                    item.skill[skills::SK_STUN][0] += skill_value as i8;
+                    if item.skill[skills::SK_STUN][0] > 12 {
+                        item.skill[skills::SK_STUN][0] = 12;
                     }
                 }
                 // Curse
                 25 => {
-                    item.skill[SK_CURSE][0] += skill_value as i8;
-                    if item.skill[SK_CURSE][0] > 12 {
-                        item.skill[SK_CURSE][0] = 12;
+                    item.skill[skills::SK_CURSE][0] += skill_value as i8;
+                    if item.skill[skills::SK_CURSE][0] > 12 {
+                        item.skill[skills::SK_CURSE][0] = 12;
                     }
                 }
                 // Bless
                 26 => {
-                    item.skill[SK_BLESS][0] += skill_value as i8;
-                    if item.skill[SK_BLESS][0] > 12 {
-                        item.skill[SK_BLESS][0] = 12;
+                    item.skill[skills::SK_BLESS][0] += skill_value as i8;
+                    if item.skill[skills::SK_BLESS][0] > 12 {
+                        item.skill[skills::SK_BLESS][0] = 12;
                     }
-                    item.skill[SK_BLESS][2] =
-                        (item.skill[SK_BLESS][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_BLESS][2] =
+                        (item.skill[skills::SK_BLESS][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Identify
                 27 => {
-                    item.skill[SK_IDENT][0] += skill_value as i8;
-                    if item.skill[SK_IDENT][0] > 12 {
-                        item.skill[SK_IDENT][0] = 12;
+                    item.skill[skills::SK_IDENT][0] += skill_value as i8;
+                    if item.skill[skills::SK_IDENT][0] > 12 {
+                        item.skill[skills::SK_IDENT][0] = 12;
                     }
-                    item.skill[SK_IDENT][2] =
-                        (item.skill[SK_IDENT][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_IDENT][2] =
+                        (item.skill[skills::SK_IDENT][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Resist
                 28 => {
-                    item.skill[SK_RESIST][0] += skill_value as i8;
-                    if item.skill[SK_RESIST][0] > 12 {
-                        item.skill[SK_RESIST][0] = 12;
+                    item.skill[skills::SK_RESIST][0] += skill_value as i8;
+                    if item.skill[skills::SK_RESIST][0] > 12 {
+                        item.skill[skills::SK_RESIST][0] = 12;
                     }
-                    item.skill[SK_RESIST][2] =
-                        (item.skill[SK_RESIST][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_RESIST][2] =
+                        (item.skill[skills::SK_RESIST][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Blast
                 29 => {
-                    item.skill[SK_BLAST][0] += skill_value as i8;
-                    if item.skill[SK_BLAST][0] > 12 {
-                        item.skill[SK_BLAST][0] = 12;
+                    item.skill[skills::SK_BLAST][0] += skill_value as i8;
+                    if item.skill[skills::SK_BLAST][0] > 12 {
+                        item.skill[skills::SK_BLAST][0] = 12;
                     }
                 }
                 // Dispel
                 30 => {
-                    item.skill[SK_DISPEL][0] += skill_value as i8;
-                    if item.skill[SK_DISPEL][0] > 12 {
-                        item.skill[SK_DISPEL][0] = 12;
+                    item.skill[skills::SK_DISPEL][0] += skill_value as i8;
+                    if item.skill[skills::SK_DISPEL][0] > 12 {
+                        item.skill[skills::SK_DISPEL][0] = 12;
                     }
                 }
                 // Heal
                 31 => {
-                    item.skill[SK_HEAL][0] += skill_value as i8;
-                    if item.skill[SK_HEAL][0] > 12 {
-                        item.skill[SK_HEAL][0] = 12;
+                    item.skill[skills::SK_HEAL][0] += skill_value as i8;
+                    if item.skill[skills::SK_HEAL][0] > 12 {
+                        item.skill[skills::SK_HEAL][0] = 12;
                     }
-                    item.skill[SK_HEAL][2] =
-                        (item.skill[SK_HEAL][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_HEAL][2] =
+                        (item.skill[skills::SK_HEAL][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Ghost
                 32 => {
-                    item.skill[SK_GHOST][0] += skill_value as i8;
-                    if item.skill[SK_GHOST][0] > 12 {
-                        item.skill[SK_GHOST][0] = 12;
+                    item.skill[skills::SK_GHOST][0] += skill_value as i8;
+                    if item.skill[skills::SK_GHOST][0] > 12 {
+                        item.skill[skills::SK_GHOST][0] = 12;
                     }
                 }
                 // Regeneration
                 33 => {
-                    item.skill[SK_REGEN][0] += skill_value as i8;
-                    if item.skill[SK_REGEN][0] > 12 {
-                        item.skill[SK_REGEN][0] = 12;
+                    item.skill[skills::SK_REGEN][0] += skill_value as i8;
+                    if item.skill[skills::SK_REGEN][0] > 12 {
+                        item.skill[skills::SK_REGEN][0] = 12;
                     }
                 }
                 // Rest
                 34 => {
-                    item.skill[SK_REST][0] += skill_value as i8;
-                    if item.skill[SK_REST][0] > 12 {
-                        item.skill[SK_REST][0] = 12;
+                    item.skill[skills::SK_REST][0] += skill_value as i8;
+                    if item.skill[skills::SK_REST][0] > 12 {
+                        item.skill[skills::SK_REST][0] = 12;
                     }
-                    item.skill[SK_REST][2] =
-                        (item.skill[SK_REST][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_REST][2] =
+                        (item.skill[skills::SK_REST][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Meditation
                 35 => {
-                    item.skill[SK_MEDIT][0] += skill_value as i8;
-                    if item.skill[SK_MEDIT][0] > 12 {
-                        item.skill[SK_MEDIT][0] = 12;
+                    item.skill[skills::SK_MEDIT][0] += skill_value as i8;
+                    if item.skill[skills::SK_MEDIT][0] > 12 {
+                        item.skill[skills::SK_MEDIT][0] = 12;
                     }
                 }
                 // Sense
                 36 => {
-                    item.skill[SK_SENSE][0] += skill_value as i8;
-                    if item.skill[SK_SENSE][0] > 12 {
-                        item.skill[SK_SENSE][0] = 12;
+                    item.skill[skills::SK_SENSE][0] += skill_value as i8;
+                    if item.skill[skills::SK_SENSE][0] > 12 {
+                        item.skill[skills::SK_SENSE][0] = 12;
                     }
-                    item.skill[SK_SENSE][2] =
-                        (item.skill[SK_SENSE][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_SENSE][2] =
+                        (item.skill[skills::SK_SENSE][0] as u32 * helpers::random_mod(7)) as i8;
                 }
                 // Immunity
                 37 => {
-                    item.skill[SK_IMMUN][0] += skill_value as i8;
-                    if item.skill[SK_IMMUN][0] > 12 {
-                        item.skill[SK_IMMUN][0] = 12;
+                    item.skill[skills::SK_IMMUN][0] += skill_value as i8;
+                    if item.skill[skills::SK_IMMUN][0] > 12 {
+                        item.skill[skills::SK_IMMUN][0] = 12;
                     }
                 }
                 // Surround Hit
                 38 => {
-                    item.skill[SK_SURROUND][0] += skill_value as i8;
-                    if item.skill[SK_SURROUND][0] > 12 {
-                        item.skill[SK_SURROUND][0] = 12;
+                    item.skill[skills::SK_SURROUND][0] += skill_value as i8;
+                    if item.skill[skills::SK_SURROUND][0] > 12 {
+                        item.skill[skills::SK_SURROUND][0] = 12;
                     }
                 }
                 // Concentration
                 39 => {
-                    item.skill[SK_CONCEN][0] += skill_value as i8;
-                    if item.skill[SK_CONCEN][0] > 12 {
-                        item.skill[SK_CONCEN][0] = 12;
+                    item.skill[skills::SK_CONCEN][0] += skill_value as i8;
+                    if item.skill[skills::SK_CONCEN][0] > 12 {
+                        item.skill[skills::SK_CONCEN][0] = 12;
                     }
                 }
                 _ => {}
@@ -798,7 +794,7 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
         characters[cn].a_end = 1000000;
         characters[cn].a_hp = 1000000;
 
-        if characters[cn].skill[SK_MEDIT][0] != 0 {
+        if characters[cn].skill[skills::SK_MEDIT][0] != 0 {
             characters[cn].a_mana = 1000000;
         } else {
             let r1 = helpers::random_mod(8) as i32;
@@ -813,7 +809,7 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
     }
 
     // Bonus item / belt logic (matches C++: only if evil and hasitems; only first free slot).
-    let has_meditation = gs.characters[cn].skill[SK_MEDIT][0] != 0;
+    let has_meditation = gs.characters[cn].skill[skills::SK_MEDIT][0] != 0;
     let a_mana = gs.characters[cn].a_mana;
     let alignment = gs.characters[cn].alignment;
 
@@ -1008,7 +1004,7 @@ pub fn pop_skill(gs: &mut GameState) {
 
             if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
                 ch.skill[n][0] = temp_skill[0];
-                log::info!("added {} to {}", driver::skill_name(n), ch.get_name());
+                log::info!("added {} to {}", skills::get_skill_name(n), ch.get_name());
             }
 
             if temp_skill[2] < ch.skill[n][0] {
@@ -1019,7 +1015,7 @@ pub fn pop_skill(gs: &mut GameState) {
                 );
                 log::info!(
                     "reduced {} on {} from {} to {}, added {} exp",
-                    driver::skill_name(n),
+                    skills::get_skill_name(n),
                     ch.get_name(),
                     ch.skill[n][0],
                     temp_skill[2],

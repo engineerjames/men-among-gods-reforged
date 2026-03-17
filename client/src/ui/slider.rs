@@ -191,6 +191,7 @@ impl Widget for Slider {
             &self.label,
             self.bounds.x,
             label_y,
+            font_cache::TextStyle::PLAIN,
         )?;
 
         // Track bar (centered vertically)
@@ -231,6 +232,7 @@ impl Widget for Slider {
             &value_text,
             value_x,
             value_y,
+            font_cache::TextStyle::PLAIN,
         )?;
 
         // Hover highlight

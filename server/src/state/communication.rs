@@ -4,6 +4,7 @@ use crate::network_manager;
 use crate::{driver, helpers};
 use core::constants::{CharacterFlags, CT_LGUARD};
 use core::string_operations::c_string_to_str;
+use core::traits;
 use core::types::FontColor;
 
 impl GameState {
@@ -284,7 +285,7 @@ impl GameState {
             let co_kindred = self.characters[co].kindred;
             let co_reference = c_string_to_str(&mut self.characters[co].reference).to_string();
 
-            if co_is_player && (co_kindred as u32 & core::constants::KIN_PURPLE) != 0 {
+            if co_is_player && (co_kindred as u32 & traits::KIN_PURPLE) != 0 {
                 self.do_character_log(
                     cn,
                     FontColor::Yellow,
@@ -923,9 +924,8 @@ impl GameState {
         // Special "Skua!/Purple!" behaviour
         {
             let kindred = self.characters[cn].kindred;
-            let is_skua = text == "Skua!" && (kindred & core::constants::KIN_PURPLE as i32) == 0;
-            let is_purple =
-                text == "Purple!" && (kindred & core::constants::KIN_PURPLE as i32) != 0;
+            let is_skua = text == "Skua!" && (kindred & traits::KIN_PURPLE as i32) == 0;
+            let is_purple = text == "Purple!" && (kindred & traits::KIN_PURPLE as i32) != 0;
             if (is_skua || is_purple) && self.characters[cn].luck > 100 {
                 if self.characters[cn].a_hp < self.characters[cn].hp[5] as i32 * 200 {
                     self.characters[cn].a_hp += 50000 + helpers::random_mod_i32(100000);

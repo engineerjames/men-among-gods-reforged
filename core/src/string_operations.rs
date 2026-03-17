@@ -123,4 +123,45 @@ mod tests {
             assert_eq!(result, "*UNKNOWN*", "Failed for sequence: {:?}", seq);
         }
     }
+
+    use super::write_ascii_into_fixed;
+
+    #[test]
+    fn write_ascii_into_fixed_basic() {
+        let mut buf = [0xFFu8; 10];
+        write_ascii_into_fixed(&mut buf, "Hello");
+        assert_eq!(&buf[..5], b"Hello");
+        assert_eq!(buf[5], 0); // remaining zeroed
+    }
+
+    #[test]
+    fn write_ascii_into_fixed_truncates_to_len_minus_one() {
+        let mut buf = [0u8; 5];
+        write_ascii_into_fixed(&mut buf, "LongString");
+        // Only 4 bytes written (len-1), last byte stays 0
+        assert_eq!(&buf[..4], b"Long");
+        assert_eq!(buf[4], 0);
+    }
+
+    #[test]
+    fn write_ascii_into_fixed_replaces_nonprintable() {
+        let mut buf = [0u8; 10];
+        write_ascii_into_fixed(&mut buf, "A\x01B\x7FC");
+        // \x01 and \x7F are outside 32..=126
+        assert_eq!(&buf[..5], b"A B C");
+    }
+
+    #[test]
+    fn write_ascii_into_fixed_empty_src() {
+        let mut buf = [0xFFu8; 5];
+        write_ascii_into_fixed(&mut buf, "");
+        assert_eq!(buf, [0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn write_ascii_into_fixed_empty_dst() {
+        let mut buf: [u8; 0] = [];
+        write_ascii_into_fixed(&mut buf, "test");
+        // Should not panic on zero-length destination
+    }
 }

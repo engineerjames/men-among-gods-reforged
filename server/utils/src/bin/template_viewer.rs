@@ -1,6 +1,7 @@
 mod template_viewer_app;
 
 use eframe::egui;
+use mag_core::ranks;
 use std::path::PathBuf;
 
 use template_viewer_app::TemplateViewerApp;
@@ -155,11 +156,7 @@ fn rank_label(min_rank: i8) -> String {
     }
 
     let idx = min_rank as usize;
-    if idx < mag_core::ranks::RANK_NAMES.len() {
-        format!("{}: {}", idx, mag_core::ranks::RANK_NAMES[idx])
-    } else {
-        format!("Unknown ({})", min_rank)
-    }
+    format!("{}: {}", idx, ranks::rank_name_by_index(idx))
 }
 
 fn placement_options() -> &'static [(u16, &'static str)] {

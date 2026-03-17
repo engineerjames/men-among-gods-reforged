@@ -378,7 +378,15 @@ impl Widget for NewAccountForm {
         let title = "Create Account";
         let title_cx = self.bounds.x + self.bounds.width as i32 / 2;
         let title_y = self.bounds.y + 10;
-        font_cache::draw_text_centered(ctx.canvas, ctx.gfx, FONT, title, title_cx, title_y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            title,
+            title_cx,
+            title_y,
+            font_cache::TextStyle::centered(),
+        )?;
 
         let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 8;
 
@@ -390,6 +398,7 @@ impl Widget for NewAccountForm {
             "E-mail",
             self.bounds.x + PAD_X,
             cursor_y,
+            font_cache::TextStyle::PLAIN,
         )?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         self.email_input
@@ -405,6 +414,7 @@ impl Widget for NewAccountForm {
             "Username",
             self.bounds.x + PAD_X,
             cursor_y,
+            font_cache::TextStyle::PLAIN,
         )?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         self.username_input
@@ -420,6 +430,7 @@ impl Widget for NewAccountForm {
             "Password",
             self.bounds.x + PAD_X,
             cursor_y,
+            font_cache::TextStyle::PLAIN,
         )?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         self.password_input
@@ -439,26 +450,26 @@ impl Widget for NewAccountForm {
 
         // Status / error labels.
         if self.show_submitting {
-            font_cache::draw_text_tinted(
+            font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 "Creating account...",
                 self.bounds.x + PAD_X,
                 cursor_y,
-                Color::RGB(180, 180, 255),
+                font_cache::TextStyle::tinted(Color::RGB(180, 180, 255)),
             )?;
         }
 
         if let Some(ref err) = self.error_text {
-            font_cache::draw_text_tinted(
+            font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 err,
                 self.bounds.x + PAD_X,
                 cursor_y,
-                Color::RGB(255, 80, 80),
+                font_cache::TextStyle::tinted(Color::RGB(255, 80, 80)),
             )?;
         }
 

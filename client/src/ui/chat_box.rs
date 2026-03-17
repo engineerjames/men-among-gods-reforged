@@ -374,14 +374,14 @@ impl Widget for ChatBox {
             if let Some(msg) = self.message_from_end(idx_from_most_recent) {
                 let font = Self::font_for_color(msg.color);
                 let y = inner.y + (line as i32) * self.line_height as i32;
-                font_cache::draw_text_faded(
+                font_cache::draw_text(
                     ctx.canvas,
                     ctx.gfx,
                     font,
                     &msg.message,
                     inner.x,
                     y,
-                    self.alpha,
+                    font_cache::TextStyle::faded(self.alpha),
                 )?;
             }
         }
@@ -414,14 +414,14 @@ impl Widget for ChatBox {
             self.input_buf.clone()
         };
 
-        font_cache::draw_text_faded(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             INPUT_FONT,
             &input_text_to_render,
             inner.x,
             input_y,
-            self.alpha,
+            font_cache::TextStyle::faded(self.alpha),
         )?;
 
         Ok(())

@@ -1,6 +1,7 @@
 use core::constants::{CharacterFlags, ItemFlags};
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
+use core::{skills, traits};
 
 use crate::driver;
 use crate::game_state::GameState;
@@ -13,13 +14,13 @@ impl GameState {
     pub(crate) fn get_fight_skill(&mut self, cn: usize) -> i32 {
         // Read worn right-hand item index and the relevant skill values.
         let in_idx = self.characters[cn].worn[core::constants::WN_RHAND] as usize;
-        let s_hand = self.characters[cn].skill[core::constants::SK_HAND][5] as i32;
-        let s_karate = self.characters[cn].skill[core::constants::SK_KARATE][5] as i32;
-        let s_sword = self.characters[cn].skill[core::constants::SK_SWORD][5] as i32;
-        let s_dagger = self.characters[cn].skill[core::constants::SK_DAGGER][5] as i32;
-        let s_axe = self.characters[cn].skill[core::constants::SK_AXE][5] as i32;
-        let s_staff = self.characters[cn].skill[core::constants::SK_STAFF][5] as i32;
-        let s_twohand = self.characters[cn].skill[core::constants::SK_TWOHAND][5] as i32;
+        let s_hand = self.characters[cn].skill[skills::SK_HAND][5] as i32;
+        let s_karate = self.characters[cn].skill[skills::SK_KARATE][5] as i32;
+        let s_sword = self.characters[cn].skill[skills::SK_SWORD][5] as i32;
+        let s_dagger = self.characters[cn].skill[skills::SK_DAGGER][5] as i32;
+        let s_axe = self.characters[cn].skill[skills::SK_AXE][5] as i32;
+        let s_staff = self.characters[cn].skill[skills::SK_STAFF][5] as i32;
+        let s_twohand = self.characters[cn].skill[skills::SK_TWOHAND][5] as i32;
 
         if in_idx == 0 {
             return std::cmp::max(s_karate, s_hand);
@@ -387,10 +388,8 @@ impl GameState {
                 // Note: In this codebase `skill[z][5]` is a derived value and is
                 // clamped to at least 1 for *all* skills (see `really_update_char`),
                 // so using `[5] > 0` would incorrectly enable surround for everyone.
-                let surround_base =
-                    self.characters[cn].skill[core::constants::SK_SURROUND][0] as i32;
-                let surround_eff =
-                    self.characters[cn].skill[core::constants::SK_SURROUND][5] as i32;
+                let surround_base = self.characters[cn].skill[skills::SK_SURROUND][0] as i32;
+                let surround_eff = self.characters[cn].skill[skills::SK_SURROUND][5] as i32;
                 if surround_base != 0 {
                     let ax = self.characters[cn].x as i32;
                     let ay = self.characters[cn].y as i32;
@@ -507,13 +506,13 @@ impl GameState {
             for m in 0..4 {
                 let co = self.characters[cn].enemy[m] as usize;
                 if co != 0 {
-                    per += self.characters[co].skill[core::constants::SK_PERCEPT][5] as i32;
+                    per += self.characters[co].skill[skills::SK_PERCEPT][5] as i32;
                 }
             }
             per
         };
 
-        let ste = self.characters[cn].skill[core::constants::SK_STEALTH][5] as i32;
+        let ste = self.characters[cn].skill[skills::SK_STEALTH][5] as i32;
 
         let mut chance = if per == 0 { 0 } else { ste * 15 / per };
 
@@ -538,7 +537,7 @@ impl GameState {
     ///
     /// Handle looting a corpse.
     pub(crate) fn do_ransack_corpse(&mut self, cn: usize, co: usize, msg: &str) {
-        let sense_skill = self.characters[cn].skill[core::constants::SK_SENSE][5] as i32;
+        let sense_skill = self.characters[cn].skill[skills::SK_SENSE][5] as i32;
 
         // Check for unique weapon in right hand
         let rhand = self.characters[co].worn[core::constants::WN_RHAND];
@@ -740,7 +739,7 @@ impl GameState {
         }
 
         // Check if aggressor is purple
-        if (self.characters[cn_actual].kindred & KIN_PURPLE as i32) == 0 {
+        if (self.characters[cn_actual].kindred & traits::KIN_PURPLE as i32) == 0 {
             if msg {
                 self.do_character_log(
                     cn,
@@ -752,10 +751,11 @@ impl GameState {
         }
 
         // Check if victim is purple
-        if (self.characters[co_actual].kindred & KIN_PURPLE as i32) == 0 {
+        if (self.characters[co_actual].kindred & traits::KIN_PURPLE as i32) == 0 {
             if msg {
                 let co_name = self.characters[co_actual].get_name();
-                let pronoun = if (self.characters[co_actual].kindred & KIN_MALE as i32) != 0 {
+                let pronoun = if (self.characters[co_actual].kindred & traits::KIN_MALE as i32) != 0
+                {
                     "He"
                 } else {
                     "She"
@@ -829,7 +829,7 @@ impl GameState {
         if (self.characters[cn_actual].flags & CharacterFlags::Player.bits()) == 0 {
             return;
         }
-        if (self.characters[cn_actual].kindred & core::constants::KIN_PURPLE as i32) == 0 {
+        if (self.characters[cn_actual].kindred & traits::KIN_PURPLE as i32) == 0 {
             return;
         }
 

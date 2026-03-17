@@ -218,14 +218,14 @@ impl Widget for ModeButton {
         let bounds = self.inner.bounds();
         let center_x = bounds.x + bounds.width as i32 / 2;
         let text_y = bounds.y + (bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
-        font_cache::draw_text_faded(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             LABEL_FONT,
             label,
             center_x - font_cache::text_width(label) as i32 / 2,
             text_y,
-            self.alpha,
+            font_cache::TextStyle::faded(self.alpha),
         )?;
 
         Ok(())

@@ -171,42 +171,50 @@ impl Widget for CertDialog {
         let x = self.bounds.x + PAD;
 
         // Title
-        font_cache::draw_text_tinted(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
             "Server Certificate Changed",
             x,
             y,
-            Color::RGB(255, 200, 200),
+            font_cache::TextStyle::tinted(Color::RGB(255, 200, 200)),
         )?;
         y += font_cache::BITMAP_GLYPH_H as i32 + 6;
 
         // Warning
-        font_cache::draw_text_tinted(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
             "This may indicate a man-in-the-middle attack",
             x,
             y,
-            Color::RGB(255, 255, 80),
+            font_cache::TextStyle::tinted(Color::RGB(255, 255, 80)),
         )?;
         y += font_cache::BITMAP_GLYPH_H as i32 + 2;
-        font_cache::draw_text_tinted(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
             "unless you rotated your certificates.",
             x,
             y,
-            Color::RGB(255, 255, 80),
+            font_cache::TextStyle::tinted(Color::RGB(255, 255, 80)),
         )?;
         y += font_cache::BITMAP_GLYPH_H as i32 + 8;
 
         // Host
         let host_line = format!("Host: {}", self.host);
-        font_cache::draw_text(ctx.canvas, ctx.gfx, FONT, &host_line, x, y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &host_line,
+            x,
+            y,
+            font_cache::TextStyle::PLAIN,
+        )?;
         y += font_cache::BITMAP_GLYPH_H as i32 + 4;
 
         // Expected fingerprint
@@ -217,6 +225,7 @@ impl Widget for CertDialog {
             "Previously trusted fingerprint:",
             x,
             y,
+            font_cache::TextStyle::PLAIN,
         )?;
         y += font_cache::BITMAP_GLYPH_H as i32 + 2;
 
@@ -224,7 +233,15 @@ impl Widget for CertDialog {
         let fp_display_len =
             (DIALOG_W as usize - 2 * PAD as usize) / font_cache::BITMAP_GLYPH_ADVANCE as usize;
         let expected_display: String = self.expected_fp.chars().take(fp_display_len).collect();
-        font_cache::draw_text(ctx.canvas, ctx.gfx, 0, &expected_display, x, y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            0,
+            &expected_display,
+            x,
+            y,
+            font_cache::TextStyle::PLAIN,
+        )?;
         y += font_cache::BITMAP_GLYPH_H as i32 + 4;
 
         // Received fingerprint
@@ -235,10 +252,19 @@ impl Widget for CertDialog {
             "New fingerprint from server:",
             x,
             y,
+            font_cache::TextStyle::PLAIN,
         )?;
         y += font_cache::BITMAP_GLYPH_H as i32 + 2;
         let received_display: String = self.received_fp.chars().take(fp_display_len).collect();
-        font_cache::draw_text(ctx.canvas, ctx.gfx, 0, &received_display, x, y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            0,
+            &received_display,
+            x,
+            y,
+            font_cache::TextStyle::PLAIN,
+        )?;
 
         // ── Buttons ──────────────────────────────────────────────────────
         self.accept_button.render(ctx)?;

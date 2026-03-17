@@ -4,11 +4,10 @@
 //! The sigil is always visible. Clicking it toggles the stat bars and
 //! weapon/armor text on or off. Bars are shown by default.
 
-use mag_core::constants::RANKS;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::ranks;
+use mag_core::ranks::{self, TOTAL_RANKS};
 
 use crate::font_cache;
 use crate::player_state::PlayerState;
@@ -54,7 +53,7 @@ const BASE_CONTENT_H: i32 = (BAR_HEIGHT + BAR_GAP) * 3
 /// Each tuple is `(top_rows, bottom_rows)`. These are applied only when
 /// drawing the sprite so you can tune away transparent padding without
 /// changing the panel's nominal 32×96 sigil footprint.
-const SIGIL_TRIM_ROWS: [(u32, u32); RANKS] = [
+const SIGIL_TRIM_ROWS: [(u32, u32); TOTAL_RANKS] = [
     (0, 0),   // Private        (sprite 10: fully transparent)
     (46, 38), // Private First Class  (sprite 11: rows 46-57)
     (26, 38), // Lance Corporal (sprite 12: rows 26-57)
@@ -324,16 +323,15 @@ impl StatusPanel {
         let text = format!("{} / {}", current, max);
         let center_x = x + BAR_WIDTH / 2;
         let text_y = y + (BAR_HEIGHT - font_cache::BITMAP_GLYPH_H as i32) / 2;
-        font_cache::draw_text_centered_tinted(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
             &text,
-            center_x + 1,
-            text_y + 1,
-            Color::RGB(0, 0, 0),
+            center_x,
+            text_y,
+            font_cache::TextStyle::centered().with_drop_shadow(),
         )?;
-        font_cache::draw_text_centered(ctx.canvas, ctx.gfx, FONT, &text, center_x, text_y)?;
 
         Ok(())
     }
@@ -461,7 +459,15 @@ impl Widget for StatusPanel {
         // Weapon / Armor text row below bars
         let wv_y = bar_y_start + (BAR_HEIGHT + BAR_GAP) * 3;
         let wv_text = format!("WV: {}  AV: {}", self.stats.weapon, self.stats.armor);
-        font_cache::draw_text(ctx.canvas, ctx.gfx, FONT, &wv_text, bar_x, wv_y)?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &wv_text,
+            bar_x,
+            wv_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
 
         let rank_label_y = wv_y + font_cache::BITMAP_GLYPH_H as i32 + RANK_LABEL_GAP;
         font_cache::draw_text(
@@ -471,6 +477,7 @@ impl Widget for StatusPanel {
             self.stats.rank_name,
             bar_x,
             rank_label_y,
+            font_cache::TextStyle::PLAIN,
         )?;
 
         // Spell grid (5 cols × 4 rows of 24×24 icons)

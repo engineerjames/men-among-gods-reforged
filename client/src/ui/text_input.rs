@@ -323,18 +323,26 @@ impl Widget for TextInput {
             self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
 
         if self.value.is_empty() {
-            font_cache::draw_text_faded(
+            font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 self.font,
                 &self.placeholder,
                 text_x,
                 text_y,
-                90,
+                font_cache::TextStyle::faded(90),
             )?;
         } else {
             let display = self.display_slice();
-            font_cache::draw_text(ctx.canvas, ctx.gfx, self.font, &display, text_x, text_y)?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                self.font,
+                &display,
+                text_x,
+                text_y,
+                font_cache::TextStyle::PLAIN,
+            )?;
         }
 
         // ── 4. Cursor bar ──────────────────────────────────────────────────

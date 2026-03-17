@@ -1,3 +1,5 @@
+use mag_core::skills;
+
 use crate::{
     network::{client_commands::ClientCommand, NetworkEvent},
     scenes::scene::SceneType,
@@ -222,7 +224,7 @@ impl GameScene {
                             }
                         }
                         ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
-                        let name = mag_core::types::skilltab::get_skill_name(skill_nr as usize);
+                        let name = skills::get_skill_name(skill_nr as usize);
                         ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);

@@ -94,14 +94,14 @@ impl Widget for TlsWarningBanner {
             self.bounds.x + (self.bounds.width as i32 - font_cache::text_width(text) as i32) / 2;
         let text_y =
             self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
-        font_cache::draw_text_tinted(
+        font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
             text,
             text_x,
             text_y,
-            Color::RGB(255, 255, 80),
+            font_cache::TextStyle::tinted(Color::RGB(255, 255, 80)),
         )?;
 
         Ok(())

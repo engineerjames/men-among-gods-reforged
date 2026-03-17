@@ -1,9 +1,10 @@
 use core::constants::{
     CharacterFlags, ItemFlags, MAXCHARS, MAX_SPEEDTAB_SPEED_INDEX, MIN_SPEEDTAB_INDEX,
 };
+use core::ranks;
 use core::types::FontColor;
+use core::{skills, traits};
 
-use crate::core::types::skilltab;
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
@@ -216,9 +217,7 @@ impl GameState {
                 }
 
                 // Check for special spell effects
-                if spell.temp == core::constants::SK_STUN as u16
-                    || spell.temp == core::constants::SK_WARCRY2 as u16
-                {
+                if spell.temp == skills::SK_STUN as u16 || spell.temp == skills::SK_WARCRY2 as u16 {
                     self.characters[cn].stunned = 1;
                 }
 
@@ -309,8 +308,8 @@ impl GameState {
                 + self.characters[cn].skill[z][1] as i32
                 + skill_bonus[z];
 
-            // Add attribute bonuses using the proper skill->attribute mapping from `skilltab`
-            let attrs = skilltab::get_skill_attribs(z);
+            // Add attribute bonuses using the proper skill->attribute mapping from `skills`
+            let attrs = skills::get_skill_attribs(z);
             let attrib_contribution = (self.characters[cn].attrib[attrs[0]][5] as i32
                 + self.characters[cn].attrib[attrs[1]][5] as i32
                 + self.characters[cn].attrib[attrs[2]][5] as i32)
@@ -463,10 +462,9 @@ impl GameState {
                         self.characters[cn].a_end += scale(moonmult * 4);
 
                         // Add bonus from Rest skill
-                        if self.characters[cn].skill[core::constants::SK_REST][0] != 0 {
+                        if self.characters[cn].skill[skills::SK_REST][0] != 0 {
                             self.characters[cn].a_end += scale(
-                                self.characters[cn].skill[core::constants::SK_REST][5] as i32
-                                    * moonmult
+                                self.characters[cn].skill[skills::SK_REST][5] as i32 * moonmult
                                     / 30,
                             );
                         }
@@ -479,10 +477,9 @@ impl GameState {
                         gothp += scale(moonmult);
 
                         // Add bonus from Regen skill
-                        if self.characters[cn].skill[core::constants::SK_REGEN][0] != 0 {
+                        if self.characters[cn].skill[skills::SK_REGEN][0] != 0 {
                             let regen_bonus = scale(
-                                self.characters[cn].skill[core::constants::SK_REGEN][5] as i32
-                                    * moonmult
+                                self.characters[cn].skill[skills::SK_REGEN][5] as i32 * moonmult
                                     / 30,
                             );
                             self.characters[cn].a_hp += regen_bonus;
@@ -491,15 +488,13 @@ impl GameState {
                     }
 
                     if !nomana {
-                        let has_medit =
-                            self.characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
+                        let has_medit = self.characters[cn].skill[skills::SK_MEDIT][0] != 0;
 
                         if has_medit {
                             mana_regen = true;
                             self.characters[cn].a_mana += scale(moonmult);
                             self.characters[cn].a_mana += scale(
-                                self.characters[cn].skill[core::constants::SK_MEDIT][5] as i32
-                                    * moonmult
+                                self.characters[cn].skill[skills::SK_MEDIT][5] as i32 * moonmult
                                     / 30,
                             );
                         }
@@ -567,26 +562,22 @@ impl GameState {
             let is_ankh = self.items[worn_neck as usize].temp == 768;
 
             if is_ankh {
-                let has_regen = self.characters[cn].skill[core::constants::SK_REGEN][0] != 0;
-                let has_rest = self.characters[cn].skill[core::constants::SK_REST][0] != 0;
-                let has_medit = self.characters[cn].skill[core::constants::SK_MEDIT][0] != 0;
+                let has_regen = self.characters[cn].skill[skills::SK_REGEN][0] != 0;
+                let has_rest = self.characters[cn].skill[skills::SK_REST][0] != 0;
+                let has_medit = self.characters[cn].skill[skills::SK_MEDIT][0] != 0;
 
                 if has_regen {
                     self.characters[cn].a_hp += scale(
-                        self.characters[cn].skill[core::constants::SK_REGEN][5] as i32 * moonmult
-                            / 60,
+                        self.characters[cn].skill[skills::SK_REGEN][5] as i32 * moonmult / 60,
                     );
                 }
                 if has_rest {
-                    self.characters[cn].a_end += scale(
-                        self.characters[cn].skill[core::constants::SK_REST][5] as i32 * moonmult
-                            / 60,
-                    );
+                    self.characters[cn].a_end +=
+                        scale(self.characters[cn].skill[skills::SK_REST][5] as i32 * moonmult / 60);
                 }
                 if has_medit {
                     self.characters[cn].a_mana += scale(
-                        self.characters[cn].skill[core::constants::SK_MEDIT][5] as i32 * moonmult
-                            / 60,
+                        self.characters[cn].skill[skills::SK_MEDIT][5] as i32 * moonmult / 60,
                     );
                 }
             }
@@ -745,9 +736,9 @@ impl GameState {
                                 let item_temp = self.items[spell_item as usize].temp;
 
                                 // Only inform owner about certain spell types
-                                if item_temp == core::constants::SK_BLESS as u16
-                                    || item_temp == core::constants::SK_PROTECT as u16
-                                    || item_temp == core::constants::SK_ENHANCE as u16
+                                if item_temp == skills::SK_BLESS as u16
+                                    || item_temp == skills::SK_PROTECT as u16
+                                    || item_temp == skills::SK_ENHANCE as u16
                                 {
                                     let co_name = self.characters[co].get_name().to_string();
 
@@ -774,7 +765,7 @@ impl GameState {
                 }
 
                 // Magic Shield spell - update armor based on remaining duration
-                if item_temp == core::constants::SK_MSHIELD as u16 {
+                if item_temp == skills::SK_MSHIELD as u16 {
                     let old_armor = self.items[spell_item as usize].armor[1];
                     let new_armor = active / 1024 + 1;
                     let new_power = active / 256;
@@ -792,7 +783,7 @@ impl GameState {
                     let spell_name = self.items[spell_item as usize].get_name().to_string();
 
                     // Recall spell - teleport character
-                    if item_temp == core::constants::SK_RECALL as u16 {
+                    if item_temp == skills::SK_RECALL as u16 {
                         let char_used = self.characters[cn].used;
 
                         if char_used == core::constants::USE_ACTIVE {
@@ -1156,20 +1147,20 @@ impl GameState {
         // Check if current rank is less than new rank
         if (self.characters[cn].data[45] as usize) < rank {
             let (hp, end, mana) = if (self.characters[cn].kindred
-                & ((core::constants::KIN_TEMPLAR | core::constants::KIN_ARCHTEMPLAR) as i32))
+                & ((traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR) as i32))
                 != 0
             {
                 (15, 10, 5)
             } else if (self.characters[cn].kindred
-                & ((core::constants::KIN_MERCENARY
-                    | core::constants::KIN_SORCERER
-                    | core::constants::KIN_WARRIOR
-                    | core::constants::KIN_SEYAN_DU) as i32))
+                & ((traits::KIN_MERCENARY
+                    | traits::KIN_SORCERER
+                    | traits::KIN_WARRIOR
+                    | traits::KIN_SEYAN_DU) as i32))
                 != 0
             {
                 (10, 10, 10)
             } else if (self.characters[cn].kindred
-                & ((core::constants::KIN_HARAKIM | core::constants::KIN_ARCHHARAKIM) as i32))
+                & ((traits::KIN_HARAKIM | traits::KIN_ARCHHARAKIM) as i32))
                 != 0
             {
                 (5, 10, 15)
@@ -1207,8 +1198,7 @@ impl GameState {
             }
 
             // Find an NPC to announce the rank
-            let temp = if (self.characters[cn].kindred & (core::constants::KIN_PURPLE as i32)) != 0
-            {
+            let temp = if (self.characters[cn].kindred & (traits::KIN_PURPLE as i32)) != 0 {
                 core::constants::CT_PRIEST
             } else {
                 core::constants::CT_LGUARD
@@ -1232,11 +1222,7 @@ impl GameState {
             // Have the herald yell it out
             if herald_cn != 0 {
                 let char_name = self.characters[cn].get_name().to_string();
-                let rank_name = if rank < core::ranks::RANK_NAMES.len() {
-                    core::ranks::RANK_NAMES[rank]
-                } else {
-                    "Unknown Rank"
-                };
+                let rank_name = ranks::rank_name_by_index(rank);
                 let message = format!(
                     "Hear ye, hear ye! {} has attained the rank of {}!",
                     char_name, rank_name
@@ -1316,7 +1302,7 @@ impl GameState {
                 (0u16, 0u32)
             };
 
-            if item_temp == core::constants::SK_MSHIELD as u16 {
+            if item_temp == skills::SK_MSHIELD as u16 {
                 let active = item_active as i32;
                 let mut tmp = active / 1024 + 1;
                 tmp = (dam + tmp - co_armor as i32) * 5;
@@ -1622,7 +1608,7 @@ impl GameState {
                 let tmp = self.do_char_score(co);
                 let rank = core::ranks::points2rank(self.characters[co].points_tot as u32) as i32;
                 let mut tmp = tmp;
-                let has_medit = self.characters[co].skill[core::constants::SK_MEDIT][0] != 0;
+                let has_medit = self.characters[co].skill[skills::SK_MEDIT][0] != 0;
                 if !has_medit {
                     let spells = self.characters[co].spell;
                     for n in 0..20 {
@@ -1631,9 +1617,9 @@ impl GameState {
                             continue;
                         }
                         let item_temp = self.items[in_idx].temp;
-                        if item_temp == core::constants::SK_PROTECT as u16
-                            || item_temp == core::constants::SK_ENHANCE as u16
-                            || item_temp == core::constants::SK_BLESS as u16
+                        if item_temp == skills::SK_PROTECT as u16
+                            || item_temp == skills::SK_ENHANCE as u16
+                            || item_temp == skills::SK_BLESS as u16
                         {
                             tmp += tmp / 5;
                         }

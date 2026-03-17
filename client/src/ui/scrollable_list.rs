@@ -275,7 +275,15 @@ impl Widget for ScrollableList {
 
             // Label text (vertically centered in the row).
             let text_y = row_y + (ROW_H - font_cache::BITMAP_GLYPH_H as i32) / 2;
-            font_cache::draw_text(ctx.canvas, ctx.gfx, FONT, &item.label, text_x, text_y)?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                FONT,
+                &item.label,
+                text_x,
+                text_y,
+                font_cache::TextStyle::PLAIN,
+            )?;
         }
 
         // ── Scrollbar ───────────────────────────────────────────────────

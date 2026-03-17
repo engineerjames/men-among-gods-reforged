@@ -319,6 +319,7 @@ impl Widget for ShopPanel {
             "Shop",
             self.bounds.x + PAD_X,
             self.bounds.y + 4,
+            font_cache::TextStyle::PLAIN,
         )?;
 
         let grid_x = self.bounds.x + PAD_X;
@@ -368,7 +369,15 @@ impl Widget for ShopPanel {
             let price = data.prices[idx];
             if price != 0 {
                 let sell_text = format!("Sell: {}G {}S", price / 100, price % 100);
-                font_cache::draw_text(ctx.canvas, ctx.gfx, UI_FONT, &sell_text, grid_x, price_y)?;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    UI_FONT,
+                    &sell_text,
+                    grid_x,
+                    price_y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
             }
         }
 
@@ -382,6 +391,7 @@ impl Widget for ShopPanel {
                 &buy_text,
                 grid_x,
                 price_y + 10,
+                font_cache::TextStyle::PLAIN,
             )?;
         }
 

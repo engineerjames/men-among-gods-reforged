@@ -1,22 +1,79 @@
-//! Static skill table ported from original `SkillTab.cpp`.
-//! Provides name and attribute mapping for each skill.
+pub const SK_HAND: usize = 0;
+pub const SK_KARATE: usize = 1;
+pub const SK_SWORD: usize = 3;
+pub const SK_AXE: usize = 4;
+pub const SK_DAGGER: usize = 2;
+pub const SK_STAFF: usize = 5;
+pub const SK_TWOHAND: usize = 6; // two handed weapon
+pub const SK_LOCK: usize = 7;
+pub const SK_STEALTH: usize = 8;
+pub const SK_PERCEPT: usize = 9;
+pub const SK_SWIM: usize = 10;
+pub const SK_MSHIELD: usize = 11;
+pub const SK_BARTER: usize = 12;
+pub const SK_REPAIR: usize = 13;
+pub const SK_LIGHT: usize = 14;
+pub const SK_RECALL: usize = 15;
+pub const SK_WIMPY: usize = 16;
+pub const SK_PROTECT: usize = 17;
+pub const SK_ENHANCE: usize = 18;
+pub const SK_STUN: usize = 19;
+pub const SK_CURSE: usize = 20;
+pub const SK_BLESS: usize = 21;
+pub const SK_IDENT: usize = 22;
+pub const SK_RESIST: usize = 23;
+pub const SK_BLAST: usize = 24;
+pub const SK_DISPEL: usize = 25;
+pub const SK_HEAL: usize = 26;
+pub const SK_GHOST: usize = 27;
+pub const SK_REGEN: usize = 28;
+pub const SK_REST: usize = 29;
+pub const SK_MEDIT: usize = 30;
+pub const SK_SENSE: usize = 31;
+pub const SK_IMMUN: usize = 32;
+pub const SK_SURROUND: usize = 33;
+pub const SK_CONCEN: usize = 34;
+pub const SK_WARCRY: usize = 35;
+pub const SK_WARCRY2: usize = SK_WARCRY + 100;
 
+const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
+
+/// Maximum number of skill slots.
 pub const MAX_SKILLS: usize = 50;
 
+/// A skill definition entry describing one learnable ability.
+///
+/// Each entry records the skill's index, category code, name,
+/// description, and the three attribute indices that govern it.
 #[derive(Copy, Clone)]
 pub struct SkillTab {
     nr: usize,
     cat: char,
-    name: &'static str,
+    _name: &'static str,
     desc: &'static str,
     attrib: [usize; 3],
 }
 
 impl SkillTab {
+    /// Creates a new `SkillTab` entry.
+    ///
+    /// # Arguments
+    ///
+    /// * `nr` - Skill index.
+    /// * `cat` - Category code (`'C'`ombat, `'G'`eneral, `'R'`(magic), `'B'`ody, `'M'`isc, `'Z'`(empty)).
+    /// * `_name` - Display name.
+    /// * `desc` - In-game description text.
+    /// * `a0` - First governing attribute index.
+    /// * `a1` - Second governing attribute index.
+    /// * `a2` - Third governing attribute index.
+    ///
+    /// # Returns
+    ///
+    /// * A new `SkillTab` entry.
     pub const fn new(
         nr: usize,
         cat: char,
-        name: &'static str,
+        _name: &'static str,
         desc: &'static str,
         a0: usize,
         a1: usize,
@@ -25,7 +82,7 @@ impl SkillTab {
         SkillTab {
             nr,
             cat,
-            name,
+            _name,
             desc,
             attrib: [a0, a1, a2],
         }
@@ -37,17 +94,14 @@ impl Default for SkillTab {
         Self {
             nr: 0,
             cat: '\0',
-            name: "",
+            _name: "",
             desc: "",
             attrib: [0; 3],
         }
     }
 }
 
-// NOTE: attribute indices use core::constants::AT_* constants; values are inlined here
-// to avoid having to reference those constants at compile time in const context.
-// The order and values mirror the original C++ `static_skilltab`.
-
+/// Static lookup table of all 50 skill definitions.
 pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     SkillTab::new(0, 'C', "Hand to Hand", "Fighting without weapons.", 0, 3, 4),
     SkillTab::new(
@@ -342,11 +396,28 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     SkillTab::new(49, 'Z', "", "", 0, 0, 0),
 ];
 
+/// Returns the canonical skill number for a given slot index.
+///
+/// # Arguments
+///
+/// * `skill_id` - Slot index into `SKILLTAB`.
+///
+/// # Returns
+///
+/// * The skill's `nr` field, or `skill_id` unchanged if out of bounds.
 pub fn get_skill_nr(skill_id: usize) -> usize {
     SKILLTAB.get(skill_id).map(|s| s.nr).unwrap_or(skill_id)
 }
 
-/// Safely get the attribute indices for a skill. Returns (0,0,0) on invalid index.
+/// Safely get the attribute indices for a skill.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index.
+///
+/// # Returns
+///
+/// * `[a0, a1, a2]` attribute indices, or `[0, 0, 0]` on invalid index.
 pub fn get_skill_attribs(skill: usize) -> [usize; 3] {
     if skill < MAX_SKILLS {
         SKILLTAB[skill].attrib
@@ -355,16 +426,32 @@ pub fn get_skill_attribs(skill: usize) -> [usize; 3] {
     }
 }
 
-/// Safely get the skill name (empty string on invalid index)
-pub fn get_skill_name(skill: usize) -> &'static str {
-    if skill < MAX_SKILLS {
-        SKILLTAB[skill].name
+/// Returns the skill name for a given index, or an empty string if out of bounds.
+///
+/// # Arguments
+///
+/// * `n` - Index of the skill
+///
+/// # Returns
+///
+/// The skill name as a string slice, or an empty string if out of bounds.
+pub fn get_skill_name(n: usize) -> &'static str {
+    if n < SKILL_NAMES.len() {
+        SKILL_NAMES[n]
     } else {
         ""
     }
 }
 
-/// Safely get the skill description (empty string on invalid index)
+/// Returns the in-game description for a skill.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index.
+///
+/// # Returns
+///
+/// * The description string, or an empty string on invalid index.
 pub fn get_skill_desc(skill: usize) -> &'static str {
     if skill < MAX_SKILLS {
         SKILLTAB[skill].desc
@@ -373,13 +460,163 @@ pub fn get_skill_desc(skill: usize) -> &'static str {
     }
 }
 
-/// Safely get the skill sort key / category (defaults to 'Z' on invalid index)
+/// Returns the category/sort-key character for a skill.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index.
+///
+/// # Returns
+///
+/// * The category char, or `'Z'` on invalid index.
 pub fn get_skill_sortkey(skill: usize) -> char {
     if skill < MAX_SKILLS {
         SKILLTAB[skill].cat
     } else {
         'Z'
     }
+}
+
+/// Returns the display name for an attribute index.
+///
+/// # Arguments
+///
+/// * `n` - Attribute index (0..4).
+///
+/// # Returns
+///
+/// * The attribute name (e.g. `"Strength"`), or an empty string if out of bounds.
+pub fn attribute_name(n: usize) -> &'static str {
+    if n < AT_NAME.len() {
+        AT_NAME[n]
+    } else {
+        ""
+    }
+}
+
+// Static skill table (taken from server/original_source/SkillTab.cpp)
+const SKILL_NAMES: [&str; 50] = [
+    "Hand to Hand",
+    "Karate",
+    "Dagger",
+    "Sword",
+    "Axe",
+    "Staff",
+    "Two-Handed",
+    "Lock-Picking",
+    "Stealth",
+    "Perception",
+    "Swimming",
+    "Magic Shield",
+    "Bartering",
+    "Repair",
+    "Light",
+    "Recall",
+    "Guardian Angel",
+    "Protection",
+    "Enhance Weapon",
+    "Stun",
+    "Curse",
+    "Bless",
+    "Identify",
+    "Resistance",
+    "Blast",
+    "Dispel Magic",
+    "Heal",
+    "Ghost Companion",
+    "Regenerate",
+    "Rest",
+    "Meditate",
+    "Sense Magic",
+    "Immunity",
+    "Surround Hit",
+    "Concentrate",
+    "Warcry",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+];
+
+/// Looks up a skill by name or numeric string.
+///
+/// Matching is case-insensitive and prefix-based: `"sw"` matches `"Sword"`.
+/// A numeric string is interpreted as a direct skill index.
+///
+/// # Arguments
+///
+/// * `name` - Skill name, prefix, or numeric index string.
+///
+/// # Returns
+///
+/// * The matching skill index (≥ 0), or `-1` if not found.
+pub fn skill_lookup(name: &str) -> i32 {
+    // Full implementation ported from original C++ skill_lookup
+    let name = name.trim();
+    if name.is_empty() {
+        return -1;
+    }
+    if name == "0" {
+        return 0;
+    }
+
+    // Try numeric
+    if let Ok(n) = name.parse::<i32>() {
+        if n >= 0 && (n as usize) < SKILL_NAMES.len() {
+            if n > 0 {
+                return n;
+            }
+        } else {
+            return -1;
+        }
+    }
+
+    // Determine the number of meaningful skills (stop at first empty name)
+    let max = SKILL_NAMES
+        .iter()
+        .position(|s| s.is_empty())
+        .unwrap_or(SKILL_NAMES.len());
+
+    // Try tolerant alpha matching: succeed when input matches prefix of skill name
+    for (j, &skill) in SKILL_NAMES.iter().enumerate().take(max) {
+        let mut name_iter = name.chars().map(|c| c.to_ascii_lowercase());
+        let mut skill_iter = skill.chars().map(|c| c.to_ascii_lowercase());
+        let mut matched = true;
+
+        loop {
+            match (name_iter.next(), skill_iter.next()) {
+                (Some(pc), Some(sc)) => {
+                    if sc == ' ' {
+                        break; // skill name reached a space -> accept match
+                    }
+                    if pc != sc {
+                        matched = false;
+                        break;
+                    }
+                }
+                (Some(_), None) | (None, Some(_)) | (None, None) => {
+                    // either string ended -> accept if no mismatch so far
+                    break;
+                }
+            }
+        }
+
+        if matched {
+            return j as i32;
+        }
+    }
+
+    -1
 }
 
 #[cfg(test)]
@@ -392,7 +629,7 @@ mod tests {
 
         assert_eq!(skill.nr, 1);
         assert_eq!(skill.cat, 'C');
-        assert_eq!(skill.name, "Test Skill");
+        assert_eq!(skill._name, "Test Skill");
         assert_eq!(skill.desc, "Test Description");
         assert_eq!(skill.attrib, [0, 1, 2]);
     }
@@ -484,7 +721,7 @@ mod tests {
                 valid_categories.contains(&skill.cat),
                 "Invalid category '{}' for skill '{}'",
                 skill.cat,
-                skill.name
+                skill._name
             );
         }
     }
@@ -535,7 +772,7 @@ mod tests {
                 !SKILLTAB[i].desc.is_empty(),
                 "Skill {} '{}' should have a description",
                 i,
-                SKILLTAB[i].name
+                SKILLTAB[i]._name
             );
         }
 
@@ -556,7 +793,7 @@ mod tests {
                     attr <= 4,
                     "Attribute index {} is out of expected range for skill '{}'",
                     attr,
-                    skill.name
+                    skill._name
                 );
             }
         }
@@ -600,13 +837,91 @@ mod tests {
         // Test that non-empty skill names are unique
         let mut names = std::collections::HashSet::new();
         for skill in SKILLTAB.iter() {
-            if !skill.name.is_empty() {
+            if !skill._name.is_empty() {
                 assert!(
-                    names.insert(skill.name),
+                    names.insert(skill._name),
                     "Duplicate skill name found: '{}'",
-                    skill.name
+                    skill._name
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_skill_lookup_by_name() {
+        assert_eq!(skill_lookup("Sword"), 3);
+        assert_eq!(skill_lookup("sw"), 3);
+        assert_eq!(skill_lookup("Hand"), 0);
+        assert_eq!(skill_lookup("Heal"), 26);
+    }
+
+    #[test]
+    fn test_skill_lookup_by_number() {
+        assert_eq!(skill_lookup("0"), 0);
+        assert_eq!(skill_lookup("3"), 3);
+        assert_eq!(skill_lookup("26"), 26);
+    }
+
+    #[test]
+    fn test_skill_lookup_invalid() {
+        assert_eq!(skill_lookup(""), -1);
+        assert_eq!(skill_lookup("nonexistent"), -1);
+        assert_eq!(skill_lookup("999"), -1);
+    }
+
+    #[test]
+    fn test_attribute_name_valid() {
+        assert_eq!(attribute_name(0), "Braveness");
+        assert_eq!(attribute_name(1), "Willpower");
+        assert_eq!(attribute_name(2), "Intuition");
+        assert_eq!(attribute_name(3), "Agility");
+        assert_eq!(attribute_name(4), "Strength");
+    }
+
+    #[test]
+    fn test_attribute_name_out_of_bounds() {
+        assert_eq!(attribute_name(5), "");
+        assert_eq!(attribute_name(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_get_skill_desc_valid() {
+        assert!(get_skill_desc(0).contains("Fighting without weapons"));
+        assert!(get_skill_desc(26).contains("Heal"));
+    }
+
+    #[test]
+    fn test_get_skill_desc_invalid() {
+        assert_eq!(get_skill_desc(MAX_SKILLS), "");
+        assert_eq!(get_skill_desc(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_get_skill_sortkey_valid() {
+        assert_eq!(get_skill_sortkey(0), 'C');
+        assert_eq!(get_skill_sortkey(7), 'G');
+        assert_eq!(get_skill_sortkey(10), 'M');
+        assert_eq!(get_skill_sortkey(11), 'R');
+        assert_eq!(get_skill_sortkey(28), 'B');
+        assert_eq!(get_skill_sortkey(36), 'Z');
+    }
+
+    #[test]
+    fn test_get_skill_sortkey_invalid() {
+        assert_eq!(get_skill_sortkey(MAX_SKILLS), 'Z');
+        assert_eq!(get_skill_sortkey(usize::MAX), 'Z');
+    }
+
+    #[test]
+    fn test_get_skill_nr_matches_index() {
+        for i in 0..MAX_SKILLS {
+            assert_eq!(get_skill_nr(i), i);
+        }
+    }
+
+    #[test]
+    fn test_get_skill_nr_out_of_bounds() {
+        assert_eq!(get_skill_nr(MAX_SKILLS), MAX_SKILLS);
+        assert_eq!(get_skill_nr(100), 100);
     }
 }

@@ -1,5 +1,6 @@
 use core::constants::CharacterFlags;
 use core::string_operations::c_string_to_str;
+use core::traits;
 use core::types::FontColor;
 
 use crate::driver;
@@ -128,11 +129,11 @@ impl GameState {
 
             // Check faction/kindred restrictions
             if (self.items[tmp].driver == 18
-                && (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) != 0)
+                && (self.characters[cn].kindred & traits::KIN_PURPLE as i32) != 0)
                 || (self.items[tmp].driver == 39
-                    && (self.characters[cn].kindred & core::constants::KIN_PURPLE as i32) == 0)
+                    && (self.characters[cn].kindred & traits::KIN_PURPLE as i32) == 0)
                 || (self.items[tmp].driver == 40
-                    && (self.characters[cn].kindred & core::constants::KIN_SEYAN_DU as i32) == 0)
+                    && (self.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) == 0)
             {
                 self.do_character_log(cn, FontColor::Red, "Ouch. That hurt.\n");
                 return -1;

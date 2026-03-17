@@ -43,6 +43,7 @@ pub const MAXTITEM: usize = 4548;
 
 /// Light distance
 pub const LIGHTDIST: i32 = 10;
+
 /// Description length
 pub const LENDESC: usize = 200;
 
@@ -180,27 +181,6 @@ pub const SP_STUN: u32 = 1 << 6;
 pub const SP_DISPEL: u32 = 1 << 7;
 
 // =============================================================================
-// Constants.h - Client Frame and Kindred Constants
-// =============================================================================
-
-pub const CLIENT_FRAME_LIMIT: u32 = 24;
-pub const LOOK_TIME_IN_SECONDS: f32 = 10.0;
-
-// Kindred flags
-pub const KIN_MERCENARY: u32 = 1 << 0;
-pub const KIN_SEYAN_DU: u32 = 1 << 1;
-pub const KIN_PURPLE: u32 = 1 << 2;
-pub const KIN_MONSTER: u32 = 1 << 3;
-pub const KIN_TEMPLAR: u32 = 1 << 4;
-pub const KIN_ARCHTEMPLAR: u32 = 1 << 5;
-pub const KIN_HARAKIM: u32 = 1 << 6;
-pub const KIN_MALE: u32 = 1 << 7;
-pub const KIN_FEMALE: u32 = 1 << 8;
-pub const KIN_ARCHHARAKIM: u32 = 1 << 9;
-pub const KIN_WARRIOR: u32 = 1 << 10;
-pub const KIN_SORCERER: u32 = 1 << 11;
-
-// =============================================================================
 // Character Flags (from Constants.h)
 // =============================================================================
 
@@ -308,6 +288,15 @@ bitflags::bitflags! {
     }
 }
 
+/// Returns the display name of a single [`CharacterFlags`] variant.
+///
+/// # Arguments
+///
+/// * `flag` - A single flag bit to look up.
+///
+/// # Returns
+///
+/// * A static string name, or `"UnknownFlag"` for unrecognized values.
 pub fn character_flags_name(flag: CharacterFlags) -> &'static str {
     match flag {
         CharacterFlags::Immortal => "Immortal",
@@ -450,48 +439,6 @@ pub const GF_SPEEDY: i32 = 1 << 4;
 pub const GF_DIRTY: i32 = 1 << 5;
 
 // =============================================================================
-// Skill Indices (from data.h)
-// =============================================================================
-
-pub const SK_HAND: usize = 0;
-pub const SK_KARATE: usize = 1;
-pub const SK_SWORD: usize = 3;
-pub const SK_AXE: usize = 4;
-pub const SK_DAGGER: usize = 2;
-pub const SK_STAFF: usize = 5;
-pub const SK_TWOHAND: usize = 6; // two handed weapon
-pub const SK_LOCK: usize = 7;
-pub const SK_STEALTH: usize = 8;
-pub const SK_PERCEPT: usize = 9;
-pub const SK_SWIM: usize = 10;
-pub const SK_MSHIELD: usize = 11;
-pub const SK_BARTER: usize = 12;
-pub const SK_REPAIR: usize = 13;
-pub const SK_LIGHT: usize = 14;
-pub const SK_RECALL: usize = 15;
-pub const SK_WIMPY: usize = 16;
-pub const SK_PROTECT: usize = 17;
-pub const SK_ENHANCE: usize = 18;
-pub const SK_STUN: usize = 19;
-pub const SK_CURSE: usize = 20;
-pub const SK_BLESS: usize = 21;
-pub const SK_IDENT: usize = 22;
-pub const SK_RESIST: usize = 23;
-pub const SK_BLAST: usize = 24;
-pub const SK_DISPEL: usize = 25;
-pub const SK_HEAL: usize = 26;
-pub const SK_GHOST: usize = 27;
-pub const SK_REGEN: usize = 28;
-pub const SK_REST: usize = 29;
-pub const SK_MEDIT: usize = 30;
-pub const SK_SENSE: usize = 31;
-pub const SK_IMMUN: usize = 32;
-pub const SK_SURROUND: usize = 33;
-pub const SK_CONCEN: usize = 34;
-pub const SK_WARCRY: usize = 35;
-pub const SK_WARCRY2: usize = SK_WARCRY + 100;
-
-// =============================================================================
 // Character Data Indices (from data.h)
 // =============================================================================
 
@@ -510,8 +457,6 @@ pub const CHD_ATTACKVICT: usize = 69;
 pub const CHD_TALKATIVE: usize = 71;
 pub const CHD_ENEMY1ST: usize = 80;
 pub const CHD_ENEMYZZZ: usize = 91;
-
-pub const RANKS: usize = 24;
 
 /// level differences permitted for attack / group
 pub const ATTACK_RANGE: i32 = 3;
@@ -773,6 +718,15 @@ pub const LO_EXIT: u8 = 12;
 pub const LO_USURP: u8 = 13;
 pub const LO_KICKED: u8 = 14;
 
+/// Returns a human-readable description of a server exit/logout reason code.
+///
+/// # Arguments
+///
+/// * `code` - The `LO_*` reason code (as `u32`).
+///
+/// # Returns
+///
+/// * A bracketed label and description, e.g. `"[LO_IDLE] Player idle too long"`.
 pub fn get_exit_reason(code: u32) -> &'static str {
     match code as u8 {
         LO_CHALLENGE => "[LO_CHALLENGE] Challenge failure",
@@ -924,6 +878,7 @@ pub const AT_INT: i32 = 2;
 pub const AT_AGIL: i32 = 3;
 pub const AT_STREN: i32 = 4;
 
+/// Physical armor material tier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArmorType {
     Cloth,
@@ -937,6 +892,15 @@ pub enum ArmorType {
 }
 
 impl ArmorType {
+    /// Parses a case-insensitive prefix string into an [`ArmorType`].
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Input string (matched by first two characters, case-insensitive).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(ArmorType)` on match, `None` otherwise.
     pub fn from_str(s: &str) -> Option<ArmorType> {
         let binding = s.to_lowercase();
         let s_lower = binding.trim();
@@ -969,6 +933,7 @@ impl ArmorType {
     }
 }
 
+/// Magical armor enchantment type.
 pub enum MagicArmorType {
     Bear,
     Lion,
@@ -981,6 +946,15 @@ pub enum MagicArmorType {
 }
 
 impl MagicArmorType {
+    /// Parses a case-insensitive prefix string into a [`MagicArmorType`].
+    ///
+    /// # Arguments
+    ///
+    /// * `s` - Input string (matched by first two-three characters, case-insensitive).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(MagicArmorType)` on match, `None` otherwise.
     pub fn from_str(s: &str) -> Option<MagicArmorType> {
         let binding = s.to_lowercase();
         let s_lower = binding.trim();
@@ -1233,5 +1207,56 @@ mod tests {
         // Should contain all valid flags
         assert!(truncated.contains(CharacterFlags::Player));
         assert!(truncated.contains(CharacterFlags::God));
+    }
+
+    #[test]
+    fn get_exit_reason_returns_known_reasons() {
+        assert!(get_exit_reason(LO_CHALLENGE as u32).contains("Challenge"));
+        assert!(get_exit_reason(LO_IDLE as u32).contains("idle"));
+        assert!(get_exit_reason(LO_SHUTDOWN as u32).contains("shutting down"));
+        assert!(get_exit_reason(LO_KICKED as u32).contains("Kicked"));
+    }
+
+    #[test]
+    fn get_exit_reason_returns_unknown_for_invalid_code() {
+        assert!(get_exit_reason(255).contains("UNKNOWN"));
+        assert!(get_exit_reason(0).contains("UNKNOWN"));
+    }
+
+    #[test]
+    fn armor_type_from_str_case_insensitive() {
+        assert_eq!(ArmorType::from_str("cloth"), Some(ArmorType::Cloth));
+        assert_eq!(ArmorType::from_str("LEATHER"), Some(ArmorType::Leather));
+        assert_eq!(ArmorType::from_str("Bronze Armor"), Some(ArmorType::Bronze));
+        assert_eq!(ArmorType::from_str("steel"), Some(ArmorType::Steel));
+        assert_eq!(ArmorType::from_str("gold"), Some(ArmorType::Gold));
+        assert_eq!(ArmorType::from_str("emerald"), Some(ArmorType::Emerald));
+        assert_eq!(ArmorType::from_str("crystal"), Some(ArmorType::Crystal));
+        assert_eq!(ArmorType::from_str("titanium"), Some(ArmorType::Titanium));
+    }
+
+    #[test]
+    fn armor_type_from_str_returns_none_for_unknown() {
+        assert_eq!(ArmorType::from_str(""), None);
+        assert_eq!(ArmorType::from_str("diamond"), None);
+        assert_eq!(ArmorType::from_str("x"), None);
+    }
+
+    #[test]
+    fn magic_armor_type_from_str_case_insensitive() {
+        assert!(MagicArmorType::from_str("bear").is_some());
+        assert!(MagicArmorType::from_str("LION").is_some());
+        assert!(MagicArmorType::from_str("weasel").is_some());
+        assert!(MagicArmorType::from_str("snake").is_some());
+        assert!(MagicArmorType::from_str("owl").is_some());
+        assert!(MagicArmorType::from_str("magic").is_some());
+        assert!(MagicArmorType::from_str("life").is_some());
+        assert!(MagicArmorType::from_str("defence").is_some());
+    }
+
+    #[test]
+    fn magic_armor_type_from_str_returns_none_for_unknown() {
+        assert!(MagicArmorType::from_str("").is_none());
+        assert!(MagicArmorType::from_str("fire").is_none());
     }
 }

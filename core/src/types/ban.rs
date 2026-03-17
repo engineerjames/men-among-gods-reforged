@@ -1,5 +1,6 @@
 use crate::string_operations::c_string_to_str;
 
+/// A ban record linking a creator (staff) to a banned victim and IP address.
 pub struct Ban {
     creator: [u8; 80],
     victim: [u8; 80],
@@ -7,6 +8,11 @@ pub struct Ban {
 }
 
 impl Ban {
+    /// Creates a new empty `Ban` record.
+    ///
+    /// # Returns
+    ///
+    /// * A zeroed-out `Ban`.
     pub fn new() -> Self {
         Ban {
             creator: [0; 80],
@@ -15,18 +21,38 @@ impl Ban {
         }
     }
 
+    /// Returns the banned IP address.
+    ///
+    /// # Returns
+    ///
+    /// * The raw `u32` IP address.
     pub fn address(&self) -> u32 {
         self.address
     }
 
+    /// Sets the banned IP address.
+    ///
+    /// # Arguments
+    ///
+    /// * `address` - The raw `u32` IP address.
     pub fn set_address(&mut self, address: u32) {
         self.address = address;
     }
 
+    /// Returns the name of the staff member who created this ban.
+    ///
+    /// # Returns
+    ///
+    /// * The creator name as a `&str`.
     pub fn creator(&self) -> &str {
         c_string_to_str(&self.creator)
     }
 
+    /// Sets the creator (staff member) name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The staff member name (truncated to 79 bytes).
     pub fn set_creator(&mut self, name: &str) {
         let bytes = name.as_bytes();
         let len = bytes.len().min(79);
@@ -34,10 +60,20 @@ impl Ban {
         self.creator[len] = 0;
     }
 
+    /// Returns the name of the banned player.
+    ///
+    /// # Returns
+    ///
+    /// * The victim name as a `&str`.
     pub fn victim(&self) -> &str {
         c_string_to_str(&self.victim)
     }
 
+    /// Sets the victim (banned player) name.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - The player name (truncated to 79 bytes).
     pub fn set_victim(&mut self, name: &str) {
         let bytes = name.as_bytes();
         let len = bytes.len().min(79);

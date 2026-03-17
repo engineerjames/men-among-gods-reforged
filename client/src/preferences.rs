@@ -51,129 +51,102 @@ pub struct CharacterIdentity {
     pub account_username: Option<String>,
 }
 
-/// In-memory representation of a character's saved preferences.
+/// Unified settings for both global (all-character) and per-character
+/// preferences. Loaded from / saved to the JSON profile file.
 ///
-/// Loaded from / saved to the JSON profile file. Contains spell-bar
-/// bindings, toggle states, and the volume level.
-/// TODO: Combine the various settings structs
-#[derive(Clone, Debug)]
-pub struct RuntimeProfile {
+/// Global fields: `music_enabled`, `display_mode`, `pixel_perfect_scaling`,
+/// `vsync_enabled`.
+///
+/// Per-character fields: everything else.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Settings {
+    /// Whether background music is enabled.
+    #[serde(default = "default_true")]
+    pub music_enabled: bool,
+    /// Window display mode.
+    #[serde(default)]
+    pub display_mode: DisplayMode,
+    /// Whether pixel-perfect (integer) scaling is active.
+    #[serde(default)]
+    pub pixel_perfect_scaling: bool,
+    /// Whether VSync is enabled.
+    #[serde(default)]
+    pub vsync_enabled: bool,
+    /// Whether shadow rendering is enabled.
+    #[serde(default)]
     pub shadows_enabled: bool,
+    /// Whether spell visual effects are rendered.
+    #[serde(default)]
     pub spell_effects_enabled: bool,
+    /// Master volume (0.0–1.0).
+    #[serde(default)]
     pub master_volume: f32,
+    /// Wall-hiding toggle.
+    #[serde(default)]
     pub hide: i32,
+    /// Overhead player name display toggle.
+    #[serde(default)]
     pub show_names: i32,
+    /// Overhead health percentage display toggle.
+    #[serde(default)]
     pub show_proz: i32,
     /// Whether context-sensitive helper text is shown near the cursor.
+    #[serde(default = "default_true")]
     pub show_helper_text: bool,
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
+    #[serde(default)]
     pub skill_keybinds: [Option<u32>; 9],
 }
 
-/// Global (non-character-specific) settings persisted across sessions.
-#[derive(Clone, Debug)]
-pub struct GlobalSettings {
-    pub music_enabled: bool,
-    pub display_mode: DisplayMode,
-    pub pixel_perfect_scaling: bool,
-    pub vsync_enabled: bool,
-}
-
-impl Default for GlobalSettings {
+impl Default for Settings {
     fn default() -> Self {
         Self {
             music_enabled: true,
             display_mode: DisplayMode::default(),
             pixel_perfect_scaling: false,
             vsync_enabled: false,
+            shadows_enabled: false,
+            spell_effects_enabled: false,
+            master_volume: 0.0,
+            hide: 0,
+            show_names: 0,
+            show_proz: 0,
+            show_helper_text: true,
+            skill_keybinds: [None; 9],
         }
     }
 }
 
+/// Internal JSON container for a character's saved settings.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct SkillKeybindEntry {
-    key: u8,
-    skill_nr: u32,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct CharacterProfile {
+struct CharacterEntry {
     character_id: u64,
     character_name: String,
     account_username: Option<String>,
-    #[serde(default)]
-    skill_keybinds: Vec<SkillKeybindEntry>,
-    shadows_enabled: bool,
-    spell_effects_enabled: bool,
-    master_volume: f32,
-    hide: i32,
-    show_names: i32,
-    show_proz: i32,
-    #[serde(default = "default_true")]
-    show_helper_text: bool,
+    #[serde(flatten)]
+    settings: Settings,
 }
 
+/// Top-level JSON structure persisted to `mag_profile.json`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
-struct AppProfileStorage {
+struct ProfileStorage {
     version: u32,
-    global: GlobalSettingsStorage,
-    characters: BTreeMap<String, CharacterProfile>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-struct GlobalSettingsStorage {
-    music_enabled: bool,
-    #[serde(default)]
-    display_mode: DisplayMode,
-    #[serde(default)]
-    pixel_perfect_scaling: bool,
-    #[serde(default)]
-    vsync_enabled: bool,
-    /// Username most recently used for a successful login.
     #[serde(default)]
     last_username: Option<String>,
+    #[serde(default)]
+    global: Settings,
+    #[serde(default)]
+    characters: BTreeMap<String, CharacterEntry>,
 }
 
-impl Default for GlobalSettingsStorage {
-    fn default() -> Self {
-        Self {
-            music_enabled: true,
-            display_mode: DisplayMode::default(),
-            pixel_perfect_scaling: false,
-            vsync_enabled: false,
-            last_username: None,
-        }
-    }
-}
-
-impl Default for AppProfileStorage {
+impl Default for ProfileStorage {
     fn default() -> Self {
         Self {
             version: 1,
-            global: GlobalSettingsStorage::default(),
+            last_username: None,
+            global: Settings::default(),
             characters: BTreeMap::new(),
         }
-    }
-}
-
-fn to_global_settings(storage: &GlobalSettingsStorage) -> GlobalSettings {
-    GlobalSettings {
-        music_enabled: storage.music_enabled,
-        display_mode: storage.display_mode,
-        pixel_perfect_scaling: storage.pixel_perfect_scaling,
-        vsync_enabled: storage.vsync_enabled,
-    }
-}
-
-fn from_global_settings(settings: &GlobalSettings) -> GlobalSettingsStorage {
-    GlobalSettingsStorage {
-        music_enabled: settings.music_enabled,
-        display_mode: settings.display_mode,
-        pixel_perfect_scaling: settings.pixel_perfect_scaling,
-        vsync_enabled: settings.vsync_enabled,
-        // last_username is not part of GlobalSettings; save_global_settings
-        // preserves the existing value by patching it back in after calling here.
-        last_username: None,
     }
 }
 
@@ -258,12 +231,12 @@ pub fn known_hosts_file_path() -> PathBuf {
     data_directory().join(KNOWN_HOSTS_FILE)
 }
 
-fn read_storage(path: &Path) -> AppProfileStorage {
+fn read_storage(path: &Path) -> ProfileStorage {
     let Ok(raw) = fs::read_to_string(path) else {
-        return AppProfileStorage::default();
+        return ProfileStorage::default();
     };
 
-    match serde_json::from_str::<AppProfileStorage>(&raw) {
+    match serde_json::from_str::<ProfileStorage>(&raw) {
         Ok(storage) => storage,
         Err(err) => {
             log::warn!(
@@ -271,12 +244,12 @@ fn read_storage(path: &Path) -> AppProfileStorage {
                 path.display(),
                 err
             );
-            AppProfileStorage::default()
+            ProfileStorage::default()
         }
     }
 }
 
-fn write_storage(path: &Path, storage: &AppProfileStorage) -> Result<(), String> {
+fn write_storage(path: &Path, storage: &ProfileStorage) -> Result<(), String> {
     let tmp_path = path.with_extension("json.tmp");
     let json = serde_json::to_string_pretty(storage)
         .map_err(|err| format!("Failed to serialize profile JSON: {err}"))?;
@@ -292,97 +265,63 @@ fn write_storage(path: &Path, storage: &AppProfileStorage) -> Result<(), String>
     Ok(())
 }
 
-/// Converts internal serialised profile data to the public
-/// [`RuntimeProfile`] struct.
-fn to_runtime_profile(profile: &CharacterProfile) -> RuntimeProfile {
-    let mut keybinds: [Option<u32>; 9] = [None; 9];
-    for entry in &profile.skill_keybinds {
-        if entry.key >= 1 && entry.key <= 9 {
-            keybinds[(entry.key - 1) as usize] = Some(entry.skill_nr);
-        }
-    }
-
-    RuntimeProfile {
-        shadows_enabled: profile.shadows_enabled,
-        spell_effects_enabled: profile.spell_effects_enabled,
-        master_volume: profile.master_volume.clamp(0.0, 1.0),
-        hide: profile.hide,
-        show_names: profile.show_names,
-        show_proz: profile.show_proz,
-        show_helper_text: profile.show_helper_text,
-        skill_keybinds: keybinds,
-    }
-}
-
-/// Converts a [`RuntimeProfile`] and [`CharacterIdentity`] into the
-/// serialisable `CharacterProfile` storage format.
-fn from_runtime_profile(
-    identity: &CharacterIdentity,
-    runtime: &RuntimeProfile,
-) -> CharacterProfile {
-    let skill_keybinds: Vec<SkillKeybindEntry> = runtime
-        .skill_keybinds
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, opt)| {
-            opt.map(|skill_nr| SkillKeybindEntry {
-                key: (idx + 1) as u8,
-                skill_nr,
-            })
-        })
-        .collect();
-
-    CharacterProfile {
-        character_id: identity.id,
-        character_name: identity.name.clone(),
-        account_username: identity.account_username.clone(),
-        skill_keybinds,
-        shadows_enabled: runtime.shadows_enabled,
-        spell_effects_enabled: runtime.spell_effects_enabled,
-        master_volume: runtime.master_volume.clamp(0.0, 1.0),
-        hide: runtime.hide,
-        show_names: runtime.show_names,
-        show_proz: runtime.show_proz,
-        show_helper_text: runtime.show_helper_text,
-    }
-}
-
-/// Loads a character's saved profile from disk.
+/// Loads a character's saved settings from disk, merging global and
+/// per-character fields into a single [`Settings`].
 ///
 /// # Arguments
 /// * `identity` - The character to look up.
 ///
 /// # Returns
-/// * `Some(RuntimeProfile)` if found, `None` otherwise.
-pub fn load_profile(identity: &CharacterIdentity) -> Option<RuntimeProfile> {
+/// * `Some(Settings)` if the character's entry exists, `None` otherwise.
+///   Global fields are always populated from the global section;
+///   per-character fields come from the character entry.
+pub fn load_settings(identity: &CharacterIdentity) -> Option<Settings> {
     let path = profile_file_path();
     let storage = read_storage(&path);
     let key = profile_key(identity);
-    storage.characters.get(&key).map(to_runtime_profile)
+    let entry = storage.characters.get(&key)?;
+    let mut settings = entry.settings.clone();
+    // Global fields always come from the global section.
+    settings.music_enabled = storage.global.music_enabled;
+    settings.display_mode = storage.global.display_mode;
+    settings.pixel_perfect_scaling = storage.global.pixel_perfect_scaling;
+    settings.vsync_enabled = storage.global.vsync_enabled;
+    settings.master_volume = settings.master_volume.clamp(0.0, 1.0);
+    Some(settings)
 }
 
 /// Loads the global (non-character) settings from disk, returning
 /// defaults if the file is missing or corrupt.
-pub fn load_global_settings() -> GlobalSettings {
+///
+/// Per-character fields will be at their defaults; callers that only
+/// need global fields (e.g. the login scene) should use this.
+///
+/// # Returns
+/// * A [`Settings`] whose global fields are populated from disk.
+pub fn load_global_settings() -> Settings {
     let path = profile_file_path();
     let storage = read_storage(&path);
-    to_global_settings(&storage.global)
+    storage.global
 }
 
-/// Persists the global settings to the profile file.
+/// Persists the global fields of `settings` to the profile file.
+///
+/// Only `music_enabled`, `display_mode`, `pixel_perfect_scaling`, and
+/// `vsync_enabled` are written. All other fields and the `last_username`
+/// value are preserved as-is.
 ///
 /// # Arguments
-/// * `settings` - The settings to save.
+/// * `settings` - The settings whose global fields to save.
 ///
 /// # Returns
 /// * `Ok(())` on success, `Err(String)` with a description on I/O failure.
-pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), String> {
+pub fn save_global_settings(settings: &Settings) -> Result<(), String> {
     let path = profile_file_path();
     let mut storage = read_storage(&path);
-    // Preserve last_username — it is managed independently by save_last_username.
-    let last_username = storage.global.last_username.take();
-    storage.global = from_global_settings(settings);
-    storage.global.last_username = last_username;
+    storage.global.music_enabled = settings.music_enabled;
+    storage.global.display_mode = settings.display_mode;
+    storage.global.pixel_perfect_scaling = settings.pixel_perfect_scaling;
+    storage.global.vsync_enabled = settings.vsync_enabled;
     write_storage(&path, &storage)
 }
 
@@ -390,7 +329,7 @@ pub fn save_global_settings(settings: &GlobalSettings) -> Result<(), String> {
 /// no login has been saved yet.
 pub fn load_last_username() -> Option<String> {
     let path = profile_file_path();
-    read_storage(&path).global.last_username
+    read_storage(&path).last_username
 }
 
 /// Persists `username` as the most recently used login name.
@@ -403,24 +342,124 @@ pub fn load_last_username() -> Option<String> {
 pub fn save_last_username(username: &str) -> Result<(), String> {
     let path = profile_file_path();
     let mut storage = read_storage(&path);
-    storage.global.last_username = Some(username.to_owned());
+    storage.last_username = Some(username.to_owned());
     write_storage(&path, &storage)
 }
 
-/// Persists a character's runtime profile to the profile file.
+/// Persists a character's settings to the profile file.
+///
+/// Both the global fields (in the global section) and per-character
+/// fields (in the character entry) are written.
 ///
 /// # Arguments
-/// * `identity` - The character whose profile to save.
-/// * `runtime` - The profile data to persist.
+/// * `identity` - The character whose settings to save.
+/// * `settings` - The full settings to persist.
 ///
 /// # Returns
 /// * `Ok(())` on success, `Err(String)` with a description on I/O failure.
-pub fn save_profile(identity: &CharacterIdentity, runtime: &RuntimeProfile) -> Result<(), String> {
+pub fn save_settings(identity: &CharacterIdentity, settings: &Settings) -> Result<(), String> {
     let path = profile_file_path();
     let mut storage = read_storage(&path);
+    // Update global fields.
+    storage.global.music_enabled = settings.music_enabled;
+    storage.global.display_mode = settings.display_mode;
+    storage.global.pixel_perfect_scaling = settings.pixel_perfect_scaling;
+    storage.global.vsync_enabled = settings.vsync_enabled;
+    // Insert / update character entry.
     let key = profile_key(identity);
-    storage
-        .characters
-        .insert(key, from_runtime_profile(identity, runtime));
+    storage.characters.insert(
+        key,
+        CharacterEntry {
+            character_id: identity.id,
+            character_name: identity.name.clone(),
+            account_username: identity.account_username.clone(),
+            settings: Settings {
+                master_volume: settings.master_volume.clamp(0.0, 1.0),
+                ..settings.clone()
+            },
+        },
+    );
     write_storage(&path, &storage)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn settings_serde_roundtrip() {
+        let mut s = Settings::default();
+        s.music_enabled = false;
+        s.display_mode = DisplayMode::BorderlessFullscreen;
+        s.shadows_enabled = true;
+        s.master_volume = 0.75;
+        s.skill_keybinds = [None, Some(42), None, None, Some(7), None, None, None, None];
+        s.show_helper_text = false;
+
+        let json = serde_json::to_string(&s).unwrap();
+        let deserialized: Settings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.music_enabled, s.music_enabled);
+        assert_eq!(deserialized.display_mode, s.display_mode);
+        assert_eq!(deserialized.shadows_enabled, s.shadows_enabled);
+        assert!((deserialized.master_volume - s.master_volume).abs() < f32::EPSILON);
+        assert_eq!(deserialized.skill_keybinds, s.skill_keybinds);
+        assert_eq!(deserialized.show_helper_text, s.show_helper_text);
+    }
+
+    #[test]
+    fn settings_default_from_empty_json() {
+        let deserialized: Settings = serde_json::from_str("{}").unwrap();
+        let defaults = Settings::default();
+
+        assert_eq!(deserialized.music_enabled, defaults.music_enabled);
+        assert_eq!(deserialized.display_mode, defaults.display_mode);
+        assert_eq!(deserialized.shadows_enabled, defaults.shadows_enabled);
+        assert!((deserialized.master_volume - defaults.master_volume).abs() < f32::EPSILON);
+        assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
+        assert_eq!(deserialized.skill_keybinds, defaults.skill_keybinds);
+    }
+
+    #[test]
+    fn profile_key_with_username() {
+        let identity = CharacterIdentity {
+            id: 99,
+            name: "TestChar".to_string(),
+            account_username: Some("alice".to_string()),
+        };
+        assert_eq!(profile_key(&identity), "alice:99");
+    }
+
+    #[test]
+    fn profile_key_without_username() {
+        let identity = CharacterIdentity {
+            id: 7,
+            name: "NoAccount".to_string(),
+            account_username: None,
+        };
+        assert_eq!(profile_key(&identity), "unknown_account:7");
+    }
+
+    #[test]
+    fn profile_storage_serde_roundtrip() {
+        let storage = ProfileStorage {
+            version: 1,
+            last_username: Some("bob".to_string()),
+            global: Settings {
+                music_enabled: false,
+                vsync_enabled: true,
+                ..Settings::default()
+            },
+            characters: BTreeMap::new(),
+        };
+
+        let json = serde_json::to_string_pretty(&storage).unwrap();
+        let deserialized: ProfileStorage = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.version, 1);
+        assert_eq!(deserialized.last_username.as_deref(), Some("bob"));
+        assert!(!deserialized.global.music_enabled);
+        assert!(deserialized.global.vsync_enabled);
+        assert!(deserialized.characters.is_empty());
+    }
 }

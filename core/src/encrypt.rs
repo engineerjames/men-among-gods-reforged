@@ -5,8 +5,19 @@ const SECRET: &[u8] = b"Ifhjf64hH8sa,-#39ddj843tvxcv0434dvsdc40G#34Trefc349534Y5
 8efnsd897)DDzD'D'D''Dofs,t0943-rg-gdfg-gdf.t,e95.34u.5retfrh.wretv.56\
 9v4#asf.59m(D)/ND/DDLD;gd+dsa,fw9r,x  OD(98snfsf\0";
 
-/// Port of `xcrypt` from `svr_tick.cpp`
-/// Encryption function for challenge verification
+/// Port of `xcrypt` from `svr_tick.cpp`.
+///
+/// Scrambles a 32-bit challenge value using the `SECRET` look-up table
+/// and a fixed XOR mask. Both client and server must produce the same
+/// output for the handshake to succeed.
+///
+/// # Arguments
+///
+/// * `val` - The 32-bit challenge value to encrypt.
+///
+/// # Returns
+///
+/// * The encrypted 32-bit result.
 pub fn xcrypt(val: u32) -> u32 {
     let mut res: u32 = 0;
 

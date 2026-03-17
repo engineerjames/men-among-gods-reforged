@@ -2,8 +2,9 @@ use super::graphics::GraphicsZipCache;
 use crate::DataSource;
 use eframe::egui;
 use egui::Vec2;
+use mag_core::skills;
 use mag_core::string_operations::c_string_to_str;
-use mag_core::types::skilltab::get_skill_name;
+use mag_core::{ranks, traits};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -1165,7 +1166,7 @@ impl TemplateViewerApp {
                                 min_rank = -1;
                                 changed = true;
                             }
-                            for (idx, name) in mag_core::ranks::RANK_NAMES.iter().enumerate() {
+                            for (idx, name) in ranks::ranks().iter().enumerate() {
                                 let label = format!("{}: {}", idx, name);
                                 if ui.selectable_label(min_rank == idx as i32, label).clicked() {
                                     min_rank = idx as i32;
@@ -1253,7 +1254,7 @@ impl TemplateViewerApp {
 
                     for i in 0..skill.len() {
                         crate::centered_label(ui, format!("{}", i));
-                        ui.label(get_skill_name(i));
+                        ui.label(skills::get_skill_name(i));
                         for j in 0..3 {
                             let mut v = skill[i][j] as i32;
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
@@ -1529,18 +1530,18 @@ impl TemplateViewerApp {
 
                         let mut kindred_bits = kindred as u32;
                         let kindred_flags: [(u32, &str); 12] = [
-                            (mag_core::constants::KIN_MERCENARY, "Mercenary"),
-                            (mag_core::constants::KIN_SEYAN_DU, "Seyan Du"),
-                            (mag_core::constants::KIN_PURPLE, "Purple"),
-                            (mag_core::constants::KIN_MONSTER, "Monster"),
-                            (mag_core::constants::KIN_TEMPLAR, "Templar"),
-                            (mag_core::constants::KIN_ARCHTEMPLAR, "ArchTemplar"),
-                            (mag_core::constants::KIN_HARAKIM, "Harakim"),
-                            (mag_core::constants::KIN_MALE, "Male"),
-                            (mag_core::constants::KIN_FEMALE, "Female"),
-                            (mag_core::constants::KIN_ARCHHARAKIM, "ArchHarakim"),
-                            (mag_core::constants::KIN_WARRIOR, "Warrior"),
-                            (mag_core::constants::KIN_SORCERER, "Sorcerer"),
+                            (traits::KIN_MERCENARY, "Mercenary"),
+                            (traits::KIN_SEYAN_DU, "Seyan Du"),
+                            (traits::KIN_PURPLE, "Purple"),
+                            (traits::KIN_MONSTER, "Monster"),
+                            (traits::KIN_TEMPLAR, "Templar"),
+                            (traits::KIN_ARCHTEMPLAR, "ArchTemplar"),
+                            (traits::KIN_HARAKIM, "Harakim"),
+                            (traits::KIN_MALE, "Male"),
+                            (traits::KIN_FEMALE, "Female"),
+                            (traits::KIN_ARCHHARAKIM, "ArchHarakim"),
+                            (traits::KIN_WARRIOR, "Warrior"),
+                            (traits::KIN_SORCERER, "Sorcerer"),
                         ];
 
                         egui::Grid::new(format!("kindred_flags_grid_{}", temp))
@@ -1832,7 +1833,7 @@ impl TemplateViewerApp {
 
                     for (i, _skill) in character.skill.iter().enumerate() {
                         crate::centered_label(ui, format!("{}", i));
-                        ui.label(get_skill_name(i));
+                        ui.label(skills::get_skill_name(i));
                         for j in 0..6 {
                             let mut v = skills[i][j] as i32;
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {

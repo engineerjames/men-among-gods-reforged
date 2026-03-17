@@ -1,18 +1,40 @@
+/// A named rectangular region on the game map.
+///
+/// Areas are used for location identification (e.g. showing "Aston" or
+/// "Temple Street" on the client HUD). Each area has an axis-aligned
+/// bounding box, a display name, and a flag indicating the region type.
 pub struct Area {
+    /// Left edge (inclusive).
     pub x1: i32,
+    /// Top edge (inclusive).
     pub y1: i32,
+    /// Right edge (inclusive).
     pub x2: i32,
+    /// Bottom edge (inclusive).
     pub y2: i32,
+    /// Human-readable name of the area.
     pub name: &'static str,
+    /// Area type flag (0 = general, 1 = dungeon/interior, 2 = street, 3 = hostile).
     pub flag: i32,
 }
 
 impl Area {
+    /// Returns `true` if the point (`x`, `y`) lies within this area (inclusive).
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Horizontal map coordinate.
+    /// * `y` - Vertical map coordinate.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the point is inside the bounding box.
     pub fn contains(&self, x: i32, y: i32) -> bool {
         x >= self.x1 && y >= self.y1 && x <= self.x2 && y <= self.y2
     }
 }
 
+/// Static list of all named areas on the game map.
 pub const AREAS: &[Area] = &[
     Area {
         x1: 481,
@@ -1008,6 +1030,16 @@ pub const AREAS: &[Area] = &[
     },
 ];
 
+/// Returns a comma-separated string of all area names that contain point (`x`, `y`).
+///
+/// # Arguments
+///
+/// * `x` - Horizontal map coordinate.
+/// * `y` - Vertical map coordinate.
+///
+/// # Returns
+///
+/// * `Some(names)` with comma-joined area names, or `None` if the point is outside all areas.
 pub fn get_area_m(x: i32, y: i32) -> Option<String> {
     let mut names: Vec<&'static str> = Vec::new();
 

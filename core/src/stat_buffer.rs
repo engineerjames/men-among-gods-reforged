@@ -1,5 +1,6 @@
 use crate::circular_buffer::CircularBuffer;
 
+/// Summary statistics over a set of values.
 pub struct Statistics {
     pub std: f32,
     pub mean: f32,
@@ -16,6 +17,19 @@ pub struct StatisticsBuffer<T: std::cmp::PartialOrd<f32> + std::convert::Into<f3
 }
 
 impl<T: std::cmp::PartialOrd<f32> + std::convert::Into<f32> + Clone> StatisticsBuffer<T> {
+    /// Creates a new `StatisticsBuffer` with the given capacity.
+    ///
+    /// # Arguments
+    ///
+    /// * `capacity` - Maximum number of samples to retain.
+    ///
+    /// # Returns
+    ///
+    /// * A new empty buffer.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if `capacity` is 0.
     pub fn new(capacity: usize) -> Self {
         StatisticsBuffer {
             buffer: CircularBuffer::new(capacity),
@@ -28,6 +42,11 @@ impl<T: std::cmp::PartialOrd<f32> + std::convert::Into<f32> + Clone> StatisticsB
         }
     }
 
+    /// Pushes a new sample and recomputes statistics.
+    ///
+    /// # Arguments
+    ///
+    /// * `item` - The value to add.
     pub fn push(&mut self, item: T) {
         // push the new item into the buffer first so stats include it
         self.buffer.push(item.clone());
@@ -83,6 +102,11 @@ impl<T: std::cmp::PartialOrd<f32> + std::convert::Into<f32> + Clone> StatisticsB
         }
     }
 
+    /// Returns the current summary statistics.
+    ///
+    /// # Returns
+    ///
+    /// * A reference to the computed [`Statistics`].
     pub fn stats(&self) -> &Statistics {
         &self.stats
     }
@@ -95,10 +119,24 @@ impl<T: std::cmp::PartialOrd<f32> + std::convert::Into<f32> + Clone> StatisticsB
         self.stats.max = f32::MIN;
     }
 
+    /// Retrieves a sample by reverse-chronological index.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Reverse-chronological index (0 = newest).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&T)` if the slot is occupied, `None` otherwise.
     pub fn get(&self, index: usize) -> Option<&T> {
         self.buffer.get(index)
     }
 
+    /// Returns the number of samples currently stored.
+    ///
+    /// # Returns
+    ///
+    /// * The count of occupied slots.
     pub fn len(&self) -> usize {
         self.buffer.len()
     }

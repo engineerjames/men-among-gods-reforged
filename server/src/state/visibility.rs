@@ -1,5 +1,6 @@
-use core::constants::{CharacterFlags, ItemFlags, KIN_MONSTER};
+use core::constants::{CharacterFlags, ItemFlags};
 use core::types::Character;
+use core::{skills, traits};
 use std::cmp;
 
 use crate::game_state::GameState;
@@ -270,7 +271,7 @@ impl GameState {
                 let (ch_kindred, ch_flags) =
                     (self.characters[cn].kindred, self.characters[cn].flags);
 
-                self.is_monster = ch_kindred & KIN_MONSTER as i32 != 0
+                self.is_monster = ch_kindred & traits::KIN_MONSTER as i32 != 0
                     && (ch_flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
                         == 0;
 
@@ -468,13 +469,12 @@ impl GameState {
         let character = &mut self.characters[cn];
         let mut adjusted_light = light;
 
-        if light == 0 && character.skill[core::constants::SK_PERCEPT][5] > 150 {
+        if light == 0 && character.skill[skills::SK_PERCEPT][5] > 150 {
             adjusted_light = 1;
         }
 
-        adjusted_light = adjusted_light
-            * std::cmp::min(character.skill[core::constants::SK_PERCEPT][5] as i32, 10)
-            / 10;
+        adjusted_light =
+            adjusted_light * std::cmp::min(character.skill[skills::SK_PERCEPT][5] as i32, 10) / 10;
 
         if adjusted_light > 255 {
             adjusted_light = 255;
@@ -539,20 +539,17 @@ impl GameState {
         // Modify by perception and stealth
         match self.characters[co].mode {
             0 => {
-                d = (d * (self.characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 20))
-                    / 20;
+                d = (d * (self.characters[co].skill[skills::SK_STEALTH][5] as i32 + 20)) / 20;
             }
             1 => {
-                d = (d * (self.characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 50))
-                    / 50;
+                d = (d * (self.characters[co].skill[skills::SK_STEALTH][5] as i32 + 50)) / 50;
             }
             _ => {
-                d = (d * (self.characters[co].skill[core::constants::SK_STEALTH][5] as i32 + 100))
-                    / 100;
+                d = (d * (self.characters[co].skill[skills::SK_STEALTH][5] as i32 + 100)) / 100;
             }
         }
 
-        d -= self.characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+        d -= self.characters[cn].skill[skills::SK_PERCEPT][5] as i32 * 2;
 
         // Modify by light
         if self.characters[cn].flags & CharacterFlags::Infrared.bits() == 0 {
@@ -635,7 +632,7 @@ impl GameState {
         }
 
         // Modify by perception
-        d += 50 - self.characters[cn].skill[core::constants::SK_PERCEPT][5] as i32 * 2;
+        d += 50 - self.characters[cn].skill[skills::SK_PERCEPT][5] as i32 * 2;
 
         // Modify by light (unless character has infrared)
         if self.characters[cn].flags & CharacterFlags::Infrared.bits() == 0 {

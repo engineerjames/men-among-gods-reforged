@@ -1,4 +1,5 @@
 use core::constants::{CharacterFlags, ItemFlags, TICKS};
+use core::skills;
 use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
@@ -19,7 +20,7 @@ impl GameState {
     ///
     /// Adjusted price after applying barter skill.
     pub(crate) fn barter(&mut self, cn: usize, opr: i32, flag: i32) -> i32 {
-        let barter_skill = self.characters[cn].skill[core::constants::SK_BARTER][5] as i32;
+        let barter_skill = self.characters[cn].skill[skills::SK_BARTER][5] as i32;
 
         let pr = if flag != 0 {
             // Merchant is selling (player is buying)

@@ -10,7 +10,6 @@ mod global;
 mod item;
 mod map;
 mod see_map;
-pub mod skilltab;
 
 // Re-export all types
 pub use api::*;

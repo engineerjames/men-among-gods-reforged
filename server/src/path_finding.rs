@@ -8,7 +8,7 @@ use std::cmp::Ordering;
 use std::cmp::{max, min};
 use std::collections::BinaryHeap;
 
-use core::constants::*;
+use core::{constants::*, traits};
 
 const MAX_NODES: usize = 4096;
 
@@ -595,7 +595,7 @@ impl PathFinder {
         }
 
         // Determine movement blocking flags
-        let mapblock = if (character.kindred as u32 & KIN_MONSTER) != 0
+        let mapblock = if (character.kindred as u32 & traits::KIN_MONSTER) != 0
             && (character.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
                 == 0
         {

@@ -283,12 +283,11 @@ fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool
 /// Persists current display-related settings from [`AppState`] into the
 /// global profile.
 fn save_global_display_settings(app_state: &AppState<'_>) {
-    let settings = preferences::GlobalSettings {
-        music_enabled: app_state.music_enabled,
-        display_mode: app_state.display_mode,
-        pixel_perfect_scaling: app_state.pixel_perfect_scaling,
-        vsync_enabled: app_state.vsync_enabled,
-    };
+    let mut settings = preferences::load_global_settings();
+    settings.music_enabled = app_state.music_enabled;
+    settings.display_mode = app_state.display_mode;
+    settings.pixel_perfect_scaling = app_state.pixel_perfect_scaling;
+    settings.vsync_enabled = app_state.vsync_enabled;
     if let Err(e) = preferences::save_global_settings(&settings) {
         log::error!("Failed to persist display settings: {e}");
     }

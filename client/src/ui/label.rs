@@ -93,14 +93,14 @@ impl Widget for Label {
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         match self.tint {
-            Some(color) => font_cache::draw_text_tinted(
+            Some(color) => font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 self.font,
                 &self.text,
                 self.bounds.x,
                 self.bounds.y,
-                color,
+                font_cache::TextStyle::tinted(color),
             ),
             None => font_cache::draw_text(
                 ctx.canvas,
@@ -109,6 +109,7 @@ impl Widget for Label {
                 &self.text,
                 self.bounds.x,
                 self.bounds.y,
+                font_cache::TextStyle::PLAIN,
             ),
         }
     }
