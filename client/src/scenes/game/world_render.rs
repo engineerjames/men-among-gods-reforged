@@ -416,7 +416,8 @@ impl GameScene {
     /// An action label string such as `"WALK"`, `"ATTACK"`, etc., or `None`.
     pub(super) fn resolve_helper_text(&self, ps: &PlayerState) -> Option<&'static str> {
         if ps.should_show_shop() {
-            return None;
+            // Show BUY / TAKE when the cursor hovers over a filled item slot.
+            return self.shop_panel.hovered_item_label(ps.shop_is_grave());
         }
 
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);

@@ -588,9 +588,7 @@ impl GameScene {
         if self.settings_panel.is_visible() && self.settings_panel.bounds().contains_point(mx, my) {
             return true;
         }
-        if self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my) {
-            return true;
-        }
+
         false
     }
 
