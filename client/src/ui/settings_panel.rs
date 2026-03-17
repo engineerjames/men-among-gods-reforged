@@ -11,6 +11,7 @@ use super::button::RectButton;
 use super::checkbox::Checkbox;
 use super::dropdown::Dropdown;
 use super::label::Label;
+use super::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
 use super::slider::Slider;
 use super::style::{Background, Border};
 use super::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
@@ -126,6 +127,8 @@ pub struct SettingsPanel {
     btn_disconnect: RectButton,
     btn_quit: RectButton,
     btn_return: RectButton,
+    /// Confirmation dialog shown before quitting.
+    quit_dialog: QuitConfirmDialog,
 }
 
 impl SettingsPanel {
@@ -243,6 +246,7 @@ impl SettingsPanel {
             btn_return: RectButton::new(Bounds::new(x, bounds.y + Y_RETURN_BTN, w, BTN_H), btn_bg)
                 .with_label("Return to Game", 0)
                 .with_border(btn_border),
+            quit_dialog: QuitConfirmDialog::new(),
         }
     }
 
@@ -400,6 +404,22 @@ impl Widget for SettingsPanel {
             return EventResponse::Ignored;
         }
 
+        // Quit confirmation dialog is modal — route events to it first.
+        if self.quit_dialog.is_visible() {
+            self.quit_dialog.handle_event(event);
+            for action in self.quit_dialog.take_actions() {
+                match action {
+                    QuitConfirmDialogAction::Confirm => {
+                        self.pending_actions.push(WidgetAction::Quit);
+                    }
+                    QuitConfirmDialogAction::Cancel => {
+                        self.quit_dialog.hide();
+                    }
+                }
+            }
+            return EventResponse::Consumed;
+        }
+
         // When dropdown is expanded, it gets first priority so it can
         // capture clicks on its overlay area.
         if self.drp_display_mode.is_expanded() {
@@ -453,7 +473,7 @@ impl Widget for SettingsPanel {
             return EventResponse::Consumed;
         }
         if self.btn_quit.handle_event(event) == EventResponse::Consumed {
-            self.pending_actions.push(WidgetAction::Quit);
+            self.quit_dialog.show();
             return EventResponse::Consumed;
         }
         if self.btn_return.handle_event(event) == EventResponse::Consumed {
@@ -556,6 +576,9 @@ impl Widget for SettingsPanel {
 
         // Dropdown rendered last so its expanded option list overlays everything.
         self.drp_display_mode.render(ctx)?;
+
+        // Quit confirmation rendered on top of everything else.
+        self.quit_dialog.render(ctx)?;
 
         Ok(())
     }

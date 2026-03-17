@@ -47,7 +47,6 @@ pub struct CreateGameLoginTicketResponse {
 
 /// Summary of a character owned by an account.
 // TODO: Set max lengths for name and description, and enforce them in the database and API validation
-#[allow(dead_code)]
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CharacterSummary {
     /// Unique character ID assigned by the database

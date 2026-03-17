@@ -894,6 +894,11 @@ impl Scene for GameScene {
 
             // If any windows are open, close them.
             if self.shop_panel.is_visible() {
+                // Closing the shop requires resetting the PlayerState flag as well;
+                // the ShopPanelData snapshot is rebuilt from it every frame.
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.close_shop();
+                }
                 self.shop_panel.toggle();
             }
 
@@ -1438,6 +1443,7 @@ impl Scene for GameScene {
                     shop_nr: shop.nr(),
                     citem: ps.character_info().citem,
                     visible: ps.should_show_shop(),
+                    is_grave: ps.shop_is_grave(),
                 });
             }
             let mut ctx = RenderContext {

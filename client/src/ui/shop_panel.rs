@@ -72,6 +72,9 @@ pub struct ShopPanelData {
     pub citem: i32,
     /// Whether the shop overlay should be visible.
     pub visible: bool,
+    /// `true` when this overlay represents a corpse/grave rather than a merchant.
+    /// Controls the title text displayed in the panel header.
+    pub is_grave: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -146,6 +149,7 @@ impl ShopPanel {
                     shop_nr: 0,
                     citem: 0,
                     visible: true,
+                    is_grave: false,
                 });
             }
         }
@@ -312,11 +316,16 @@ impl Widget for ShopPanel {
         ctx.canvas.draw_rect(rect)?;
 
         // Title.
+        let title = if data.is_grave {
+            "Grave".to_string()
+        } else {
+            "Shop".to_string()
+        };
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             UI_FONT,
-            "Shop",
+            &title,
             self.bounds.x + PAD_X,
             self.bounds.y + 4,
             font_cache::TextStyle::PLAIN,
@@ -427,6 +436,7 @@ mod tests {
             shop_nr: 42,
             citem: 0,
             visible: true,
+            is_grave: false,
         };
         data.items[0] = 100; // put an item in slot 0
         data.prices[0] = 500;

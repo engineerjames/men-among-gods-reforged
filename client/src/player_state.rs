@@ -28,6 +28,8 @@ pub struct PlayerState {
     message_log: CircularBuffer<LogMessage>,
     should_show_look: bool,
     should_show_shop: bool,
+    /// `true` when the currently open shop is a corpse grave (all prices are 0).
+    shop_is_grave: bool,
     shop_refresh_requested: bool,
     look_timer: f32,
     character_info: ClientPlayer,
@@ -67,6 +69,7 @@ impl Default for PlayerState {
             message_log: CircularBuffer::new(300),
             should_show_look: false,
             should_show_shop: false,
+            shop_is_grave: false,
             shop_refresh_requested: false,
             look_timer: 0.0,
             character_info: ClientPlayer::default(),
@@ -132,6 +135,16 @@ impl PlayerState {
     /// Returns `true` when the shop overlay should be displayed.
     pub fn should_show_shop(&self) -> bool {
         self.should_show_shop
+    }
+
+    /// Returns `true` when the currently open shop represents a corpse/grave
+    /// rather than a merchant.
+    ///
+    /// Determined by whether all shop items have a price of zero: merchant
+    /// items always carry a non-zero barter price, while corpse items are
+    /// always free to take.
+    pub fn shop_is_grave(&self) -> bool {
+        self.shop_is_grave
     }
 
     /// Closes the shop overlay if it is open.
@@ -675,6 +688,10 @@ impl PlayerState {
                 if start.saturating_add(2) >= 62 {
                     self.should_show_shop = true;
                     self.shop_target = self.incoming_look;
+                    // Detect graves: merchant items always have a non-zero barter
+                    // price, while corpse (grave) items are always free (price == 0).
+                    self.shop_is_grave = !(0..62usize)
+                        .any(|i| self.shop_target.item(i) != 0 && self.shop_target.price(i) != 0);
                 }
             }
             ServerCommandData::SetMap {

@@ -445,17 +445,21 @@ impl GameScene {
         }
 
         if self.shift_held {
-            if has_item {
-                return Some("DROP");
-            }
-            // Empty hand — check for usable or item tiles nearby.
+            // "USE" has highest priority when the cursor is over a usable tile,
+            // even if the player is holding an item.
             if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
                 if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
                     if (tile.flags & ISUSABLE) != 0 {
                         return Some("USE");
                     }
                 }
-                return Some("PICK UP");
+                // Not usable — pick up only when hand is empty.
+                if !has_item {
+                    return Some("PICK UP");
+                }
+            }
+            if has_item {
+                return Some("DROP");
             }
         }
 
