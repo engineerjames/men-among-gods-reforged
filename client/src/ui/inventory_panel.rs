@@ -261,7 +261,7 @@ impl InventoryPanel {
     /// - Empty slot (any modifier) → `None`
     ///
     /// **Equipment slots:**
-    /// - Shift not held, slot occupied → `"EQUIPPED"`
+    /// - Shift not held, slot occupied → `"USE"`
     /// - Shift held, hand has item, slot occupied → `"SWAP"`
     /// - Shift held, hand has item, slot empty → `"EQUIP"`
     /// - Otherwise → `None`
@@ -300,7 +300,7 @@ impl InventoryPanel {
                 return Some(if slot_has_item { "SWAP" } else { "EQUIP" });
             }
             if !shift && slot_has_item {
-                return Some("EQUIPPED");
+                return Some("USE");
             }
         }
 

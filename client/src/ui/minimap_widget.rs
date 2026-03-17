@@ -18,7 +18,7 @@ use super::RenderContext;
 ///
 /// Change this single value to resize the expanded map display — all layout
 /// math derives from it.
-pub const MINIMAP_WIDGET_VIEW_SIZE: u32 = 100;
+pub const MINIMAP_WIDGET_VIEW_SIZE: u32 = 128;
 
 /// Full world-map dimension used to index the xmap buffer (1024×1024).
 const WORLD_SIZE: usize = 1024;
