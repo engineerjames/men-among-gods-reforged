@@ -37,6 +37,7 @@ pub const SK_WARCRY: usize = 35;
 pub const SK_WARCRY2: usize = SK_WARCRY + 100;
 
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
+
 /// Maximum number of skill slots.
 pub const MAX_SKILLS: usize = 50;
 
