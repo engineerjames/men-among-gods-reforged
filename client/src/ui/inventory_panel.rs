@@ -243,6 +243,35 @@ impl InventoryPanel {
         }
     }
 
+    /// Returns `true` when the tracked mouse position is within the panel's bounds.
+    ///
+    /// Used by the helper-text renderer to suppress world-label logic while
+    /// the cursor is anywhere over the panel.
+    pub fn is_cursor_over_panel(&self) -> bool {
+        self.bounds.contains_point(self.mouse_x, self.mouse_y)
+    }
+
+    /// Returns the context-sensitive helper text label for the inventory slot
+    /// currently under the cursor, or `None` if no filled slot is hovered.
+    ///
+    /// Returns `"SWAP"` when the player already holds an item (i.e. `citem > 0`),
+    /// or `"PICK UP"` when the hand is empty. Used by the game scene's
+    /// helper-text renderer.
+    ///
+    /// # Returns
+    ///
+    /// * `Some("PICK UP")` — hand empty, hovering a non-empty inventory slot.
+    /// * `Some("SWAP")` — hand holding an item, hovering a non-empty slot.
+    /// * `None` — hovering an empty slot or the cursor is outside the grid.
+    pub fn hovered_item_label(&self) -> Option<&'static str> {
+        let data = self.data.as_ref()?;
+        let idx = self.hovered_inv_slot()?;
+        if data.items[idx] <= 0 {
+            return None;
+        }
+        Some(if data.citem > 0 { "SWAP" } else { "PICK UP" })
+    }
+
     // -----------------------------------------------------------------------
     // Slot-acceptance / blocking helpers
     // -----------------------------------------------------------------------

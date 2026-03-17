@@ -419,6 +419,10 @@ impl GameScene {
             // Show BUY / TAKE when the cursor hovers over a filled item slot.
             return self.shop_panel.hovered_item_label(ps.shop_is_grave());
         }
+        if self.inventory_panel.is_visible() && self.inventory_panel.is_cursor_over_panel() {
+            // Show PICK UP / SWAP only over filled slots; None elsewhere on panel.
+            return self.inventory_panel.hovered_item_label();
+        }
 
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
         if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {

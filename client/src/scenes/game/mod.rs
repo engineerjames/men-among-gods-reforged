@@ -581,10 +581,7 @@ impl GameScene {
         if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
             return true;
         }
-        if self.inventory_panel.is_visible() && self.inventory_panel.bounds().contains_point(mx, my)
-        {
-            return true;
-        }
+
         if self.settings_panel.is_visible() && self.settings_panel.bounds().contains_point(mx, my) {
             return true;
         }
