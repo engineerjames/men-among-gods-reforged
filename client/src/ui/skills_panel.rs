@@ -234,7 +234,17 @@ impl SkillsPanel {
     // ---- Click handling ---------------------------------------------------
 
     /// Handle a stat +/- click at panel-local coordinates.
-    fn handle_stat_click(&mut self, x: i32, y: i32, data: &SkillsPanelData) {
+    ///
+    /// When `shift` is `true` (Shift held), raises by up to 10 levels,
+    /// stopping early if points run out before all 10 are spent.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Panel-local X coordinate.
+    /// * `y` - Panel-local Y coordinate.
+    /// * `data` - Current character data snapshot.
+    /// * `shift` - `true` when the Shift modifier was held.
+    fn handle_stat_click(&mut self, x: i32, y: i32, data: &SkillsPanelData, shift: bool) {
         let (_, _, _, plus_x, minus_x, _) = self.col_x();
 
         let is_plus = (plus_x..plus_x + 12).contains(&x);
@@ -243,12 +253,16 @@ impl SkillsPanel {
             return;
         }
 
+        let repeats = if shift && is_plus { 10 } else { 1 };
+
         // Attributes (0-4).
         for n in 0..5 {
             let ry = self.attr_row_y(n);
             if y >= ry && y < ry + ROW_H {
                 if is_plus {
-                    self.raise_attrib(data, n);
+                    for _ in 0..repeats {
+                        self.raise_attrib(data, n);
+                    }
                 } else {
                     self.lower_attrib(data, n);
                 }
@@ -262,7 +276,9 @@ impl SkillsPanel {
             if y >= ry && y < ry + ROW_H {
                 let idx = 5 + p;
                 if is_plus {
-                    self.raise_pool(data, idx, p);
+                    for _ in 0..repeats {
+                        self.raise_pool(data, idx, p);
+                    }
                 } else {
                     self.lower_pool(data, idx, p);
                 }
@@ -284,7 +300,9 @@ impl SkillsPanel {
                         return;
                     }
                     if is_plus {
-                        self.raise_skill(data, skill_id, raised_idx);
+                        for _ in 0..repeats {
+                            self.raise_skill(data, skill_id, raised_idx);
+                        }
                     } else {
                         self.lower_skill(data, skill_id, raised_idx);
                     }
@@ -540,7 +558,13 @@ impl Widget for SkillsPanel {
             return EventResponse::Ignored;
         }
         match event {
-            UiEvent::MouseClick { x, y, button, .. } => {
+            UiEvent::MouseClick {
+                x,
+                y,
+                button,
+                modifiers,
+                ..
+            } => {
                 if !self.bounds.contains_point(*x, *y) {
                     return EventResponse::Ignored;
                 }
@@ -567,7 +591,7 @@ impl Widget for SkillsPanel {
                         // Check +/- columns.
                         let (_, _, _, plus_x, minus_x, _) = self.col_x();
                         if *x >= plus_x && *x < minus_x + 12 {
-                            self.handle_stat_click(*x, *y, &data);
+                            self.handle_stat_click(*x, *y, &data, modifiers.shift);
                             return EventResponse::Consumed;
                         }
 
