@@ -258,7 +258,8 @@ impl InventoryPanel {
     /// - Shift not held, non-empty slot → `"USE"`
     /// - Shift held, non-empty slot, hand empty → `"PICK UP"`
     /// - Shift held, non-empty slot, hand has item → `"SWAP"`
-    /// - Empty slot (any modifier) → `None`
+    /// - Empty slot, hand has item → `"DROP"`
+    /// - Empty slot, hand empty → `None`
     ///
     /// **Equipment slots:**
     /// - Shift not held, slot occupied → `"USE"`
@@ -279,7 +280,7 @@ impl InventoryPanel {
         // ── Backpack grid ──────────────────────────────────────────────────
         if let Some(idx) = self.hovered_inv_slot() {
             if data.items[idx] <= 0 {
-                return None;
+                return if data.citem > 0 { Some("DROP") } else { None };
             }
             return Some(if shift {
                 if data.citem > 0 {
@@ -804,5 +805,35 @@ mod tests {
         assert!(panel.data.is_none());
         panel.update_data(test_data());
         assert!(panel.data.is_some());
+    }
+
+    #[test]
+    fn hovered_label_drop_on_empty_slot_with_item_in_hand() {
+        // Panel bounds chosen so that the first inventory slot falls under
+        // the simulated cursor position used below.
+        let mut panel = InventoryPanel::new(Bounds::new(0, 0, 400, 300), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        let mut data = test_data();
+        // Slot 0 is empty; player is carrying an item.
+        data.citem = 42;
+        panel.update_data(data);
+        // Move cursor over the first inventory slot (INV_GRID_PAD_X + 1, INV_GRID_PAD_Y + 1).
+        let mx = INV_GRID_PAD_X + 1;
+        let my = INV_GRID_PAD_Y + 1;
+        panel.handle_event(&UiEvent::MouseMove { x: mx, y: my });
+        assert_eq!(panel.hovered_label(false), Some("DROP"));
+        assert_eq!(panel.hovered_label(true), Some("DROP"));
+    }
+
+    #[test]
+    fn hovered_label_none_on_empty_slot_without_item_in_hand() {
+        let mut panel = InventoryPanel::new(Bounds::new(0, 0, 400, 300), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        panel.update_data(test_data()); // citem == 0, slot 0 empty
+        let mx = INV_GRID_PAD_X + 1;
+        let my = INV_GRID_PAD_Y + 1;
+        panel.handle_event(&UiEvent::MouseMove { x: mx, y: my });
+        assert_eq!(panel.hovered_label(false), None);
+        assert_eq!(panel.hovered_label(true), None);
     }
 }
