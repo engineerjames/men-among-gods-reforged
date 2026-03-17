@@ -258,7 +258,7 @@ impl SkillsPanel {
             return;
         }
 
-        let repeats = if shift && is_plus { 10 } else { 1 };
+        let repeats = if shift { 10 } else { 1 };
 
         // Attributes (0-4).
         for n in 0..5 {
@@ -269,7 +269,9 @@ impl SkillsPanel {
                         self.raise_attrib(data, n);
                     }
                 } else {
-                    self.lower_attrib(data, n);
+                    for _ in 0..repeats {
+                        self.lower_attrib(data, n);
+                    }
                 }
                 return;
             }
@@ -285,7 +287,9 @@ impl SkillsPanel {
                         self.raise_pool(data, idx, p);
                     }
                 } else {
-                    self.lower_pool(data, idx, p);
+                    for _ in 0..repeats {
+                        self.lower_pool(data, idx, p);
+                    }
                 }
                 return;
             }
@@ -309,7 +313,9 @@ impl SkillsPanel {
                             self.raise_skill(data, skill_id, raised_idx);
                         }
                     } else {
-                        self.lower_skill(data, skill_id, raised_idx);
+                        for _ in 0..repeats {
+                            self.lower_skill(data, skill_id, raised_idx);
+                        }
                     }
                 }
                 return;
