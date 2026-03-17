@@ -420,8 +420,7 @@ impl GameScene {
             return self.shop_panel.hovered_item_label(ps.shop_is_grave());
         }
         if self.inventory_panel.is_visible() && self.inventory_panel.is_cursor_over_panel() {
-            // Show PICK UP / SWAP only over filled slots; None elsewhere on panel.
-            return self.inventory_panel.hovered_item_label();
+            return self.inventory_panel.hovered_label(self.shift_held);
         }
 
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);

@@ -251,25 +251,60 @@ impl InventoryPanel {
         self.bounds.contains_point(self.mouse_x, self.mouse_y)
     }
 
-    /// Returns the context-sensitive helper text label for the inventory slot
-    /// currently under the cursor, or `None` if no filled slot is hovered.
+    /// Returns the context-sensitive helper text label for whatever slot the
+    /// cursor is currently over, or `None` when no label should be shown.
     ///
-    /// Returns `"SWAP"` when the player already holds an item (i.e. `citem > 0`),
-    /// or `"PICK UP"` when the hand is empty. Used by the game scene's
-    /// helper-text renderer.
+    /// **Backpack slots:**
+    /// - Shift not held, non-empty slot → `"USE"`
+    /// - Shift held, non-empty slot, hand empty → `"PICK UP"`
+    /// - Shift held, non-empty slot, hand has item → `"SWAP"`
+    /// - Empty slot (any modifier) → `None`
+    ///
+    /// **Equipment slots:**
+    /// - Shift not held, slot occupied → `"EQUIPPED"`
+    /// - Shift held, hand has item, slot occupied → `"SWAP"`
+    /// - Shift held, hand has item, slot empty → `"EQUIP"`
+    /// - Otherwise → `None`
+    ///
+    /// # Arguments
+    ///
+    /// * `shift` - `true` when the Shift modifier key is currently held.
     ///
     /// # Returns
     ///
-    /// * `Some("PICK UP")` — hand empty, hovering a non-empty inventory slot.
-    /// * `Some("SWAP")` — hand holding an item, hovering a non-empty slot.
-    /// * `None` — hovering an empty slot or the cursor is outside the grid.
-    pub fn hovered_item_label(&self) -> Option<&'static str> {
+    /// * `Some(&'static str)` with the action label, or `None`.
+    pub fn hovered_label(&self, shift: bool) -> Option<&'static str> {
         let data = self.data.as_ref()?;
-        let idx = self.hovered_inv_slot()?;
-        if data.items[idx] <= 0 {
-            return None;
+
+        // ── Backpack grid ──────────────────────────────────────────────────
+        if let Some(idx) = self.hovered_inv_slot() {
+            if data.items[idx] <= 0 {
+                return None;
+            }
+            return Some(if shift {
+                if data.citem > 0 {
+                    "SWAP"
+                } else {
+                    "PICK UP"
+                }
+            } else {
+                "USE"
+            });
         }
-        Some(if data.citem > 0 { "SWAP" } else { "PICK UP" })
+
+        // ── Equipment grid ─────────────────────────────────────────────────
+        if let Some(pos) = self.hovered_equip_pos() {
+            let wn_slot = EQUIP_WNTAB[pos];
+            let slot_has_item = data.worn[wn_slot] > 0;
+            if shift && data.citem > 0 {
+                return Some(if slot_has_item { "SWAP" } else { "EQUIP" });
+            }
+            if !shift && slot_has_item {
+                return Some("EQUIPPED");
+            }
+        }
+
+        None
     }
 
     // -----------------------------------------------------------------------
