@@ -11,6 +11,7 @@ use sdl2::render::BlendMode;
 
 use super::button::RectButton;
 use super::style::{Background, Border};
+use super::title_bar::{TitleBar, TITLE_BAR_H};
 use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
 use crate::font_cache;
@@ -22,8 +23,8 @@ use crate::font_cache;
 /// Dialog width in pixels.
 const DIALOG_W: u32 = 300;
 
-/// Dialog height in pixels.
-const DIALOG_H: u32 = 100;
+/// Dialog height in pixels (includes title bar).
+const DIALOG_H: u32 = 100 + TITLE_BAR_H as u32;
 
 /// Horizontal padding inside the dialog.
 const PAD_X: i32 = 20;
@@ -59,6 +60,8 @@ pub struct QuitConfirmDialog {
     bounds: Bounds,
     /// Whether the dialog is currently visible.
     visible: bool,
+    /// Non-movable title bar (close button only).
+    title_bar: TitleBar,
     /// Confirm-quit button (red styling).
     confirm_button: RectButton,
     /// Cancel button (neutral styling).
@@ -110,6 +113,7 @@ impl QuitConfirmDialog {
         Self {
             bounds,
             visible: false,
+            title_bar: TitleBar::new_static("Quit?", panel_x, panel_y, DIALOG_W),
             confirm_button,
             cancel_button,
             actions: Vec::new(),
@@ -154,6 +158,16 @@ impl Widget for QuitConfirmDialog {
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
+        }
+
+        // Title bar close button acts as Cancel.
+        let (tb_resp, _) = self.title_bar.handle_event(event);
+        if self.title_bar.was_close_requested() {
+            self.actions.push(QuitConfirmDialogAction::Cancel);
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
         }
 
         // Escape cancels the dialog.
@@ -208,17 +222,8 @@ impl Widget for QuitConfirmDialog {
         ctx.canvas.set_draw_color(Color::RGBA(180, 80, 80, 220));
         ctx.canvas.draw_rect(dialog_rect)?;
 
-        // Title.
-        let cx = self.bounds.x + self.bounds.width as i32 / 2;
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            FONT,
-            "Quit?",
-            cx,
-            self.bounds.y + 12,
-            font_cache::TextStyle::centered().with_tint(Color::RGB(255, 100, 100)),
-        )?;
+        // Title bar.
+        self.title_bar.render(ctx)?;
 
         // Confirmation message.
         font_cache::draw_text(
@@ -227,7 +232,7 @@ impl Widget for QuitConfirmDialog {
             FONT,
             "Are you sure you want to quit?",
             self.bounds.x + PAD_X,
-            self.bounds.y + 12 + font_cache::BITMAP_GLYPH_H as i32 + 10,
+            self.bounds.y + TITLE_BAR_H + 12,
             font_cache::TextStyle::PLAIN,
         )?;
 

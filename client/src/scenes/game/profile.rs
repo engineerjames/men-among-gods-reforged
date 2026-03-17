@@ -45,6 +45,11 @@ impl GameScene {
                 let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
                 self.skills_panel.set_position(cx, cy);
             }
+            if let Some((x, y)) = settings.settings_panel_pos {
+                let b = self.settings_panel.bounds();
+                let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
+                self.settings_panel.set_position(cx, cy);
+            }
 
             log::info!(
                 "Loaded persisted SDL profile for character '{}' (id={})",
@@ -80,6 +85,10 @@ impl GameScene {
                 self.inventory_panel.bounds().y,
             )),
             skills_panel_pos: Some((self.skills_panel.bounds().x, self.skills_panel.bounds().y)),
+            settings_panel_pos: Some((
+                self.settings_panel.bounds().x,
+                self.settings_panel.bounds().y,
+            )),
         })
     }
 

@@ -76,11 +76,16 @@ pub fn clamp_to_viewport(x: i32, y: i32, width: u32, height: u32) -> (i32, i32) 
 /// Designed to be embedded as a child component inside panel widgets.
 /// The parent panel delegates event handling and rendering to the title bar,
 /// and responds to drag position updates and close requests.
+///
+/// When `movable` is `false` the pin icon is hidden and drag is disabled;
+/// only the close (X) button remains functional.
 pub struct TitleBar {
     /// Bounding rectangle of the full title bar.
     bounds: Bounds,
     /// Label text displayed centered in the bar.
     title: String,
+    /// Whether drag and pin functionality is enabled.
+    movable: bool,
     /// Whether the panel is pinned (drag-locked).
     pinned: bool,
     /// Whether a drag operation is in progress.
@@ -112,7 +117,34 @@ impl TitleBar {
         Self {
             bounds: Bounds::new(x, y, bar_width, TITLE_BAR_H as u32),
             title: title.to_owned(),
+            movable: true,
             pinned: false,
+            dragging: false,
+            drag_offset: (0, 0),
+            close_requested: false,
+            hovered_pin: false,
+            hovered_close: false,
+        }
+    }
+
+    /// Creates a non-movable title bar (close button only, no pin or drag).
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - Label text (e.g. "Quit?").
+    /// * `x` - Left edge of the parent panel.
+    /// * `y` - Top edge of the parent panel.
+    /// * `bar_width` - Width of the bar (should match the parent panel width).
+    ///
+    /// # Returns
+    ///
+    /// A new `TitleBar` with drag and pin disabled.
+    pub fn new_static(title: &str, x: i32, y: i32, bar_width: u32) -> Self {
+        Self {
+            bounds: Bounds::new(x, y, bar_width, TITLE_BAR_H as u32),
+            title: title.to_owned(),
+            movable: false,
+            pinned: true, // effectively locked in place
             dragging: false,
             drag_offset: (0, 0),
             close_requested: false,
@@ -218,12 +250,12 @@ impl TitleBar {
                     return (EventResponse::Ignored, None);
                 }
                 // Don't start drag when clicking on pin or close icons.
-                if self.pin_rect().contains_point(*x, *y)
+                if (self.movable && self.pin_rect().contains_point(*x, *y))
                     || self.close_rect().contains_point(*x, *y)
                 {
                     return (EventResponse::Consumed, None);
                 }
-                if !self.pinned {
+                if self.movable && !self.pinned {
                     self.dragging = true;
                     self.drag_offset = (*x - self.bounds.x, *y - self.bounds.y);
                 }
@@ -241,7 +273,7 @@ impl TitleBar {
                     self.dragging = false;
                     return (EventResponse::Consumed, None);
                 }
-                if self.pin_rect().contains_point(*x, *y) {
+                if self.movable && self.pin_rect().contains_point(*x, *y) {
                     self.pinned = !self.pinned;
                     return (EventResponse::Consumed, None);
                 }
@@ -296,40 +328,42 @@ impl TitleBar {
             ),
         )?;
 
-        // --- Pin icon (left) ---
-        let pr = self.pin_rect();
-        let pin_sdl = sdl2::rect::Rect::new(pr.x, pr.y, pr.width, pr.height);
-        ctx.canvas.set_draw_color(ICON_OUTLINE);
-        ctx.canvas.draw_rect(pin_sdl)?;
-
-        if self.pinned {
-            // Filled inner square when pinned.
-            let inset = 3_i32;
-            let inner = sdl2::rect::Rect::new(
-                pr.x + inset,
-                pr.y + inset,
-                (ICON_SIZE - 2 * inset) as u32,
-                (ICON_SIZE - 2 * inset) as u32,
-            );
-            ctx.canvas.set_draw_color(PIN_ACTIVE_COLOR);
-            ctx.canvas.fill_rect(inner)?;
-        } else {
-            // Small vertical line (pin "needle") when unpinned.
-            let cx = pr.x + ICON_SIZE / 2;
+        // --- Pin icon (left) — only for movable title bars ---
+        if self.movable {
+            let pr = self.pin_rect();
+            let pin_sdl = sdl2::rect::Rect::new(pr.x, pr.y, pr.width, pr.height);
             ctx.canvas.set_draw_color(ICON_OUTLINE);
-            ctx.canvas.draw_line(
-                sdl2::rect::Point::new(cx, pr.y + 3),
-                sdl2::rect::Point::new(cx, pr.y + ICON_SIZE - 4),
-            )?;
-        }
+            ctx.canvas.draw_rect(pin_sdl)?;
 
-        // Pin hover highlight.
-        if self.hovered_pin {
-            ctx.canvas.set_blend_mode(BlendMode::Add);
-            ctx.canvas
-                .set_draw_color(Color::RGBA(255, 255, 255, HOVER_ALPHA));
-            ctx.canvas.fill_rect(pin_sdl)?;
-            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            if self.pinned {
+                // Filled inner square when pinned.
+                let inset = 3_i32;
+                let inner = sdl2::rect::Rect::new(
+                    pr.x + inset,
+                    pr.y + inset,
+                    (ICON_SIZE - 2 * inset) as u32,
+                    (ICON_SIZE - 2 * inset) as u32,
+                );
+                ctx.canvas.set_draw_color(PIN_ACTIVE_COLOR);
+                ctx.canvas.fill_rect(inner)?;
+            } else {
+                // Small vertical line (pin "needle") when unpinned.
+                let cx = pr.x + ICON_SIZE / 2;
+                ctx.canvas.set_draw_color(ICON_OUTLINE);
+                ctx.canvas.draw_line(
+                    sdl2::rect::Point::new(cx, pr.y + 3),
+                    sdl2::rect::Point::new(cx, pr.y + ICON_SIZE - 4),
+                )?;
+            }
+
+            // Pin hover highlight.
+            if self.hovered_pin {
+                ctx.canvas.set_blend_mode(BlendMode::Add);
+                ctx.canvas
+                    .set_draw_color(Color::RGBA(255, 255, 255, HOVER_ALPHA));
+                ctx.canvas.fill_rect(pin_sdl)?;
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
+            }
         }
 
         // --- Close icon (right) ---
@@ -364,7 +398,12 @@ impl TitleBar {
         }
 
         // --- Title text (centered in the area between pin and close) ---
-        let text_area_left = pr.x + ICON_SIZE + 4;
+        let text_area_left = if self.movable {
+            let pr = self.pin_rect();
+            pr.x + ICON_SIZE + 4
+        } else {
+            self.bounds.x + ICON_PAD_X
+        };
         let text_area_right = cr.x - 4;
         let text_cx = (text_area_left + text_area_right) / 2;
         let text_cy = self.bounds.y + (TITLE_BAR_H - font_cache::BITMAP_GLYPH_H as i32) / 2;
@@ -586,5 +625,43 @@ mod tests {
     fn clamp_to_viewport_oversized() {
         // Panel larger than viewport — clamps to (0, 0).
         assert_eq!(clamp_to_viewport(100, 100, 1000, 600), (0, 0));
+    }
+
+    #[test]
+    fn static_bar_ignores_drag_and_pin() {
+        let mut tb = TitleBar::new_static("Static", 0, 0, 200);
+        assert!(!tb.is_dragging());
+        // Pinned is true internally but pin toggle should be ignored.
+        assert!(tb.is_pinned());
+
+        // Try to drag in the middle — should not start drag.
+        let mid_x = 100;
+        let mid_y = TITLE_BAR_H / 2;
+        let (resp, _) = tb.handle_event(&UiEvent::MouseDown {
+            x: mid_x,
+            y: mid_y,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(!tb.is_dragging());
+
+        // Click the close button — should still work.
+        let cr = tb.close_rect();
+        let cx = cr.x + cr.width as i32 / 2;
+        let cy = cr.y + cr.height as i32 / 2;
+        tb.handle_event(&UiEvent::MouseDown {
+            x: cx,
+            y: cy,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        tb.handle_event(&UiEvent::MouseClick {
+            x: cx,
+            y: cy,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert!(tb.was_close_requested());
     }
 }

@@ -464,6 +464,9 @@ impl GameScene {
                 WidgetAction::StartProfiler => {
                     self.perf_profiler.start();
                 }
+                WidgetAction::TogglePanel(_) => {
+                    profile_changed = true;
+                }
                 _ => {}
             }
         }

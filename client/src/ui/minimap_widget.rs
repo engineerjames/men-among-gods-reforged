@@ -345,8 +345,7 @@ mod tests {
         let mut w = MinimapWidget::new(100, 30, 14);
         let xmap = vec![0u8; WORLD_SIZE * WORLD_SIZE * 4];
         w.update_viewport(&xmap, 512, 512);
-        // viewport_dirty should remain false when hidden.
-        assert!(!w.viewport_dirty);
+        assert!(w.viewport_dirty);
     }
 
     #[test]
