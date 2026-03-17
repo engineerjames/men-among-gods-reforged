@@ -34,6 +34,7 @@ pub mod slider;
 pub mod status_panel;
 pub mod style;
 pub mod text_input;
+pub mod title_bar;
 pub mod tls_warning_banner;
 pub mod widget;
 

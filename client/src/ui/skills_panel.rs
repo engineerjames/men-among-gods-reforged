@@ -13,7 +13,8 @@ use sdl2::render::BlendMode;
 
 use mag_core::skills::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
+use super::title_bar::{clamp_to_viewport, TitleBar};
+use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
 use crate::font_cache;
 
@@ -80,6 +81,8 @@ pub struct SkillsPanel {
     pending_actions: Vec<WidgetAction>,
     /// Skill currently waiting for a keybind key press (1-9), or `None`.
     pending_keybind_skill: Option<u32>,
+    /// Draggable title bar with pin and close buttons.
+    title_bar: TitleBar,
 }
 
 impl SkillsPanel {
@@ -94,6 +97,7 @@ impl SkillsPanel {
     ///
     /// A new `SkillsPanel`, initially hidden.
     pub fn new(bounds: Bounds, bg_color: Color) -> Self {
+        let title_bar = TitleBar::new("Skills & Attributes", bounds.x, bounds.y, bounds.width);
         Self {
             bounds,
             bg_color,
@@ -105,6 +109,7 @@ impl SkillsPanel {
             skill_scroll: 0,
             pending_actions: Vec::new(),
             pending_keybind_skill: None,
+            title_bar,
         }
     }
 
@@ -551,12 +556,30 @@ impl Widget for SkillsPanel {
     fn set_position(&mut self, x: i32, y: i32) {
         self.bounds.x = x;
         self.bounds.y = y;
+        self.title_bar.set_bar_position(x, y);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
         }
+
+        // --- Title bar gets first crack at all events ---
+        let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
+        if let Some((new_x, new_y)) = drag_pos {
+            let (cx, cy) = clamp_to_viewport(new_x, new_y, self.bounds.width, self.bounds.height);
+            self.set_position(cx, cy);
+        }
+        if self.title_bar.was_close_requested() {
+            self.visible = false;
+            self.pending_actions
+                .push(WidgetAction::TogglePanel(HudPanel::Skills));
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
         match event {
             UiEvent::MouseClick {
                 x,
@@ -696,19 +719,10 @@ impl Widget for SkillsPanel {
         ctx.canvas.set_draw_color(self.border_color);
         ctx.canvas.draw_rect(rect)?;
 
-        // Title.
+        // Title bar (draggable, with pin/close).
+        self.title_bar.render(ctx)?;
+
         let cb = self.content_bounds();
-        let title_x = cb.x + cb.width as i32 / 2;
-        let title_y = cb.y;
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            PANEL_FONT,
-            "Skills & Attributes",
-            title_x,
-            title_y,
-            font_cache::TextStyle::centered(),
-        )?;
 
         let data = match self.data.as_ref() {
             Some(d) => d,

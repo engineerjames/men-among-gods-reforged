@@ -14,7 +14,8 @@ use mag_core::constants::{
     WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
+use super::title_bar::{clamp_to_viewport, TitleBar, TITLE_BAR_H};
+use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
 use crate::font_cache;
 
@@ -119,6 +120,8 @@ pub struct InventoryPanel {
     mouse_x: i32,
     mouse_y: i32,
     actions: Vec<WidgetAction>,
+    /// Draggable title bar with pin and close buttons.
+    title_bar: TitleBar,
 }
 
 impl InventoryPanel {
@@ -133,6 +136,7 @@ impl InventoryPanel {
     ///
     /// A new `InventoryPanel`, initially hidden.
     pub fn new(bounds: Bounds, bg_color: Color) -> Self {
+        let title_bar = TitleBar::new("Inventory", bounds.x, bounds.y, bounds.width);
         Self {
             bounds,
             bg_color,
@@ -143,6 +147,7 @@ impl InventoryPanel {
             mouse_x: 0,
             mouse_y: 0,
             actions: Vec::new(),
+            title_bar,
         }
     }
 
@@ -395,12 +400,30 @@ impl Widget for InventoryPanel {
     fn set_position(&mut self, x: i32, y: i32) {
         self.bounds.x = x;
         self.bounds.y = y;
+        self.title_bar.set_bar_position(x, y);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
         }
+
+        // --- Title bar gets first crack at all events ---
+        let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
+        if let Some((new_x, new_y)) = drag_pos {
+            let (cx, cy) = clamp_to_viewport(new_x, new_y, self.bounds.width, self.bounds.height);
+            self.set_position(cx, cy);
+        }
+        if self.title_bar.was_close_requested() {
+            self.visible = false;
+            self.actions
+                .push(WidgetAction::TogglePanel(HudPanel::Inventory));
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
         match event {
             UiEvent::MouseMove { x, y } => {
                 self.mouse_x = *x;
@@ -521,20 +544,12 @@ impl Widget for InventoryPanel {
         ctx.canvas.set_draw_color(self.border_color);
         ctx.canvas.draw_rect(rect)?;
 
-        // --- Title ---
-        let title_x = self.bounds.x + self.bounds.width as i32 / 2;
-        let title_y = self.bounds.y + 4;
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            UI_FONT,
-            "Inventory",
-            title_x,
-            title_y,
-            font_cache::TextStyle::centered(),
-        )?;
+        // --- Title bar (draggable, with pin/close) ---
+        self.title_bar.render(ctx)?;
 
         // --- Money line ---
+        let money_cx = self.bounds.x + self.bounds.width as i32 / 2;
+        let money_y = self.bounds.y + TITLE_BAR_H + 2;
         let gold = data.gold / 100;
         let silver = data.gold % 100;
         let money_text = format!("{}G {}S", gold, silver);
@@ -543,8 +558,8 @@ impl Widget for InventoryPanel {
             ctx.gfx,
             UI_FONT,
             &money_text,
-            title_x,
-            title_y + 14,
+            money_cx,
+            money_y,
             font_cache::TextStyle::centered(),
         )?;
 

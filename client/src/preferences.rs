@@ -96,6 +96,12 @@ pub struct Settings {
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
     #[serde(default)]
     pub skill_keybinds: [Option<u32>; 9],
+    /// Saved position of the inventory panel, or `None` for default.
+    #[serde(default)]
+    pub inventory_panel_pos: Option<(i32, i32)>,
+    /// Saved position of the skills panel, or `None` for default.
+    #[serde(default)]
+    pub skills_panel_pos: Option<(i32, i32)>,
 }
 
 impl Default for Settings {
@@ -113,6 +119,8 @@ impl Default for Settings {
             show_proz: 0,
             show_helper_text: true,
             skill_keybinds: [None; 9],
+            inventory_panel_pos: None,
+            skills_panel_pos: None,
         }
     }
 }
