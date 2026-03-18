@@ -398,7 +398,7 @@ mod tests {
                 .binding_for(GameAction::ToggleSkills)
                 .unwrap()
                 .keycode,
-            Keycode::K as i32,
+            i32::from(Keycode::K),
         );
     }
 
