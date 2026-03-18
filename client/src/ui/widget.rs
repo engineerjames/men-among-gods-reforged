@@ -657,4 +657,117 @@ mod tests {
         assert!(!m.shift);
         assert!(!m.alt);
     }
+
+    // -- KeyBinding --
+
+    #[test]
+    fn keybinding_matches_exact() {
+        let kb = KeyBinding::new(Keycode::S, KeyModifiers::default());
+        assert!(kb.matches(Keycode::S, KeyModifiers::default()));
+    }
+
+    #[test]
+    fn keybinding_no_match_different_key() {
+        let kb = KeyBinding::new(Keycode::S, KeyModifiers::default());
+        assert!(!kb.matches(Keycode::I, KeyModifiers::default()));
+    }
+
+    #[test]
+    fn keybinding_no_match_different_modifiers() {
+        let kb = KeyBinding::new(
+            Keycode::S,
+            KeyModifiers {
+                ctrl: true,
+                shift: false,
+                alt: false,
+            },
+        );
+        assert!(!kb.matches(Keycode::S, KeyModifiers::default()));
+    }
+
+    #[test]
+    fn keybinding_display_plain_key() {
+        let kb = KeyBinding::new(Keycode::S, KeyModifiers::default());
+        assert_eq!(kb.to_string(), "S");
+    }
+
+    #[test]
+    fn keybinding_display_with_modifiers() {
+        let kb = KeyBinding::new(
+            Keycode::I,
+            KeyModifiers {
+                ctrl: true,
+                shift: true,
+                alt: false,
+            },
+        );
+        assert_eq!(kb.to_string(), "Ctrl+Shift+I");
+    }
+
+    #[test]
+    fn keybinding_serde_roundtrip() {
+        let kb = KeyBinding::new(
+            Keycode::K,
+            KeyModifiers {
+                ctrl: false,
+                shift: true,
+                alt: false,
+            },
+        );
+        let json = serde_json::to_string(&kb).unwrap();
+        let kb2: KeyBinding = serde_json::from_str(&json).unwrap();
+        assert_eq!(kb, kb2);
+    }
+
+    // -- KeyBindings --
+
+    #[test]
+    fn keybindings_default_has_two_entries() {
+        let kb = KeyBindings::default();
+        assert_eq!(kb.entries().len(), 2);
+    }
+
+    #[test]
+    fn keybindings_action_for_key_found() {
+        let kb = KeyBindings::default();
+        assert_eq!(
+            kb.action_for_key(Keycode::S, KeyModifiers::default()),
+            Some(GameAction::ToggleSkills),
+        );
+    }
+
+    #[test]
+    fn keybindings_action_for_key_not_found() {
+        let kb = KeyBindings::default();
+        assert_eq!(kb.action_for_key(Keycode::Z, KeyModifiers::default()), None);
+    }
+
+    #[test]
+    fn keybindings_set_binding_update() {
+        let mut kb = KeyBindings::default();
+        let new_binding = KeyBinding::new(
+            Keycode::K,
+            KeyModifiers {
+                ctrl: true,
+                shift: false,
+                alt: false,
+            },
+        );
+        kb.set_binding(GameAction::ToggleSkills, new_binding);
+        assert_eq!(kb.binding_for(GameAction::ToggleSkills), Some(new_binding));
+        // Old key should no longer match.
+        assert_eq!(kb.action_for_key(Keycode::S, KeyModifiers::default()), None);
+    }
+
+    #[test]
+    fn keybindings_serde_roundtrip() {
+        let kb = KeyBindings::default();
+        let json = serde_json::to_string(&kb).unwrap();
+        let kb2: KeyBindings = serde_json::from_str(&json).unwrap();
+        assert_eq!(kb.entries().len(), kb2.entries().len());
+        for (a, b) in kb.entries().iter().zip(kb2.entries().iter()) {
+            assert_eq!(a.0, b.0);
+            assert_eq!(a.1, b.1);
+        }
+    }
 }
