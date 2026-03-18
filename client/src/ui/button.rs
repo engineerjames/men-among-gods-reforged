@@ -83,6 +83,15 @@ impl RectButton {
     pub fn is_hovered(&self) -> bool {
         self.hovered
     }
+
+    /// Replaces the button label text.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - New label string.
+    pub fn set_label(&mut self, text: &str) {
+        self.label_text = Some(text.to_owned());
+    }
 }
 
 impl Widget for RectButton {

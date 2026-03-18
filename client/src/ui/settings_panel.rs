@@ -51,12 +51,14 @@ const Y_DIAG_HEADER: i32 = 222 + TITLE_BAR_H;
 const Y_PING: i32 = 236 + TITLE_BAR_H;
 const Y_PROFILER_BTN: i32 = 252 + TITLE_BAR_H;
 const Y_LOGDIR_BTN: i32 = 272 + TITLE_BAR_H;
-const Y_SEPARATOR: i32 = 294 + TITLE_BAR_H;
-const Y_SESSION_BTNS: i32 = 306 + TITLE_BAR_H;
-const Y_RETURN_BTN: i32 = 328 + TITLE_BAR_H;
+const Y_CONTROLS_HEADER: i32 = 294 + TITLE_BAR_H;
+const Y_KEYBINDINGS_BTN: i32 = 308 + TITLE_BAR_H;
+const Y_SEPARATOR: i32 = 332 + TITLE_BAR_H;
+const Y_SESSION_BTNS: i32 = 344 + TITLE_BAR_H;
+const Y_RETURN_BTN: i32 = 366 + TITLE_BAR_H;
 
 /// Total panel height needed to fit all controls.
-pub const SETTINGS_PANEL_H: u32 = 352 + TITLE_BAR_H as u32;
+pub const SETTINGS_PANEL_H: u32 = 390 + TITLE_BAR_H as u32;
 
 // ---------------------------------------------------------------------------
 // Data snapshot
@@ -127,6 +129,7 @@ pub struct SettingsPanel {
     lbl_ping: Label,
     btn_profiler: RectButton,
     btn_log_dir: RectButton,
+    btn_keybindings: RectButton,
     btn_disconnect: RectButton,
     btn_quit: RectButton,
     btn_return: RectButton,
@@ -231,6 +234,12 @@ impl SettingsPanel {
             btn_log_dir: RectButton::new(Bounds::new(x, bounds.y + Y_LOGDIR_BTN, w, BTN_H), btn_bg)
                 .with_label("Open Log Directory", 0)
                 .with_border(btn_border),
+            btn_keybindings: RectButton::new(
+                Bounds::new(x, bounds.y + Y_KEYBINDINGS_BTN, w, BTN_H),
+                btn_bg,
+            )
+            .with_label("Keyboard Bindings", 0)
+            .with_border(btn_border),
             btn_disconnect: RectButton::new(
                 Bounds::new(x, bounds.y + Y_SESSION_BTNS, half_w, BTN_H),
                 btn_bg,
@@ -425,6 +434,7 @@ impl Widget for SettingsPanel {
         shift(&mut self.lbl_ping, dx, dy);
         shift(&mut self.btn_profiler, dx, dy);
         shift(&mut self.btn_log_dir, dx, dy);
+        shift(&mut self.btn_keybindings, dx, dy);
         shift(&mut self.btn_disconnect, dx, dy);
         shift(&mut self.btn_quit, dx, dy);
         shift(&mut self.btn_return, dx, dy);
@@ -516,6 +526,11 @@ impl Widget for SettingsPanel {
             self.pending_actions.push(WidgetAction::OpenLogDir);
             return EventResponse::Consumed;
         }
+        if self.btn_keybindings.handle_event(event) == EventResponse::Consumed {
+            self.pending_actions
+                .push(WidgetAction::TogglePanel(HudPanel::KeyBindings));
+            return EventResponse::Consumed;
+        }
         if self.btn_disconnect.handle_event(event) == EventResponse::Consumed {
             self.pending_actions.push(WidgetAction::Disconnect);
             return EventResponse::Consumed;
@@ -590,6 +605,12 @@ impl Widget for SettingsPanel {
             center_x,
             self.bounds.y + Y_DIAG_HEADER,
         )?;
+        Self::draw_section_header(
+            ctx,
+            "-- Controls --",
+            center_x,
+            self.bounds.y + Y_CONTROLS_HEADER,
+        )?;
 
         // Separator line above disconnect/quit
         let sep_y = self.bounds.y + Y_SEPARATOR;
@@ -612,6 +633,7 @@ impl Widget for SettingsPanel {
         self.lbl_ping.render(ctx)?;
         self.btn_profiler.render(ctx)?;
         self.btn_log_dir.render(ctx)?;
+        self.btn_keybindings.render(ctx)?;
         self.btn_disconnect.render(ctx)?;
         self.btn_quit.render(ctx)?;
         self.btn_return.render(ctx)?;

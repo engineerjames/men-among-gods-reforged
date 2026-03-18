@@ -473,6 +473,7 @@ fn main() -> Result<(), String> {
                     HudPanel::Inventory => inventory_panel.toggle(),
                     HudPanel::Settings => settings_panel.toggle(),
                     HudPanel::Minimap => minimap_widget.toggle(),
+                    HudPanel::KeyBindings => {}
                 }
             }
         }

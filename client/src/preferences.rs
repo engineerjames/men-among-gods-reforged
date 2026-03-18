@@ -6,6 +6,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::ui::widget::KeyBindings;
+
 /// Window display mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DisplayMode {
@@ -105,6 +107,9 @@ pub struct Settings {
     /// Saved position of the settings panel, or `None` for default.
     #[serde(default)]
     pub settings_panel_pos: Option<(i32, i32)>,
+    /// Keyboard bindings mapping game actions to key combinations.
+    #[serde(default)]
+    pub key_bindings: KeyBindings,
 }
 
 impl Default for Settings {
@@ -125,6 +130,7 @@ impl Default for Settings {
             inventory_panel_pos: None,
             skills_panel_pos: None,
             settings_panel_pos: None,
+            key_bindings: KeyBindings::default(),
         }
     }
 }

@@ -43,6 +43,9 @@ use crate::{
         cert_dialog::{CertDialog, CertDialogAction},
         chat_box::ChatBox,
         inventory_panel::InventoryPanel,
+        keybindings_panel::{
+            KeybindingsPanel, KeybindingsPanelData, KEYBINDINGS_PANEL_H, KEYBINDINGS_PANEL_W,
+        },
         look_panel::LookPanel,
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
@@ -53,7 +56,10 @@ use crate::{
         status_panel::StatusPanel,
         style::Padding,
         tls_warning_banner::TlsWarningBanner,
-        widget::{Bounds, EventResponse, HudPanel, KeyModifiers, Widget, WidgetAction},
+        widget::{
+            Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
+            WidgetAction,
+        },
         RenderContext,
     },
 };
@@ -187,6 +193,7 @@ pub struct GameScene {
     pub(super) skills_panel: SkillsPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
+    pub(super) keybindings_panel: KeybindingsPanel,
     pub(super) minimap_widget: MinimapWidget,
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
@@ -227,6 +234,8 @@ pub struct GameScene {
     pub(super) active_profile_character: Option<CharacterIdentity>,
     /// Wall-clock profiler for rendering functions (activated from escape menu).
     perf_profiler: PerfProfiler,
+    /// Local copy of keyboard bindings for input matching.
+    pub(super) key_bindings: KeyBindings,
 }
 
 impl GameScene {
@@ -279,6 +288,15 @@ impl GameScene {
                 ),
                 HUD_PANEL_BG,
             ),
+            keybindings_panel: KeybindingsPanel::new(
+                Bounds::new(
+                    HUD_ARC_CENTER_X - KEYBINDINGS_PANEL_W as i32 / 2,
+                    panel_bottom - KEYBINDINGS_PANEL_H as i32,
+                    KEYBINDINGS_PANEL_W,
+                    KEYBINDINGS_PANEL_H,
+                ),
+                HUD_PANEL_BG,
+            ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
             look_panel: LookPanel::new(
@@ -312,6 +330,7 @@ impl GameScene {
             pending_skill_assignment: None,
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
+            key_bindings: KeyBindings::default(),
         }
     }
 
@@ -476,6 +495,14 @@ impl GameScene {
                 WidgetAction::StartProfiler => {
                     self.perf_profiler.start();
                 }
+                WidgetAction::TogglePanel(HudPanel::KeyBindings) => {
+                    self.keybindings_panel.toggle();
+                    if self.keybindings_panel.is_visible() {
+                        self.keybindings_panel.sync_state(&KeybindingsPanelData {
+                            bindings: self.key_bindings.clone(),
+                        });
+                    }
+                }
                 WidgetAction::TogglePanel(_) => {
                     profile_changed = true;
                 }
@@ -488,6 +515,27 @@ impl GameScene {
         }
 
         scene_change
+    }
+
+    /// Drain pending `WidgetAction`s from the keybindings panel and apply
+    /// binding updates.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    fn process_keybindings_panel_actions(&mut self, app_state: &AppState) {
+        for action in self.keybindings_panel.take_actions() {
+            match action {
+                WidgetAction::UpdateKeyBinding { action, binding } => {
+                    self.key_bindings.set_binding(action, binding);
+                    self.save_active_profile(app_state);
+                }
+                WidgetAction::TogglePanel(HudPanel::KeyBindings) => {
+                    // Close button pressed — panel already toggled itself.
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.
@@ -830,6 +878,7 @@ impl Scene for GameScene {
 
         self.are_spell_effects_enabled = true;
         self.master_volume = 1.0;
+        self.key_bindings = KeyBindings::default();
         app_state.master_volume = self.master_volume;
 
         let login_target = match app_state.api.login_target.clone() {
@@ -914,6 +963,10 @@ impl Scene for GameScene {
 
             if self.settings_panel.is_visible() {
                 self.settings_panel.toggle();
+            }
+
+            if self.keybindings_panel.is_visible() {
+                self.keybindings_panel.toggle();
             }
 
             if self.inventory_panel.is_visible() {
@@ -1050,6 +1103,12 @@ impl Scene for GameScene {
                 return None;
             }
 
+            // --- Dispatch to keybindings editor panel ---
+            if self.keybindings_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_keybindings_panel_actions(app_state);
+                return None;
+            }
+
             // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
             if self.shop_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 self.process_shop_panel_actions(app_state);
@@ -1087,10 +1146,37 @@ impl Scene for GameScene {
                                 }
                             }
                             HudPanel::Minimap => self.minimap_widget.toggle(),
+                            HudPanel::KeyBindings => {
+                                self.keybindings_panel.toggle();
+                                if self.keybindings_panel.is_visible() {
+                                    self.keybindings_panel.sync_state(&KeybindingsPanelData {
+                                        bindings: self.key_bindings.clone(),
+                                    });
+                                }
+                            }
                         }
                     }
                 }
                 return None;
+            }
+        }
+
+        // --- Keyboard bindings (suppressed when chat is focused) ---
+        if !self.chat_box.is_focused() {
+            if let Event::KeyDown {
+                keycode: Some(kc),
+                keymod,
+                ..
+            } = event
+            {
+                let mods = KeyModifiers::from_sdl2(*keymod);
+                if let Some(action) = self.key_bindings.action_for_key(*kc, mods) {
+                    match action {
+                        GameAction::ToggleSkills => self.skills_panel.toggle(),
+                        GameAction::ToggleInventory => self.inventory_panel.toggle(),
+                    }
+                    return None;
+                }
             }
         }
 
@@ -1415,6 +1501,7 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
+            self.keybindings_panel.render(&mut ctx)?;
             self.rank_arc.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;

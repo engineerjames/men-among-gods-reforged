@@ -141,6 +141,11 @@ impl ChatBox {
         &self.input_buf
     }
 
+    /// Returns `true` if the chat input has keyboard focus.
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+
     /// Runs the follow-tail and clamping logic for the scroll offset.
     ///
     /// Call this once per frame before rendering so that new messages push the
