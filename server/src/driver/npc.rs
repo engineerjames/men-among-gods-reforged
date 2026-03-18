@@ -307,7 +307,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
     {
         gs.do_sayx(cn, "Skua! Help me!");
         gs.characters[cn].data[70] = ticker + (TICKS * 60 * 2);
-        gs.characters[cn].a_mana = (gs.characters[cn].mana[5] * 1000) as i32;
+        gs.characters[cn].a_mana = gs.characters[cn].mana[5] as i32 * 1000;
         EffectManager::fx_add_effect(
             gs,
             6,
