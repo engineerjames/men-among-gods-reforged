@@ -1169,7 +1169,7 @@ impl Scene for GameScene {
         } = event
         {
             let mods = KeyModifiers::from_sdl2(*keymod);
-            let has_modifier = mods.ctrl || mods.shift || mods.alt;
+            let has_modifier = mods.ctrl || mods.alt;
             if has_modifier || !self.chat_box.is_focused() {
                 if let Some(action) = self.key_bindings.action_for_key(*kc, mods) {
                     match action {
