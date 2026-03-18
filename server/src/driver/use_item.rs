@@ -4712,9 +4712,14 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> b
     God::transfer_char(gs, cn, dest_x as usize, dest_y as usize);
 
     // Restore mana if needed
-    let (a_mana, max_mana) = { (gs.characters[cn].a_mana, gs.characters[cn].mana[5] * 1000) };
+    let (a_mana, max_mana) = {
+        (
+            gs.characters[cn].a_mana,
+            gs.characters[cn].mana[5] as i32 * 1000,
+        )
+    };
 
-    if a_mana < max_mana as i32 {
+    if a_mana < max_mana {
         {
             gs.characters[cn].a_mana = gs.characters[cn].mana[5] as i32 * 1000;
         };

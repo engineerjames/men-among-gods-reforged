@@ -15,6 +15,7 @@ pub mod checkbox;
 pub mod delete_character_dialog;
 pub mod dropdown;
 pub mod inventory_panel;
+pub mod keybindings_panel;
 pub mod label;
 pub mod login_form;
 pub mod look_panel;

@@ -1782,11 +1782,6 @@ pub fn driver_msg(
         }
     }
 
-    let is_ccp = (gs.characters[cn].flags & CharacterFlags::ComputerControlledPlayer.bits()) != 0;
-    if is_ccp {
-        log::error!("driver_ccp::ccp_msg not implemented for {}", cn);
-    }
-
     match msg_type as u32 {
         x if x == core::constants::NT_GOTHIT as u32 || x == core::constants::NT_GOTMISS as u32 => {
             let attack_cn = gs.characters[cn].attack_cn as i32;

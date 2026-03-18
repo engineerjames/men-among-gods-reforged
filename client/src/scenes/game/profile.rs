@@ -33,6 +33,7 @@ impl GameScene {
             self.are_spell_effects_enabled = settings.spell_effects_enabled;
             self.master_volume = settings.master_volume;
             app_state.master_volume = settings.master_volume;
+            self.key_bindings = settings.key_bindings.clone();
 
             // Restore saved panel positions.
             if let Some((x, y)) = settings.inventory_panel_pos {
@@ -89,6 +90,7 @@ impl GameScene {
                 self.settings_panel.bounds().x,
                 self.settings_panel.bounds().y,
             )),
+            key_bindings: self.key_bindings.clone(),
         })
     }
 

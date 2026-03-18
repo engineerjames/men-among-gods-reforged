@@ -1,8 +1,10 @@
 //! Core widget trait, geometry types, and event definitions for the UI framework.
 
+use std::fmt;
 use std::time::Duration;
 
 use sdl2::keyboard::Keycode;
+use serde::{Deserialize, Serialize};
 
 use super::style::Padding;
 use super::RenderContext;
@@ -107,7 +109,7 @@ pub enum MouseButton {
 }
 
 /// Modifier key state at the time of a key event.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KeyModifiers {
     /// `true` if Ctrl (or Cmd on macOS) is held.
     pub ctrl: bool,
@@ -215,6 +217,8 @@ pub enum HudPanel {
     Settings,
     /// World minimap overlay.
     Minimap,
+    /// Keyboard bindings editor.
+    KeyBindings,
 }
 
 /// A side-effect that a widget wants the owning scene to perform.
@@ -317,6 +321,181 @@ pub enum WidgetAction {
     SetVSync(bool),
     /// Toggle context-sensitive helper text near the cursor.
     SetShowHelperText(bool),
+    /// Update a keyboard binding for a game action.
+    UpdateKeyBinding {
+        /// The action whose binding changed.
+        action: GameAction,
+        /// The new key combination.
+        binding: KeyBinding,
+    },
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard bindings
+// ---------------------------------------------------------------------------
+
+/// An in-game action that can be bound to a key combination.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum GameAction {
+    /// Open / close the skills panel.
+    ToggleSkills,
+    /// Open / close the inventory panel.
+    ToggleInventory,
+}
+
+impl GameAction {
+    /// All defined actions, in display order.
+    pub const ALL: &'static [GameAction] = &[GameAction::ToggleSkills, GameAction::ToggleInventory];
+
+    /// Human-readable label for this action.
+    pub fn label(self) -> &'static str {
+        match self {
+            GameAction::ToggleSkills => "Toggle Skills Panel",
+            GameAction::ToggleInventory => "Toggle Inventory Panel",
+        }
+    }
+}
+
+/// A keyboard combination: one primary key plus optional modifier flags.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeyBinding {
+    /// SDL2 keycode stored as `i32` for JSON serialisation stability.
+    pub keycode: i32,
+    /// Modifier flags that must be held.
+    pub modifiers: KeyModifiers,
+}
+
+impl KeyBinding {
+    /// Create a new binding from an SDL2 `Keycode` and modifier state.
+    ///
+    /// # Arguments
+    ///
+    /// * `keycode` - The SDL2 key.
+    /// * `modifiers` - Required modifier state.
+    ///
+    /// # Returns
+    ///
+    /// A new `KeyBinding`.
+    pub fn new(keycode: Keycode, modifiers: KeyModifiers) -> Self {
+        Self {
+            keycode: i32::from(keycode),
+            modifiers,
+        }
+    }
+
+    /// Returns the SDL2 `Keycode`, if the stored value is still valid.
+    pub fn sdl_keycode(self) -> Option<Keycode> {
+        Keycode::from_i32(self.keycode)
+    }
+
+    /// Returns `true` if `keycode` and `modifiers` match this binding.
+    ///
+    /// # Arguments
+    ///
+    /// * `keycode` - The pressed key.
+    /// * `modifiers` - Current modifier state.
+    pub fn matches(self, keycode: Keycode, modifiers: KeyModifiers) -> bool {
+        self.keycode == i32::from(keycode) && self.modifiers == modifiers
+    }
+}
+
+impl fmt::Display for KeyBinding {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.modifiers.ctrl {
+            write!(f, "Ctrl+")?;
+        }
+        if self.modifiers.alt {
+            write!(f, "Alt+")?;
+        }
+        if self.modifiers.shift {
+            write!(f, "Shift+")?;
+        }
+        // Display the key name from the keycode.
+        if let Some(kc) = Keycode::from_i32(self.keycode) {
+            write!(f, "{}", kc.name())
+        } else {
+            write!(f, "???")
+        }
+    }
+}
+
+/// A complete set of keyboard bindings mapping [`GameAction`]s to
+/// [`KeyBinding`]s.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct KeyBindings {
+    /// One entry per bindable action.
+    entries: Vec<(GameAction, KeyBinding)>,
+}
+
+impl Default for KeyBindings {
+    fn default() -> Self {
+        Self {
+            entries: vec![
+                (
+                    GameAction::ToggleSkills,
+                    KeyBinding::new(Keycode::S, KeyModifiers::default()),
+                ),
+                (
+                    GameAction::ToggleInventory,
+                    KeyBinding::new(Keycode::I, KeyModifiers::default()),
+                ),
+            ],
+        }
+    }
+}
+
+impl KeyBindings {
+    /// Look up which action (if any) is bound to the given key + modifiers.
+    ///
+    /// # Arguments
+    ///
+    /// * `keycode` - The pressed key.
+    /// * `modifiers` - Current modifier state.
+    ///
+    /// # Returns
+    ///
+    /// The matching `GameAction`, or `None`.
+    pub fn action_for_key(&self, keycode: Keycode, modifiers: KeyModifiers) -> Option<GameAction> {
+        self.entries
+            .iter()
+            .find(|(_, kb)| kb.matches(keycode, modifiers))
+            .map(|(action, _)| *action)
+    }
+
+    /// Returns the current binding for `action`, if one exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - The action to look up.
+    ///
+    /// # Returns
+    ///
+    /// The binding, or `None` if unbound.
+    pub fn binding_for(&self, action: GameAction) -> Option<KeyBinding> {
+        self.entries
+            .iter()
+            .find(|(a, _)| *a == action)
+            .map(|(_, kb)| *kb)
+    }
+
+    /// Sets (or inserts) the binding for `action`.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - The action to bind.
+    /// * `binding` - The new key combination.
+    pub fn set_binding(&mut self, action: GameAction, binding: KeyBinding) {
+        if let Some(entry) = self.entries.iter_mut().find(|(a, _)| *a == action) {
+            entry.1 = binding;
+        } else {
+            self.entries.push((action, binding));
+        }
+    }
+
+    /// Returns a slice of all `(action, binding)` pairs.
+    pub fn entries(&self) -> &[(GameAction, KeyBinding)] {
+        &self.entries
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -477,5 +656,118 @@ mod tests {
         assert!(!m.ctrl);
         assert!(!m.shift);
         assert!(!m.alt);
+    }
+
+    // -- KeyBinding --
+
+    #[test]
+    fn keybinding_matches_exact() {
+        let kb = KeyBinding::new(Keycode::S, KeyModifiers::default());
+        assert!(kb.matches(Keycode::S, KeyModifiers::default()));
+    }
+
+    #[test]
+    fn keybinding_no_match_different_key() {
+        let kb = KeyBinding::new(Keycode::S, KeyModifiers::default());
+        assert!(!kb.matches(Keycode::I, KeyModifiers::default()));
+    }
+
+    #[test]
+    fn keybinding_no_match_different_modifiers() {
+        let kb = KeyBinding::new(
+            Keycode::S,
+            KeyModifiers {
+                ctrl: true,
+                shift: false,
+                alt: false,
+            },
+        );
+        assert!(!kb.matches(Keycode::S, KeyModifiers::default()));
+    }
+
+    #[test]
+    fn keybinding_display_plain_key() {
+        let kb = KeyBinding::new(Keycode::S, KeyModifiers::default());
+        assert_eq!(kb.to_string(), "S");
+    }
+
+    #[test]
+    fn keybinding_display_with_modifiers() {
+        let kb = KeyBinding::new(
+            Keycode::I,
+            KeyModifiers {
+                ctrl: true,
+                shift: true,
+                alt: false,
+            },
+        );
+        assert_eq!(kb.to_string(), "Ctrl+Shift+I");
+    }
+
+    #[test]
+    fn keybinding_serde_roundtrip() {
+        let kb = KeyBinding::new(
+            Keycode::K,
+            KeyModifiers {
+                ctrl: false,
+                shift: true,
+                alt: false,
+            },
+        );
+        let json = serde_json::to_string(&kb).unwrap();
+        let kb2: KeyBinding = serde_json::from_str(&json).unwrap();
+        assert_eq!(kb, kb2);
+    }
+
+    // -- KeyBindings --
+
+    #[test]
+    fn keybindings_default_has_two_entries() {
+        let kb = KeyBindings::default();
+        assert_eq!(kb.entries().len(), 2);
+    }
+
+    #[test]
+    fn keybindings_action_for_key_found() {
+        let kb = KeyBindings::default();
+        assert_eq!(
+            kb.action_for_key(Keycode::S, KeyModifiers::default()),
+            Some(GameAction::ToggleSkills),
+        );
+    }
+
+    #[test]
+    fn keybindings_action_for_key_not_found() {
+        let kb = KeyBindings::default();
+        assert_eq!(kb.action_for_key(Keycode::Z, KeyModifiers::default()), None);
+    }
+
+    #[test]
+    fn keybindings_set_binding_update() {
+        let mut kb = KeyBindings::default();
+        let new_binding = KeyBinding::new(
+            Keycode::K,
+            KeyModifiers {
+                ctrl: true,
+                shift: false,
+                alt: false,
+            },
+        );
+        kb.set_binding(GameAction::ToggleSkills, new_binding);
+        assert_eq!(kb.binding_for(GameAction::ToggleSkills), Some(new_binding));
+        // Old key should no longer match.
+        assert_eq!(kb.action_for_key(Keycode::S, KeyModifiers::default()), None);
+    }
+
+    #[test]
+    fn keybindings_serde_roundtrip() {
+        let kb = KeyBindings::default();
+        let json = serde_json::to_string(&kb).unwrap();
+        let kb2: KeyBindings = serde_json::from_str(&json).unwrap();
+        assert_eq!(kb.entries().len(), kb2.entries().len());
+        for (a, b) in kb.entries().iter().zip(kb2.entries().iter()) {
+            assert_eq!(a.0, b.0);
+            assert_eq!(a.1, b.1);
+        }
     }
 }
