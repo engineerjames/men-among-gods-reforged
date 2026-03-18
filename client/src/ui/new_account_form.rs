@@ -97,7 +97,7 @@ pub struct NewAccountForm {
 }
 
 impl NewAccountForm {
-    /// Creates a new account form, centred on screen.
+    /// Creates a new account form, centerd on screen.
     ///
     /// # Returns
     ///

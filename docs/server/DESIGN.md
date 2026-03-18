@@ -226,7 +226,7 @@ In the current Rust server, that phase is sent as:
 
 The legacy C++ server maintained a separate `ctick` counter which increments each game tick and wraps at 20; functionally it is also a `0..19` phase value.
 
-### Client → Server: `CL_CMD_CTICK`
+### Client --> Server: `CL_CMD_CTICK`
 
 Clients periodically send `CL_CMD_CTICK` containing a 32-bit `rtick` value. The server:
 

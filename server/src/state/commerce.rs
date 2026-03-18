@@ -453,7 +453,7 @@ impl GameState {
                     }
                 } else if exam_nr < 60 {
                     // Worn item description (only for corpses), slots 0-19
-                    // Note: original C used < 61 (exam_nr 40-60 → worn_slot 0-20), which is a
+                    // Note: original C used < 61 (exam_nr 40-60 --> worn_slot 0-20), which is a
                     // buffer overread; citem description is handled in the else branch below.
                     if is_body {
                         let worn_slot = (exam_nr - 40) as usize;

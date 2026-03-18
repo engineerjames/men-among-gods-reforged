@@ -24,7 +24,7 @@ pub const MINIMAP_WIDGET_VIEW_SIZE: u32 = 128;
 const WORLD_SIZE: usize = 1024;
 
 /// Padding between the map pixel area and the outer panel border (pixels).
-const PANEL_PADDING: u32 = 3;
+const PANEL_PADDING: u32 = 0;
 
 /// Border thickness around the panel (pixels).
 const PANEL_BORDER: u32 = 1;
@@ -163,10 +163,8 @@ impl MinimapWidget {
     /// * `center_x` - Player X in world-map coordinates.
     /// * `center_y` - Player Y in world-map coordinates.
     pub fn update_viewport(&mut self, xmap: &[u8], center_x: u16, center_y: u16) {
-        if !self.visible {
-            return;
-        }
-
+        // Always update the pixel buffer even when hidden, so the minimap
+        // displays current data immediately when opened.
         let view = MINIMAP_WIDGET_VIEW_SIZE as usize;
         let half = (MINIMAP_WIDGET_VIEW_SIZE as i32) / 2;
         let mapx = ((center_x as i32) - half)
@@ -347,8 +345,7 @@ mod tests {
         let mut w = MinimapWidget::new(100, 30, 14);
         let xmap = vec![0u8; WORLD_SIZE * WORLD_SIZE * 4];
         w.update_viewport(&xmap, 512, 512);
-        // viewport_dirty should remain false when hidden.
-        assert!(!w.viewport_dirty);
+        assert!(w.viewport_dirty);
     }
 
     #[test]

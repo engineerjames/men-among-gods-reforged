@@ -1,4 +1,4 @@
-# Graves & Tombstones (Death → Corpse → Tombstone)
+# Graves & Tombstones (Death --> Corpse --> Tombstone)
 
 This document captures the current technical understanding of how the server represents “graves” after a character dies based on the original C code.
 
@@ -22,7 +22,7 @@ This document captures the current technical understanding of how the server rep
   - Effect type `3` (“death mist”) drives the death/grave animation.
   - Effect type `4` (“tombstone”) finalizes the grave by dropping item template `170`.
 
-## Step-by-step: NPC death → tombstone on the ground
+## Step-by-step: NPC death --> tombstone on the ground
 
 ### 1) NPC becomes a body (corpse character)
 

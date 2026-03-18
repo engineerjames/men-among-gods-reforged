@@ -611,7 +611,7 @@ mod tests {
 
     #[test]
     fn sigil_draw_metrics_matches_trim_table() {
-        // Rank 0: SIGIL_TRIM_ROWS[0] = (30, 30) → draw_height = 96 − 60 = 36.
+        // Rank 0: SIGIL_TRIM_ROWS[0] = (30, 30) --> draw_height = 96 − 60 = 36.
         let panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
         let (expected_trim_top, expected_trim_bottom) = SIGIL_TRIM_ROWS[0];
         let expected_draw_height = SIGIL_HEIGHT as u32 - expected_trim_top - expected_trim_bottom;

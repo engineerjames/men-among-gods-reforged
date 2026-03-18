@@ -464,6 +464,9 @@ impl GameScene {
                 WidgetAction::StartProfiler => {
                     self.perf_profiler.start();
                 }
+                WidgetAction::TogglePanel(_) => {
+                    profile_changed = true;
+                }
                 _ => {}
             }
         }
@@ -581,16 +584,11 @@ impl GameScene {
         if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
             return true;
         }
-        if self.inventory_panel.is_visible() && self.inventory_panel.bounds().contains_point(mx, my)
-        {
-            return true;
-        }
+
         if self.settings_panel.is_visible() && self.settings_panel.bounds().contains_point(mx, my) {
             return true;
         }
-        if self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my) {
-            return true;
-        }
+
         false
     }
 
@@ -894,6 +892,11 @@ impl Scene for GameScene {
 
             // If any windows are open, close them.
             if self.shop_panel.is_visible() {
+                // Closing the shop requires resetting the PlayerState flag as well;
+                // the ShopPanelData snapshot is rebuilt from it every frame.
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.close_shop();
+                }
                 self.shop_panel.toggle();
             }
 
@@ -1197,15 +1200,15 @@ impl Scene for GameScene {
                         let is_item = (tile_flags & ISITEM) != 0;
                         let is_usable = (tile_flags & ISUSABLE) != 0;
                         if citem != 0 && !is_item {
-                            // Holding item, clicked non-item tile → drop
+                            // Holding item, clicked non-item tile --> drop
                             self.play_click_sound(app_state);
                             net.send(ClientCommand::new_drop(world_x, world_y));
                         } else if is_item && is_usable {
-                            // Item is usable → use
+                            // Item is usable --> use
                             self.play_click_sound(app_state);
                             net.send(ClientCommand::new_use(world_x, world_y));
                         } else if is_item {
-                            // Item not usable → pickup
+                            // Item not usable --> pickup
                             self.play_click_sound(app_state);
                             net.send(ClientCommand::new_pickup(world_x, world_y));
                         }
@@ -1438,6 +1441,7 @@ impl Scene for GameScene {
                     shop_nr: shop.nr(),
                     citem: ps.character_info().citem,
                     visible: ps.should_show_shop(),
+                    is_grave: ps.shop_is_grave(),
                 });
             }
             let mut ctx = RenderContext {

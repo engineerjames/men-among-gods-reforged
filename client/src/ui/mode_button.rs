@@ -1,7 +1,7 @@
 //! Circular speed-mode button with idle fade-out.
 //!
 //! Composes [`CircleButton`] from `button.rs` and adds:
-//! - Mode cycling (Slow → Normal → Fast → Slow) on click
+//! - Mode cycling (Slow --> Normal --> Fast --> Slow) on click
 //! - ChatBox-style idle fade-out (invisible after a few seconds of inactivity)
 //! - Per-mode fill color and label
 //! - `WidgetAction::ChangeMode` emission
@@ -23,7 +23,7 @@ use super::RenderContext;
 /// Seconds of inactivity before the fade-out animation begins.
 const IDLE_FADE_DELAY_SECS: f32 = 3.0;
 
-/// Duration in seconds of the fade-out transition (opaque → invisible).
+/// Duration in seconds of the fade-out transition (opaque --> invisible).
 const IDLE_FADE_DURATION_SECS: f32 = 1.0;
 
 // ---------------------------------------------------------------------------

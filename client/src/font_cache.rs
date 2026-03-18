@@ -248,6 +248,97 @@ pub fn text_width(text: &str) -> u32 {
     (text.len() as u32) * BITMAP_GLYPH_ADVANCE
 }
 
+/// Draws word-wrapped text within the given pixel width, left-aligned.
+///
+/// Splits `text` at word boundaries so that each rendered line fits within
+/// `max_width` pixels. Lines are separated by `BITMAP_GLYPH_H` pixels
+/// vertically. Words wider than `max_width` are hard-broken at the character
+/// boundary instead of overflowing.
+///
+/// # Arguments
+///
+/// * `canvas` - SDL2 canvas to draw onto.
+/// * `gfx_cache` - Graphics cache holding font textures.
+/// * `font` - Bitmap font index (0–3).
+/// * `text` - Text to render (may contain spaces; newlines are not handled).
+/// * `x` - Left edge of the text block in pixels.
+/// * `y` - Top edge of the first line in pixels.
+/// * `max_width` - Maximum pixel width of a single line.
+/// * `style` - Rendering style (tint, alpha, centering is ignored — always left-aligned).
+///
+/// # Returns
+///
+/// `Ok(lines_drawn)` on success, or an SDL2 error string.
+pub fn draw_wrapped_text(
+    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+    gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
+    font: usize,
+    text: &str,
+    x: i32,
+    y: i32,
+    max_width: u32,
+    style: TextStyle,
+) -> Result<u32, String> {
+    let chars_per_line = (max_width / BITMAP_GLYPH_ADVANCE).max(1) as usize;
+    let line_h = BITMAP_GLYPH_H as i32;
+    let mut lines_drawn = 0u32;
+    let mut cur_y = y;
+
+    // Build lines respecting word boundaries.
+    let words: Vec<&str> = text.split(' ').collect();
+    let mut current_line = String::new();
+
+    for word in words {
+        // If a single word exceeds the available width, hard-break it.
+        if word.len() >= chars_per_line {
+            // Flush any pending line first.
+            if !current_line.is_empty() {
+                let flush = std::mem::take(&mut current_line);
+                draw_text(canvas, gfx_cache, font, &flush, x, cur_y, style)?;
+                cur_y += line_h;
+                lines_drawn += 1;
+            }
+            // Hard-break the long word across multiple lines.
+            let mut remaining = word;
+            while !remaining.is_empty() {
+                let take = remaining.len().min(chars_per_line);
+                draw_text(canvas, gfx_cache, font, &remaining[..take], x, cur_y, style)?;
+                cur_y += line_h;
+                lines_drawn += 1;
+                remaining = &remaining[take..];
+            }
+            continue;
+        }
+
+        // Try appending the word to the current line.
+        let candidate = if current_line.is_empty() {
+            word.to_string()
+        } else {
+            format!("{} {}", current_line, word)
+        };
+
+        if candidate.len() <= chars_per_line {
+            current_line = candidate;
+        } else {
+            // Flush the current line and start a new one with this word.
+            if !current_line.is_empty() {
+                draw_text(canvas, gfx_cache, font, &current_line, x, cur_y, style)?;
+                cur_y += line_h;
+                lines_drawn += 1;
+            }
+            current_line = word.to_string();
+        }
+    }
+
+    // Flush the final line.
+    if !current_line.is_empty() {
+        draw_text(canvas, gfx_cache, font, &current_line, x, cur_y, style)?;
+        lines_drawn += 1;
+    }
+
+    Ok(lines_drawn)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

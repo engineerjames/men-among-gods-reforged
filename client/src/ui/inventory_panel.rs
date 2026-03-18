@@ -14,7 +14,8 @@ use mag_core::constants::{
     WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
+use super::title_bar::{clamp_to_viewport, TitleBar, TITLE_BAR_H};
+use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
 use crate::font_cache;
 
@@ -119,6 +120,8 @@ pub struct InventoryPanel {
     mouse_x: i32,
     mouse_y: i32,
     actions: Vec<WidgetAction>,
+    /// Draggable title bar with pin and close buttons.
+    title_bar: TitleBar,
 }
 
 impl InventoryPanel {
@@ -133,6 +136,7 @@ impl InventoryPanel {
     ///
     /// A new `InventoryPanel`, initially hidden.
     pub fn new(bounds: Bounds, bg_color: Color) -> Self {
+        let title_bar = TitleBar::new("Inventory", bounds.x, bounds.y, bounds.width);
         Self {
             bounds,
             bg_color,
@@ -143,6 +147,7 @@ impl InventoryPanel {
             mouse_x: 0,
             mouse_y: 0,
             actions: Vec::new(),
+            title_bar,
         }
     }
 
@@ -243,6 +248,71 @@ impl InventoryPanel {
         }
     }
 
+    /// Returns `true` when the tracked mouse position is within the panel's bounds.
+    ///
+    /// Used by the helper-text renderer to suppress world-label logic while
+    /// the cursor is anywhere over the panel.
+    pub fn is_cursor_over_panel(&self) -> bool {
+        self.bounds.contains_point(self.mouse_x, self.mouse_y)
+    }
+
+    /// Returns the context-sensitive helper text label for whatever slot the
+    /// cursor is currently over, or `None` when no label should be shown.
+    ///
+    /// **Backpack slots:**
+    /// - Shift not held, non-empty slot --> `"USE"`
+    /// - Shift held, non-empty slot, hand empty --> `"PICK UP"`
+    /// - Shift held, non-empty slot, hand has item --> `"SWAP"`
+    /// - Empty slot, hand has item --> `"DROP"`
+    /// - Empty slot, hand empty --> `None`
+    ///
+    /// **Equipment slots:**
+    /// - Shift not held, slot occupied --> `"USE"`
+    /// - Shift held, hand has item, slot occupied --> `"SWAP"`
+    /// - Shift held, hand has item, slot empty --> `"EQUIP"`
+    /// - Otherwise --> `None`
+    ///
+    /// # Arguments
+    ///
+    /// * `shift` - `true` when the Shift modifier key is currently held.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&'static str)` with the action label, or `None`.
+    pub fn hovered_label(&self, shift: bool) -> Option<&'static str> {
+        let data = self.data.as_ref()?;
+
+        // ── Backpack grid ──────────────────────────────────────────────────
+        if let Some(idx) = self.hovered_inv_slot() {
+            if data.items[idx] <= 0 {
+                return if data.citem > 0 { Some("DROP") } else { None };
+            }
+            return Some(if shift {
+                if data.citem > 0 {
+                    "SWAP"
+                } else {
+                    "PICK UP"
+                }
+            } else {
+                "USE"
+            });
+        }
+
+        // ── Equipment grid ─────────────────────────────────────────────────
+        if let Some(pos) = self.hovered_equip_pos() {
+            let wn_slot = EQUIP_WNTAB[pos];
+            let slot_has_item = data.worn[wn_slot] > 0;
+            if shift && data.citem > 0 {
+                return Some(if slot_has_item { "SWAP" } else { "EQUIP" });
+            }
+            if !shift && slot_has_item {
+                return Some("USE");
+            }
+        }
+
+        None
+    }
+
     // -----------------------------------------------------------------------
     // Slot-acceptance / blocking helpers
     // -----------------------------------------------------------------------
@@ -330,12 +400,30 @@ impl Widget for InventoryPanel {
     fn set_position(&mut self, x: i32, y: i32) {
         self.bounds.x = x;
         self.bounds.y = y;
+        self.title_bar.set_bar_position(x, y);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
         }
+
+        // --- Title bar gets first crack at all events ---
+        let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
+        if let Some((new_x, new_y)) = drag_pos {
+            let (cx, cy) = clamp_to_viewport(new_x, new_y, self.bounds.width, self.bounds.height);
+            self.set_position(cx, cy);
+        }
+        if self.title_bar.was_close_requested() {
+            self.visible = false;
+            self.actions
+                .push(WidgetAction::TogglePanel(HudPanel::Inventory));
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
         match event {
             UiEvent::MouseMove { x, y } => {
                 self.mouse_x = *x;
@@ -456,20 +544,12 @@ impl Widget for InventoryPanel {
         ctx.canvas.set_draw_color(self.border_color);
         ctx.canvas.draw_rect(rect)?;
 
-        // --- Title ---
-        let title_x = self.bounds.x + self.bounds.width as i32 / 2;
-        let title_y = self.bounds.y + 4;
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            UI_FONT,
-            "Inventory",
-            title_x,
-            title_y,
-            font_cache::TextStyle::centered(),
-        )?;
+        // --- Title bar (draggable, with pin/close) ---
+        self.title_bar.render(ctx)?;
 
         // --- Money line ---
+        let money_cx = self.bounds.x + self.bounds.width as i32 / 2;
+        let money_y = self.bounds.y + TITLE_BAR_H + 2;
         let gold = data.gold / 100;
         let silver = data.gold % 100;
         let money_text = format!("{}G {}S", gold, silver);
@@ -478,8 +558,8 @@ impl Widget for InventoryPanel {
             ctx.gfx,
             UI_FONT,
             &money_text,
-            title_x,
-            title_y + 14,
+            money_cx,
+            money_y,
             font_cache::TextStyle::centered(),
         )?;
 
@@ -740,5 +820,35 @@ mod tests {
         assert!(panel.data.is_none());
         panel.update_data(test_data());
         assert!(panel.data.is_some());
+    }
+
+    #[test]
+    fn hovered_label_drop_on_empty_slot_with_item_in_hand() {
+        // Panel bounds chosen so that the first inventory slot falls under
+        // the simulated cursor position used below.
+        let mut panel = InventoryPanel::new(Bounds::new(0, 0, 400, 300), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        let mut data = test_data();
+        // Slot 0 is empty; player is carrying an item.
+        data.citem = 42;
+        panel.update_data(data);
+        // Move cursor over the first inventory slot (INV_GRID_PAD_X + 1, INV_GRID_PAD_Y + 1).
+        let mx = INV_GRID_PAD_X + 1;
+        let my = INV_GRID_PAD_Y + 1;
+        panel.handle_event(&UiEvent::MouseMove { x: mx, y: my });
+        assert_eq!(panel.hovered_label(false), Some("DROP"));
+        assert_eq!(panel.hovered_label(true), Some("DROP"));
+    }
+
+    #[test]
+    fn hovered_label_none_on_empty_slot_without_item_in_hand() {
+        let mut panel = InventoryPanel::new(Bounds::new(0, 0, 400, 300), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        panel.update_data(test_data()); // citem == 0, slot 0 empty
+        let mx = INV_GRID_PAD_X + 1;
+        let my = INV_GRID_PAD_Y + 1;
+        panel.handle_event(&UiEvent::MouseMove { x: mx, y: my });
+        assert_eq!(panel.hovered_label(false), None);
+        assert_eq!(panel.hovered_label(true), None);
     }
 }

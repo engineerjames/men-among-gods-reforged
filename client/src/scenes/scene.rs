@@ -6,8 +6,8 @@ use crate::state::AppState;
 
 /// Trait implemented by each game scene (login, character selection, gameplay, etc.).
 ///
-/// The scene manager drives the lifecycle: `on_enter` → frame loop (`handle_event`,
-/// `update`, `render_world`) → `on_exit`. Returning `Some(SceneType)`
+/// The scene manager drives the lifecycle: `on_enter` --> frame loop (`handle_event`,
+/// `update`, `render_world`) --> `on_exit`. Returning `Some(SceneType)`
 /// from any frame method triggers a scene transition.
 pub trait Scene {
     /// Called once when the scene becomes active.

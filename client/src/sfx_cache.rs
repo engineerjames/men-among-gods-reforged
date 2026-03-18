@@ -219,14 +219,14 @@ mod tests {
 
     #[test]
     fn perceptual_curve_at_half() {
-        // Quadratic curve: 0.5^2 = 0.25 → SDL vol ≈ 32.
+        // Quadratic curve: 0.5^2 = 0.25 --> SDL vol ≈ 32.
         let v = sdl_vol(0, 0.5);
         assert!((30..=34).contains(&v), "expected ~32, got {}", v);
     }
 
     #[test]
     fn perceptual_curve_at_ten_percent() {
-        // Quadratic curve: 0.1^2 = 0.01 → SDL vol ≈ 1.
+        // Quadratic curve: 0.1^2 = 0.01 --> SDL vol ≈ 1.
         let v = sdl_vol(0, 0.1);
         assert!(v <= 2, "expected ≤2, got {}", v);
     }

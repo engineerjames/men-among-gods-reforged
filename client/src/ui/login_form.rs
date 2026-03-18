@@ -109,7 +109,7 @@ pub struct LoginForm {
 }
 
 impl LoginForm {
-    /// Creates a new login form, centred on screen.
+    /// Creates a new login form, centerd on screen.
     ///
     /// # Arguments
     ///
@@ -561,13 +561,14 @@ impl Widget for LoginForm {
         }
 
         if let Some(ref err) = self.error_text {
-            font_cache::draw_text(
+            font_cache::draw_wrapped_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 err,
                 self.bounds.x + PAD_X,
                 cursor_y,
+                INPUT_W,
                 font_cache::TextStyle::tinted(Color::RGB(255, 80, 80)),
             )?;
         }

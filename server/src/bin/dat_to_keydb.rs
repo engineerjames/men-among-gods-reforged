@@ -252,7 +252,7 @@ fn main() {
         std::process::exit(1);
     }
 
-    println!("=== Men Among Gods: .dat → KeyDB Migration Tool ===");
+    println!("=== Men Among Gods: .dat --> KeyDB Migration Tool ===");
     println!("Loading from: {}", dat_dir.display());
     println!();
 

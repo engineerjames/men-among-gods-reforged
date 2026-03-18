@@ -218,7 +218,7 @@ fn main() -> Result<(), String> {
 
     let mut minimap_widget = MinimapWidget::new(TARGET_WIDTH_INT as i32 - 30, 30, 14);
 
-    // HUD button bar (bottom centre — same position as in-game).
+    // HUD button bar (bottom center — same position as in-game).
     let mut hud_buttons = HudButtonBar::new(
         HUD_ARC_CENTER_X,
         HUD_ARC_CENTER_Y,
@@ -464,7 +464,7 @@ fn main() -> Result<(), String> {
         drain_and_log(&mut status_panel, "StatusPanel");
         drain_and_log(&mut rank_arc, "RankArc");
 
-        // HudButtonBar actions → toggle panels.
+        // HudButtonBar actions --> toggle panels.
         for action in hud_buttons.take_actions() {
             println!("[Action:HudButtonBar] {:?}", action);
             if let WidgetAction::TogglePanel(panel) = action {

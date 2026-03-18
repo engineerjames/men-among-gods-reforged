@@ -72,6 +72,9 @@ pub struct ShopPanelData {
     pub citem: i32,
     /// Whether the shop overlay should be visible.
     pub visible: bool,
+    /// `true` when this overlay represents a corpse/grave rather than a merchant.
+    /// Controls the title text displayed in the panel header.
+    pub is_grave: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -146,12 +149,40 @@ impl ShopPanel {
                     shop_nr: 0,
                     citem: 0,
                     visible: true,
+                    is_grave: false,
                 });
             }
         }
     }
 
     // ── Hit-testing helpers ─────────────────────────────────────────────
+
+    /// Returns the context-sensitive helper text label for the item slot
+    /// currently under the cursor, or `None` if no filled slot is hovered.
+    ///
+    /// Returns `"TAKE"` for grave/corpse overlays and `"BUY"` for merchant
+    /// shops. Used by the game scene's helper-text renderer so that the
+    /// cursor label updates correctly while the panel is open.
+    ///
+    /// # Arguments
+    ///
+    /// * `is_grave` - `true` when this overlay represents a corpse/grave.
+    ///
+    /// # Returns
+    ///
+    /// * `Some("TAKE")` or `Some("BUY")` when a non-empty slot is hovered.
+    /// * `None` when the cursor is over an empty slot or outside the grid.
+    pub fn hovered_item_label(&self, is_grave: bool) -> Option<&'static str> {
+        if !self.is_visible() {
+            return None;
+        }
+        let data = self.data.as_ref()?;
+        let idx = self.hovered_slot()?;
+        if data.items[idx] == 0 {
+            return None;
+        }
+        Some(if is_grave { "TAKE" } else { "BUY" })
+    }
 
     /// Returns the grid slot index (0–61) under the current mouse position,
     /// or `None` if the mouse is outside the grid or beyond slot 61.
@@ -231,7 +262,7 @@ impl Widget for ShopPanel {
                 self.mouse_x = *x;
                 self.mouse_y = *y;
 
-                // Click outside the panel → close shop.
+                // Click outside the panel --> close shop.
                 if !self.bounds.contains_point(*x, *y) {
                     self.actions.push(WidgetAction::CloseShop);
                     return EventResponse::Consumed;
@@ -312,11 +343,16 @@ impl Widget for ShopPanel {
         ctx.canvas.draw_rect(rect)?;
 
         // Title.
+        let title = if data.is_grave {
+            "Grave".to_string()
+        } else {
+            "Shop".to_string()
+        };
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             UI_FONT,
-            "Shop",
+            &title,
             self.bounds.x + PAD_X,
             self.bounds.y + 4,
             font_cache::TextStyle::PLAIN,
@@ -427,6 +463,7 @@ mod tests {
             shop_nr: 42,
             citem: 0,
             visible: true,
+            is_grave: false,
         };
         data.items[0] = 100; // put an item in slot 0
         data.prices[0] = 500;

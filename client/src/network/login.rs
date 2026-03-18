@@ -196,8 +196,8 @@ fn get_server_response(
 
 /// Performs the API-ticket login handshake.
 ///
-/// Flow: `CL_API_LOGIN(ticket)` → `SV_CHALLENGE` → `xcrypt()` → `CL_CHALLENGE` + `CL_UNIQUE`
-/// → loop until `SV_LOGIN_OK` (or `SV_NEW_PLAYER` for new accounts).
+/// Flow: `CL_API_LOGIN(ticket)` --> `SV_CHALLENGE` --> `xcrypt()` --> `CL_CHALLENGE` + `CL_UNIQUE`
+/// --> loop until `SV_LOGIN_OK` (or `SV_NEW_PLAYER` for new accounts).
 fn login_handshake(
     stream: &mut GameConnection,
     ticket: u64,

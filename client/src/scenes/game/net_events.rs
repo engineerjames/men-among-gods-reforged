@@ -229,6 +229,10 @@ impl GameScene {
                     }
                     self.save_active_profile(app_state);
                 }
+                WidgetAction::TogglePanel(_) => {
+                    // Panel was closed via its title bar X button.
+                    self.save_active_profile(app_state);
+                }
                 _ => {}
             }
         }
@@ -258,6 +262,10 @@ impl GameScene {
                         self.play_click_sound(app_state);
                         net.send(ClientCommand::new_inv_look(a, b, c));
                     }
+                }
+                WidgetAction::TogglePanel(_) => {
+                    // Panel was closed via its title bar X button.
+                    self.save_active_profile(app_state);
                 }
                 _ => {}
             }

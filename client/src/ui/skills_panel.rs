@@ -13,7 +13,8 @@ use sdl2::render::BlendMode;
 
 use mag_core::skills::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
+use super::title_bar::{clamp_to_viewport, TitleBar};
+use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
 use crate::font_cache;
 
@@ -80,6 +81,8 @@ pub struct SkillsPanel {
     pending_actions: Vec<WidgetAction>,
     /// Skill currently waiting for a keybind key press (1-9), or `None`.
     pending_keybind_skill: Option<u32>,
+    /// Draggable title bar with pin and close buttons.
+    title_bar: TitleBar,
 }
 
 impl SkillsPanel {
@@ -94,6 +97,7 @@ impl SkillsPanel {
     ///
     /// A new `SkillsPanel`, initially hidden.
     pub fn new(bounds: Bounds, bg_color: Color) -> Self {
+        let title_bar = TitleBar::new("Skills & Attributes", bounds.x, bounds.y, bounds.width);
         Self {
             bounds,
             bg_color,
@@ -105,6 +109,7 @@ impl SkillsPanel {
             skill_scroll: 0,
             pending_actions: Vec::new(),
             pending_keybind_skill: None,
+            title_bar,
         }
     }
 
@@ -234,7 +239,17 @@ impl SkillsPanel {
     // ---- Click handling ---------------------------------------------------
 
     /// Handle a stat +/- click at panel-local coordinates.
-    fn handle_stat_click(&mut self, x: i32, y: i32, data: &SkillsPanelData) {
+    ///
+    /// When `shift` is `true` (Shift held), raises by up to 10 levels,
+    /// stopping early if points run out before all 10 are spent.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Panel-local X coordinate.
+    /// * `y` - Panel-local Y coordinate.
+    /// * `data` - Current character data snapshot.
+    /// * `shift` - `true` when the Shift modifier was held.
+    fn handle_stat_click(&mut self, x: i32, y: i32, data: &SkillsPanelData, shift: bool) {
         let (_, _, _, plus_x, minus_x, _) = self.col_x();
 
         let is_plus = (plus_x..plus_x + 12).contains(&x);
@@ -243,14 +258,20 @@ impl SkillsPanel {
             return;
         }
 
+        let repeats = if shift { 10 } else { 1 };
+
         // Attributes (0-4).
         for n in 0..5 {
             let ry = self.attr_row_y(n);
             if y >= ry && y < ry + ROW_H {
                 if is_plus {
-                    self.raise_attrib(data, n);
+                    for _ in 0..repeats {
+                        self.raise_attrib(data, n);
+                    }
                 } else {
-                    self.lower_attrib(data, n);
+                    for _ in 0..repeats {
+                        self.lower_attrib(data, n);
+                    }
                 }
                 return;
             }
@@ -262,9 +283,13 @@ impl SkillsPanel {
             if y >= ry && y < ry + ROW_H {
                 let idx = 5 + p;
                 if is_plus {
-                    self.raise_pool(data, idx, p);
+                    for _ in 0..repeats {
+                        self.raise_pool(data, idx, p);
+                    }
                 } else {
-                    self.lower_pool(data, idx, p);
+                    for _ in 0..repeats {
+                        self.lower_pool(data, idx, p);
+                    }
                 }
                 return;
             }
@@ -284,9 +309,13 @@ impl SkillsPanel {
                         return;
                     }
                     if is_plus {
-                        self.raise_skill(data, skill_id, raised_idx);
+                        for _ in 0..repeats {
+                            self.raise_skill(data, skill_id, raised_idx);
+                        }
                     } else {
-                        self.lower_skill(data, skill_id, raised_idx);
+                        for _ in 0..repeats {
+                            self.lower_skill(data, skill_id, raised_idx);
+                        }
                     }
                 }
                 return;
@@ -533,14 +562,38 @@ impl Widget for SkillsPanel {
     fn set_position(&mut self, x: i32, y: i32) {
         self.bounds.x = x;
         self.bounds.y = y;
+        self.title_bar.set_bar_position(x, y);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
         }
+
+        // --- Title bar gets first crack at all events ---
+        let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
+        if let Some((new_x, new_y)) = drag_pos {
+            let (cx, cy) = clamp_to_viewport(new_x, new_y, self.bounds.width, self.bounds.height);
+            self.set_position(cx, cy);
+        }
+        if self.title_bar.was_close_requested() {
+            self.visible = false;
+            self.pending_actions
+                .push(WidgetAction::TogglePanel(HudPanel::Skills));
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
         match event {
-            UiEvent::MouseClick { x, y, button, .. } => {
+            UiEvent::MouseClick {
+                x,
+                y,
+                button,
+                modifiers,
+                ..
+            } => {
                 if !self.bounds.contains_point(*x, *y) {
                     return EventResponse::Ignored;
                 }
@@ -567,7 +620,7 @@ impl Widget for SkillsPanel {
                         // Check +/- columns.
                         let (_, _, _, plus_x, minus_x, _) = self.col_x();
                         if *x >= plus_x && *x < minus_x + 12 {
-                            self.handle_stat_click(*x, *y, &data);
+                            self.handle_stat_click(*x, *y, &data, modifiers.shift);
                             return EventResponse::Consumed;
                         }
 
@@ -672,19 +725,10 @@ impl Widget for SkillsPanel {
         ctx.canvas.set_draw_color(self.border_color);
         ctx.canvas.draw_rect(rect)?;
 
-        // Title.
+        // Title bar (draggable, with pin/close).
+        self.title_bar.render(ctx)?;
+
         let cb = self.content_bounds();
-        let title_x = cb.x + cb.width as i32 / 2;
-        let title_y = cb.y;
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            PANEL_FONT,
-            "Skills & Attributes",
-            title_x,
-            title_y,
-            font_cache::TextStyle::centered(),
-        )?;
 
         let data = match self.data.as_ref() {
             Some(d) => d,
@@ -1233,7 +1277,7 @@ mod tests {
     #[test]
     fn bound_key_for_skill_finds_correct_slot() {
         let mut keybinds: [Option<u32>; 9] = [None; 9];
-        keybinds[4] = Some(7); // key "5" → skill_nr 7
+        keybinds[4] = Some(7); // key "5" --> skill_nr 7
         assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 7), Some(5));
         assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 99), None);
     }

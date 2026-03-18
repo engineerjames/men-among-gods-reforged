@@ -416,7 +416,11 @@ impl GameScene {
     /// An action label string such as `"WALK"`, `"ATTACK"`, etc., or `None`.
     pub(super) fn resolve_helper_text(&self, ps: &PlayerState) -> Option<&'static str> {
         if ps.should_show_shop() {
-            return None;
+            // Show BUY / TAKE when the cursor hovers over a filled item slot.
+            return self.shop_panel.hovered_item_label(ps.shop_is_grave());
+        }
+        if self.inventory_panel.is_visible() && self.inventory_panel.is_cursor_over_panel() {
+            return self.inventory_panel.hovered_label(self.shift_held);
         }
 
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
@@ -445,17 +449,21 @@ impl GameScene {
         }
 
         if self.shift_held {
-            if has_item {
-                return Some("DROP");
-            }
-            // Empty hand — check for usable or item tiles nearby.
+            // "USE" has highest priority when the cursor is over a usable tile,
+            // even if the player is holding an item.
             if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
                 if let Some(tile) = ps.map().tile_at_xy(sx, sy) {
                     if (tile.flags & ISUSABLE) != 0 {
                         return Some("USE");
                     }
                 }
-                return Some("PICK UP");
+                // Not usable — pick up only when hand is empty.
+                if !has_item {
+                    return Some("PICK UP");
+                }
+            }
+            if has_item {
+                return Some("DROP");
             }
         }
 

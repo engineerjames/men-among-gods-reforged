@@ -23,6 +23,7 @@ pub mod mode_button;
 pub mod new_account_form;
 pub mod panel;
 pub mod panning_background;
+pub mod quit_confirm_dialog;
 pub mod radio_group;
 pub mod rank_arc;
 pub mod scrollable_list;
@@ -33,6 +34,7 @@ pub mod slider;
 pub mod status_panel;
 pub mod style;
 pub mod text_input;
+pub mod title_bar;
 pub mod tls_warning_banner;
 pub mod widget;
 

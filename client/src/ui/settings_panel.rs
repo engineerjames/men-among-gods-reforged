@@ -11,9 +11,11 @@ use super::button::RectButton;
 use super::checkbox::Checkbox;
 use super::dropdown::Dropdown;
 use super::label::Label;
+use super::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
 use super::slider::Slider;
 use super::style::{Background, Border};
-use super::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
+use super::title_bar::{clamp_to_viewport, TitleBar, TITLE_BAR_H};
+use super::widget::{Bounds, EventResponse, HudPanel, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
 use crate::font_cache;
 use crate::preferences::DisplayMode;
@@ -31,31 +33,30 @@ const CONTROL_W: u32 = 280;
 /// Height of a button row.
 const BTN_H: u32 = 16;
 
-// Y offsets from panel top for each element.
-const Y_TITLE: i32 = 6;
-const Y_VISUAL_HEADER: i32 = 22;
-const Y_SHADOWS: i32 = 36;
-const Y_SPELL_FX: i32 = 50;
-const Y_NAMES: i32 = 64;
-const Y_HEALTH: i32 = 78;
-const Y_HELPER_TEXT: i32 = 92;
-const Y_WALLS: i32 = 106;
-const Y_AUDIO_HEADER: i32 = 124;
-const Y_VOLUME: i32 = 138;
-const Y_DISPLAY_HEADER: i32 = 156;
-const Y_DISPLAY_MODE: i32 = 170;
-const Y_PIXEL_PERFECT: i32 = 190;
-const Y_VSYNC: i32 = 204;
-const Y_DIAG_HEADER: i32 = 222;
-const Y_PING: i32 = 236;
-const Y_PROFILER_BTN: i32 = 252;
-const Y_LOGDIR_BTN: i32 = 272;
-const Y_SEPARATOR: i32 = 294;
-const Y_SESSION_BTNS: i32 = 306;
-const Y_RETURN_BTN: i32 = 328;
+// Y offsets from panel top for each element (shifted by TITLE_BAR_H).
+const Y_VISUAL_HEADER: i32 = 22 + TITLE_BAR_H;
+const Y_SHADOWS: i32 = 36 + TITLE_BAR_H;
+const Y_SPELL_FX: i32 = 50 + TITLE_BAR_H;
+const Y_NAMES: i32 = 64 + TITLE_BAR_H;
+const Y_HEALTH: i32 = 78 + TITLE_BAR_H;
+const Y_HELPER_TEXT: i32 = 92 + TITLE_BAR_H;
+const Y_WALLS: i32 = 106 + TITLE_BAR_H;
+const Y_AUDIO_HEADER: i32 = 124 + TITLE_BAR_H;
+const Y_VOLUME: i32 = 138 + TITLE_BAR_H;
+const Y_DISPLAY_HEADER: i32 = 156 + TITLE_BAR_H;
+const Y_DISPLAY_MODE: i32 = 170 + TITLE_BAR_H;
+const Y_PIXEL_PERFECT: i32 = 190 + TITLE_BAR_H;
+const Y_VSYNC: i32 = 204 + TITLE_BAR_H;
+const Y_DIAG_HEADER: i32 = 222 + TITLE_BAR_H;
+const Y_PING: i32 = 236 + TITLE_BAR_H;
+const Y_PROFILER_BTN: i32 = 252 + TITLE_BAR_H;
+const Y_LOGDIR_BTN: i32 = 272 + TITLE_BAR_H;
+const Y_SEPARATOR: i32 = 294 + TITLE_BAR_H;
+const Y_SESSION_BTNS: i32 = 306 + TITLE_BAR_H;
+const Y_RETURN_BTN: i32 = 328 + TITLE_BAR_H;
 
 /// Total panel height needed to fit all controls.
-pub const SETTINGS_PANEL_H: u32 = 352;
+pub const SETTINGS_PANEL_H: u32 = 352 + TITLE_BAR_H as u32;
 
 // ---------------------------------------------------------------------------
 // Data snapshot
@@ -109,6 +110,9 @@ pub struct SettingsPanel {
     visible: bool,
     pending_actions: Vec<WidgetAction>,
 
+    /// Draggable title bar.
+    title_bar: TitleBar,
+
     // --- Child widgets ---
     chk_shadows: Checkbox,
     chk_spell_effects: Checkbox,
@@ -126,6 +130,8 @@ pub struct SettingsPanel {
     btn_disconnect: RectButton,
     btn_quit: RectButton,
     btn_return: RectButton,
+    /// Confirmation dialog shown before quitting.
+    quit_dialog: QuitConfirmDialog,
 }
 
 impl SettingsPanel {
@@ -158,6 +164,8 @@ impl SettingsPanel {
             border_color: Color::RGBA(120, 120, 140, 200),
             visible: false,
             pending_actions: Vec::new(),
+
+            title_bar: TitleBar::new("Settings", bounds.x, bounds.y, bounds.width),
 
             chk_shadows: Checkbox::new(
                 Bounds::new(x, bounds.y + Y_SHADOWS, w, ROW_H as u32),
@@ -243,6 +251,7 @@ impl SettingsPanel {
             btn_return: RectButton::new(Bounds::new(x, bounds.y + Y_RETURN_BTN, w, BTN_H), btn_bg)
                 .with_label("Return to Game", 0)
                 .with_border(btn_border),
+            quit_dialog: QuitConfirmDialog::new(),
         }
     }
 
@@ -391,13 +400,72 @@ impl Widget for SettingsPanel {
     }
 
     fn set_position(&mut self, x: i32, y: i32) {
+        let dx = x - self.bounds.x;
+        let dy = y - self.bounds.y;
         self.bounds.x = x;
         self.bounds.y = y;
+        self.title_bar.set_bar_position(x, y);
+
+        // Shift every child widget by the delta.
+        fn shift(w: &mut impl Widget, dx: i32, dy: i32) {
+            let b = w.bounds();
+            let (nx, ny) = (b.x + dx, b.y + dy);
+            w.set_position(nx, ny);
+        }
+        shift(&mut self.chk_shadows, dx, dy);
+        shift(&mut self.chk_spell_effects, dx, dy);
+        shift(&mut self.chk_show_names, dx, dy);
+        shift(&mut self.chk_show_health, dx, dy);
+        shift(&mut self.chk_helper_text, dx, dy);
+        shift(&mut self.chk_hide_walls, dx, dy);
+        shift(&mut self.sld_volume, dx, dy);
+        shift(&mut self.drp_display_mode, dx, dy);
+        shift(&mut self.chk_pixel_perfect, dx, dy);
+        shift(&mut self.chk_vsync, dx, dy);
+        shift(&mut self.lbl_ping, dx, dy);
+        shift(&mut self.btn_profiler, dx, dy);
+        shift(&mut self.btn_log_dir, dx, dy);
+        shift(&mut self.btn_disconnect, dx, dy);
+        shift(&mut self.btn_quit, dx, dy);
+        shift(&mut self.btn_return, dx, dy);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
+        }
+
+        // Quit confirmation dialog is modal — route events to it first.
+        if self.quit_dialog.is_visible() {
+            self.quit_dialog.handle_event(event);
+            for action in self.quit_dialog.take_actions() {
+                match action {
+                    QuitConfirmDialogAction::Confirm => {
+                        self.pending_actions.push(WidgetAction::Quit);
+                    }
+                    QuitConfirmDialogAction::Cancel => {
+                        self.quit_dialog.hide();
+                    }
+                }
+            }
+            return EventResponse::Consumed;
+        }
+
+        // Title bar: drag / pin / close.
+        let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
+        if let Some((nx, ny)) = drag_pos {
+            let (cx, cy) = clamp_to_viewport(nx, ny, self.bounds.width, self.bounds.height);
+            self.set_position(cx, cy);
+            return EventResponse::Consumed;
+        }
+        if self.title_bar.was_close_requested() {
+            self.visible = false;
+            self.pending_actions
+                .push(WidgetAction::TogglePanel(HudPanel::Settings));
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
         }
 
         // When dropdown is expanded, it gets first priority so it can
@@ -453,11 +521,13 @@ impl Widget for SettingsPanel {
             return EventResponse::Consumed;
         }
         if self.btn_quit.handle_event(event) == EventResponse::Consumed {
-            self.pending_actions.push(WidgetAction::Quit);
+            self.quit_dialog.show();
             return EventResponse::Consumed;
         }
         if self.btn_return.handle_event(event) == EventResponse::Consumed {
             self.visible = false;
+            self.pending_actions
+                .push(WidgetAction::TogglePanel(HudPanel::Settings));
             return EventResponse::Consumed;
         }
 
@@ -497,16 +567,8 @@ impl Widget for SettingsPanel {
 
         let center_x = self.bounds.x + self.bounds.width as i32 / 2;
 
-        // Title
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            1,
-            "Settings",
-            center_x,
-            self.bounds.y + Y_TITLE,
-            font_cache::TextStyle::centered(),
-        )?;
+        // Title bar
+        self.title_bar.render(ctx)?;
 
         // Section headers
         Self::draw_section_header(
@@ -556,6 +618,9 @@ impl Widget for SettingsPanel {
 
         // Dropdown rendered last so its expanded option list overlays everything.
         self.drp_display_mode.render(ctx)?;
+
+        // Quit confirmation rendered on top of everything else.
+        self.quit_dialog.render(ctx)?;
 
         Ok(())
     }

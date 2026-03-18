@@ -37,7 +37,7 @@ pub struct LoginScene {
     login_thread: Option<std::thread::JoinHandle<()>>,
     music_initialized: bool,
 
-    // -- Mouse position for SDL→UiEvent conversion --
+    // -- Mouse position for SDL-->UiEvent conversion --
     mouse_x: i32,
     mouse_y: i32,
 }
@@ -180,7 +180,7 @@ impl Scene for LoginScene {
     }
 
     fn handle_event(&mut self, app_state: &mut AppState<'_>, event: &Event) -> Option<SceneType> {
-        // Track mouse position for the SDL→UiEvent conversion.
+        // Track mouse position for the SDL-->UiEvent conversion.
         if let Event::MouseMotion { x, y, .. } = event {
             self.mouse_x = *x;
             self.mouse_y = *y;

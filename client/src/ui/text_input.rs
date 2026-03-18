@@ -547,7 +547,7 @@ mod tests {
 
     #[test]
     fn view_offset_advances_when_text_overflows() {
-        // Bounds width 200, border 1, inner pad 3 each side → inner = 192px.
+        // Bounds width 200, border 1, inner pad 3 each side --> inner = 192px.
         // visible_chars = 192 / 6 = 32.
         // Typing 33 chars should push view_offset to 1.
         let mut t = make_input(100, false);

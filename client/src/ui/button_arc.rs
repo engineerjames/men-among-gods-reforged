@@ -160,7 +160,7 @@ mod tests {
         let positions = HudButtonBar::compute_positions(100, 100, 50);
 
         // In screen coordinates (Y-down), sin(270°) = -1 moves the button
-        // upward.  Arc center (100,100) + radius 50 → (100, 50).
+        // upward.  Arc center (100,100) + radius 50 --> (100, 50).
         assert_eq!(positions[1].0, 100);
         assert_eq!(positions[1].1, 50);
 

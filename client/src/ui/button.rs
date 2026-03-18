@@ -283,7 +283,7 @@ impl CircleButton {
     /// Spans are collected into a `HashMap` keyed by row Y before any drawing
     /// occurs, so each row is painted exactly once regardless of how many
     /// octant passes would have covered it.  This prevents double-alpha
-    /// artefacts under `BlendMode::Add` (e.g. bright bands at the centre row
+    /// artefacts under `BlendMode::Add` (e.g. bright bands at the center row
     /// or at the 45° diagonals).
     fn fill_circle(
         canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
@@ -527,9 +527,9 @@ mod tests {
     #[test]
     fn circle_diagonal_check() {
         let btn = CircleButton::new(0, 0, 10, Color::RGB(255, 0, 0));
-        // (7, 7): 49 + 49 = 98, 10² = 100 → inside
+        // (7, 7): 49 + 49 = 98, 10² = 100 --> inside
         assert!(btn.contains_point(7, 7));
-        // (8, 8): 64 + 64 = 128 > 100 → outside
+        // (8, 8): 64 + 64 = 128 > 100 --> outside
         assert!(!btn.contains_point(8, 8));
     }
 

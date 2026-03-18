@@ -2,7 +2,7 @@
 ///
 /// Tracks which tiles around the character are currently visible.
 /// `vis[i]` is non-zero when tile offset `i` (in a
-/// [`VISI_STRIDE`](crate::constants::VISI_STRIDE) × `VISI_STRIDE` grid centred
+/// [`VISI_STRIDE`](crate::constants::VISI_STRIDE) × `VISI_STRIDE` grid centerd
 /// on the character) can be seen.
 #[derive(Clone, Copy)]
 pub struct SeeMap {

@@ -1,6 +1,8 @@
 use crate::{
     preferences::{self, CharacterIdentity, Settings},
     state::AppState,
+    ui::title_bar::clamp_to_viewport,
+    ui::widget::Widget,
 };
 
 use super::GameScene;
@@ -31,6 +33,24 @@ impl GameScene {
             self.are_spell_effects_enabled = settings.spell_effects_enabled;
             self.master_volume = settings.master_volume;
             app_state.master_volume = settings.master_volume;
+
+            // Restore saved panel positions.
+            if let Some((x, y)) = settings.inventory_panel_pos {
+                let b = self.inventory_panel.bounds();
+                let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
+                self.inventory_panel.set_position(cx, cy);
+            }
+            if let Some((x, y)) = settings.skills_panel_pos {
+                let b = self.skills_panel.bounds();
+                let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
+                self.skills_panel.set_position(cx, cy);
+            }
+            if let Some((x, y)) = settings.settings_panel_pos {
+                let b = self.settings_panel.bounds();
+                let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
+                self.settings_panel.set_position(cx, cy);
+            }
+
             log::info!(
                 "Loaded persisted SDL profile for character '{}' (id={})",
                 identity.name,
@@ -60,6 +80,15 @@ impl GameScene {
             show_proz: pdata.show_proz,
             show_helper_text: pdata.show_helper_text != 0,
             skill_keybinds: pdata.skill_keybinds,
+            inventory_panel_pos: Some((
+                self.inventory_panel.bounds().x,
+                self.inventory_panel.bounds().y,
+            )),
+            skills_panel_pos: Some((self.skills_panel.bounds().x, self.skills_panel.bounds().y)),
+            settings_panel_pos: Some((
+                self.settings_panel.bounds().x,
+                self.settings_panel.bounds().y,
+            )),
         })
     }
 
