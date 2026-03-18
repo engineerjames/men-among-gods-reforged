@@ -315,6 +315,18 @@ impl GameScene {
         }
     }
 
+    /// Returns the player's own `ch_nr` from the canonical center map tile.
+    ///
+    /// The center tile `(TILEX/2, TILEY/2)` is always the local player's
+    /// character. Returns `0` when the tile is not yet available.
+    /// TODO: Should we just have the server do this?
+    pub(super) fn own_ch_nr(ps: &PlayerState) -> u32 {
+        ps.map()
+            .tile_at_xy(TILEX / 2, TILEY / 2)
+            .map(|t| t.ch_nr as u32)
+            .unwrap_or(0)
+    }
+
     /// Resolve the default skill target.
     ///
     /// Priority matches expected gameplay behavior:
@@ -323,18 +335,8 @@ impl GameScene {
     /// 3) No target (0)
     pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
         let selected = ps.selected_char() as u32;
-        if selected != 0 {
-            // The center tile is always the player's own character. If the
-            // player Alt+clicked themselves, send 0 so the server treats it as
-            // a self-cast.
-            let self_cn = ps
-                .map()
-                .tile_at_xy(TILEX / 2, TILEY / 2)
-                .map(|t| t.ch_nr as u32)
-                .unwrap_or(0);
-            if selected != self_cn {
-                return selected;
-            }
+        if selected != 0 && selected != Self::own_ch_nr(ps) {
+            return selected;
         }
 
         ps.character_info().attack_cn.max(0) as u32

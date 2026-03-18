@@ -254,7 +254,22 @@ impl GameScene {
                 } => {
                     if let Some(net) = app_state.network.as_ref() {
                         self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_inv(a, b, selected_char));
+                        // Sanitize: if the selected character is the player
+                        // themselves, send 0 so server-side item spells use the
+                        // correct self-cast path.
+                        let target = app_state
+                            .player_state
+                            .as_ref()
+                            .map(|ps| {
+                                let self_cn = GameScene::own_ch_nr(ps);
+                                if selected_char != 0 && selected_char == self_cn {
+                                    0
+                                } else {
+                                    selected_char
+                                }
+                            })
+                            .unwrap_or(selected_char);
+                        net.send(ClientCommand::new_inv(a, b, target));
                     }
                 }
                 WidgetAction::InvLookAction { a, b, c } => {
