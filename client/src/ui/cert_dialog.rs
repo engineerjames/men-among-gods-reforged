@@ -57,7 +57,7 @@ pub struct CertDialog {
 }
 
 impl CertDialog {
-    /// Creates a new certificate dialog, centred on screen.
+    /// Creates a new certificate dialog, centerd on screen.
     ///
     /// # Arguments
     ///

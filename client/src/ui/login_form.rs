@@ -109,7 +109,7 @@ pub struct LoginForm {
 }
 
 impl LoginForm {
-    /// Creates a new login form, centred on screen.
+    /// Creates a new login form, centerd on screen.
     ///
     /// # Arguments
     ///

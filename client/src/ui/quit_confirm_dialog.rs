@@ -71,7 +71,7 @@ pub struct QuitConfirmDialog {
 }
 
 impl QuitConfirmDialog {
-    /// Creates a new, initially hidden quit-confirmation dialog centred on
+    /// Creates a new, initially hidden quit-confirmation dialog centerd on
     /// screen.
     ///
     /// # Returns
@@ -152,7 +152,7 @@ impl Widget for QuitConfirmDialog {
     }
 
     fn set_position(&mut self, _x: i32, _y: i32) {
-        // Fixed centre position — repositioning not supported.
+        // Fixed center position — repositioning not supported.
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {

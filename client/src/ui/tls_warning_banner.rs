@@ -23,7 +23,7 @@ pub struct TlsWarningBanner {
 }
 
 impl TlsWarningBanner {
-    /// Creates a new TLS warning banner, centred horizontally at the top of
+    /// Creates a new TLS warning banner, centerd horizontally at the top of
     /// the screen.
     ///
     /// # Returns
