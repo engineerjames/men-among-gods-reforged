@@ -1161,15 +1161,16 @@ impl Scene for GameScene {
             }
         }
 
-        // --- Keyboard bindings (suppressed when chat is focused) ---
-        if !self.chat_box.is_focused() {
-            if let Event::KeyDown {
-                keycode: Some(kc),
-                keymod,
-                ..
-            } = event
-            {
-                let mods = KeyModifiers::from_sdl2(*keymod);
+        // --- Keyboard bindings (suppressed when chat is focused, unless modifiers are held) ---
+        if let Event::KeyDown {
+            keycode: Some(kc),
+            keymod,
+            ..
+        } = event
+        {
+            let mods = KeyModifiers::from_sdl2(*keymod);
+            let has_modifier = mods.ctrl || mods.shift || mods.alt;
+            if has_modifier || !self.chat_box.is_focused() {
                 if let Some(action) = self.key_bindings.action_for_key(*kc, mods) {
                     match action {
                         GameAction::ToggleSkills => self.skills_panel.toggle(),
