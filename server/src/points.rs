@@ -173,7 +173,7 @@ mod tests {
         ch.hp[0] = 30;
         ch.end[0] = 10;
         ch.mana[0] = 0;
-        // Ranges 50..30, 50..10, 50..0 are all empty → 0
+        // Ranges 50..30, 50..10, 50..0 are all empty --> 0
         assert_eq!(calculate_points_tot(&ch), 0);
     }
 }

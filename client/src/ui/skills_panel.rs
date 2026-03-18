@@ -1277,7 +1277,7 @@ mod tests {
     #[test]
     fn bound_key_for_skill_finds_correct_slot() {
         let mut keybinds: [Option<u32>; 9] = [None; 9];
-        keybinds[4] = Some(7); // key "5" → skill_nr 7
+        keybinds[4] = Some(7); // key "5" --> skill_nr 7
         assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 7), Some(5));
         assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 99), None);
     }

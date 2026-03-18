@@ -20,7 +20,7 @@ const FILLED_COLOR: Color = Color::RGBA(220, 180, 50, 220);
 /// A thin semicircle arc that visualises rank progress.
 ///
 /// Centered at `(center_x, center_y)` — typically the bottom-center of the
-/// viewport. The arc spans 180° (left → up → right) and the filled portion
+/// viewport. The arc spans 180° (left --> up --> right) and the filled portion
 /// sweeps from left to right proportional to `progress` ∈ [0.0, 1.0].
 ///
 /// This widget is purely decorative: it has no click handling.
@@ -168,15 +168,15 @@ impl Widget for RankArc {
         //
         // Since our draw_arc uses math-convention angles (CCW from right),
         // π = left, 0 = right. To fill left-to-right:
-        //   filled:   [π - progress * π, π]  → but that fills right-to-left visually.
+        //   filled:   [π - progress * π, π]  --> but that fills right-to-left visually.
         //
-        // Actually: angle 0 = right, π = left. Going counter-clockwise 0→π sweeps
-        // right→up→left. We want to fill left→right, so filled is [π*(1-progress), π]?
+        // Actually: angle 0 = right, π = left. Going counter-clockwise 0-->π sweeps
+        // right-->up-->left. We want to fill left-->right, so filled is [π*(1-progress), π]?
         // No — let's think carefully:
         //
-        // math angle 0   → screen right
-        // math angle π/2 → screen up
-        // math angle π   → screen left
+        // math angle 0   --> screen right
+        // math angle π/2 --> screen up
+        // math angle π   --> screen left
         //
         // "Left to right" on screen means angle decreases from π toward 0.
         // So filled portion: angle from (1 - progress) * π  to  π

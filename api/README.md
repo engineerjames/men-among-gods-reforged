@@ -330,7 +330,7 @@ When this API is exposed outside a single host, these are the high-impact improv
 
 ### Transport security (TLS)
 
-- **HTTPS for client → API**: serve the API behind TLS (e.g. Caddy/Nginx/Traefik) so JWTs and
+- **HTTPS for client --> API**: serve the API behind TLS (e.g. Caddy/Nginx/Traefik) so JWTs and
     credentials never traverse the network in plaintext.
 
 ### Password handling

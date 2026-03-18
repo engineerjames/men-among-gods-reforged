@@ -372,7 +372,7 @@ mod tests {
 
     #[test]
     fn compute_stats_min_avg_max() {
-        // [1, 2, 3, 4, 5] µs → min=1, avg=3, max=5
+        // [1, 2, 3, 4, 5] µs --> min=1, avg=3, max=5
         let mut v: Vec<Duration> = (1u64..=5).map(Duration::from_micros).collect();
         let s = compute_stats(&mut v);
         assert_eq!(s.min, Duration::from_micros(1));
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn compute_stats_p95_small_slice() {
-        // n=10: p95_idx = ceil(10 * 0.95) = ceil(9.5) = 10, clamped to 9 → last element.
+        // n=10: p95_idx = ceil(10 * 0.95) = ceil(9.5) = 10, clamped to 9 --> last element.
         let mut v: Vec<Duration> = (1u64..=10).map(Duration::from_micros).collect();
         let s = compute_stats(&mut v);
         assert_eq!(s.p95, Duration::from_micros(10));
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn compute_stats_p95_larger_slice() {
-        // n=100: p95_idx = ceil(100 * 0.95) = 95 → durations[95] (0-based) = 96µs.
+        // n=100: p95_idx = ceil(100 * 0.95) = 95 --> durations[95] (0-based) = 96µs.
         let mut v: Vec<Duration> = (1u64..=100).map(Duration::from_micros).collect();
         let s = compute_stats(&mut v);
         assert_eq!(s.p95, Duration::from_micros(96));
@@ -411,7 +411,7 @@ mod tests {
 
     #[test]
     fn compute_stats_average_truncates_not_rounds() {
-        // [1ns, 2ns] → sum=3ns, 3/2=1ns (truncated at nanosecond level, not 1.5ns).
+        // [1ns, 2ns] --> sum=3ns, 3/2=1ns (truncated at nanosecond level, not 1.5ns).
         let mut v = vec![Duration::from_nanos(1), Duration::from_nanos(2)];
         let s = compute_stats(&mut v);
         assert_eq!(s.avg, Duration::from_nanos(1));

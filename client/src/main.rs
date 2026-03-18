@@ -210,10 +210,10 @@ fn main() -> Result<(), String> {
         }
         // ------------------------------------------------------------------
         let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
-        // Integer scale → pixel-perfect (nearest integer multiplier) when on.
+        // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
         let _ = canvas.set_integer_scale(app_state.pixel_perfect_scaling);
         scene_manager.render_world(&mut app_state, &mut canvas);
-        // Logical size off → raw physical pixels.
+        // Logical size off --> raw physical pixels.
         let _ = canvas.set_integer_scale(false);
         let _ = canvas.set_logical_size(0, 0);
 

@@ -1200,15 +1200,15 @@ impl Scene for GameScene {
                         let is_item = (tile_flags & ISITEM) != 0;
                         let is_usable = (tile_flags & ISUSABLE) != 0;
                         if citem != 0 && !is_item {
-                            // Holding item, clicked non-item tile → drop
+                            // Holding item, clicked non-item tile --> drop
                             self.play_click_sound(app_state);
                             net.send(ClientCommand::new_drop(world_x, world_y));
                         } else if is_item && is_usable {
-                            // Item is usable → use
+                            // Item is usable --> use
                             self.play_click_sound(app_state);
                             net.send(ClientCommand::new_use(world_x, world_y));
                         } else if is_item {
-                            // Item not usable → pickup
+                            // Item not usable --> pickup
                             self.play_click_sound(app_state);
                             net.send(ClientCommand::new_pickup(world_x, world_y));
                         }

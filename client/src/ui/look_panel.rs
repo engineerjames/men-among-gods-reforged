@@ -108,7 +108,7 @@ const HP_BG: Color = Color::RGB(60, 10, 10);
 const END_BG: Color = Color::RGB(65, 58, 12);
 const MANA_BG: Color = Color::RGB(12, 25, 65);
 
-/// Equipment grid slot order (row-major, 2 cols × 6 rows → WN_* indices).
+/// Equipment grid slot order (row-major, 2 cols × 6 rows --> WN_* indices).
 const EQUIP_WNTAB: [usize; 12] = [
     WN_HEAD, WN_CLOAK, WN_BODY, WN_ARMS, WN_NECK, WN_BELT, WN_RHAND, WN_LHAND, WN_LRING, WN_RRING,
     WN_LEGS, WN_FEET,

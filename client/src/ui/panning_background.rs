@@ -102,7 +102,7 @@ pub struct PanningBackground {
     /// Seconds the current image has been fully visible (resets after each
     /// completed transition).
     display_elapsed: f32,
-    /// Fractional progress of the active crossfade (`0.0` → `1.0`).
+    /// Fractional progress of the active crossfade (`0.0` --> `1.0`).
     /// Zero when no transition is in progress.
     transition_progress: f32,
     /// Horizontal pan speed in pixels per second (shared by all images).

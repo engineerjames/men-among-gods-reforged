@@ -125,11 +125,11 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
 /// The new light packet format is: `[opcode, idx_lo, idx_hi, base_light, nibble_pairs...]`
 /// — a 4-byte header followed by `cnt / 2` nibble-pair bytes.
 ///
-/// Opcode→cnt mapping (matching server-side `cl_light_*` functions):
-/// * `SV_SETMAP4` (`cl_light_one`, 1 tile)  → `sv_setmap3_len(0)` = 4
-/// * `SV_SETMAP5` (`cl_light_three`, 3 tiles) → `sv_setmap3_len(2)` = 5
-/// * `SV_SETMAP6` (`cl_light_seven`, 7 tiles) → `sv_setmap3_len(6)` = 7
-/// * `SV_SETMAP3` (`cl_light_26`, 26 tiles) → `sv_setmap3_len(26)` = 17
+/// Opcode-->cnt mapping (matching server-side `cl_light_*` functions):
+/// * `SV_SETMAP4` (`cl_light_one`, 1 tile)  --> `sv_setmap3_len(0)` = 4
+/// * `SV_SETMAP5` (`cl_light_three`, 3 tiles) --> `sv_setmap3_len(2)` = 5
+/// * `SV_SETMAP6` (`cl_light_seven`, 7 tiles) --> `sv_setmap3_len(6)` = 7
+/// * `SV_SETMAP3` (`cl_light_26`, 26 tiles) --> `sv_setmap3_len(26)` = 17
 fn sv_setmap3_len(cnt: usize) -> usize {
     4 + (cnt / 2)
 }

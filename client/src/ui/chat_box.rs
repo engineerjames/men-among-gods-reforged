@@ -36,7 +36,7 @@ const SEPARATOR_COLOR: Color = Color::RGBA(120, 120, 140, 200);
 /// Seconds of inactivity before the fade-out animation begins.
 const IDLE_FADE_DELAY_SECS: f32 = 5.0;
 
-/// Duration in seconds of the fade-out transition (fully opaque → invisible).
+/// Duration in seconds of the fade-out transition (fully opaque --> invisible).
 const IDLE_FADE_DURATION_SECS: f32 = 1.0;
 
 /// A self-contained scrollable chat log with an input line.
@@ -365,7 +365,7 @@ impl Widget for ChatBox {
 
         let inner = self.bounds.inner(&self.padding);
 
-        // 2. Render log lines (top→bottom, newest at bottom)
+        // 2. Render log lines (top-->bottom, newest at bottom)
         for line in 0..self.visible_lines {
             let idx_from_most_recent = self
                 .scroll_offset
@@ -731,7 +731,7 @@ mod tests {
 
         cb.input_buf = "draft".to_owned();
 
-        // Press Up → should load "msg2"
+        // Press Up --> should load "msg2"
         let up = UiEvent::KeyDown {
             keycode: Keycode::Up,
             modifiers: super::super::widget::KeyModifiers::default(),
@@ -739,7 +739,7 @@ mod tests {
         cb.handle_event(&up);
         assert_eq!(cb.input_text(), "msg2");
 
-        // Press Up again → should load "msg1"
+        // Press Up again --> should load "msg1"
         cb.handle_event(&up);
         assert_eq!(cb.input_text(), "msg1");
     }

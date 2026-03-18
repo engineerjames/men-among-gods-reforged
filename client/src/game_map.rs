@@ -453,7 +453,7 @@ mod tests {
             None,
             None,
         );
-        // Second: delta +5 → index 15
+        // Second: delta +5 --> index 15
         map.apply_set_map(
             5,
             None,
@@ -477,7 +477,7 @@ mod tests {
     #[test]
     fn apply_set_map3_lighting() {
         let mut map = GameMap::new();
-        // base_light=7 at index 0, then packed [0xAB] → hi=0xA at 1, lo=0xB at 2
+        // base_light=7 at index 0, then packed [0xAB] --> hi=0xA at 1, lo=0xB at 2
         map.apply_set_map3(0, 7, &[0xAB]);
         assert_eq!(map.tile_at_index(0).unwrap().light, 7);
         assert_eq!(map.tile_at_index(1).unwrap().light, 0xA);

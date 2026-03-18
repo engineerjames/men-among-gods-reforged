@@ -113,7 +113,7 @@ fn ensure_crypto_provider_installed() -> Result<(), String> {
 // Fingerprint store
 // ---------------------------------------------------------------------------
 
-/// Persistent mapping of `"host:port"` → SHA-256 hex fingerprint.
+/// Persistent mapping of `"host:port"` --> SHA-256 hex fingerprint.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Default)]
 struct KnownHostsStore {
     hosts: HashMap<String, String>,

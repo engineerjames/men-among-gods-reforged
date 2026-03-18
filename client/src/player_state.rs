@@ -51,7 +51,7 @@ pub struct PlayerState {
     exit_requested_reason: Option<u32>,
 }
 
-/// A cached (nr → name) entry used by the auto-look name overlay.
+/// A cached (nr --> name) entry used by the auto-look name overlay.
 #[derive(Clone, Debug)]
 struct LookNameEntry {
     id: u16,

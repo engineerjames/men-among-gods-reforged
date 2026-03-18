@@ -260,17 +260,17 @@ impl InventoryPanel {
     /// cursor is currently over, or `None` when no label should be shown.
     ///
     /// **Backpack slots:**
-    /// - Shift not held, non-empty slot → `"USE"`
-    /// - Shift held, non-empty slot, hand empty → `"PICK UP"`
-    /// - Shift held, non-empty slot, hand has item → `"SWAP"`
-    /// - Empty slot, hand has item → `"DROP"`
-    /// - Empty slot, hand empty → `None`
+    /// - Shift not held, non-empty slot --> `"USE"`
+    /// - Shift held, non-empty slot, hand empty --> `"PICK UP"`
+    /// - Shift held, non-empty slot, hand has item --> `"SWAP"`
+    /// - Empty slot, hand has item --> `"DROP"`
+    /// - Empty slot, hand empty --> `None`
     ///
     /// **Equipment slots:**
-    /// - Shift not held, slot occupied → `"USE"`
-    /// - Shift held, hand has item, slot occupied → `"SWAP"`
-    /// - Shift held, hand has item, slot empty → `"EQUIP"`
-    /// - Otherwise → `None`
+    /// - Shift not held, slot occupied --> `"USE"`
+    /// - Shift held, hand has item, slot occupied --> `"SWAP"`
+    /// - Shift held, hand has item, slot empty --> `"EQUIP"`
+    /// - Otherwise --> `None`
     ///
     /// # Arguments
     ///

@@ -8,7 +8,7 @@ Utility executables for the Men Among Gods Reforged server.
 
 A graphical tool built with egui for viewing and editing character and item templates.
 
-By default it connects to **KeyDB** at `127.0.0.1:5556` and loads all game data (templates, instances, map). Pass `--dat [path]` to fall back to `.dat` files instead. The data source can also be switched at runtime from `File → Data Source`.
+By default it connects to **KeyDB** at `127.0.0.1:5556` and loads all game data (templates, instances, map). Pass `--dat [path]` to fall back to `.dat` files instead. The data source can also be switched at runtime from `File --> Data Source`.
 
 When character templates are saved back to KeyDB, `points_tot` is automatically recalculated for every template.
 
@@ -39,7 +39,7 @@ cargo run --package server-utils --bin template_viewer -- --dat /path/to/.dat
 **How to Use:**
 1. Run the application (connects to KeyDB by default, or pass `--dat` for file mode)
 2. Browse item/character templates using the tabs in the top bar
-3. To switch data source at runtime: **File** → **Data Source**
+3. To switch data source at runtime: **File** --> **Data Source**
 
 **Running from the project root:**
 ```bash
@@ -55,7 +55,7 @@ cargo build --package server-utils
 
 An egui tool for viewing and editing the world map using the client sprite archive.
 
-By default it connects to **KeyDB** at `127.0.0.1:5556` and loads map tiles, item instances, and item templates. Pass `--dat [path]` to fall back to `.dat` files instead. The data source can also be switched at runtime from `File → Data Source`.
+By default it connects to **KeyDB** at `127.0.0.1:5556` and loads map tiles, item instances, and item templates. Pass `--dat [path]` to fall back to `.dat` files instead. The data source can also be switched at runtime from `File --> Data Source`.
 
 **Usage:**
 ```bash

@@ -262,7 +262,7 @@ impl Widget for ShopPanel {
                 self.mouse_x = *x;
                 self.mouse_y = *y;
 
-                // Click outside the panel → close shop.
+                // Click outside the panel --> close shop.
                 if !self.bounds.contains_point(*x, *y) {
                     self.actions.push(WidgetAction::CloseShop);
                     return EventResponse::Consumed;
