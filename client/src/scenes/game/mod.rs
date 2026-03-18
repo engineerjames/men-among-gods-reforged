@@ -318,13 +318,23 @@ impl GameScene {
     /// Resolve the default skill target.
     ///
     /// Priority matches expected gameplay behavior:
-    /// 1) Explicitly selected character (Alt+click)
+    /// 1) Explicitly selected character (Alt+click), unless that character is ourselves
     /// 2) Current attack target (`attack_cn`)
     /// 3) No target (0)
     pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
         let selected = ps.selected_char() as u32;
         if selected != 0 {
-            return selected;
+            // The center tile is always the player's own character. If the
+            // player Alt+clicked themselves, send 0 so the server treats it as
+            // a self-cast.
+            let self_cn = ps
+                .map()
+                .tile_at_xy(TILEX / 2, TILEY / 2)
+                .map(|t| t.ch_nr as u32)
+                .unwrap_or(0);
+            if selected != self_cn {
+                return selected;
+            }
         }
 
         ps.character_info().attack_cn.max(0) as u32
