@@ -30,6 +30,7 @@ pub mod rank_arc;
 pub mod scrollable_list;
 pub mod settings_panel;
 pub mod shop_panel;
+pub mod skill_bar;
 pub mod skills_panel;
 pub mod slider;
 pub mod status_panel;

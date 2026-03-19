@@ -52,6 +52,7 @@ use crate::{
         rank_arc::RankArc,
         settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
         shop_panel::ShopPanel,
+        skill_bar::SkillBar,
         skills_panel::SkillsPanel,
         status_panel::StatusPanel,
         style::Padding,
@@ -128,6 +129,13 @@ const HUD_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
 const HUD_BTN_BOTTOM_CY: i32 = MODE_BTN_CY - MODE_BTN_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 10;
 /// Vertical spacing between adjacent HUD button centers.
 const HUD_BTN_SPACING: u32 = 40;
+
+// ---- Skill bar (bottom-center, above chat box) ---- //
+
+/// X position of the skill bar (horizontally centered).
+const SKILL_BAR_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2;
+/// Y position of the skill bar (just above the chat box).
+const SKILL_BAR_Y: i32 = CHATBOX_Y - SkillBar::height() as i32 - 4;
 /// Width of each togglable HUD panel.
 const HUD_PANEL_W: u32 = 300;
 /// Height of each togglable HUD panel.
@@ -204,6 +212,7 @@ pub struct GameScene {
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
+    pub(super) skill_bar: SkillBar,
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -313,6 +322,7 @@ impl GameScene {
                 Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
+            skill_bar: SkillBar::new(SKILL_BAR_X, SKILL_BAR_Y),
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
@@ -1137,6 +1147,12 @@ impl Scene for GameScene {
                 return None;
             }
 
+            // --- Dispatch to skill bar ---
+            if self.skill_bar.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_skill_bar_actions(app_state);
+                return None;
+            }
+
             // --- Dispatch to HUD button bar ---
             if self.hud_buttons.handle_event(&ui_event) == EventResponse::Consumed {
                 for action in self.hud_buttons.take_actions() {
@@ -1484,6 +1500,24 @@ impl Scene for GameScene {
                     selected_char: ps.selected_char(),
                 });
 
+                // Skill bar: first 8 keybinds + first 6 spell/active slots.
+                {
+                    use crate::ui::skill_bar::SkillBarData;
+                    let mut keybinds = [None; 8];
+                    keybinds.copy_from_slice(&ps.player_data().skill_keybinds[..8]);
+                    let mut spells = [0i32; 6];
+                    let mut spell_active = [false; 6];
+                    for i in 0..6 {
+                        spells[i] = ci.spell[i];
+                        spell_active[i] = ci.active[i] > 0;
+                    }
+                    self.skill_bar.update_data(SkillBarData {
+                        keybinds,
+                        spells,
+                        spell_active,
+                    });
+                }
+
                 // Update minimap xmap buffer, then push viewport pixels to the widget.
                 if let Some((cx, cy)) = self.update_minimap_xmap(gfx_cache, ps) {
                     self.minimap_widget
@@ -1513,6 +1547,7 @@ impl Scene for GameScene {
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
+            self.skill_bar.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
 

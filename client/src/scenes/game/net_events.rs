@@ -238,6 +238,61 @@ impl GameScene {
         }
     }
 
+    /// Drain pending `WidgetAction`s from the skill bar and send the
+    /// corresponding network commands.
+    ///
+    /// Handles `CastSkill` (click bound slot), `BeginSkillAssign` (click
+    /// empty slot — future popup), and `BindSkillKey` with `skill_nr == 0`
+    /// (right-click to clear a slot).
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    pub(crate) fn process_skill_bar_actions(&mut self, app_state: &mut AppState<'_>) {
+        for action in self.skill_bar.take_actions() {
+            match action {
+                WidgetAction::CastSkill { skill_nr } => {
+                    if let (Some(net), Some(ps)) =
+                        (app_state.network.as_ref(), app_state.player_state.as_ref())
+                    {
+                        self.play_click_sound(app_state);
+                        let target = Self::default_skill_target(ps);
+                        let a0 = ps.character_info().attrib[0][5] as u32;
+                        net.send(ClientCommand::new_skill(skill_nr, target, a0));
+                    }
+                }
+                WidgetAction::BeginSkillAssign { skill_id } => {
+                    self.pending_skill_assignment = Some(skill_id);
+                }
+                WidgetAction::BindSkillKey {
+                    skill_nr: 0,
+                    key_slot,
+                } => {
+                    // Clear (unbind) the slot.
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        let slot = key_slot as usize;
+                        if slot < ps.player_data().skill_keybinds.len() {
+                            ps.player_data_mut().skill_keybinds[slot] = None;
+                        }
+                    }
+                    self.save_active_profile(app_state);
+                }
+                WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
+                            if *slot == Some(skill_nr) {
+                                *slot = None;
+                            }
+                        }
+                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                    }
+                    self.save_active_profile(app_state);
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Drain pending `WidgetAction`s from the inventory panel and send the
     /// corresponding network commands.
     ///
