@@ -112,16 +112,22 @@ const CHATBOX_H: u32 = 200;
 
 // ---- HUD button bar layout ---- //
 
-/// X center of the invisible arc that the HUD buttons sit on.
+/// X center of the HUD layout (used for panel positioning and rank arc).
 const HUD_ARC_CENTER_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 / 2;
-/// Y center of the invisible arc (at the bottom edge of the viewport).
+/// Y center of the HUD layout (bottom edge of the viewport).
 const HUD_ARC_CENTER_Y: i32 = crate::constants::TARGET_HEIGHT_INT as i32;
-/// Radius of the invisible layout arc.
+/// Legacy arc radius, still used for panel vertical positioning.
 const HUD_ARC_RADIUS: u32 = 60;
 /// Radius of each individual HUD button.
 const HUD_BUTTON_RADIUS: u32 = 16;
 /// Sprite IDs for [Skills, Inventory, Settings] buttons.
 const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
+/// X center of the HUD button column (lower-right, aligned with minimap).
+const HUD_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
+/// Center Y of the bottom-most HUD button (above the mode button).
+const HUD_BTN_BOTTOM_CY: i32 = MODE_BTN_CY - MODE_BTN_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 10;
+/// Vertical spacing between adjacent HUD button centers.
+const HUD_BTN_SPACING: u32 = 40;
 /// Width of each togglable HUD panel.
 const HUD_PANEL_W: u32 = 300;
 /// Height of each togglable HUD panel.
@@ -259,9 +265,9 @@ impl GameScene {
                 Padding::uniform(4),
             ),
             hud_buttons: HudButtonBar::new(
-                HUD_ARC_CENTER_X,
-                HUD_ARC_CENTER_Y,
-                HUD_ARC_RADIUS,
+                HUD_BTN_CX,
+                HUD_BTN_BOTTOM_CY,
+                HUD_BTN_SPACING,
                 HUD_BUTTON_RADIUS,
                 HUD_SPRITE_IDS,
             ),

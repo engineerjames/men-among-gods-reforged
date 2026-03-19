@@ -70,12 +70,18 @@ const COL1_X: i32 = 10;
 const COL2_X: i32 = 230;
 const COL3_X: i32 = 500;
 
-// HUD arc parameters (mirrored from the game scene).
+// HUD layout parameters (mirrored from the game scene).
 const HUD_ARC_CENTER_X: i32 = TARGET_WIDTH_INT as i32 / 2;
 const HUD_ARC_CENTER_Y: i32 = TARGET_HEIGHT_INT as i32;
 const HUD_ARC_RADIUS: u32 = 60;
 const HUD_BUTTON_RADIUS: u32 = 16;
 const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
+/// X center of the HUD button column (lower-right).
+const HUD_BTN_CX: i32 = TARGET_WIDTH_INT as i32 - 30;
+/// Center Y of the bottom-most HUD button.
+const HUD_BTN_BOTTOM_CY: i32 = TARGET_HEIGHT_INT as i32 - 60;
+/// Vertical spacing between adjacent HUD button centers.
+const HUD_BTN_SPACING: u32 = 40;
 
 const HUD_PANEL_W: u32 = 300;
 const HUD_PANEL_H: u32 = 250;
@@ -218,11 +224,11 @@ fn main() -> Result<(), String> {
 
     let mut minimap_widget = MinimapWidget::new(TARGET_WIDTH_INT as i32 - 30, 30, 14);
 
-    // HUD button bar (bottom center — same position as in-game).
+    // HUD button bar (lower-right column — same position as in-game).
     let mut hud_buttons = HudButtonBar::new(
-        HUD_ARC_CENTER_X,
-        HUD_ARC_CENTER_Y,
-        HUD_ARC_RADIUS,
+        HUD_BTN_CX,
+        HUD_BTN_BOTTOM_CY,
+        HUD_BTN_SPACING,
         HUD_BUTTON_RADIUS,
         HUD_SPRITE_IDS,
     );
