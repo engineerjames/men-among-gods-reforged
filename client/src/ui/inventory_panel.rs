@@ -56,6 +56,9 @@ const SCROLL_KNOB_COLOR: Color = Color::RGB(8, 77, 23);
 /// Dimmed label color for empty equipment slots.
 const SLOT_LABEL_COLOR: Color = Color::RGBA(110, 110, 130, 200);
 
+/// Color for the grid lines drawn around each inventory/equipment cell.
+const CELL_GRID_COLOR: Color = Color::RGBA(80, 80, 100, 180);
+
 /// Bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
 
@@ -71,8 +74,8 @@ const EQUIP_WNTAB: [usize; 12] = [
 /// as `EQUIP_WNTAB`.
 ///
 const EQUIP_LABELS: [&str; 12] = [
-    "Head", "Cloak", "Body", "Arms", "Neck", "Belt", "Weapon", "Shield", "L.Ring", "R.Ring",
-    "Legs", "Feet",
+    "Head", "Cloak", "Body", "Arms", "Neck", "Belt", "Weapon", "Shield", "Ring", "Ring", "Legs",
+    "Feet",
 ];
 
 // ---------------------------------------------------------------------------
@@ -567,6 +570,19 @@ impl Widget for InventoryPanel {
         let (inv_x, inv_y) = self.inv_origin();
         let hovered_inv = self.hovered_inv_slot();
 
+        // Draw inventory cell grid.
+        ctx.canvas.set_draw_color(CELL_GRID_COLOR);
+        for n in 0..(INV_VISIBLE_ROWS * 2) {
+            let col = (n % 2) as i32;
+            let row = (n / 2) as i32;
+            ctx.canvas.draw_rect(sdl2::rect::Rect::new(
+                inv_x + col * CELL,
+                inv_y + row * CELL,
+                CELL as u32,
+                CELL as u32,
+            ))?;
+        }
+
         for n in 0..(INV_VISIBLE_ROWS * 2) {
             let idx = self.inv_scroll + n;
             if idx >= INV_TOTAL_SLOTS {
@@ -601,6 +617,19 @@ impl Widget for InventoryPanel {
         // --- Equipment grid (right, with slot labels) ---
         let (eq_x, eq_y) = self.equip_origin();
         let hovered_eq = self.hovered_equip_pos();
+
+        // Draw equipment cell grid.
+        ctx.canvas.set_draw_color(CELL_GRID_COLOR);
+        for n in 0..12usize {
+            let col = (n % 2) as i32;
+            let row = (n / 2) as i32;
+            ctx.canvas.draw_rect(sdl2::rect::Rect::new(
+                eq_x + col * (CELL + EQUIP_COL_GAP),
+                eq_y + row * CELL,
+                CELL as u32,
+                CELL as u32,
+            ))?;
+        }
 
         // Pre-compute blocked slots if carrying an item.
         let blocked = if data.citem > 0 {
