@@ -134,8 +134,8 @@ const HUD_BTN_SPACING: u32 = 40;
 
 /// X position of the skill bar (horizontally centered).
 const SKILL_BAR_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2;
-/// Y position of the skill bar (just above the chat box).
-const SKILL_BAR_Y: i32 = CHATBOX_Y - SkillBar::height() as i32 - 4;
+/// Y position of the skill bar (bottom)
+const SKILL_BAR_Y: i32 = crate::constants::TARGET_HEIGHT as i32 - SkillBar::height() as i32 + 20;
 /// Width of each togglable HUD panel.
 const HUD_PANEL_W: u32 = 300;
 /// Height of each togglable HUD panel.

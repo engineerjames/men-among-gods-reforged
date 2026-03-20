@@ -12,12 +12,14 @@
 //!   for now.
 
 use sdl2::pixels::Color;
+use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 
 use mag_core::skills;
 
 use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use crate::filepaths;
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------
@@ -33,18 +35,34 @@ const TOP_CELLS: usize = 8;
 /// Number of cells in the bottom (spell/effect) row.
 const BOTTOM_CELLS: usize = 6;
 
-/// Vertical gap between the two rows.
-const ROW_GAP: i32 = 2;
+/// Horizontal offset of all cells relative to the widget (background image)
+/// origin.  Increase to scoot cells rightward.
+const CELLS_OFFSET_X: i32 = 100;
+
+/// Vertical offset of all cells relative to the widget (background image)
+/// origin.  Increase to scoot cells downward.
+const CELLS_OFFSET_Y: i32 = 56;
+
+/// Horizontal pixel spacing between adjacent cells.
+const CELL_H_SPACING: i32 = 13;
+
+/// Vertical pixel offset between the top row and the bottom row.
+const ROW_SPACING: i32 = 11;
+
+/// Horizontal stride from one cell origin to the next (cell width + spacing).
+const CELL_STRIDE: i32 = CELL + CELL_H_SPACING;
 
 /// Horizontal pixel offset applied to the bottom row so that it is centered
-/// beneath the top row: `(TOP_CELLS - BOTTOM_CELLS) / 2 * CELL`.
-const BOTTOM_ROW_OFFSET_X: i32 = ((TOP_CELLS - BOTTOM_CELLS) as i32) * CELL / 2;
+/// beneath the top row.
+const BOTTOM_ROW_OFFSET_X: i32 = ((TOP_CELLS - BOTTOM_CELLS) as i32) * CELL_STRIDE / 2;
 
 /// Total widget width (determined by the wider top row).
-const BAR_W: u32 = (TOP_CELLS as i32 * CELL) as u32;
+const BAR_WIDTH_OFFSET: u32 = 200;
+const BAR_W: u32 = (TOP_CELLS as i32 * CELL_STRIDE - CELL_H_SPACING) as u32 + BAR_WIDTH_OFFSET;
 
 /// Total widget height (two rows plus gap).
-const BAR_H: u32 = (2 * CELL + ROW_GAP) as u32;
+const BAR_HEIGHT_OFFSET: u32 = 100;
+const BAR_H: u32 = (2 * CELL + ROW_SPACING) as u32 + BAR_HEIGHT_OFFSET;
 
 /// Background fill for each cell.
 const CELL_BG: Color = Color::RGBA(15, 15, 35, 200);
@@ -95,6 +113,8 @@ pub struct SkillBar {
     mouse_x: i32,
     mouse_y: i32,
     actions: Vec<WidgetAction>,
+    /// Lazily-loaded texture ID for the `skillbar.png` background image.
+    bg_texture_id: Option<usize>,
 }
 
 impl SkillBar {
@@ -115,6 +135,7 @@ impl SkillBar {
             mouse_x: 0,
             mouse_y: 0,
             actions: Vec::new(),
+            bg_texture_id: None,
         }
     }
 
@@ -143,24 +164,34 @@ impl SkillBar {
 
     /// Returns which top-row cell index (0..7) the point is inside, if any.
     fn hit_top_cell(&self, px: i32, py: i32) -> Option<usize> {
-        let lx = px - self.bounds.x;
-        let ly = py - self.bounds.y;
-        if lx < 0 || ly < 0 || lx >= (TOP_CELLS as i32) * CELL || ly >= CELL {
+        let lx = px - self.bounds.x - CELLS_OFFSET_X;
+        let ly = py - self.bounds.y - CELLS_OFFSET_Y;
+        if lx < 0 || !(0..CELL).contains(&ly) {
             return None;
         }
-        Some((lx / CELL) as usize)
+        let col = (lx / CELL_STRIDE) as usize;
+        if col < TOP_CELLS && (lx % CELL_STRIDE) < CELL {
+            Some(col)
+        } else {
+            None
+        }
     }
 
     /// Returns which bottom-row cell index (0..5) the point is inside, if any.
     fn hit_bottom_cell(&self, px: i32, py: i32) -> Option<usize> {
-        let row_x = self.bounds.x + BOTTOM_ROW_OFFSET_X;
-        let row_y = self.bounds.y + CELL + ROW_GAP;
+        let row_x = self.bounds.x + CELLS_OFFSET_X + BOTTOM_ROW_OFFSET_X;
+        let row_y = self.bounds.y + CELLS_OFFSET_Y + CELL + ROW_SPACING;
         let lx = px - row_x;
         let ly = py - row_y;
-        if lx < 0 || ly < 0 || lx >= (BOTTOM_CELLS as i32) * CELL || ly >= CELL {
+        if lx < 0 || !(0..CELL).contains(&ly) {
             return None;
         }
-        Some((lx / CELL) as usize)
+        let col = (lx / CELL_STRIDE) as usize;
+        if col < BOTTOM_CELLS && (lx % CELL_STRIDE) < CELL {
+            Some(col)
+        } else {
+            None
+        }
     }
 
     /// Abbreviate a skill name to fit inside a cell.
@@ -254,11 +285,26 @@ impl Widget for SkillBar {
 
         ctx.canvas.set_blend_mode(BlendMode::Blend);
 
+        // ── Background image (lazy-loaded) ─────────────────────────────
+        if self.bg_texture_id.is_none() {
+            let path = filepaths::get_asset_directory()
+                .join("gfx")
+                .join("skillbar.png");
+            if let Ok(id) = ctx.gfx.load_texture_from_path(&path) {
+                self.bg_texture_id = Some(id);
+            }
+        }
+        if let Some(bg_id) = self.bg_texture_id {
+            let tex = ctx.gfx.get_texture(bg_id);
+            let dst = Rect::new(self.bounds.x, self.bounds.y, BAR_W, BAR_H);
+            ctx.canvas.copy(tex, None, Some(dst))?;
+        }
+
         // ── Top row: skill-bind cells ──────────────────────────────────────
 
         for i in 0..TOP_CELLS {
-            let x = self.bounds.x + (i as i32) * CELL;
-            let y = self.bounds.y;
+            let x = self.bounds.x + CELLS_OFFSET_X + (i as i32) * CELL_STRIDE;
+            let y = self.bounds.y + CELLS_OFFSET_Y;
             let rect = sdl2::rect::Rect::new(x, y, CELL as u32, CELL as u32);
 
             // Cell background.
@@ -305,11 +351,11 @@ impl Widget for SkillBar {
 
         // ── Bottom row: spell / effect cells ───────────────────────────────
 
-        let row_x = self.bounds.x + BOTTOM_ROW_OFFSET_X;
-        let row_y = self.bounds.y + CELL + ROW_GAP;
+        let row_x = self.bounds.x + CELLS_OFFSET_X + BOTTOM_ROW_OFFSET_X;
+        let row_y = self.bounds.y + CELLS_OFFSET_Y + CELL + ROW_SPACING;
 
         for i in 0..BOTTOM_CELLS {
-            let x = row_x + (i as i32) * CELL;
+            let x = row_x + (i as i32) * CELL_STRIDE;
             let y = row_y;
             let rect = sdl2::rect::Rect::new(x, y, CELL as u32, CELL as u32);
 
@@ -371,40 +417,44 @@ mod tests {
     #[test]
     fn hit_top_cell_in_bounds() {
         let bar = SkillBar::new(10, 20);
-        // First cell: x in [10, 34), y in [20, 44).
-        assert_eq!(bar.hit_top_cell(10, 20), Some(0));
-        assert_eq!(bar.hit_top_cell(33, 43), Some(0));
-        // Second cell.
-        assert_eq!(bar.hit_top_cell(34, 20), Some(1));
+        let ox = 10 + CELLS_OFFSET_X;
+        let oy = 20 + CELLS_OFFSET_Y;
+        // First cell.
+        assert_eq!(bar.hit_top_cell(ox, oy), Some(0));
+        assert_eq!(bar.hit_top_cell(ox + CELL - 1, oy + CELL - 1), Some(0));
+        // Second cell starts at ox + CELL_STRIDE.
+        assert_eq!(bar.hit_top_cell(ox + CELL_STRIDE, oy), Some(1));
         // Last cell.
-        assert_eq!(bar.hit_top_cell(10 + 7 * CELL, 20), Some(7));
+        assert_eq!(bar.hit_top_cell(ox + 7 * CELL_STRIDE, oy), Some(7));
     }
 
     #[test]
     fn hit_top_cell_out_of_bounds() {
         let bar = SkillBar::new(10, 20);
-        assert_eq!(bar.hit_top_cell(9, 20), None); // left of widget
-        assert_eq!(bar.hit_top_cell(10 + 8 * CELL, 20), None); // right of row
-        assert_eq!(bar.hit_top_cell(10, 20 + CELL), None); // below top row
+        let ox = 10 + CELLS_OFFSET_X;
+        let oy = 20 + CELLS_OFFSET_Y;
+        assert_eq!(bar.hit_top_cell(ox - 1, oy), None); // left of cells
+        assert_eq!(bar.hit_top_cell(ox + 8 * CELL_STRIDE, oy), None); // right of row
+        assert_eq!(bar.hit_top_cell(ox, oy + CELL), None); // below top row
     }
 
     #[test]
     fn hit_bottom_cell_in_bounds() {
         let bar = SkillBar::new(10, 20);
-        let bx = 10 + BOTTOM_ROW_OFFSET_X;
-        let by = 20 + CELL + ROW_GAP;
+        let bx = 10 + CELLS_OFFSET_X + BOTTOM_ROW_OFFSET_X;
+        let by = 20 + CELLS_OFFSET_Y + CELL + ROW_SPACING;
         assert_eq!(bar.hit_bottom_cell(bx, by), Some(0));
-        assert_eq!(bar.hit_bottom_cell(bx + CELL, by), Some(1));
-        assert_eq!(bar.hit_bottom_cell(bx + 5 * CELL, by), Some(5));
+        assert_eq!(bar.hit_bottom_cell(bx + CELL_STRIDE, by), Some(1));
+        assert_eq!(bar.hit_bottom_cell(bx + 5 * CELL_STRIDE, by), Some(5));
     }
 
     #[test]
     fn hit_bottom_cell_out_of_bounds() {
         let bar = SkillBar::new(10, 20);
-        let bx = 10 + BOTTOM_ROW_OFFSET_X;
-        let by = 20 + CELL + ROW_GAP;
+        let bx = 10 + CELLS_OFFSET_X + BOTTOM_ROW_OFFSET_X;
+        let by = 20 + CELLS_OFFSET_Y + CELL + ROW_SPACING;
         assert_eq!(bar.hit_bottom_cell(bx - 1, by), None); // left
-        assert_eq!(bar.hit_bottom_cell(bx + 6 * CELL, by), None); // right
+        assert_eq!(bar.hit_bottom_cell(bx + 6 * CELL_STRIDE, by), None); // right
         assert_eq!(bar.hit_bottom_cell(bx, by + CELL), None); // below
         assert_eq!(bar.hit_bottom_cell(bx, by - 1), None); // above
     }
@@ -414,8 +464,8 @@ mod tests {
         let mut bar = SkillBar::new(0, 0);
         bar.update_data(test_data());
         let resp = bar.handle_event(&UiEvent::MouseClick {
-            x: 1,
-            y: 1,
+            x: CELLS_OFFSET_X + 1,
+            y: CELLS_OFFSET_Y + 1,
             button: MouseButton::Left,
             modifiers: KeyModifiers::default(),
         });
@@ -435,10 +485,10 @@ mod tests {
         data.keybinds[2] = Some(26); // Heal
         bar.update_data(data);
 
-        // Click on slot 2 (x = 2*24 + 1 = 49).
+        // Click on slot 2.
         let resp = bar.handle_event(&UiEvent::MouseClick {
-            x: 2 * CELL + 1,
-            y: 1,
+            x: CELLS_OFFSET_X + 2 * CELL_STRIDE + 1,
+            y: CELLS_OFFSET_Y + 1,
             button: MouseButton::Left,
             modifiers: KeyModifiers::default(),
         });
@@ -459,8 +509,8 @@ mod tests {
         bar.update_data(data);
 
         let resp = bar.handle_event(&UiEvent::MouseClick {
-            x: 1,
-            y: 1,
+            x: CELLS_OFFSET_X + 1,
+            y: CELLS_OFFSET_Y + 1,
             button: MouseButton::Right,
             modifiers: KeyModifiers::default(),
         });
@@ -506,8 +556,8 @@ mod tests {
     fn bottom_row_click_consumed() {
         let mut bar = SkillBar::new(0, 0);
         bar.update_data(test_data());
-        let bx = BOTTOM_ROW_OFFSET_X + 1;
-        let by = CELL + ROW_GAP + 1;
+        let bx = CELLS_OFFSET_X + BOTTOM_ROW_OFFSET_X + 1;
+        let by = CELLS_OFFSET_Y + CELL + ROW_SPACING + 1;
         let resp = bar.handle_event(&UiEvent::MouseClick {
             x: bx,
             y: by,
@@ -527,7 +577,7 @@ mod tests {
 
     #[test]
     fn widget_dimensions() {
-        assert_eq!(SkillBar::width(), (TOP_CELLS as u32) * (CELL as u32));
-        assert_eq!(SkillBar::height(), (2 * CELL + ROW_GAP) as u32);
+        assert_eq!(SkillBar::width(), BAR_W);
+        assert_eq!(SkillBar::height(), BAR_H);
     }
 }

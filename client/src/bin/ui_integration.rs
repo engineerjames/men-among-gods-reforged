@@ -48,6 +48,7 @@ use client::ui::panel::Panel;
 use client::ui::rank_arc::RankArc;
 use client::ui::settings_panel::{SettingsPanel, SETTINGS_PANEL_H};
 use client::ui::shop_panel::ShopPanel;
+use client::ui::skill_bar::{SkillBar, SkillBarData};
 use client::ui::skills_panel::{SkillsPanel, SkillsPanelData};
 use client::ui::slider::Slider;
 use client::ui::style::{Background, Border, Padding};
@@ -298,6 +299,16 @@ fn main() -> Result<(), String> {
         PANEL_BG,
     );
 
+    // Skill bar (bottom-center, same position as in-game).
+    let skill_bar_x = (TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2;
+    let skill_bar_y = TARGET_HEIGHT_INT as i32 - SkillBar::height() as i32;
+    let mut skill_bar = SkillBar::new(skill_bar_x, skill_bar_y);
+    skill_bar.update_data(SkillBarData {
+        keybinds: [Some(3), Some(26), None, Some(0), None, None, None, Some(10)],
+        spells: [0; 6],
+        spell_active: [false; 6],
+    });
+
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).
     let mut t_label: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_rect_button: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
@@ -319,6 +330,7 @@ fn main() -> Result<(), String> {
     let mut t_shop_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_text_input_normal: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_text_input_password: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_skill_bar: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
 
     // Track modifier state for UiEvent generation.
     let mut ctrl_held = false;
@@ -373,6 +385,7 @@ fn main() -> Result<(), String> {
                                 ("ShopPanel", &t_shop_panel),
                                 ("TextInput (normal)", &t_text_input_normal),
                                 ("TextInput (password)", &t_text_input_password),
+                                ("SkillBar", &t_skill_bar),
                             ]);
                         }
                         // Toggle overlay panels.
@@ -433,6 +446,7 @@ fn main() -> Result<(), String> {
                     &mut dropdown,
                     &mut chat_box,
                     &mut hud_buttons,
+                    &mut skill_bar,
                     &mut minimap_widget,
                     &mut mode_button,
                     &mut text_input_normal,
@@ -489,6 +503,7 @@ fn main() -> Result<(), String> {
         drain_and_log(&mut settings_panel, "SettingsPanel");
         drain_and_log(&mut look_panel, "LookPanel");
         drain_and_log(&mut shop_panel, "ShopPanel");
+        drain_and_log(&mut skill_bar, "SkillBar");
 
         // 3. Update time-driven state.
         update_all(
@@ -513,6 +528,7 @@ fn main() -> Result<(), String> {
             &mut settings_panel,
             &mut look_panel,
             &mut shop_panel,
+            &mut skill_bar,
         );
 
         // 4. Render — each call is individually timed (in microseconds).
@@ -544,6 +560,7 @@ fn main() -> Result<(), String> {
         timed_render(&mut minimap_widget, &mut ctx, &mut t_minimap);
         timed_render(&mut status_panel, &mut ctx, &mut t_status_panel);
         timed_render(&mut hud_buttons, &mut ctx, &mut t_hud_buttons);
+        timed_render(&mut skill_bar, &mut ctx, &mut t_skill_bar);
 
         // Render overlay panels (order matches visual stacking).
         timed_render(&mut skills_panel, &mut ctx, &mut t_skills_panel);
@@ -602,6 +619,7 @@ fn update_all(
     settings_panel: &mut SettingsPanel,
     look_panel: &mut LookPanel,
     shop_panel: &mut ShopPanel,
+    skill_bar: &mut SkillBar,
 ) {
     label.update(dt);
     rect_button.update(dt);
@@ -623,6 +641,7 @@ fn update_all(
     settings_panel.update(dt);
     look_panel.update(dt);
     shop_panel.update(dt);
+    skill_bar.update(dt);
 }
 
 /// Calls `widget.render()`, measures the elapsed wall-clock time in
