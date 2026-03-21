@@ -87,7 +87,8 @@ impl ChatBox {
     ///
     /// # Returns
     ///
-    /// A new `ChatBox` with focus enabled by default.
+    /// A new `ChatBox` with focus disabled. Focus is gained when the user
+    /// presses `/`, Enter, or Numpad-Enter.
     pub fn new(bounds: Bounds, bg_color: Color, padding: Padding) -> Self {
         let line_height = font_cache::BITMAP_GLYPH_H;
         let visible_lines = Self::compute_visible_lines(&bounds, &padding, line_height);
@@ -104,7 +105,7 @@ impl ChatBox {
             sent_chat_history: Vec::new(),
             chat_history_index: None,
             chat_history_draft: None,
-            focused: true,
+            focused: false,
             pending_actions: Vec::new(),
             idle_elapsed: 0.0,
             alpha: 255,
@@ -218,6 +219,7 @@ impl ChatBox {
         }
         self.chat_history_index = None;
         self.chat_history_draft = None;
+        self.focused = false;
 
         self.pending_actions.push(WidgetAction::SendChat(text));
     }
@@ -315,6 +317,10 @@ impl Widget for ChatBox {
                 match *keycode {
                     Keycode::Return | Keycode::KpEnter => {
                         self.submit_input();
+                        EventResponse::Consumed
+                    }
+                    Keycode::Escape => {
+                        self.focused = false;
                         EventResponse::Consumed
                     }
                     Keycode::Backspace => {
@@ -597,7 +603,7 @@ mod tests {
     #[test]
     fn click_outside_is_ignored() {
         let mut cb = test_chat_box();
-        assert!(cb.focused);
+        assert!(!cb.focused);
         let event = UiEvent::MouseClick {
             x: 800,
             y: 100,
@@ -606,7 +612,7 @@ mod tests {
         };
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Ignored);
-        assert!(cb.focused);
+        assert!(!cb.focused);
     }
 
     // -- text input --
@@ -614,6 +620,7 @@ mod tests {
     #[test]
     fn text_input_appends_when_focused() {
         let mut cb = test_chat_box();
+        cb.focused = true;
         let event = UiEvent::TextInput {
             text: "hi".to_owned(),
         };
@@ -637,6 +644,7 @@ mod tests {
     #[test]
     fn text_input_respects_max_len() {
         let mut cb = test_chat_box();
+        cb.focused = true;
         cb.input_buf = "x".repeat(MAX_INPUT_LEN);
         let event = UiEvent::TextInput {
             text: "a".to_owned(),
@@ -650,6 +658,7 @@ mod tests {
     #[test]
     fn enter_submits_and_clears_input() {
         let mut cb = test_chat_box();
+        cb.focused = true;
         cb.input_buf = "hello world".to_owned();
         let event = UiEvent::KeyDown {
             keycode: Keycode::Return,
@@ -658,6 +667,7 @@ mod tests {
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Consumed);
         assert_eq!(cb.input_text(), "");
+        assert!(!cb.focused);
 
         let actions = cb.take_actions();
         assert_eq!(actions.len(), 1);
@@ -670,12 +680,29 @@ mod tests {
     #[test]
     fn enter_on_empty_input_does_nothing() {
         let mut cb = test_chat_box();
+        cb.focused = true;
         let event = UiEvent::KeyDown {
             keycode: Keycode::Return,
             modifiers: super::super::widget::KeyModifiers::default(),
         };
         cb.handle_event(&event);
         assert!(cb.take_actions().is_empty());
+    }
+
+    #[test]
+    fn escape_drops_focus() {
+        let mut cb = test_chat_box();
+        cb.focused = true;
+        cb.input_buf = "half typed".to_owned();
+        let event = UiEvent::KeyDown {
+            keycode: Keycode::Escape,
+            modifiers: super::super::widget::KeyModifiers::default(),
+        };
+        let resp = cb.handle_event(&event);
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(!cb.focused);
+        // Input buffer preserved so player can re-open and continue
+        assert_eq!(cb.input_text(), "half typed");
     }
 
     #[test]
@@ -702,6 +729,7 @@ mod tests {
     #[test]
     fn backspace_removes_last_char() {
         let mut cb = test_chat_box();
+        cb.focused = true;
         cb.input_buf = "abc".to_owned();
         let event = UiEvent::KeyDown {
             keycode: Keycode::Backspace,
@@ -714,6 +742,7 @@ mod tests {
     #[test]
     fn backspace_on_empty_is_noop() {
         let mut cb = test_chat_box();
+        cb.focused = true;
         let event = UiEvent::KeyDown {
             keycode: Keycode::Backspace,
             modifiers: super::super::widget::KeyModifiers::default(),
@@ -734,6 +763,7 @@ mod tests {
         cb.submit_input();
         cb.take_actions(); // drain
 
+        cb.focused = true;
         cb.input_buf = "draft".to_owned();
 
         // Press Up --> should load "msg2"
@@ -756,6 +786,7 @@ mod tests {
         cb.submit_input();
         cb.take_actions();
 
+        cb.focused = true;
         cb.input_buf = "my draft".to_owned();
 
         let up = UiEvent::KeyDown {
@@ -841,6 +872,7 @@ mod tests {
         cb.update(Duration::ZERO);
         assert_eq!(cb.alpha, 0);
         // Any text input should reset the timer even if nothing is appended.
+        cb.focused = true;
         cb.handle_event(&UiEvent::TextInput {
             text: "a".to_owned(),
         });

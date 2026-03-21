@@ -209,7 +209,7 @@ impl GameScene {
                     {
                         let target = Self::default_skill_target(ps);
                         let a0 = ps.character_info().attrib[0][5] as u32;
-                        net.send(ClientCommand::new_skill(skill_nr, target, a0));
+                        net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
                 }
                 WidgetAction::BeginSkillAssign { skill_id } => {
@@ -224,13 +224,112 @@ impl GameScene {
                             }
                         }
                         ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
-                        let name = skills::get_skill_name(skill_nr as usize);
+                        let name = skills::get_skill_name(skill_nr);
                         ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);
                 }
                 WidgetAction::TogglePanel(_) => {
                     // Panel was closed via its title bar X button.
+                    self.save_active_profile(app_state);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the skill bar and send the
+    /// corresponding network commands.
+    ///
+    /// Handles `CastSkill` (click bound slot), `BeginSkillAssign` (click
+    /// empty slot — future popup), and `BindSkillKey` with `skill_nr == 0`
+    /// (right-click to clear a slot).
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    pub(crate) fn process_skill_bar_actions(&mut self, app_state: &mut AppState<'_>) {
+        for action in self.skill_bar.take_actions() {
+            match action {
+                WidgetAction::CastSkill { skill_nr } => {
+                    if let (Some(net), Some(ps)) =
+                        (app_state.network.as_ref(), app_state.player_state.as_ref())
+                    {
+                        self.play_click_sound(app_state);
+                        let target = Self::default_skill_target(ps);
+                        let a0 = ps.character_info().attrib[0][5] as u32;
+                        net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
+                    }
+                }
+                WidgetAction::BeginSkillAssign { skill_id } => {
+                    // Open the skill picker popup anchored above the clicked cell.
+                    let bar = self.skill_bar.bounds();
+                    let (cx, _cy) = crate::ui::skill_bar::TOP_CELL_POSITIONS
+                        .get(skill_id)
+                        .copied()
+                        .unwrap_or((0, 0));
+                    let anchor_x = bar.x + cx;
+                    let anchor_y = bar.y - 200; // above the skill bar
+                    let player_skills = app_state
+                        .player_state
+                        .as_ref()
+                        .map(|ps| ps.character_info().skill.as_slice())
+                        .unwrap_or(&[]);
+                    self.skill_picker
+                        .show(skill_id as u8, anchor_x, anchor_y, player_skills);
+                }
+                WidgetAction::BindSkillKey {
+                    skill_nr: 0,
+                    key_slot,
+                } => {
+                    // Clear (unbind) the slot.
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        let slot = key_slot as usize;
+                        if slot < ps.player_data().skill_keybinds.len() {
+                            ps.player_data_mut().skill_keybinds[slot] = None;
+                        }
+                    }
+                    self.save_active_profile(app_state);
+                }
+                WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
+                            if *slot == Some(skill_nr) {
+                                *slot = None;
+                            }
+                        }
+                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                    }
+                    self.save_active_profile(app_state);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Drain pending [`WidgetAction`]s from the skill picker popup.
+    ///
+    /// A `BindSkillKey` action produced by the popup binds the chosen skill
+    /// to the target slot and saves the profile.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    pub(crate) fn process_skill_picker_actions(&mut self, app_state: &mut AppState<'_>) {
+        for action in self.skill_picker.take_actions() {
+            match action {
+                WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        // Clear any previous slot that had the same skill_nr.
+                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
+                            if *slot == Some(skill_nr) {
+                                *slot = None;
+                            }
+                        }
+                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                        let name = skills::get_skill_name(skill_nr);
+                        ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
+                    }
                     self.save_active_profile(app_state);
                 }
                 _ => {}

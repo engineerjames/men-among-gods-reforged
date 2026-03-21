@@ -242,7 +242,7 @@ pub enum WidgetAction {
     /// Cast/fire a skill by its protocol skill number.
     CastSkill {
         /// The skill number to cast.
-        skill_nr: u32,
+        skill_nr: usize,
     },
     /// Begin a spell-bar assignment for the given skilltab index.
     BeginSkillAssign {
@@ -252,7 +252,7 @@ pub enum WidgetAction {
     /// Bind a skill to a CTRL+key slot (1-9).
     BindSkillKey {
         /// The protocol skill number to bind.
-        skill_nr: u32,
+        skill_nr: usize,
         /// Key slot index (0 = key "1", 8 = key "9").
         key_slot: u8,
     },

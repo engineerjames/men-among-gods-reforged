@@ -1,5 +1,5 @@
-//! A composite widget that arranges three circular buttons on an arc at the
-//! bottom-center of the screen. Each button toggles a corresponding HUD panel.
+//! A composite widget that arranges three circular buttons in a vertical
+//! column. Each button toggles a corresponding HUD panel.
 
 use sdl2::pixels::Color;
 
@@ -13,11 +13,7 @@ const BUTTON_FILL: Color = Color::RGBA(20, 20, 40, 200);
 /// Default border color for the HUD buttons.
 const BUTTON_BORDER: Color = Color::RGBA(140, 140, 160, 220);
 
-/// The three angular positions (in degrees) where buttons are placed on the
-/// arc. 210°, 270°, 330° give an even spread across the bottom half.
-const BUTTON_ANGLES_DEG: [f64; 3] = [210.0, 270.0, 330.0];
-
-/// Three circular buttons arranged on an invisible arc.
+/// Three circular buttons arranged in a vertical column.
 ///
 /// Clicking a button produces a [`WidgetAction::TogglePanel`] action that the
 /// owning scene can drain to toggle the corresponding panel's visibility.
@@ -30,14 +26,13 @@ pub struct HudButtonBar {
 }
 
 impl HudButtonBar {
-    /// Creates a new button bar.
+    /// Creates a new button bar arranged as a vertical column.
     ///
     /// # Arguments
     ///
-    /// * `arc_center_x` - X center of the invisible layout circle.
-    /// * `arc_center_y` - Y center of the invisible layout circle.
-    /// * `arc_radius` - Radius of the layout circle (distance from center to
-    ///   each button center).
+    /// * `cx` - Shared center X for all three buttons.
+    /// * `bottom_cy` - Center Y of the bottom-most button.
+    /// * `spacing` - Vertical distance between adjacent button centers.
     /// * `button_radius` - Radius of each individual circular button.
     /// * `sprite_ids` - Sprite IDs for [Skills, Inventory, Settings] buttons.
     ///
@@ -45,15 +40,15 @@ impl HudButtonBar {
     ///
     /// A new `HudButtonBar` ready for rendering.
     pub fn new(
-        arc_center_x: i32,
-        arc_center_y: i32,
-        arc_radius: u32,
+        cx: i32,
+        bottom_cy: i32,
+        spacing: u32,
         button_radius: u32,
         sprite_ids: [usize; 3],
     ) -> Self {
         let panel_kinds = [HudPanel::Skills, HudPanel::Inventory, HudPanel::Settings];
 
-        let positions = Self::compute_positions(arc_center_x, arc_center_y, arc_radius);
+        let positions = Self::compute_positions(cx, bottom_cy, spacing);
 
         let buttons = [
             CircleButton::new(positions[0].0, positions[0].1, button_radius, BUTTON_FILL)
@@ -77,27 +72,28 @@ impl HudButtonBar {
         }
     }
 
-    /// Computes the (cx, cy) center positions for each button on the arc.
+    /// Computes the (cx, cy) center positions for each button in the column.
+    ///
+    /// Buttons are laid out vertically with the bottom-most button at
+    /// `(cx, bottom_cy)` and each subsequent button placed `spacing` pixels
+    /// higher.
     ///
     /// # Arguments
     ///
-    /// * `arc_cx` - X center of the arc.
-    /// * `arc_cy` - Y center of the arc.
-    /// * `arc_r` - Arc radius.
+    /// * `cx` - Shared center X for all buttons.
+    /// * `bottom_cy` - Center Y of the bottom-most button.
+    /// * `spacing` - Vertical distance between adjacent button centers.
     ///
     /// # Returns
     ///
-    /// An array of three `(i32, i32)` center positions.
-    fn compute_positions(arc_cx: i32, arc_cy: i32, arc_r: u32) -> [(i32, i32); 3] {
-        let r = arc_r as f64;
-        let mut out = [(0i32, 0i32); 3];
-        for (i, deg) in BUTTON_ANGLES_DEG.iter().enumerate() {
-            let rad = deg.to_radians();
-            let cx = arc_cx as f64 + r * rad.cos();
-            let cy = arc_cy as f64 + r * rad.sin();
-            out[i] = (cx.round() as i32, cy.round() as i32);
-        }
-        out
+    /// An array of three `(i32, i32)` center positions, ordered top to bottom.
+    fn compute_positions(cx: i32, bottom_cy: i32, spacing: u32) -> [(i32, i32); 3] {
+        let s = spacing as i32;
+        [
+            (cx, bottom_cy - 2 * s), // top (Skills)
+            (cx, bottom_cy - s),     // middle (Inventory)
+            (cx, bottom_cy),         // bottom (Settings)
+        ]
     }
 
     /// Computes the smallest axis-aligned bounding box that encloses all three
@@ -155,24 +151,24 @@ mod tests {
     use crate::ui::widget::{KeyModifiers, MouseButton};
 
     #[test]
-    fn compute_positions_120_degree_spread() {
-        // Arc at (100, 100) with radius 50.
-        let positions = HudButtonBar::compute_positions(100, 100, 50);
+    fn compute_positions_vertical_column() {
+        // Column centered at x=100, bottom button at y=300, spacing 40.
+        let positions = HudButtonBar::compute_positions(100, 300, 40);
 
-        // In screen coordinates (Y-down), sin(270°) = -1 moves the button
-        // upward.  Arc center (100,100) + radius 50 --> (100, 50).
+        // All buttons share the same X.
+        assert_eq!(positions[0].0, 100);
         assert_eq!(positions[1].0, 100);
-        assert_eq!(positions[1].1, 50);
+        assert_eq!(positions[2].0, 100);
 
-        // 210° and 330° should be symmetric around x = 100
-        assert_eq!(positions[0].1, positions[2].1);
-        assert!(positions[0].0 < 100);
-        assert!(positions[2].0 > 100);
+        // Ordered top to bottom with equal spacing.
+        assert_eq!(positions[0].1, 220); // 300 - 2*40
+        assert_eq!(positions[1].1, 260); // 300 - 40
+        assert_eq!(positions[2].1, 300); // bottom
     }
 
     #[test]
     fn enclosing_bounds_covers_all_buttons() {
-        let positions = HudButtonBar::compute_positions(200, 200, 60);
+        let positions = HudButtonBar::compute_positions(200, 300, 40);
         let bounds = HudButtonBar::enclosing_bounds(&positions, 16);
 
         for (cx, cy) in &positions {
@@ -182,10 +178,9 @@ mod tests {
 
     #[test]
     fn click_produces_toggle_action() {
-        let bar = HudButtonBar::new(200, 200, 60, 16, [267, 128, 35]);
-        // The center button (270°) is at (200, 260).
-        let positions = HudButtonBar::compute_positions(200, 200, 60);
-        let (cx, cy) = positions[1]; // Inventory button
+        let bar = HudButtonBar::new(200, 300, 40, 16, [267, 128, 35]);
+        let positions = HudButtonBar::compute_positions(200, 300, 40);
+        let (cx, cy) = positions[1]; // Inventory button (middle)
 
         let mut bar = bar;
         let resp = bar.handle_event(&UiEvent::MouseClick {
@@ -206,7 +201,7 @@ mod tests {
 
     #[test]
     fn click_outside_all_buttons_ignored() {
-        let mut bar = HudButtonBar::new(200, 200, 60, 16, [267, 128, 35]);
+        let mut bar = HudButtonBar::new(200, 300, 40, 16, [267, 128, 35]);
         let resp = bar.handle_event(&UiEvent::MouseClick {
             x: 0,
             y: 0,
@@ -219,8 +214,8 @@ mod tests {
 
     #[test]
     fn take_actions_drains() {
-        let mut bar = HudButtonBar::new(200, 200, 60, 16, [267, 128, 35]);
-        let positions = HudButtonBar::compute_positions(200, 200, 60);
+        let mut bar = HudButtonBar::new(200, 300, 40, 16, [267, 128, 35]);
+        let positions = HudButtonBar::compute_positions(200, 300, 40);
         let (cx, cy) = positions[0]; // Skills button
 
         bar.handle_event(&UiEvent::MouseClick {

@@ -30,7 +30,7 @@ use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
 
 use crate::{
     cert_trust,
-    constants::TARGET_HEIGHT_INT,
+    constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
     network::{client_commands::ClientCommand, NetworkRuntime},
     player_state::PlayerState,
@@ -49,9 +49,11 @@ use crate::{
         look_panel::LookPanel,
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
-        rank_arc::RankArc,
+        rank_progress_line::RankProgressLine,
         settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
         shop_panel::ShopPanel,
+        skill_bar::SkillBar,
+        skill_picker_popup::SkillPickerPopup,
         skills_panel::SkillsPanel,
         status_panel::StatusPanel,
         style::Padding,
@@ -112,16 +114,24 @@ const CHATBOX_H: u32 = 200;
 
 // ---- HUD button bar layout ---- //
 
-/// X center of the invisible arc that the HUD buttons sit on.
+/// X center of the HUD layout (used for panel positioning and rank arc).
 const HUD_ARC_CENTER_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 / 2;
-/// Y center of the invisible arc (at the bottom edge of the viewport).
+/// Y center of the HUD layout (bottom edge of the viewport).
 const HUD_ARC_CENTER_Y: i32 = crate::constants::TARGET_HEIGHT_INT as i32;
-/// Radius of the invisible layout arc.
+/// Legacy arc radius, still used for panel vertical positioning.
 const HUD_ARC_RADIUS: u32 = 60;
 /// Radius of each individual HUD button.
 const HUD_BUTTON_RADIUS: u32 = 16;
 /// Sprite IDs for [Skills, Inventory, Settings] buttons.
 const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
+/// X center of the HUD button column (lower-right, aligned with minimap).
+const HUD_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
+/// Center Y of the bottom-most HUD button (above the mode button).
+const HUD_BTN_BOTTOM_CY: i32 = MODE_BTN_CY - MODE_BTN_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 10;
+/// Vertical spacing between adjacent HUD button centers.
+const HUD_BTN_SPACING: u32 = 40;
+
+// ---- Skill bar ---- //
 /// Width of each togglable HUD panel.
 const HUD_PANEL_W: u32 = 300;
 /// Height of each togglable HUD panel.
@@ -189,7 +199,7 @@ pub struct GameScene {
     pub(super) status_panel: StatusPanel,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
-    pub(super) rank_arc: RankArc,
+    pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
@@ -198,6 +208,8 @@ pub struct GameScene {
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
+    pub(super) skill_bar: SkillBar,
+    pub(super) skill_picker: SkillPickerPopup,
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -259,13 +271,18 @@ impl GameScene {
                 Padding::uniform(4),
             ),
             hud_buttons: HudButtonBar::new(
-                HUD_ARC_CENTER_X,
-                HUD_ARC_CENTER_Y,
-                HUD_ARC_RADIUS,
+                HUD_BTN_CX,
+                HUD_BTN_BOTTOM_CY,
+                HUD_BTN_SPACING,
                 HUD_BUTTON_RADIUS,
                 HUD_SPRITE_IDS,
             ),
-            rank_arc: RankArc::new(HUD_ARC_CENTER_X, HUD_ARC_CENTER_Y, 30, 2),
+            rank_progress_line: RankProgressLine::new(
+                (TARGET_WIDTH_INT as i32 - 380) / 2,
+                TARGET_HEIGHT_INT as i32 - 38,
+                400,
+                2,
+            ),
             skills_panel: SkillsPanel::new(
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
                 HUD_PANEL_BG,
@@ -307,6 +324,13 @@ impl GameScene {
                 Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
+            skill_bar: SkillBar::new(crate::ui::skill_bar::SkillBarConfig {
+                spell_x: 295,
+                spell_y: TARGET_HEIGHT_INT as i32 - 57,
+                spell_width: 24,
+                spell_height: 24,
+            }),
+            skill_picker: SkillPickerPopup::new(),
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
@@ -623,7 +647,7 @@ impl GameScene {
     /// widget, in which case helper text should be suppressed.
     fn is_mouse_over_ui(&self) -> bool {
         let (mx, my) = (self.mouse_x, self.mouse_y);
-        if self.chat_box.bounds().contains_point(mx, my) {
+        if self.chat_box.is_focused() && self.chat_box.bounds().contains_point(mx, my) {
             return true;
         }
         if self.status_panel.bounds().contains_point(mx, my) {
@@ -632,13 +656,16 @@ impl GameScene {
         if self.hud_buttons.bounds().contains_point(mx, my) {
             return true;
         }
+        if self.skill_bar.bounds().contains_point(mx, my) {
+            return true;
+        }
         if self.minimap_widget.is_visible() && self.minimap_widget.bounds().contains_point(mx, my) {
             return true;
         }
         if self.mode_button.bounds().contains_point(mx, my) {
             return true;
         }
-        if self.rank_arc.bounds().contains_point(mx, my) {
+        if self.rank_progress_line.bounds().contains_point(mx, my) {
             return true;
         }
         if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
@@ -1077,6 +1104,12 @@ impl Scene for GameScene {
                 return None;
             }
 
+            // --- Skill picker popup (modal — must come before skill bar) ---
+            if self.skill_picker.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_skill_picker_actions(app_state);
+                return None;
+            }
+
             // --- StatusPanel toggle (upper-left sigil) ---
             if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 return None;
@@ -1128,6 +1161,12 @@ impl Scene for GameScene {
 
             // --- Dispatch to look panel ---
             if self.look_panel.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            // --- Dispatch to skill bar ---
+            if self.skill_bar.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_skill_bar_actions(app_state);
                 return None;
             }
 
@@ -1202,7 +1241,7 @@ impl Scene for GameScene {
                             if let Some(skill_nr) = ps.player_data().skill_keybinds[key_slot] {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
-                                    skill_nr,
+                                    skill_nr as u32,
                                     Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
@@ -1451,7 +1490,7 @@ impl Scene for GameScene {
                 let ci = ps.character_info();
                 let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
                 self.status_panel.sync(ps, rank_index);
-                self.rank_arc
+                self.rank_progress_line
                     .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
                 self.mode_button.sync(ci.mode);
                 use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
@@ -1464,7 +1503,6 @@ impl Scene for GameScene {
                     skill: ci.skill,
                     points: ci.points,
                     sorted_skills: sorted,
-                    keybinds: ps.player_data().skill_keybinds,
                 });
                 use crate::ui::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
@@ -1477,6 +1515,20 @@ impl Scene for GameScene {
                     gold: ci.gold,
                     selected_char: ps.selected_char(),
                 });
+
+                // Skill bar: 13 keybinds plus all 20 active spell/activity slots.
+                {
+                    use crate::types::player_data::NUMBER_OF_KEYBINDS;
+                    use crate::ui::skill_bar::SkillBarData;
+                    let mut keybinds = [None; NUMBER_OF_KEYBINDS];
+                    keybinds
+                        .copy_from_slice(&ps.player_data().skill_keybinds[..NUMBER_OF_KEYBINDS]);
+                    self.skill_bar.update_data(SkillBarData {
+                        keybinds,
+                        spell: ci.spell,
+                        active: ci.active,
+                    });
+                }
 
                 // Update minimap xmap buffer, then push viewport pixels to the widget.
                 if let Some((cx, cy)) = self.update_minimap_xmap(gfx_cache, ps) {
@@ -1503,10 +1555,12 @@ impl Scene for GameScene {
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
             self.keybindings_panel.render(&mut ctx)?;
-            self.rank_arc.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
+            self.skill_bar.render(&mut ctx)?;
+            self.rank_progress_line.render(&mut ctx)?;
+            self.skill_picker.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
 
