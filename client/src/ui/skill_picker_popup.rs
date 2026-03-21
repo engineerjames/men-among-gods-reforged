@@ -525,11 +525,11 @@ mod tests {
         let mut popup = SkillPickerPopup::new();
         // Only skill 0 is learned.
         let mut skills = [[0u8; 6]; 100];
-        skills[0][0] = 5;
+        skills[SK_BLAST][0] = 5;
         popup.show(0, 0, 0, &skills);
         // Only skill 0 should appear (it's first in BINDABLE_SKILLS).
         assert_eq!(popup.entries.len(), 1);
-        assert_eq!(popup.entries[0].skill_nr, 0);
+        assert_eq!(popup.entries[0].skill_nr, SK_BLAST);
         // Show with no learned skills — popup should have no entries.
         popup.show(0, 0, 0, &[[0u8; 6]; 100]);
         assert!(popup.entries.is_empty());
