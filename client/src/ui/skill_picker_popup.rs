@@ -61,7 +61,7 @@ const TEXT_COLOR: Color = Color::RGB(200, 200, 220);
 /// **Placeholder**: fill in with real skill indices once the desired set is
 /// decided.  The order here determines the display order in the popup.
 pub const BINDABLE_SKILLS: &[usize] = &[
-    0, SK_MSHIELD, SK_REPAIR, SK_LIGHT, SK_RECALL, SK_WIMPY, SK_PROTECT, SK_ENHANCE, SK_STUN,
+    SK_MSHIELD, SK_REPAIR, SK_LIGHT, SK_RECALL, SK_WIMPY, SK_PROTECT, SK_ENHANCE, SK_STUN,
     SK_CURSE, SK_BLESS, SK_IDENT, SK_BLAST, SK_DISPEL, SK_HEAL, SK_GHOST, SK_WARCRY,
 ];
 
