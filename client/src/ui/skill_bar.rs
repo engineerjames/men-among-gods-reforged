@@ -621,7 +621,7 @@ mod tests {
         };
         let bar = SkillBar::new(config);
         assert_eq!(bar.spell_pos_x(0), 100);
-        assert_eq!(bar.spell_pos_x(1), 109); // 100 + 1*(24-15)
-        assert_eq!(bar.spell_pos_x(5), 100 + 5 * 9); // 100 + 5*(24-15)
+        assert_eq!(bar.spell_pos_x(1), 116); // 100 + 1*(24-8)
+        assert_eq!(bar.spell_pos_x(5), 100 + 5 * 16); // 100 + 5*(24-8)
     }
 }

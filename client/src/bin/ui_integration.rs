@@ -23,7 +23,6 @@
 
 use std::time::{Duration, Instant};
 
-use client::types::player_data::NUMBER_OF_KEYBINDS;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
@@ -255,7 +254,6 @@ fn main() -> Result<(), String> {
         skill: [[0; 6]; 100],
         points: 42,
         sorted_skills: Vec::new(),
-        keybinds: [None; NUMBER_OF_KEYBINDS],
     });
 
     let mut inventory_panel = InventoryPanel::new(

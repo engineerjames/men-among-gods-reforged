@@ -1500,7 +1500,6 @@ impl Scene for GameScene {
                     skill: ci.skill,
                     points: ci.points,
                     sorted_skills: sorted,
-                    keybinds: ps.player_data().skill_keybinds,
                 });
                 use crate::ui::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
