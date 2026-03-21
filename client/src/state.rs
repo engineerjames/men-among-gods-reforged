@@ -78,6 +78,8 @@ pub struct AppState<'tc> {
     pub display_command: Option<DisplayCommand>,
     /// Shared panning background used by all pre-game scenes.
     pub panning_background: PanningBackground,
+    /// Username carried between the request-reset and enter-reset-code scenes.
+    pub reset_username: Option<String>,
 }
 
 impl<'tc> AppState<'tc> {
@@ -112,6 +114,7 @@ impl<'tc> AppState<'tc> {
             vsync_enabled: false,
             display_command: None,
             panning_background,
+            reset_username: None,
         }
     }
 }

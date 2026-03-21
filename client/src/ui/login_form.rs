@@ -69,6 +69,8 @@ pub enum LoginFormAction {
     },
     /// User pressed the Create Account button.
     CreateAccount,
+    /// User pressed the Reset Password button.
+    ResetPassword,
     /// User pressed the Quit button.
     Quit,
     /// Music checkbox was toggled.
@@ -94,6 +96,8 @@ pub struct LoginForm {
     login_button: RectButton,
     /// Create-account button.
     create_button: RectButton,
+    /// Reset-password button.
+    reset_button: RectButton,
     /// Quit button.
     quit_button: RectButton,
     /// Index of the currently focused text field (0–2).
@@ -182,7 +186,7 @@ impl LoginForm {
         cursor_y += 14 + FIELD_GAP + 4;
 
         // Buttons - laid out horizontally, evenly
-        let total_btn_w = 3 * 100 + 2 * BTN_GAP as u32;
+        let total_btn_w = 4 * 75 + 3 * BTN_GAP as u32;
         let btn_start_x = panel_x + (PANEL_W as i32 - total_btn_w as i32) / 2;
 
         let btn_bg = Background::SolidColor(Color::RGBA(50, 50, 80, 200));
@@ -191,19 +195,26 @@ impl LoginForm {
             width: 1,
         };
 
-        let login_button = RectButton::new(Bounds::new(btn_start_x, cursor_y, 100, BTN_H), btn_bg)
+        let login_button = RectButton::new(Bounds::new(btn_start_x, cursor_y, 75, BTN_H), btn_bg)
             .with_border(btn_border)
             .with_label("Login", FONT);
 
         let create_button = RectButton::new(
-            Bounds::new(btn_start_x + 100 + BTN_GAP, cursor_y, 100, BTN_H),
+            Bounds::new(btn_start_x + 75 + BTN_GAP, cursor_y, 75, BTN_H),
             btn_bg,
         )
         .with_border(btn_border)
-        .with_label("New Account", FONT);
+        .with_label("New Acct", FONT);
+
+        let reset_button = RectButton::new(
+            Bounds::new(btn_start_x + 150 + BTN_GAP * 2, cursor_y, 75, BTN_H),
+            btn_bg,
+        )
+        .with_border(btn_border)
+        .with_label("Reset PW", FONT);
 
         let quit_button = RectButton::new(
-            Bounds::new(btn_start_x + 200 + BTN_GAP * 2, cursor_y, 100, BTN_H),
+            Bounds::new(btn_start_x + 225 + BTN_GAP * 3, cursor_y, 75, BTN_H),
             btn_bg,
         )
         .with_border(btn_border)
@@ -217,6 +228,7 @@ impl LoginForm {
             music_checkbox,
             login_button,
             create_button,
+            reset_button,
             quit_button,
             focused_field: 0,
             actions: Vec::new(),
@@ -387,6 +399,12 @@ impl Widget for LoginForm {
             return EventResponse::Consumed;
         }
 
+        let reset_resp = self.reset_button.handle_event(event);
+        if reset_resp == EventResponse::Consumed {
+            self.actions.push(LoginFormAction::ResetPassword);
+            return EventResponse::Consumed;
+        }
+
         let quit_resp = self.quit_button.handle_event(event);
         if quit_resp == EventResponse::Consumed {
             self.actions.push(LoginFormAction::Quit);
@@ -534,16 +552,19 @@ impl Widget for LoginForm {
         cursor_y += 14 + FIELD_GAP + 2;
 
         // ── Buttons ──────────────────────────────────────────────────────
-        let total_btn_w: i32 = 3 * 100 + 2 * BTN_GAP;
+        let total_btn_w: i32 = 4 * 75 + 3 * BTN_GAP;
         let btn_x = self.bounds.x + (self.bounds.width as i32 - total_btn_w) / 2;
         self.login_button.set_position(btn_x, cursor_y);
         self.create_button
-            .set_position(btn_x + 100 + BTN_GAP, cursor_y);
+            .set_position(btn_x + 75 + BTN_GAP, cursor_y);
+        self.reset_button
+            .set_position(btn_x + 150 + BTN_GAP * 2, cursor_y);
         self.quit_button
-            .set_position(btn_x + 200 + BTN_GAP * 2, cursor_y);
+            .set_position(btn_x + 225 + BTN_GAP * 3, cursor_y);
 
         self.login_button.render(ctx)?;
         self.create_button.render(ctx)?;
+        self.reset_button.render(ctx)?;
         self.quit_button.render(ctx)?;
         cursor_y += BTN_H as i32 + 8;
 

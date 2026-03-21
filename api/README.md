@@ -247,6 +247,59 @@ Once the account is created, the client can proceed to login and is then able to
 3. The client stores the JWT token and includes it in the Authorization header for subsequent requests to the authentication service when managing characters.
 4. The client can then freely manage characters through the authentication service.
 
+## Communication flow - Password Reset
+The password reset flow is a two-step process using a 6-digit code sent via e-mail.
+
+### Prerequisites
+The API must be configured with SMTP credentials to send e-mails. If `SMTP_HOST` is not set, password reset requests will silently succeed but no code is sent.
+
+| Env var | Description | Default |
+|---------|-------------|---------|
+| `SMTP_HOST` | SMTP server hostname | *(none — feature disabled)* |
+| `SMTP_PORT` | SMTP server port | `587` |
+| `SMTP_USER` | SMTP auth username | *(none)* |
+| `SMTP_PASSWORD` | SMTP auth password | *(none)* |
+| `SMTP_FROM` | Sender address for reset e-mails | *(none)* |
+
+### KeyDB keys used
+
+- `password_reset:{account_id}` — hash with fields `code` and `username`, TTL 900s (15 min).
+- `password_reset_attempts:{ip}` — counter with TTL 900s, max 3 per window (per-IP rate limit).
+
+### Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant API as Auth Service
+    participant DB as KeyDB
+    participant E as SMTP Server
+
+    C->>API: POST /accounts/reset-password/request { username, email }
+    API->>DB: Resolve username -> account_id
+    API->>DB: GET account:{id} email field
+    alt Email matches
+        API->>API: Generate 6-digit code (OsRng)
+        API->>DB: HSET password_reset:{id} code {code} username {username} EX 900
+        API->>E: Send code to user's email
+    end
+    API-->>C: 200 { message: "If the account exists..." }
+    Note over API: Always returns 200 (no information leakage)
+
+    C->>API: POST /accounts/reset-password/confirm { username, code, new_password }
+    API->>DB: Resolve username -> account_id
+    API->>DB: HGET password_reset:{id} code
+    API->>API: Constant-time compare code
+    alt Code valid
+        API->>DB: HSET account:{id} password {new_password}
+        API->>DB: DEL password_reset:{id}
+        API-->>C: 200 { message: "Password reset successful" }
+    else Code invalid / expired
+        API-->>C: 401 { message: "Invalid or expired reset code" }
+    end
+```
+
 ## Communication flow - Playing the game
 This is where things get a bit tricky.  Currently the game data is all stored in .dat files that are loaded into memory by the game server at runtime. This means that when an account creates a character, the game server doesn't know about it.  The link gets established when the player logs into the game server for the first time as a new character--this is when the character data gets placed into the char.dat file and assigned a character ID.
 

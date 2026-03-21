@@ -256,6 +256,10 @@ impl Scene for LoginScene {
                         log::info!("Create new account clicked");
                         return Some(SceneType::NewAccount);
                     }
+                    LoginFormAction::ResetPassword => {
+                        log::info!("Reset password clicked");
+                        return Some(SceneType::RequestReset);
+                    }
                     LoginFormAction::Quit => {
                         return Some(SceneType::Exit);
                     }
