@@ -270,7 +270,13 @@ impl GameScene {
                         .unwrap_or((0, 0));
                     let anchor_x = bar.x + cx;
                     let anchor_y = bar.y - 200; // above the skill bar
-                    self.skill_picker.show(skill_id as u8, anchor_x, anchor_y);
+                    let player_skills = app_state
+                        .player_state
+                        .as_ref()
+                        .map(|ps| ps.character_info().skill.as_slice())
+                        .unwrap_or(&[]);
+                    self.skill_picker
+                        .show(skill_id as u8, anchor_x, anchor_y, player_skills);
                 }
                 WidgetAction::BindSkillKey {
                     skill_nr: 0,

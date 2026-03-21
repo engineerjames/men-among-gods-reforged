@@ -136,6 +136,9 @@ impl SkillPickerPopup {
 
     /// Shows the popup anchored near the given screen coordinates.
     ///
+    /// Only skills that the player has actually learned (level > 0) are
+    /// shown.  Unlearned skills are hidden to avoid confusing the player.
+    ///
     /// The popup is positioned so that it stays within the screen bounds
     /// (`TARGET_WIDTH_INT` × `TARGET_HEIGHT_INT`).
     ///
@@ -144,11 +147,25 @@ impl SkillPickerPopup {
     /// * `slot` - Skill bar slot index that the chosen skill will be bound to.
     /// * `anchor_x` - Desired left-edge X position (clamped to screen).
     /// * `anchor_y` - Desired top-edge Y position (clamped to screen).
-    pub fn show(&mut self, slot: u8, anchor_x: i32, anchor_y: i32) {
+    /// * `player_skills` - The player's skill array from `character_info().skill`.
+    ///   Only entries where `player_skills[skill_nr][0] > 0` are displayed.
+    pub fn show(&mut self, slot: u8, anchor_x: i32, anchor_y: i32, player_skills: &[[u8; 6]]) {
         self.visible = true;
         self.target_slot = slot;
         self.scroll_offset = 0;
         self.hover_index = None;
+
+        // Rebuild the visible entry list, keeping only learned skills.
+        self.entries = BINDABLE_SKILLS
+            .iter()
+            .map(|&nr| SkillEntry {
+                skill_nr: nr,
+                name: mag_core::skills::get_skill_name(nr),
+            })
+            .filter(|e| {
+                !e.name.is_empty() && player_skills.get(e.skill_nr).map_or(false, |s| s[0] > 0)
+            })
+            .collect();
 
         let visible_rows = (self.entries.len() as u32).min(MAX_VISIBLE_ROWS);
         let popup_h = visible_rows * ROW_H + PAD_Y as u32 * 2;
@@ -401,6 +418,11 @@ impl Widget for SkillPickerPopup {
 mod tests {
     use super::*;
 
+    /// Returns a skill array with every skill at level 1 (all learned).
+    fn all_skills_learned() -> [[u8; 6]; 100] {
+        [[1u8, 0, 0, 0, 0, 0]; 100]
+    }
+
     #[test]
     fn starts_hidden() {
         let popup = SkillPickerPopup::new();
@@ -410,7 +432,7 @@ mod tests {
     #[test]
     fn show_sets_visible_and_slot() {
         let mut popup = SkillPickerPopup::new();
-        popup.show(5, 100, 200);
+        popup.show(5, 100, 200, &all_skills_learned());
         assert!(popup.is_visible());
         assert_eq!(popup.target_slot, 5);
     }
@@ -418,7 +440,7 @@ mod tests {
     #[test]
     fn hide_clears_visible() {
         let mut popup = SkillPickerPopup::new();
-        popup.show(0, 0, 0);
+        popup.show(0, 0, 0, &all_skills_learned());
         popup.hide();
         assert!(!popup.is_visible());
     }
@@ -426,7 +448,7 @@ mod tests {
     #[test]
     fn escape_hides_popup() {
         let mut popup = SkillPickerPopup::new();
-        popup.show(0, 0, 0);
+        popup.show(0, 0, 0, &all_skills_learned());
         let resp = popup.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Escape,
             modifiers: super::super::widget::KeyModifiers::default(),
@@ -438,7 +460,7 @@ mod tests {
     #[test]
     fn click_outside_hides() {
         let mut popup = SkillPickerPopup::new();
-        popup.show(0, 50, 50);
+        popup.show(0, 50, 50, &all_skills_learned());
         // Click far outside the popup bounds.
         let resp = popup.handle_event(&UiEvent::MouseClick {
             x: 900,
@@ -453,7 +475,7 @@ mod tests {
     #[test]
     fn click_row_emits_bind_action() {
         let mut popup = SkillPickerPopup::new();
-        popup.show(3, 10, 10);
+        popup.show(3, 10, 10, &all_skills_learned());
         // Click on the first row.
         let row_y = popup.bounds.y + PAD_Y + (ROW_H as i32 / 2);
         let resp = popup.handle_event(&UiEvent::MouseClick {
@@ -499,9 +521,24 @@ mod tests {
     }
 
     #[test]
+    fn show_filters_unlearned_skills() {
+        let mut popup = SkillPickerPopup::new();
+        // Only skill 0 is learned.
+        let mut skills = [[0u8; 6]; 100];
+        skills[0][0] = 5;
+        popup.show(0, 0, 0, &skills);
+        // Only skill 0 should appear (it's first in BINDABLE_SKILLS).
+        assert_eq!(popup.entries.len(), 1);
+        assert_eq!(popup.entries[0].skill_nr, 0);
+        // Show with no learned skills — popup should have no entries.
+        popup.show(0, 0, 0, &[[0u8; 6]; 100]);
+        assert!(popup.entries.is_empty());
+    }
+
+    #[test]
     fn scroll_clamps_to_max() {
         let mut popup = SkillPickerPopup::new();
-        popup.show(0, 0, 0);
+        popup.show(0, 0, 0, &all_skills_learned());
         // Scroll way past the end.
         popup.handle_event(&UiEvent::MouseWheel {
             x: 0,
@@ -521,7 +558,7 @@ mod tests {
     #[test]
     fn bounds_clamped_to_screen() {
         let mut popup = SkillPickerPopup::new();
-        popup.show(0, 9999, 9999);
+        popup.show(0, 9999, 9999, &all_skills_learned());
         let sw = crate::constants::TARGET_WIDTH_INT as i32;
         let sh = crate::constants::TARGET_HEIGHT_INT as i32;
         assert!(popup.bounds.x + popup.bounds.width as i32 <= sw);
