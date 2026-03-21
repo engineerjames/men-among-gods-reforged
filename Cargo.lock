@@ -264,6 +264,7 @@ dependencies = [
  "real",
  "redis",
  "regex",
+ "rustls",
  "serde",
  "subtle",
  "tokio",
