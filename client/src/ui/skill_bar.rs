@@ -215,7 +215,7 @@ impl SkillBar {
     ///
     /// Pixel X coordinate for the sprite's left edge.
     fn spell_pos_x(&self, n: usize) -> i32 {
-        self.config.spell_x + (n as i32) * self.config.spell_width
+        self.config.spell_x + (n as i32) * (self.config.spell_width - 8)
     }
 }
 
@@ -621,7 +621,7 @@ mod tests {
         };
         let bar = SkillBar::new(config);
         assert_eq!(bar.spell_pos_x(0), 100);
-        assert_eq!(bar.spell_pos_x(1), 124);
-        assert_eq!(bar.spell_pos_x(5), 100 + 5 * 24);
+        assert_eq!(bar.spell_pos_x(1), 109); // 100 + 1*(24-15)
+        assert_eq!(bar.spell_pos_x(5), 100 + 5 * 9); // 100 + 5*(24-15)
     }
 }
