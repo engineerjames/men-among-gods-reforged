@@ -49,7 +49,6 @@ use crate::{
         look_panel::LookPanel,
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
-        rank_progress_arc::RankArc,
         rank_progress_line::RankProgressLine,
         settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
         shop_panel::ShopPanel,
