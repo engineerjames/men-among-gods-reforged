@@ -209,7 +209,7 @@ impl GameScene {
                     {
                         let target = Self::default_skill_target(ps);
                         let a0 = ps.character_info().attrib[0][5] as u32;
-                        net.send(ClientCommand::new_skill(skill_nr, target, a0));
+                        net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
                 }
                 WidgetAction::BeginSkillAssign { skill_id } => {
@@ -224,7 +224,7 @@ impl GameScene {
                             }
                         }
                         ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
-                        let name = skills::get_skill_name(skill_nr as usize);
+                        let name = skills::get_skill_name(skill_nr);
                         ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);
@@ -258,7 +258,7 @@ impl GameScene {
                         self.play_click_sound(app_state);
                         let target = Self::default_skill_target(ps);
                         let a0 = ps.character_info().attrib[0][5] as u32;
-                        net.send(ClientCommand::new_skill(skill_nr, target, a0));
+                        net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
                 }
                 WidgetAction::BeginSkillAssign { skill_id } => {
@@ -321,7 +321,7 @@ impl GameScene {
                             }
                         }
                         ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
-                        let name = skills::get_skill_name(skill_nr as usize);
+                        let name = skills::get_skill_name(skill_nr);
                         ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);

@@ -110,7 +110,7 @@ pub struct SkillBarConfig {
 /// Per-frame data pushed into the skill bar by the game scene.
 pub struct SkillBarData {
     /// CTRL+1-8 skill keybinds (index 0 = slot 1). `Some(skill_nr)` if bound.
-    pub keybinds: [Option<u32>; TOP_CELLS],
+    pub keybinds: [Option<usize>; TOP_CELLS],
     /// Active spell icon IDs from `ClientPlayer::spell[]`.
     pub spell: [i32; ACTIVE_SPELL_SLOTS],
     /// Active-timer values from `ClientPlayer::active[]`.
@@ -334,7 +334,7 @@ impl Widget for SkillBar {
             let cx = x + CELL / 2;
             let cy = y + (CELL - 10) / 2; // 10 = glyph height
             if let Some(skill_nr) = data.keybinds[i] {
-                let name = skills::get_skill_name(skill_nr as usize);
+                let name = skills::get_skill_name(skill_nr);
                 let abbr = Self::abbreviate(name);
                 font_cache::draw_text(
                     ctx.canvas,

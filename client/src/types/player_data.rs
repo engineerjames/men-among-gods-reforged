@@ -14,7 +14,7 @@ pub struct PlayerData {
     pub show_helper_text: i32,
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
     /// `Some(skill_nr)` if bound, `None` if unbound.
-    pub skill_keybinds: [Option<u32>; NUMBER_OF_KEYBINDS],
+    pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
 }
 
 impl Default for PlayerData {

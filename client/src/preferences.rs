@@ -97,7 +97,7 @@ pub struct Settings {
     pub show_helper_text: bool,
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
     #[serde(default)]
-    pub skill_keybinds: [Option<u32>; NUMBER_OF_KEYBINDS],
+    pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
     /// Saved position of the inventory panel, or `None` for default.
     #[serde(default)]
     pub inventory_panel_pos: Option<(i32, i32)>,

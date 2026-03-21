@@ -1241,7 +1241,7 @@ impl Scene for GameScene {
                             if let Some(skill_nr) = ps.player_data().skill_keybinds[key_slot] {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
-                                    skill_nr,
+                                    skill_nr as u32,
                                     Self::default_skill_target(ps),
                                     ps.character_info().attrib[0][0] as u32,
                                 ));

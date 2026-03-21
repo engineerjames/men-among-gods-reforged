@@ -432,7 +432,7 @@ impl SkillsPanel {
                 if let Some(&skill_id) = data.sorted_skills.get(sorted_idx) {
                     if !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
                         self.pending_actions.push(WidgetAction::CastSkill {
-                            skill_nr: get_skill_nr(skill_id) as u32,
+                            skill_nr: get_skill_nr(skill_id),
                         });
                     }
                 }

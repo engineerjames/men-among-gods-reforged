@@ -5,6 +5,10 @@
 //! emits [`WidgetAction::BindSkillKey`]; pressing Escape or clicking outside
 //! the popup hides it without binding anything.
 
+use mag_core::skills::{
+    SK_BLAST, SK_BLESS, SK_CURSE, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_LIGHT,
+    SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REPAIR, SK_STUN, SK_WARCRY, SK_WIMPY,
+};
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
@@ -56,9 +60,9 @@ const TEXT_COLOR: Color = Color::RGB(200, 200, 220);
 ///
 /// **Placeholder**: fill in with real skill indices once the desired set is
 /// decided.  The order here determines the display order in the popup.
-pub const BINDABLE_SKILLS: &[u32] = &[
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-    26, 27, 28, 29, 30, 31, 32, 33, 34, 35,
+pub const BINDABLE_SKILLS: &[usize] = &[
+    0, SK_MSHIELD, SK_REPAIR, SK_LIGHT, SK_RECALL, SK_WIMPY, SK_PROTECT, SK_ENHANCE, SK_STUN,
+    SK_CURSE, SK_BLESS, SK_IDENT, SK_BLAST, SK_DISPEL, SK_HEAL, SK_GHOST, SK_WARCRY,
 ];
 
 // ---------------------------------------------------------------------------
@@ -69,7 +73,7 @@ pub const BINDABLE_SKILLS: &[u32] = &[
 #[derive(Clone, Debug)]
 struct SkillEntry {
     /// Protocol skill number.
-    skill_nr: u32,
+    skill_nr: usize,
     /// Display name.
     name: &'static str,
 }
@@ -112,7 +116,7 @@ impl SkillPickerPopup {
             .iter()
             .map(|&nr| SkillEntry {
                 skill_nr: nr,
-                name: mag_core::skills::get_skill_name(nr as usize),
+                name: mag_core::skills::get_skill_name(nr),
             })
             .filter(|e| !e.name.is_empty())
             .collect();
