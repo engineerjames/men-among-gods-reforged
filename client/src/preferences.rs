@@ -6,7 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::ui::widget::KeyBindings;
+use crate::{types::player_data::NUMBER_OF_KEYBINDS, ui::widget::KeyBindings};
 
 /// Window display mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,7 +97,7 @@ pub struct Settings {
     pub show_helper_text: bool,
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
     #[serde(default)]
-    pub skill_keybinds: [Option<u32>; 9],
+    pub skill_keybinds: [Option<u32>; NUMBER_OF_KEYBINDS],
     /// Saved position of the inventory panel, or `None` for default.
     #[serde(default)]
     pub inventory_panel_pos: Option<(i32, i32)>,
@@ -126,7 +126,7 @@ impl Default for Settings {
             show_names: 0,
             show_proz: 0,
             show_helper_text: true,
-            skill_keybinds: [None; 9],
+            skill_keybinds: [None; NUMBER_OF_KEYBINDS],
             inventory_panel_pos: None,
             skills_panel_pos: None,
             settings_panel_pos: None,
@@ -411,7 +411,21 @@ mod tests {
         s.display_mode = DisplayMode::BorderlessFullscreen;
         s.shadows_enabled = true;
         s.master_volume = 0.75;
-        s.skill_keybinds = [None, Some(42), None, None, Some(7), None, None, None, None];
+        s.skill_keybinds = [
+            None,
+            Some(42),
+            None,
+            None,
+            Some(7),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ];
         s.show_helper_text = false;
 
         let json = serde_json::to_string(&s).unwrap();

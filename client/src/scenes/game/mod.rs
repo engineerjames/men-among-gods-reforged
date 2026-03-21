@@ -130,12 +130,7 @@ const HUD_BTN_BOTTOM_CY: i32 = MODE_BTN_CY - MODE_BTN_RADIUS as i32 - HUD_BUTTON
 /// Vertical spacing between adjacent HUD button centers.
 const HUD_BTN_SPACING: u32 = 40;
 
-// ---- Skill bar (bottom-center, above chat box) ---- //
-
-/// X position of the skill bar (horizontally centered).
-const SKILL_BAR_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2;
-/// Y position of the skill bar (bottom)
-const SKILL_BAR_Y: i32 = crate::constants::TARGET_HEIGHT as i32 - SkillBar::height() as i32 + 20;
+// ---- Skill bar ---- //
 /// Width of each togglable HUD panel.
 const HUD_PANEL_W: u32 = 300;
 /// Height of each togglable HUD panel.
@@ -1500,18 +1495,24 @@ impl Scene for GameScene {
                     selected_char: ps.selected_char(),
                 });
 
-                // Skill bar: first 8 keybinds + first 6 spell/active slots.
+                // Skill bar: 13 keybinds plus the first 6 spell/activity slots.
                 {
+                    use crate::types::player_data::NUMBER_OF_KEYBINDS;
                     use crate::ui::skill_bar::SkillBarData;
-                    let mut keybinds = [None; 13];
-                    keybinds.copy_from_slice(&ps.player_data().skill_keybinds[..13]);
+                    let mut keybinds = [None; NUMBER_OF_KEYBINDS];
+                    keybinds
+                        .copy_from_slice(&ps.player_data().skill_keybinds[..NUMBER_OF_KEYBINDS]);
                     let mut spells = [0i32; 6];
                     let mut spell_active = [false; 6];
                     for i in 0..6 {
                         spells[i] = ci.spell[i];
                         spell_active[i] = ci.active[i] > 0;
                     }
-                    self.skill_bar.update_data(SkillBarData { keybinds });
+                    self.skill_bar.update_data(SkillBarData {
+                        keybinds,
+                        spells,
+                        spell_active,
+                    });
                 }
 
                 // Update minimap xmap buffer, then push viewport pixels to the widget.

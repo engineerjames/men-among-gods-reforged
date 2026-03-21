@@ -23,6 +23,7 @@
 
 use std::time::{Duration, Instant};
 
+use client::types::player_data::NUMBER_OF_KEYBINDS;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
@@ -253,7 +254,7 @@ fn main() -> Result<(), String> {
         skill: [[0; 6]; 100],
         points: 42,
         sorted_skills: Vec::new(),
-        keybinds: [None; 9],
+        keybinds: [None; NUMBER_OF_KEYBINDS],
     });
 
     let mut inventory_panel = InventoryPanel::new(
@@ -299,9 +300,6 @@ fn main() -> Result<(), String> {
         PANEL_BG,
     );
 
-    // Skill bar (bottom-center, same position as in-game).
-    let skill_bar_x = (TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2;
-    let skill_bar_y = TARGET_HEIGHT_INT as i32 - SkillBar::height() as i32;
     let mut skill_bar = SkillBar::new();
     skill_bar.update_data(SkillBarData {
         keybinds: [
@@ -319,6 +317,8 @@ fn main() -> Result<(), String> {
             None,
             None,
         ],
+        spells: [0; 6],
+        spell_active: [false; 6],
     });
 
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).

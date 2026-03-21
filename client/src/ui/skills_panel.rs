@@ -17,6 +17,7 @@ use super::title_bar::{clamp_to_viewport, TitleBar};
 use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
 use crate::font_cache;
+use crate::types::player_data::NUMBER_OF_KEYBINDS;
 
 /// Font index used for panel text (yellow bitmap font).
 const PANEL_FONT: usize = 1;
@@ -55,7 +56,7 @@ pub struct SkillsPanelData {
     pub sorted_skills: Vec<usize>,
     /// Current CTRL+1-9 keybinds. Index 0 = key "1" .. 8 = key "9".
     /// `Some(skill_nr)` if bound.
-    pub keybinds: [Option<u32>; 9],
+    pub keybinds: [Option<u32>; NUMBER_OF_KEYBINDS],
 }
 
 /// The skills / character / attributes HUD panel.
@@ -497,7 +498,10 @@ impl SkillsPanel {
     }
 
     /// Returns the key digit (1-9) currently bound to `skill_nr`, if any.
-    fn bound_key_for_skill(keybinds: &[Option<u32>; 9], skill_nr: u32) -> Option<u8> {
+    fn bound_key_for_skill(
+        keybinds: &[Option<u32>; NUMBER_OF_KEYBINDS],
+        skill_nr: u32,
+    ) -> Option<u8> {
         keybinds
             .iter()
             .enumerate()
@@ -1065,7 +1069,7 @@ mod tests {
             skill: [[0; 6]; 100],
             points: 10000,
             sorted_skills: (0..MAX_SKILLS).collect(),
-            keybinds: [None; 9],
+            keybinds: [None; NUMBER_OF_KEYBINDS],
         }
     }
 
@@ -1276,7 +1280,7 @@ mod tests {
 
     #[test]
     fn bound_key_for_skill_finds_correct_slot() {
-        let mut keybinds: [Option<u32>; 9] = [None; 9];
+        let mut keybinds: [Option<u32>; NUMBER_OF_KEYBINDS] = [None; NUMBER_OF_KEYBINDS];
         keybinds[4] = Some(7); // key "5" --> skill_nr 7
         assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 7), Some(5));
         assert_eq!(SkillsPanel::bound_key_for_skill(&keybinds, 99), None);

@@ -1,6 +1,9 @@
 /// HUD toggle flags and spell-bar bindings, matching the original C `pdata`
 /// struct (484 bytes).
 // pdata from original C headers
+
+pub const NUMBER_OF_KEYBINDS: usize = 13;
+
 #[derive(Copy, Clone, Debug)]
 pub struct PlayerData {
     pub hide: i32,
@@ -11,7 +14,7 @@ pub struct PlayerData {
     pub show_helper_text: i32,
     /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
     /// `Some(skill_nr)` if bound, `None` if unbound.
-    pub skill_keybinds: [Option<u32>; 9],
+    pub skill_keybinds: [Option<u32>; NUMBER_OF_KEYBINDS],
 }
 
 impl Default for PlayerData {
@@ -22,7 +25,7 @@ impl Default for PlayerData {
             show_proz: 0,
             are_shadows_enabled: 1,
             show_helper_text: 1,
-            skill_keybinds: [None; 9],
+            skill_keybinds: [None; NUMBER_OF_KEYBINDS],
         }
     }
 }
