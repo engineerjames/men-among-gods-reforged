@@ -30,7 +30,7 @@ use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
 
 use crate::{
     cert_trust,
-    constants::TARGET_HEIGHT_INT,
+    constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
     network::{client_commands::ClientCommand, NetworkRuntime},
     player_state::PlayerState,
@@ -277,7 +277,12 @@ impl GameScene {
                 HUD_BUTTON_RADIUS,
                 HUD_SPRITE_IDS,
             ),
-            rank_progress_line: RankProgressLine::new(10, TARGET_HEIGHT_INT as i32 - 8, 200, 4),
+            rank_progress_line: RankProgressLine::new(
+                (TARGET_WIDTH_INT as i32 - 380) / 2,
+                TARGET_HEIGHT_INT as i32 - 38,
+                400,
+                2,
+            ),
             skills_panel: SkillsPanel::new(
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
                 HUD_PANEL_BG,
@@ -1548,11 +1553,11 @@ impl Scene for GameScene {
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
             self.keybindings_panel.render(&mut ctx)?;
-            self.rank_progress_line.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
+            self.rank_progress_line.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
