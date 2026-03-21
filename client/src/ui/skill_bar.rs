@@ -19,6 +19,7 @@ use mag_core::skills;
 
 use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::filepaths;
 use crate::font_cache;
 
@@ -27,42 +28,30 @@ use crate::font_cache;
 // ---------------------------------------------------------------------------
 
 /// Side length of each square cell in pixels.
-const CELL: i32 = 24;
+const CELL: i32 = 20;
 
 /// Number of cells in the top (skill-bind) row.
-const TOP_CELLS: usize = 8;
-
-/// Number of cells in the bottom (spell/effect) row.
-const BOTTOM_CELLS: usize = 6;
+const TOP_CELLS: usize = 13;
 
 /// Horizontal offset of all cells relative to the widget (background image)
 /// origin.  Increase to scoot cells rightward.
-const CELLS_OFFSET_X: i32 = 100;
+const CELLS_OFFSET_X: i32 = 63;
 
 /// Vertical offset of all cells relative to the widget (background image)
 /// origin.  Increase to scoot cells downward.
-const CELLS_OFFSET_Y: i32 = 56;
+const CELLS_OFFSET_Y: i32 = 47;
 
 /// Horizontal pixel spacing between adjacent cells.
-const CELL_H_SPACING: i32 = 13;
-
-/// Vertical pixel offset between the top row and the bottom row.
-const ROW_SPACING: i32 = 11;
+const CELL_H_SPACING: i32 = 9;
 
 /// Horizontal stride from one cell origin to the next (cell width + spacing).
 const CELL_STRIDE: i32 = CELL + CELL_H_SPACING;
 
-/// Horizontal pixel offset applied to the bottom row so that it is centered
-/// beneath the top row.
-const BOTTOM_ROW_OFFSET_X: i32 = ((TOP_CELLS - BOTTOM_CELLS) as i32) * CELL_STRIDE / 2;
-
 /// Total widget width (determined by the wider top row).
-const BAR_WIDTH_OFFSET: u32 = 200;
-const BAR_W: u32 = (TOP_CELLS as i32 * CELL_STRIDE - CELL_H_SPACING) as u32 + BAR_WIDTH_OFFSET;
+const BAR_W: u32 = 500;
 
 /// Total widget height (two rows plus gap).
-const BAR_HEIGHT_OFFSET: u32 = 100;
-const BAR_H: u32 = (2 * CELL + ROW_SPACING) as u32 + BAR_HEIGHT_OFFSET;
+const BAR_H: u32 = 80;
 
 /// Background fill for each cell.
 const CELL_BG: Color = Color::RGBA(15, 15, 35, 200);
@@ -96,10 +85,6 @@ const MAX_ABBREV: usize = 4;
 pub struct SkillBarData {
     /// CTRL+1-8 skill keybinds (index 0 = slot 1). `Some(skill_nr)` if bound.
     pub keybinds: [Option<u32>; TOP_CELLS],
-    /// Spell sprite IDs (first 6 of `ClientPlayer::spell[]`).
-    pub spells: [i32; BOTTOM_CELLS],
-    /// Whether each spell slot is active (first 6 of `ClientPlayer::active[]`).
-    pub spell_active: [bool; BOTTOM_CELLS],
 }
 
 // ---------------------------------------------------------------------------
@@ -120,17 +105,15 @@ pub struct SkillBar {
 impl SkillBar {
     /// Creates a new skill bar at the given position.
     ///
-    /// # Arguments
-    ///
-    /// * `x` - Left edge of the widget.
-    /// * `y` - Top edge of the widget.
-    ///
     /// # Returns
     ///
     /// A new `SkillBar` ready for rendering.
-    pub fn new(x: i32, y: i32) -> Self {
+    pub fn new() -> Self {
+        let x_pos = (TARGET_WIDTH_INT - BAR_W) / 2;
+        let y_pos = TARGET_HEIGHT_INT - BAR_H;
+
         Self {
-            bounds: Bounds::new(x, y, BAR_W, BAR_H),
+            bounds: Bounds::new(x_pos as i32, y_pos as i32, BAR_W, BAR_H),
             data: None,
             mouse_x: 0,
             mouse_y: 0,
@@ -162,7 +145,7 @@ impl SkillBar {
     // Hit-testing helpers
     // -----------------------------------------------------------------------
 
-    /// Returns which top-row cell index (0..7) the point is inside, if any.
+    /// Returns which top-row cell index (0..12) the point is inside, if any.
     fn hit_top_cell(&self, px: i32, py: i32) -> Option<usize> {
         let lx = px - self.bounds.x - CELLS_OFFSET_X;
         let ly = py - self.bounds.y - CELLS_OFFSET_Y;
@@ -171,23 +154,6 @@ impl SkillBar {
         }
         let col = (lx / CELL_STRIDE) as usize;
         if col < TOP_CELLS && (lx % CELL_STRIDE) < CELL {
-            Some(col)
-        } else {
-            None
-        }
-    }
-
-    /// Returns which bottom-row cell index (0..5) the point is inside, if any.
-    fn hit_bottom_cell(&self, px: i32, py: i32) -> Option<usize> {
-        let row_x = self.bounds.x + CELLS_OFFSET_X + BOTTOM_ROW_OFFSET_X;
-        let row_y = self.bounds.y + CELLS_OFFSET_Y + CELL + ROW_SPACING;
-        let lx = px - row_x;
-        let ly = py - row_y;
-        if lx < 0 || !(0..CELL).contains(&ly) {
-            return None;
-        }
-        let col = (lx / CELL_STRIDE) as usize;
-        if col < BOTTOM_CELLS && (lx % CELL_STRIDE) < CELL {
             Some(col)
         } else {
             None
@@ -262,11 +228,6 @@ impl Widget for SkillBar {
                     return EventResponse::Consumed;
                 }
 
-                // --- Bottom row (spell/effects) — consume to block passthrough ---
-                if self.hit_bottom_cell(*x, *y).is_some() {
-                    return EventResponse::Consumed;
-                }
-
                 EventResponse::Ignored
             }
             _ => EventResponse::Ignored,
@@ -289,7 +250,7 @@ impl Widget for SkillBar {
         if self.bg_texture_id.is_none() {
             let path = filepaths::get_asset_directory()
                 .join("gfx")
-                .join("skillbar.png");
+                .join("skillbar4.png");
             if let Ok(id) = ctx.gfx.load_texture_from_path(&path) {
                 self.bg_texture_id = Some(id);
             }
@@ -346,50 +307,6 @@ impl Widget for SkillBar {
                     cy,
                     font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
                 )?;
-            }
-        }
-
-        // ── Bottom row: spell / effect cells ───────────────────────────────
-
-        let row_x = self.bounds.x + CELLS_OFFSET_X + BOTTOM_ROW_OFFSET_X;
-        let row_y = self.bounds.y + CELLS_OFFSET_Y + CELL + ROW_SPACING;
-
-        for i in 0..BOTTOM_CELLS {
-            let x = row_x + (i as i32) * CELL_STRIDE;
-            let y = row_y;
-            let rect = sdl2::rect::Rect::new(x, y, CELL as u32, CELL as u32);
-
-            // Cell background.
-            ctx.canvas.set_draw_color(CELL_BG);
-            ctx.canvas.fill_rect(rect)?;
-            ctx.canvas.set_draw_color(CELL_BORDER);
-            ctx.canvas.draw_rect(rect)?;
-
-            // Spell sprite (if any).
-            let sprite_id = data.spells[i];
-            if sprite_id > 0 {
-                let tex = ctx.gfx.get_texture(sprite_id as usize);
-                let q = tex.query();
-                // Scale sprite to fit CELL × CELL.
-                ctx.canvas.copy(
-                    tex,
-                    None,
-                    Some(sdl2::rect::Rect::new(x, y, CELL as u32, CELL as u32)),
-                )?;
-
-                // Active-spell green highlight.
-                if data.spell_active[i] {
-                    ctx.canvas.set_draw_color(ACTIVE_HIGHLIGHT);
-                    ctx.canvas.fill_rect(rect)?;
-                }
-
-                // Hover highlight.
-                let _ = q; // suppress unused warning
-            }
-
-            if self.hit_bottom_cell(self.mouse_x, self.mouse_y) == Some(i) {
-                ctx.canvas.set_draw_color(HOVER_COLOR);
-                ctx.canvas.fill_rect(rect)?;
             }
         }
 

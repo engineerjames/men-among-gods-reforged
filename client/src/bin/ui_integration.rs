@@ -302,11 +302,23 @@ fn main() -> Result<(), String> {
     // Skill bar (bottom-center, same position as in-game).
     let skill_bar_x = (TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2;
     let skill_bar_y = TARGET_HEIGHT_INT as i32 - SkillBar::height() as i32;
-    let mut skill_bar = SkillBar::new(skill_bar_x, skill_bar_y);
+    let mut skill_bar = SkillBar::new();
     skill_bar.update_data(SkillBarData {
-        keybinds: [Some(3), Some(26), None, Some(0), None, None, None, Some(10)],
-        spells: [0; 6],
-        spell_active: [false; 6],
+        keybinds: [
+            Some(3),
+            Some(26),
+            None,
+            Some(0),
+            None,
+            None,
+            None,
+            Some(10),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
     });
 
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).

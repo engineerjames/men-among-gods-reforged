@@ -15,6 +15,7 @@ const KEYS: &'static [(u8, u8, u8)] = &[
     (0xf8, 0x00, 0xf8), // #f800f8
     (0xf7, 0x00, 0xf7), // #f700f7
     (0xa3, 0x49, 0xa4), // #a349a4
+    (0xFF, 0xFF, 0xFF), // #FFFFFF
 ];
 
 fn force_png_path<P: AsRef<Path>>(p: P) -> std::path::PathBuf {

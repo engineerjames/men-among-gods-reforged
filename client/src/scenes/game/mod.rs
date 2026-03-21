@@ -322,7 +322,7 @@ impl GameScene {
                 Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
-            skill_bar: SkillBar::new(SKILL_BAR_X, SKILL_BAR_Y),
+            skill_bar: SkillBar::new(),
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
@@ -1503,19 +1503,15 @@ impl Scene for GameScene {
                 // Skill bar: first 8 keybinds + first 6 spell/active slots.
                 {
                     use crate::ui::skill_bar::SkillBarData;
-                    let mut keybinds = [None; 8];
-                    keybinds.copy_from_slice(&ps.player_data().skill_keybinds[..8]);
+                    let mut keybinds = [None; 13];
+                    keybinds.copy_from_slice(&ps.player_data().skill_keybinds[..13]);
                     let mut spells = [0i32; 6];
                     let mut spell_active = [false; 6];
                     for i in 0..6 {
                         spells[i] = ci.spell[i];
                         spell_active[i] = ci.active[i] > 0;
                     }
-                    self.skill_bar.update_data(SkillBarData {
-                        keybinds,
-                        spells,
-                        spell_active,
-                    });
+                    self.skill_bar.update_data(SkillBarData { keybinds });
                 }
 
                 // Update minimap xmap buffer, then push viewport pixels to the widget.
