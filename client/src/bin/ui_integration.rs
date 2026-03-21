@@ -46,9 +46,10 @@ use client::ui::look_panel::LookPanel;
 use client::ui::minimap_widget::MinimapWidget;
 use client::ui::mode_button::ModeButton;
 use client::ui::panel::Panel;
-use client::ui::rank_arc::RankArc;
+use client::ui::rank_progress_arc::RankArc;
 use client::ui::settings_panel::{SettingsPanel, SETTINGS_PANEL_H};
 use client::ui::shop_panel::ShopPanel;
+use client::ui::skill_bar::SkillBarConfig;
 use client::ui::skill_bar::{SkillBar, SkillBarData};
 use client::ui::skills_panel::{SkillsPanel, SkillsPanelData};
 use client::ui::slider::Slider;
@@ -300,7 +301,12 @@ fn main() -> Result<(), String> {
         PANEL_BG,
     );
 
-    let mut skill_bar = SkillBar::new();
+    let mut skill_bar = SkillBar::new(SkillBarConfig {
+        spell_x: 10,
+        spell_y: 10,
+        spell_width: 24,
+        spell_height: 24,
+    });
     skill_bar.update_data(SkillBarData {
         keybinds: [
             Some(3),
@@ -317,8 +323,8 @@ fn main() -> Result<(), String> {
             None,
             None,
         ],
-        spells: [0; 6],
-        spell_active: [false; 6],
+        spell: [0; 20],
+        active: [0; 20],
     });
 
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).

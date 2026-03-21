@@ -7,9 +7,8 @@
 //!   skill; left-clicking an empty slot begins the skill-assignment flow.
 //!   Right-clicking a bound slot clears the binding.
 //!
-//! The widget also carries the first six active spell / item-effect entries
-//! from `ClientPlayer::spell[]` and `active[]` in its frame snapshot for future
-//! rendering work, but it does not draw or interact with them yet.
+//! The widget also renders active spell/item-effect sprites in a configurable
+//! horizontal row, positioned and sized via [`SkillBarConfig`].
 
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
@@ -37,11 +36,8 @@ const TOP_CELLS: usize = 13;
 /// origin.  Increase to scoot cells downward.
 const CELLS_OFFSET_Y: i32 = 46;
 
-/// Number of active spell snapshot entries carried alongside the bar.
-const ACTIVE_SPELL_SLOTS: usize = 6;
-
 /// Hard-coded cell origins relative to the widget background.
-const TOP_CELL_POSITIONS: [(i32, i32); TOP_CELLS] = [
+pub const TOP_CELL_POSITIONS: [(i32, i32); TOP_CELLS] = [
     (63, CELLS_OFFSET_Y),  // 1
     (92, CELLS_OFFSET_Y),  // 2
     (122, CELLS_OFFSET_Y), // 3
@@ -84,6 +80,29 @@ const UI_FONT: usize = 1;
 /// Maximum characters of a skill name to show in a cell.
 const MAX_ABBREV: usize = 4;
 
+/// Number of active spell snapshot slots (matches `ClientPlayer::spell`).
+const ACTIVE_SPELL_SLOTS: usize = 20;
+
+// ---------------------------------------------------------------------------
+// Configuration
+// ---------------------------------------------------------------------------
+
+/// Configuration for the skill bar's active-spell sprite row.
+///
+/// The caller specifies the top-left origin and per-icon dimensions; the
+/// widget lays out up to 20 sprites in a single horizontal row.
+#[derive(Clone, Debug)]
+pub struct SkillBarConfig {
+    /// X position of the first spell sprite (pixels).
+    pub spell_x: i32,
+    /// Y position of the spell sprite row (pixels).
+    pub spell_y: i32,
+    /// Width of each spell sprite cell (pixels).
+    pub spell_width: i32,
+    /// Height of each spell sprite cell (pixels).
+    pub spell_height: i32,
+}
+
 // ---------------------------------------------------------------------------
 // Data snapshot
 // ---------------------------------------------------------------------------
@@ -92,10 +111,10 @@ const MAX_ABBREV: usize = 4;
 pub struct SkillBarData {
     /// CTRL+1-8 skill keybinds (index 0 = slot 1). `Some(skill_nr)` if bound.
     pub keybinds: [Option<u32>; TOP_CELLS],
-    /// First six spell icon IDs from `ClientPlayer::spell[]`.
-    pub spells: [i32; ACTIVE_SPELL_SLOTS],
-    /// Whether each spell slot is currently active.
-    pub spell_active: [bool; ACTIVE_SPELL_SLOTS],
+    /// Active spell icon IDs from `ClientPlayer::spell[]`.
+    pub spell: [i32; ACTIVE_SPELL_SLOTS],
+    /// Active-timer values from `ClientPlayer::active[]`.
+    pub active: [i8; ACTIVE_SPELL_SLOTS],
 }
 
 // ---------------------------------------------------------------------------
@@ -111,15 +130,21 @@ pub struct SkillBar {
     actions: Vec<WidgetAction>,
     /// Lazily-loaded texture ID for the `skillbar.png` background image.
     bg_texture_id: Option<usize>,
+    /// Active-spell sprite layout configuration.
+    config: SkillBarConfig,
 }
 
 impl SkillBar {
     /// Creates a new skill bar at the given position.
     ///
+    /// # Arguments
+    ///
+    /// * `config` - Layout configuration for the active-spell sprite row.
+    ///
     /// # Returns
     ///
     /// A new `SkillBar` ready for rendering.
-    pub fn new() -> Self {
+    pub fn new(config: SkillBarConfig) -> Self {
         let x_pos = (TARGET_WIDTH_INT - BAR_W) / 2;
         let y_pos = TARGET_HEIGHT_INT - BAR_H;
 
@@ -130,6 +155,7 @@ impl SkillBar {
             mouse_y: 0,
             actions: Vec::new(),
             bg_texture_id: None,
+            config,
         }
     }
 
@@ -177,6 +203,19 @@ impl SkillBar {
         }
         // Take the first MAX_ABBREV characters.
         name.chars().take(MAX_ABBREV).collect()
+    }
+
+    /// Compute the X position of the `n`-th active spell sprite.
+    ///
+    /// # Arguments
+    ///
+    /// * `n` - Spell slot index (0–19).
+    ///
+    /// # Returns
+    ///
+    /// Pixel X coordinate for the sprite's left edge.
+    fn spell_pos_x(&self, n: usize) -> i32 {
+        self.config.spell_x + (n as i32) * self.config.spell_width
     }
 }
 
@@ -321,6 +360,35 @@ impl Widget for SkillBar {
             }
         }
 
+        // ── Active spell sprites (horizontal row) ──────────────────────────
+        for n in 0..ACTIVE_SPELL_SLOTS {
+            let sprite = data.spell[n];
+            if sprite <= 0 {
+                continue;
+            }
+            let x = self.spell_pos_x(n);
+            let y = self.config.spell_y;
+            let tex = ctx.gfx.get_texture(sprite as usize);
+
+            // Attenuation matches engine.c: effect = 15 - min(15, active)
+            let active = (data.active[n] as i32).clamp(0, 15);
+            let effect = 15 - active;
+            let atten = (255 * 120 / (effect * effect + 120)) as u8;
+
+            tex.set_color_mod(atten, atten, atten);
+            ctx.canvas.copy(
+                tex,
+                None,
+                Some(Rect::new(
+                    x,
+                    y,
+                    self.config.spell_width as u32,
+                    self.config.spell_height as u32,
+                )),
+            )?;
+            tex.set_color_mod(255, 255, 255);
+        }
+
         Ok(())
     }
 }
@@ -335,7 +403,13 @@ mod tests {
     use crate::ui::widget::{KeyModifiers, MouseButton};
 
     fn bar_at(x: i32, y: i32) -> SkillBar {
-        let mut bar = SkillBar::new();
+        let config = SkillBarConfig {
+            spell_x: 0,
+            spell_y: 0,
+            spell_width: 24,
+            spell_height: 24,
+        };
+        let mut bar = SkillBar::new(config);
         bar.set_position(x, y);
         bar
     }
@@ -343,8 +417,8 @@ mod tests {
     fn test_data() -> SkillBarData {
         SkillBarData {
             keybinds: [None; TOP_CELLS],
-            spells: [0; ACTIVE_SPELL_SLOTS],
-            spell_active: [false; ACTIVE_SPELL_SLOTS],
+            spell: [0; ACTIVE_SPELL_SLOTS],
+            active: [0; ACTIVE_SPELL_SLOTS],
         }
     }
 
@@ -382,19 +456,35 @@ mod tests {
 
     #[test]
     fn update_data_stores_active_spell_snapshot() {
-        let mut bar = SkillBar::new();
+        let mut bar = SkillBar::new(SkillBarConfig {
+            spell_x: 0,
+            spell_y: 0,
+            spell_width: 24,
+            spell_height: 24,
+        });
         let mut data = test_data();
-        data.spells = [17, 18, 19, 20, 21, 22];
-        data.spell_active = [true, false, true, false, true, false];
+        data.spell = {
+            let mut s = [0i32; ACTIVE_SPELL_SLOTS];
+            for (i, val) in [17, 18, 19, 20, 21, 22].iter().enumerate() {
+                s[i] = *val;
+            }
+            s
+        };
+        data.active = {
+            let mut a = [0i8; ACTIVE_SPELL_SLOTS];
+            a[0] = 5;
+            a[2] = 10;
+            a[4] = 15;
+            a
+        };
 
         bar.update_data(data);
 
         let snapshot = bar.data.as_ref().expect("skill bar data should exist");
-        assert_eq!(snapshot.spells, [17, 18, 19, 20, 21, 22]);
-        assert_eq!(
-            snapshot.spell_active,
-            [true, false, true, false, true, false]
-        );
+        assert_eq!(snapshot.spell[0], 17);
+        assert_eq!(snapshot.spell[5], 22);
+        assert_eq!(snapshot.active[0], 5);
+        assert_eq!(snapshot.active[2], 10);
     }
 
     #[test]
@@ -494,8 +584,9 @@ mod tests {
     fn spell_snapshot_does_not_affect_top_row_clicks() {
         let mut bar = bar_at(0, 0);
         let mut data = test_data();
-        data.spells = [1, 2, 3, 4, 5, 6];
-        data.spell_active = [true; ACTIVE_SPELL_SLOTS];
+        data.spell[0] = 1;
+        data.spell[1] = 2;
+        data.active[0] = 5;
         bar.update_data(data);
 
         let resp = bar.handle_event(&UiEvent::MouseClick {
@@ -518,5 +609,19 @@ mod tests {
     fn widget_dimensions() {
         assert_eq!(SkillBar::width(), BAR_W);
         assert_eq!(SkillBar::height(), BAR_H);
+    }
+
+    #[test]
+    fn spell_pos_x_layout() {
+        let config = SkillBarConfig {
+            spell_x: 100,
+            spell_y: 200,
+            spell_width: 24,
+            spell_height: 24,
+        };
+        let bar = SkillBar::new(config);
+        assert_eq!(bar.spell_pos_x(0), 100);
+        assert_eq!(bar.spell_pos_x(1), 124);
+        assert_eq!(bar.spell_pos_x(5), 100 + 5 * 24);
     }
 }

@@ -49,10 +49,12 @@ use crate::{
         look_panel::LookPanel,
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
-        rank_arc::RankArc,
+        rank_progress_arc::RankArc,
+        rank_progress_line::RankProgressLine,
         settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
         shop_panel::ShopPanel,
         skill_bar::SkillBar,
+        skill_picker_popup::SkillPickerPopup,
         skills_panel::SkillsPanel,
         status_panel::StatusPanel,
         style::Padding,
@@ -198,7 +200,7 @@ pub struct GameScene {
     pub(super) status_panel: StatusPanel,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
-    pub(super) rank_arc: RankArc,
+    pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
@@ -208,6 +210,7 @@ pub struct GameScene {
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
     pub(super) skill_bar: SkillBar,
+    pub(super) skill_picker: SkillPickerPopup,
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -275,7 +278,7 @@ impl GameScene {
                 HUD_BUTTON_RADIUS,
                 HUD_SPRITE_IDS,
             ),
-            rank_arc: RankArc::new(HUD_ARC_CENTER_X, HUD_ARC_CENTER_Y, 30, 2),
+            rank_progress_line: RankProgressLine::new(10, TARGET_HEIGHT_INT as i32 - 8, 200, 4),
             skills_panel: SkillsPanel::new(
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
                 HUD_PANEL_BG,
@@ -317,7 +320,13 @@ impl GameScene {
                 Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
-            skill_bar: SkillBar::new(),
+            skill_bar: SkillBar::new(crate::ui::skill_bar::SkillBarConfig {
+                spell_x: 10,
+                spell_y: 10,
+                spell_width: 24,
+                spell_height: 24,
+            }),
+            skill_picker: SkillPickerPopup::new(),
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
@@ -649,7 +658,7 @@ impl GameScene {
         if self.mode_button.bounds().contains_point(mx, my) {
             return true;
         }
-        if self.rank_arc.bounds().contains_point(mx, my) {
+        if self.rank_progress_line.bounds().contains_point(mx, my) {
             return true;
         }
         if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
@@ -1088,6 +1097,12 @@ impl Scene for GameScene {
                 return None;
             }
 
+            // --- Skill picker popup (modal — must come before skill bar) ---
+            if self.skill_picker.handle_event(&ui_event) == EventResponse::Consumed {
+                self.process_skill_picker_actions(app_state);
+                return None;
+            }
+
             // --- StatusPanel toggle (upper-left sigil) ---
             if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 return None;
@@ -1468,7 +1483,7 @@ impl Scene for GameScene {
                 let ci = ps.character_info();
                 let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
                 self.status_panel.sync(ps, rank_index);
-                self.rank_arc
+                self.rank_progress_line
                     .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
                 self.mode_button.sync(ci.mode);
                 use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
@@ -1495,23 +1510,17 @@ impl Scene for GameScene {
                     selected_char: ps.selected_char(),
                 });
 
-                // Skill bar: 13 keybinds plus the first 6 spell/activity slots.
+                // Skill bar: 13 keybinds plus all 20 active spell/activity slots.
                 {
                     use crate::types::player_data::NUMBER_OF_KEYBINDS;
                     use crate::ui::skill_bar::SkillBarData;
                     let mut keybinds = [None; NUMBER_OF_KEYBINDS];
                     keybinds
                         .copy_from_slice(&ps.player_data().skill_keybinds[..NUMBER_OF_KEYBINDS]);
-                    let mut spells = [0i32; 6];
-                    let mut spell_active = [false; 6];
-                    for i in 0..6 {
-                        spells[i] = ci.spell[i];
-                        spell_active[i] = ci.active[i] > 0;
-                    }
                     self.skill_bar.update_data(SkillBarData {
                         keybinds,
-                        spells,
-                        spell_active,
+                        spell: ci.spell,
+                        active: ci.active,
                     });
                 }
 
@@ -1540,11 +1549,12 @@ impl Scene for GameScene {
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
             self.keybindings_panel.render(&mut ctx)?;
-            self.rank_arc.render(&mut ctx)?;
+            self.rank_progress_line.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
+            self.skill_picker.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
 

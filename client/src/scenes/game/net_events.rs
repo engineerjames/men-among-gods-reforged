@@ -262,7 +262,15 @@ impl GameScene {
                     }
                 }
                 WidgetAction::BeginSkillAssign { skill_id } => {
-                    self.pending_skill_assignment = Some(skill_id);
+                    // Open the skill picker popup anchored above the clicked cell.
+                    let bar = self.skill_bar.bounds();
+                    let (cx, _cy) = crate::ui::skill_bar::TOP_CELL_POSITIONS
+                        .get(skill_id)
+                        .copied()
+                        .unwrap_or((0, 0));
+                    let anchor_x = bar.x + cx;
+                    let anchor_y = bar.y - 200; // above the skill bar
+                    self.skill_picker.show(skill_id as u8, anchor_x, anchor_y);
                 }
                 WidgetAction::BindSkillKey {
                     skill_nr: 0,
@@ -285,6 +293,36 @@ impl GameScene {
                             }
                         }
                         ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                    }
+                    self.save_active_profile(app_state);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Drain pending [`WidgetAction`]s from the skill picker popup.
+    ///
+    /// A `BindSkillKey` action produced by the popup binds the chosen skill
+    /// to the target slot and saves the profile.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    pub(crate) fn process_skill_picker_actions(&mut self, app_state: &mut AppState<'_>) {
+        for action in self.skill_picker.take_actions() {
+            match action {
+                WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        // Clear any previous slot that had the same skill_nr.
+                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
+                            if *slot == Some(skill_nr) {
+                                *slot = None;
+                            }
+                        }
+                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                        let name = skills::get_skill_name(skill_nr as usize);
+                        ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);
                 }
