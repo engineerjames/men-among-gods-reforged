@@ -325,8 +325,8 @@ impl GameScene {
                 HUD_PANEL_BG,
             ),
             skill_bar: SkillBar::new(crate::ui::skill_bar::SkillBarConfig {
-                spell_x: 10,
-                spell_y: 10,
+                spell_x: 295,
+                spell_y: TARGET_HEIGHT_INT as i32 - 57,
                 spell_width: 24,
                 spell_height: 24,
             }),
