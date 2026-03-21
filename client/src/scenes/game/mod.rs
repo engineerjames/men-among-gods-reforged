@@ -647,13 +647,16 @@ impl GameScene {
     /// widget, in which case helper text should be suppressed.
     fn is_mouse_over_ui(&self) -> bool {
         let (mx, my) = (self.mouse_x, self.mouse_y);
-        if self.chat_box.bounds().contains_point(mx, my) {
+        if self.chat_box.is_focused() && self.chat_box.bounds().contains_point(mx, my) {
             return true;
         }
         if self.status_panel.bounds().contains_point(mx, my) {
             return true;
         }
         if self.hud_buttons.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.skill_bar.bounds().contains_point(mx, my) {
             return true;
         }
         if self.minimap_widget.is_visible() && self.minimap_widget.bounds().contains_point(mx, my) {
