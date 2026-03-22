@@ -130,6 +130,13 @@ async fn connect_keydb_with_retry(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install the ring crypto provider for rustls before any TLS code runs.
+    // Required when multiple crates (axum-server, lettre) both use rustls and
+    // the process-level provider cannot be auto-detected from features alone.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|_| "Failed to install rustls ring crypto provider")?;
+
     let log_level = resolve_log_level();
     let log_file = resolve_log_file();
     core::initialize_logger(log_level, log_file.as_deref())?;
