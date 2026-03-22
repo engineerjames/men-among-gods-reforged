@@ -23,7 +23,7 @@ use crate::font_cache;
 
 /// Panel dimensions.
 const PANEL_W: u32 = 350;
-const PANEL_H: u32 = 310;
+const PANEL_H: u32 = 346;
 
 /// Horizontal padding inside the panel.
 const PAD_X: i32 = 20;
@@ -82,11 +82,13 @@ pub struct NewAccountForm {
     username_input: TextInput,
     /// Password input (masked).
     password_input: TextInput,
+    /// Confirm-password input (masked).
+    confirm_password_input: TextInput,
     /// Create button.
     create_button: RectButton,
     /// Cancel button.
     cancel_button: RectButton,
-    /// Index of the currently focused text field (0–2).
+    /// Index of the currently focused text field (0–3).
     focused_field: usize,
     /// Pending actions for the scene to drain.
     actions: Vec<NewAccountFormAction>,
@@ -150,7 +152,20 @@ impl NewAccountForm {
             border_normal,
             border_focused,
         );
-        cursor_y = pw_y + INPUT_H as i32 + FIELD_GAP + 4;
+        cursor_y = pw_y + INPUT_H as i32 + FIELD_GAP;
+
+        // Confirm password
+        let confirm_pw_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
+        let confirm_password_input = TextInput::new(
+            Bounds::new(panel_x + PAD_X, confirm_pw_y, INPUT_W, INPUT_H),
+            "confirm password",
+            FONT,
+            64,
+            true,
+            border_normal,
+            border_focused,
+        );
+        cursor_y = confirm_pw_y + INPUT_H as i32 + FIELD_GAP + 4;
 
         // Buttons
         let total_btn_w = 2 * 150 + BTN_GAP as u32;
@@ -178,6 +193,7 @@ impl NewAccountForm {
             email_input,
             username_input,
             password_input,
+            confirm_password_input,
             create_button,
             cancel_button,
             focused_field: 0,
@@ -202,6 +218,11 @@ impl NewAccountForm {
     /// Returns a reference to the current password value.
     pub fn password(&self) -> &str {
         self.password_input.value()
+    }
+
+    /// Returns a reference to the current confirm-password value.
+    pub fn confirm_password(&self) -> &str {
+        self.confirm_password_input.value()
     }
 
     /// Sets the "Creating account..." status indicator.
@@ -234,8 +255,14 @@ impl NewAccountForm {
         std::mem::take(&mut self.actions)
     }
 
-    /// Pushes a Create action with the current field values.
+    /// Pushes a Create action with the current field values, after validating
+    /// that the password and confirm-password fields match.
     fn push_create_action(&mut self) {
+        if self.password_input.value() != self.confirm_password_input.value() {
+            self.error_text = Some("Passwords do not match".to_string());
+            return;
+        }
+        self.error_text = None;
         self.actions.push(NewAccountFormAction::Create {
             email: self.email_input.value().to_owned(),
             username: self.username_input.value().to_owned(),
@@ -245,14 +272,14 @@ impl NewAccountForm {
 
     /// Advances keyboard focus to the next text field.
     fn cycle_focus_forward(&mut self) {
-        self.focused_field = (self.focused_field + 1) % 3;
+        self.focused_field = (self.focused_field + 1) % 4;
         self.apply_focus();
     }
 
     /// Moves keyboard focus to the previous text field.
     fn cycle_focus_backward(&mut self) {
         self.focused_field = if self.focused_field == 0 {
-            2
+            3
         } else {
             self.focused_field - 1
         };
@@ -264,9 +291,11 @@ impl NewAccountForm {
         self.email_input.set_focused(self.focused_field == 0);
         self.username_input.set_focused(self.focused_field == 1);
         self.password_input.set_focused(self.focused_field == 2);
+        self.confirm_password_input
+            .set_focused(self.focused_field == 3);
     }
 
-    /// Returns the field index (0–2) that contains the given point, if any.
+    /// Returns the field index (0–3) that contains the given point, if any.
     fn field_index_at(&self, x: i32, y: i32) -> Option<usize> {
         if self.email_input.bounds().contains_point(x, y) {
             Some(0)
@@ -274,6 +303,8 @@ impl NewAccountForm {
             Some(1)
         } else if self.password_input.bounds().contains_point(x, y) {
             Some(2)
+        } else if self.confirm_password_input.bounds().contains_point(x, y) {
+            Some(3)
         } else {
             None
         }
@@ -340,6 +371,7 @@ impl Widget for NewAccountForm {
         self.email_input.handle_event(event);
         self.username_input.handle_event(event);
         self.password_input.handle_event(event);
+        self.confirm_password_input.handle_event(event);
 
         // Consume if inside panel.
         if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event {
@@ -358,6 +390,7 @@ impl Widget for NewAccountForm {
         self.email_input.update(dt);
         self.username_input.update(dt);
         self.password_input.update(dt);
+        self.confirm_password_input.update(dt);
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
@@ -436,6 +469,22 @@ impl Widget for NewAccountForm {
         self.password_input
             .set_position(self.bounds.x + PAD_X, cursor_y);
         self.password_input.render(ctx)?;
+        cursor_y += INPUT_H as i32 + FIELD_GAP;
+
+        // Confirm password field.
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            "Confirm Password",
+            self.bounds.x + PAD_X,
+            cursor_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
+        cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
+        self.confirm_password_input
+            .set_position(self.bounds.x + PAD_X, cursor_y);
+        self.confirm_password_input.render(ctx)?;
         cursor_y += INPUT_H as i32 + FIELD_GAP + 4;
 
         // Buttons.
@@ -496,6 +545,7 @@ mod tests {
         assert_eq!(form.email(), "");
         assert_eq!(form.username(), "");
         assert_eq!(form.password(), "");
+        assert_eq!(form.confirm_password(), "");
     }
 
     #[test]
@@ -512,6 +562,11 @@ mod tests {
             modifiers: KeyModifiers::default(),
         });
         assert_eq!(form.focused_field, 2);
+        form.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::Tab,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(form.focused_field, 3);
         form.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Tab,
             modifiers: KeyModifiers::default(),

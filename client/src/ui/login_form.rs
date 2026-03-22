@@ -211,7 +211,7 @@ impl LoginForm {
             btn_bg,
         )
         .with_border(btn_border)
-        .with_label("Reset PW", FONT);
+        .with_label("Reset Pass", FONT);
 
         let quit_button = RectButton::new(
             Bounds::new(btn_start_x + 225 + BTN_GAP * 3, cursor_y, 75, BTN_H),
