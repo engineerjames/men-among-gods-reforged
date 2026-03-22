@@ -9,9 +9,7 @@ use crate::pipelines;
 use crate::types;
 use crate::ApiState;
 
-use axum::{
-    extract::ConnectInfo, extract::Path, extract::State, http::StatusCode, Json,
-};
+use axum::{extract::ConnectInfo, extract::Path, extract::State, http::StatusCode, Json};
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
 use log::{error, info, warn};
@@ -1032,16 +1030,21 @@ pub(crate) async fn request_password_reset(
     }
 
     // ── Per-IP rate limit ────────────────────────────────────────────
+    // INCR first and check the returned value so that the check and increment
+    // are effectively atomic — avoids the TOCTOU race where concurrent requests
+    // all read the same count before any of them increments it.
     let ip_key = format!("password_reset_attempts:{}", addr.ip());
-    let attempt_count: u64 = match con.get(&ip_key).await {
+    let new_attempt_count: u64 = match redis::cmd("INCR").arg(&ip_key).query_async(&mut con).await {
         Ok(v) => v,
-        Err(_) => 0,
+        Err(_) => 1,
     };
-    if attempt_count >= MAX_RESET_ATTEMPTS_PER_IP {
-        warn!(
-            "Password reset rate limited for IP {}",
-            addr.ip()
-        );
+    let _: Result<(), _> = redis::cmd("EXPIRE")
+        .arg(&ip_key)
+        .arg(RESET_TTL_SECS)
+        .query_async(&mut con)
+        .await;
+    if new_attempt_count > MAX_RESET_ATTEMPTS_PER_IP {
+        warn!("Password reset rate limited for IP {}", addr.ip());
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(types::ResetPasswordRequestResponse {
@@ -1049,17 +1052,6 @@ pub(crate) async fn request_password_reset(
             }),
         );
     }
-
-    // Increment attempt counter regardless of match to rate-limit scanning.
-    let _: Result<(), _> = redis::cmd("INCR")
-        .arg(&ip_key)
-        .query_async(&mut con)
-        .await;
-    let _: Result<(), _> = redis::cmd("EXPIRE")
-        .arg(&ip_key)
-        .arg(RESET_TTL_SECS)
-        .query_async(&mut con)
-        .await;
 
     // ── Resolve account ──────────────────────────────────────────────
     let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
@@ -1075,13 +1067,14 @@ pub(crate) async fn request_password_reset(
     };
 
     // ── Verify email matches ─────────────────────────────────────────
-    let stored_email: Option<String> = match pipelines::get_account_email(&mut con, account_id).await {
-        Ok(v) => v,
-        Err(err) => {
-            error!("Redis read failed during password reset: {err}");
-            return (StatusCode::OK, Json(generic_ok));
-        }
-    };
+    let stored_email: Option<String> =
+        match pipelines::get_account_email(&mut con, account_id).await {
+            Ok(v) => v,
+            Err(err) => {
+                error!("Redis read failed during password reset: {err}");
+                return (StatusCode::OK, Json(generic_ok));
+            }
+        };
 
     match stored_email {
         Some(ref stored) if stored == &email_lc => {}
@@ -1210,13 +1203,20 @@ pub(crate) async fn confirm_password_reset(
     };
 
     // ── Constant-time comparison ─────────────────────────────────────
-    if stored_code.as_bytes().ct_eq(payload.code.as_bytes()).unwrap_u8() != 1 {
+    if stored_code
+        .as_bytes()
+        .ct_eq(payload.code.as_bytes())
+        .unwrap_u8()
+        != 1
+    {
         warn!("Password reset confirm: code mismatch for account {account_id}");
         return fail("Invalid or expired reset code");
     }
 
     // ── Update password ──────────────────────────────────────────────
-    if let Err(err) = pipelines::set_account_password(&mut con, account_id, &payload.new_password).await {
+    if let Err(err) =
+        pipelines::set_account_password(&mut con, account_id, &payload.new_password).await
+    {
         error!("Redis write failed during password reset: {err}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
