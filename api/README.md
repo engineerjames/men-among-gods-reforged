@@ -251,7 +251,7 @@ Once the account is created, the client can proceed to login and is then able to
 The password reset flow is a two-step process using a 6-digit code sent via e-mail.
 
 ### Prerequisites
-The API must be configured with SMTP credentials to send e-mails. If `SMTP_HOST` is not set, password reset requests will silently succeed but no code is sent.
+The API must be configured with SMTP credentials to send e-mails. If `SMTP_HOST` is not set, password reset requests will fail immediately.
 
 | Env var | Description | Default |
 |---------|-------------|---------|
