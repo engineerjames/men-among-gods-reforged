@@ -381,16 +381,9 @@ sequenceDiagram
 
 When this API is exposed outside a single host, these are the high-impact improvements to reduce risk.
 
-### Transport security (TLS)
-
-- **HTTPS for client --> API**: serve the API behind TLS (e.g. Caddy/Nginx/Traefik) so JWTs and
-    credentials never traverse the network in plaintext.
 
 ### Password handling
 
-- **Hash passwords on the server**: the API currently stores and compares the password credential
-    as provided by the client. Prefer accepting a plaintext password over TLS and hashing it on the
-    server using Argon2id (or similar), with per-user random salt.
 - **Constant-time verification**: use a password verification function that avoids timing leaks.
 - **Password policy**: enforce minimum length and reject common/breached passwords (if the game
     targets internet-facing registration).
