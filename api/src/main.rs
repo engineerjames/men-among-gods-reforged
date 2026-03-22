@@ -1,3 +1,4 @@
+pub mod email;
 pub mod helpers;
 pub mod pipelines;
 pub mod routes;
@@ -14,6 +15,18 @@ use std::env;
 use std::net::SocketAddr;
 use std::time::Duration as StdDuration;
 use tokio::time::sleep;
+
+use crate::email::EmailSender;
+
+/// Shared application state passed to all route handlers via Axum's
+/// `State` extractor.
+#[derive(Clone)]
+pub struct ApiState {
+    /// Multiplexed KeyDB connection.
+    pub con: redis::aio::MultiplexedConnection,
+    /// Optional email sender (None when SMTP is not configured).
+    pub email_sender: Option<EmailSender>,
+}
 
 fn parse_log_level(value: &str) -> Option<LevelFilter> {
     match value.to_lowercase().as_str() {
@@ -117,6 +130,13 @@ async fn connect_keydb_with_retry(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install the ring crypto provider for rustls before any TLS code runs.
+    // Required when multiple crates (axum-server, lettre) both use rustls and
+    // the process-level provider cannot be auto-detected from features alone.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|_| "Failed to install rustls ring crypto provider")?;
+
     let log_level = resolve_log_level();
     let log_file = resolve_log_file();
     core::initialize_logger(log_level, log_file.as_deref())?;
@@ -144,11 +164,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let con = connect_keydb_with_retry(&keydb_url).await?;
     info!("Connected to KeyDB");
 
+    let email_sender = EmailSender::from_env();
+    if email_sender.is_none() {
+        warn!("SMTP not configured — password reset emails will not be sent (set SMTP_HOST)");
+    }
+
+    let state = ApiState { con, email_sender };
+
     // build our application with a route
     let app = Router::new()
         // Public routes
         .route("/login", post(routes::login))
         .route("/accounts", post(routes::create_account))
+        .route(
+            "/accounts/reset-password/request",
+            post(routes::request_password_reset),
+        )
+        .route(
+            "/accounts/reset-password/confirm",
+            post(routes::confirm_password_reset),
+        )
         // Token required routes
         .route("/game/login_ticket", post(routes::create_game_login_ticket))
         .route("/characters", get(routes::get_characters))
@@ -157,7 +192,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/characters/{id}", delete(routes::delete_character))
         .layer(GovernorLayer::default())
         .layer(RealIpLayer::default())
-        .with_state(con);
+        .with_state(state);
 
     let bind_address = format!("{}:{}", resolve_api_bind_addr(), resolve_api_port());
     info!("Listening on {}", bind_address);

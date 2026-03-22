@@ -1,4 +1,5 @@
 use std::env;
+use std::net::SocketAddr;
 use std::time::Duration;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
@@ -6,14 +7,16 @@ use std::time::UNIX_EPOCH;
 use crate::helpers;
 use crate::pipelines;
 use crate::types;
+use crate::ApiState;
 
-use axum::{extract::Path, extract::State, http::StatusCode, Json};
+use axum::{extract::ConnectInfo, extract::Path, extract::State, http::StatusCode, Json};
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
 use log::{error, info, warn};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use redis::AsyncCommands;
+use subtle::ConstantTimeEq;
 
 const MAX_CHARACTERS_PER_ACCOUNT: usize = 10;
 
@@ -32,10 +35,11 @@ const MAX_CHARACTERS_PER_ACCOUNT: usize = 10;
 /// * `(StatusCode::BAD_REQUEST, default)` when the request payload is invalid.
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, default)` on KeyDB or internal failures.
 pub(crate) async fn create_new_character(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
+    State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
     Json(payload): Json<types::CreateCharacterRequest>,
 ) -> (StatusCode, Json<types::CharacterSummary>) {
+    let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
         None => {
@@ -219,9 +223,10 @@ pub(crate) async fn create_new_character(
 /// * `(StatusCode::UNAUTHORIZED, empty)` when the token is missing/invalid or the account is not found.
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, empty)` on KeyDB or internal failures.
 pub(crate) async fn get_characters(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
+    State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
 ) -> (StatusCode, Json<types::GetCharactersResponse>) {
+    let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
         None => {
@@ -284,10 +289,11 @@ pub(crate) async fn get_characters(
 /// The client uses its account JWT to mint a ticket for a specific character ID.
 /// The game server later consumes the ticket from KeyDB during the TCP login handshake.
 pub(crate) async fn create_game_login_ticket(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
+    State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
     Json(payload): Json<types::CreateGameLoginTicketRequest>,
 ) -> (StatusCode, Json<types::CreateGameLoginTicketResponse>) {
+    let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
         None => {
@@ -441,9 +447,10 @@ pub(crate) async fn create_game_login_ticket(
 /// * `(StatusCode::CONFLICT, CreateAccountResponse)` when email or username already exists.
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, CreateAccountResponse)` on KeyDB or internal failures.
 pub(crate) async fn create_account(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
+    State(state): State<ApiState>,
     Json(payload): Json<types::CreateAccountRequest>,
 ) -> (StatusCode, Json<types::CreateAccountResponse>) {
+    let mut con = state.con.clone();
     let email_lc = payload.email.trim().to_lowercase();
     let username_lc = payload.username.trim().to_lowercase();
 
@@ -606,11 +613,12 @@ pub(crate) async fn create_account(
 /// * `StatusCode::UNAUTHORIZED` when the token is missing/invalid, the account is missing, or the character is not owned.
 /// * `StatusCode::INTERNAL_SERVER_ERROR` on KeyDB or internal failures.
 pub(crate) async fn update_character(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
+    State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
     Path(character_id): Path<u64>,
     Json(payload): Json<types::UpdateCharacterRequest>,
 ) -> StatusCode {
+    let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
         None => {
@@ -763,10 +771,11 @@ pub(crate) async fn update_character(
 /// * `StatusCode::UNAUTHORIZED` when the token is missing/invalid, the account is missing, or the character is not owned.
 /// * `StatusCode::INTERNAL_SERVER_ERROR` on KeyDB or internal failures.
 pub(crate) async fn delete_character(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
+    State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
     Path(character_id): Path<u64>,
 ) -> StatusCode {
+    let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
         None => {
@@ -843,9 +852,10 @@ pub(crate) async fn delete_character(
 /// * `(StatusCode::UNAUTHORIZED, LoginResponse)` when the username is unknown or the password does not match.
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, LoginResponse)` when KeyDB fails or `API_JWT_SECRET` is missing.
 pub(crate) async fn login(
-    State(mut con): State<redis::aio::MultiplexedConnection>,
+    State(state): State<ApiState>,
     Json(payload): Json<types::LoginRequest>,
 ) -> (StatusCode, Json<types::LoginResponse>) {
+    let mut con = state.con.clone();
     let username_lc = payload.username.trim().to_lowercase();
     info!("Login request for username={}", username_lc);
     if !helpers::is_valid_password(&payload.password) {
@@ -960,4 +970,270 @@ pub(crate) async fn login(
     };
 
     (StatusCode::OK, Json(types::LoginResponse { token }))
+}
+
+/// Maximum number of password reset requests allowed per IP within the rate
+/// limit window.
+const MAX_RESET_ATTEMPTS_PER_IP: u64 = 3;
+
+/// TTL in seconds for both password reset codes and per-IP attempt counters.
+const RESET_TTL_SECS: u64 = 900;
+
+/// Initiates a password reset by sending a 6-digit code to the email on file.
+///
+/// Always returns 200 with a generic message regardless of whether the
+/// username/email matched, to prevent account enumeration.
+///
+/// # Arguments
+///
+/// * `state` - Shared application state (KeyDB + optional email sender).
+/// * `connect_info` - Client socket address used for per-IP rate limiting.
+/// * `payload` - Username and email submitted by the client.
+///
+/// # Returns
+///
+/// * `(200, message)` in all normal cases (match or mismatch).
+/// * `(429, message)` when the per-IP rate limit is exceeded.
+/// * `(503, message)` when SMTP is not configured.
+pub(crate) async fn request_password_reset(
+    State(state): State<ApiState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(payload): Json<types::ResetPasswordRequest>,
+) -> (StatusCode, Json<types::ResetPasswordRequestResponse>) {
+    let mut con = state.con.clone();
+
+    let generic_ok = types::ResetPasswordRequestResponse {
+        message: "If an account with that username and email exists, a reset code has been sent."
+            .to_string(),
+    };
+
+    // ── Validate SMTP availability ───────────────────────────────────
+    let email_sender = match &state.email_sender {
+        Some(sender) => sender.clone(),
+        None => {
+            warn!("Password reset requested but SMTP is not configured");
+            return (
+                StatusCode::SERVICE_UNAVAILABLE,
+                Json(types::ResetPasswordRequestResponse {
+                    message: "Password reset is not available at this time.".to_string(),
+                }),
+            );
+        }
+    };
+
+    // ── Validate input ───────────────────────────────────────────────
+    let username_lc = payload.username.trim().to_lowercase();
+    let email_lc = payload.email.trim().to_lowercase();
+
+    if username_lc.is_empty() || email_lc.is_empty() {
+        return (StatusCode::OK, Json(generic_ok));
+    }
+
+    // ── Per-IP rate limit ────────────────────────────────────────────
+    // INCR first and check the returned value so that the check and increment
+    // are effectively atomic — avoids the TOCTOU race where concurrent requests
+    // all read the same count before any of them increments it.
+    let ip_key = format!("password_reset_attempts:{}", addr.ip());
+    let new_attempt_count: u64 = match redis::cmd("INCR").arg(&ip_key).query_async(&mut con).await {
+        Ok(v) => v,
+        Err(_) => 1,
+    };
+    let _: Result<(), _> = redis::cmd("EXPIRE")
+        .arg(&ip_key)
+        .arg(RESET_TTL_SECS)
+        .query_async(&mut con)
+        .await;
+    if new_attempt_count > MAX_RESET_ATTEMPTS_PER_IP {
+        warn!("Password reset rate limited for IP {}", addr.ip());
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(types::ResetPasswordRequestResponse {
+                message: "Too many reset attempts. Please try again later.".to_string(),
+            }),
+        );
+    }
+
+    // ── Resolve account ──────────────────────────────────────────────
+    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            info!("Password reset: username not found (generic OK returned)");
+            return (StatusCode::OK, Json(generic_ok));
+        }
+        Err(err) => {
+            error!("Redis read failed during password reset: {err}");
+            return (StatusCode::OK, Json(generic_ok));
+        }
+    };
+
+    // ── Verify email matches ─────────────────────────────────────────
+    let stored_email: Option<String> =
+        match pipelines::get_account_email(&mut con, account_id).await {
+            Ok(v) => v,
+            Err(err) => {
+                error!("Redis read failed during password reset: {err}");
+                return (StatusCode::OK, Json(generic_ok));
+            }
+        };
+
+    match stored_email {
+        Some(ref stored) if stored == &email_lc => {}
+        _ => {
+            info!("Password reset: email mismatch (generic OK returned)");
+            return (StatusCode::OK, Json(generic_ok));
+        }
+    }
+
+    // ── Generate 6-digit code ────────────────────────────────────────
+    let code = format!("{:06}", OsRng.next_u32() % 1_000_000);
+
+    // ── Store in KeyDB (one active per account) ──────────────────────
+    let reset_key = format!("password_reset:{}", account_id);
+    let _: Result<(), _> = con.del(&reset_key).await;
+    let _: Result<(), _> = redis::cmd("HSET")
+        .arg(&reset_key)
+        .arg("code")
+        .arg(&code)
+        .arg("created_at")
+        .arg(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::from_secs(0))
+                .as_secs(),
+        )
+        .query_async::<()>(&mut con)
+        .await;
+    let _: Result<(), _> = redis::cmd("EXPIRE")
+        .arg(&reset_key)
+        .arg(RESET_TTL_SECS)
+        .query_async::<()>(&mut con)
+        .await;
+
+    // ── Send email (log failure but return success to prevent enumeration) ─
+    if let Err(err) = email_sender.send_reset_code(&email_lc, &code).await {
+        error!("Failed to send password reset email: {err}");
+    }
+
+    info!("Password reset code issued for account {account_id}");
+    (StatusCode::OK, Json(generic_ok))
+}
+
+/// Confirms a password reset using the emailed 6-digit code.
+///
+/// # Arguments
+///
+/// * `state` - Shared application state (KeyDB connection).
+/// * `payload` - Username, 6-digit code, and new password (Argon2 PHC hash).
+///
+/// # Returns
+///
+/// * `(200, message)` on success.
+/// * `(400, message)` when the code is invalid, expired, or the password format is wrong.
+/// * `(500, message)` on internal failure.
+pub(crate) async fn confirm_password_reset(
+    State(state): State<ApiState>,
+    Json(payload): Json<types::ResetPasswordConfirm>,
+) -> (StatusCode, Json<types::ResetPasswordConfirmResponse>) {
+    let mut con = state.con.clone();
+
+    let fail = |msg: &str| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(types::ResetPasswordConfirmResponse {
+                message: msg.to_string(),
+            }),
+        )
+    };
+
+    // ── Validate inputs ──────────────────────────────────────────────
+    if !helpers::is_valid_password(&payload.new_password) {
+        warn!("Password reset confirm rejected: invalid password format");
+        return fail("Invalid password format");
+    }
+
+    if !helpers::is_valid_reset_code(&payload.code) {
+        warn!("Password reset confirm rejected: invalid code format");
+        return fail("Invalid or expired reset code");
+    }
+
+    let username_lc = payload.username.trim().to_lowercase();
+    if username_lc.is_empty() {
+        return fail("Invalid or expired reset code");
+    }
+
+    // ── Resolve account ──────────────────────────────────────────────
+    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
+        Ok(Some(id)) => id,
+        Ok(None) => {
+            warn!("Password reset confirm: username not found");
+            return fail("Invalid or expired reset code");
+        }
+        Err(err) => {
+            error!("Redis read failed during password reset confirm: {err}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::ResetPasswordConfirmResponse {
+                    message: "Server error".to_string(),
+                }),
+            );
+        }
+    };
+
+    // ── Retrieve stored code ─────────────────────────────────────────
+    let reset_key = format!("password_reset:{}", account_id);
+    let stored_code: Option<String> = match con.hget(&reset_key, "code").await {
+        Ok(v) => v,
+        Err(err) => {
+            error!("Redis read failed during password reset confirm: {err}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::ResetPasswordConfirmResponse {
+                    message: "Server error".to_string(),
+                }),
+            );
+        }
+    };
+
+    let stored_code = match stored_code {
+        Some(c) => c,
+        None => {
+            warn!("Password reset confirm: no active reset code for account {account_id}");
+            return fail("Invalid or expired reset code");
+        }
+    };
+
+    // ── Constant-time comparison ─────────────────────────────────────
+    if stored_code
+        .as_bytes()
+        .ct_eq(payload.code.as_bytes())
+        .unwrap_u8()
+        != 1
+    {
+        warn!("Password reset confirm: code mismatch for account {account_id}");
+        return fail("Invalid or expired reset code");
+    }
+
+    // ── Update password ──────────────────────────────────────────────
+    if let Err(err) =
+        pipelines::set_account_password(&mut con, account_id, &payload.new_password).await
+    {
+        error!("Redis write failed during password reset: {err}");
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(types::ResetPasswordConfirmResponse {
+                message: "Server error".to_string(),
+            }),
+        );
+    }
+
+    // ── Consume the token ────────────────────────────────────────────
+    let _: Result<(), _> = con.del(&reset_key).await;
+
+    info!("Password successfully reset for account {account_id}");
+    (
+        StatusCode::OK,
+        Json(types::ResetPasswordConfirmResponse {
+            message: "Password has been reset successfully.".to_string(),
+        }),
+    )
 }

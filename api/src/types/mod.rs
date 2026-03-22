@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 pub use core::types::api::{
     CharacterSummary, CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
-    LoginRequest, LoginResponse,
+    LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,
+    ResetPasswordRequest, ResetPasswordRequestResponse,
 };
 
 #[derive(Deserialize, Serialize)]

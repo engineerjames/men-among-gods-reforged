@@ -111,6 +111,17 @@ pub(crate) fn is_valid_password(password: &str) -> bool {
     ARGON2_RE.is_match(password)
 }
 
+/// Validates that a password reset code is exactly 6 ASCII digits.
+///
+/// # Arguments
+/// * `code` - The reset code to validate.
+///
+/// # Returns
+/// * `true` if the code is valid, `false` otherwise.
+pub(crate) fn is_valid_reset_code(code: &str) -> bool {
+    code.len() == 6 && code.chars().all(|c| c.is_ascii_digit())
+}
+
 pub(crate) const MAX_DESCRIPTION_LEN: usize = 200;
 
 pub(crate) fn default_character_description(name: &str) -> String {
@@ -164,7 +175,7 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
 mod tests {
     use super::{
         default_character_description, get_token_from_headers, is_valid_email_regex,
-        is_valid_password, is_valid_username, validate_character_description,
+        is_valid_password, is_valid_reset_code, is_valid_username, validate_character_description,
     };
     use crate::types;
     use jsonwebtoken::{EncodingKey, Header};
@@ -403,5 +414,22 @@ mod tests {
         let name = "TestHero";
         let desc = default_character_description(name);
         assert!(validate_character_description(name, &desc).is_ok());
+    }
+
+    #[test]
+    fn reset_code_accepts_six_digits() {
+        assert!(is_valid_reset_code("000000"));
+        assert!(is_valid_reset_code("123456"));
+        assert!(is_valid_reset_code("999999"));
+    }
+
+    #[test]
+    fn reset_code_rejects_invalid() {
+        assert!(!is_valid_reset_code(""));
+        assert!(!is_valid_reset_code("12345"));
+        assert!(!is_valid_reset_code("1234567"));
+        assert!(!is_valid_reset_code("abcdef"));
+        assert!(!is_valid_reset_code("12345a"));
+        assert!(!is_valid_reset_code("12 345"));
     }
 }

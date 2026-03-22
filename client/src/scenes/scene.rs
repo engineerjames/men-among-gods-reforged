@@ -38,6 +38,8 @@ pub enum SceneType {
     CharacterSelection,
     Game,
     NewAccount,
+    RequestReset,
+    EnterResetCode,
     Exit,
 }
 
@@ -70,6 +72,16 @@ impl SceneManager {
         scene_map.insert(
             SceneType::NewAccount,
             Box::new(crate::scenes::new_account::NewAccountScene::new()),
+        );
+
+        scene_map.insert(
+            SceneType::RequestReset,
+            Box::new(crate::scenes::request_reset::RequestResetScene::new()),
+        );
+
+        scene_map.insert(
+            SceneType::EnterResetCode,
+            Box::new(crate::scenes::enter_reset_code::EnterResetCodeScene::new()),
         );
 
         scene_map.insert(

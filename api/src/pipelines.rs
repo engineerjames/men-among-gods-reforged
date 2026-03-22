@@ -248,6 +248,48 @@ pub(crate) async fn get_account_password_hash(
     con.hget(&account_key, "password").await
 }
 
+/// Retrieves the stored email for an account.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `account_id` - Account ID whose email field should be read.
+///
+/// # Returns
+/// * `Ok(Some(email))` if present.
+/// * `Ok(None)` if missing.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn get_account_email(
+    con: &mut redis::aio::MultiplexedConnection,
+    account_id: u64,
+) -> Result<Option<String>, redis::RedisError> {
+    let account_key = format!("account:{}", account_id);
+    con.hget(&account_key, "email").await
+}
+
+/// Updates the password field on an account hash.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `account_id` - Account ID whose password should be updated.
+/// * `new_password` - New password credential to store.
+///
+/// # Returns
+/// * `Ok(())` on success.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn set_account_password(
+    con: &mut redis::aio::MultiplexedConnection,
+    account_id: u64,
+    new_password: &str,
+) -> Result<(), redis::RedisError> {
+    let account_key = format!("account:{}", account_id);
+    redis::cmd("HSET")
+        .arg(&account_key)
+        .arg("password")
+        .arg(new_password)
+        .query_async::<()>(&mut *con)
+        .await
+}
+
 /// Inserts a new character hash owned by an account.
 ///
 /// Allocates an ID via `INCR character:next_id`, then writes the character fields via a

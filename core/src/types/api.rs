@@ -124,3 +124,30 @@ impl CreateCharacterRequest {
         true
     }
 }
+
+/// Request to initiate a password reset by providing username and email.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResetPasswordRequest {
+    pub username: String,
+    pub email: String,
+}
+
+/// Response to a password reset request.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResetPasswordRequestResponse {
+    pub message: String,
+}
+
+/// Confirms a password reset using the emailed code and a new password.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResetPasswordConfirm {
+    pub username: String,
+    pub code: String,
+    pub new_password: String,
+}
+
+/// Response to a password reset confirmation.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ResetPasswordConfirmResponse {
+    pub message: String,
+}

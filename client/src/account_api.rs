@@ -12,7 +12,8 @@ pub use mag_core::types::api::CharacterSummary;
 use mag_core::types::api::{
     CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
-    LoginRequest, LoginResponse,
+    LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,
+    ResetPasswordRequest, ResetPasswordRequestResponse,
 };
 
 /// Build an HTTP client that uses TOFU certificate verification for HTTPS
@@ -350,4 +351,122 @@ pub fn create_game_login_ticket(
     };
 
     Err(body.error.unwrap_or_else(|| fallback.to_string()))
+}
+
+/// Requests a password reset code to be sent to the account's email.
+///
+/// The API always returns a generic success message regardless of whether
+/// the account or email matched, to avoid information leakage.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+/// * `username` - Account username.
+/// * `email` - Email address associated with the account.
+///
+/// # Returns
+/// * `Ok(message)` - Generic success message from the API.
+/// * `Err(String)` when the request fails.
+pub fn request_password_reset(
+    base_url: &str,
+    username: &str,
+    email: &str,
+) -> Result<String, String> {
+    log::info!(
+        "Requesting password reset using API at {} for username '{}'",
+        base_url,
+        username,
+    );
+    let client = build_http_client()?;
+
+    let url = format!(
+        "{}/accounts/reset-password/request",
+        base_url.trim_end_matches('/')
+    );
+    let resp = client
+        .post(url)
+        .json(&ResetPasswordRequest {
+            username: username.to_string(),
+            email: email.to_string(),
+        })
+        .send()
+        .map_err(|err| format!("Password reset request failed: {err}"))?;
+
+    let status = resp.status();
+    let body: ResetPasswordRequestResponse = resp
+        .json()
+        .map_err(|err| format!("Failed to parse reset request response: {err}"))?;
+
+    if status.is_success() {
+        return Ok(body.message);
+    }
+
+    let fallback = match status {
+        StatusCode::TOO_MANY_REQUESTS => "Too many reset attempts, please try again later",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Password reset request failed",
+    };
+
+    Err(fallback.to_string())
+}
+
+/// Confirms a password reset by submitting the 6-digit code and new password.
+///
+/// The new password is hashed client-side (Argon2, deterministic salt from
+/// username) before being sent, matching the account creation flow.
+///
+/// # Arguments
+/// * `base_url` - API base URL.
+/// * `username` - Account username.
+/// * `code` - 6-digit reset code received via email.
+/// * `new_password` - New raw password input.
+///
+/// # Returns
+/// * `Ok(message)` on success.
+/// * `Err(String)` when validation or the request fails.
+pub fn confirm_password_reset(
+    base_url: &str,
+    username: &str,
+    code: &str,
+    new_password: &str,
+) -> Result<String, String> {
+    log::info!(
+        "Confirming password reset using API at {} for username '{}'",
+        base_url,
+        username,
+    );
+    let password_hash = hash_password(username, new_password)?;
+    let client = build_http_client()?;
+
+    let url = format!(
+        "{}/accounts/reset-password/confirm",
+        base_url.trim_end_matches('/')
+    );
+    let resp = client
+        .post(url)
+        .json(&ResetPasswordConfirm {
+            username: username.to_string(),
+            code: code.to_string(),
+            new_password: password_hash,
+        })
+        .send()
+        .map_err(|err| format!("Password reset confirm request failed: {err}"))?;
+
+    let status = resp.status();
+    let body: ResetPasswordConfirmResponse = resp
+        .json()
+        .map_err(|err| format!("Failed to parse reset confirm response: {err}"))?;
+
+    if status.is_success() {
+        return Ok(body.message);
+    }
+
+    let fallback = match status {
+        StatusCode::BAD_REQUEST => "Invalid request",
+        StatusCode::UNAUTHORIZED => "Invalid or expired reset code",
+        StatusCode::TOO_MANY_REQUESTS => "Too many attempts, please try again later",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Password reset failed",
+    };
+
+    Err(fallback.to_string())
 }

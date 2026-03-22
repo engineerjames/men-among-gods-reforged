@@ -1,8 +1,8 @@
-//! Composite new-account registration form widget.
+//! Composite password-reset request form widget.
 //!
-//! Contains text inputs for e-mail, username and password, plus Create and
-//! Cancel buttons.  The owning scene reads pending [`NewAccountFormAction`]s
-//! via [`NewAccountForm::take_actions`].
+//! Contains text inputs for username and e-mail, plus Submit and Cancel
+//! buttons.  The owning scene reads pending [`RequestResetFormAction`]s
+//! via [`RequestResetForm::take_actions`].
 
 use std::time::Duration;
 
@@ -23,12 +23,12 @@ use crate::font_cache;
 
 /// Panel dimensions.
 const PANEL_W: u32 = 350;
-const PANEL_H: u32 = 346;
+const PANEL_H: u32 = 260;
 
 /// Horizontal padding inside the panel.
 const PAD_X: i32 = 20;
 
-/// Width of the three text input fields.
+/// Width of the text input fields.
 const INPUT_W: u32 = PANEL_W - (PAD_X as u32) * 2;
 
 /// Height of each text input field.
@@ -53,17 +53,15 @@ const FONT: usize = 1;
 // Actions
 // ---------------------------------------------------------------------------
 
-/// A side-effect produced by the new-account form for the owning scene.
+/// A side-effect produced by the reset-request form for the owning scene.
 #[derive(Clone, Debug)]
-pub enum NewAccountFormAction {
-    /// User pressed Create (or hit Enter).
-    Create {
-        /// E-mail address.
-        email: String,
+pub enum RequestResetFormAction {
+    /// User pressed Submit (or hit Enter).
+    Submit {
         /// Account username.
         username: String,
-        /// Account password (plain-text; the scene hashes before sending).
-        password: String,
+        /// E-mail address associated with the account.
+        email: String,
     },
     /// User pressed Cancel.
     Cancel,
@@ -73,37 +71,35 @@ pub enum NewAccountFormAction {
 // Widget
 // ---------------------------------------------------------------------------
 
-/// The new-account registration form panel.
-pub struct NewAccountForm {
+/// The password-reset request form panel.
+pub struct RequestResetForm {
     bounds: Bounds,
-    /// E-mail input.
-    email_input: TextInput,
     /// Username input.
     username_input: TextInput,
-    /// Password input (masked).
-    password_input: TextInput,
-    /// Confirm-password input (masked).
-    confirm_password_input: TextInput,
-    /// Create button.
-    create_button: RectButton,
+    /// E-mail input.
+    email_input: TextInput,
+    /// Submit button.
+    submit_button: RectButton,
     /// Cancel button.
     cancel_button: RectButton,
-    /// Index of the currently focused text field (0–3).
+    /// Index of the currently focused text field (0–1).
     focused_field: usize,
     /// Pending actions for the scene to drain.
-    actions: Vec<NewAccountFormAction>,
-    /// Whether to show the "Creating account..." status.
+    actions: Vec<RequestResetFormAction>,
+    /// Whether to show the "Sending..." status.
     show_submitting: bool,
     /// Optional error message text.
     error_text: Option<String>,
+    /// Optional success/info message text.
+    info_text: Option<String>,
 }
 
-impl NewAccountForm {
-    /// Creates a new account form, centerd on screen.
+impl RequestResetForm {
+    /// Creates a new request-reset form, centered on screen.
     ///
     /// # Returns
     ///
-    /// A fully-initialised `NewAccountForm`.
+    /// A fully-initialised `RequestResetForm`.
     pub fn new() -> Self {
         let panel_x = (crate::constants::TARGET_WIDTH_INT - PANEL_W) as i32 / 2;
         let panel_y = (crate::constants::TARGET_HEIGHT_INT - PANEL_H) as i32 / 2;
@@ -114,19 +110,6 @@ impl NewAccountForm {
         let border_focused = Color::RGBA(180, 180, 255, 255);
 
         let mut cursor_y = panel_y + 30; // room for title
-
-        // E-mail
-        let email_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        let email_input = TextInput::new(
-            Bounds::new(panel_x + PAD_X, email_y, INPUT_W, INPUT_H),
-            "e-mail address",
-            FONT,
-            128,
-            false,
-            border_normal,
-            border_focused,
-        );
-        cursor_y = email_y + INPUT_H as i32 + FIELD_GAP;
 
         // Username
         let user_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
@@ -141,31 +124,18 @@ impl NewAccountForm {
         );
         cursor_y = user_y + INPUT_H as i32 + FIELD_GAP;
 
-        // Password
-        let pw_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        let password_input = TextInput::new(
-            Bounds::new(panel_x + PAD_X, pw_y, INPUT_W, INPUT_H),
-            "password",
+        // E-mail
+        let email_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
+        let email_input = TextInput::new(
+            Bounds::new(panel_x + PAD_X, email_y, INPUT_W, INPUT_H),
+            "e-mail address",
             FONT,
-            64,
-            true,
+            128,
+            false,
             border_normal,
             border_focused,
         );
-        cursor_y = pw_y + INPUT_H as i32 + FIELD_GAP;
-
-        // Confirm password
-        let confirm_pw_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        let confirm_password_input = TextInput::new(
-            Bounds::new(panel_x + PAD_X, confirm_pw_y, INPUT_W, INPUT_H),
-            "confirm password",
-            FONT,
-            64,
-            true,
-            border_normal,
-            border_focused,
-        );
-        cursor_y = confirm_pw_y + INPUT_H as i32 + FIELD_GAP + 4;
+        cursor_y = email_y + INPUT_H as i32 + FIELD_GAP + 4;
 
         // Buttons
         let total_btn_w = 2 * 150 + BTN_GAP as u32;
@@ -177,9 +147,10 @@ impl NewAccountForm {
             width: 1,
         };
 
-        let create_button = RectButton::new(Bounds::new(btn_start_x, cursor_y, 150, BTN_H), btn_bg)
-            .with_border(btn_border)
-            .with_label("Create", FONT);
+        let submit_button =
+            RectButton::new(Bounds::new(btn_start_x, cursor_y, 150, BTN_H), btn_bg)
+                .with_border(btn_border)
+                .with_label("Send Code", FONT);
 
         let cancel_button = RectButton::new(
             Bounds::new(btn_start_x + 150 + BTN_GAP, cursor_y, 150, BTN_H),
@@ -190,24 +161,18 @@ impl NewAccountForm {
 
         let mut form = Self {
             bounds,
-            email_input,
             username_input,
-            password_input,
-            confirm_password_input,
-            create_button,
+            email_input,
+            submit_button,
             cancel_button,
             focused_field: 0,
             actions: Vec::new(),
             show_submitting: false,
             error_text: None,
+            info_text: None,
         };
         form.apply_focus();
         form
-    }
-
-    /// Returns a reference to the current e-mail value.
-    pub fn email(&self) -> &str {
-        self.email_input.value()
     }
 
     /// Returns a reference to the current username value.
@@ -215,17 +180,12 @@ impl NewAccountForm {
         self.username_input.value()
     }
 
-    /// Returns a reference to the current password value.
-    pub fn password(&self) -> &str {
-        self.password_input.value()
+    /// Returns a reference to the current e-mail value.
+    pub fn email(&self) -> &str {
+        self.email_input.value()
     }
 
-    /// Returns a reference to the current confirm-password value.
-    pub fn confirm_password(&self) -> &str {
-        self.confirm_password_input.value()
-    }
-
-    /// Sets the "Creating account..." status indicator.
+    /// Sets the "Sending..." status indicator.
     ///
     /// # Arguments
     ///
@@ -234,6 +194,7 @@ impl NewAccountForm {
         self.show_submitting = submitting;
         if submitting {
             self.error_text = None;
+            self.info_text = None;
         }
     }
 
@@ -246,72 +207,67 @@ impl NewAccountForm {
         self.error_text = msg;
     }
 
-    /// Drains pending [`NewAccountFormAction`]s.
+    /// Sets or clears the info/success message.
+    ///
+    /// # Arguments
+    ///
+    /// * `msg` - Info text, or `None` to clear.
+    pub fn set_info(&mut self, msg: Option<String>) {
+        self.info_text = msg;
+    }
+
+    /// Drains pending [`RequestResetFormAction`]s.
     ///
     /// # Returns
     ///
     /// A vector of actions produced since the last call.
-    pub fn take_actions(&mut self) -> Vec<NewAccountFormAction> {
+    pub fn take_actions(&mut self) -> Vec<RequestResetFormAction> {
         std::mem::take(&mut self.actions)
     }
 
-    /// Pushes a Create action with the current field values, after validating
-    /// that the password and confirm-password fields match.
-    fn push_create_action(&mut self) {
-        if self.password_input.value() != self.confirm_password_input.value() {
-            self.error_text = Some("Passwords do not match".to_string());
-            return;
-        }
-        self.error_text = None;
-        self.actions.push(NewAccountFormAction::Create {
-            email: self.email_input.value().to_owned(),
+    /// Pushes a Submit action with the current field values.
+    fn push_submit_action(&mut self) {
+        self.actions.push(RequestResetFormAction::Submit {
             username: self.username_input.value().to_owned(),
-            password: self.password_input.value().to_owned(),
+            email: self.email_input.value().to_owned(),
         });
     }
 
     /// Advances keyboard focus to the next text field.
     fn cycle_focus_forward(&mut self) {
-        self.focused_field = (self.focused_field + 1) % 4;
+        self.focused_field = (self.focused_field + 1) % 2;
         self.apply_focus();
     }
 
     /// Moves keyboard focus to the previous text field.
     fn cycle_focus_backward(&mut self) {
         self.focused_field = if self.focused_field == 0 {
-            3
+            1
         } else {
-            self.focused_field - 1
+            0
         };
         self.apply_focus();
     }
 
     /// Synchronises `set_focused` on all text inputs.
     fn apply_focus(&mut self) {
-        self.email_input.set_focused(self.focused_field == 0);
-        self.username_input.set_focused(self.focused_field == 1);
-        self.password_input.set_focused(self.focused_field == 2);
-        self.confirm_password_input
-            .set_focused(self.focused_field == 3);
+        self.username_input.set_focused(self.focused_field == 0);
+        self.email_input.set_focused(self.focused_field == 1);
     }
 
-    /// Returns the field index (0–3) that contains the given point, if any.
+    /// Returns the field index (0–1) that contains the given point, if any.
     fn field_index_at(&self, x: i32, y: i32) -> Option<usize> {
-        if self.email_input.bounds().contains_point(x, y) {
+        if self.username_input.bounds().contains_point(x, y) {
             Some(0)
-        } else if self.username_input.bounds().contains_point(x, y) {
+        } else if self.email_input.bounds().contains_point(x, y) {
             Some(1)
-        } else if self.password_input.bounds().contains_point(x, y) {
-            Some(2)
-        } else if self.confirm_password_input.bounds().contains_point(x, y) {
-            Some(3)
         } else {
             None
         }
     }
 }
 
-impl Widget for NewAccountForm {
+impl Widget for RequestResetForm {
     fn bounds(&self) -> &Bounds {
         &self.bounds
     }
@@ -336,7 +292,7 @@ impl Widget for NewAccountForm {
                     return EventResponse::Consumed;
                 }
                 Keycode::Return | Keycode::KpEnter => {
-                    self.push_create_action();
+                    self.push_submit_action();
                     return EventResponse::Consumed;
                 }
                 _ => {}
@@ -358,20 +314,18 @@ impl Widget for NewAccountForm {
         }
 
         // Forward to buttons.
-        if self.create_button.handle_event(event) == EventResponse::Consumed {
-            self.push_create_action();
+        if self.submit_button.handle_event(event) == EventResponse::Consumed {
+            self.push_submit_action();
             return EventResponse::Consumed;
         }
         if self.cancel_button.handle_event(event) == EventResponse::Consumed {
-            self.actions.push(NewAccountFormAction::Cancel);
+            self.actions.push(RequestResetFormAction::Cancel);
             return EventResponse::Consumed;
         }
 
         // Forward to text inputs.
-        self.email_input.handle_event(event);
         self.username_input.handle_event(event);
-        self.password_input.handle_event(event);
-        self.confirm_password_input.handle_event(event);
+        self.email_input.handle_event(event);
 
         // Consume if inside panel.
         if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event {
@@ -387,10 +341,8 @@ impl Widget for NewAccountForm {
     }
 
     fn update(&mut self, dt: Duration) {
-        self.email_input.update(dt);
         self.username_input.update(dt);
-        self.password_input.update(dt);
-        self.confirm_password_input.update(dt);
+        self.email_input.update(dt);
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
@@ -408,7 +360,7 @@ impl Widget for NewAccountForm {
         ctx.canvas.draw_rect(panel_rect)?;
 
         // Title.
-        let title = "Create Account";
+        let title = "Reset Password";
         let title_cx = self.bounds.x + self.bounds.width as i32 / 2;
         let title_y = self.bounds.y + 10;
         font_cache::draw_text(
@@ -422,22 +374,6 @@ impl Widget for NewAccountForm {
         )?;
 
         let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 8;
-
-        // E-mail field.
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            FONT,
-            "E-mail",
-            self.bounds.x + PAD_X,
-            cursor_y,
-            font_cache::TextStyle::PLAIN,
-        )?;
-        cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        self.email_input
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.email_input.render(ctx)?;
-        cursor_y += INPUT_H as i32 + FIELD_GAP;
 
         // Username field.
         font_cache::draw_text(
@@ -455,58 +391,54 @@ impl Widget for NewAccountForm {
         self.username_input.render(ctx)?;
         cursor_y += INPUT_H as i32 + FIELD_GAP;
 
-        // Password field.
+        // E-mail field.
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
-            "Password",
+            "E-mail",
             self.bounds.x + PAD_X,
             cursor_y,
             font_cache::TextStyle::PLAIN,
         )?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        self.password_input
+        self.email_input
             .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.password_input.render(ctx)?;
-        cursor_y += INPUT_H as i32 + FIELD_GAP;
-
-        // Confirm password field.
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            FONT,
-            "Confirm Password",
-            self.bounds.x + PAD_X,
-            cursor_y,
-            font_cache::TextStyle::PLAIN,
-        )?;
-        cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        self.confirm_password_input
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.confirm_password_input.render(ctx)?;
+        self.email_input.render(ctx)?;
         cursor_y += INPUT_H as i32 + FIELD_GAP + 4;
 
         // Buttons.
         let total_btn_w: i32 = 2 * 150 + BTN_GAP;
         let btn_x = self.bounds.x + (self.bounds.width as i32 - total_btn_w) / 2;
-        self.create_button.set_position(btn_x, cursor_y);
+        self.submit_button.set_position(btn_x, cursor_y);
         self.cancel_button
             .set_position(btn_x + 150 + BTN_GAP, cursor_y);
-        self.create_button.render(ctx)?;
+        self.submit_button.render(ctx)?;
         self.cancel_button.render(ctx)?;
         cursor_y += BTN_H as i32 + 8;
 
-        // Status / error labels.
+        // Status / error / info labels.
         if self.show_submitting {
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
-                "Creating account...",
+                "Sending reset code...",
                 self.bounds.x + PAD_X,
                 cursor_y,
                 font_cache::TextStyle::tinted(Color::RGB(180, 180, 255)),
+            )?;
+        }
+
+        if let Some(ref info) = self.info_text {
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                FONT,
+                info,
+                self.bounds.x + PAD_X,
+                cursor_y,
+                font_cache::TextStyle::tinted(Color::RGB(120, 255, 120)),
             )?;
         }
 
@@ -535,17 +467,15 @@ mod tests {
     use super::*;
     use crate::ui::widget::KeyModifiers;
 
-    fn make_form() -> NewAccountForm {
-        NewAccountForm::new()
+    fn make_form() -> RequestResetForm {
+        RequestResetForm::new()
     }
 
     #[test]
     fn initial_values_empty() {
         let form = make_form();
-        assert_eq!(form.email(), "");
         assert_eq!(form.username(), "");
-        assert_eq!(form.password(), "");
-        assert_eq!(form.confirm_password(), "");
+        assert_eq!(form.email(), "");
     }
 
     #[test]
@@ -561,21 +491,11 @@ mod tests {
             keycode: Keycode::Tab,
             modifiers: KeyModifiers::default(),
         });
-        assert_eq!(form.focused_field, 2);
-        form.handle_event(&UiEvent::KeyDown {
-            keycode: Keycode::Tab,
-            modifiers: KeyModifiers::default(),
-        });
-        assert_eq!(form.focused_field, 3);
-        form.handle_event(&UiEvent::KeyDown {
-            keycode: Keycode::Tab,
-            modifiers: KeyModifiers::default(),
-        });
         assert_eq!(form.focused_field, 0);
     }
 
     #[test]
-    fn enter_pushes_create_action() {
+    fn enter_pushes_submit_action() {
         let mut form = make_form();
         form.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Return,
@@ -583,7 +503,7 @@ mod tests {
         });
         let actions = form.take_actions();
         assert_eq!(actions.len(), 1);
-        assert!(matches!(actions[0], NewAccountFormAction::Create { .. }));
+        assert!(matches!(actions[0], RequestResetFormAction::Submit { .. }));
     }
 
     #[test]
