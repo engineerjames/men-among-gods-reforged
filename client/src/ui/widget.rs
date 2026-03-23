@@ -249,7 +249,7 @@ pub enum WidgetAction {
         /// The skilltab index of the skill to assign.
         skill_id: usize,
     },
-    /// Bind a skill to a CTRL+key slot (1-9).
+    /// Bind a skill to a numeric key slot (1–9).
     BindSkillKey {
         /// The protocol skill number to bind.
         skill_nr: usize,

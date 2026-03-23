@@ -52,6 +52,10 @@ const HOVER_COLOR: Color = Color::RGBA(60, 60, 120, 180);
 /// Normal text tint.
 const TEXT_COLOR: Color = Color::RGB(200, 200, 220);
 
+/// Offset from the skill bar cell vertically
+/// (negative = above, positive = below).
+pub const ANCHOR_Y_OFFSET: i32 = -20;
+
 // ---------------------------------------------------------------------------
 // Bindable skills allow-list
 // ---------------------------------------------------------------------------

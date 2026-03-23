@@ -229,7 +229,7 @@ impl GameScene {
                     app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let name = skills::get_skill_name(skill_nr);
-                        ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
+                        ps.tlog(1, &format!("Bound {} to key {}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);
                 }
@@ -273,7 +273,7 @@ impl GameScene {
                         .copied()
                         .unwrap_or((0, 0));
                     let anchor_x = bar.x + cx;
-                    let anchor_y = bar.y - 200; // above the skill bar
+                    let anchor_y = bar.y + crate::ui::skill_picker_popup::ANCHOR_Y_OFFSET; // above the skill bar
                     let player_skills = app_state
                         .player_state
                         .as_ref()
@@ -328,7 +328,7 @@ impl GameScene {
                     app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let name = skills::get_skill_name(skill_nr);
-                        ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
+                        ps.tlog(1, &format!("Bound {} to key {}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);
                 }
