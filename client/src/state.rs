@@ -1,6 +1,10 @@
 use crate::{
-    gfx_cache::GraphicsCache, network::NetworkRuntime, player_state::PlayerState,
-    preferences::DisplayMode, sfx_cache::SoundCache, ui::panning_background::PanningBackground,
+    gfx_cache::GraphicsCache,
+    network::NetworkRuntime,
+    player_state::PlayerState,
+    preferences::{DisplayMode, Settings},
+    sfx_cache::SoundCache,
+    ui::panning_background::PanningBackground,
 };
 
 /// A display-related change requested by a scene, to be applied by the main
@@ -65,15 +69,10 @@ pub struct AppState<'tc> {
     pub api: ApiTokenState,
     pub network: Option<NetworkRuntime>,
     pub player_state: Option<PlayerState>,
-    /// Master volume multiplier (0.0 = muted, 1.0 = full). Set by the escape menu slider.
-    pub master_volume: f32,
-    pub music_enabled: bool,
-    /// Current display mode (windowed, fullscreen, borderless).
-    pub display_mode: DisplayMode,
-    /// Whether pixel-perfect (integer-only) scaling is active.
-    pub pixel_perfect_scaling: bool,
-    /// Whether VSync is enabled.
-    pub vsync_enabled: bool,
+    /// Single source of truth for all user-facing settings (audio, display,
+    /// HUD toggles, per-character keybinds, etc.).  Loaded from disk at
+    /// startup and updated in-place by scene code; persisted on change.
+    pub settings: Settings,
     /// Pending display change to be applied by the main loop.
     pub display_command: Option<DisplayCommand>,
     /// Shared panning background used by all pre-game scenes.
@@ -103,15 +102,11 @@ impl<'tc> AppState<'tc> {
     ) -> Self {
         Self {
             gfx_cache,
-            sfx_cache: sfx_cache,
+            sfx_cache,
             api,
             network: None,
             player_state: None,
-            master_volume: 1.0,
-            music_enabled: true,
-            display_mode: DisplayMode::default(),
-            pixel_perfect_scaling: false,
-            vsync_enabled: false,
+            settings: Settings::default(),
             display_command: None,
             panning_background,
             reset_username: None,

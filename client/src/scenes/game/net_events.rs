@@ -81,7 +81,7 @@ impl GameScene {
                                     *nr as usize,
                                     *vol,
                                     *pan,
-                                    app_state.master_volume,
+                                    app_state.settings.master_volume,
                                 );
                             }
                             ServerCommandData::Exit { reason } => {
@@ -142,7 +142,11 @@ impl GameScene {
 
         // C engine.c: if (lookat && lookstep>QSIZE*3) cmd1s(CL_CMD_AUTOLOOK,lookat);
         if self.look_step > QSIZE * 3 {
-            if let Some(lookat) = Self::find_unknown_look_target(ps) {
+            if let Some(lookat) = Self::find_unknown_look_target(
+                ps,
+                app_state.settings.show_names,
+                app_state.settings.show_proz,
+            ) {
                 net.send(ClientCommand::new_autolook(lookat));
             }
             self.look_step = 0;
@@ -216,14 +220,14 @@ impl GameScene {
                     self.pending_skill_assignment = Some(skill_id);
                 }
                 WidgetAction::BindSkillKey { skill_nr, key_slot } => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        // Clear any previous slot that had the same skill_nr.
-                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
-                            if *slot == Some(skill_nr) {
-                                *slot = None;
-                            }
+                    // Clear any previous slot that had the same skill_nr.
+                    for slot in app_state.settings.character.skill_keybinds.iter_mut() {
+                        if *slot == Some(skill_nr) {
+                            *slot = None;
                         }
-                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                    }
+                    app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
+                    if let Some(ps) = app_state.player_state.as_mut() {
                         let name = skills::get_skill_name(skill_nr);
                         ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
                     }
@@ -283,23 +287,19 @@ impl GameScene {
                     key_slot,
                 } => {
                     // Clear (unbind) the slot.
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let slot = key_slot as usize;
-                        if slot < ps.player_data().skill_keybinds.len() {
-                            ps.player_data_mut().skill_keybinds[slot] = None;
-                        }
+                    let slot = key_slot as usize;
+                    if slot < app_state.settings.character.skill_keybinds.len() {
+                        app_state.settings.character.skill_keybinds[slot] = None;
                     }
                     self.save_active_profile(app_state);
                 }
                 WidgetAction::BindSkillKey { skill_nr, key_slot } => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
-                            if *slot == Some(skill_nr) {
-                                *slot = None;
-                            }
+                    for slot in app_state.settings.character.skill_keybinds.iter_mut() {
+                        if *slot == Some(skill_nr) {
+                            *slot = None;
                         }
-                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
                     }
+                    app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
                     self.save_active_profile(app_state);
                 }
                 _ => {}
@@ -319,14 +319,14 @@ impl GameScene {
         for action in self.skill_picker.take_actions() {
             match action {
                 WidgetAction::BindSkillKey { skill_nr, key_slot } => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        // Clear any previous slot that had the same skill_nr.
-                        for slot in ps.player_data_mut().skill_keybinds.iter_mut() {
-                            if *slot == Some(skill_nr) {
-                                *slot = None;
-                            }
+                    // Clear any previous slot that had the same skill_nr.
+                    for slot in app_state.settings.character.skill_keybinds.iter_mut() {
+                        if *slot == Some(skill_nr) {
+                            *slot = None;
                         }
-                        ps.player_data_mut().skill_keybinds[key_slot as usize] = Some(skill_nr);
+                    }
+                    app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
+                    if let Some(ps) = app_state.player_state.as_mut() {
                         let name = skills::get_skill_name(skill_nr);
                         ps.tlog(1, &format!("Bound {} to Ctrl+{}.", name, key_slot + 1));
                     }

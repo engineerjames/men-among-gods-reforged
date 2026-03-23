@@ -6,7 +6,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{types::player_data::NUMBER_OF_KEYBINDS, ui::widget::KeyBindings};
+use crate::ui::widget::KeyBindings;
+
+/// Number of CTRL+key skill binding slots (keys 1–9 plus 4 reserved).
+pub const NUMBER_OF_KEYBINDS: usize = 13;
 
 // ---------------------------------------------------------------------------
 // Per-character settings
@@ -570,5 +573,48 @@ mod tests {
         // CharacterSettings must not have these fields — confirmed by the struct definition.
         assert!(s.shadows_enabled);
         assert!((s.master_volume - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn settings_hud_toggle_defaults() {
+        let s = Settings::default();
+        assert!(s.show_names);
+        assert!(s.show_proz);
+        assert!(!s.hide);
+        assert!(s.show_helper_text);
+        assert!(s.spell_effects_enabled);
+    }
+
+    #[test]
+    fn settings_hud_toggles_serde_roundtrip() {
+        let mut s = Settings::default();
+        s.show_names = false;
+        s.show_proz = false;
+        s.hide = true;
+        s.spell_effects_enabled = false;
+
+        let json = serde_json::to_string(&s).unwrap();
+        let d: Settings = serde_json::from_str(&json).unwrap();
+
+        assert!(!d.show_names);
+        assert!(!d.show_proz);
+        assert!(d.hide);
+        assert!(!d.spell_effects_enabled);
+    }
+
+    #[test]
+    fn character_settings_key_bindings_serde_roundtrip() {
+        use crate::ui::widget::KeyBindings;
+        let mut cs = CharacterSettings::default();
+        let bindings = KeyBindings::default();
+        cs.key_bindings = bindings.clone();
+
+        let json = serde_json::to_string(&cs).unwrap();
+        let d: CharacterSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            serde_json::to_string(&d.key_bindings).unwrap(),
+            serde_json::to_string(&cs.key_bindings).unwrap()
+        );
     }
 }

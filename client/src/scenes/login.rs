@@ -75,9 +75,9 @@ impl LoginScene {
         }
 
         let settings = preferences::load_global_settings();
-        app_state.music_enabled = settings.music_enabled;
+        app_state.settings.music_enabled = settings.music_enabled;
 
-        if app_state.music_enabled {
+        if app_state.settings.music_enabled {
             app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
         } else {
             app_state.sfx_cache.stop_music();
@@ -264,7 +264,7 @@ impl Scene for LoginScene {
                         return Some(SceneType::Exit);
                     }
                     LoginFormAction::ToggleMusic(enabled) => {
-                        app_state.music_enabled = enabled;
+                        app_state.settings.music_enabled = enabled;
                         if enabled {
                             app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
                         } else {

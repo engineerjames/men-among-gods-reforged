@@ -479,12 +479,12 @@ impl GameScene {
         ps: &PlayerState,
         shadows_enabled: bool,
         spell_effects_enabled: bool,
+        show_names: bool,
+        show_proz: bool,
+        hide: bool,
     ) -> Result<(), String> {
         let map = ps.map();
         let ci = ps.character_info();
-        let pdata = ps.player_data();
-        let show_names = pdata.show_names;
-        let show_proz = pdata.show_proz;
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
         let hover_highlight = self.resolve_hover_highlight(ps);
 
@@ -555,7 +555,7 @@ impl GameScene {
 
                 let mut obj = tile.obj1;
                 if obj > 0 {
-                    let hide_enabled = pdata.hide;
+                    let hide_enabled = hide;
                     let is_item = (tile.flags & ISITEM) != 0;
 
                     if hide_enabled && !is_item && !Self::autohide(x, y) {

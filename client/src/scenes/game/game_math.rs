@@ -150,9 +150,12 @@ impl GameScene {
 
     /// Scans visible map tiles for a character whose name is not yet known,
     /// returning its `ch_nr` for an auto-look request.
-    pub(super) fn find_unknown_look_target(ps: &PlayerState) -> Option<u32> {
-        let pdata = ps.player_data();
-        if !pdata.show_names && !pdata.show_proz {
+    pub(super) fn find_unknown_look_target(
+        ps: &PlayerState,
+        show_names: bool,
+        show_proz: bool,
+    ) -> Option<u32> {
+        if !show_names && !show_proz {
             return None;
         }
 

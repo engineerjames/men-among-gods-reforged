@@ -236,18 +236,12 @@ pub struct GameScene {
     pub(super) minimap_last_xy: Option<(u16, u16)>,
     pub(super) look_step: u32,
     pub(super) last_look_tick: u32,
-    /// Whether spell visual effects (EMAGIC/GMAGIC/CMAGIC glows) are rendered.
-    pub(super) are_spell_effects_enabled: bool,
-    /// Master volume multiplier (0.0 = muted, 1.0 = full).
-    pub(super) master_volume: f32,
     /// When set, the player has right-clicked a skill and is choosing a spell-bar slot.
     /// Value is the skilltab index of the skill being assigned.
     pub(super) pending_skill_assignment: Option<usize>,
     pub(super) active_profile_character: Option<CharacterIdentity>,
     /// Wall-clock profiler for rendering functions (activated from escape menu).
     perf_profiler: PerfProfiler,
-    /// Local copy of keyboard bindings for input matching.
-    pub(super) key_bindings: KeyBindings,
 }
 
 impl GameScene {
@@ -349,12 +343,9 @@ impl GameScene {
             minimap_last_xy: None,
             look_step: 0,
             last_look_tick: 0,
-            are_spell_effects_enabled: true,
-            master_volume: 1.0,
             pending_skill_assignment: None,
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
-            key_bindings: KeyBindings::default(),
         }
     }
 
@@ -386,7 +377,9 @@ impl GameScene {
     }
 
     pub(super) fn play_click_sound(&self, app_state: &AppState) {
-        app_state.sfx_cache.play_click(self.master_volume);
+        app_state
+            .sfx_cache
+            .play_click(app_state.settings.master_volume);
     }
 
     /// Build a [`SettingsPanelData`] snapshot from current game state.
@@ -399,33 +392,19 @@ impl GameScene {
     ///
     /// A snapshot suitable for [`SettingsPanel::sync_state`].
     fn build_settings_panel_data(&self, app_state: &AppState) -> SettingsPanelData {
-        let (shadows, show_names, show_health_pct, hide_walls, show_helper_text) =
-            if let Some(ps) = app_state.player_state.as_ref() {
-                let pd = ps.player_data();
-                (
-                    pd.are_shadows_enabled,
-                    pd.show_names,
-                    pd.show_proz,
-                    pd.hide,
-                    pd.show_helper_text,
-                )
-            } else {
-                (false, false, false, false, true)
-            };
-
         let last_rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
 
         SettingsPanelData {
-            shadows_enabled: shadows,
-            spell_effects_enabled: self.are_spell_effects_enabled,
-            show_names,
-            show_health_pct,
-            hide_walls,
-            show_helper_text,
-            master_volume: self.master_volume,
-            display_mode: app_state.display_mode,
-            pixel_perfect_scaling: app_state.pixel_perfect_scaling,
-            vsync_enabled: app_state.vsync_enabled,
+            shadows_enabled: app_state.settings.shadows_enabled,
+            spell_effects_enabled: app_state.settings.spell_effects_enabled,
+            show_names: app_state.settings.show_names,
+            show_health_pct: app_state.settings.show_proz,
+            hide_walls: app_state.settings.hide,
+            show_helper_text: app_state.settings.show_helper_text,
+            master_volume: app_state.settings.master_volume,
+            display_mode: app_state.settings.display_mode,
+            pixel_perfect_scaling: app_state.settings.pixel_perfect_scaling,
+            vsync_enabled: app_state.settings.vsync_enabled,
             last_rtt_ms: last_rtt,
             profiler_active: self.perf_profiler.is_active(),
             profiler_remaining_secs: if self.perf_profiler.is_active() {
@@ -456,42 +435,31 @@ impl GameScene {
         for action in self.settings_panel.take_actions() {
             match action {
                 WidgetAction::SetShadows(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().are_shadows_enabled = v;
-                        profile_changed = true;
-                    }
+                    app_state.settings.shadows_enabled = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetSpellEffects(v) => {
-                    self.are_spell_effects_enabled = v;
+                    app_state.settings.spell_effects_enabled = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetShowNames(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_names = v;
-                        profile_changed = true;
-                    }
+                    app_state.settings.show_names = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetShowHealthPct(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_proz = v;
-                        profile_changed = true;
-                    }
+                    app_state.settings.show_proz = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetHideWalls(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().hide = v;
-                        profile_changed = true;
-                    }
+                    app_state.settings.hide = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetShowHelperText(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_helper_text = v;
-                        profile_changed = true;
-                    }
+                    app_state.settings.show_helper_text = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetMasterVolume(v) => {
-                    self.master_volume = v;
-                    app_state.master_volume = v;
+                    app_state.settings.master_volume = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetDisplayMode(m) => {
@@ -523,7 +491,7 @@ impl GameScene {
                     self.keybindings_panel.toggle();
                     if self.keybindings_panel.is_visible() {
                         self.keybindings_panel.sync_state(&KeybindingsPanelData {
-                            bindings: self.key_bindings.clone(),
+                            bindings: app_state.settings.character.key_bindings.clone(),
                         });
                     }
                 }
@@ -547,11 +515,15 @@ impl GameScene {
     /// # Arguments
     ///
     /// * `app_state` - Shared application state.
-    fn process_keybindings_panel_actions(&mut self, app_state: &AppState) {
+    fn process_keybindings_panel_actions(&mut self, app_state: &mut AppState) {
         for action in self.keybindings_panel.take_actions() {
             match action {
                 WidgetAction::UpdateKeyBinding { action, binding } => {
-                    self.key_bindings.set_binding(action, binding);
+                    app_state
+                        .settings
+                        .character
+                        .key_bindings
+                        .set_binding(action, binding);
                     self.save_active_profile(app_state);
                 }
                 WidgetAction::TogglePanel(HudPanel::KeyBindings) => {
@@ -696,8 +668,9 @@ impl GameScene {
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
+        show_helper_text: bool,
     ) -> Result<(), String> {
-        if !ps.player_data().show_helper_text {
+        if !show_helper_text {
             return Ok(());
         }
         if self.is_mouse_over_ui() {
@@ -903,10 +876,9 @@ impl Scene for GameScene {
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
 
-        self.are_spell_effects_enabled = true;
-        self.master_volume = 1.0;
-        self.key_bindings = KeyBindings::default();
-        app_state.master_volume = self.master_volume;
+        app_state.settings.spell_effects_enabled = true;
+        app_state.settings.character.key_bindings = KeyBindings::default();
+        app_state.settings.master_volume = 1.0;
 
         let login_target = match app_state.api.login_target.clone() {
             Some(t) => t,
@@ -1189,7 +1161,7 @@ impl Scene for GameScene {
                                 self.keybindings_panel.toggle();
                                 if self.keybindings_panel.is_visible() {
                                     self.keybindings_panel.sync_state(&KeybindingsPanelData {
-                                        bindings: self.key_bindings.clone(),
+                                        bindings: app_state.settings.character.key_bindings.clone(),
                                     });
                                 }
                             }
@@ -1210,7 +1182,12 @@ impl Scene for GameScene {
             let mods = KeyModifiers::from_sdl2(*keymod);
             let has_modifier = mods.ctrl || mods.alt;
             if has_modifier || !self.chat_box.is_focused() {
-                if let Some(action) = self.key_bindings.action_for_key(*kc, mods) {
+                if let Some(action) = app_state
+                    .settings
+                    .character
+                    .key_bindings
+                    .action_for_key(*kc, mods)
+                {
                     match action {
                         GameAction::ToggleSkills => self.skills_panel.toggle(),
                         GameAction::ToggleInventory => self.inventory_panel.toggle(),
@@ -1238,7 +1215,9 @@ impl Scene for GameScene {
                         if let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
-                            if let Some(skill_nr) = ps.player_data().skill_keybinds[key_slot] {
+                            if let Some(skill_nr) =
+                                app_state.settings.character.skill_keybinds[key_slot]
+                            {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     skill_nr as u32,
@@ -1456,6 +1435,7 @@ impl Scene for GameScene {
         let AppState {
             ref mut gfx_cache,
             ref player_state,
+            ref settings,
             ..
         } = *app_state;
 
@@ -1465,10 +1445,19 @@ impl Scene for GameScene {
         };
 
         // 1. World tiles (two-pass painter order)
-        let shadows_on = ps.player_data().are_shadows_enabled;
-        let effects_on = self.are_spell_effects_enabled;
+        let shadows_on = settings.shadows_enabled;
+        let effects_on = settings.spell_effects_enabled;
         self.perf_profiler.begin_sample(PerfLabel::DrawWorld);
-        self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
+        self.draw_world(
+            canvas,
+            gfx_cache,
+            ps,
+            shadows_on,
+            effects_on,
+            settings.show_names,
+            settings.show_proz,
+            settings.hide,
+        )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
         // 5. Chat log + input line (via ChatBox widget)
@@ -1518,11 +1507,12 @@ impl Scene for GameScene {
 
                 // Skill bar: 13 keybinds plus all 20 active spell/activity slots.
                 {
-                    use crate::types::player_data::NUMBER_OF_KEYBINDS;
+                    use crate::preferences::NUMBER_OF_KEYBINDS;
                     use crate::ui::skill_bar::SkillBarData;
                     let mut keybinds = [None; NUMBER_OF_KEYBINDS];
-                    keybinds
-                        .copy_from_slice(&ps.player_data().skill_keybinds[..NUMBER_OF_KEYBINDS]);
+                    keybinds.copy_from_slice(
+                        &app_state.settings.character.skill_keybinds[..NUMBER_OF_KEYBINDS],
+                    );
                     self.skill_bar.update_data(SkillBarData {
                         keybinds,
                         spell: ci.spell,
@@ -1616,7 +1606,7 @@ impl Scene for GameScene {
         // 5f. Context-sensitive helper text near the cursor
         self.perf_profiler.begin_sample(PerfLabel::DrawHelperText);
         if let Some(ps) = app_state.player_state.as_ref() {
-            self.draw_helper_text(canvas, gfx_cache, ps)?;
+            self.draw_helper_text(canvas, gfx_cache, ps, app_state.settings.show_helper_text)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHelperText);
 

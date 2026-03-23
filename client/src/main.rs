@@ -102,21 +102,18 @@ fn main() -> Result<(), String> {
     let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state, panning_background);
 
     // --- Apply persisted display settings ---------------------------------
-    let global_settings = preferences::load_global_settings();
-    app_state.music_enabled = global_settings.music_enabled;
-    app_state.display_mode = global_settings.display_mode;
-    app_state.pixel_perfect_scaling = global_settings.pixel_perfect_scaling;
-    app_state.vsync_enabled = global_settings.vsync_enabled;
+    app_state.settings = preferences::load_global_settings();
 
     // Display mode
-    let applied_startup_mode = apply_display_mode(&mut canvas, app_state.display_mode);
-    app_state.display_mode = applied_startup_mode;
-    if applied_startup_mode != global_settings.display_mode {
+    let requested_mode = app_state.settings.display_mode;
+    let applied_startup_mode = apply_display_mode(&mut canvas, requested_mode);
+    app_state.settings.display_mode = applied_startup_mode;
+    if applied_startup_mode != requested_mode {
         save_global_display_settings(&app_state);
     }
 
     // VSync (runtime toggle via raw SDL2 FFI)
-    apply_vsync(&canvas, app_state.vsync_enabled);
+    apply_vsync(&canvas, app_state.settings.vsync_enabled);
     // ----------------------------------------------------------------------
 
     let mut scene_manager = scenes::scene::SceneManager::new();
@@ -170,7 +167,7 @@ fn main() -> Result<(), String> {
                 canvas.window(),
                 constants::TARGET_WIDTH,
                 constants::TARGET_HEIGHT,
-                app_state.pixel_perfect_scaling,
+                app_state.settings.pixel_perfect_scaling,
             );
 
             scene_manager.handle_event(&mut app_state, &event);
@@ -194,16 +191,16 @@ fn main() -> Result<(), String> {
                             applied_mode
                         );
                     }
-                    app_state.display_mode = applied_mode;
+                    app_state.settings.display_mode = applied_mode;
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetPixelPerfectScaling(enabled) => {
-                    app_state.pixel_perfect_scaling = enabled;
+                    app_state.settings.pixel_perfect_scaling = enabled;
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetVSync(enabled) => {
                     apply_vsync(&canvas, enabled);
-                    app_state.vsync_enabled = enabled;
+                    app_state.settings.vsync_enabled = enabled;
                     save_global_display_settings(&app_state);
                 }
             }
@@ -211,7 +208,7 @@ fn main() -> Result<(), String> {
         // ------------------------------------------------------------------
         let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
         // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
-        let _ = canvas.set_integer_scale(app_state.pixel_perfect_scaling);
+        let _ = canvas.set_integer_scale(app_state.settings.pixel_perfect_scaling);
         scene_manager.render_world(&mut app_state, &mut canvas);
         // Logical size off --> raw physical pixels.
         let _ = canvas.set_integer_scale(false);
@@ -283,12 +280,7 @@ fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool
 /// Persists current display-related settings from [`AppState`] into the
 /// global profile.
 fn save_global_display_settings(app_state: &AppState<'_>) {
-    let mut settings = preferences::load_global_settings();
-    settings.music_enabled = app_state.music_enabled;
-    settings.display_mode = app_state.display_mode;
-    settings.pixel_perfect_scaling = app_state.pixel_perfect_scaling;
-    settings.vsync_enabled = app_state.vsync_enabled;
-    if let Err(e) = preferences::save_global_settings(&settings) {
+    if let Err(e) = preferences::save_global_settings(&app_state.settings) {
         log::error!("Failed to persist display settings: {e}");
     }
 }
