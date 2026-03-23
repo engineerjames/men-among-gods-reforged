@@ -152,7 +152,7 @@ impl GameScene {
     /// returning its `ch_nr` for an auto-look request.
     pub(super) fn find_unknown_look_target(ps: &PlayerState) -> Option<u32> {
         let pdata = ps.player_data();
-        if pdata.show_names == 0 && pdata.show_proz == 0 {
+        if !pdata.show_names && !pdata.show_proz {
             return None;
         }
 

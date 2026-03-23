@@ -403,11 +403,11 @@ impl GameScene {
             if let Some(ps) = app_state.player_state.as_ref() {
                 let pd = ps.player_data();
                 (
-                    pd.are_shadows_enabled != 0,
-                    pd.show_names != 0,
-                    pd.show_proz != 0,
-                    pd.hide != 0,
-                    pd.show_helper_text != 0,
+                    pd.are_shadows_enabled,
+                    pd.show_names,
+                    pd.show_proz,
+                    pd.hide,
+                    pd.show_helper_text,
                 )
             } else {
                 (false, false, false, false, true)
@@ -457,7 +457,7 @@ impl GameScene {
             match action {
                 WidgetAction::SetShadows(v) => {
                     if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().are_shadows_enabled = i32::from(v);
+                        ps.player_data_mut().are_shadows_enabled = v;
                         profile_changed = true;
                     }
                 }
@@ -467,25 +467,25 @@ impl GameScene {
                 }
                 WidgetAction::SetShowNames(v) => {
                     if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_names = i32::from(v);
+                        ps.player_data_mut().show_names = v;
                         profile_changed = true;
                     }
                 }
                 WidgetAction::SetShowHealthPct(v) => {
                     if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_proz = i32::from(v);
+                        ps.player_data_mut().show_proz = v;
                         profile_changed = true;
                     }
                 }
                 WidgetAction::SetHideWalls(v) => {
                     if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().hide = i32::from(v);
+                        ps.player_data_mut().hide = v;
                         profile_changed = true;
                     }
                 }
                 WidgetAction::SetShowHelperText(v) => {
                     if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_helper_text = i32::from(v);
+                        ps.player_data_mut().show_helper_text = v;
                         profile_changed = true;
                     }
                 }
@@ -697,7 +697,7 @@ impl GameScene {
         gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
     ) -> Result<(), String> {
-        if ps.player_data().show_helper_text == 0 {
+        if !ps.player_data().show_helper_text {
             return Ok(());
         }
         if self.is_mouse_over_ui() {
@@ -1465,7 +1465,7 @@ impl Scene for GameScene {
         };
 
         // 1. World tiles (two-pass painter order)
-        let shadows_on = ps.player_data().are_shadows_enabled != 0;
+        let shadows_on = ps.player_data().are_shadows_enabled;
         let effects_on = self.are_spell_effects_enabled;
         self.perf_profiler.begin_sample(PerfLabel::DrawWorld);
         self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;

@@ -204,8 +204,7 @@ impl Scene for RequestResetScene {
                 match result {
                     Ok(_message) => {
                         // Stash username for the next scene.
-                        app_state.reset_username =
-                            Some(self.form.username().trim().to_owned());
+                        app_state.reset_username = Some(self.form.username().trim().to_owned());
                         return Some(SceneType::EnterResetCode);
                     }
                     Err(error) => {

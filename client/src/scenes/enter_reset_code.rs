@@ -116,8 +116,13 @@ impl EnterResetCodeScene {
         let confirm_password = self.form.confirm_password().to_owned();
 
         self.confirm_thread = Some(std::thread::spawn(move || {
-            let result =
-                Self::confirm_reset(&base_url, &username, &code, &new_password, &confirm_password);
+            let result = Self::confirm_reset(
+                &base_url,
+                &username,
+                &code,
+                &new_password,
+                &confirm_password,
+            );
             if let Err(error) = sender.send(result) {
                 log::error!("Failed to send reset confirm result: {}", error);
             }

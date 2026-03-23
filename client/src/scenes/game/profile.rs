@@ -22,13 +22,11 @@ impl GameScene {
         if let Some(settings) = preferences::load_settings(identity) {
             if let Some(ps) = app_state.player_state.as_mut() {
                 ps.player_data_mut().skill_keybinds = settings.character.skill_keybinds;
-                ps.player_data_mut().are_shadows_enabled =
-                    if settings.shadows_enabled { 1 } else { 0 };
+                ps.player_data_mut().are_shadows_enabled = settings.shadows_enabled;
                 ps.player_data_mut().hide = settings.hide;
                 ps.player_data_mut().show_names = settings.show_names;
                 ps.player_data_mut().show_proz = settings.show_proz;
-                ps.player_data_mut().show_helper_text =
-                    if settings.show_helper_text { 1 } else { 0 };
+                ps.player_data_mut().show_helper_text = settings.show_helper_text;
             }
             self.are_spell_effects_enabled = settings.spell_effects_enabled;
             self.master_volume = settings.master_volume;
@@ -73,13 +71,13 @@ impl GameScene {
             display_mode: app_state.display_mode,
             pixel_perfect_scaling: app_state.pixel_perfect_scaling,
             vsync_enabled: app_state.vsync_enabled,
-            shadows_enabled: pdata.are_shadows_enabled != 0,
+            shadows_enabled: pdata.are_shadows_enabled,
             spell_effects_enabled: self.are_spell_effects_enabled,
             master_volume: self.master_volume,
             hide: pdata.hide,
             show_names: pdata.show_names,
             show_proz: pdata.show_proz,
-            show_helper_text: pdata.show_helper_text != 0,
+            show_helper_text: pdata.show_helper_text,
             character: CharacterSettings {
                 skill_keybinds: pdata.skill_keybinds,
                 inventory_panel_pos: Some((

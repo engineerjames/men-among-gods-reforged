@@ -162,10 +162,9 @@ impl EnterResetCodeForm {
             width: 1,
         };
 
-        let submit_button =
-            RectButton::new(Bounds::new(btn_start_x, cursor_y, 150, BTN_H), btn_bg)
-                .with_border(btn_border)
-                .with_label("Reset Password", FONT);
+        let submit_button = RectButton::new(Bounds::new(btn_start_x, cursor_y, 150, BTN_H), btn_bg)
+            .with_border(btn_border)
+            .with_label("Reset Password", FONT);
 
         let cancel_button = RectButton::new(
             Bounds::new(btn_start_x + 150 + BTN_GAP, cursor_y, 150, BTN_H),

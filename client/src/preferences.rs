@@ -129,13 +129,13 @@ pub struct Settings {
     pub master_volume: f32,
     /// Wall-hiding toggle.
     #[serde(default)]
-    pub hide: i32,
+    pub hide: bool,
     /// Overhead player name display toggle.
-    #[serde(default)]
-    pub show_names: i32,
+    #[serde(default = "default_true")]
+    pub show_names: bool,
     /// Overhead health percentage display toggle.
-    #[serde(default)]
-    pub show_proz: i32,
+    #[serde(default = "default_true")]
+    pub show_proz: bool,
     /// Whether context-sensitive helper text is shown near the cursor.
     #[serde(default = "default_true")]
     pub show_helper_text: bool,
@@ -150,13 +150,13 @@ impl Default for Settings {
             music_enabled: true,
             display_mode: DisplayMode::default(),
             pixel_perfect_scaling: false,
-            vsync_enabled: false,
-            shadows_enabled: false,
-            spell_effects_enabled: false,
+            vsync_enabled: true,
+            shadows_enabled: true,
+            spell_effects_enabled: true,
             master_volume: 0.0,
-            hide: 0,
-            show_names: 0,
-            show_proz: 0,
+            hide: false,
+            show_names: true,
+            show_proz: true,
             show_helper_text: true,
             character: CharacterSettings::default(),
         }
