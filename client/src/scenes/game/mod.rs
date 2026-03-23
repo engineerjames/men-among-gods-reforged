@@ -1210,7 +1210,7 @@ impl Scene for GameScene {
                 | Keycode::Num7
                 | Keycode::Num8
                 | Keycode::Num9 => {
-                    if self.ctrl_held {
+                    if !self.chat_box.is_focused() {
                         let key_slot = (i32::from(*kc) - i32::from(Keycode::Num1)) as usize;
                         if let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
