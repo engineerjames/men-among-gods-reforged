@@ -116,13 +116,13 @@ pub struct Settings {
     #[serde(default)]
     pub pixel_perfect_scaling: bool,
     /// Whether VSync is enabled.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub vsync_enabled: bool,
     /// Whether shadow rendering is enabled.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub shadows_enabled: bool,
     /// Whether spell visual effects are rendered.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub spell_effects_enabled: bool,
     /// Master volume (0.0–1.0).
     #[serde(default)]
@@ -571,5 +571,4 @@ mod tests {
         assert!(s.shadows_enabled);
         assert!((s.master_volume - 0.5).abs() < f32::EPSILON);
     }
-
 }
