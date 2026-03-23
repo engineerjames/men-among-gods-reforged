@@ -1,5 +1,5 @@
 use crate::{
-    preferences::{self, CharacterIdentity, Settings},
+    preferences::{self, CharacterIdentity, CharacterSettings, Settings},
     state::AppState,
     ui::title_bar::clamp_to_viewport,
     ui::widget::Widget,
@@ -21,7 +21,7 @@ impl GameScene {
     ) {
         if let Some(settings) = preferences::load_settings(identity) {
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.player_data_mut().skill_keybinds = settings.skill_keybinds;
+                ps.player_data_mut().skill_keybinds = settings.character.skill_keybinds;
                 ps.player_data_mut().are_shadows_enabled =
                     if settings.shadows_enabled { 1 } else { 0 };
                 ps.player_data_mut().hide = settings.hide;
@@ -33,20 +33,20 @@ impl GameScene {
             self.are_spell_effects_enabled = settings.spell_effects_enabled;
             self.master_volume = settings.master_volume;
             app_state.master_volume = settings.master_volume;
-            self.key_bindings = settings.key_bindings.clone();
+            self.key_bindings = settings.character.key_bindings.clone();
 
             // Restore saved panel positions.
-            if let Some((x, y)) = settings.inventory_panel_pos {
+            if let Some((x, y)) = settings.character.inventory_panel_pos {
                 let b = self.inventory_panel.bounds();
                 let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
                 self.inventory_panel.set_position(cx, cy);
             }
-            if let Some((x, y)) = settings.skills_panel_pos {
+            if let Some((x, y)) = settings.character.skills_panel_pos {
                 let b = self.skills_panel.bounds();
                 let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
                 self.skills_panel.set_position(cx, cy);
             }
-            if let Some((x, y)) = settings.settings_panel_pos {
+            if let Some((x, y)) = settings.character.settings_panel_pos {
                 let b = self.settings_panel.bounds();
                 let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
                 self.settings_panel.set_position(cx, cy);
@@ -80,17 +80,22 @@ impl GameScene {
             show_names: pdata.show_names,
             show_proz: pdata.show_proz,
             show_helper_text: pdata.show_helper_text != 0,
-            skill_keybinds: pdata.skill_keybinds,
-            inventory_panel_pos: Some((
-                self.inventory_panel.bounds().x,
-                self.inventory_panel.bounds().y,
-            )),
-            skills_panel_pos: Some((self.skills_panel.bounds().x, self.skills_panel.bounds().y)),
-            settings_panel_pos: Some((
-                self.settings_panel.bounds().x,
-                self.settings_panel.bounds().y,
-            )),
-            key_bindings: self.key_bindings.clone(),
+            character: CharacterSettings {
+                skill_keybinds: pdata.skill_keybinds,
+                inventory_panel_pos: Some((
+                    self.inventory_panel.bounds().x,
+                    self.inventory_panel.bounds().y,
+                )),
+                skills_panel_pos: Some((
+                    self.skills_panel.bounds().x,
+                    self.skills_panel.bounds().y,
+                )),
+                settings_panel_pos: Some((
+                    self.settings_panel.bounds().x,
+                    self.settings_panel.bounds().y,
+                )),
+                key_bindings: self.key_bindings.clone(),
+            },
         })
     }
 
