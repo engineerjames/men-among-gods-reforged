@@ -34,31 +34,32 @@ const CONTROL_W: u32 = 280;
 const BTN_H: u32 = 16;
 
 // Y offsets from panel top for each element (shifted by TITLE_BAR_H).
-const Y_VISUAL_HEADER: i32 = 22 + TITLE_BAR_H;
-const Y_SHADOWS: i32 = 36 + TITLE_BAR_H;
-const Y_SPELL_FX: i32 = 50 + TITLE_BAR_H;
-const Y_NAMES: i32 = 64 + TITLE_BAR_H;
-const Y_HEALTH: i32 = 78 + TITLE_BAR_H;
-const Y_HELPER_TEXT: i32 = 92 + TITLE_BAR_H;
-const Y_WALLS: i32 = 106 + TITLE_BAR_H;
-const Y_AUDIO_HEADER: i32 = 124 + TITLE_BAR_H;
-const Y_VOLUME: i32 = 138 + TITLE_BAR_H;
-const Y_DISPLAY_HEADER: i32 = 156 + TITLE_BAR_H;
-const Y_DISPLAY_MODE: i32 = 170 + TITLE_BAR_H;
-const Y_PIXEL_PERFECT: i32 = 190 + TITLE_BAR_H;
-const Y_VSYNC: i32 = 204 + TITLE_BAR_H;
-const Y_DIAG_HEADER: i32 = 222 + TITLE_BAR_H;
-const Y_PING: i32 = 236 + TITLE_BAR_H;
-const Y_PROFILER_BTN: i32 = 252 + TITLE_BAR_H;
-const Y_LOGDIR_BTN: i32 = 272 + TITLE_BAR_H;
-const Y_CONTROLS_HEADER: i32 = 294 + TITLE_BAR_H;
-const Y_KEYBINDINGS_BTN: i32 = 308 + TITLE_BAR_H;
-const Y_SEPARATOR: i32 = 332 + TITLE_BAR_H;
-const Y_SESSION_BTNS: i32 = 344 + TITLE_BAR_H;
-const Y_RETURN_BTN: i32 = 366 + TITLE_BAR_H;
+const Y_SHIFT: i32 = -17;
+const Y_VISUAL_HEADER: i32 = 22 + TITLE_BAR_H + Y_SHIFT;
+const Y_SHADOWS: i32 = 36 + TITLE_BAR_H + Y_SHIFT;
+const Y_SPELL_FX: i32 = 50 + TITLE_BAR_H + Y_SHIFT;
+const Y_NAMES: i32 = 64 + TITLE_BAR_H + Y_SHIFT;
+const Y_HEALTH: i32 = 78 + TITLE_BAR_H + Y_SHIFT;
+const Y_HELPER_TEXT: i32 = 92 + TITLE_BAR_H + Y_SHIFT;
+const Y_WALLS: i32 = 106 + TITLE_BAR_H + Y_SHIFT;
+const Y_AUDIO_HEADER: i32 = 124 + TITLE_BAR_H + Y_SHIFT;
+const Y_VOLUME: i32 = 138 + TITLE_BAR_H + Y_SHIFT;
+const Y_DISPLAY_HEADER: i32 = 156 + TITLE_BAR_H + Y_SHIFT;
+const Y_DISPLAY_MODE: i32 = 170 + TITLE_BAR_H + Y_SHIFT;
+const Y_PIXEL_PERFECT: i32 = 190 + TITLE_BAR_H + Y_SHIFT;
+const Y_VSYNC: i32 = 204 + TITLE_BAR_H + Y_SHIFT;
+const Y_DIAG_HEADER: i32 = 222 + TITLE_BAR_H + Y_SHIFT;
+const Y_PING: i32 = 236 + TITLE_BAR_H + Y_SHIFT;
+const Y_PROFILER_BTN: i32 = 252 + TITLE_BAR_H + Y_SHIFT;
+const Y_LOGDIR_BTN: i32 = 272 + TITLE_BAR_H + Y_SHIFT;
+const Y_CONTROLS_HEADER: i32 = 294 + TITLE_BAR_H + Y_SHIFT;
+const Y_KEYBINDINGS_BTN: i32 = 308 + TITLE_BAR_H + Y_SHIFT;
+const Y_SEPARATOR: i32 = 332 + TITLE_BAR_H + Y_SHIFT;
+const Y_SESSION_BTNS: i32 = 344 + TITLE_BAR_H + Y_SHIFT;
+const Y_RETURN_BTN: i32 = 366 + TITLE_BAR_H + Y_SHIFT;
 
 /// Total panel height needed to fit all controls.
-pub const SETTINGS_PANEL_H: u32 = 390 + TITLE_BAR_H as u32;
+pub const SETTINGS_PANEL_H: u32 = (390 + TITLE_BAR_H + Y_SHIFT) as u32;
 
 // ---------------------------------------------------------------------------
 // Data snapshot
