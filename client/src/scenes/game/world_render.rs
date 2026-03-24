@@ -725,7 +725,7 @@ impl GameScene {
                         // horizontally centered, shifted 64px up relative to sprite origin.
                         let text_len = text.len() as i32;
                         let np_rx = ground_x - (text_len * 5 / 2) + ch_xoff;
-                        let np_ry = ground_y - 48 + ch_yoff;
+                        let np_ry = ground_y - 54 + ch_yoff;
                         font_cache::draw_text(
                             canvas,
                             gfx,
@@ -929,18 +929,41 @@ impl GameScene {
         ps: &PlayerState,
     ) -> Result<(), String> {
         const BAR_W: i32 = 32;
-        const BAR_SPACING: i32 = 2;
+        const BAR_H: u32 = 2;
+        const BAR_SPACING: i32 = 3; // 2px bar + 1px gap
 
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-        let (ground_x, ground_y) =
-            Self::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, cam_xoff, cam_yoff);
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
 
         let bar_left = ground_x - BAR_W / 2;
-        let bar_y_base = ground_y + FLOOR_TILE_HEIGHT + 1;
+        // Nameplate top is at ground_y - 52 (shifted 4px from original -48);
+        // nameplate height is 10 px. Bars sit 2 px below nameplate bottom,
+        // then shifted an additional 2 px up: ground_y - 52 + 10 + 2 - 2 = ground_y - 42.
+        let bar_y_base = ground_y - 42;
 
         let ci = ps.character_info();
 
         canvas.set_blend_mode(sdl2::render::BlendMode::None);
+
+        // Draw dark background tracks first so missing HP/mana/end is visible.
+        canvas.set_draw_color(Color::RGB(30, 30, 30));
+        canvas.fill_rect(sdl2::rect::Rect::new(
+            bar_left,
+            bar_y_base,
+            BAR_W as u32,
+            BAR_H,
+        ))?;
+        canvas.fill_rect(sdl2::rect::Rect::new(
+            bar_left,
+            bar_y_base + BAR_SPACING,
+            BAR_W as u32,
+            BAR_H,
+        ))?;
+        canvas.fill_rect(sdl2::rect::Rect::new(
+            bar_left,
+            bar_y_base + BAR_SPACING * 2,
+            BAR_W as u32,
+            BAR_H,
+        ))?;
 
         // HP bar (red)
         if ci.hp[5] > 0 {
@@ -948,7 +971,7 @@ impl GameScene {
                 ((ci.a_hp.max(0) as i64 * BAR_W as i64) / ci.hp[5] as i64).min(BAR_W as i64) as u32;
             if filled > 0 {
                 canvas.set_draw_color(Color::RGB(180, 30, 30));
-                canvas.fill_rect(sdl2::rect::Rect::new(bar_left, bar_y_base, filled, 1))?;
+                canvas.fill_rect(sdl2::rect::Rect::new(bar_left, bar_y_base, filled, BAR_H))?;
             }
         }
 
@@ -962,7 +985,7 @@ impl GameScene {
                     bar_left,
                     bar_y_base + BAR_SPACING,
                     filled,
-                    1,
+                    BAR_H,
                 ))?;
             }
         }
@@ -977,7 +1000,7 @@ impl GameScene {
                     bar_left,
                     bar_y_base + BAR_SPACING * 2,
                     filled,
-                    1,
+                    BAR_H,
                 ))?;
             }
         }
