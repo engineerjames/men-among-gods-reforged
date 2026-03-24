@@ -199,7 +199,7 @@ impl VitalityBars {
                     TRACK_COLOR
                 };
                 canvas.set_draw_color(c);
-                let _ = canvas.draw_point(sdl2::rect::Point::new(px, y));
+                canvas.draw_point(sdl2::rect::Point::new(px, y))?;
             }
             // Right arm pixels (extend rightward from arm centre).
             for k in 0..ARM_THICKNESS {
@@ -210,7 +210,7 @@ impl VitalityBars {
                     TRACK_COLOR
                 };
                 canvas.set_draw_color(c);
-                let _ = canvas.draw_point(sdl2::rect::Point::new(px, y));
+                canvas.draw_point(sdl2::rect::Point::new(px, y))?;
             }
         }
 
