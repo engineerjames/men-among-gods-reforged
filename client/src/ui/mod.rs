@@ -43,6 +43,7 @@ pub mod style;
 pub mod text_input;
 pub mod title_bar;
 pub mod tls_warning_banner;
+pub mod vitality_bars;
 pub mod widget;
 
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};

@@ -59,6 +59,7 @@ use crate::{
         status_panel::StatusPanel,
         style::Padding,
         tls_warning_banner::TlsWarningBanner,
+        vitality_bars::VitalityBars,
         widget::{
             Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
             WidgetAction,
@@ -201,6 +202,11 @@ const STATUS_PANEL_X: i32 = (TARGET_WIDTH_INT as i32 - 500) / 2 + 500 + 8;
 /// Y position of the status panel (same row as the rank progress line).
 const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 38;
 
+/// X position of the vitality bars (horizontally centered on the player sprite).
+const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2 - 16;
+/// Y position of the top vitality bar (approximately below the player nameplate).
+const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 / 2 - 50;
+
 // ---------------------------------------------------------------------------
 // GameScene struct
 // ---------------------------------------------------------------------------
@@ -224,6 +230,7 @@ pub struct GameScene {
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
+    pub(super) vitality_bars: VitalityBars,
     pub(super) skill_bar: SkillBar,
     pub(super) skill_picker: SkillPickerPopup,
     pub(super) last_synced_log_len: usize,
@@ -327,6 +334,7 @@ impl GameScene {
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
+            vitality_bars: VitalityBars::new(VITALITY_BARS_X, VITALITY_BARS_Y),
             look_panel: LookPanel::new(
                 Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
                 HUD_PANEL_BG,
@@ -1499,9 +1507,6 @@ impl Scene for GameScene {
         )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
-        // Player vital bars (HP / End / Mana) overlaid on character sprite.
-        self.draw_player_vital_bars(canvas, ps)?;
-
         // 5. Chat log + input line (via ChatBox widget)
         self.perf_profiler.begin_sample(PerfLabel::DrawChat);
         {
@@ -1525,6 +1530,14 @@ impl Scene for GameScene {
                 self.rank_progress_line
                     .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
                 self.mode_button.sync(ci.mode);
+                self.vitality_bars.sync(
+                    ci.a_hp,
+                    ci.hp[5] as i32,
+                    ci.a_end,
+                    ci.end[5] as i32,
+                    ci.a_mana,
+                    ci.mana[5] as i32,
+                );
                 use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
                 let sorted = SP::build_sorted_skills(&ci.skill);
                 self.skills_panel.update_data(SkillsPanelData {
@@ -1575,6 +1588,7 @@ impl Scene for GameScene {
             };
             self.rank_sigil.render(&mut ctx)?;
             self.status_panel.render(&mut ctx)?;
+            self.vitality_bars.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::SyncAndDrawStatus);
 
