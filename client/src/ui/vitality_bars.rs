@@ -1,11 +1,19 @@
-//! Player vitality bar HUD overlay (HP, Endurance, Mana).
+//! Player vitality chevron HUD overlay (HP, Endurance, Mana).
 //!
-//! Renders three horizontally-stacked 32×2 px bars directly onto the canvas.
-//! Each bar has a dark background track so missing values remain visible even
-//! when the player is at zero HP/End/Mana.
+//! Renders three nested upward-pointing chevron (^ caret) shapes directly onto
+//! the canvas.  HP is the outermost (widest / tallest), Endurance is the
+//! middle, and Mana is the innermost (narrowest / shortest).  Each layer
+//! maintains the same arm slope angle, so inner chevrons are proportionally
+//! shorter — their tips are staggered below the HP tip while all layers share
+//! the same bottom (feet) y coordinate.
 //!
-//! The position is stored in the public [`x`] and [`y`] fields so it can be
-//! repositioned at any time without recreating the widget.
+//! Each chevron has a dark background track so missing values remain visible.
+//! Fill direction is **left-to-right**: at 50 % the left arm is fully coloured
+//! and the right arm is dark track.
+//!
+//! The position is stored in the public [`x`] and [`y`] fields:
+//! - [`x`]: horizontal centre of the chevron group (tip x).
+//! - [`y`]: bottom of the chevron group (feet y).
 //!
 //! [`x`]: VitalityBars::x
 //! [`y`]: VitalityBars::y
@@ -19,43 +27,51 @@ use super::RenderContext;
 // Layout constants
 // ---------------------------------------------------------------------------
 
-/// Width of each bar in pixels.
-const BAR_W: i32 = 32;
+/// Half-width of the outermost (HP) chevron at its bottom feet.
+/// The total horizontal span is `2 * HP_HALF_W` (32 px).
+const HP_HALF_W: i32 = 16;
 
-/// Height of each bar in pixels.
-const BAR_H: u32 = 2;
+/// Vertical height of the outermost (HP) chevron from its bottom feet to its
+/// tip.  Inner layers scale this proportionally:
+/// `h = CHEVRON_H * hw / HP_HALF_W`.
+const CHEVRON_H: i32 = 10;
 
-/// Vertical distance between the top of adjacent bar rows (bar height + 1 px gap).
-const BAR_SPACING: i32 = 3;
+/// Horizontal inset per layer.  Each successive inner chevron is this many
+/// pixels narrower per side at the bottom feet (END hw = 12, MANA hw = 8).
+const LAYER_INSET: i32 = 4;
 
-/// Dark background track drawn behind each bar to show the empty portion.
+/// Thickness of each chevron arm in pixels.
+const ARM_THICKNESS: i32 = 2;
+
+/// Dark background track drawn behind each chevron to show the empty portion.
 const TRACK_COLOR: Color = Color::RGB(30, 30, 30);
 
-/// HP bar fill colour.
+/// HP chevron fill colour.
 const HP_COLOR: Color = Color::RGB(180, 30, 30);
 
-/// Endurance bar fill colour.
+/// Endurance chevron fill colour.
 const END_COLOR: Color = Color::RGB(200, 180, 40);
 
-/// Mana bar fill colour.
+/// Mana chevron fill colour.
 const MANA_COLOR: Color = Color::RGB(40, 80, 200);
 
 // ---------------------------------------------------------------------------
 // VitalityBars
 // ---------------------------------------------------------------------------
 
-/// HUD overlay that renders the player's HP, Endurance, and Mana bars.
+/// HUD overlay that renders the player's HP, Endurance, and Mana as three
+/// nested upward-pointing chevron (^ caret) shapes.
 ///
-/// Each bar is [`BAR_W`]×[`BAR_H`] pixels with a dark [`TRACK_COLOR`]
-/// background so missing values are always visible.  Modify the public
-/// [`x`] and [`y`] fields to reposition the widget without recreating it.
+/// Each chevron has a dark [`TRACK_COLOR`] background so missing values are
+/// always visible.  Fill sweeps left-to-right.  Modify the public [`x`] and
+/// [`y`] fields to reposition the widget without recreating it.
 ///
 /// [`x`]: VitalityBars::x
 /// [`y`]: VitalityBars::y
 pub struct VitalityBars {
-    /// Left edge of the bar group in logical pixels.
+    /// Horizontal centre of the chevron group in logical pixels.
     pub x: i32,
-    /// Top edge of the HP bar in logical pixels.
+    /// Bottom of the chevron group (feet y) in logical pixels.
     pub y: i32,
     /// HP fill fraction in `[0.0, 1.0]`.
     hp_fill: f32,
@@ -66,19 +82,20 @@ pub struct VitalityBars {
 }
 
 impl VitalityBars {
-    /// Create a new `VitalityBars` widget with its top-left at `(x, y)`.
+    /// Create a new `VitalityBars` widget centred at `x` with its bottom
+    /// feet at `y`.
     ///
-    /// All bars start fully filled (1.0) until [`sync`] is called with real
-    /// character stats.
+    /// All chevrons start fully filled (1.0) until [`sync`] is called with
+    /// real character stats.
     ///
     /// # Arguments
     ///
-    /// * `x` - Left edge of the bar group in logical pixels.
-    /// * `y` - Top edge of the HP bar in logical pixels.
+    /// * `x` - Horizontal centre of the chevron group.
+    /// * `y` - Bottom of the chevron group (feet y).
     ///
     /// # Returns
     ///
-    /// * A new `VitalityBars` with all bars at 100 % fill.
+    /// * A new `VitalityBars` with all chevrons at 100 % fill.
     ///
     /// [`sync`]: Self::sync
     pub fn new(x: i32, y: i32) -> Self {
@@ -94,12 +111,12 @@ impl VitalityBars {
     /// Update the displayed fill fractions from raw current and maximum stat values.
     ///
     /// Negative current values are clamped to zero.  When `max_*` is zero the
-    /// corresponding bar fill is set to zero (bar is not drawn).
+    /// corresponding chevron fill is set to zero.
     ///
     /// # Arguments
     ///
     /// * `a_hp` - Current HP.
-    /// * `max_hp` - Maximum HP; bar fill becomes 0 if this is zero.
+    /// * `max_hp` - Maximum HP; fill becomes 0 if this is zero.
     /// * `a_end` - Current Endurance.
     /// * `max_end` - Maximum Endurance.
     /// * `a_mana` - Current Mana.
@@ -130,11 +147,83 @@ impl VitalityBars {
         };
     }
 
-    /// Draw the three vital bars onto the canvas.
+    /// Draw a single upward-pointing chevron with left-to-right fill.
     ///
-    /// Renders a full-width dark background track for each bar first, then
-    /// overlays the coloured fill proportional to the stored fraction.
-    /// Uses `BlendMode::None` so bars are always fully opaque.
+    /// The chevron tip is at `(cx, bot_y - height)` and the two feet are at
+    /// `(cx ± half_w, bot_y)`.  Pixels whose x coordinate falls within the
+    /// filled portion (measured left-to-right across the full chevron span)
+    /// are drawn in `color`; the rest are drawn in [`TRACK_COLOR`].
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas to draw on.
+    /// * `cx` - Horizontal centre (tip and midpoint of feet).
+    /// * `bot_y` - Bottom y coordinate (feet y).
+    /// * `half_w` - Half-width of the chevron at the feet.
+    /// * `height` - Vertical span from feet to tip.
+    /// * `fill` - Fill fraction in `[0.0, 1.0]` (left-to-right).
+    /// * `color` - Fill colour for the filled portion.
+    fn draw_chevron(
+        canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
+        cx: i32,
+        bot_y: i32,
+        half_w: i32,
+        height: i32,
+        fill: f32,
+        color: Color,
+    ) -> Result<(), String> {
+        if height <= 0 || half_w <= 0 {
+            return Ok(());
+        }
+
+        // Full pixel span including arm thickness on each side.
+        let leftmost = cx - half_w - (ARM_THICKNESS - 1);
+        let rightmost = cx + half_w + (ARM_THICKNESS - 1);
+        let pixel_span = (rightmost - leftmost + 1) as f32;
+        let fill_x = leftmost as f32 + fill * pixel_span;
+
+        // Walk scanlines from tip (row 0) down to feet (row height-1).
+        for row in 0..height {
+            let y = bot_y - height + row;
+            // t = 0 at tip, 1 at feet.
+            let t = row as f32 / (height - 1).max(1) as f32;
+            // Horizontal offset from centre: 0 at tip, half_w at feet.
+            let offset = (t * half_w as f32).round() as i32;
+
+            // Left arm pixels (extend leftward from arm centre).
+            for k in 0..ARM_THICKNESS {
+                let px = cx - offset - k;
+                let c = if (px as f32) < fill_x {
+                    color
+                } else {
+                    TRACK_COLOR
+                };
+                canvas.set_draw_color(c);
+                let _ = canvas.draw_point(sdl2::rect::Point::new(px, y));
+            }
+            // Right arm pixels (extend rightward from arm centre).
+            for k in 0..ARM_THICKNESS {
+                let px = cx + offset + k;
+                let c = if (px as f32) < fill_x {
+                    color
+                } else {
+                    TRACK_COLOR
+                };
+                canvas.set_draw_color(c);
+                let _ = canvas.draw_point(sdl2::rect::Point::new(px, y));
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Draw the three nested chevrons onto the canvas.
+    ///
+    /// HP is outermost (widest / tallest), Endurance is middle, Mana is
+    /// innermost (narrowest / shortest).  Each layer's height scales
+    /// proportionally with its half-width so that the arm slope is consistent
+    /// across all three.  All layers share the same feet y; tips are staggered.
+    /// Uses `BlendMode::None` so chevrons are always fully opaque.
     ///
     /// # Arguments
     ///
@@ -147,23 +236,20 @@ impl VitalityBars {
         let canvas = &mut ctx.canvas;
         canvas.set_blend_mode(BlendMode::None);
 
-        let bars = [
-            (self.hp_fill, HP_COLOR),
-            (self.end_fill, END_COLOR),
-            (self.mana_fill, MANA_COLOR),
+        let layers: [(f32, Color, i32); 3] = [
+            (self.hp_fill, HP_COLOR, 0),
+            (self.end_fill, END_COLOR, LAYER_INSET),
+            (self.mana_fill, MANA_COLOR, LAYER_INSET * 2),
         ];
 
-        for (i, (fill, color)) in bars.iter().enumerate() {
-            let bar_y = self.y + (i as i32) * BAR_SPACING;
-            let filled = (fill * BAR_W as f32) as u32;
-
-            canvas.set_draw_color(TRACK_COLOR);
-            canvas.fill_rect(sdl2::rect::Rect::new(self.x, bar_y, BAR_W as u32, BAR_H))?;
-
-            if filled > 0 {
-                canvas.set_draw_color(*color);
-                canvas.fill_rect(sdl2::rect::Rect::new(self.x, bar_y, filled, BAR_H))?;
+        for (fill, color, inset) in layers {
+            let hw = HP_HALF_W - inset;
+            if hw <= 0 {
+                continue;
             }
+            // Height scales proportionally so the arm slope stays the same.
+            let h = CHEVRON_H * hw / HP_HALF_W;
+            Self::draw_chevron(canvas, self.x, self.y, hw, h, fill, color)?;
         }
 
         Ok(())
@@ -222,5 +308,13 @@ mod tests {
         assert_eq!(bars.hp_fill, 1.0);
         assert_eq!(bars.end_fill, 1.0);
         assert_eq!(bars.mana_fill, 1.0);
+    }
+
+    #[test]
+    fn position_is_center_and_bottom() {
+        let bars = VitalityBars::new(480, 270);
+        // x is horizontal centre (tip x), y is bottom (feet y)
+        assert_eq!(bars.x, 480);
+        assert_eq!(bars.y, 270);
     }
 }

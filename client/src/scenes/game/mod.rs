@@ -202,10 +202,10 @@ const STATUS_PANEL_X: i32 = (TARGET_WIDTH_INT as i32 - 500) / 2 + 500 + 8;
 /// Y position of the status panel (same row as the rank progress line).
 const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 38;
 
-/// X position of the vitality bars (horizontally centered on the player sprite).
-const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2 - 16;
-/// Y position of the top vitality bar (approximately below the player nameplate).
-const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 / 2 - 50;
+/// X position of the vitality chevrons (horizontal centre of the player sprite).
+const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
+/// Y position of the vitality chevron feet (approximately below the player nameplate).
+const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 / 2 - 42;
 
 // ---------------------------------------------------------------------------
 // GameScene struct
