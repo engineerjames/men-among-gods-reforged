@@ -50,6 +50,7 @@ use crate::{
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
         rank_progress_line::RankProgressLine,
+        rank_sigil::RankSigil,
         settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
         shop_panel::ShopPanel,
         skill_bar::SkillBar,
@@ -186,6 +187,20 @@ const SHOP_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - SHOP_PAN
 // Minimap
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
 
+// ---- Rank sigil (upper-left) ---- //
+
+/// X position of the rank sigil widget.
+const RANK_SIGIL_X: i32 = 4;
+/// Y position of the rank sigil widget.
+const RANK_SIGIL_Y: i32 = 4;
+
+// ---- Status panel (WV/AV, right of skill bar) ---- //
+
+/// X position of the status panel (8 px to the right of the skill bar's right edge).
+const STATUS_PANEL_X: i32 = (TARGET_WIDTH_INT as i32 - 500) / 2 + 500 + 8;
+/// Y position of the status panel (same row as the rank progress line).
+const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 38;
+
 // ---------------------------------------------------------------------------
 // GameScene struct
 // ---------------------------------------------------------------------------
@@ -197,6 +212,7 @@ pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
     pub(super) status_panel: StatusPanel,
+    pub(super) rank_sigil: RankSigil,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
     pub(super) rank_progress_line: RankProgressLine,
@@ -258,7 +274,8 @@ impl GameScene {
         let panel_y = panel_bottom - HUD_PANEL_H as i32;
 
         Self {
-            status_panel: StatusPanel::new(4, 4, HUD_PANEL_BG),
+            status_panel: StatusPanel::new(STATUS_PANEL_X, STATUS_PANEL_Y, HUD_PANEL_BG),
+            rank_sigil: RankSigil::new(RANK_SIGIL_X, RANK_SIGIL_Y, HUD_PANEL_BG),
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
                 Color::RGBA(10, 10, 30, 180),
@@ -622,6 +639,9 @@ impl GameScene {
         if self.chat_box.is_focused() && self.chat_box.bounds().contains_point(mx, my) {
             return true;
         }
+        if self.rank_sigil.bounds().contains_point(mx, my) {
+            return true;
+        }
         if self.status_panel.bounds().contains_point(mx, my) {
             return true;
         }
@@ -672,6 +692,20 @@ impl GameScene {
     ) -> Result<(), String> {
         if !show_helper_text {
             return Ok(());
+        }
+        // Show the rank name as a tooltip when hovering the rank sigil.
+        if self.rank_sigil.is_hovered() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                self.rank_sigil.rank_name(),
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
         }
         if self.is_mouse_over_ui() {
             return Ok(());
@@ -1082,7 +1116,12 @@ impl Scene for GameScene {
                 return None;
             }
 
-            // --- StatusPanel toggle (upper-left sigil) ---
+            // --- Rank sigil (upper-left) ---
+            if self.rank_sigil.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            // --- StatusPanel (WV/AV display, right of skill bar) ---
             if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 return None;
             }
@@ -1460,6 +1499,9 @@ impl Scene for GameScene {
         )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
+        // Player vital bars (HP / End / Mana) overlaid on character sprite.
+        self.draw_player_vital_bars(canvas, ps)?;
+
         // 5. Chat log + input line (via ChatBox widget)
         self.perf_profiler.begin_sample(PerfLabel::DrawChat);
         {
@@ -1471,14 +1513,15 @@ impl Scene for GameScene {
         }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
-        // 5a. Status panel (upper-left sigil + stat bars)
+        // 5a. Rank sigil + status panel (WV/AV)
         self.perf_profiler
             .begin_sample(PerfLabel::SyncAndDrawStatus);
         {
             if let Some(ps) = app_state.player_state.as_ref() {
                 let ci = ps.character_info();
                 let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
-                self.status_panel.sync(ps, rank_index);
+                self.rank_sigil.sync(rank_index);
+                self.status_panel.sync(ci.weapon, ci.armor);
                 self.rank_progress_line
                     .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
                 self.mode_button.sync(ci.mode);
@@ -1530,6 +1573,7 @@ impl Scene for GameScene {
                 canvas,
                 gfx: gfx_cache,
             };
+            self.rank_sigil.render(&mut ctx)?;
             self.status_panel.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::SyncAndDrawStatus);

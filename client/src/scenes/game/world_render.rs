@@ -907,4 +907,81 @@ impl GameScene {
 
         Ok(())
     }
+
+    /// Draws three 1-pixel-tall HP / Endurance / Mana bars centered on the
+    /// player character sprite, just below the tile's ground diamond.
+    ///
+    /// Each bar scales linearly from 0 to `BAR_W` pixels wide based on the
+    /// ratio of the current value to the maximum.  Bars are rendered with
+    /// `BlendMode::None` (fully opaque) so they are always visible.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    /// * `ps` - Current player state (provides character stats).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    pub(super) fn draw_player_vital_bars(
+        &self,
+        canvas: &mut Canvas<Window>,
+        ps: &PlayerState,
+    ) -> Result<(), String> {
+        const BAR_W: i32 = 32;
+        const BAR_SPACING: i32 = 2;
+
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (ground_x, ground_y) =
+            Self::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, cam_xoff, cam_yoff);
+
+        let bar_left = ground_x - BAR_W / 2;
+        let bar_y_base = ground_y + FLOOR_TILE_HEIGHT + 1;
+
+        let ci = ps.character_info();
+
+        canvas.set_blend_mode(sdl2::render::BlendMode::None);
+
+        // HP bar (red)
+        if ci.hp[5] > 0 {
+            let filled =
+                ((ci.a_hp.max(0) as i64 * BAR_W as i64) / ci.hp[5] as i64).min(BAR_W as i64) as u32;
+            if filled > 0 {
+                canvas.set_draw_color(Color::RGB(180, 30, 30));
+                canvas.fill_rect(sdl2::rect::Rect::new(bar_left, bar_y_base, filled, 1))?;
+            }
+        }
+
+        // Endurance bar (yellow)
+        if ci.end[5] > 0 {
+            let filled = ((ci.a_end.max(0) as i64 * BAR_W as i64) / ci.end[5] as i64)
+                .min(BAR_W as i64) as u32;
+            if filled > 0 {
+                canvas.set_draw_color(Color::RGB(200, 180, 40));
+                canvas.fill_rect(sdl2::rect::Rect::new(
+                    bar_left,
+                    bar_y_base + BAR_SPACING,
+                    filled,
+                    1,
+                ))?;
+            }
+        }
+
+        // Mana bar (blue)
+        if ci.mana[5] > 0 {
+            let filled = ((ci.a_mana.max(0) as i64 * BAR_W as i64) / ci.mana[5] as i64)
+                .min(BAR_W as i64) as u32;
+            if filled > 0 {
+                canvas.set_draw_color(Color::RGB(40, 80, 200));
+                canvas.fill_rect(sdl2::rect::Rect::new(
+                    bar_left,
+                    bar_y_base + BAR_SPACING * 2,
+                    filled,
+                    1,
+                ))?;
+            }
+        }
+
+        Ok(())
+    }
 }

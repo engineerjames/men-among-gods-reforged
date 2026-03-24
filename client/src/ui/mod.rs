@@ -29,6 +29,7 @@ pub mod quit_confirm_dialog;
 pub mod radio_group;
 pub mod rank_progress_arc;
 pub mod rank_progress_line;
+pub mod rank_sigil;
 pub mod request_reset_form;
 pub mod scrollable_list;
 pub mod settings_panel;
