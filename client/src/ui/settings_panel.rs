@@ -1,8 +1,9 @@
 //! Settings / options panel.
 //!
-//! Duplicates all capabilities of the egui-based escape menu (visual toggles,
-//! audio volume, display mode, diagnostics, disconnect/quit) using the native
-//! Widget-based UI framework.
+//! Presents a compact main menu with category buttons (Display Settings,
+//! Diagnostics, Controls), an inline volume slider, and session controls.
+//! Each category button opens a sub-panel that overlaps the main panel
+//! content. Only one sub-panel is visible at a time.
 
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
@@ -21,7 +22,7 @@ use crate::font_cache;
 use crate::preferences::DisplayMode;
 
 // ---------------------------------------------------------------------------
-// Layout constants
+// Layout constants — main panel
 // ---------------------------------------------------------------------------
 
 /// Row height for controls.
@@ -33,38 +34,697 @@ const CONTROL_W: u32 = 280;
 /// Height of a button row.
 const BTN_H: u32 = 16;
 
-// Y offsets from panel top for each element (shifted by TITLE_BAR_H).
-const Y_SHIFT: i32 = -17;
-const Y_VISUAL_HEADER: i32 = 22 + TITLE_BAR_H + Y_SHIFT;
-const Y_SHADOWS: i32 = 36 + TITLE_BAR_H + Y_SHIFT;
-const Y_SPELL_FX: i32 = 50 + TITLE_BAR_H + Y_SHIFT;
-const Y_NAMES: i32 = 64 + TITLE_BAR_H + Y_SHIFT;
-const Y_HEALTH: i32 = 78 + TITLE_BAR_H + Y_SHIFT;
-const Y_HELPER_TEXT: i32 = 92 + TITLE_BAR_H + Y_SHIFT;
-const Y_SHOW_POSITIONS: i32 = 106 + TITLE_BAR_H + Y_SHIFT;
-const Y_WALLS: i32 = 120 + TITLE_BAR_H + Y_SHIFT;
-const Y_AUDIO_HEADER: i32 = 138 + TITLE_BAR_H + Y_SHIFT;
-const Y_VOLUME: i32 = 152 + TITLE_BAR_H + Y_SHIFT;
-const Y_DISPLAY_HEADER: i32 = 170 + TITLE_BAR_H + Y_SHIFT;
-const Y_DISPLAY_MODE: i32 = 184 + TITLE_BAR_H + Y_SHIFT;
-const Y_PIXEL_PERFECT: i32 = 204 + TITLE_BAR_H + Y_SHIFT;
-const Y_VSYNC: i32 = 218 + TITLE_BAR_H + Y_SHIFT;
-const Y_DIAG_HEADER: i32 = 236 + TITLE_BAR_H + Y_SHIFT;
-const Y_PING: i32 = 250 + TITLE_BAR_H + Y_SHIFT;
-const Y_PROFILER_BTN: i32 = 266 + TITLE_BAR_H + Y_SHIFT;
-const Y_LOGDIR_BTN: i32 = 286 + TITLE_BAR_H + Y_SHIFT;
-const Y_CONTROLS_HEADER: i32 = 308 + TITLE_BAR_H + Y_SHIFT;
-const Y_KEYBINDINGS_BTN: i32 = 322 + TITLE_BAR_H + Y_SHIFT;
-const Y_SEPARATOR: i32 = 346 + TITLE_BAR_H + Y_SHIFT;
-const Y_SESSION_BTNS: i32 = 358 + TITLE_BAR_H + Y_SHIFT;
-const Y_RETURN_BTN: i32 = 380 + TITLE_BAR_H + Y_SHIFT;
+// Y offsets from main panel top (relative, added to bounds.y).
+const Y_DISPLAY_BTN: i32 = TITLE_BAR_H + 8;
+const Y_DIAG_BTN: i32 = Y_DISPLAY_BTN + BTN_H as i32 + 6;
+const Y_CONTROLS_BTN: i32 = Y_DIAG_BTN + BTN_H as i32 + 6;
+const Y_VOLUME_LABEL: i32 = Y_CONTROLS_BTN + BTN_H as i32 + 10;
+const Y_VOLUME: i32 = Y_VOLUME_LABEL + ROW_H + 2;
+const Y_SEPARATOR: i32 = Y_VOLUME + ROW_H + 8;
+const Y_SESSION_BTNS: i32 = Y_SEPARATOR + 10;
+const Y_RETURN_BTN: i32 = Y_SESSION_BTNS + BTN_H as i32 + 6;
 
-/// Total panel height needed to fit all controls.
-pub const SETTINGS_PANEL_H: u32 = (404 + TITLE_BAR_H + Y_SHIFT) as u32;
+/// Total panel height needed to fit all main-panel controls.
+pub const SETTINGS_PANEL_H: u32 = (Y_RETURN_BTN + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
+// Layout constants — Display Settings sub-panel
+// ---------------------------------------------------------------------------
+
+const DS_ROW_H: i32 = 14;
+const DS_Y_SHADOWS: i32 = TITLE_BAR_H + 8;
+const DS_Y_SPELL_FX: i32 = DS_Y_SHADOWS + DS_ROW_H;
+const DS_Y_NAMES: i32 = DS_Y_SPELL_FX + DS_ROW_H;
+const DS_Y_HEALTH: i32 = DS_Y_NAMES + DS_ROW_H;
+const DS_Y_HELPER_TEXT: i32 = DS_Y_HEALTH + DS_ROW_H;
+const DS_Y_WALLS: i32 = DS_Y_HELPER_TEXT + DS_ROW_H;
+const DS_Y_SEP: i32 = DS_Y_WALLS + DS_ROW_H + 4;
+const DS_Y_DISPLAY_MODE: i32 = DS_Y_SEP + 8;
+const DS_Y_PIXEL_PERFECT: i32 = DS_Y_DISPLAY_MODE + 20;
+const DS_Y_VSYNC: i32 = DS_Y_PIXEL_PERFECT + DS_ROW_H;
+const DS_PANEL_H: u32 = (DS_Y_VSYNC + DS_ROW_H + 8) as u32;
+
+// ---------------------------------------------------------------------------
+// Layout constants — Diagnostics sub-panel
+// ---------------------------------------------------------------------------
+
+const DG_Y_SHOW_POS: i32 = TITLE_BAR_H + 8;
+const DG_Y_PING: i32 = DG_Y_SHOW_POS + ROW_H + 4;
+const DG_Y_PROFILER_BTN: i32 = DG_Y_PING + ROW_H + 6;
+const DG_Y_LOGDIR_BTN: i32 = DG_Y_PROFILER_BTN + BTN_H as i32 + 6;
+const DG_PANEL_H: u32 = (DG_Y_LOGDIR_BTN + BTN_H as i32 + 8) as u32;
+
+// ---------------------------------------------------------------------------
+// Layout constants — Controls sub-panel
+// ---------------------------------------------------------------------------
+
+const CT_Y_KEYBINDINGS_BTN: i32 = TITLE_BAR_H + 8;
+const CT_PANEL_H: u32 = (CT_Y_KEYBINDINGS_BTN + BTN_H as i32 + 8) as u32;
+
+// ---------------------------------------------------------------------------
+// Which sub-panel is active
+// ---------------------------------------------------------------------------
+
+/// Identifies which settings sub-panel is currently showing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingsSubPanel {
+    /// Display Settings (merged Visual + Display).
+    Display,
+    /// Diagnostics (ping, profiler, log dir, pixel positions).
+    Diagnostics,
+    /// Controls (keyboard bindings).
+    Controls,
+}
+
+// ---------------------------------------------------------------------------
+// Shared helpers
+// ---------------------------------------------------------------------------
+
+/// Standard button background used in the settings UI.
+fn btn_bg() -> Background {
+    Background::SolidColor(Color::RGBA(40, 40, 60, 200))
+}
+
+/// Standard button border used in the settings UI.
+fn btn_border() -> Border {
+    Border {
+        color: Color::RGBA(120, 120, 140, 200),
+        width: 1,
+    }
+}
+
+/// Semi-transparent dark background used by sub-panels.
+const SUB_PANEL_BG: Color = Color::RGBA(10, 10, 30, 220);
+/// Border color shared by all panels.
+const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
+
+/// Shorthand to shift a widget by a pixel delta.
+fn shift(w: &mut impl Widget, dx: i32, dy: i32) {
+    let b = w.bounds();
+    let (nx, ny) = (b.x + dx, b.y + dy);
+    w.set_position(nx, ny);
+}
+
+/// Draws a centered section header string.
+fn draw_section_header(
+    ctx: &mut RenderContext,
+    text: &str,
+    center_x: i32,
+    y: i32,
+) -> Result<(), String> {
+    font_cache::draw_text(
+        ctx.canvas,
+        ctx.gfx,
+        1,
+        text,
+        center_x,
+        y,
+        font_cache::TextStyle::centered(),
+    )
+}
+
+/// Draw a sub-panel background and border rectangle.
+fn draw_sub_panel_frame(
+    ctx: &mut RenderContext,
+    bounds: &Bounds,
+    bg_color: Color,
+    border_color: Color,
+) -> Result<(), String> {
+    let rect = sdl2::rect::Rect::new(bounds.x, bounds.y, bounds.width, bounds.height);
+    ctx.canvas.set_blend_mode(BlendMode::Blend);
+    ctx.canvas.set_draw_color(bg_color);
+    ctx.canvas.fill_rect(rect)?;
+    ctx.canvas.set_draw_color(border_color);
+    ctx.canvas.draw_rect(rect)?;
+    Ok(())
+}
+
+// ===========================================================================
+// DisplaySettingsSubPanel
+// ===========================================================================
+
+/// Sub-panel for display/visual settings.
+///
+/// Contains visual toggles (shadows, spell effects, names, health, helper
+/// text, hide walls) and display controls (mode, pixel-perfect scaling,
+/// VSync).
+struct DisplaySettingsSubPanel {
+    bounds: Bounds,
+    visible: bool,
+    title_bar: TitleBar,
+    chk_shadows: Checkbox,
+    chk_spell_effects: Checkbox,
+    chk_show_names: Checkbox,
+    chk_show_health: Checkbox,
+    chk_helper_text: Checkbox,
+    chk_hide_walls: Checkbox,
+    drp_display_mode: Dropdown,
+    chk_pixel_perfect: Checkbox,
+    chk_vsync: Checkbox,
+    pending_actions: Vec<WidgetAction>,
+}
+
+impl DisplaySettingsSubPanel {
+    /// Creates a new display settings sub-panel positioned relative to `origin`.
+    ///
+    /// # Arguments
+    ///
+    /// * `origin_x` - Left edge of the sub-panel.
+    /// * `origin_y` - Top edge of the sub-panel.
+    /// * `width` - Panel width.
+    ///
+    /// # Returns
+    ///
+    /// A new `DisplaySettingsSubPanel`, initially hidden.
+    fn new(origin_x: i32, origin_y: i32, width: u32) -> Self {
+        let x = origin_x + H_INSET;
+        let w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        Self {
+            bounds: Bounds::new(origin_x, origin_y, width, DS_PANEL_H),
+            visible: false,
+            title_bar: TitleBar::new("Display Settings", origin_x, origin_y, width),
+            chk_shadows: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_SHADOWS, w, DS_ROW_H as u32),
+                "Enable Shadows",
+                0,
+            ),
+            chk_spell_effects: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_SPELL_FX, w, DS_ROW_H as u32),
+                "Enable Spell Effects",
+                0,
+            ),
+            chk_show_names: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_NAMES, w, DS_ROW_H as u32),
+                "Show Names",
+                0,
+            ),
+            chk_show_health: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_HEALTH, w, DS_ROW_H as u32),
+                "Show % Health",
+                0,
+            ),
+            chk_helper_text: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_HELPER_TEXT, w, DS_ROW_H as u32),
+                "Show Helper Text",
+                0,
+            ),
+            chk_hide_walls: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_WALLS, w, DS_ROW_H as u32),
+                "Hide Walls",
+                0,
+            ),
+            drp_display_mode: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_DISPLAY_MODE, w, 16),
+                DisplayMode::ALL.iter().map(|m| m.to_string()).collect(),
+                0,
+                0,
+            ),
+            chk_pixel_perfect: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_PIXEL_PERFECT, w, DS_ROW_H as u32),
+                "Pixel-Perfect Scaling",
+                0,
+            ),
+            chk_vsync: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_VSYNC, w, DS_ROW_H as u32),
+                "VSync",
+                0,
+            ),
+            pending_actions: Vec::new(),
+        }
+    }
+
+    /// Loads widget values from the data snapshot.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Snapshot of current settings values.
+    fn sync_state(&mut self, data: &SettingsPanelData) {
+        self.chk_shadows.set_checked(data.shadows_enabled);
+        self.chk_spell_effects
+            .set_checked(data.spell_effects_enabled);
+        self.chk_show_names.set_checked(data.show_names);
+        self.chk_show_health.set_checked(data.show_health_pct);
+        self.chk_helper_text.set_checked(data.show_helper_text);
+        self.chk_hide_walls.set_checked(data.hide_walls);
+        self.chk_pixel_perfect
+            .set_checked(data.pixel_perfect_scaling);
+        self.chk_vsync.set_checked(data.vsync_enabled);
+
+        let mode_idx = DisplayMode::ALL
+            .iter()
+            .position(|m| *m == data.display_mode)
+            .unwrap_or(0);
+        self.drp_display_mode.set_selected(mode_idx);
+    }
+
+    /// Collects `WidgetAction`s from toggled/changed children.
+    fn collect_child_actions(&mut self) {
+        if self.chk_shadows.was_toggled() {
+            self.pending_actions
+                .push(WidgetAction::SetShadows(self.chk_shadows.is_checked()));
+        }
+        if self.chk_spell_effects.was_toggled() {
+            self.pending_actions.push(WidgetAction::SetSpellEffects(
+                self.chk_spell_effects.is_checked(),
+            ));
+        }
+        if self.chk_show_names.was_toggled() {
+            self.pending_actions
+                .push(WidgetAction::SetShowNames(self.chk_show_names.is_checked()));
+        }
+        if self.chk_show_health.was_toggled() {
+            self.pending_actions.push(WidgetAction::SetShowHealthPct(
+                self.chk_show_health.is_checked(),
+            ));
+        }
+        if self.chk_hide_walls.was_toggled() {
+            self.pending_actions
+                .push(WidgetAction::SetHideWalls(self.chk_hide_walls.is_checked()));
+        }
+        if self.chk_helper_text.was_toggled() {
+            self.pending_actions.push(WidgetAction::SetShowHelperText(
+                self.chk_helper_text.is_checked(),
+            ));
+        }
+        if self.drp_display_mode.was_changed() {
+            let mode = DisplayMode::ALL[self.drp_display_mode.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetDisplayMode(mode));
+        }
+        if self.chk_pixel_perfect.was_toggled() {
+            self.pending_actions
+                .push(WidgetAction::SetPixelPerfectScaling(
+                    self.chk_pixel_perfect.is_checked(),
+                ));
+        }
+        if self.chk_vsync.was_toggled() {
+            self.pending_actions
+                .push(WidgetAction::SetVSync(self.chk_vsync.is_checked()));
+        }
+    }
+
+    /// Shifts all widgets by a pixel delta.
+    fn shift_all(&mut self, dx: i32, dy: i32) {
+        self.bounds.x += dx;
+        self.bounds.y += dy;
+        self.title_bar
+            .set_bar_position(self.bounds.x, self.bounds.y);
+        shift(&mut self.chk_shadows, dx, dy);
+        shift(&mut self.chk_spell_effects, dx, dy);
+        shift(&mut self.chk_show_names, dx, dy);
+        shift(&mut self.chk_show_health, dx, dy);
+        shift(&mut self.chk_helper_text, dx, dy);
+        shift(&mut self.chk_hide_walls, dx, dy);
+        shift(&mut self.drp_display_mode, dx, dy);
+        shift(&mut self.chk_pixel_perfect, dx, dy);
+        shift(&mut self.chk_vsync, dx, dy);
+    }
+
+    /// Returns whether the title bar close button was pressed.
+    fn was_close_requested(&mut self) -> bool {
+        self.title_bar.was_close_requested()
+    }
+
+    /// Handles a UI event. Returns `Consumed` if the sub-panel ate it.
+    fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if !self.visible {
+            return EventResponse::Ignored;
+        }
+
+        // Title bar (close button only — no independent drag).
+        let (tb_resp, _drag) = self.title_bar.handle_event(event);
+        if self.was_close_requested() {
+            self.visible = false;
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
+        // Expanded dropdown gets priority.
+        if self.drp_display_mode.is_expanded() {
+            let resp = self.drp_display_mode.handle_event(event);
+            self.collect_child_actions();
+            if resp == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
+        let children_responses = [
+            self.chk_shadows.handle_event(event),
+            self.chk_spell_effects.handle_event(event),
+            self.chk_show_names.handle_event(event),
+            self.chk_show_health.handle_event(event),
+            self.chk_helper_text.handle_event(event),
+            self.chk_hide_walls.handle_event(event),
+            if !self.drp_display_mode.is_expanded() {
+                self.drp_display_mode.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
+            self.chk_pixel_perfect.handle_event(event),
+            self.chk_vsync.handle_event(event),
+        ];
+
+        self.collect_child_actions();
+
+        if children_responses
+            .iter()
+            .any(|r| *r == EventResponse::Consumed)
+        {
+            return EventResponse::Consumed;
+        }
+
+        // Consume clicks inside bounds to prevent pass-through.
+        match event {
+            UiEvent::MouseClick { x, y, .. } | UiEvent::MouseWheel { x, y, .. } => {
+                if self.bounds.contains_point(*x, *y) {
+                    EventResponse::Consumed
+                } else {
+                    EventResponse::Ignored
+                }
+            }
+            _ => EventResponse::Ignored,
+        }
+    }
+
+    /// Renders the sub-panel and its children.
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if !self.visible {
+            return Ok(());
+        }
+
+        draw_sub_panel_frame(ctx, &self.bounds, SUB_PANEL_BG, BORDER_COLOR)?;
+        self.title_bar.render(ctx)?;
+
+        // Visual/display separator line.
+        let sep_y = self.bounds.y + DS_Y_SEP;
+        ctx.canvas.set_draw_color(Color::RGBA(120, 120, 140, 150));
+        ctx.canvas.draw_line(
+            sdl2::rect::Point::new(self.bounds.x + H_INSET, sep_y),
+            sdl2::rect::Point::new(self.bounds.x + self.bounds.width as i32 - H_INSET, sep_y),
+        )?;
+
+        self.chk_shadows.render(ctx)?;
+        self.chk_spell_effects.render(ctx)?;
+        self.chk_show_names.render(ctx)?;
+        self.chk_show_health.render(ctx)?;
+        self.chk_helper_text.render(ctx)?;
+        self.chk_hide_walls.render(ctx)?;
+        self.chk_pixel_perfect.render(ctx)?;
+        self.chk_vsync.render(ctx)?;
+        // Dropdown last so expanded list overlays.
+        self.drp_display_mode.render(ctx)?;
+
+        Ok(())
+    }
+
+    /// Drains pending actions.
+    fn take_actions(&mut self) -> Vec<WidgetAction> {
+        std::mem::take(&mut self.pending_actions)
+    }
+}
+
+// ===========================================================================
+// DiagnosticsSubPanel
+// ===========================================================================
+
+/// Sub-panel for diagnostic tools.
+///
+/// Contains the "Show Pixel Positions" toggle (moved from Visual), ping
+/// readout, profiler button, and log directory button.
+struct DiagnosticsSubPanel {
+    bounds: Bounds,
+    visible: bool,
+    title_bar: TitleBar,
+    chk_show_positions: Checkbox,
+    lbl_ping: Label,
+    btn_profiler: RectButton,
+    btn_log_dir: RectButton,
+    pending_actions: Vec<WidgetAction>,
+}
+
+impl DiagnosticsSubPanel {
+    /// Creates a new diagnostics sub-panel positioned at the given origin.
+    ///
+    /// # Arguments
+    ///
+    /// * `origin_x` - Left edge of the sub-panel.
+    /// * `origin_y` - Top edge of the sub-panel.
+    /// * `width` - Panel width.
+    ///
+    /// # Returns
+    ///
+    /// A new `DiagnosticsSubPanel`, initially hidden.
+    fn new(origin_x: i32, origin_y: i32, width: u32) -> Self {
+        let x = origin_x + H_INSET;
+        let w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        Self {
+            bounds: Bounds::new(origin_x, origin_y, width, DG_PANEL_H),
+            visible: false,
+            title_bar: TitleBar::new("Diagnostics", origin_x, origin_y, width),
+            chk_show_positions: Checkbox::new(
+                Bounds::new(x, origin_y + DG_Y_SHOW_POS, w, ROW_H as u32),
+                "Show Pixel Positions",
+                0,
+            ),
+            lbl_ping: Label::new("Ping: N/A", 0, x, origin_y + DG_Y_PING),
+            btn_profiler: RectButton::new(
+                Bounds::new(x, origin_y + DG_Y_PROFILER_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Profile Performance", 0)
+            .with_border(btn_border()),
+            btn_log_dir: RectButton::new(
+                Bounds::new(x, origin_y + DG_Y_LOGDIR_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Open Log Directory", 0)
+            .with_border(btn_border()),
+            pending_actions: Vec::new(),
+        }
+    }
+
+    /// Loads widget values from the data snapshot.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Snapshot of current settings values.
+    fn sync_state(&mut self, data: &SettingsPanelData) {
+        self.chk_show_positions.set_checked(data.show_positions);
+        self.update_ping(data.last_rtt_ms);
+    }
+
+    /// Updates the ping readout label.
+    ///
+    /// # Arguments
+    ///
+    /// * `rtt_ms` - Latest round-trip time in milliseconds, or `None`.
+    fn update_ping(&mut self, rtt_ms: Option<u32>) {
+        let text = match rtt_ms {
+            Some(ms) => format!("Ping: {} ms", ms),
+            None => "Ping: N/A".to_string(),
+        };
+        self.lbl_ping.set_text(&text);
+    }
+
+    /// Shifts all widgets by a pixel delta.
+    fn shift_all(&mut self, dx: i32, dy: i32) {
+        self.bounds.x += dx;
+        self.bounds.y += dy;
+        self.title_bar
+            .set_bar_position(self.bounds.x, self.bounds.y);
+        shift(&mut self.chk_show_positions, dx, dy);
+        shift(&mut self.lbl_ping, dx, dy);
+        shift(&mut self.btn_profiler, dx, dy);
+        shift(&mut self.btn_log_dir, dx, dy);
+    }
+
+    /// Returns whether the title bar close button was pressed.
+    fn was_close_requested(&mut self) -> bool {
+        self.title_bar.was_close_requested()
+    }
+
+    /// Handles a UI event. Returns `Consumed` if the sub-panel ate it.
+    fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if !self.visible {
+            return EventResponse::Ignored;
+        }
+
+        let (tb_resp, _drag) = self.title_bar.handle_event(event);
+        if self.was_close_requested() {
+            self.visible = false;
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
+        if self.chk_show_positions.handle_event(event) == EventResponse::Consumed {
+            if self.chk_show_positions.was_toggled() {
+                self.pending_actions.push(WidgetAction::SetShowPositions(
+                    self.chk_show_positions.is_checked(),
+                ));
+            }
+            return EventResponse::Consumed;
+        }
+
+        if self.btn_profiler.handle_event(event) == EventResponse::Consumed {
+            self.pending_actions.push(WidgetAction::StartProfiler);
+            return EventResponse::Consumed;
+        }
+        if self.btn_log_dir.handle_event(event) == EventResponse::Consumed {
+            self.pending_actions.push(WidgetAction::OpenLogDir);
+            return EventResponse::Consumed;
+        }
+
+        match event {
+            UiEvent::MouseClick { x, y, .. } | UiEvent::MouseWheel { x, y, .. } => {
+                if self.bounds.contains_point(*x, *y) {
+                    EventResponse::Consumed
+                } else {
+                    EventResponse::Ignored
+                }
+            }
+            _ => EventResponse::Ignored,
+        }
+    }
+
+    /// Renders the sub-panel and its children.
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if !self.visible {
+            return Ok(());
+        }
+
+        draw_sub_panel_frame(ctx, &self.bounds, SUB_PANEL_BG, BORDER_COLOR)?;
+        self.title_bar.render(ctx)?;
+        self.chk_show_positions.render(ctx)?;
+        self.lbl_ping.render(ctx)?;
+        self.btn_profiler.render(ctx)?;
+        self.btn_log_dir.render(ctx)?;
+
+        Ok(())
+    }
+
+    /// Drains pending actions.
+    fn take_actions(&mut self) -> Vec<WidgetAction> {
+        std::mem::take(&mut self.pending_actions)
+    }
+}
+
+// ===========================================================================
+// ControlsSubPanel
+// ===========================================================================
+
+/// Sub-panel for control/input settings.
+///
+/// Contains a button to open the keyboard bindings editor panel.
+struct ControlsSubPanel {
+    bounds: Bounds,
+    visible: bool,
+    title_bar: TitleBar,
+    btn_keybindings: RectButton,
+    pending_actions: Vec<WidgetAction>,
+}
+
+impl ControlsSubPanel {
+    /// Creates a new controls sub-panel positioned at the given origin.
+    ///
+    /// # Arguments
+    ///
+    /// * `origin_x` - Left edge of the sub-panel.
+    /// * `origin_y` - Top edge of the sub-panel.
+    /// * `width` - Panel width.
+    ///
+    /// # Returns
+    ///
+    /// A new `ControlsSubPanel`, initially hidden.
+    fn new(origin_x: i32, origin_y: i32, width: u32) -> Self {
+        let x = origin_x + H_INSET;
+        let w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        Self {
+            bounds: Bounds::new(origin_x, origin_y, width, CT_PANEL_H),
+            visible: false,
+            title_bar: TitleBar::new("Controls", origin_x, origin_y, width),
+            btn_keybindings: RectButton::new(
+                Bounds::new(x, origin_y + CT_Y_KEYBINDINGS_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Keyboard Bindings", 0)
+            .with_border(btn_border()),
+            pending_actions: Vec::new(),
+        }
+    }
+
+    /// Shifts all widgets by a pixel delta.
+    fn shift_all(&mut self, dx: i32, dy: i32) {
+        self.bounds.x += dx;
+        self.bounds.y += dy;
+        self.title_bar
+            .set_bar_position(self.bounds.x, self.bounds.y);
+        shift(&mut self.btn_keybindings, dx, dy);
+    }
+
+    /// Returns whether the title bar close button was pressed.
+    fn was_close_requested(&mut self) -> bool {
+        self.title_bar.was_close_requested()
+    }
+
+    /// Handles a UI event. Returns `Consumed` if the sub-panel ate it.
+    fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if !self.visible {
+            return EventResponse::Ignored;
+        }
+
+        let (tb_resp, _drag) = self.title_bar.handle_event(event);
+        if self.was_close_requested() {
+            self.visible = false;
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
+        if self.btn_keybindings.handle_event(event) == EventResponse::Consumed {
+            self.pending_actions
+                .push(WidgetAction::TogglePanel(HudPanel::KeyBindings));
+            return EventResponse::Consumed;
+        }
+
+        match event {
+            UiEvent::MouseClick { x, y, .. } | UiEvent::MouseWheel { x, y, .. } => {
+                if self.bounds.contains_point(*x, *y) {
+                    EventResponse::Consumed
+                } else {
+                    EventResponse::Ignored
+                }
+            }
+            _ => EventResponse::Ignored,
+        }
+    }
+
+    /// Renders the sub-panel and its children.
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if !self.visible {
+            return Ok(());
+        }
+
+        draw_sub_panel_frame(ctx, &self.bounds, SUB_PANEL_BG, BORDER_COLOR)?;
+        self.title_bar.render(ctx)?;
+        self.btn_keybindings.render(ctx)?;
+
+        Ok(())
+    }
+
+    /// Drains pending actions.
+    fn take_actions(&mut self) -> Vec<WidgetAction> {
+        std::mem::take(&mut self.pending_actions)
+    }
+}
+
+// ===========================================================================
 // Data snapshot
-// ---------------------------------------------------------------------------
+// ===========================================================================
 
 /// Snapshot of current settings values used to populate the panel when it
 /// opens.
@@ -101,14 +761,16 @@ pub struct SettingsPanelData {
     pub profiler_remaining_secs: Option<u64>,
 }
 
-// ---------------------------------------------------------------------------
-// SettingsPanel
-// ---------------------------------------------------------------------------
+// ===========================================================================
+// SettingsPanel (main panel)
+// ===========================================================================
 
 /// The settings / options HUD panel.
 ///
-/// Toggleable via the HUD button bar. When visible, draws all settings
-/// controls and emits [`WidgetAction`]s when the user changes a value.
+/// Presents a compact menu of category buttons (Display Settings,
+/// Diagnostics, Controls), an inline volume slider, and session controls
+/// (Disconnect, Quit, Return to Game). Each category button opens a
+/// sub-panel that overlaps the main panel content.
 pub struct SettingsPanel {
     bounds: Bounds,
     bg_color: Color,
@@ -119,27 +781,26 @@ pub struct SettingsPanel {
     /// Draggable title bar.
     title_bar: TitleBar,
 
-    // --- Child widgets ---
-    chk_shadows: Checkbox,
-    chk_spell_effects: Checkbox,
-    chk_show_names: Checkbox,
-    chk_show_health: Checkbox,
-    chk_helper_text: Checkbox,
-    chk_show_positions: Checkbox,
-    chk_hide_walls: Checkbox,
+    // --- Category buttons ---
+    btn_display: RectButton,
+    btn_diagnostics: RectButton,
+    btn_controls: RectButton,
+
+    // --- Inline volume ---
     sld_volume: Slider,
-    drp_display_mode: Dropdown,
-    chk_pixel_perfect: Checkbox,
-    chk_vsync: Checkbox,
-    lbl_ping: Label,
-    btn_profiler: RectButton,
-    btn_log_dir: RectButton,
-    btn_keybindings: RectButton,
+
+    // --- Session buttons ---
     btn_disconnect: RectButton,
     btn_quit: RectButton,
     btn_return: RectButton,
     /// Confirmation dialog shown before quitting.
     quit_dialog: QuitConfirmDialog,
+
+    // --- Sub-panels ---
+    active_sub_panel: Option<SettingsSubPanel>,
+    sub_display: DisplaySettingsSubPanel,
+    sub_diagnostics: DiagnosticsSubPanel,
+    sub_controls: ControlsSubPanel,
 }
 
 impl SettingsPanel {
@@ -157,59 +818,42 @@ impl SettingsPanel {
     pub fn new(bounds: Bounds, bg_color: Color) -> Self {
         let x = bounds.x + H_INSET;
         let w = CONTROL_W.min(bounds.width.saturating_sub(H_INSET as u32 * 2));
-
-        let btn_bg = Background::SolidColor(Color::RGBA(40, 40, 60, 200));
-        let btn_border = Border {
-            color: Color::RGBA(120, 120, 140, 200),
-            width: 1,
-        };
-
         let half_w = (w.saturating_sub(10)) / 2;
+
+        // Sub-panels overlap the main panel, starting below the title bar.
+        let sub_x = bounds.x;
+        let sub_y = bounds.y + TITLE_BAR_H;
 
         Self {
             bounds,
             bg_color,
-            border_color: Color::RGBA(120, 120, 140, 200),
+            border_color: BORDER_COLOR,
             visible: false,
             pending_actions: Vec::new(),
 
             title_bar: TitleBar::new("Settings", bounds.x, bounds.y, bounds.width),
 
-            chk_shadows: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_SHADOWS, w, ROW_H as u32),
-                "Enable Shadows",
-                0,
-            ),
-            chk_spell_effects: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_SPELL_FX, w, ROW_H as u32),
-                "Enable Spell Effects",
-                0,
-            ),
-            chk_show_names: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_NAMES, w, ROW_H as u32),
-                "Show Names",
-                0,
-            ),
-            chk_show_health: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_HEALTH, w, ROW_H as u32),
-                "Show % Health",
-                0,
-            ),
-            chk_helper_text: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_HELPER_TEXT, w, ROW_H as u32),
-                "Show Helper Text",
-                0,
-            ),
-            chk_show_positions: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_SHOW_POSITIONS, w, ROW_H as u32),
-                "Show Pixel Positions",
-                0,
-            ),
-            chk_hide_walls: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_WALLS, w, ROW_H as u32),
-                "Hide Walls",
-                0,
-            ),
+            btn_display: RectButton::new(
+                Bounds::new(x, bounds.y + Y_DISPLAY_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Display Settings", 0)
+            .with_border(btn_border()),
+
+            btn_diagnostics: RectButton::new(
+                Bounds::new(x, bounds.y + Y_DIAG_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Diagnostics", 0)
+            .with_border(btn_border()),
+
+            btn_controls: RectButton::new(
+                Bounds::new(x, bounds.y + Y_CONTROLS_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Controls", 0)
+            .with_border(btn_border()),
+
             sld_volume: Slider::new(
                 Bounds::new(x, bounds.y + Y_VOLUME, w, ROW_H as u32),
                 "Volume",
@@ -218,44 +862,13 @@ impl SettingsPanel {
                 1.0,
                 0,
             ),
-            drp_display_mode: Dropdown::new(
-                Bounds::new(x, bounds.y + Y_DISPLAY_MODE, w, 16),
-                DisplayMode::ALL.iter().map(|m| m.to_string()).collect(),
-                0,
-                0,
-            ),
-            chk_pixel_perfect: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_PIXEL_PERFECT, w, ROW_H as u32),
-                "Pixel-Perfect Scaling",
-                0,
-            ),
-            chk_vsync: Checkbox::new(
-                Bounds::new(x, bounds.y + Y_VSYNC, w, ROW_H as u32),
-                "VSync",
-                0,
-            ),
-            lbl_ping: Label::new("Ping: N/A", 0, x, bounds.y + Y_PING),
-            btn_profiler: RectButton::new(
-                Bounds::new(x, bounds.y + Y_PROFILER_BTN, w, BTN_H),
-                btn_bg,
-            )
-            .with_label("Profile Performance", 0)
-            .with_border(btn_border),
-            btn_log_dir: RectButton::new(Bounds::new(x, bounds.y + Y_LOGDIR_BTN, w, BTN_H), btn_bg)
-                .with_label("Open Log Directory", 0)
-                .with_border(btn_border),
-            btn_keybindings: RectButton::new(
-                Bounds::new(x, bounds.y + Y_KEYBINDINGS_BTN, w, BTN_H),
-                btn_bg,
-            )
-            .with_label("Keyboard Bindings", 0)
-            .with_border(btn_border),
+
             btn_disconnect: RectButton::new(
                 Bounds::new(x, bounds.y + Y_SESSION_BTNS, half_w, BTN_H),
-                btn_bg,
+                btn_bg(),
             )
             .with_label("Disconnect", 0)
-            .with_border(btn_border),
+            .with_border(btn_border()),
             btn_quit: RectButton::new(
                 Bounds::new(
                     x + half_w as i32 + 10,
@@ -263,20 +876,31 @@ impl SettingsPanel {
                     half_w,
                     BTN_H,
                 ),
-                btn_bg,
+                btn_bg(),
             )
             .with_label("Quit", 0)
-            .with_border(btn_border),
-            btn_return: RectButton::new(Bounds::new(x, bounds.y + Y_RETURN_BTN, w, BTN_H), btn_bg)
-                .with_label("Return to Game", 0)
-                .with_border(btn_border),
+            .with_border(btn_border()),
+            btn_return: RectButton::new(
+                Bounds::new(x, bounds.y + Y_RETURN_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Return to Game", 0)
+            .with_border(btn_border()),
             quit_dialog: QuitConfirmDialog::new(),
+
+            active_sub_panel: None,
+            sub_display: DisplaySettingsSubPanel::new(sub_x, sub_y, bounds.width),
+            sub_diagnostics: DiagnosticsSubPanel::new(sub_x, sub_y, bounds.width),
+            sub_controls: ControlsSubPanel::new(sub_x, sub_y, bounds.width),
         }
     }
 
     /// Toggles the panel's visibility.
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
+        if !self.visible {
+            self.close_active_sub_panel();
+        }
     }
 
     /// Returns whether the panel is currently visible.
@@ -293,28 +917,9 @@ impl SettingsPanel {
     ///
     /// * `data` - Snapshot of current settings values.
     pub fn sync_state(&mut self, data: &SettingsPanelData) {
-        self.chk_shadows.set_checked(data.shadows_enabled);
-        self.chk_spell_effects
-            .set_checked(data.spell_effects_enabled);
-        self.chk_show_names.set_checked(data.show_names);
-        self.chk_show_health.set_checked(data.show_health_pct);
-        self.chk_helper_text.set_checked(data.show_helper_text);
-        self.chk_show_positions.set_checked(data.show_positions);
-        self.chk_hide_walls.set_checked(data.hide_walls);
         self.sld_volume.set_value(data.master_volume);
-        self.chk_pixel_perfect
-            .set_checked(data.pixel_perfect_scaling);
-        self.chk_vsync.set_checked(data.vsync_enabled);
-
-        // Map DisplayMode to dropdown index.
-        let mode_idx = DisplayMode::ALL
-            .iter()
-            .position(|m| *m == data.display_mode)
-            .unwrap_or(0);
-        self.drp_display_mode.set_selected(mode_idx);
-
-        self.update_ping(data.last_rtt_ms);
-        self.update_profiler_label(data.profiler_active, data.profiler_remaining_secs);
+        self.sub_display.sync_state(data);
+        self.sub_diagnostics.sync_state(data);
     }
 
     /// Updates the ping readout label.
@@ -325,11 +930,7 @@ impl SettingsPanel {
     ///
     /// * `rtt_ms` - Latest round-trip time in milliseconds, or `None`.
     pub fn update_ping(&mut self, rtt_ms: Option<u32>) {
-        let text = match rtt_ms {
-            Some(ms) => format!("Ping: {} ms", ms),
-            None => "Ping: N/A".to_string(),
-        };
-        self.lbl_ping.set_text(&text);
+        self.sub_diagnostics.update_ping(rtt_ms);
     }
 
     /// Updates the profiler button label.
@@ -339,83 +940,46 @@ impl SettingsPanel {
     /// * `active` - Whether the profiler is currently running.
     /// * `remaining_secs` - Seconds remaining, if active.
     pub fn update_profiler_label(&mut self, active: bool, remaining_secs: Option<u64>) {
-        // RectButton doesn't have set_label, so we rebuild it.
-        // For now we just track the state; the label is static.
-        // A future improvement could add a set_label method to RectButton.
         let _ = (active, remaining_secs);
     }
 
-    /// Draws a centered section header string.
-    fn draw_section_header(
-        ctx: &mut RenderContext,
-        text: &str,
-        center_x: i32,
-        y: i32,
-    ) -> Result<(), String> {
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            1,
-            text,
-            center_x,
-            y,
-            font_cache::TextStyle::centered(),
-        )
+    /// Opens the given sub-panel, closing any currently open one.
+    fn open_sub_panel(&mut self, panel: SettingsSubPanel) {
+        self.close_active_sub_panel();
+        self.active_sub_panel = Some(panel);
+        match panel {
+            SettingsSubPanel::Display => self.sub_display.visible = true,
+            SettingsSubPanel::Diagnostics => self.sub_diagnostics.visible = true,
+            SettingsSubPanel::Controls => self.sub_controls.visible = true,
+        }
     }
 
-    /// Collects `WidgetAction`s from all child widgets that report changes.
-    fn collect_child_actions(&mut self) {
-        if self.chk_shadows.was_toggled() {
-            self.pending_actions
-                .push(WidgetAction::SetShadows(self.chk_shadows.is_checked()));
+    /// Closes whichever sub-panel is currently open.
+    fn close_active_sub_panel(&mut self) {
+        if let Some(panel) = self.active_sub_panel.take() {
+            match panel {
+                SettingsSubPanel::Display => self.sub_display.visible = false,
+                SettingsSubPanel::Diagnostics => self.sub_diagnostics.visible = false,
+                SettingsSubPanel::Controls => self.sub_controls.visible = false,
+            }
         }
-        if self.chk_spell_effects.was_toggled() {
-            self.pending_actions.push(WidgetAction::SetSpellEffects(
-                self.chk_spell_effects.is_checked(),
-            ));
-        }
-        if self.chk_show_names.was_toggled() {
-            self.pending_actions
-                .push(WidgetAction::SetShowNames(self.chk_show_names.is_checked()));
-        }
-        if self.chk_show_health.was_toggled() {
-            self.pending_actions.push(WidgetAction::SetShowHealthPct(
-                self.chk_show_health.is_checked(),
-            ));
-        }
-        if self.chk_hide_walls.was_toggled() {
-            self.pending_actions
-                .push(WidgetAction::SetHideWalls(self.chk_hide_walls.is_checked()));
-        }
-        if self.chk_helper_text.was_toggled() {
-            self.pending_actions.push(WidgetAction::SetShowHelperText(
-                self.chk_helper_text.is_checked(),
-            ));
-        }
-        if self.chk_show_positions.was_toggled() {
-            self.pending_actions.push(WidgetAction::SetShowPositions(
-                self.chk_show_positions.is_checked(),
-            ));
-        }
+    }
+
+    /// Collects `WidgetAction`s from the volume slider.
+    fn collect_main_actions(&mut self) {
         if self.sld_volume.was_changed() {
             self.pending_actions
                 .push(WidgetAction::SetMasterVolume(self.sld_volume.value()));
         }
-        if self.drp_display_mode.was_changed() {
-            let mode = DisplayMode::ALL[self.drp_display_mode.selected_index()];
-            self.pending_actions
-                .push(WidgetAction::SetDisplayMode(mode));
-        }
-        if self.chk_pixel_perfect.was_toggled() {
-            self.pending_actions
-                .push(WidgetAction::SetPixelPerfectScaling(
-                    self.chk_pixel_perfect.is_checked(),
-                ));
-        }
-        if self.chk_vsync.was_toggled() {
-            self.pending_actions
-                .push(WidgetAction::SetVSync(self.chk_vsync.is_checked()));
-        }
+    }
+
+    /// Drains actions from all sub-panels into the main pending list.
+    fn collect_sub_panel_actions(&mut self) {
+        self.pending_actions.extend(self.sub_display.take_actions());
+        self.pending_actions
+            .extend(self.sub_diagnostics.take_actions());
+        self.pending_actions
+            .extend(self.sub_controls.take_actions());
     }
 }
 
@@ -431,30 +995,18 @@ impl Widget for SettingsPanel {
         self.bounds.y = y;
         self.title_bar.set_bar_position(x, y);
 
-        // Shift every child widget by the delta.
-        fn shift(w: &mut impl Widget, dx: i32, dy: i32) {
-            let b = w.bounds();
-            let (nx, ny) = (b.x + dx, b.y + dy);
-            w.set_position(nx, ny);
-        }
-        shift(&mut self.chk_shadows, dx, dy);
-        shift(&mut self.chk_spell_effects, dx, dy);
-        shift(&mut self.chk_show_names, dx, dy);
-        shift(&mut self.chk_show_health, dx, dy);
-        shift(&mut self.chk_helper_text, dx, dy);
-        shift(&mut self.chk_show_positions, dx, dy);
-        shift(&mut self.chk_hide_walls, dx, dy);
+        shift(&mut self.btn_display, dx, dy);
+        shift(&mut self.btn_diagnostics, dx, dy);
+        shift(&mut self.btn_controls, dx, dy);
         shift(&mut self.sld_volume, dx, dy);
-        shift(&mut self.drp_display_mode, dx, dy);
-        shift(&mut self.chk_pixel_perfect, dx, dy);
-        shift(&mut self.chk_vsync, dx, dy);
-        shift(&mut self.lbl_ping, dx, dy);
-        shift(&mut self.btn_profiler, dx, dy);
-        shift(&mut self.btn_log_dir, dx, dy);
-        shift(&mut self.btn_keybindings, dx, dy);
         shift(&mut self.btn_disconnect, dx, dy);
         shift(&mut self.btn_quit, dx, dy);
         shift(&mut self.btn_return, dx, dy);
+
+        // Sub-panels move with the main panel.
+        self.sub_display.shift_all(dx, dy);
+        self.sub_diagnostics.shift_all(dx, dy);
+        self.sub_controls.shift_all(dx, dy);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
@@ -462,7 +1014,7 @@ impl Widget for SettingsPanel {
             return EventResponse::Ignored;
         }
 
-        // Quit confirmation dialog is modal — route events to it first.
+        // 1. Quit confirmation dialog is modal — blocks everything.
         if self.quit_dialog.is_visible() {
             self.quit_dialog.handle_event(event);
             for action in self.quit_dialog.take_actions() {
@@ -478,7 +1030,7 @@ impl Widget for SettingsPanel {
             return EventResponse::Consumed;
         }
 
-        // Title bar: drag / pin / close.
+        // 2. Title bar: drag / close.
         let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
         if let Some((nx, ny)) = drag_pos {
             let (cx, cy) = clamp_to_viewport(nx, ny, self.bounds.width, self.bounds.height);
@@ -487,6 +1039,7 @@ impl Widget for SettingsPanel {
         }
         if self.title_bar.was_close_requested() {
             self.visible = false;
+            self.close_active_sub_panel();
             self.pending_actions
                 .push(WidgetAction::TogglePanel(HudPanel::Settings));
             return EventResponse::Consumed;
@@ -495,60 +1048,64 @@ impl Widget for SettingsPanel {
             return EventResponse::Consumed;
         }
 
-        // When dropdown is expanded, it gets first priority so it can
-        // capture clicks on its overlay area.
-        if self.drp_display_mode.is_expanded() {
-            let resp = self.drp_display_mode.handle_event(event);
-            self.collect_child_actions();
+        // 3. Category buttons (checked before sub-panel so they remain
+        //    clickable even when a sub-panel overlaps them).
+        if self.btn_display.handle_event(event) == EventResponse::Consumed {
+            if self.active_sub_panel == Some(SettingsSubPanel::Display) {
+                self.close_active_sub_panel();
+            } else {
+                self.open_sub_panel(SettingsSubPanel::Display);
+            }
+            return EventResponse::Consumed;
+        }
+        if self.btn_diagnostics.handle_event(event) == EventResponse::Consumed {
+            if self.active_sub_panel == Some(SettingsSubPanel::Diagnostics) {
+                self.close_active_sub_panel();
+            } else {
+                self.open_sub_panel(SettingsSubPanel::Diagnostics);
+            }
+            return EventResponse::Consumed;
+        }
+        if self.btn_controls.handle_event(event) == EventResponse::Consumed {
+            if self.active_sub_panel == Some(SettingsSubPanel::Controls) {
+                self.close_active_sub_panel();
+            } else {
+                self.open_sub_panel(SettingsSubPanel::Controls);
+            }
+            return EventResponse::Consumed;
+        }
+
+        // 4. Active sub-panel (overlaps main content below buttons).
+        if self.active_sub_panel.is_some() {
+            let resp = match self.active_sub_panel.unwrap() {
+                SettingsSubPanel::Display => self.sub_display.handle_event(event),
+                SettingsSubPanel::Diagnostics => self.sub_diagnostics.handle_event(event),
+                SettingsSubPanel::Controls => self.sub_controls.handle_event(event),
+            };
+            self.collect_sub_panel_actions();
+
+            // Check if the sub-panel closed itself (close button).
+            let closed = match self.active_sub_panel.unwrap() {
+                SettingsSubPanel::Display => !self.sub_display.visible,
+                SettingsSubPanel::Diagnostics => !self.sub_diagnostics.visible,
+                SettingsSubPanel::Controls => !self.sub_controls.visible,
+            };
+            if closed {
+                self.active_sub_panel = None;
+            }
+
             if resp == EventResponse::Consumed {
                 return EventResponse::Consumed;
             }
         }
 
-        // Delegate to interactive children (order doesn't matter much here
-        // since they don't overlap, but we check buttons last).
-        let children_responses = [
-            self.chk_shadows.handle_event(event),
-            self.chk_spell_effects.handle_event(event),
-            self.chk_show_names.handle_event(event),
-            self.chk_show_health.handle_event(event),
-            self.chk_helper_text.handle_event(event),
-            self.chk_show_positions.handle_event(event),
-            self.chk_hide_walls.handle_event(event),
-            self.sld_volume.handle_event(event),
-            if !self.drp_display_mode.is_expanded() {
-                self.drp_display_mode.handle_event(event)
-            } else {
-                EventResponse::Ignored
-            },
-            self.chk_pixel_perfect.handle_event(event),
-            self.chk_vsync.handle_event(event),
-        ];
-
-        // Check checkbox/slider/dropdown changes.
-        self.collect_child_actions();
-
-        if children_responses
-            .iter()
-            .any(|r| *r == EventResponse::Consumed)
-        {
+        // 5. Volume slider.
+        if self.sld_volume.handle_event(event) == EventResponse::Consumed {
+            self.collect_main_actions();
             return EventResponse::Consumed;
         }
 
-        // Check buttons.
-        if self.btn_profiler.handle_event(event) == EventResponse::Consumed {
-            self.pending_actions.push(WidgetAction::StartProfiler);
-            return EventResponse::Consumed;
-        }
-        if self.btn_log_dir.handle_event(event) == EventResponse::Consumed {
-            self.pending_actions.push(WidgetAction::OpenLogDir);
-            return EventResponse::Consumed;
-        }
-        if self.btn_keybindings.handle_event(event) == EventResponse::Consumed {
-            self.pending_actions
-                .push(WidgetAction::TogglePanel(HudPanel::KeyBindings));
-            return EventResponse::Consumed;
-        }
+        // 6. Session buttons (beneath sub-panel overlay).
         if self.btn_disconnect.handle_event(event) == EventResponse::Consumed {
             self.pending_actions.push(WidgetAction::Disconnect);
             return EventResponse::Consumed;
@@ -559,12 +1116,13 @@ impl Widget for SettingsPanel {
         }
         if self.btn_return.handle_event(event) == EventResponse::Consumed {
             self.visible = false;
+            self.close_active_sub_panel();
             self.pending_actions
                 .push(WidgetAction::TogglePanel(HudPanel::Settings));
             return EventResponse::Consumed;
         }
 
-        // Consume any click inside panel bounds to prevent click-through.
+        // 7. Consume any click inside panel bounds to prevent click-through.
         match event {
             UiEvent::MouseClick { x, y, .. } | UiEvent::MouseWheel { x, y, .. } => {
                 if self.bounds.contains_point(*x, *y) {
@@ -582,55 +1140,40 @@ impl Widget for SettingsPanel {
             return Ok(());
         }
 
+        // --- Main panel background ---
         let rect = sdl2::rect::Rect::new(
             self.bounds.x,
             self.bounds.y,
             self.bounds.width,
             self.bounds.height,
         );
-
-        // Semi-transparent background
         ctx.canvas.set_blend_mode(BlendMode::Blend);
         ctx.canvas.set_draw_color(self.bg_color);
         ctx.canvas.fill_rect(rect)?;
-
-        // Border
         ctx.canvas.set_draw_color(self.border_color);
         ctx.canvas.draw_rect(rect)?;
-
-        let center_x = self.bounds.x + self.bounds.width as i32 / 2;
 
         // Title bar
         self.title_bar.render(ctx)?;
 
-        // Section headers
-        Self::draw_section_header(
+        // "-- Volume --" header label
+        let center_x = self.bounds.x + self.bounds.width as i32 / 2;
+        draw_section_header(
             ctx,
-            "-- Visual --",
+            "-- Volume --",
             center_x,
-            self.bounds.y + Y_VISUAL_HEADER,
-        )?;
-        Self::draw_section_header(ctx, "-- Audio --", center_x, self.bounds.y + Y_AUDIO_HEADER)?;
-        Self::draw_section_header(
-            ctx,
-            "-- Display --",
-            center_x,
-            self.bounds.y + Y_DISPLAY_HEADER,
-        )?;
-        Self::draw_section_header(
-            ctx,
-            "-- Diagnostics --",
-            center_x,
-            self.bounds.y + Y_DIAG_HEADER,
-        )?;
-        Self::draw_section_header(
-            ctx,
-            "-- Controls --",
-            center_x,
-            self.bounds.y + Y_CONTROLS_HEADER,
+            self.bounds.y + Y_VOLUME_LABEL,
         )?;
 
-        // Separator line above disconnect/quit
+        // Category buttons
+        self.btn_display.render(ctx)?;
+        self.btn_diagnostics.render(ctx)?;
+        self.btn_controls.render(ctx)?;
+
+        // Volume slider
+        self.sld_volume.render(ctx)?;
+
+        // Separator line above session buttons
         let sep_y = self.bounds.y + Y_SEPARATOR;
         ctx.canvas.set_draw_color(Color::RGBA(120, 120, 140, 150));
         ctx.canvas.draw_line(
@@ -638,35 +1181,25 @@ impl Widget for SettingsPanel {
             sdl2::rect::Point::new(self.bounds.x + self.bounds.width as i32 - H_INSET, sep_y),
         )?;
 
-        // Render child widgets (order: back-to-front, dropdown last if expanded)
-        self.chk_shadows.render(ctx)?;
-        self.chk_spell_effects.render(ctx)?;
-        self.chk_show_names.render(ctx)?;
-        self.chk_show_health.render(ctx)?;
-        self.chk_helper_text.render(ctx)?;
-        self.chk_show_positions.render(ctx)?;
-        self.chk_hide_walls.render(ctx)?;
-        self.sld_volume.render(ctx)?;
-        self.chk_pixel_perfect.render(ctx)?;
-        self.chk_vsync.render(ctx)?;
-        self.lbl_ping.render(ctx)?;
-        self.btn_profiler.render(ctx)?;
-        self.btn_log_dir.render(ctx)?;
-        self.btn_keybindings.render(ctx)?;
+        // Session buttons
         self.btn_disconnect.render(ctx)?;
         self.btn_quit.render(ctx)?;
         self.btn_return.render(ctx)?;
 
-        // Dropdown rendered last so its expanded option list overlays everything.
-        self.drp_display_mode.render(ctx)?;
+        // --- Active sub-panel drawn ON TOP ---
+        self.sub_display.render(ctx)?;
+        self.sub_diagnostics.render(ctx)?;
+        self.sub_controls.render(ctx)?;
 
-        // Quit confirmation rendered on top of everything else.
+        // Quit confirmation rendered topmost.
         self.quit_dialog.render(ctx)?;
 
         Ok(())
     }
 
     fn take_actions(&mut self) -> Vec<WidgetAction> {
+        // Collect any remaining sub-panel actions not yet picked up.
+        self.collect_sub_panel_actions();
         std::mem::take(&mut self.pending_actions)
     }
 }
@@ -687,6 +1220,34 @@ mod tests {
         )
     }
 
+    fn make_data() -> SettingsPanelData {
+        SettingsPanelData {
+            shadows_enabled: true,
+            spell_effects_enabled: false,
+            show_names: true,
+            show_health_pct: true,
+            hide_walls: false,
+            show_helper_text: true,
+            show_positions: true,
+            master_volume: 0.75,
+            display_mode: DisplayMode::Fullscreen,
+            pixel_perfect_scaling: true,
+            vsync_enabled: false,
+            last_rtt_ms: Some(42),
+            profiler_active: false,
+            profiler_remaining_secs: None,
+        }
+    }
+
+    fn left_click(x: i32, y: i32) -> UiEvent {
+        UiEvent::MouseClick {
+            x,
+            y,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        }
+    }
+
     #[test]
     fn starts_hidden() {
         let panel = make_panel();
@@ -705,12 +1266,7 @@ mod tests {
     #[test]
     fn hidden_panel_ignores_clicks() {
         let mut panel = make_panel();
-        let resp = panel.handle_event(&UiEvent::MouseClick {
-            x: 50,
-            y: 50,
-            button: MouseButton::Left,
-            modifiers: KeyModifiers::default(),
-        });
+        let resp = panel.handle_event(&left_click(50, 50));
         assert_eq!(resp, EventResponse::Ignored);
     }
 
@@ -718,12 +1274,7 @@ mod tests {
     fn visible_panel_consumes_clicks_inside() {
         let mut panel = make_panel();
         panel.toggle();
-        let resp = panel.handle_event(&UiEvent::MouseClick {
-            x: 50,
-            y: 50,
-            button: MouseButton::Left,
-            modifiers: KeyModifiers::default(),
-        });
+        let resp = panel.handle_event(&left_click(50, 50));
         assert_eq!(resp, EventResponse::Consumed);
     }
 
@@ -731,67 +1282,66 @@ mod tests {
     fn visible_panel_ignores_clicks_outside() {
         let mut panel = make_panel();
         panel.toggle();
-        let resp = panel.handle_event(&UiEvent::MouseClick {
-            x: 500,
-            y: 500,
-            button: MouseButton::Left,
-            modifiers: KeyModifiers::default(),
-        });
+        let resp = panel.handle_event(&left_click(500, 500));
         assert_eq!(resp, EventResponse::Ignored);
     }
 
     #[test]
-    fn sync_state_sets_checkboxes() {
+    fn sync_state_populates_sub_panels() {
         let mut panel = make_panel();
-        panel.sync_state(&SettingsPanelData {
-            shadows_enabled: true,
-            spell_effects_enabled: false,
-            show_names: true,
-            show_health_pct: true,
-            hide_walls: false,
-            show_helper_text: true,
-            show_positions: true,
-            master_volume: 0.75,
-            display_mode: DisplayMode::Fullscreen,
-            pixel_perfect_scaling: true,
-            vsync_enabled: false,
-            last_rtt_ms: Some(42),
-            profiler_active: false,
-            profiler_remaining_secs: None,
-        });
-        assert!(panel.chk_shadows.is_checked());
-        assert!(!panel.chk_spell_effects.is_checked());
-        assert!(panel.chk_show_names.is_checked());
-        assert!(panel.chk_show_health.is_checked());
-        assert!(!panel.chk_hide_walls.is_checked());
-        assert!(panel.chk_helper_text.is_checked());
-        assert!(panel.chk_show_positions.is_checked());
+        panel.sync_state(&make_data());
+        // Display sub-panel checkboxes.
+        assert!(panel.sub_display.chk_shadows.is_checked());
+        assert!(!panel.sub_display.chk_spell_effects.is_checked());
+        assert!(panel.sub_display.chk_show_names.is_checked());
+        assert!(panel.sub_display.chk_show_health.is_checked());
+        assert!(!panel.sub_display.chk_hide_walls.is_checked());
+        assert!(panel.sub_display.chk_helper_text.is_checked());
+        assert_eq!(panel.sub_display.drp_display_mode.selected_index(), 1);
+        assert!(panel.sub_display.chk_pixel_perfect.is_checked());
+        assert!(!panel.sub_display.chk_vsync.is_checked());
+        // Diagnostics sub-panel.
+        assert!(panel.sub_diagnostics.chk_show_positions.is_checked());
+        // Volume on main panel.
         assert!((panel.sld_volume.value() - 0.75).abs() < 0.01);
-        assert_eq!(panel.drp_display_mode.selected_index(), 1); // Fullscreen
-        assert!(panel.chk_pixel_perfect.is_checked());
-        assert!(!panel.chk_vsync.is_checked());
     }
 
     #[test]
-    fn checkbox_click_emits_action() {
+    fn display_button_opens_sub_panel() {
         let mut panel = make_panel();
         panel.toggle();
-        // Click the shadows checkbox area.
-        let shadows_y = Y_SHADOWS + 5;
-        panel.handle_event(&UiEvent::MouseClick {
-            x: 15,
-            y: shadows_y,
-            button: MouseButton::Left,
-            modifiers: KeyModifiers::default(),
-        });
-        let actions = panel.take_actions();
-        assert!(
-            actions
-                .iter()
-                .any(|a| matches!(a, WidgetAction::SetShadows(true))),
-            "Expected SetShadows action, got {:?}",
-            actions
-        );
+        // Click the "Display Settings" button.
+        let btn_y = Y_DISPLAY_BTN + 5;
+        let resp = panel.handle_event(&left_click(15, btn_y));
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Display));
+        assert!(panel.sub_display.visible);
+    }
+
+    #[test]
+    fn only_one_sub_panel_at_a_time() {
+        let mut panel = make_panel();
+        panel.toggle();
+        // Open display.
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        assert!(panel.sub_display.visible);
+        // Open diagnostics — display should close.
+        panel.handle_event(&left_click(15, Y_DIAG_BTN + 5));
+        assert!(!panel.sub_display.visible);
+        assert!(panel.sub_diagnostics.visible);
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Diagnostics));
+    }
+
+    #[test]
+    fn clicking_same_category_toggles_off() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        assert!(panel.sub_display.visible);
+        // Click again to close.
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        assert!(!panel.sub_display.visible);
+        assert_eq!(panel.active_sub_panel, None);
     }
 
     #[test]
@@ -799,12 +1349,7 @@ mod tests {
         let mut panel = make_panel();
         panel.toggle();
         let btn_y = Y_SESSION_BTNS + 5;
-        panel.handle_event(&UiEvent::MouseClick {
-            x: 15,
-            y: btn_y,
-            button: MouseButton::Left,
-            modifiers: KeyModifiers::default(),
-        });
+        panel.handle_event(&left_click(15, btn_y));
         let actions = panel.take_actions();
         assert!(
             actions
@@ -816,18 +1361,85 @@ mod tests {
     }
 
     #[test]
+    fn toggle_off_closes_sub_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.handle_event(&left_click(15, Y_CONTROLS_BTN + 5));
+        assert!(panel.sub_controls.visible);
+        // Toggle the whole settings panel off.
+        panel.toggle();
+        assert!(!panel.sub_controls.visible);
+        assert_eq!(panel.active_sub_panel, None);
+    }
+
+    #[test]
     fn take_actions_drains() {
         let mut panel = make_panel();
         panel.toggle();
-        panel.handle_event(&UiEvent::MouseClick {
-            x: 15,
-            y: Y_SHADOWS + 5,
-            button: MouseButton::Left,
-            modifiers: KeyModifiers::default(),
-        });
+        panel.handle_event(&left_click(15, Y_SESSION_BTNS + 5));
         let first = panel.take_actions();
         assert!(!first.is_empty());
         let second = panel.take_actions();
         assert!(second.is_empty());
+    }
+
+    #[test]
+    fn display_sub_panel_checkbox_emits_action() {
+        let mut panel = make_panel();
+        panel.toggle();
+        // Open display sub-panel.
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        assert!(panel.sub_display.visible);
+        // Click the shadows checkbox inside the sub-panel.
+        let chk_y = TITLE_BAR_H + DS_Y_SHADOWS + 5;
+        panel.handle_event(&left_click(15, chk_y));
+        let actions = panel.take_actions();
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, WidgetAction::SetShadows(true))),
+            "Expected SetShadows action, got {:?}",
+            actions
+        );
+    }
+
+    #[test]
+    fn diagnostics_pixel_positions_emits_action() {
+        let mut panel = make_panel();
+        panel.toggle();
+        // Open diagnostics sub-panel.
+        panel.handle_event(&left_click(15, Y_DIAG_BTN + 5));
+        assert!(panel.sub_diagnostics.visible);
+        // Click the "Show Pixel Positions" checkbox.
+        let chk_y = TITLE_BAR_H + DG_Y_SHOW_POS + 5;
+        panel.handle_event(&left_click(15, chk_y));
+        let actions = panel.take_actions();
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, WidgetAction::SetShowPositions(true))),
+            "Expected SetShowPositions action, got {:?}",
+            actions
+        );
+    }
+
+    #[test]
+    fn controls_keybindings_emits_toggle() {
+        let mut panel = make_panel();
+        panel.toggle();
+        // Open controls sub-panel.
+        panel.handle_event(&left_click(15, Y_CONTROLS_BTN + 5));
+        assert!(panel.sub_controls.visible);
+        // Click the "Keyboard Bindings" button inside the sub-panel.
+        let btn_y = TITLE_BAR_H + CT_Y_KEYBINDINGS_BTN + 5;
+        panel.handle_event(&left_click(15, btn_y));
+        let actions = panel.take_actions();
+        assert!(
+            actions
+                .iter()
+                .any(|a| matches!(a, WidgetAction::TogglePanel(HudPanel::KeyBindings))),
+            "Expected TogglePanel(KeyBindings) action, got {:?}",
+            actions
+        );
     }
 }
