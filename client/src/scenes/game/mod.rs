@@ -650,6 +650,9 @@ impl GameScene {
         if self.rank_sigil.bounds().contains_point(mx, my) {
             return true;
         }
+        if self.vitality_bars.contains_point(mx, my) {
+            return true;
+        }
         if self.status_panel.bounds().contains_point(mx, my) {
             return true;
         }
@@ -710,6 +713,19 @@ impl GameScene {
                 gfx,
                 1,
                 self.rank_sigil.rank_name(),
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
+        if let Some(text) = self.vitality_bars.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
                 x,
                 y,
                 crate::font_cache::TextStyle::drop_shadow(),
@@ -1128,6 +1144,8 @@ impl Scene for GameScene {
             if self.rank_sigil.handle_event(&ui_event) == EventResponse::Consumed {
                 return None;
             }
+
+            self.vitality_bars.handle_event(&ui_event);
 
             // --- StatusPanel (WV/AV display, right of skill bar) ---
             if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {

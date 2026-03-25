@@ -21,6 +21,7 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use super::widget::{EventResponse, UiEvent};
 use super::RenderContext;
 
 // ---------------------------------------------------------------------------
@@ -59,6 +60,14 @@ const END_COLOR: Color = Color::RGB(200, 180, 40);
 /// Mana chevron fill colour.
 const MANA_COLOR: Color = Color::RGB(40, 80, 200);
 
+/// Identifies which vitality chevron is currently hovered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HoveredChevron {
+    Hp,
+    Endurance,
+    Mana,
+}
+
 // ---------------------------------------------------------------------------
 // VitalityBars
 // ---------------------------------------------------------------------------
@@ -83,6 +92,20 @@ pub struct VitalityBars {
     end_fill: f32,
     /// Mana fill fraction in `[0.0, 1.0]`.
     mana_fill: f32,
+    /// Current HP value displayed in the helper text.
+    hp_current: i32,
+    /// Maximum HP value displayed in the helper text.
+    hp_max: i32,
+    /// Current endurance value displayed in the helper text.
+    end_current: i32,
+    /// Maximum endurance value displayed in the helper text.
+    end_max: i32,
+    /// Current mana value displayed in the helper text.
+    mana_current: i32,
+    /// Maximum mana value displayed in the helper text.
+    mana_max: i32,
+    /// Chevron currently under the cursor, if any.
+    hovered: Option<HoveredChevron>,
 }
 
 impl VitalityBars {
@@ -109,6 +132,145 @@ impl VitalityBars {
             hp_fill: 1.0,
             end_fill: 1.0,
             mana_fill: 1.0,
+            hp_current: 0,
+            hp_max: 0,
+            end_current: 0,
+            end_max: 0,
+            mana_current: 0,
+            mana_max: 0,
+            hovered: None,
+        }
+    }
+
+    /// Returns the horizontal inset between adjacent chevron layers.
+    fn layer_inset() -> i32 {
+        ARM_THICKNESS + LAYER_GAP
+    }
+
+    /// Computes the height for a chevron layer with the given half-width.
+    fn chevron_height(half_w: i32) -> i32 {
+        ((CHEVRON_H * half_w + HP_HALF_W / 2) / HP_HALF_W).max(1)
+    }
+
+    /// Returns `true` when the point lies inside the rasterized chevron band.
+    fn point_in_chevron(px: i32, py: i32, cx: i32, bot_y: i32, half_w: i32, height: i32) -> bool {
+        if height <= 0 || half_w <= 0 {
+            return false;
+        }
+
+        let top_y = bot_y - height;
+        if py < top_y || py >= bot_y {
+            return false;
+        }
+
+        let row = py - top_y;
+        let outer_offset = if height <= 1 {
+            0
+        } else {
+            (row * half_w + (height - 1) / 2) / (height - 1)
+        };
+        let outer_left = cx - outer_offset;
+        let outer_right = cx + outer_offset;
+        if px < outer_left || px > outer_right {
+            return false;
+        }
+
+        let inner_half_w = (half_w - ARM_THICKNESS).max(0);
+        let inner_height = if inner_half_w > 0 {
+            ((height * inner_half_w + half_w / 2) / half_w).max(1)
+        } else {
+            0
+        };
+        if inner_height == 0 {
+            return true;
+        }
+
+        let inner_start_row = height - inner_height;
+        if row < inner_start_row {
+            return true;
+        }
+
+        let inner_row = row - inner_start_row;
+        let inner_offset = if inner_height <= 1 {
+            0
+        } else {
+            (inner_row * inner_half_w + (inner_height - 1) / 2) / (inner_height - 1)
+        };
+        let inner_left = cx - inner_offset;
+        let inner_right = cx + inner_offset;
+        px < inner_left || px > inner_right
+    }
+
+    /// Returns the hovered chevron at the given mouse position, prioritising
+    /// inner layers first because they are drawn on top of outer layers.
+    fn hovered_at(&self, x: i32, y: i32) -> Option<HoveredChevron> {
+        let layer_inset = Self::layer_inset();
+        let mana_half_w = HP_HALF_W - layer_inset * 2;
+        if mana_half_w > 0
+            && Self::point_in_chevron(
+                x,
+                y,
+                self.x,
+                self.y,
+                mana_half_w,
+                Self::chevron_height(mana_half_w),
+            )
+        {
+            return Some(HoveredChevron::Mana);
+        }
+
+        let end_half_w = HP_HALF_W - layer_inset;
+        if end_half_w > 0
+            && Self::point_in_chevron(
+                x,
+                y,
+                self.x,
+                self.y,
+                end_half_w,
+                Self::chevron_height(end_half_w),
+            )
+        {
+            return Some(HoveredChevron::Endurance);
+        }
+
+        if Self::point_in_chevron(
+            x,
+            y,
+            self.x,
+            self.y,
+            HP_HALF_W,
+            Self::chevron_height(HP_HALF_W),
+        ) {
+            return Some(HoveredChevron::Hp);
+        }
+
+        None
+    }
+
+    /// Returns `true` when the point lies within any chevron band.
+    pub fn contains_point(&self, x: i32, y: i32) -> bool {
+        self.hovered_at(x, y).is_some()
+    }
+
+    /// Updates hover state from a translated UI event.
+    pub fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if let UiEvent::MouseMove { x, y } = event {
+            self.hovered = self.hovered_at(*x, *y);
+        }
+        EventResponse::Ignored
+    }
+
+    /// Returns helper text for the hovered chevron, if any.
+    pub fn hover_text(&self) -> Option<String> {
+        match self.hovered? {
+            HoveredChevron::Hp => Some(format!("HP: {} / {}", self.hp_current, self.hp_max)),
+            HoveredChevron::Endurance => Some(format!(
+                "Endurance: {} / {}",
+                self.end_current, self.end_max
+            )),
+            HoveredChevron::Mana => {
+                Some(format!("Mana: {} / {}", self.mana_current, self.mana_max))
+            }
         }
     }
 
@@ -134,6 +296,12 @@ impl VitalityBars {
         a_mana: i32,
         max_mana: i32,
     ) {
+        self.hp_current = a_hp.max(0);
+        self.hp_max = max_hp.max(0);
+        self.end_current = a_end.max(0);
+        self.end_max = max_end.max(0);
+        self.mana_current = a_mana.max(0);
+        self.mana_max = max_mana.max(0);
         self.hp_fill = if max_hp > 0 {
             (a_hp.max(0) as f32 / max_hp as f32).clamp(0.0, 1.0)
         } else {
@@ -280,7 +448,7 @@ impl VitalityBars {
             // Height scales proportionally so the arm slope stays the same.
             // Use rounded division and clamp to at least 1 so even very narrow
             // inner chevrons still render a visible tip row.
-            let h = ((CHEVRON_H * hw + HP_HALF_W / 2) / HP_HALF_W).max(1);
+            let h = Self::chevron_height(hw);
             Self::draw_chevron(canvas, self.x, self.y, hw, h, fill, color)?;
         }
 
@@ -295,6 +463,7 @@ impl VitalityBars {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::widget::UiEvent;
 
     #[test]
     fn new_defaults_to_full_fill() {
@@ -348,5 +517,37 @@ mod tests {
         // x is horizontal centre (tip x), y is bottom (feet y)
         assert_eq!(bars.x, 480);
         assert_eq!(bars.y, 270);
+    }
+
+    #[test]
+    fn hover_text_reports_hp_values() {
+        let mut bars = VitalityBars::new(100, 200);
+        bars.sync(34, 80, 21, 50, 12, 40);
+        bars.handle_event(&UiEvent::MouseMove { x: 64, y: 199 });
+        assert_eq!(bars.hover_text().as_deref(), Some("34 / 80"));
+    }
+
+    #[test]
+    fn hover_text_reports_endurance_values() {
+        let mut bars = VitalityBars::new(100, 200);
+        bars.sync(34, 80, 21, 50, 12, 40);
+        bars.handle_event(&UiEvent::MouseMove { x: 72, y: 199 });
+        assert_eq!(bars.hover_text().as_deref(), Some("21 / 50"));
+    }
+
+    #[test]
+    fn hover_text_reports_mana_values() {
+        let mut bars = VitalityBars::new(100, 200);
+        bars.sync(34, 80, 21, 50, 12, 40);
+        bars.handle_event(&UiEvent::MouseMove { x: 80, y: 199 });
+        assert_eq!(bars.hover_text().as_deref(), Some("12 / 40"));
+    }
+
+    #[test]
+    fn hover_text_clears_when_cursor_leaves_chevrons() {
+        let mut bars = VitalityBars::new(100, 200);
+        bars.sync(34, 80, 21, 50, 12, 40);
+        bars.handle_event(&UiEvent::MouseMove { x: 10, y: 10 });
+        assert_eq!(bars.hover_text(), None);
     }
 }
