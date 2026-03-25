@@ -142,6 +142,9 @@ pub struct Settings {
     /// Whether context-sensitive helper text is shown near the cursor.
     #[serde(default = "default_true")]
     pub show_helper_text: bool,
+    /// Whether helper text is replaced with the cursor's logical screen position.
+    #[serde(default)]
+    pub show_positions: bool,
     /// Per-character settings (skill keybinds and UI panel positions).
     #[serde(default)]
     pub character: CharacterSettings,
@@ -161,6 +164,7 @@ impl Default for Settings {
             show_names: true,
             show_proz: true,
             show_helper_text: true,
+            show_positions: false,
             character: CharacterSettings::default(),
         }
     }
@@ -341,6 +345,7 @@ pub fn load_settings(identity: &CharacterIdentity) -> Option<Settings> {
         show_names: storage.global.show_names,
         show_proz: storage.global.show_proz,
         show_helper_text: storage.global.show_helper_text,
+        show_positions: storage.global.show_positions,
         character: entry.character.clone(),
     })
 }
@@ -361,9 +366,8 @@ pub fn load_global_settings() -> Settings {
 
 /// Persists the global fields of `settings` to the profile file.
 ///
-/// Only `music_enabled`, `display_mode`, `pixel_perfect_scaling`, and
-/// `vsync_enabled` are written. All other fields and the `last_username`
-/// value are preserved as-is.
+/// Only global settings fields are written. Per-character fields and the
+/// `last_username` value are preserved as-is.
 ///
 /// # Arguments
 /// * `settings` - The settings whose global fields to save.
@@ -384,6 +388,7 @@ pub fn save_global_settings(settings: &Settings) -> Result<(), String> {
     storage.global.show_names = settings.show_names;
     storage.global.show_proz = settings.show_proz;
     storage.global.show_helper_text = settings.show_helper_text;
+    storage.global.show_positions = settings.show_positions;
     write_storage(&path, &storage)
 }
 
@@ -434,6 +439,7 @@ pub fn save_settings(identity: &CharacterIdentity, settings: &Settings) -> Resul
     storage.global.show_names = settings.show_names;
     storage.global.show_proz = settings.show_proz;
     storage.global.show_helper_text = settings.show_helper_text;
+    storage.global.show_positions = settings.show_positions;
     // Insert / update character entry.
     let key = profile_key(identity);
     storage.characters.insert(
@@ -460,6 +466,7 @@ mod tests {
         s.shadows_enabled = true;
         s.master_volume = 0.75;
         s.show_helper_text = false;
+        s.show_positions = true;
         s.character.skill_keybinds = [
             None,
             Some(42),
@@ -488,6 +495,7 @@ mod tests {
             s.character.skill_keybinds
         );
         assert_eq!(deserialized.show_helper_text, s.show_helper_text);
+        assert_eq!(deserialized.show_positions, s.show_positions);
     }
 
     #[test]
@@ -500,10 +508,19 @@ mod tests {
         assert_eq!(deserialized.shadows_enabled, defaults.shadows_enabled);
         assert!((deserialized.master_volume - defaults.master_volume).abs() < f32::EPSILON);
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
+        assert_eq!(deserialized.show_positions, defaults.show_positions);
         assert_eq!(
             deserialized.character.skill_keybinds,
             defaults.character.skill_keybinds
         );
+    }
+
+    #[test]
+    fn settings_missing_show_positions_defaults_false() {
+        let deserialized: Settings = serde_json::from_str(r#"{"show_helper_text":true}"#).unwrap();
+
+        assert!(deserialized.show_helper_text);
+        assert!(!deserialized.show_positions);
     }
 
     #[test]
@@ -582,6 +599,7 @@ mod tests {
         assert!(s.show_proz);
         assert!(!s.hide);
         assert!(s.show_helper_text);
+        assert!(!s.show_positions);
         assert!(s.spell_effects_enabled);
     }
 
@@ -591,6 +609,7 @@ mod tests {
         s.show_names = false;
         s.show_proz = false;
         s.hide = true;
+        s.show_positions = true;
         s.spell_effects_enabled = false;
 
         let json = serde_json::to_string(&s).unwrap();
@@ -599,6 +618,7 @@ mod tests {
         assert!(!d.show_names);
         assert!(!d.show_proz);
         assert!(d.hide);
+        assert!(d.show_positions);
         assert!(!d.spell_effects_enabled);
     }
 

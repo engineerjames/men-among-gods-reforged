@@ -425,6 +425,7 @@ impl GameScene {
             show_health_pct: app_state.settings.show_proz,
             hide_walls: app_state.settings.hide,
             show_helper_text: app_state.settings.show_helper_text,
+            show_positions: app_state.settings.show_positions,
             master_volume: app_state.settings.master_volume,
             display_mode: app_state.settings.display_mode,
             pixel_perfect_scaling: app_state.settings.pixel_perfect_scaling,
@@ -480,6 +481,10 @@ impl GameScene {
                 }
                 WidgetAction::SetShowHelperText(v) => {
                     app_state.settings.show_helper_text = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetShowPositions(v) => {
+                    app_state.settings.show_positions = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetMasterVolume(v) => {
@@ -699,9 +704,24 @@ impl GameScene {
         gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
         show_helper_text: bool,
+        show_positions: bool,
     ) -> Result<(), String> {
         if !show_helper_text {
             return Ok(());
+        }
+        if show_positions {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            let text = format!("({},{})", self.mouse_x, self.mouse_y);
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
         }
         // Show the rank name as a tooltip when hovering the rank sigil.
         if self.rank_sigil.is_hovered() {
@@ -1682,7 +1702,13 @@ impl Scene for GameScene {
         // 5f. Context-sensitive helper text near the cursor
         self.perf_profiler.begin_sample(PerfLabel::DrawHelperText);
         if let Some(ps) = app_state.player_state.as_ref() {
-            self.draw_helper_text(canvas, gfx_cache, ps, app_state.settings.show_helper_text)?;
+            self.draw_helper_text(
+                canvas,
+                gfx_cache,
+                ps,
+                app_state.settings.show_helper_text,
+                app_state.settings.show_positions,
+            )?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHelperText);
 

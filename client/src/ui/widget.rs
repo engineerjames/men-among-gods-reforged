@@ -321,6 +321,8 @@ pub enum WidgetAction {
     SetVSync(bool),
     /// Toggle context-sensitive helper text near the cursor.
     SetShowHelperText(bool),
+    /// Toggle rendering the cursor's logical screen coordinates as helper text.
+    SetShowPositions(bool),
     /// Update a keyboard binding for a game action.
     UpdateKeyBinding {
         /// The action whose binding changed.
