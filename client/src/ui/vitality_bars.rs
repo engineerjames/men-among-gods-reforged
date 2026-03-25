@@ -28,20 +28,24 @@ use super::RenderContext;
 // ---------------------------------------------------------------------------
 
 /// Half-width of the outermost (HP) chevron at its bottom feet.
-/// The total horizontal span is `2 * HP_HALF_W` (32 px).
-const HP_HALF_W: i32 = 16;
+/// The total horizontal span is `2 * HP_HALF_W` pixels.
+/// Must be large enough for all three layers: `>= ARM_THICKNESS * 3 + LAYER_GAP * 2`
+/// so the innermost chevron still has meaningful width.
+const HP_HALF_W: i32 = 24;
 
 /// Vertical height of the outermost (HP) chevron from its bottom feet to its
 /// tip.  Inner layers scale this proportionally:
-/// `h = CHEVRON_H * hw / HP_HALF_W`.
-const CHEVRON_H: i32 = 10;
+/// `h = round(CHEVRON_H * hw / HP_HALF_W)`.
+const CHEVRON_H: i32 = 20;
 
-/// Horizontal inset per layer.  Each successive inner chevron is this many
-/// pixels narrower per side at the bottom feet (END hw = 12, MANA hw = 8).
-const LAYER_INSET: i32 = 4;
+/// Minimum gap in pixels between the outer edge of one chevron arm and the
+/// outer edge of the next inner chevron arm.  The actual per-layer inset used
+/// at render time is `ARM_THICKNESS + LAYER_GAP` so the layers never overlap
+/// regardless of arm thickness.
+const LAYER_GAP: i32 = 1;
 
 /// Thickness of each chevron arm in pixels.
-const ARM_THICKNESS: i32 = 2;
+const ARM_THICKNESS: i32 = 6;
 
 /// Dark background track drawn behind each chevron to show the empty portion.
 const TRACK_COLOR: Color = Color::RGB(30, 30, 30);
@@ -149,10 +153,19 @@ impl VitalityBars {
 
     /// Draw a single upward-pointing chevron with left-to-right fill.
     ///
-    /// The chevron tip is at `(cx, bot_y - height)` and the two feet are at
-    /// `(cx ± half_w, bot_y)`.  Pixels whose x coordinate falls within the
-    /// filled portion (measured left-to-right across the full chevron span)
-    /// are drawn in `color`; the rest are drawn in [`TRACK_COLOR`].
+    /// The chevron is rasterized as an outer triangle with an inner triangle
+    /// removed from it. That produces a proper mitered apex and avoids the
+    /// self-overdraw artifacts that happen when the two arms are painted as
+    /// separate thick strokes.
+    ///
+    /// Outer geometry:
+    /// * tip at `(cx, bot_y - height)`
+    /// * feet at `(cx ± half_w, bot_y)`
+    ///
+    /// Inner geometry uses the same slope with a smaller half-width,
+    /// `half_w - ARM_THICKNESS`, which creates the chevron band thickness.
+    /// Pixels are filled left-to-right across the full outer span; pixels to
+    /// the right of the fill boundary use [`TRACK_COLOR`].
     ///
     /// # Arguments
     ///
@@ -176,41 +189,57 @@ impl VitalityBars {
             return Ok(());
         }
 
-        // Full pixel span including arm thickness on each side.
-        let leftmost = cx - half_w - (ARM_THICKNESS - 1);
-        let rightmost = cx + half_w + (ARM_THICKNESS - 1);
-        let pixel_span = (rightmost - leftmost + 1) as f32;
-        let fill_x = leftmost as f32 + fill * pixel_span;
+        let inner_half_w = (half_w - ARM_THICKNESS).max(0);
+        let inner_height = if inner_half_w > 0 {
+            ((height * inner_half_w + half_w / 2) / half_w).max(1)
+        } else {
+            0
+        };
+        let inner_start_row = height - inner_height;
+
+        let outermost_left = cx - half_w;
+        let outermost_right = cx + half_w;
+        let pixel_span = outermost_right - outermost_left + 1;
+        let filled_pixels = ((fill * pixel_span as f32).round() as i32).clamp(0, pixel_span);
+        let fill_end = outermost_left + filled_pixels - 1;
 
         // Walk scanlines from tip (row 0) down to feet (row height-1).
         for row in 0..height {
             let y = bot_y - height + row;
-            // t = 0 at tip, 1 at feet.
-            let t = row as f32 / (height - 1).max(1) as f32;
-            // Horizontal offset from centre: 0 at tip, half_w at feet.
-            let offset = (t * half_w as f32).round() as i32;
+            let outer_offset = if height <= 1 {
+                0
+            } else {
+                (row * half_w + (height - 1) / 2) / (height - 1)
+            };
+            let outer_left = cx - outer_offset;
+            let outer_right = cx + outer_offset;
 
-            // Left arm pixels (extend leftward from arm centre).
-            for k in 0..ARM_THICKNESS {
-                let px = cx - offset - k;
-                let c = if (px as f32) < fill_x {
-                    color
+            if inner_height > 0 && row >= inner_start_row {
+                let inner_row = row - inner_start_row;
+                let inner_offset = if inner_height <= 1 {
+                    0
                 } else {
-                    TRACK_COLOR
+                    (inner_row * inner_half_w + (inner_height - 1) / 2) / (inner_height - 1)
                 };
-                canvas.set_draw_color(c);
-                canvas.draw_point(sdl2::rect::Point::new(px, y))?;
-            }
-            // Right arm pixels (extend rightward from arm centre).
-            for k in 0..ARM_THICKNESS {
-                let px = cx + offset + k;
-                let c = if (px as f32) < fill_x {
-                    color
-                } else {
-                    TRACK_COLOR
-                };
-                canvas.set_draw_color(c);
-                canvas.draw_point(sdl2::rect::Point::new(px, y))?;
+                let inner_left = cx - inner_offset;
+                let inner_right = cx + inner_offset;
+
+                for px in outer_left..inner_left {
+                    let c = if px <= fill_end { color } else { TRACK_COLOR };
+                    canvas.set_draw_color(c);
+                    canvas.draw_point(sdl2::rect::Point::new(px, y))?;
+                }
+                for px in (inner_right + 1)..=outer_right {
+                    let c = if px <= fill_end { color } else { TRACK_COLOR };
+                    canvas.set_draw_color(c);
+                    canvas.draw_point(sdl2::rect::Point::new(px, y))?;
+                }
+            } else {
+                for px in outer_left..=outer_right {
+                    let c = if px <= fill_end { color } else { TRACK_COLOR };
+                    canvas.set_draw_color(c);
+                    canvas.draw_point(sdl2::rect::Point::new(px, y))?;
+                }
             }
         }
 
@@ -235,11 +264,12 @@ impl VitalityBars {
     pub fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         let canvas = &mut ctx.canvas;
         canvas.set_blend_mode(BlendMode::None);
+        let layer_inset = ARM_THICKNESS + LAYER_GAP;
 
         let layers: [(f32, Color, i32); 3] = [
             (self.hp_fill, HP_COLOR, 0),
-            (self.end_fill, END_COLOR, LAYER_INSET),
-            (self.mana_fill, MANA_COLOR, LAYER_INSET * 2),
+            (self.end_fill, END_COLOR, layer_inset),
+            (self.mana_fill, MANA_COLOR, layer_inset * 2),
         ];
 
         for (fill, color, inset) in layers {
@@ -248,7 +278,9 @@ impl VitalityBars {
                 continue;
             }
             // Height scales proportionally so the arm slope stays the same.
-            let h = CHEVRON_H * hw / HP_HALF_W;
+            // Use rounded division and clamp to at least 1 so even very narrow
+            // inner chevrons still render a visible tip row.
+            let h = ((CHEVRON_H * hw + HP_HALF_W / 2) / HP_HALF_W).max(1);
             Self::draw_chevron(canvas, self.x, self.y, hw, h, fill, color)?;
         }
 
