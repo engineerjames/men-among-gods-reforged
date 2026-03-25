@@ -820,9 +820,10 @@ impl SettingsPanel {
         let w = CONTROL_W.min(bounds.width.saturating_sub(H_INSET as u32 * 2));
         let half_w = (w.saturating_sub(10)) / 2;
 
-        // Sub-panels overlap the main panel, starting below the title bar.
+        // Sub-panels overlap the main panel content, starting just below
+        // the category buttons so buttons stay clickable.
         let sub_x = bounds.x;
-        let sub_y = bounds.y + TITLE_BAR_H;
+        let sub_y = bounds.y + Y_CONTROLS_BTN + BTN_H as i32 + 4;
 
         Self {
             bounds,
@@ -1390,24 +1391,12 @@ mod tests {
         // Open display sub-panel.
         panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
         assert!(panel.sub_display.visible);
-
-        // Use the checkbox's actual bounds to build a reliable click coordinate.
+        // Drain any actions from the first click.
+        let _ = panel.take_actions();
+        // Click the shadows checkbox using its actual bounds.
         let chk_b = *panel.sub_display.chk_shadows.bounds();
-        let click_x = chk_b.x + 5;
-        let click_y = chk_b.y + 5;
-
-        let resp = panel.handle_event(&left_click(click_x, click_y));
-        assert_eq!(
-            resp,
-            EventResponse::Consumed,
-            "click at ({}, {}) was not consumed; chk bounds = ({}, {}, {}, {})",
-            click_x,
-            click_y,
-            chk_b.x,
-            chk_b.y,
-            chk_b.width,
-            chk_b.height,
-        );
+        let resp = panel.handle_event(&left_click(chk_b.x + 5, chk_b.y + 2));
+        assert_eq!(resp, EventResponse::Consumed);
         let actions = panel.take_actions();
         assert!(
             actions
@@ -1425,9 +1414,10 @@ mod tests {
         // Open diagnostics sub-panel.
         panel.handle_event(&left_click(15, Y_DIAG_BTN + 5));
         assert!(panel.sub_diagnostics.visible);
-        // Click the "Show Pixel Positions" checkbox.
-        let chk_y = TITLE_BAR_H + DG_Y_SHOW_POS + 5;
-        panel.handle_event(&left_click(15, chk_y));
+        let _ = panel.take_actions();
+        // Click the "Show Pixel Positions" checkbox using actual bounds.
+        let chk_b = *panel.sub_diagnostics.chk_show_positions.bounds();
+        panel.handle_event(&left_click(chk_b.x + 5, chk_b.y + 2));
         let actions = panel.take_actions();
         assert!(
             actions
@@ -1445,9 +1435,10 @@ mod tests {
         // Open controls sub-panel.
         panel.handle_event(&left_click(15, Y_CONTROLS_BTN + 5));
         assert!(panel.sub_controls.visible);
-        // Click the "Keyboard Bindings" button inside the sub-panel.
-        let btn_y = TITLE_BAR_H + CT_Y_KEYBINDINGS_BTN + 5;
-        panel.handle_event(&left_click(15, btn_y));
+        let _ = panel.take_actions();
+        // Click the "Keyboard Bindings" button using actual bounds.
+        let btn_b = *panel.sub_controls.btn_keybindings.bounds();
+        panel.handle_event(&left_click(btn_b.x + 5, btn_b.y + 2));
         let actions = panel.take_actions();
         assert!(
             actions
