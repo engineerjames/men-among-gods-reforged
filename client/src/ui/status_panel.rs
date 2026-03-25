@@ -19,7 +19,7 @@ use super::RenderContext;
 /// Padding inside the panel background on each side.
 const PANEL_PADDING: i32 = 4;
 /// Width of the text content area (fits "WV: 9999  AV: 9999").
-const TEXT_WIDTH: i32 = 80;
+const PANEL_WIDTH: i32 = 34;
 /// Bitmap font index used for value text (yellow font).
 const FONT: usize = 1;
 
@@ -56,8 +56,8 @@ impl StatusPanel {
     ///
     /// * A new `StatusPanel` with zeroed weapon and armor values.
     pub fn new(x: i32, y: i32, bg_color: Color) -> Self {
-        let w = (PANEL_PADDING * 2 + TEXT_WIDTH) as u32;
-        let h = (PANEL_PADDING * 2 + font_cache::BITMAP_GLYPH_H as i32) as u32;
+        let w = (PANEL_PADDING * 2 + PANEL_WIDTH) as u32;
+        let h = (PANEL_PADDING * 2 + font_cache::BITMAP_GLYPH_H as i32 * 2) as u32;
         Self {
             bounds: Bounds::new(x, y, w, h),
             bg_color,
@@ -140,16 +140,27 @@ impl Widget for StatusPanel {
             self.bounds.height,
         ))?;
 
-        let text = format!("WV: {}  AV: {}", self.weapon, self.armor);
+        let wv_text = format!("WV: {}", self.weapon);
+        let av_text = format!("AV: {}", self.armor);
         let text_x = self.bounds.x + PANEL_PADDING;
         let text_y = self.bounds.y + PANEL_PADDING;
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
-            &text,
+            &wv_text,
             text_x,
             text_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
+
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            &av_text,
+            text_x, // Adjust spacing as needed
+            text_y + font_cache::BITMAP_GLYPH_H as i32 + 2,
             font_cache::TextStyle::PLAIN,
         )?;
 
@@ -207,7 +218,7 @@ mod tests {
     #[test]
     fn bounds_have_expected_dimensions() {
         let panel = StatusPanel::new(0, 0, Color::RGBA(10, 10, 30, 180));
-        let w = (PANEL_PADDING * 2 + TEXT_WIDTH) as u32;
+        let w = (PANEL_PADDING * 2 + PANEL_WIDTH) as u32;
         let h = (PANEL_PADDING * 2 + font_cache::BITMAP_GLYPH_H as i32) as u32;
         assert_eq!(panel.bounds().width, w);
         assert_eq!(panel.bounds().height, h);

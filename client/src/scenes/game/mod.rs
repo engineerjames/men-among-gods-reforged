@@ -199,7 +199,7 @@ const RANK_SIGIL_Y: i32 = 4;
 /// X position of the status panel (8 px to the right of the skill bar's right edge).
 const STATUS_PANEL_X: i32 = TARGET_WIDTH_INT as i32 - 280;
 /// Y position of the status panel (same row as the rank progress line).
-const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 20;
+const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 37;
 
 /// X position of the vitality chevrons (horizontal centre of the player sprite).
 const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
