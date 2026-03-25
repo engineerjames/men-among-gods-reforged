@@ -31,21 +31,21 @@ use super::RenderContext;
 /// The total horizontal span is `2 * HP_HALF_W` pixels.
 /// Must be large enough for all three layers: `>= ARM_THICKNESS * 3 + LAYER_GAP * 2`
 /// so the innermost chevron still has meaningful width.
-const HP_HALF_W: i32 = 24;
+const HP_HALF_W: i32 = 40;
 
 /// Vertical height of the outermost (HP) chevron from its bottom feet to its
 /// tip.  Inner layers scale this proportionally:
 /// `h = round(CHEVRON_H * hw / HP_HALF_W)`.
-const CHEVRON_H: i32 = 20;
+const CHEVRON_H: i32 = 26;
 
 /// Minimum gap in pixels between the outer edge of one chevron arm and the
 /// outer edge of the next inner chevron arm.  The actual per-layer inset used
 /// at render time is `ARM_THICKNESS + LAYER_GAP` so the layers never overlap
 /// regardless of arm thickness.
-const LAYER_GAP: i32 = 1;
+const LAYER_GAP: i32 = 0;
 
 /// Thickness of each chevron arm in pixels.
-const ARM_THICKNESS: i32 = 6;
+const ARM_THICKNESS: i32 = 8;
 
 /// Dark background track drawn behind each chevron to show the empty portion.
 const TRACK_COLOR: Color = Color::RGB(30, 30, 30);

@@ -205,7 +205,7 @@ const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 38;
 /// X position of the vitality chevrons (horizontal centre of the player sprite).
 const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
 /// Y position of the vitality chevron feet.
-const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 65;
+const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 60;
 
 // ---------------------------------------------------------------------------
 // GameScene struct
