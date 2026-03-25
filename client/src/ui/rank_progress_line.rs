@@ -6,6 +6,8 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use mag_core::ranks::{points2rank, rank_progress, RANK_THRESHOLDS, TOTAL_RANKS};
+
 use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
 
@@ -21,11 +23,14 @@ const FILLED_COLOR: Color = Color::RGBA(220, 180, 50, 220);
 /// filled portion grows from the left edge proportional to `progress`
 /// ∈ [0.0, 1.0].
 ///
-/// This widget is purely decorative: it has no click handling.
+/// This widget is purely decorative: it has no click handling, but it can
+/// expose helper text while hovered.
 pub struct RankProgressLine {
     bounds: Bounds,
     stroke_height: u32,
     progress: f64,
+    experience_until_rank: u32,
+    hovered: bool,
     unfilled_color: Color,
     filled_color: Color,
 }
@@ -48,9 +53,27 @@ impl RankProgressLine {
             bounds: Bounds::new(x, y, width, stroke_height),
             stroke_height,
             progress: 0.0,
+            experience_until_rank: 0,
+            hovered: false,
             unfilled_color: UNFILLED_COLOR,
             filled_color: FILLED_COLOR,
         }
+    }
+
+    /// Syncs the line from the player's total experience points.
+    ///
+    /// # Arguments
+    ///
+    /// * `points` - Total experience points for the active character.
+    pub fn sync(&mut self, points: u32) {
+        self.progress = rank_progress(points);
+
+        let rank_index = points2rank(points) as usize;
+        self.experience_until_rank = if rank_index + 1 >= TOTAL_RANKS {
+            0
+        } else {
+            RANK_THRESHOLDS[rank_index + 1].saturating_sub(points)
+        };
     }
 
     /// Sets the current rank progress (clamped to [0.0, 1.0]).
@@ -60,6 +83,17 @@ impl RankProgressLine {
     /// * `progress` - Fractional progress toward the next rank.
     pub fn set_progress(&mut self, progress: f64) {
         self.progress = progress.clamp(0.0, 1.0);
+    }
+
+    /// Returns the helper text to display while the line is hovered.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(String)` with the remaining experience to the next rank when
+    ///   hovered, otherwise `None`.
+    pub fn hover_text(&self) -> Option<String> {
+        self.hovered
+            .then(|| format!("{} experience until rank", self.experience_until_rank))
     }
 }
 
@@ -80,8 +114,11 @@ impl Widget for RankProgressLine {
         self.bounds.y = y;
     }
 
-    /// Always ignored — the line is purely decorative.
-    fn handle_event(&mut self, _event: &UiEvent) -> EventResponse {
+    /// Updates hover state while keeping the line non-interactive.
+    fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if let UiEvent::MouseMove { x, y } = event {
+            self.hovered = self.bounds.contains_point(*x, *y);
+        }
         EventResponse::Ignored
     }
 
@@ -183,5 +220,32 @@ mod tests {
     fn default_progress_is_zero() {
         let line = RankProgressLine::new(0, 0, 100, 4);
         assert!((line.progress - 0.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sync_sets_experience_until_next_rank() {
+        let mut line = RankProgressLine::new(0, 0, 100, 4);
+        line.sync(49);
+        assert_eq!(line.experience_until_rank, 1);
+
+        line.sync(80_977_100);
+        assert_eq!(line.experience_until_rank, 0);
+    }
+
+    #[test]
+    fn hover_text_reports_remaining_experience_only_while_hovered() {
+        let mut line = RankProgressLine::new(0, 0, 100, 4);
+        line.sync(849);
+
+        assert_eq!(line.hover_text(), None);
+
+        line.handle_event(&UiEvent::MouseMove { x: 20, y: 2 });
+        assert_eq!(
+            line.hover_text().as_deref(),
+            Some("1 experience until rank")
+        );
+
+        line.handle_event(&UiEvent::MouseMove { x: 200, y: 50 });
+        assert_eq!(line.hover_text(), None);
     }
 }

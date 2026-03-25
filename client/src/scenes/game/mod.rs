@@ -737,6 +737,19 @@ impl GameScene {
                 crate::font_cache::TextStyle::drop_shadow(),
             );
         }
+        if let Some(text) = self.rank_progress_line.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
         if let Some(text) = self.vitality_bars.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
@@ -1164,6 +1177,8 @@ impl Scene for GameScene {
                 return None;
             }
 
+            self.rank_progress_line.handle_event(&ui_event);
+
             self.vitality_bars.handle_event(&ui_event);
 
             // --- StatusPanel (WV/AV display, right of skill bar) ---
@@ -1564,8 +1579,7 @@ impl Scene for GameScene {
                 let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
                 self.rank_sigil.sync(rank_index);
                 self.status_panel.sync(ci.weapon, ci.armor);
-                self.rank_progress_line
-                    .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
+                self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);
                 self.vitality_bars.sync(
                     ci.a_hp,
