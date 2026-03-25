@@ -6,7 +6,6 @@
 //! | Module | Responsibility |
 //! |---|---|
 //! | [`profile`] | Load/save per-character preference profiles |
-//! | [`game_math`] | Pure geometry, stat-cost formulas, coordinate transforms |
 //! | [`world_render`] | Isometric tile/sprite/shadow/effect drawing |
 //! | [`net_events`] | Per-frame network tick processing and auto-look |
 //! | [`perf_profiler`] | Wall-clock profiler for rendering functions (activated from escape menu) |
@@ -198,9 +197,9 @@ const RANK_SIGIL_Y: i32 = 4;
 // ---- Status panel (WV/AV, right of skill bar) ---- //
 
 /// X position of the status panel (8 px to the right of the skill bar's right edge).
-const STATUS_PANEL_X: i32 = (TARGET_WIDTH_INT as i32 - 500) / 2 + 500 + 8;
+const STATUS_PANEL_X: i32 = TARGET_WIDTH_INT as i32 - 280;
 /// Y position of the status panel (same row as the rank progress line).
-const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 38;
+const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 20;
 
 /// X position of the vitality chevrons (horizontal centre of the player sprite).
 const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
@@ -1625,6 +1624,7 @@ impl Scene for GameScene {
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
+            self.status_panel.render(&mut ctx)?;
             self.rank_progress_line.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }

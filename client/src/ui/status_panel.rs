@@ -19,7 +19,7 @@ use super::RenderContext;
 /// Padding inside the panel background on each side.
 const PANEL_PADDING: i32 = 4;
 /// Width of the text content area (fits "WV: 9999  AV: 9999").
-const TEXT_WIDTH: i32 = 120;
+const TEXT_WIDTH: i32 = 80;
 /// Bitmap font index used for value text (yellow font).
 const FONT: usize = 1;
 
