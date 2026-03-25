@@ -1390,9 +1390,24 @@ mod tests {
         // Open display sub-panel.
         panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
         assert!(panel.sub_display.visible);
-        // Click the shadows checkbox inside the sub-panel.
-        let chk_y = TITLE_BAR_H + DS_Y_SHADOWS + 5;
-        panel.handle_event(&left_click(15, chk_y));
+
+        // Use the checkbox's actual bounds to build a reliable click coordinate.
+        let chk_b = *panel.sub_display.chk_shadows.bounds();
+        let click_x = chk_b.x + 5;
+        let click_y = chk_b.y + 5;
+
+        let resp = panel.handle_event(&left_click(click_x, click_y));
+        assert_eq!(
+            resp,
+            EventResponse::Consumed,
+            "click at ({}, {}) was not consumed; chk bounds = ({}, {}, {}, {})",
+            click_x,
+            click_y,
+            chk_b.x,
+            chk_b.y,
+            chk_b.width,
+            chk_b.height,
+        );
         let actions = panel.take_actions();
         assert!(
             actions
