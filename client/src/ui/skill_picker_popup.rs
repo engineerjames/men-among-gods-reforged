@@ -14,8 +14,8 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE, BITMAP_GLYPH_H};
 
 // ---------------------------------------------------------------------------

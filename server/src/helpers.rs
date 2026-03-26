@@ -1,5 +1,5 @@
 use core::{
-    constants::{CharacterFlags, AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL},
+    constants::{AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, CharacterFlags},
     string_operations::c_string_to_str,
     types::{Character, FontColor},
 };

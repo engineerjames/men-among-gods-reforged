@@ -17,8 +17,8 @@ use mag_core::ranks::{self, TOTAL_RANKS};
 use crate::font_cache;
 use crate::player_state::PlayerState;
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 // ---------------------------------------------------------------------------
 // Layout constants

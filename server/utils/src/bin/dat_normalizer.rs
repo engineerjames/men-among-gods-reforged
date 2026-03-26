@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use bincode::{Decode, Encode};
 use mag_core::constants::{
     MAXCHARS, MAXEFFECT, MAXITEM, MAXTCHARS, MAXTITEM, SERVER_MAPX, SERVER_MAPY,
@@ -228,9 +228,7 @@ struct GlobalPlain {
 }
 
 macro_rules! packed_field {
-    ($obj:expr, $field:ident) => {{
-        unsafe { std::ptr::read_unaligned(std::ptr::addr_of!($obj.$field)) }
-    }};
+    ($obj:expr, $field:ident) => {{ unsafe { std::ptr::read_unaligned(std::ptr::addr_of!($obj.$field)) } }};
 }
 
 impl From<Map> for MapPlain {

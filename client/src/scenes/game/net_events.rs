@@ -1,7 +1,7 @@
 use mag_core::skills;
 
 use crate::{
-    network::{client_commands::ClientCommand, NetworkEvent},
+    network::{NetworkEvent, client_commands::ClientCommand},
     scenes::scene::SceneType,
     state::AppState,
     ui::widget::{Widget, WidgetAction},

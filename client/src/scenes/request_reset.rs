@@ -10,11 +10,10 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     state::AppState,
     ui::{
-        self,
+        self, RenderContext,
         cert_dialog::{CertDialog, CertDialogAction},
         request_reset_form::{RequestResetForm, RequestResetFormAction},
         widget::{KeyModifiers, Widget},
-        RenderContext,
     },
 };
 
@@ -230,8 +229,8 @@ impl Scene for RequestResetScene {
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {
-            ref mut panning_background,
-            ref mut gfx_cache,
+            panning_background,
+            gfx_cache,
             ..
         } = app_state;
         let mut ctx = RenderContext {

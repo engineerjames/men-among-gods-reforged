@@ -10,11 +10,10 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     state::AppState,
     ui::{
-        self,
+        self, RenderContext,
         cert_dialog::{CertDialog, CertDialogAction},
         new_account_form::{NewAccountForm, NewAccountFormAction},
         widget::{KeyModifiers, Widget},
-        RenderContext,
     },
 };
 
@@ -244,8 +243,8 @@ impl Scene for NewAccountScene {
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {
-            ref mut panning_background,
-            ref mut gfx_cache,
+            panning_background,
+            gfx_cache,
             ..
         } = app_state;
         let mut ctx = RenderContext {

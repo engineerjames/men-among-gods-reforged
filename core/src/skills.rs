@@ -487,11 +487,7 @@ pub fn get_skill_sortkey(skill: usize) -> char {
 ///
 /// * The attribute name (e.g. `"Strength"`), or an empty string if out of bounds.
 pub fn attribute_name(n: usize) -> &'static str {
-    if n < AT_NAME.len() {
-        AT_NAME[n]
-    } else {
-        ""
-    }
+    if n < AT_NAME.len() { AT_NAME[n] } else { "" }
 }
 
 // Static skill table (taken from server/original_source/SkillTab.cpp)

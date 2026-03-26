@@ -175,11 +175,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
 
         for n in 0..maxseen {
             let tmp = if !seen[n].is_friend {
-                if seen[n].dist < 6 {
-                    -2000
-                } else {
-                    -1000
-                }
+                if seen[n].dist < 6 { -2000 } else { -1000 }
             } else {
                 150
             };

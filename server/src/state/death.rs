@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, CHD_CORPSEOWNER, MAXCHARS, USE_EMPTY};
+use core::constants::{CHD_CORPSEOWNER, CharacterFlags, MAXCHARS, USE_EMPTY};
 use core::types::{Character, FontColor};
 use core::{skills, traits};
 

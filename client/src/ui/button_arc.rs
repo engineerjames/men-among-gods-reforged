@@ -3,9 +3,9 @@
 
 use sdl2::pixels::Color;
 
+use super::RenderContext;
 use super::button::CircleButton;
 use super::widget::{Bounds, EventResponse, HudPanel, UiEvent, Widget, WidgetAction};
-use super::RenderContext;
 
 /// Default fill color for the HUD buttons (semi-transparent dark slate).
 const BUTTON_FILL: Color = Color::RGBA(20, 20, 40, 200);

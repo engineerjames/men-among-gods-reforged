@@ -9,11 +9,10 @@ use crate::{
     sfx_cache::MusicTrack,
     state::AppState,
     ui::{
-        self,
+        self, RenderContext,
         cert_dialog::{CertDialog, CertDialogAction},
         login_form::{LoginForm, LoginFormAction},
         widget::{KeyModifiers, Widget},
-        RenderContext,
     },
 };
 use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
@@ -340,8 +339,8 @@ impl Scene for LoginScene {
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {
-            ref mut panning_background,
-            ref mut gfx_cache,
+            panning_background,
+            gfx_cache,
             ..
         } = app_state;
         let mut ctx = RenderContext {

@@ -11,12 +11,11 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     state::{AppState, GameLoginTarget},
     ui::{
-        self,
+        self, RenderContext,
         character_selection_form::{CharacterSelectionForm, CharacterSelectionFormAction},
         delete_character_dialog::{DeleteCharacterDialog, DeleteCharacterDialogAction},
         scrollable_list::ListItem,
         widget::{KeyModifiers, Widget},
-        RenderContext,
     },
 };
 
@@ -510,8 +509,8 @@ impl Scene for CharacterSelectionScene {
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {
-            ref mut panning_background,
-            ref mut gfx_cache,
+            panning_background,
+            gfx_cache,
             ..
         } = app_state;
 

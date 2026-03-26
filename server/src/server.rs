@@ -16,8 +16,8 @@ use crate::tls::{self, GameStream};
 use crate::types::cmap::CMap;
 use crate::types::server_player::ServerPlayer;
 use crate::{driver, player, populate};
-use flate2::write::ZlibEncoder;
 use flate2::Compression;
+use flate2::write::ZlibEncoder;
 
 /// Per-character scheduling hints used by `game_tick`.
 ///
@@ -1122,7 +1122,11 @@ impl Server {
                     if produced > csize {
                         log::warn!(
                             "compress_ticks: compressed output truncated for player {} (produced {}, capped {}, ilen {}, usnr {})",
-                            n, produced, csize, ilen, p.usnr
+                            n,
+                            produced,
+                            csize,
+                            ilen,
+                            p.usnr
                         );
                         zs.get_mut().truncate(before + csize);
                     }
@@ -1130,7 +1134,11 @@ impl Server {
                     if csize + 2 >= 0x8000 {
                         log::error!(
                             "compress_ticks: compressed packet length too large for player {} (csize {}, len_with_header {}, ilen {}, usnr {})",
-                            n, csize, csize + 2, ilen, p.usnr
+                            n,
+                            csize,
+                            csize + 2,
+                            ilen,
+                            p.usnr
                         );
                     }
 
@@ -1152,7 +1160,14 @@ impl Server {
             if needed > free {
                 log::warn!(
                     "compress_ticks: obuf overflow risk for player {} (need {}, free {}, iptr {}, optr {}, ilen {}, olen_i32 {}, usnr {})",
-                    n, needed, free, p.iptr, p.optr, ilen, olen_i32, p.usnr
+                    n,
+                    needed,
+                    free,
+                    p.iptr,
+                    p.optr,
+                    ilen,
+                    olen_i32,
+                    p.usnr
                 );
                 p.tptr = 0;
                 continue;

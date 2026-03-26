@@ -46,7 +46,7 @@ use client::ui::minimap_widget::MinimapWidget;
 use client::ui::mode_button::ModeButton;
 use client::ui::panel::Panel;
 use client::ui::rank_progress_arc::RankArc;
-use client::ui::settings_panel::{SettingsPanel, SETTINGS_PANEL_H};
+use client::ui::settings_panel::{SETTINGS_PANEL_H, SettingsPanel};
 use client::ui::shop_panel::ShopPanel;
 use client::ui::skill_bar::SkillBarConfig;
 use client::ui::skill_bar::{SkillBar, SkillBarData};
@@ -55,7 +55,7 @@ use client::ui::slider::Slider;
 use client::ui::style::{Background, Border, Padding};
 use client::ui::text_input::TextInput;
 use client::ui::widget::{Bounds, EventResponse, HudPanel, Widget, WidgetAction};
-use client::ui::{sdl_to_ui_event, RenderContext};
+use client::ui::{RenderContext, sdl_to_ui_event};
 
 // ---------------------------------------------------------------------------
 // Layout constants — arranged as a gallery across the 960×540 viewport

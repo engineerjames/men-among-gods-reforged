@@ -65,7 +65,10 @@ const AR_ALL: i32 = 12345;
 
 static KNOW: [Know; 227] = [
     Know {
-        word: ["!where", "!tavern", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!tavern", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -73,7 +76,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -81,7 +87,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?haunted", "!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?haunted", "!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -89,7 +98,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?cursed", "!tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?cursed", "!tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -97,7 +109,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -105,7 +120,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?skeleton", "!lord", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where",
+            "?skeleton",
+            "!lord",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -113,7 +149,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?templar", "!outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?templar", "!outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -121,7 +160,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?magic", "!maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?magic", "!maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -129,7 +171,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!labyrinth", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where",
+            "!labyrinth",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -137,7 +200,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!random", "?dungeon", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!random", "?dungeon", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -145,7 +211,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!bank", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!bank", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -153,7 +222,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!shop", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!shop", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -161,7 +233,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!buy", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!buy", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -169,7 +244,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!have", "!no", "!money", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!have", "!no", "!money", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -177,7 +255,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!temple", "!street", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!temple", "!street", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -185,7 +266,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!castle", "!way", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!castle", "!way", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -193,7 +277,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!south", "!end", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!south", "!end", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -201,7 +288,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!rose", "!street", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!rose", "!street", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -209,7 +299,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!merchant", "!way", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where",
+            "!merchant",
+            "!way",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -217,7 +328,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!new", "!street", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!new", "!street", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -225,7 +339,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?where", "?what", "!aston", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?where", "?what", "!aston", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -233,7 +350,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!temple", "?skua", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!temple", "?skua", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -241,7 +361,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!jamil", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!jamil", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -249,7 +372,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!jamil", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!jamil", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -257,7 +383,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!sirjan", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!sirjan", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -265,7 +394,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!damor", "?shop", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!damor", "?shop", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -273,7 +405,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!damor", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!damor", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 5,
         area: AR_ASTON,
         temp: 0,
@@ -281,7 +416,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!damor", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!damor", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 5,
         area: AR_ASTON,
         temp: 0,
@@ -289,7 +427,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!ratling", "?eye", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!ratling", "?eye", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -297,7 +438,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!underground", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!underground",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -305,7 +467,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!azrael", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!azrael", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -313,7 +477,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -321,7 +488,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "?where", "?good", "!start", "?place", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "?where", "?good", "!start", "?place", "?", "", "", "", "", "", "", "", "",
+            "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -329,7 +499,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?tell", "?where", "?good", "!start", "?place", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?tell", "?where", "?good", "!start", "?place", "?", "", "", "", "", "", "", "", "",
+            "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_ASTON,
         temp: 0,
@@ -337,7 +510,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_THIEF,
         temp: 25,
@@ -345,7 +521,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?thief", "!house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?thief", "!house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_THIEF,
         temp: 25,
@@ -353,7 +532,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!locked", "!door", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!locked", "!door", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -361,7 +543,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!second", "!door", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!second", "!door", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -369,7 +554,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -377,7 +565,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -385,7 +576,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -393,7 +587,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "", "?want", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "", "?want", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -401,7 +598,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -409,7 +609,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_THIEF,
         temp: 25,
@@ -417,7 +620,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?haunted", "!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?haunted", "!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_CASTLE,
         temp: 28,
@@ -425,7 +631,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!locked", "!door", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!locked", "!door", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "",
+        ],
         value: 50,
         area: AR_CASTLE,
         temp: 28,
@@ -433,7 +642,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!key", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!key", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 50,
         area: AR_CASTLE,
         temp: 28,
@@ -441,7 +653,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 25,
         area: AR_CASTLE,
         temp: 28,
@@ -449,7 +664,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 25,
         area: AR_CASTLE,
         temp: 28,
@@ -457,7 +675,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!in", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!in", "?haunted", "?castle", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 25,
         area: AR_CASTLE,
         temp: 28,
@@ -465,7 +686,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "!belt", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "!belt", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_CASTLE,
         temp: 28,
@@ -473,7 +697,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!belt", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!belt", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 25,
         area: AR_CASTLE,
         temp: 28,
@@ -481,7 +708,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!belt", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!belt", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 25,
         area: AR_CASTLE,
         temp: 28,
@@ -489,7 +719,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?cursed", "!tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?cursed", "!tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_TOMB,
         temp: 50,
@@ -497,7 +730,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!ruby", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!ruby", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 25,
         area: AR_TOMB,
         temp: 50,
@@ -505,7 +741,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "!hidden", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "!hidden", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 50,
         area: AR_TOMB,
         temp: 50,
@@ -513,7 +752,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_TOMB,
         temp: 50,
@@ -521,7 +763,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_TOMB,
         temp: 50,
@@ -529,7 +774,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!in", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!in", "?cursed", "?tomb", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_TOMB,
         temp: 50,
@@ -537,7 +785,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "!ruby", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "!ruby", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_TOMB,
         temp: 50,
@@ -545,7 +796,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!ruby", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!ruby", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 25,
         area: AR_TOMB,
         temp: 50,
@@ -553,7 +807,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!ruby", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!ruby", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 25,
         area: AR_TOMB,
         temp: 50,
@@ -561,7 +818,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_JOE,
         temp: 64,
@@ -569,7 +829,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "?joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "?joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_JOE,
         temp: 64,
@@ -577,7 +840,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?joe", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_JOE,
         temp: 64,
@@ -585,7 +851,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "?bronze", "!armor",         "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "?bronze", "!armor", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 25,
         area: AR_JOE,
         temp: 64,
@@ -593,7 +862,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "?bronze", "!armor",         "?", "",  "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "?bronze", "!armor", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_JOE,
         temp: 64,
@@ -601,7 +873,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?bronze", "!armor",         "?", "",  "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?bronze", "!armor", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_JOE,
         temp: 64,
@@ -609,7 +884,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?black", "!stronghold", "!coin", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?black",
+            "!stronghold",
+            "!coin",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 25,
         area: AR_STRONGHOLD,
         temp: 72,
@@ -617,7 +913,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!help", "?need", "?stronghold", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!help",
+            "?need",
+            "?stronghold",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -625,7 +942,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!protect", "?outpost", "?city", "?entrance", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!protect",
+            "?outpost",
+            "?city",
+            "?entrance",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -633,7 +971,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!reward", "?protect", "?city", "?stronghold", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!reward",
+            "?protect",
+            "?city",
+            "?stronghold",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -641,7 +1000,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!stronghold", "?enter", "?attack", "?black", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!stronghold",
+            "?enter",
+            "?attack",
+            "?black",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -649,7 +1029,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!points", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!points", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -657,7 +1039,9 @@ static KNOW: [Know; 227] = [
         special: POINTS,
     },
     Know {
-        word: ["!buy", "!gold", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!buy", "!gold", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -665,7 +1049,10 @@ static KNOW: [Know; 227] = [
         special: BUYGOLD,
     },
     Know {
-        word: ["!buy", "!health", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!buy", "!health", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -673,7 +1060,10 @@ static KNOW: [Know; 227] = [
         special: BUYHEALTH,
     },
     Know {
-        word: ["!buy", "!healing", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!buy", "!healing", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -681,7 +1071,9 @@ static KNOW: [Know; 227] = [
         special: BUYHEALTH,
     },
     Know {
-        word: ["!buy", "!mana", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!buy", "!mana", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -689,7 +1081,9 @@ static KNOW: [Know; 227] = [
         special: BUYMANA,
     },
     Know {
-        word: ["!buy", "!exp", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!buy", "!exp", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_STRONGHOLD,
         temp: 518,
@@ -697,7 +1091,10 @@ static KNOW: [Know; 227] = [
         special: BUYEXP,
     },
     Know {
-        word: ["!where", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_MINE,
         temp: 0,
@@ -705,7 +1102,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_MINE,
         temp: 0,
@@ -713,7 +1113,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!mine", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_MINE,
         temp: 0,
@@ -721,7 +1124,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?skeleton", "!lord", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where",
+            "?skeleton",
+            "!lord",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_SLORD,
         temp: 90,
@@ -729,7 +1153,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!potion", "?skeleton", "?lord", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where",
+            "!potion",
+            "?skeleton",
+            "?lord",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 50,
         area: AR_SLORD,
         temp: 90,
@@ -737,7 +1182,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "?skeleton", "?lord", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger",
+            "?skeleton",
+            "?lord",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 50,
         area: AR_SLORD,
         temp: 90,
@@ -745,7 +1211,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?skeleton", "?lord", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell",
+            "?skeleton",
+            "?lord",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 50,
         area: AR_SLORD,
         temp: 90,
@@ -753,7 +1240,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!in", "?skeleton", "?lord", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who",
+            "!in",
+            "?skeleton",
+            "?lord",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 50,
         area: AR_SLORD,
         temp: 90,
@@ -761,7 +1269,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_SLORD,
         temp: 90,
@@ -769,7 +1280,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_SLORD,
         temp: 90,
@@ -777,7 +1291,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_SLORD,
         temp: 90,
@@ -785,7 +1302,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?templar", "!outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?templar", "!outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_OUTLAW,
         temp: 91,
@@ -793,7 +1313,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "?templar", "?outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "?templar", "?outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_OUTLAW,
         temp: 91,
@@ -801,7 +1324,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?templar", "?outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?templar", "?outlaw", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_OUTLAW,
         temp: 91,
@@ -809,7 +1335,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "?barbarian", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why",
+            "?want",
+            "?barbarian",
+            "!sword",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_OUTLAW,
         temp: 91,
@@ -817,7 +1364,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "?barbarian", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what",
+            "?barbarian",
+            "!sword",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_OUTLAW,
         temp: 91,
@@ -825,7 +1393,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?barbarian", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell",
+            "?barbarian",
+            "!sword",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_OUTLAW,
         temp: 91,
@@ -833,7 +1422,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?second", "!door", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?second", "!door", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "",
+        ],
         value: 25,
         area: AR_THIEF2,
         temp: 107,
@@ -841,7 +1433,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF2,
         temp: 107,
@@ -849,7 +1444,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF2,
         temp: 107,
@@ -857,7 +1455,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "?thief", "?house", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF2,
         temp: 107,
@@ -865,7 +1466,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "?ruby", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "?ruby", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 25,
         area: AR_THIEF2,
         temp: 107,
@@ -873,7 +1477,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "?ruby", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "?ruby", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF2,
         temp: 107,
@@ -881,7 +1488,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?ruby", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?ruby", "!amulet", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_THIEF2,
         temp: 107,
@@ -889,7 +1499,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?magic", "!maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?magic", "!maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_MMAZE,
         temp: 108,
@@ -897,7 +1510,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!danger", "?magic", "?maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!danger", "?magic", "?maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 50,
         area: AR_MMAZE,
         temp: 108,
@@ -905,7 +1521,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?magic", "?maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?magic", "?maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 50,
         area: AR_MMAZE,
         temp: 108,
@@ -913,7 +1532,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "?magic", "?maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "?magic", "?maze", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 50,
         area: AR_MMAZE,
         temp: 108,
@@ -921,7 +1543,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "sorceress", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell",
+            "sorceress",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 50,
         area: AR_MMAZE,
         temp: 108,
@@ -929,7 +1572,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 25,
         area: AR_MMAZE,
         temp: 108,
@@ -937,7 +1583,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_MMAZE,
         temp: 108,
@@ -945,7 +1594,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 25,
         area: AR_MMAZE,
         temp: 108,
@@ -953,7 +1605,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -961,7 +1616,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!stone", "?sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!stone", "?sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -969,7 +1627,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?too", "?weak", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?too", "?weak", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -977,7 +1637,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?not", "?strong", "?enough", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?not", "?strong", "?enough", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -985,7 +1648,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?how", "!take", "!sword", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?how", "!take", "!sword", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -993,7 +1659,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?how", "!get", "!sword", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?how", "!get", "!sword", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -1001,7 +1670,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -1009,7 +1681,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -1017,7 +1692,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!tell", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!tell", "?stone", "!sword", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 109,
@@ -1025,7 +1703,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "?create", "?mix", "?potion", "?life", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "?create", "?mix", "?potion", "?life", "?", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 111,
@@ -1033,7 +1714,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!ingredients", "?potion", "?life", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what",
+            "!ingredients",
+            "?potion",
+            "?life",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 111,
@@ -1041,7 +1743,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!why", "?want", "!potion", "?life", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!why", "?want", "!potion", "?life", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 111,
@@ -1049,7 +1754,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!potion", "?life", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!potion", "?life", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 111,
@@ -1057,7 +1765,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "?first", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "?first", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 50,
         area: AR_GROLM,
         temp: 114,
@@ -1065,7 +1776,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "!second", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "!second", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 75,
         area: AR_GROLM,
         temp: 114,
@@ -1073,7 +1787,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "!third", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "!third", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 75,
         area: AR_GROLM,
         temp: 114,
@@ -1081,7 +1798,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!second", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!second", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 75,
         area: AR_GROLM,
         temp: 114,
@@ -1089,7 +1809,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!third", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!third", "?door", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 75,
         area: AR_GROLM,
         temp: 114,
@@ -1097,7 +1820,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!key", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!key", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 100,
         area: AR_GROLM,
         temp: 114,
@@ -1105,7 +1831,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!crown", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!crown", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 100,
         area: AR_GROLM,
         temp: 114,
@@ -1113,7 +1842,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!trident", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!trident", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 100,
         area: AR_GROLM,
         temp: 114,
@@ -1121,7 +1853,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!key", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!key", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_GROLM,
         temp: 114,
@@ -1129,7 +1864,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!crown", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!crown", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 100,
         area: AR_GROLM,
         temp: 114,
@@ -1137,7 +1875,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!what", "!trident", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!what", "!trident", "?grolm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 100,
         area: AR_GROLM,
         temp: 114,
@@ -1145,7 +1886,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "?first", "?door", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "?first", "?door", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 50,
         area: AR_LIZARD,
         temp: 162,
@@ -1153,7 +1897,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "!second", "?door", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "!second", "?door", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 75,
         area: AR_LIZARD,
         temp: 162,
@@ -1161,7 +1908,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "!third", "?door", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "!third", "?door", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 75,
         area: AR_LIZARD,
         temp: 162,
@@ -1169,7 +1919,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!key", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!key", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 100,
         area: AR_LIZARD,
         temp: 162,
@@ -1177,7 +1930,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!coconut", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!coconut", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 100,
         area: AR_LIZARD,
         temp: 162,
@@ -1185,7 +1941,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!potion", "?agility", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!potion", "?agility", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 100,
         area: AR_LIZARD,
         temp: 162,
@@ -1193,7 +1952,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!where", "!teeth", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!teeth", "?lizard", "?", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "",
+        ],
         value: 100,
         area: AR_LIZARD,
         temp: 162,
@@ -1201,7 +1963,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "?teeth", "!necklace", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how",
+            "?teeth",
+            "!necklace",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 100,
         area: AR_LIZARD,
         temp: 162,
@@ -1209,7 +1992,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?ratling", "!eye", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?ratling", "!eye", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1217,7 +2003,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!ratling", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!ratling", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1225,7 +2013,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!stimulant", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!stimulant",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1233,7 +2042,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!potion", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1241,7 +2052,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!payment", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!payment", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1249,7 +2062,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "powerful", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "powerful", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1257,7 +2073,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!underground", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!underground",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1265,7 +2102,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!thief", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!thief", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1273,7 +2112,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!azrael", "?helm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!azrael", "?helm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1281,7 +2123,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1289,7 +2133,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!helm", "?shadow", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!helm", "?shadow", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 246,
@@ -1297,7 +2144,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?ratling", "!eye", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?ratling", "!eye", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 343,
@@ -1305,7 +2155,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!ratling", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!ratling", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 343,
@@ -1313,7 +2165,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!underground", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!underground",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 343,
@@ -1321,7 +2194,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!thief", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!thief", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 343,
@@ -1329,7 +2204,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!azrael", "?helm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!azrael", "?helm", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 343,
@@ -1337,7 +2215,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!castle", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 343,
@@ -1345,7 +2225,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!helm", "?shadow", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!helm", "?shadow", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 100,
         area: AR_UNDER_I,
         temp: 343,
@@ -1353,7 +2236,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!bartering", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!bartering",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1361,7 +2265,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!enchant", "!weapon", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!enchant", "!weapon", "?", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1369,7 +2276,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!recall", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!recall", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1377,7 +2287,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!repair", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!repair", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1385,7 +2298,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!stun", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!stun", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1393,7 +2309,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!lockpicking", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!lockpicking",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1401,7 +2338,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!identify", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!identify",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1409,7 +2367,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!resistance", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!resistance",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1417,7 +2396,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!bless", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!bless", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1425,7 +2407,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!curse", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!curse", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1433,7 +2418,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!guardian", "!angel", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!guardian",
+            "!angel",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1441,7 +2447,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!heal", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!heal", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1449,7 +2458,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!gate", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!gate", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1457,7 +2469,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!labyrinth", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!labyrinth",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1465,7 +2498,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!seyandu", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!seyandu", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1473,7 +2509,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!limitation", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!limitation",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1481,7 +2538,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!templar", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!templar", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1489,7 +2549,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!harakim", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!harakim", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1497,7 +2560,28 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!mercenary", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what",
+            "!mercenary",
+            "?",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1505,7 +2589,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!skua", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!skua", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1513,7 +2600,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!who", "!purple", "!one", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!purple", "!one", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1521,7 +2611,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!order", "?purple", "?one", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!order", "?purple", "?one", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 10,
         area: AR_PURPLE,
         temp: 180,
@@ -1529,7 +2622,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?tell", "!order", "?purple", "?one", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?tell", "!order", "?purple", "?one", "?", "", "", "", "", "", "", "", "", "", "", "",
+            "", "", "", "",
+        ],
         value: 10,
         area: AR_PURPLE,
         temp: 180,
@@ -1537,7 +2633,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?how", "!join", "?order", "?purple", "?one", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?how", "!join", "?order", "?purple", "?one", "?", "", "", "", "", "", "", "", "", "",
+            "", "", "", "", "",
+        ],
         value: 10,
         area: AR_PURPLE,
         temp: 180,
@@ -1545,7 +2644,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?what", "!happens", "!join", "?order", "?purple", "?one", "?", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?what", "!happens", "!join", "?order", "?purple", "?one", "?", "", "", "", "", "", "",
+            "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_PURPLE,
         temp: 180,
@@ -1553,7 +2655,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!yes", "!join", "?want", "!", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!yes", "!join", "?want", "!", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 10,
         area: AR_PURPLE,
         temp: 180,
@@ -1561,7 +2666,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!yes", "!", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!yes", "!", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_PURPLE,
         temp: 180,
@@ -1569,7 +2676,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!kill", "?you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!kill", "?you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 10,
         area: AR_PURPLE,
         temp: 180,
@@ -1577,7 +2687,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!poem", "?first", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!poem", "?first", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 10,
         area: AR_KNIGHT,
         temp: 317,
@@ -1585,7 +2698,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!poem", "?second", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!poem", "?second", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 10,
         area: AR_KNIGHT,
         temp: 317,
@@ -1593,7 +2709,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!second", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!second", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_KNIGHT,
         temp: 317,
@@ -1601,7 +2719,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!next", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!next", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_KNIGHT,
         temp: 317,
@@ -1609,7 +2729,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!other", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!other", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_KNIGHT,
         temp: 317,
@@ -1617,7 +2739,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?ice", "!egg", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?ice", "!egg", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_NEST,
         temp: 615,
@@ -1625,7 +2749,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["?ice", "!cloak", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "?ice", "!cloak", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_NEST,
         temp: 615,
@@ -1633,7 +2760,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!how", "!are", "!you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!how", "!are", "!you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1641,7 +2771,10 @@ static KNOW: [Know; 227] = [
         special: HEALTH,
     },
     Know {
-        word: ["!who", "!are", "!you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!who", "!are", "!you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1649,7 +2782,10 @@ static KNOW: [Know; 227] = [
         special: WHOAMI,
     },
     Know {
-        word: ["!where", "!are", "!you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!are", "!you", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1657,7 +2793,10 @@ static KNOW: [Know; 227] = [
         special: WHERE,
     },
     Know {
-        word: ["!where", "!am", "!i", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!where", "!am", "!i", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1665,7 +2804,9 @@ static KNOW: [Know; 227] = [
         special: WHERE,
     },
     Know {
-        word: ["!buy", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!buy", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1673,7 +2814,9 @@ static KNOW: [Know; 227] = [
         special: SHOP,
     },
     Know {
-        word: ["!sell", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!sell", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1681,7 +2824,9 @@ static KNOW: [Know; 227] = [
         special: SHOP,
     },
     Know {
-        word: ["!shop", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!shop", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1689,7 +2834,9 @@ static KNOW: [Know; 227] = [
         special: SHOP,
     },
     Know {
-        word: ["!exit", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!exit", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1697,7 +2844,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!hello", "!", "$", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!hello", "!", "$", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1705,7 +2854,9 @@ static KNOW: [Know; 227] = [
         special: GREET,
     },
     Know {
-        word: ["!bye", "!", "$", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!bye", "!", "$", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1713,7 +2864,10 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!thank", "?you", "!", "$", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!thank", "?you", "!", "$", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1721,7 +2875,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!thank", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!thank", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1729,7 +2885,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!stop", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!stop", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1737,7 +2895,9 @@ static KNOW: [Know; 227] = [
         special: STOP,
     },
     Know {
-        word: ["!move", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!move", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1745,7 +2905,9 @@ static KNOW: [Know; 227] = [
         special: MOVE,
     },
     Know {
-        word: ["!attack", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!attack", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1753,7 +2915,9 @@ static KNOW: [Know; 227] = [
         special: ATTACK,
     },
     Know {
-        word: ["!wait", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!wait", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1761,7 +2925,9 @@ static KNOW: [Know; 227] = [
         special: WAIT,
     },
     Know {
-        word: ["!follow", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!follow", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1769,7 +2935,28 @@ static KNOW: [Know; 227] = [
         special: FOLLOW,
     },
     Know {
-        word: ["!transfer", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!transfer",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1777,7 +2964,28 @@ static KNOW: [Know; 227] = [
         special: TRANSFER,
     },
     Know {
-        word: ["!geronimo", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!geronimo",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1785,7 +2993,10 @@ static KNOW: [Know; 227] = [
         special: SPELLINFO,
     },
     Know {
-        word: ["!time", "!what", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!time", "!what", "?", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+            "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: 0,
@@ -1793,7 +3004,9 @@ static KNOW: [Know; 227] = [
         special: TIME,
     },
     Know {
-        word: ["!quiet", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!quiet", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 0,
         area: AR_GENERAL,
         temp: CT_COMPANION,
@@ -1801,7 +3014,9 @@ static KNOW: [Know; 227] = [
         special: QUIET,
     },
     Know {
-        word: ["!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE1,
         temp: 899,
@@ -1809,7 +3024,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE1,
         temp: 899,
@@ -1817,7 +3034,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE2,
         temp: 905,
@@ -1825,7 +3044,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE2,
         temp: 905,
@@ -1833,7 +3054,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE3,
         temp: 911,
@@ -1841,7 +3064,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE3,
         temp: 911,
@@ -1849,7 +3074,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE4,
         temp: 912,
@@ -1857,7 +3084,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE4,
         temp: 912,
@@ -1865,7 +3094,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddle", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE5,
         temp: 913,
@@ -1873,7 +3104,9 @@ static KNOW: [Know; 227] = [
         special: 0,
     },
     Know {
-        word: ["!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""],
+        word: [
+            "!riddles", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+        ],
         value: 10,
         area: AR_RIDDLE5,
         temp: 913,

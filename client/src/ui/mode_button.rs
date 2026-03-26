@@ -9,9 +9,9 @@ use sdl2::pixels::Color;
 
 use crate::font_cache;
 
+use super::RenderContext;
 use super::button::CircleButton;
 use super::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
-use super::RenderContext;
 
 // ---------------------------------------------------------------------------
 // Per-mode visuals

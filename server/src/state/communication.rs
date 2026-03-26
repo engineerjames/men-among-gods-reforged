@@ -2,7 +2,7 @@ use crate::game_state::GameState;
 use crate::god::God;
 use crate::network_manager;
 use crate::{driver, helpers};
-use core::constants::{CharacterFlags, CT_LGUARD};
+use core::constants::{CT_LGUARD, CharacterFlags};
 use core::string_operations::c_string_to_str;
 use core::traits;
 use core::types::FontColor;
@@ -1467,11 +1467,7 @@ impl GameState {
                 & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                 != 0
             {
-                if self.characters[n].x != 0 {
-                    3
-                } else {
-                    2
-                }
+                if self.characters[n].x != 0 { 3 } else { 2 }
             } else {
                 1
             };

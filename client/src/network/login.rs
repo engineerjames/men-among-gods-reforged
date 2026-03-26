@@ -9,7 +9,7 @@ use flate2::Decompress;
 use mag_core::constants::LO_PASSWORD;
 use mag_core::encrypt::xcrypt;
 
-use super::{client_commands, server_commands, tick_stream, NetworkCommand, NetworkEvent};
+use super::{NetworkCommand, NetworkEvent, client_commands, server_commands, tick_stream};
 
 /// A game connection backed by either a plain TCP stream or a TLS session.
 struct GameConnection {

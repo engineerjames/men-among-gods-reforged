@@ -3,8 +3,8 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use crate::font_cache;
 
 /// Size of the checkbox square in pixels.

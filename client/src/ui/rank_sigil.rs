@@ -7,10 +7,10 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::ranks::{rank_name_by_index, TOTAL_RANKS};
+use mag_core::ranks::{TOTAL_RANKS, rank_name_by_index};
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 // ---------------------------------------------------------------------------
 // Layout constants

@@ -9,8 +9,8 @@ use sdl2::render::BlendMode;
 
 use crate::font_cache;
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 // ---------------------------------------------------------------------------
 // Layout constants

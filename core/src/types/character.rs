@@ -660,9 +660,11 @@ mod tests {
         // Name fills the entire 40-byte buffer
         assert_eq!(character.get_name().len(), 40);
         // But it should start with the beginning of the long name
-        assert!(character
-            .get_name()
-            .starts_with("ThisIsAVeryLongNameThatExceedsTheMaximu"));
+        assert!(
+            character
+                .get_name()
+                .starts_with("ThisIsAVeryLongNameThatExceedsTheMaximu")
+        );
     }
 
     #[test]

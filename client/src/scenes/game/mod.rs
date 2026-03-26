@@ -31,13 +31,13 @@ use crate::{
     cert_trust,
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
-    network::{client_commands::ClientCommand, NetworkRuntime},
+    network::{NetworkRuntime, client_commands::ClientCommand},
     player_state::PlayerState,
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
     ui::{
-        self,
+        self, RenderContext,
         button_arc::HudButtonBar,
         cert_dialog::{CertDialog, CertDialogAction},
         chat_box::ChatBox,
@@ -47,7 +47,7 @@ use crate::{
         mode_button::ModeButton,
         rank_progress_line::RankProgressLine,
         rank_sigil::RankSigil,
-        settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
+        settings_panel::{SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
         shop_panel::ShopPanel,
         skill_bar::SkillBar,
         skill_picker_popup::SkillPickerPopup,
@@ -60,7 +60,6 @@ use crate::{
             Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
             WidgetAction,
         },
-        RenderContext,
     },
 };
 

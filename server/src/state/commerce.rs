@@ -27,21 +27,13 @@ impl GameState {
             // Higher skill = lower price
             let calculated = opr * 4 - (opr * barter_skill) / 50;
             // Price can't go below original price
-            if calculated < opr {
-                opr
-            } else {
-                calculated
-            }
+            if calculated < opr { opr } else { calculated }
         } else {
             // Merchant is buying (player is selling)
             // Higher skill = higher price for player
             let calculated = opr / 4 + (opr * barter_skill) / 200;
             // Price can't go above original price
-            if calculated > opr {
-                opr
-            } else {
-                calculated
-            }
+            if calculated > opr { opr } else { calculated }
         };
 
         pr
@@ -274,7 +266,11 @@ impl GameState {
                                 // Update template statistics
                                 let temp_id = self.items[item_idx].temp as usize;
                                 if temp_id > 0 && temp_id < core::constants::MAXTITEM {
-                                    log::warn!("TODO: Should update t_bought for template {} after buying item {}", temp_id, item_name);
+                                    log::warn!(
+                                        "TODO: Should update t_bought for template {} after buying item {}",
+                                        temp_id,
+                                        item_name
+                                    );
                                     // self.item_templates[temp_id].t_bought += 1;
                                 }
                             } else {

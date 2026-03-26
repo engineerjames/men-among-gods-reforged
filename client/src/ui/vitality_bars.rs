@@ -21,8 +21,8 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use super::widget::{EventResponse, UiEvent};
 use super::RenderContext;
+use super::widget::{EventResponse, UiEvent};
 
 // ---------------------------------------------------------------------------
 // Layout constants

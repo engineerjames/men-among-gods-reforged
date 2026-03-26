@@ -108,11 +108,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
 /// * `idle_ani` for sprite 22480, `0` for all others.
 #[inline]
 fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
-    if sprite == 22480 {
-        idle_ani
-    } else {
-        0
-    }
+    if sprite == 22480 { idle_ani } else { 0 }
 }
 
 /// Advances an item's animation state machine and returns the display sprite.

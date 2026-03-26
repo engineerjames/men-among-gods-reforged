@@ -11,12 +11,12 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use super::RenderContext;
 use super::button::RectButton;
 use super::checkbox::Checkbox;
 use super::style::{Background, Border};
 use super::text_input::TextInput;
 use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use super::RenderContext;
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------

@@ -6,8 +6,8 @@ use std::time::Duration;
 use sdl2::keyboard::Keycode;
 use serde::{Deserialize, Serialize};
 
-use super::style::Padding;
 use super::RenderContext;
+use super::style::Padding;
 use crate::preferences::DisplayMode;
 
 // ---------------------------------------------------------------------------

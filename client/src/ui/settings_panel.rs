@@ -9,6 +9,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use super::RenderContext;
 use super::button::RectButton;
 use super::checkbox::Checkbox;
 use super::dropdown::Dropdown;
@@ -16,12 +17,11 @@ use super::label::Label;
 use super::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
 use super::slider::Slider;
 use super::style::{Background, Border};
-use super::title_bar::{clamp_to_viewport, TitleBar, TITLE_BAR_H};
+use super::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 use super::widget::{
     Bounds, EventResponse, GameAction, HudPanel, KeyBinding, KeyBindings, UiEvent, Widget,
     WidgetAction,
 };
-use super::RenderContext;
 use crate::font_cache;
 use crate::preferences::DisplayMode;
 

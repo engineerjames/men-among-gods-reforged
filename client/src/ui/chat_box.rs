@@ -14,9 +14,9 @@ use sdl2::render::BlendMode;
 use crate::font_cache;
 use crate::types::log_message::{LogMessage, LogMessageColor};
 
+use super::RenderContext;
 use super::style::Padding;
 use super::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
-use super::RenderContext;
 
 /// Maximum characters allowed in the chat input buffer.
 const MAX_INPUT_LEN: usize = 120;

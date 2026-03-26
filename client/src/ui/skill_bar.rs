@@ -16,8 +16,8 @@ use sdl2::render::BlendMode;
 
 use mag_core::skills;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::filepaths;
 use crate::font_cache;

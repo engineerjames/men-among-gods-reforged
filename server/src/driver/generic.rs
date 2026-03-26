@@ -1073,11 +1073,7 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     }
 
     let err = char_moveto(gs, cn, x, y, 2, tox, toy);
-    if err == -1 {
-        -1
-    } else {
-        0
-    }
+    if err == -1 { -1 } else { 0 }
 }
 
 pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
@@ -1191,11 +1187,7 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     }
 
     let err = char_moveto(gs, cn, nx, ny, 2, ntx, nty);
-    if err == -1 {
-        -1
-    } else {
-        0
-    }
+    if err == -1 { -1 } else { 0 }
 }
 
 pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {

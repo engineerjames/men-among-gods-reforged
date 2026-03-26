@@ -993,7 +993,7 @@ mod tests {
         pkt.extend_from_slice(&tile_index.to_le_bytes()); // bytes 1-2: index
         pkt.push(base_light & 0x0f); // byte 3: light
         pkt.extend_from_slice(nibbles); // optional packed nibbles
-                                        // Pad to at least 16 bytes so other parsers don't need special-casing
+        // Pad to at least 16 bytes so other parsers don't need special-casing
         while pkt.len() < 16 {
             pkt.push(0);
         }

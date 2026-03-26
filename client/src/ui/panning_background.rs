@@ -14,8 +14,8 @@ use sdl2::pixels::Color;
 use sdl2::rect::{FRect, Rect};
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 /// How long each image is displayed before a crossfade begins (seconds).
 const DISPLAY_DURATION: f32 = 30.0;

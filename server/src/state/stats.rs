@@ -1,5 +1,5 @@
 use core::constants::{
-    CharacterFlags, ItemFlags, MAXCHARS, MAX_SPEEDTAB_SPEED_INDEX, MIN_SPEEDTAB_INDEX,
+    CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, MAXCHARS, MIN_SPEEDTAB_INDEX,
 };
 use core::ranks;
 use core::types::FontColor;

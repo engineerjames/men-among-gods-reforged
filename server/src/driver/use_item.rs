@@ -5,7 +5,7 @@ use crate::god::God;
 use crate::helpers::{self};
 use crate::{chlog, driver, player, populate};
 use core::constants::{
-    CharacterFlags, ItemFlags, AT_AGIL, AT_INT, AT_STREN, AT_WILL, DX_RIGHT, MAXITEM, MAXSKILL,
+    AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, ItemFlags, MAXITEM, MAXSKILL,
     MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     WN_RHAND,
 };
@@ -6132,7 +6132,10 @@ pub fn age_message(gs: &mut GameState, cn: usize, item_idx: usize, where_is: &st
         // Ice egg or cloak
         match damage_state {
             1 => ("The {ref} {where} is beginning to melt.\n", FontColor::Red),
-            2 => ("The {ref} {where} is melting fairly rapidly.\n", FontColor::Red),
+            2 => (
+                "The {ref} {where} is melting fairly rapidly.\n",
+                FontColor::Red,
+            ),
             3 => (
                 "The {ref} {where} is melting down as you look and dripping water everywhere.\n",
                 FontColor::Red,

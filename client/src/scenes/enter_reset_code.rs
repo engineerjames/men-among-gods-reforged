@@ -10,11 +10,10 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     state::AppState,
     ui::{
-        self,
+        self, RenderContext,
         cert_dialog::{CertDialog, CertDialogAction},
         enter_reset_code_form::{EnterResetCodeForm, EnterResetCodeFormAction},
         widget::{KeyModifiers, Widget},
-        RenderContext,
     },
 };
 
@@ -256,8 +255,8 @@ impl Scene for EnterResetCodeScene {
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {
-            ref mut panning_background,
-            ref mut gfx_cache,
+            panning_background,
+            gfx_cache,
             ..
         } = app_state;
         let mut ctx = RenderContext {

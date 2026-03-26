@@ -2937,7 +2937,10 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
                 let message = if (co_kindred & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR)) != 0
                     || ((co_kindred & traits::KIN_SEYAN_DU) != 0 && co_skill_19 != 0)
                 {
-                    format!("Hello, {}. I'll teach you Immunity, if you bring me the potion from the Skeleton Lord.", co_name)
+                    format!(
+                        "Hello, {}. I'll teach you Immunity, if you bring me the potion from the Skeleton Lord.",
+                        co_name
+                    )
                 } else {
                     format!(
                         "Hello, {}. I'll teach you Stun, if you bring me the potion from the Skeleton Lord.",

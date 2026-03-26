@@ -6,9 +6,9 @@
 
 use sdl2::pixels::Color;
 
+use super::RenderContext;
 use super::button::CircleButton;
 use super::widget::{Bounds, EventResponse, UiEvent, Widget};
-use super::RenderContext;
 
 // ---------------------------------------------------------------------------
 // Layout constants

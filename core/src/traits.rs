@@ -203,7 +203,7 @@ impl Sex {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_race_integer, get_sex_and_class, get_sprite_id_for_class_and_sex, Class, Sex};
+    use super::{Class, Sex, get_race_integer, get_sex_and_class, get_sprite_id_for_class_and_sex};
 
     #[test]
     fn race_mapping_roundtrips_for_all_classes_and_sexes() {

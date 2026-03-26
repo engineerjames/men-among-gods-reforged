@@ -2,7 +2,7 @@ use mag_core::constants::{INVIS, TILEX, TILEY};
 
 use crate::player_state::PlayerState;
 
-use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, MAP_ORIGIN_X, MAP_ORIGIN_Y};
+use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene, MAP_ORIGIN_X, MAP_ORIGIN_Y};
 
 impl GameScene {
     /// Returns `true` if the tile at `(x, y)` should be hidden in the "hide"

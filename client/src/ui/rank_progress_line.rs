@@ -6,10 +6,10 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::ranks::{points2rank, rank_progress, RANK_THRESHOLDS, TOTAL_RANKS};
+use mag_core::ranks::{RANK_THRESHOLDS, TOTAL_RANKS, points2rank, rank_progress};
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 /// Default color for the unfilled (background) portion of the line.
 const UNFILLED_COLOR: Color = Color::RGBA(60, 60, 80, 120);

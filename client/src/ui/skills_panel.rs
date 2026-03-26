@@ -10,11 +10,11 @@ use std::cmp::Ordering;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::skills::{get_skill_name, get_skill_nr, get_skill_sortkey, MAX_SKILLS};
+use mag_core::skills::{MAX_SKILLS, get_skill_name, get_skill_nr, get_skill_sortkey};
 
-use super::title_bar::{clamp_to_viewport, TitleBar};
-use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use super::title_bar::{TitleBar, clamp_to_viewport};
+use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::font_cache;
 
 /// Font index used for panel text (yellow bitmap font).

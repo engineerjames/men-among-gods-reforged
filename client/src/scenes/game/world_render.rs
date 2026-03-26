@@ -9,7 +9,7 @@ use mag_core::constants::{
 
 use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
-use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH};
+use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
 #[derive(Copy, Clone)]
 enum HoverHighlight {

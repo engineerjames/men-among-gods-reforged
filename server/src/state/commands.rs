@@ -1540,7 +1540,7 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use super::{match_command, ALL_COMMANDS};
+    use super::{ALL_COMMANDS, match_command};
 
     #[test]
     fn match_command_empty_is_none() {

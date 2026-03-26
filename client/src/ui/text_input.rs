@@ -6,8 +6,8 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use crate::font_cache;
 
 /// Horizontal padding (pixels) between the border and the text area on each side.

@@ -1,8 +1,8 @@
 use core::{
     constants::{
-        CharacterFlags, ItemFlags, AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE, CNTSAY,
-        COMPANION_TIMEOUT, CT_COMPANION, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, MAXSAY, NT_DIDHIT,
-        NT_GOTHIT, NT_GOTMISS, SERVER_MAPX, TICKS, USE_EMPTY,
+        AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE, CNTSAY, COMPANION_TIMEOUT, CT_COMPANION,
+        CharacterFlags, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, ItemFlags, MAXSAY, NT_DIDHIT, NT_GOTHIT,
+        NT_GOTMISS, SERVER_MAPX, TICKS, USE_EMPTY,
     },
     skills,
     string_operations::c_string_to_str,
@@ -97,11 +97,7 @@ pub fn chance(gs: &mut GameState, cn: usize, d20: i32) -> i32 {
 pub fn spell_immunity(_gs: &GameState, power: i32, immun: i32) -> i32 {
     // Ported from C++ spell_immunity(int power, int immun)
     let immun = immun / 2;
-    if power <= immun {
-        1
-    } else {
-        power - immun
-    }
+    if power <= immun { 1 } else { power - immun }
 }
 pub fn spell_race_mod(gs: &GameState, power: i32, kindred: i32) -> i32 {
     // Ported from C++ spell_race_mod(int power, int kindred)
