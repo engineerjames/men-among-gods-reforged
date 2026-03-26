@@ -42,8 +42,7 @@ const BTN_H: u32 = 16;
 const Y_DISPLAY_BTN: i32 = TITLE_BAR_H + 8;
 const Y_DIAG_BTN: i32 = Y_DISPLAY_BTN + BTN_H as i32 + 6;
 const Y_CONTROLS_BTN: i32 = Y_DIAG_BTN + BTN_H as i32 + 6;
-const Y_VOLUME_LABEL: i32 = Y_CONTROLS_BTN + BTN_H as i32 + 10;
-const Y_VOLUME: i32 = Y_VOLUME_LABEL + ROW_H + 2;
+const Y_VOLUME: i32 = Y_CONTROLS_BTN + BTN_H as i32 + 10;
 const Y_SEPARATOR: i32 = Y_VOLUME + ROW_H + 8;
 const Y_SESSION_BTNS: i32 = Y_SEPARATOR + 10;
 const Y_RETURN_BTN: i32 = Y_SESSION_BTNS + BTN_H as i32 + 6;
@@ -172,24 +171,6 @@ fn keybinding_button_label(bindings: &KeyBindings, action: GameAction) -> String
         .binding_for(action)
         .map(|binding| binding.to_string())
         .unwrap_or_else(|| "Unbound".to_string())
-}
-
-/// Draws a centered section header string.
-fn draw_section_header(
-    ctx: &mut RenderContext,
-    text: &str,
-    center_x: i32,
-    y: i32,
-) -> Result<(), String> {
-    font_cache::draw_text(
-        ctx.canvas,
-        ctx.gfx,
-        1,
-        text,
-        center_x,
-        y,
-        font_cache::TextStyle::centered(),
-    )
 }
 
 /// Draw a sub-panel background and border rectangle.
@@ -1333,15 +1314,6 @@ impl Widget for SettingsPanel {
 
         // Title bar
         self.title_bar.render(ctx)?;
-
-        // "-- Volume --" header label
-        let center_x = self.bounds.x + self.bounds.width as i32 / 2;
-        draw_section_header(
-            ctx,
-            "-- Volume --",
-            center_x,
-            self.bounds.y + Y_VOLUME_LABEL,
-        )?;
 
         // Category buttons
         self.btn_display.render(ctx)?;
