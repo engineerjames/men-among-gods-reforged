@@ -5,6 +5,7 @@
 //! Each category button opens a sub-panel that overlaps the main panel
 //! content. Only one sub-panel is visible at a time.
 
+use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
@@ -16,7 +17,10 @@ use super::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
 use super::slider::Slider;
 use super::style::{Background, Border};
 use super::title_bar::{clamp_to_viewport, TitleBar, TITLE_BAR_H};
-use super::widget::{Bounds, EventResponse, HudPanel, UiEvent, Widget, WidgetAction};
+use super::widget::{
+    Bounds, EventResponse, GameAction, HudPanel, KeyBinding, KeyBindings, UiEvent, Widget,
+    WidgetAction,
+};
 use super::RenderContext;
 use crate::font_cache;
 use crate::preferences::DisplayMode;
@@ -48,7 +52,7 @@ const Y_RETURN_BTN: i32 = Y_SESSION_BTNS + BTN_H as i32 + 6;
 pub const SETTINGS_PANEL_H: u32 = (Y_RETURN_BTN + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
-// Layout constants — Display Settings sub-panel
+// Layout constants — Display sub-panel
 // ---------------------------------------------------------------------------
 
 const DS_ROW_H: i32 = 14;
@@ -62,7 +66,7 @@ const DS_Y_SEP: i32 = DS_Y_WALLS + DS_ROW_H + 4;
 const DS_Y_DISPLAY_MODE: i32 = DS_Y_SEP + 8;
 const DS_Y_PIXEL_PERFECT: i32 = DS_Y_DISPLAY_MODE + 20;
 const DS_Y_VSYNC: i32 = DS_Y_PIXEL_PERFECT + DS_ROW_H;
-const DS_PANEL_H: u32 = (DS_Y_VSYNC + DS_ROW_H + 8) as u32;
+const DS_PANEL_H: u32 = (DS_Y_VSYNC + DS_ROW_H + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Diagnostics sub-panel
@@ -72,14 +76,21 @@ const DG_Y_SHOW_POS: i32 = TITLE_BAR_H + 8;
 const DG_Y_PING: i32 = DG_Y_SHOW_POS + ROW_H + 4;
 const DG_Y_PROFILER_BTN: i32 = DG_Y_PING + ROW_H + 6;
 const DG_Y_LOGDIR_BTN: i32 = DG_Y_PROFILER_BTN + BTN_H as i32 + 6;
-const DG_PANEL_H: u32 = (DG_Y_LOGDIR_BTN + BTN_H as i32 + 8) as u32;
+const DG_PANEL_H: u32 = (DG_Y_LOGDIR_BTN + BTN_H as i32 + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Controls sub-panel
 // ---------------------------------------------------------------------------
 
-const CT_Y_KEYBINDINGS_BTN: i32 = TITLE_BAR_H + 8;
-const CT_PANEL_H: u32 = (CT_Y_KEYBINDINGS_BTN + BTN_H as i32 + 8) as u32;
+const CT_ROW_H: i32 = 20;
+const CT_BTN_W: u32 = 120;
+const CT_Y_FIRST_ROW: i32 = TITLE_BAR_H + 8;
+
+const fn controls_panel_height(action_count: usize) -> u32 {
+    (CT_Y_FIRST_ROW + CT_ROW_H * action_count as i32 + 10 + BTN_H as i32 + 8) as u32
+}
+
+const CT_PANEL_H: u32 = controls_panel_height(GameAction::ALL.len());
 
 // ---------------------------------------------------------------------------
 // Which sub-panel is active
@@ -88,7 +99,7 @@ const CT_PANEL_H: u32 = (CT_Y_KEYBINDINGS_BTN + BTN_H as i32 + 8) as u32;
 /// Identifies which settings sub-panel is currently showing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum SettingsSubPanel {
-    /// Display Settings (merged Visual + Display).
+    /// Display (merged Visual + Display).
     Display,
     /// Diagnostics (ping, profiler, log dir, pixel positions).
     Diagnostics,
@@ -117,12 +128,50 @@ fn btn_border() -> Border {
 const SUB_PANEL_BG: Color = Color::RGBA(10, 10, 30, 220);
 /// Border color shared by all panels.
 const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
+/// Grey-out overlay applied to the main settings panel while a sub-panel is open.
+const SUB_PANEL_DIM_OVERLAY: Color = Color::RGBA(90, 90, 100, 120);
 
 /// Shorthand to shift a widget by a pixel delta.
 fn shift(w: &mut impl Widget, dx: i32, dy: i32) {
     let b = w.bounds();
     let (nx, ny) = (b.x + dx, b.y + dy);
     w.set_position(nx, ny);
+}
+
+/// Returns `Consumed` for mouse events inside `bounds` to block pass-through.
+fn consume_mouse_events_in_bounds(bounds: &Bounds, event: &UiEvent) -> EventResponse {
+    match event {
+        UiEvent::MouseClick { x, y, .. }
+        | UiEvent::MouseDown { x, y, .. }
+        | UiEvent::MouseMove { x, y }
+        | UiEvent::MouseWheel { x, y, .. } => {
+            if bounds.contains_point(*x, *y) {
+                EventResponse::Consumed
+            } else {
+                EventResponse::Ignored
+            }
+        }
+        _ => EventResponse::Ignored,
+    }
+}
+
+/// Returns the top-left origin for a sub-panel centered on `parent_bounds`.
+fn centered_sub_panel_origin(
+    parent_bounds: &Bounds,
+    panel_width: u32,
+    panel_height: u32,
+) -> (i32, i32) {
+    let x = parent_bounds.x + (parent_bounds.width as i32 - panel_width as i32) / 2;
+    let y = parent_bounds.y + (parent_bounds.height as i32 - panel_height as i32) / 2;
+    (x, y)
+}
+
+/// Returns the display label for a keyboard binding button.
+fn keybinding_button_label(bindings: &KeyBindings, action: GameAction) -> String {
+    bindings
+        .binding_for(action)
+        .map(|binding| binding.to_string())
+        .unwrap_or_else(|| "Unbound".to_string())
 }
 
 /// Draws a centered section header string.
@@ -181,6 +230,7 @@ struct DisplaySettingsSubPanel {
     drp_display_mode: Dropdown,
     chk_pixel_perfect: Checkbox,
     chk_vsync: Checkbox,
+    btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
 }
 
@@ -199,10 +249,11 @@ impl DisplaySettingsSubPanel {
     fn new(origin_x: i32, origin_y: i32, width: u32) -> Self {
         let x = origin_x + H_INSET;
         let w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        let close_y = origin_y + DS_PANEL_H as i32 - BTN_H as i32 - 8;
         Self {
             bounds: Bounds::new(origin_x, origin_y, width, DS_PANEL_H),
             visible: false,
-            title_bar: TitleBar::new("Display Settings", origin_x, origin_y, width),
+            title_bar: TitleBar::new_static("Display Settings", origin_x, origin_y, width),
             chk_shadows: Checkbox::new(
                 Bounds::new(x, origin_y + DS_Y_SHADOWS, w, DS_ROW_H as u32),
                 "Enable Shadows",
@@ -249,6 +300,9 @@ impl DisplaySettingsSubPanel {
                 "VSync",
                 0,
             ),
+            btn_close: RectButton::new(Bounds::new(x, close_y, w, BTN_H), btn_bg())
+                .with_label("Close", 0)
+                .with_border(btn_border()),
             pending_actions: Vec::new(),
         }
     }
@@ -338,6 +392,7 @@ impl DisplaySettingsSubPanel {
         shift(&mut self.drp_display_mode, dx, dy);
         shift(&mut self.chk_pixel_perfect, dx, dy);
         shift(&mut self.chk_vsync, dx, dy);
+        shift(&mut self.btn_close, dx, dy);
     }
 
     /// Returns whether the title bar close button was pressed.
@@ -358,6 +413,11 @@ impl DisplaySettingsSubPanel {
             return EventResponse::Consumed;
         }
         if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
+        if self.btn_close.handle_event(event) == EventResponse::Consumed {
+            self.visible = false;
             return EventResponse::Consumed;
         }
 
@@ -395,17 +455,7 @@ impl DisplaySettingsSubPanel {
             return EventResponse::Consumed;
         }
 
-        // Consume clicks inside bounds to prevent pass-through.
-        match event {
-            UiEvent::MouseClick { x, y, .. } | UiEvent::MouseWheel { x, y, .. } => {
-                if self.bounds.contains_point(*x, *y) {
-                    EventResponse::Consumed
-                } else {
-                    EventResponse::Ignored
-                }
-            }
-            _ => EventResponse::Ignored,
-        }
+        consume_mouse_events_in_bounds(&self.bounds, event)
     }
 
     /// Renders the sub-panel and its children.
@@ -433,6 +483,7 @@ impl DisplaySettingsSubPanel {
         self.chk_hide_walls.render(ctx)?;
         self.chk_pixel_perfect.render(ctx)?;
         self.chk_vsync.render(ctx)?;
+        self.btn_close.render(ctx)?;
         // Dropdown last so expanded list overlays.
         self.drp_display_mode.render(ctx)?;
 
@@ -461,6 +512,7 @@ struct DiagnosticsSubPanel {
     lbl_ping: Label,
     btn_profiler: RectButton,
     btn_log_dir: RectButton,
+    btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
 }
 
@@ -479,10 +531,11 @@ impl DiagnosticsSubPanel {
     fn new(origin_x: i32, origin_y: i32, width: u32) -> Self {
         let x = origin_x + H_INSET;
         let w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        let close_y = origin_y + DG_PANEL_H as i32 - BTN_H as i32 - 8;
         Self {
             bounds: Bounds::new(origin_x, origin_y, width, DG_PANEL_H),
             visible: false,
-            title_bar: TitleBar::new("Diagnostics", origin_x, origin_y, width),
+            title_bar: TitleBar::new_static("Diagnostics", origin_x, origin_y, width),
             chk_show_positions: Checkbox::new(
                 Bounds::new(x, origin_y + DG_Y_SHOW_POS, w, ROW_H as u32),
                 "Show Pixel Positions",
@@ -501,6 +554,9 @@ impl DiagnosticsSubPanel {
             )
             .with_label("Open Log Directory", 0)
             .with_border(btn_border()),
+            btn_close: RectButton::new(Bounds::new(x, close_y, w, BTN_H), btn_bg())
+                .with_label("Close", 0)
+                .with_border(btn_border()),
             pending_actions: Vec::new(),
         }
     }
@@ -538,6 +594,7 @@ impl DiagnosticsSubPanel {
         shift(&mut self.lbl_ping, dx, dy);
         shift(&mut self.btn_profiler, dx, dy);
         shift(&mut self.btn_log_dir, dx, dy);
+        shift(&mut self.btn_close, dx, dy);
     }
 
     /// Returns whether the title bar close button was pressed.
@@ -557,6 +614,11 @@ impl DiagnosticsSubPanel {
             return EventResponse::Consumed;
         }
         if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
+        if self.btn_close.handle_event(event) == EventResponse::Consumed {
+            self.visible = false;
             return EventResponse::Consumed;
         }
 
@@ -578,16 +640,7 @@ impl DiagnosticsSubPanel {
             return EventResponse::Consumed;
         }
 
-        match event {
-            UiEvent::MouseClick { x, y, .. } | UiEvent::MouseWheel { x, y, .. } => {
-                if self.bounds.contains_point(*x, *y) {
-                    EventResponse::Consumed
-                } else {
-                    EventResponse::Ignored
-                }
-            }
-            _ => EventResponse::Ignored,
-        }
+        consume_mouse_events_in_bounds(&self.bounds, event)
     }
 
     /// Renders the sub-panel and its children.
@@ -602,6 +655,7 @@ impl DiagnosticsSubPanel {
         self.lbl_ping.render(ctx)?;
         self.btn_profiler.render(ctx)?;
         self.btn_log_dir.render(ctx)?;
+        self.btn_close.render(ctx)?;
 
         Ok(())
     }
@@ -618,12 +672,15 @@ impl DiagnosticsSubPanel {
 
 /// Sub-panel for control/input settings.
 ///
-/// Contains a button to open the keyboard bindings editor panel.
+/// Contains the inline keyboard bindings editor.
 struct ControlsSubPanel {
     bounds: Bounds,
     visible: bool,
     title_bar: TitleBar,
-    btn_keybindings: RectButton,
+    binding_buttons: Vec<RectButton>,
+    listening_for: Option<usize>,
+    bindings: KeyBindings,
+    btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
 }
 
@@ -640,20 +697,84 @@ impl ControlsSubPanel {
     ///
     /// A new `ControlsSubPanel`, initially hidden.
     fn new(origin_x: i32, origin_y: i32, width: u32) -> Self {
-        let x = origin_x + H_INSET;
-        let w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        let btn_x = origin_x + width as i32 - H_INSET - CT_BTN_W as i32;
+        let close_x = origin_x + H_INSET;
+        let close_w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        let close_y = origin_y + CT_PANEL_H as i32 - BTN_H as i32 - 8;
+        let bindings = KeyBindings::default();
+        let binding_buttons = GameAction::ALL
+            .iter()
+            .enumerate()
+            .map(|(index, action)| {
+                let y = origin_y + CT_Y_FIRST_ROW + CT_ROW_H * index as i32 + 2;
+                RectButton::new(Bounds::new(btn_x, y, CT_BTN_W, BTN_H), btn_bg())
+                    .with_label(&keybinding_button_label(&bindings, *action), 0)
+                    .with_border(btn_border())
+            })
+            .collect();
         Self {
             bounds: Bounds::new(origin_x, origin_y, width, CT_PANEL_H),
             visible: false,
-            title_bar: TitleBar::new("Controls", origin_x, origin_y, width),
-            btn_keybindings: RectButton::new(
-                Bounds::new(x, origin_y + CT_Y_KEYBINDINGS_BTN, w, BTN_H),
-                btn_bg(),
-            )
-            .with_label("Keyboard Bindings", 0)
-            .with_border(btn_border()),
+            title_bar: TitleBar::new_static("Controls", origin_x, origin_y, width),
+            binding_buttons,
+            listening_for: None,
+            bindings,
+            btn_close: RectButton::new(Bounds::new(close_x, close_y, close_w, BTN_H), btn_bg())
+                .with_label("Close", 0)
+                .with_border(btn_border()),
             pending_actions: Vec::new(),
         }
+    }
+
+    /// Loads widget values from the data snapshot.
+    fn sync_state(&mut self, data: &SettingsPanelData) {
+        self.bindings = data.key_bindings.clone();
+        self.cancel_listening();
+    }
+
+    /// Rebuilds the button labels from the current bindings.
+    fn refresh_button_labels(&mut self) {
+        for (index, action) in GameAction::ALL.iter().enumerate() {
+            if let Some(button) = self.binding_buttons.get_mut(index) {
+                button.set_label(&keybinding_button_label(&self.bindings, *action));
+            }
+        }
+    }
+
+    /// Cancels any in-progress key listening state and restores labels.
+    fn cancel_listening(&mut self) {
+        self.listening_for = None;
+        self.refresh_button_labels();
+    }
+
+    /// Marks the panel visible and resets transient input state.
+    fn show(&mut self) {
+        self.visible = true;
+        self.cancel_listening();
+    }
+
+    /// Hides the panel and clears transient input state.
+    fn hide(&mut self) {
+        self.visible = false;
+        self.cancel_listening();
+    }
+
+    /// Returns whether a key is suitable for binding.
+    fn is_bindable_key(keycode: Keycode) -> bool {
+        !matches!(
+            keycode,
+            Keycode::LCtrl
+                | Keycode::RCtrl
+                | Keycode::LShift
+                | Keycode::RShift
+                | Keycode::LAlt
+                | Keycode::RAlt
+                | Keycode::LGui
+                | Keycode::RGui
+                | Keycode::CapsLock
+                | Keycode::NumLockClear
+                | Keycode::ScrollLock
+        )
     }
 
     /// Shifts all widgets by a pixel delta.
@@ -662,7 +783,10 @@ impl ControlsSubPanel {
         self.bounds.y += dy;
         self.title_bar
             .set_bar_position(self.bounds.x, self.bounds.y);
-        shift(&mut self.btn_keybindings, dx, dy);
+        for button in &mut self.binding_buttons {
+            shift(button, dx, dy);
+        }
+        shift(&mut self.btn_close, dx, dy);
     }
 
     /// Returns whether the title bar close button was pressed.
@@ -676,31 +800,62 @@ impl ControlsSubPanel {
             return EventResponse::Ignored;
         }
 
+        if let Some(index) = self.listening_for {
+            if let UiEvent::KeyDown { keycode, modifiers } = event {
+                if *keycode == Keycode::Escape {
+                    self.cancel_listening();
+                    return EventResponse::Consumed;
+                }
+
+                if Self::is_bindable_key(*keycode) {
+                    let binding = KeyBinding::new(*keycode, *modifiers);
+                    let action = GameAction::ALL[index];
+                    self.bindings.set_binding(action, binding);
+                    self.cancel_listening();
+                    self.pending_actions
+                        .push(WidgetAction::UpdateKeyBinding { action, binding });
+                    return EventResponse::Consumed;
+                }
+
+                return EventResponse::Consumed;
+            }
+
+            match event {
+                UiEvent::TextInput { .. } => return EventResponse::Consumed,
+                UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } => {
+                    if self.bounds.contains_point(*x, *y) {
+                        return EventResponse::Consumed;
+                    }
+                }
+                _ => {}
+            }
+        }
+
         let (tb_resp, _drag) = self.title_bar.handle_event(event);
         if self.was_close_requested() {
-            self.visible = false;
+            self.hide();
             return EventResponse::Consumed;
         }
         if tb_resp == EventResponse::Consumed {
             return EventResponse::Consumed;
         }
 
-        if self.btn_keybindings.handle_event(event) == EventResponse::Consumed {
-            self.pending_actions
-                .push(WidgetAction::TogglePanel(HudPanel::KeyBindings));
+        if self.btn_close.handle_event(event) == EventResponse::Consumed {
+            self.hide();
             return EventResponse::Consumed;
         }
 
-        match event {
-            UiEvent::MouseClick { x, y, .. } | UiEvent::MouseWheel { x, y, .. } => {
-                if self.bounds.contains_point(*x, *y) {
-                    EventResponse::Consumed
-                } else {
-                    EventResponse::Ignored
+        for (index, button) in self.binding_buttons.iter_mut().enumerate() {
+            if button.handle_event(event) == EventResponse::Consumed {
+                self.listening_for = Some(index);
+                if let Some(active_button) = self.binding_buttons.get_mut(index) {
+                    active_button.set_label("Press a key...");
                 }
+                return EventResponse::Consumed;
             }
-            _ => EventResponse::Ignored,
         }
+
+        consume_mouse_events_in_bounds(&self.bounds, event)
     }
 
     /// Renders the sub-panel and its children.
@@ -711,7 +866,26 @@ impl ControlsSubPanel {
 
         draw_sub_panel_frame(ctx, &self.bounds, SUB_PANEL_BG, BORDER_COLOR)?;
         self.title_bar.render(ctx)?;
-        self.btn_keybindings.render(ctx)?;
+
+        let label_x = self.bounds.x + H_INSET;
+        for (index, action) in GameAction::ALL.iter().enumerate() {
+            let y = self.bounds.y + CT_Y_FIRST_ROW + CT_ROW_H * index as i32;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                0,
+                action.label(),
+                label_x,
+                y + 3,
+                font_cache::TextStyle::default(),
+            )?;
+
+            if let Some(button) = self.binding_buttons.get_mut(index) {
+                button.render(ctx)?;
+            }
+        }
+
+        self.btn_close.render(ctx)?;
 
         Ok(())
     }
@@ -759,6 +933,8 @@ pub struct SettingsPanelData {
     pub profiler_active: bool,
     /// Seconds remaining on the profiler, if active.
     pub profiler_remaining_secs: Option<u64>,
+    /// Current keyboard bindings for control actions.
+    pub key_bindings: KeyBindings,
 }
 
 // ===========================================================================
@@ -767,7 +943,7 @@ pub struct SettingsPanelData {
 
 /// The settings / options HUD panel.
 ///
-/// Presents a compact menu of category buttons (Display Settings,
+/// Presents a compact menu of category buttons (Display,
 /// Diagnostics, Controls), an inline volume slider, and session controls
 /// (Disconnect, Quit, Return to Game). Each category button opens a
 /// sub-panel that overlaps the main panel content.
@@ -820,10 +996,10 @@ impl SettingsPanel {
         let w = CONTROL_W.min(bounds.width.saturating_sub(H_INSET as u32 * 2));
         let half_w = (w.saturating_sub(10)) / 2;
 
-        // Sub-panels overlap the main panel content, starting just below
-        // the category buttons so buttons stay clickable.
-        let sub_x = bounds.x;
-        let sub_y = bounds.y + Y_CONTROLS_BTN + BTN_H as i32 + 4;
+        let (display_x, display_y) = centered_sub_panel_origin(&bounds, bounds.width, DS_PANEL_H);
+        let (diagnostics_x, diagnostics_y) =
+            centered_sub_panel_origin(&bounds, bounds.width, DG_PANEL_H);
+        let (controls_x, controls_y) = centered_sub_panel_origin(&bounds, bounds.width, CT_PANEL_H);
 
         Self {
             bounds,
@@ -838,7 +1014,7 @@ impl SettingsPanel {
                 Bounds::new(x, bounds.y + Y_DISPLAY_BTN, w, BTN_H),
                 btn_bg(),
             )
-            .with_label("Display Settings", 0)
+            .with_label("Display", 0)
             .with_border(btn_border()),
 
             btn_diagnostics: RectButton::new(
@@ -890,9 +1066,9 @@ impl SettingsPanel {
             quit_dialog: QuitConfirmDialog::new(),
 
             active_sub_panel: None,
-            sub_display: DisplaySettingsSubPanel::new(sub_x, sub_y, bounds.width),
-            sub_diagnostics: DiagnosticsSubPanel::new(sub_x, sub_y, bounds.width),
-            sub_controls: ControlsSubPanel::new(sub_x, sub_y, bounds.width),
+            sub_display: DisplaySettingsSubPanel::new(display_x, display_y, bounds.width),
+            sub_diagnostics: DiagnosticsSubPanel::new(diagnostics_x, diagnostics_y, bounds.width),
+            sub_controls: ControlsSubPanel::new(controls_x, controls_y, bounds.width),
         }
     }
 
@@ -921,6 +1097,7 @@ impl SettingsPanel {
         self.sld_volume.set_value(data.master_volume);
         self.sub_display.sync_state(data);
         self.sub_diagnostics.sync_state(data);
+        self.sub_controls.sync_state(data);
     }
 
     /// Updates the ping readout label.
@@ -951,7 +1128,7 @@ impl SettingsPanel {
         match panel {
             SettingsSubPanel::Display => self.sub_display.visible = true,
             SettingsSubPanel::Diagnostics => self.sub_diagnostics.visible = true,
-            SettingsSubPanel::Controls => self.sub_controls.visible = true,
+            SettingsSubPanel::Controls => self.sub_controls.show(),
         }
     }
 
@@ -961,7 +1138,7 @@ impl SettingsPanel {
             match panel {
                 SettingsSubPanel::Display => self.sub_display.visible = false,
                 SettingsSubPanel::Diagnostics => self.sub_diagnostics.visible = false,
-                SettingsSubPanel::Controls => self.sub_controls.visible = false,
+                SettingsSubPanel::Controls => self.sub_controls.hide(),
             }
         }
     }
@@ -1049,8 +1226,30 @@ impl Widget for SettingsPanel {
             return EventResponse::Consumed;
         }
 
-        // 3. Category buttons (checked before sub-panel so they remain
-        //    clickable even when a sub-panel overlaps them).
+        // 3. Active sub-panel gets priority over the main panel.
+        if self.active_sub_panel.is_some() {
+            let resp = match self.active_sub_panel.unwrap() {
+                SettingsSubPanel::Display => self.sub_display.handle_event(event),
+                SettingsSubPanel::Diagnostics => self.sub_diagnostics.handle_event(event),
+                SettingsSubPanel::Controls => self.sub_controls.handle_event(event),
+            };
+            self.collect_sub_panel_actions();
+
+            let closed = match self.active_sub_panel.unwrap() {
+                SettingsSubPanel::Display => !self.sub_display.visible,
+                SettingsSubPanel::Diagnostics => !self.sub_diagnostics.visible,
+                SettingsSubPanel::Controls => !self.sub_controls.visible,
+            };
+            if closed {
+                self.active_sub_panel = None;
+            }
+
+            if resp == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
+        // 4. Category buttons.
         if self.btn_display.handle_event(event) == EventResponse::Consumed {
             if self.active_sub_panel == Some(SettingsSubPanel::Display) {
                 self.close_active_sub_panel();
@@ -1074,30 +1273,6 @@ impl Widget for SettingsPanel {
                 self.open_sub_panel(SettingsSubPanel::Controls);
             }
             return EventResponse::Consumed;
-        }
-
-        // 4. Active sub-panel (overlaps main content below buttons).
-        if self.active_sub_panel.is_some() {
-            let resp = match self.active_sub_panel.unwrap() {
-                SettingsSubPanel::Display => self.sub_display.handle_event(event),
-                SettingsSubPanel::Diagnostics => self.sub_diagnostics.handle_event(event),
-                SettingsSubPanel::Controls => self.sub_controls.handle_event(event),
-            };
-            self.collect_sub_panel_actions();
-
-            // Check if the sub-panel closed itself (close button).
-            let closed = match self.active_sub_panel.unwrap() {
-                SettingsSubPanel::Display => !self.sub_display.visible,
-                SettingsSubPanel::Diagnostics => !self.sub_diagnostics.visible,
-                SettingsSubPanel::Controls => !self.sub_controls.visible,
-            };
-            if closed {
-                self.active_sub_panel = None;
-            }
-
-            if resp == EventResponse::Consumed {
-                return EventResponse::Consumed;
-            }
         }
 
         // 5. Volume slider.
@@ -1187,6 +1362,12 @@ impl Widget for SettingsPanel {
         self.btn_quit.render(ctx)?;
         self.btn_return.render(ctx)?;
 
+        if self.active_sub_panel.is_some() {
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            ctx.canvas.set_draw_color(SUB_PANEL_DIM_OVERLAY);
+            ctx.canvas.fill_rect(rect)?;
+        }
+
         // --- Active sub-panel drawn ON TOP ---
         self.sub_display.render(ctx)?;
         self.sub_diagnostics.render(ctx)?;
@@ -1237,6 +1418,7 @@ mod tests {
             last_rtt_ms: Some(42),
             profiler_active: false,
             profiler_remaining_secs: None,
+            key_bindings: KeyBindings::default(),
         }
     }
 
@@ -1247,6 +1429,19 @@ mod tests {
             button: MouseButton::Left,
             modifiers: KeyModifiers::default(),
         }
+    }
+
+    fn left_mouse_down(x: i32, y: i32) -> UiEvent {
+        UiEvent::MouseDown {
+            x,
+            y,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        }
+    }
+
+    fn mouse_move(x: i32, y: i32) -> UiEvent {
+        UiEvent::MouseMove { x, y }
     }
 
     #[test]
@@ -1311,7 +1506,7 @@ mod tests {
     fn display_button_opens_sub_panel() {
         let mut panel = make_panel();
         panel.toggle();
-        // Click the "Display Settings" button.
+        // Click the "Display" button.
         let btn_y = Y_DISPLAY_BTN + 5;
         let resp = panel.handle_event(&left_click(15, btn_y));
         assert_eq!(resp, EventResponse::Consumed);
@@ -1320,29 +1515,30 @@ mod tests {
     }
 
     #[test]
-    fn only_one_sub_panel_at_a_time() {
+    fn controls_sub_panel_is_centered_on_main_panel() {
         let mut panel = make_panel();
         panel.toggle();
-        // Open display.
-        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
-        assert!(panel.sub_display.visible);
-        // Open diagnostics — display should close.
-        panel.handle_event(&left_click(15, Y_DIAG_BTN + 5));
-        assert!(!panel.sub_display.visible);
-        assert!(panel.sub_diagnostics.visible);
-        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Diagnostics));
+        panel.handle_event(&left_click(15, Y_CONTROLS_BTN + 5));
+
+        let panel_center_x = panel.bounds.x + panel.bounds.width as i32 / 2;
+        let panel_center_y = panel.bounds.y + panel.bounds.height as i32 / 2;
+        let sub_bounds = panel.sub_controls.bounds;
+        let sub_center_x = sub_bounds.x + sub_bounds.width as i32 / 2;
+        let sub_center_y = sub_bounds.y + sub_bounds.height as i32 / 2;
+
+        assert_eq!(sub_center_x, panel_center_x);
+        assert_eq!(sub_center_y, panel_center_y);
     }
 
     #[test]
-    fn clicking_same_category_toggles_off() {
+    fn only_one_sub_panel_at_a_time() {
         let mut panel = make_panel();
-        panel.toggle();
-        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        panel.open_sub_panel(SettingsSubPanel::Display);
         assert!(panel.sub_display.visible);
-        // Click again to close.
-        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        panel.open_sub_panel(SettingsSubPanel::Diagnostics);
         assert!(!panel.sub_display.visible);
-        assert_eq!(panel.active_sub_panel, None);
+        assert!(panel.sub_diagnostics.visible);
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Diagnostics));
     }
 
     #[test]
@@ -1429,23 +1625,105 @@ mod tests {
     }
 
     #[test]
-    fn controls_keybindings_emits_toggle() {
+    fn controls_keybindings_emits_update_action() {
         let mut panel = make_panel();
         panel.toggle();
+        panel.sync_state(&make_data());
         // Open controls sub-panel.
         panel.handle_event(&left_click(15, Y_CONTROLS_BTN + 5));
         assert!(panel.sub_controls.visible);
         let _ = panel.take_actions();
-        // Click the "Keyboard Bindings" button using actual bounds.
-        let btn_b = *panel.sub_controls.btn_keybindings.bounds();
+        let btn_b = *panel.sub_controls.binding_buttons[0].bounds();
         panel.handle_event(&left_click(btn_b.x + 5, btn_b.y + 2));
+        let resp = panel.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::K,
+            modifiers: KeyModifiers {
+                ctrl: true,
+                shift: false,
+                alt: false,
+            },
+        });
+
+        assert_eq!(resp, EventResponse::Consumed);
         let actions = panel.take_actions();
         assert!(
-            actions
-                .iter()
-                .any(|a| matches!(a, WidgetAction::TogglePanel(HudPanel::KeyBindings))),
-            "Expected TogglePanel(KeyBindings) action, got {:?}",
+            actions.iter().any(|action| matches!(
+                action,
+                WidgetAction::UpdateKeyBinding {
+                    action: GameAction::ToggleSkills,
+                    binding
+                } if binding.keycode == i32::from(Keycode::K) && binding.modifiers.ctrl
+            )),
+            "Expected UpdateKeyBinding action, got {:?}",
             actions
         );
+    }
+
+    #[test]
+    fn sub_panel_title_bar_is_not_draggable() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+
+        let start_bounds = panel.sub_display.bounds;
+        let title_bar_x = start_bounds.x + 24;
+        let title_bar_y = start_bounds.y + 6;
+
+        let down_resp = panel.handle_event(&left_mouse_down(title_bar_x, title_bar_y));
+        let move_resp = panel.handle_event(&mouse_move(title_bar_x + 40, title_bar_y + 20));
+
+        assert_eq!(down_resp, EventResponse::Consumed);
+        assert_eq!(move_resp, EventResponse::Consumed);
+        assert_eq!(panel.sub_display.bounds, start_bounds);
+        assert!(!panel.sub_display.title_bar.is_dragging());
+    }
+
+    #[test]
+    fn sub_panel_bottom_close_button_closes_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Display));
+
+        let close_bounds = *panel.sub_display.btn_close.bounds();
+        let resp = panel.handle_event(&left_click(close_bounds.x + 5, close_bounds.y + 5));
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(!panel.sub_display.visible);
+        assert_eq!(panel.active_sub_panel, None);
+    }
+
+    #[test]
+    fn sub_panel_mouse_down_does_not_reach_volume_slider() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.sync_state(&make_data());
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+
+        let slider_bounds = *panel.sld_volume.bounds();
+        let original_value = panel.sld_volume.value();
+        let resp = panel.handle_event(&left_mouse_down(
+            slider_bounds.x + slider_bounds.width as i32 - 4,
+            slider_bounds.y + slider_bounds.height as i32 / 2,
+        ));
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(panel.sld_volume.value(), original_value);
+        assert!(!panel.sld_volume.was_changed());
+    }
+
+    #[test]
+    fn sub_panel_mouse_move_does_not_hover_underlying_buttons() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+
+        let btn_bounds = *panel.btn_disconnect.bounds();
+        let resp = panel.handle_event(&mouse_move(btn_bounds.x + 5, btn_bounds.y + 5));
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(!panel.btn_disconnect.is_hovered());
+        assert!(!panel.btn_quit.is_hovered());
+        assert!(!panel.btn_return.is_hovered());
     }
 }

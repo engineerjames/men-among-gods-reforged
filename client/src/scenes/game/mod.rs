@@ -42,9 +42,6 @@ use crate::{
         cert_dialog::{CertDialog, CertDialogAction},
         chat_box::ChatBox,
         inventory_panel::InventoryPanel,
-        keybindings_panel::{
-            KeybindingsPanel, KeybindingsPanelData, KEYBINDINGS_PANEL_H, KEYBINDINGS_PANEL_W,
-        },
         look_panel::LookPanel,
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
@@ -224,7 +221,6 @@ pub struct GameScene {
     pub(super) skills_panel: SkillsPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
-    pub(super) keybindings_panel: KeybindingsPanel,
     pub(super) minimap_widget: MinimapWidget,
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
@@ -319,15 +315,6 @@ impl GameScene {
                     panel_bottom - SETTINGS_PANEL_H as i32,
                     HUD_PANEL_W,
                     SETTINGS_PANEL_H,
-                ),
-                HUD_PANEL_BG,
-            ),
-            keybindings_panel: KeybindingsPanel::new(
-                Bounds::new(
-                    HUD_ARC_CENTER_X - KEYBINDINGS_PANEL_W as i32 / 2,
-                    panel_bottom - KEYBINDINGS_PANEL_H as i32,
-                    KEYBINDINGS_PANEL_W,
-                    KEYBINDINGS_PANEL_H,
                 ),
                 HUD_PANEL_BG,
             ),
@@ -437,6 +424,7 @@ impl GameScene {
             } else {
                 None
             },
+            key_bindings: app_state.settings.character.key_bindings.clone(),
         }
     }
 
@@ -516,13 +504,13 @@ impl GameScene {
                 WidgetAction::StartProfiler => {
                     self.perf_profiler.start();
                 }
-                WidgetAction::TogglePanel(HudPanel::KeyBindings) => {
-                    self.keybindings_panel.toggle();
-                    if self.keybindings_panel.is_visible() {
-                        self.keybindings_panel.sync_state(&KeybindingsPanelData {
-                            bindings: app_state.settings.character.key_bindings.clone(),
-                        });
-                    }
+                WidgetAction::UpdateKeyBinding { action, binding } => {
+                    app_state
+                        .settings
+                        .character
+                        .key_bindings
+                        .set_binding(action, binding);
+                    profile_changed = true;
                 }
                 WidgetAction::TogglePanel(_) => {
                     profile_changed = true;
@@ -537,32 +525,6 @@ impl GameScene {
 
         scene_change
     }
-
-    /// Drain pending `WidgetAction`s from the keybindings panel and apply
-    /// binding updates.
-    ///
-    /// # Arguments
-    ///
-    /// * `app_state` - Shared application state.
-    fn process_keybindings_panel_actions(&mut self, app_state: &mut AppState) {
-        for action in self.keybindings_panel.take_actions() {
-            match action {
-                WidgetAction::UpdateKeyBinding { action, binding } => {
-                    app_state
-                        .settings
-                        .character
-                        .key_bindings
-                        .set_binding(action, binding);
-                    self.save_active_profile(app_state);
-                }
-                WidgetAction::TogglePanel(HudPanel::KeyBindings) => {
-                    // Close button pressed — panel already toggled itself.
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.
     ///
     /// Messages are fetched in insertion order (oldest-first) starting from
@@ -1054,10 +1016,6 @@ impl Scene for GameScene {
                 self.settings_panel.toggle();
             }
 
-            if self.keybindings_panel.is_visible() {
-                self.keybindings_panel.toggle();
-            }
-
             if self.inventory_panel.is_visible() {
                 self.inventory_panel.toggle();
             }
@@ -1207,12 +1165,6 @@ impl Scene for GameScene {
                 return None;
             }
 
-            // --- Dispatch to keybindings editor panel ---
-            if self.keybindings_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_keybindings_panel_actions(app_state);
-                return None;
-            }
-
             // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
             if self.shop_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 self.process_shop_panel_actions(app_state);
@@ -1256,14 +1208,7 @@ impl Scene for GameScene {
                                 }
                             }
                             HudPanel::Minimap => self.minimap_widget.toggle(),
-                            HudPanel::KeyBindings => {
-                                self.keybindings_panel.toggle();
-                                if self.keybindings_panel.is_visible() {
-                                    self.keybindings_panel.sync_state(&KeybindingsPanelData {
-                                        bindings: app_state.settings.character.key_bindings.clone(),
-                                    });
-                                }
-                            }
+                            HudPanel::KeyBindings => {}
                         }
                     }
                 }
@@ -1653,7 +1598,6 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
-            self.keybindings_panel.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
