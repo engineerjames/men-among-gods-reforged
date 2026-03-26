@@ -1208,25 +1208,8 @@ impl Widget for SettingsPanel {
             return EventResponse::Consumed;
         }
 
-        // 2. Title bar: drag / close.
-        let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
-        if let Some((nx, ny)) = drag_pos {
-            let (cx, cy) = clamp_to_viewport(nx, ny, self.bounds.width, self.bounds.height);
-            self.set_position(cx, cy);
-            return EventResponse::Consumed;
-        }
-        if self.title_bar.was_close_requested() {
-            self.visible = false;
-            self.close_active_sub_panel();
-            self.pending_actions
-                .push(WidgetAction::TogglePanel(HudPanel::Settings));
-            return EventResponse::Consumed;
-        }
-        if tb_resp == EventResponse::Consumed {
-            return EventResponse::Consumed;
-        }
-
-        // 3. Active sub-panel gets priority over the main panel.
+        // 2. Active sub-panel gets priority over the main panel, including
+        //    its own title bar close button.
         if self.active_sub_panel.is_some() {
             let resp = match self.active_sub_panel.unwrap() {
                 SettingsSubPanel::Display => self.sub_display.handle_event(event),
@@ -1247,6 +1230,24 @@ impl Widget for SettingsPanel {
             if resp == EventResponse::Consumed {
                 return EventResponse::Consumed;
             }
+        }
+
+        // 3. Title bar: drag / close.
+        let (tb_resp, drag_pos) = self.title_bar.handle_event(event);
+        if let Some((nx, ny)) = drag_pos {
+            let (cx, cy) = clamp_to_viewport(nx, ny, self.bounds.width, self.bounds.height);
+            self.set_position(cx, cy);
+            return EventResponse::Consumed;
+        }
+        if self.title_bar.was_close_requested() {
+            self.visible = false;
+            self.close_active_sub_panel();
+            self.pending_actions
+                .push(WidgetAction::TogglePanel(HudPanel::Settings));
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
         }
 
         // 4. Category buttons.
@@ -1689,6 +1690,23 @@ mod tests {
         let resp = panel.handle_event(&left_click(close_bounds.x + 5, close_bounds.y + 5));
 
         assert_eq!(resp, EventResponse::Consumed);
+        assert!(!panel.sub_display.visible);
+        assert_eq!(panel.active_sub_panel, None);
+    }
+
+    #[test]
+    fn sub_panel_title_bar_close_does_not_close_main_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+
+        let sub_bounds = panel.sub_display.bounds;
+        let close_x = sub_bounds.x + sub_bounds.width as i32 - 6;
+        let close_y = sub_bounds.y + 5;
+        let resp = panel.handle_event(&left_click(close_x, close_y));
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(panel.is_visible());
         assert!(!panel.sub_display.visible);
         assert_eq!(panel.active_sub_panel, None);
     }
