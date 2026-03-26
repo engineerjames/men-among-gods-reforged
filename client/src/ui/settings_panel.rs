@@ -1288,6 +1288,7 @@ impl Widget for SettingsPanel {
             return EventResponse::Consumed;
         }
         if self.btn_quit.handle_event(event) == EventResponse::Consumed {
+            self.quit_dialog.center_on(&self.bounds);
             self.quit_dialog.show();
             return EventResponse::Consumed;
         }
@@ -1743,5 +1744,26 @@ mod tests {
         assert!(!panel.btn_disconnect.is_hovered());
         assert!(!panel.btn_quit.is_hovered());
         assert!(!panel.btn_return.is_hovered());
+    }
+
+    #[test]
+    fn quit_dialog_centers_on_settings_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+
+        let quit_bounds = *panel.btn_quit.bounds();
+        let resp = panel.handle_event(&left_click(quit_bounds.x + 5, quit_bounds.y + 5));
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(panel.quit_dialog.is_visible());
+
+        let panel_center_x = panel.bounds.x + panel.bounds.width as i32 / 2;
+        let panel_center_y = panel.bounds.y + panel.bounds.height as i32 / 2;
+        let dialog_bounds = *panel.quit_dialog.bounds();
+        let dialog_center_x = dialog_bounds.x + dialog_bounds.width as i32 / 2;
+        let dialog_center_y = dialog_bounds.y + dialog_bounds.height as i32 / 2;
+
+        assert_eq!(dialog_center_x, panel_center_x);
+        assert_eq!(dialog_center_y, panel_center_y);
     }
 }
