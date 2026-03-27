@@ -219,7 +219,7 @@ mod tests {
     fn bounds_have_expected_dimensions() {
         let panel = StatusPanel::new(0, 0, Color::RGBA(10, 10, 30, 180));
         let w = (PANEL_PADDING * 2 + PANEL_WIDTH) as u32;
-        let h = (PANEL_PADDING * 2 + font_cache::BITMAP_GLYPH_H as i32) as u32;
+        let h = (PANEL_PADDING * 2 + font_cache::BITMAP_GLYPH_H as i32 * 2) as u32;
         assert_eq!(panel.bounds().width, w);
         assert_eq!(panel.bounds().height, h);
     }

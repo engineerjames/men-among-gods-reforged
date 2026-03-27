@@ -524,7 +524,7 @@ mod tests {
         let mut bars = VitalityBars::new(100, 200);
         bars.sync(34, 80, 21, 50, 12, 40);
         bars.handle_event(&UiEvent::MouseMove { x: 64, y: 199 });
-        assert_eq!(bars.hover_text().as_deref(), Some("34 / 80"));
+        assert_eq!(bars.hover_text().as_deref(), Some("HP: 34 / 80"));
     }
 
     #[test]
@@ -532,7 +532,7 @@ mod tests {
         let mut bars = VitalityBars::new(100, 200);
         bars.sync(34, 80, 21, 50, 12, 40);
         bars.handle_event(&UiEvent::MouseMove { x: 72, y: 199 });
-        assert_eq!(bars.hover_text().as_deref(), Some("21 / 50"));
+        assert_eq!(bars.hover_text().as_deref(), Some("Endurance: 21 / 50"));
     }
 
     #[test]
@@ -540,7 +540,7 @@ mod tests {
         let mut bars = VitalityBars::new(100, 200);
         bars.sync(34, 80, 21, 50, 12, 40);
         bars.handle_event(&UiEvent::MouseMove { x: 80, y: 199 });
-        assert_eq!(bars.hover_text().as_deref(), Some("12 / 40"));
+        assert_eq!(bars.hover_text().as_deref(), Some("Mana: 12 / 40"));
     }
 
     #[test]
