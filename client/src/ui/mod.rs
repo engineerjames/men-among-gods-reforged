@@ -5,46 +5,12 @@
 //! [`ChatBox`].  All rendering is done via SDL2 primitives and the existing
 //! bitmap font system — no additional dependencies are required.
 
-pub mod button;
-pub mod button_arc;
-pub mod cert_dialog;
-pub mod character_creation_form;
-pub mod character_selection_form;
-pub mod chat_box;
-pub mod checkbox;
-pub mod delete_character_dialog;
-pub mod dropdown;
-pub mod enter_reset_code_form;
-pub mod inventory_panel;
-pub mod keybindings_panel;
-pub mod label;
-pub mod login_form;
-pub mod look_panel;
-pub mod minimap_widget;
-pub mod mode_button;
-pub mod new_account_form;
-pub mod panel;
-pub mod panning_background;
-pub mod quit_confirm_dialog;
-pub mod radio_group;
-pub mod rank_progress_arc;
-pub mod rank_progress_line;
-pub mod rank_sigil;
-pub mod request_reset_form;
-pub mod scrollable_list;
-pub mod settings_panel;
-pub mod shop_panel;
-pub mod skill_bar;
-pub mod skill_picker_popup;
-pub mod skills_panel;
-pub mod slider;
-pub mod status_panel;
+pub mod forms;
+pub mod hud;
 pub mod style;
-pub mod text_input;
-pub mod title_bar;
-pub mod tls_warning_banner;
-pub mod vitality_bars;
+pub mod visuals;
 pub mod widget;
+pub mod widgets;
 
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};
 
