@@ -1,7 +1,7 @@
 use crate::{
     preferences::{self, CharacterIdentity, Settings},
     state::AppState,
-    ui::title_bar::clamp_to_viewport,
+    ui::widgets::title_bar::clamp_to_viewport,
     ui::widget::Widget,
 };
 

@@ -12,10 +12,10 @@ use crate::{
     state::{AppState, GameLoginTarget},
     ui::{
         self, RenderContext,
-        character_selection_form::{CharacterSelectionForm, CharacterSelectionFormAction},
-        delete_character_dialog::{DeleteCharacterDialog, DeleteCharacterDialogAction},
-        scrollable_list::ListItem,
+        forms::character_selection_form::{CharacterSelectionForm, CharacterSelectionFormAction},
+        forms::delete_character_dialog::{DeleteCharacterDialog, DeleteCharacterDialogAction},
         widget::{KeyModifiers, Widget},
+        widgets::scrollable_list::ListItem,
     },
 };
 

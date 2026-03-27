@@ -12,7 +12,7 @@ use crate::{
     state::AppState,
     ui::{
         self, RenderContext,
-        character_creation_form::{CharacterCreationForm, CharacterCreationFormAction},
+        forms::character_creation_form::{CharacterCreationForm, CharacterCreationFormAction},
         widget::{KeyModifiers, Widget},
     },
 };

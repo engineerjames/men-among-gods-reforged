@@ -4,7 +4,7 @@ use crate::{
     player_state::PlayerState,
     preferences::{DisplayMode, Settings},
     sfx_cache::SoundCache,
-    ui::panning_background::PanningBackground,
+    ui::visuals::panning_background::PanningBackground,
 };
 
 /// A display-related change requested by a scene, to be applied by the main

@@ -34,26 +34,26 @@ use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
 use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
-use client::ui::button::{CircleButton, RectButton};
-use client::ui::button_arc::HudButtonBar;
-use client::ui::chat_box::ChatBox;
-use client::ui::checkbox::Checkbox;
-use client::ui::dropdown::Dropdown;
-use client::ui::inventory_panel::{InventoryPanel, InventoryPanelData};
-use client::ui::label::Label;
-use client::ui::look_panel::LookPanel;
-use client::ui::minimap_widget::MinimapWidget;
-use client::ui::mode_button::ModeButton;
-use client::ui::panel::Panel;
-use client::ui::rank_progress_arc::RankArc;
-use client::ui::settings_panel::{SETTINGS_PANEL_H, SettingsPanel};
-use client::ui::shop_panel::ShopPanel;
-use client::ui::skill_bar::SkillBarConfig;
-use client::ui::skill_bar::{SkillBar, SkillBarData};
-use client::ui::skills_panel::{SkillsPanel, SkillsPanelData};
-use client::ui::slider::Slider;
+use client::ui::widgets::button::{CircleButton, RectButton};
+use client::ui::hud::button_arc::HudButtonBar;
+use client::ui::hud::chat_box::ChatBox;
+use client::ui::widgets::checkbox::Checkbox;
+use client::ui::widgets::dropdown::Dropdown;
+use client::ui::hud::inventory_panel::{InventoryPanel, InventoryPanelData};
+use client::ui::widgets::label::Label;
+use client::ui::hud::look_panel::LookPanel;
+use client::ui::hud::minimap_widget::MinimapWidget;
+use client::ui::hud::mode_button::ModeButton;
+use client::ui::widgets::panel::Panel;
+use client::ui::visuals::rank_progress_arc::RankArc;
+use client::ui::hud::settings_panel::{SETTINGS_PANEL_H, SettingsPanel};
+use client::ui::hud::shop_panel::ShopPanel;
+use client::ui::hud::skill_bar::SkillBarConfig;
+use client::ui::hud::skill_bar::{SkillBar, SkillBarData};
+use client::ui::hud::skills_panel::{SkillsPanel, SkillsPanelData};
+use client::ui::widgets::slider::Slider;
 use client::ui::style::{Background, Border, Padding};
-use client::ui::text_input::TextInput;
+use client::ui::widgets::text_input::TextInput;
 use client::ui::widget::{Bounds, EventResponse, HudPanel, Widget, WidgetAction};
 use client::ui::{RenderContext, sdl_to_ui_event};
 
@@ -240,7 +240,7 @@ fn main() -> Result<(), String> {
     let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
     let panel_y = panel_bottom - HUD_PANEL_H as i32;
 
-    let mut status_panel = client::ui::status_panel::StatusPanel::new(COL2_X, 230, PANEL_BG);
+    let mut status_panel = client::ui::hud::status_panel::StatusPanel::new(COL2_X, 230, PANEL_BG);
 
     let mut skills_panel = SkillsPanel::new(
         Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
@@ -290,8 +290,8 @@ fn main() -> Result<(), String> {
         PANEL_BG,
     );
 
-    let shop_panel_w = client::ui::shop_panel::SHOP_PANEL_W;
-    let shop_panel_h = client::ui::shop_panel::SHOP_PANEL_H;
+    let shop_panel_w = client::ui::hud::shop_panel::SHOP_PANEL_W;
+    let shop_panel_h = client::ui::hud::shop_panel::SHOP_PANEL_H;
     let shop_panel_x = (TARGET_WIDTH_INT as i32 - shop_panel_w as i32) / 2;
     let shop_panel_y = (TARGET_HEIGHT_INT as i32 - shop_panel_h as i32) / 2;
     let mut shop_panel = ShopPanel::new(
@@ -629,7 +629,7 @@ fn update_all(
     mode_button: &mut ModeButton,
     minimap_widget: &mut MinimapWidget,
     hud_buttons: &mut HudButtonBar,
-    status_panel: &mut client::ui::status_panel::StatusPanel,
+    status_panel: &mut client::ui::hud::status_panel::StatusPanel,
     skills_panel: &mut SkillsPanel,
     inventory_panel: &mut InventoryPanel,
     settings_panel: &mut SettingsPanel,

@@ -11,8 +11,8 @@ use crate::{
     state::AppState,
     ui::{
         self, RenderContext,
-        cert_dialog::{CertDialog, CertDialogAction},
-        enter_reset_code_form::{EnterResetCodeForm, EnterResetCodeFormAction},
+        forms::cert_dialog::{CertDialog, CertDialogAction},
+        forms::enter_reset_code_form::{EnterResetCodeForm, EnterResetCodeFormAction},
         widget::{KeyModifiers, Widget},
     },
 };

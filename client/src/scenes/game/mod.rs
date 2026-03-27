@@ -38,24 +38,24 @@ use crate::{
     state::{AppState, DisplayCommand},
     ui::{
         self, RenderContext,
-        button_arc::HudButtonBar,
-        cert_dialog::{CertDialog, CertDialogAction},
-        chat_box::ChatBox,
-        inventory_panel::InventoryPanel,
-        look_panel::LookPanel,
-        minimap_widget::MinimapWidget,
-        mode_button::ModeButton,
-        rank_progress_line::RankProgressLine,
-        rank_sigil::RankSigil,
-        settings_panel::{SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
-        shop_panel::ShopPanel,
-        skill_bar::SkillBar,
-        skill_picker_popup::SkillPickerPopup,
-        skills_panel::SkillsPanel,
-        status_panel::StatusPanel,
+        forms::cert_dialog::{CertDialog, CertDialogAction},
+        hud::button_arc::HudButtonBar,
+        hud::chat_box::ChatBox,
+        hud::inventory_panel::InventoryPanel,
+        hud::look_panel::LookPanel,
+        hud::minimap_widget::MinimapWidget,
+        hud::mode_button::ModeButton,
+        hud::settings_panel::{SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
+        hud::shop_panel::ShopPanel,
+        hud::skill_bar::SkillBar,
+        hud::skill_picker_popup::SkillPickerPopup,
+        hud::skills_panel::SkillsPanel,
+        hud::status_panel::StatusPanel,
         style::Padding,
-        tls_warning_banner::TlsWarningBanner,
-        vitality_bars::VitalityBars,
+        visuals::rank_progress_line::RankProgressLine,
+        visuals::rank_sigil::RankSigil,
+        visuals::tls_warning_banner::TlsWarningBanner,
+        visuals::vitality_bars::VitalityBars,
         widget::{
             Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
             WidgetAction,
@@ -172,9 +172,9 @@ const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PAN
 // ---- Shop panel (centered on screen) ---- //
 
 /// Width of the shop panel.
-const SHOP_PANEL_W: u32 = crate::ui::shop_panel::SHOP_PANEL_W;
+const SHOP_PANEL_W: u32 = crate::ui::hud::shop_panel::SHOP_PANEL_W;
 /// Height of the shop panel.
-const SHOP_PANEL_H: u32 = crate::ui::shop_panel::SHOP_PANEL_H;
+const SHOP_PANEL_H: u32 = crate::ui::hud::shop_panel::SHOP_PANEL_H;
 /// X position of the shop panel (horizontally centered).
 const SHOP_PANEL_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SHOP_PANEL_W as i32) / 2;
 /// Y position of the shop panel (vertically centered).
@@ -328,7 +328,7 @@ impl GameScene {
                 Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
-            skill_bar: SkillBar::new(crate::ui::skill_bar::SkillBarConfig {
+            skill_bar: SkillBar::new(crate::ui::hud::skill_bar::SkillBarConfig {
                 spell_x: 295,
                 spell_y: TARGET_HEIGHT_INT as i32 - 57,
                 spell_width: 24,
@@ -1533,7 +1533,7 @@ impl Scene for GameScene {
                     ci.a_mana,
                     ci.mana[5] as i32,
                 );
-                use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
+                use crate::ui::hud::skills_panel::{SkillsPanel as SP, SkillsPanelData};
                 let sorted = SP::build_sorted_skills(&ci.skill);
                 self.skills_panel.update_data(SkillsPanelData {
                     attrib: ci.attrib,
@@ -1544,7 +1544,7 @@ impl Scene for GameScene {
                     points: ci.points,
                     sorted_skills: sorted,
                 });
-                use crate::ui::inventory_panel::InventoryPanelData;
+                use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
                     items: ci.item,
                     items_p: ci.item_p,
@@ -1559,7 +1559,7 @@ impl Scene for GameScene {
                 // Skill bar: 13 keybinds plus all 20 active spell/activity slots.
                 {
                     use crate::preferences::NUMBER_OF_KEYBINDS;
-                    use crate::ui::skill_bar::SkillBarData;
+                    use crate::ui::hud::skill_bar::SkillBarData;
                     let mut keybinds = [None; NUMBER_OF_KEYBINDS];
                     keybinds.copy_from_slice(
                         &app_state.settings.character.skill_keybinds[..NUMBER_OF_KEYBINDS],
@@ -1622,7 +1622,7 @@ impl Scene for GameScene {
         // 5d. Shop/depot/grave overlay (centered, when active)
         self.perf_profiler.begin_sample(PerfLabel::DrawShopPanel);
         {
-            use crate::ui::shop_panel::ShopPanelData;
+            use crate::ui::hud::shop_panel::ShopPanelData;
             if let Some(ps) = app_state.player_state.as_ref() {
                 let shop = ps.shop_target();
                 let mut items = [0u16; 62];

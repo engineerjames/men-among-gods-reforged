@@ -11,8 +11,8 @@ use crate::{
     state::AppState,
     ui::{
         self, RenderContext,
-        cert_dialog::{CertDialog, CertDialogAction},
-        new_account_form::{NewAccountForm, NewAccountFormAction},
+        forms::cert_dialog::{CertDialog, CertDialogAction},
+        forms::new_account_form::{NewAccountForm, NewAccountFormAction},
         widget::{KeyModifiers, Widget},
     },
 };
