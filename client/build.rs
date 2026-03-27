@@ -9,6 +9,9 @@ fn main() {
     if target_os == "windows" {
         embed_resource::compile("icon.rc", embed_resource::NONE);
 
+        // mpg123 uses PathCombineW/PathIsRelativeW/PathIsUNCW from shlwapi.dll
+        println!("cargo:rustc-link-lib=shlwapi");
+
         println!("cargo:rerun-if-changed=icon.rc");
         println!("cargo:rerun-if-changed=assets/gfx/mag_logo.ico");
     }
