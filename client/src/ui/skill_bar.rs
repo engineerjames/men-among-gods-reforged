@@ -16,8 +16,8 @@ use sdl2::render::BlendMode;
 
 use mag_core::skills;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::filepaths;
 use crate::font_cache;
@@ -109,7 +109,7 @@ pub struct SkillBarConfig {
 
 /// Per-frame data pushed into the skill bar by the game scene.
 pub struct SkillBarData {
-    /// CTRL+1-8 skill keybinds (index 0 = slot 1). `Some(skill_nr)` if bound.
+    /// Skill keybinds for keys 1–8 (index 0 = slot 1). `Some(skill_nr)` if bound.
     pub keybinds: [Option<usize>; TOP_CELLS],
     /// Active spell icon IDs from `ClientPlayer::spell[]`.
     pub spell: [i32; ACTIVE_SPELL_SLOTS],

@@ -9,7 +9,7 @@ use mag_core::constants::{
 
 use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
-use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH};
+use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
 #[derive(Copy, Clone)]
 enum HoverHighlight {
@@ -479,12 +479,12 @@ impl GameScene {
         ps: &PlayerState,
         shadows_enabled: bool,
         spell_effects_enabled: bool,
+        show_names: bool,
+        show_proz: bool,
+        hide: bool,
     ) -> Result<(), String> {
         let map = ps.map();
         let ci = ps.character_info();
-        let pdata = ps.player_data();
-        let show_names = pdata.show_names != 0;
-        let show_proz = pdata.show_proz != 0;
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
         let hover_highlight = self.resolve_hover_highlight(ps);
 
@@ -555,7 +555,7 @@ impl GameScene {
 
                 let mut obj = tile.obj1;
                 if obj > 0 {
-                    let hide_enabled = pdata.hide != 0;
+                    let hide_enabled = hide;
                     let is_item = (tile.flags & ISITEM) != 0;
 
                     if hide_enabled && !is_item && !Self::autohide(x, y) {
@@ -725,7 +725,7 @@ impl GameScene {
                         // horizontally centered, shifted 64px up relative to sprite origin.
                         let text_len = text.len() as i32;
                         let np_rx = ground_x - (text_len * 5 / 2) + ch_xoff;
-                        let np_ry = ground_y - 48 + ch_yoff;
+                        let np_ry = ground_y - 54 + ch_yoff;
                         font_cache::draw_text(
                             canvas,
                             gfx,

@@ -7,8 +7,8 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------
@@ -205,11 +205,7 @@ impl ShopPanel {
         }
 
         let idx = row as usize * GRID_COLS + col as usize;
-        if idx < SHOP_SLOTS {
-            Some(idx)
-        } else {
-            None
-        }
+        if idx < SHOP_SLOTS { Some(idx) } else { None }
     }
 }
 

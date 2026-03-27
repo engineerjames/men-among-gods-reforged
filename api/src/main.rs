@@ -4,11 +4,11 @@ pub mod pipelines;
 pub mod routes;
 pub mod types;
 
-use axum::routing::{delete, get, post, put};
 use axum::Router;
+use axum::routing::{delete, get, post, put};
 use axum_governor::GovernorLayer;
-use lazy_limit::{init_rate_limiter, Duration, RuleConfig};
-use log::{error, info, warn, LevelFilter};
+use lazy_limit::{Duration, RuleConfig, init_rate_limiter};
+use log::{LevelFilter, error, info, warn};
 use real::RealIpLayer;
 use redis;
 use std::env;
@@ -139,7 +139,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_level = resolve_log_level();
     let log_file = resolve_log_file();
-    core::initialize_logger(log_level, log_file.as_deref())?;
+    mag_core::initialize_logger(log_level, log_file.as_deref())?;
 
     info!(
         "API starting (level={}, logfile={})",

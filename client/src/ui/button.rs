@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use super::RenderContext;
 use super::style::{Background, Border};
 use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use super::RenderContext;
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------

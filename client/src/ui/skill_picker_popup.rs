@@ -14,8 +14,8 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE, BITMAP_GLYPH_H};
 
 // ---------------------------------------------------------------------------
@@ -51,6 +51,10 @@ const HOVER_COLOR: Color = Color::RGBA(60, 60, 120, 180);
 
 /// Normal text tint.
 const TEXT_COLOR: Color = Color::RGB(200, 200, 220);
+
+/// Offset from the skill bar cell vertically
+/// (negative = above, positive = below).
+pub const ANCHOR_Y_OFFSET: i32 = -20;
 
 // ---------------------------------------------------------------------------
 // Bindable skills allow-list

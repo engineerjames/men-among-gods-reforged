@@ -4,8 +4,8 @@ use sdl2::pixels::Color;
 
 use crate::font_cache;
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 /// A simple single-line text label rendered with the bitmap font.
 pub struct Label {

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-pub use core::types::api::{
+pub use mag_core::types::api::{
     CharacterSummary, CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
     LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,

@@ -11,10 +11,9 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     state::AppState,
     ui::{
-        self,
+        self, RenderContext,
         character_creation_form::{CharacterCreationForm, CharacterCreationFormAction},
         widget::{KeyModifiers, Widget},
-        RenderContext,
     },
 };
 
@@ -119,11 +118,7 @@ impl Scene for CharacterCreationScene {
             let name = self.form.name_input_value().to_owned();
             let description = {
                 let d = self.form.description_input_value().trim().to_string();
-                if d.is_empty() {
-                    None
-                } else {
-                    Some(d)
-                }
+                if d.is_empty() { None } else { Some(d) }
             };
             let sex = self.form.selected_sex();
             let race = self.form.selected_class();
@@ -195,8 +190,8 @@ impl Scene for CharacterCreationScene {
     ) -> Result<(), String> {
         // Render panning background.
         let AppState {
-            ref mut panning_background,
-            ref mut gfx_cache,
+            panning_background,
+            gfx_cache,
             ..
         } = app_state;
         let mut ctx = RenderContext {

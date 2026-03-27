@@ -14,9 +14,9 @@ use sdl2::render::BlendMode;
 use crate::font_cache;
 use crate::types::log_message::{LogMessage, LogMessageColor};
 
+use super::RenderContext;
 use super::style::Padding;
 use super::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
-use super::RenderContext;
 
 /// Maximum characters allowed in the chat input buffer.
 const MAX_INPUT_LEN: usize = 120;
@@ -207,6 +207,7 @@ impl ChatBox {
 
     /// Handles the Enter key: sends the current input and records history.
     fn submit_input(&mut self) {
+        self.focused = false;
         if self.input_buf.is_empty() {
             return;
         }
@@ -219,7 +220,6 @@ impl ChatBox {
         }
         self.chat_history_index = None;
         self.chat_history_draft = None;
-        self.focused = false;
 
         self.pending_actions.push(WidgetAction::SendChat(text));
     }
@@ -351,6 +351,11 @@ impl Widget for ChatBox {
             let t = ((self.idle_elapsed - IDLE_FADE_DELAY_SECS) / IDLE_FADE_DURATION_SECS).min(1.0);
             ((1.0 - t) * 255.0) as u8
         };
+        // Safety net: once fully faded out, always drop focus so the
+        // invisible widget cannot silently capture keyboard input.
+        if self.alpha == 0 {
+            self.focused = false;
+        }
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
@@ -678,7 +683,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_on_empty_input_does_nothing() {
+    fn enter_on_empty_input_drops_focus_without_action() {
         let mut cb = test_chat_box();
         cb.focused = true;
         let event = UiEvent::KeyDown {
@@ -687,6 +692,9 @@ mod tests {
         };
         cb.handle_event(&event);
         assert!(cb.take_actions().is_empty());
+        // Focus must be dropped so the transparent box cannot silently eat
+        // subsequent keystrokes.
+        assert!(!cb.focused);
     }
 
     #[test]

@@ -683,11 +683,7 @@ impl GameState {
         }
 
         // Return 1 for very close items, otherwise return distance
-        if d < 1 {
-            1
-        } else {
-            d
-        }
+        if d < 1 { 1 } else { d }
     }
 
     /// Returns the visibility value for `(tx,ty)` from the current origin.
@@ -754,11 +750,7 @@ impl GameState {
             best = visi[((x - 1) + (y - 1) * stride) as usize];
         }
 
-        if best == 99 {
-            0
-        } else {
-            best as i32
-        }
+        if best == 99 { 0 } else { best as i32 }
     }
 
     /// Port of `add_vis(x,y,value)` from original helper code.

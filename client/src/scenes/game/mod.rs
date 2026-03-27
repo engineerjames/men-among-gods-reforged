@@ -6,7 +6,6 @@
 //! | Module | Responsibility |
 //! |---|---|
 //! | [`profile`] | Load/save per-character preference profiles |
-//! | [`game_math`] | Pure geometry, stat-cost formulas, coordinate transforms |
 //! | [`world_render`] | Isometric tile/sprite/shadow/effect drawing |
 //! | [`net_events`] | Per-frame network tick processing and auto-look |
 //! | [`perf_profiler`] | Wall-clock profiler for rendering functions (activated from escape menu) |
@@ -32,25 +31,23 @@ use crate::{
     cert_trust,
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
-    network::{client_commands::ClientCommand, NetworkRuntime},
+    network::{NetworkRuntime, client_commands::ClientCommand},
     player_state::PlayerState,
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
     ui::{
-        self,
+        self, RenderContext,
         button_arc::HudButtonBar,
         cert_dialog::{CertDialog, CertDialogAction},
         chat_box::ChatBox,
         inventory_panel::InventoryPanel,
-        keybindings_panel::{
-            KeybindingsPanel, KeybindingsPanelData, KEYBINDINGS_PANEL_H, KEYBINDINGS_PANEL_W,
-        },
         look_panel::LookPanel,
         minimap_widget::MinimapWidget,
         mode_button::ModeButton,
         rank_progress_line::RankProgressLine,
-        settings_panel::{SettingsPanel, SettingsPanelData, SETTINGS_PANEL_H},
+        rank_sigil::RankSigil,
+        settings_panel::{SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
         shop_panel::ShopPanel,
         skill_bar::SkillBar,
         skill_picker_popup::SkillPickerPopup,
@@ -58,11 +55,11 @@ use crate::{
         status_panel::StatusPanel,
         style::Padding,
         tls_warning_banner::TlsWarningBanner,
+        vitality_bars::VitalityBars,
         widget::{
             Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
             WidgetAction,
         },
-        RenderContext,
     },
 };
 
@@ -186,6 +183,25 @@ const SHOP_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - SHOP_PAN
 // Minimap
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
 
+// ---- Rank sigil (upper-left) ---- //
+
+/// X position of the rank sigil widget.
+const RANK_SIGIL_X: i32 = 4;
+/// Y position of the rank sigil widget.
+const RANK_SIGIL_Y: i32 = 4;
+
+// ---- Status panel (WV/AV, right of skill bar) ---- //
+
+/// X position of the status panel (8 px to the right of the skill bar's right edge).
+const STATUS_PANEL_X: i32 = TARGET_WIDTH_INT as i32 - 280;
+/// Y position of the status panel (same row as the rank progress line).
+const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 37;
+
+/// X position of the vitality chevrons (horizontal centre of the player sprite).
+const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
+/// Y position of the vitality chevron feet.
+const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 60;
+
 // ---------------------------------------------------------------------------
 // GameScene struct
 // ---------------------------------------------------------------------------
@@ -197,17 +213,18 @@ pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
     pub(super) status_panel: StatusPanel,
+    pub(super) rank_sigil: RankSigil,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
     pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
-    pub(super) keybindings_panel: KeybindingsPanel,
     pub(super) minimap_widget: MinimapWidget,
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
+    pub(super) vitality_bars: VitalityBars,
     pub(super) skill_bar: SkillBar,
     pub(super) skill_picker: SkillPickerPopup,
     pub(super) last_synced_log_len: usize,
@@ -236,18 +253,12 @@ pub struct GameScene {
     pub(super) minimap_last_xy: Option<(u16, u16)>,
     pub(super) look_step: u32,
     pub(super) last_look_tick: u32,
-    /// Whether spell visual effects (EMAGIC/GMAGIC/CMAGIC glows) are rendered.
-    pub(super) are_spell_effects_enabled: bool,
-    /// Master volume multiplier (0.0 = muted, 1.0 = full).
-    pub(super) master_volume: f32,
     /// When set, the player has right-clicked a skill and is choosing a spell-bar slot.
     /// Value is the skilltab index of the skill being assigned.
     pub(super) pending_skill_assignment: Option<usize>,
     pub(super) active_profile_character: Option<CharacterIdentity>,
     /// Wall-clock profiler for rendering functions (activated from escape menu).
     perf_profiler: PerfProfiler,
-    /// Local copy of keyboard bindings for input matching.
-    pub(super) key_bindings: KeyBindings,
 }
 
 impl GameScene {
@@ -264,7 +275,8 @@ impl GameScene {
         let panel_y = panel_bottom - HUD_PANEL_H as i32;
 
         Self {
-            status_panel: StatusPanel::new(4, 4, HUD_PANEL_BG),
+            status_panel: StatusPanel::new(STATUS_PANEL_X, STATUS_PANEL_Y, HUD_PANEL_BG),
+            rank_sigil: RankSigil::new(RANK_SIGIL_X, RANK_SIGIL_Y, HUD_PANEL_BG),
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
                 Color::RGBA(10, 10, 30, 180),
@@ -305,17 +317,9 @@ impl GameScene {
                 ),
                 HUD_PANEL_BG,
             ),
-            keybindings_panel: KeybindingsPanel::new(
-                Bounds::new(
-                    HUD_ARC_CENTER_X - KEYBINDINGS_PANEL_W as i32 / 2,
-                    panel_bottom - KEYBINDINGS_PANEL_H as i32,
-                    KEYBINDINGS_PANEL_W,
-                    KEYBINDINGS_PANEL_H,
-                ),
-                HUD_PANEL_BG,
-            ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
+            vitality_bars: VitalityBars::new(VITALITY_BARS_X, VITALITY_BARS_Y),
             look_panel: LookPanel::new(
                 Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
                 HUD_PANEL_BG,
@@ -349,12 +353,9 @@ impl GameScene {
             minimap_last_xy: None,
             look_step: 0,
             last_look_tick: 0,
-            are_spell_effects_enabled: true,
-            master_volume: 1.0,
             pending_skill_assignment: None,
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
-            key_bindings: KeyBindings::default(),
         }
     }
 
@@ -386,7 +387,9 @@ impl GameScene {
     }
 
     pub(super) fn play_click_sound(&self, app_state: &AppState) {
-        app_state.sfx_cache.play_click(self.master_volume);
+        app_state
+            .sfx_cache
+            .play_click(app_state.settings.master_volume);
     }
 
     /// Build a [`SettingsPanelData`] snapshot from current game state.
@@ -399,33 +402,20 @@ impl GameScene {
     ///
     /// A snapshot suitable for [`SettingsPanel::sync_state`].
     fn build_settings_panel_data(&self, app_state: &AppState) -> SettingsPanelData {
-        let (shadows, show_names, show_health_pct, hide_walls, show_helper_text) =
-            if let Some(ps) = app_state.player_state.as_ref() {
-                let pd = ps.player_data();
-                (
-                    pd.are_shadows_enabled != 0,
-                    pd.show_names != 0,
-                    pd.show_proz != 0,
-                    pd.hide != 0,
-                    pd.show_helper_text != 0,
-                )
-            } else {
-                (false, false, false, false, true)
-            };
-
         let last_rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
 
         SettingsPanelData {
-            shadows_enabled: shadows,
-            spell_effects_enabled: self.are_spell_effects_enabled,
-            show_names,
-            show_health_pct,
-            hide_walls,
-            show_helper_text,
-            master_volume: self.master_volume,
-            display_mode: app_state.display_mode,
-            pixel_perfect_scaling: app_state.pixel_perfect_scaling,
-            vsync_enabled: app_state.vsync_enabled,
+            shadows_enabled: app_state.settings.shadows_enabled,
+            spell_effects_enabled: app_state.settings.spell_effects_enabled,
+            show_names: app_state.settings.show_names,
+            show_health_pct: app_state.settings.show_proz,
+            hide_walls: app_state.settings.hide,
+            show_helper_text: app_state.settings.show_helper_text,
+            show_positions: app_state.settings.show_positions,
+            master_volume: app_state.settings.master_volume,
+            display_mode: app_state.settings.display_mode,
+            pixel_perfect_scaling: app_state.settings.pixel_perfect_scaling,
+            vsync_enabled: app_state.settings.vsync_enabled,
             last_rtt_ms: last_rtt,
             profiler_active: self.perf_profiler.is_active(),
             profiler_remaining_secs: if self.perf_profiler.is_active() {
@@ -433,6 +423,7 @@ impl GameScene {
             } else {
                 None
             },
+            key_bindings: app_state.settings.character.key_bindings.clone(),
         }
     }
 
@@ -456,42 +447,35 @@ impl GameScene {
         for action in self.settings_panel.take_actions() {
             match action {
                 WidgetAction::SetShadows(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().are_shadows_enabled = i32::from(v);
-                        profile_changed = true;
-                    }
+                    app_state.settings.shadows_enabled = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetSpellEffects(v) => {
-                    self.are_spell_effects_enabled = v;
+                    app_state.settings.spell_effects_enabled = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetShowNames(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_names = i32::from(v);
-                        profile_changed = true;
-                    }
+                    app_state.settings.show_names = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetShowHealthPct(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_proz = i32::from(v);
-                        profile_changed = true;
-                    }
+                    app_state.settings.show_proz = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetHideWalls(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().hide = i32::from(v);
-                        profile_changed = true;
-                    }
+                    app_state.settings.hide = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetShowHelperText(v) => {
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.player_data_mut().show_helper_text = i32::from(v);
-                        profile_changed = true;
-                    }
+                    app_state.settings.show_helper_text = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetShowPositions(v) => {
+                    app_state.settings.show_positions = v;
+                    profile_changed = true;
                 }
                 WidgetAction::SetMasterVolume(v) => {
-                    self.master_volume = v;
-                    app_state.master_volume = v;
+                    app_state.settings.master_volume = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetDisplayMode(m) => {
@@ -519,13 +503,13 @@ impl GameScene {
                 WidgetAction::StartProfiler => {
                     self.perf_profiler.start();
                 }
-                WidgetAction::TogglePanel(HudPanel::KeyBindings) => {
-                    self.keybindings_panel.toggle();
-                    if self.keybindings_panel.is_visible() {
-                        self.keybindings_panel.sync_state(&KeybindingsPanelData {
-                            bindings: self.key_bindings.clone(),
-                        });
-                    }
+                WidgetAction::UpdateKeyBinding { action, binding } => {
+                    app_state
+                        .settings
+                        .character
+                        .key_bindings
+                        .set_binding(action, binding);
+                    profile_changed = true;
                 }
                 WidgetAction::TogglePanel(_) => {
                     profile_changed = true;
@@ -540,28 +524,6 @@ impl GameScene {
 
         scene_change
     }
-
-    /// Drain pending `WidgetAction`s from the keybindings panel and apply
-    /// binding updates.
-    ///
-    /// # Arguments
-    ///
-    /// * `app_state` - Shared application state.
-    fn process_keybindings_panel_actions(&mut self, app_state: &AppState) {
-        for action in self.keybindings_panel.take_actions() {
-            match action {
-                WidgetAction::UpdateKeyBinding { action, binding } => {
-                    self.key_bindings.set_binding(action, binding);
-                    self.save_active_profile(app_state);
-                }
-                WidgetAction::TogglePanel(HudPanel::KeyBindings) => {
-                    // Close button pressed — panel already toggled itself.
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.
     ///
     /// Messages are fetched in insertion order (oldest-first) starting from
@@ -650,6 +612,12 @@ impl GameScene {
         if self.chat_box.is_focused() && self.chat_box.bounds().contains_point(mx, my) {
             return true;
         }
+        if self.rank_sigil.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.vitality_bars.contains_point(mx, my) {
+            return true;
+        }
         if self.status_panel.bounds().contains_point(mx, my) {
             return true;
         }
@@ -696,9 +664,65 @@ impl GameScene {
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
+        show_helper_text: bool,
+        show_positions: bool,
     ) -> Result<(), String> {
-        if ps.player_data().show_helper_text == 0 {
+        if !show_helper_text {
             return Ok(());
+        }
+        if show_positions {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            let text = format!("({},{})", self.mouse_x, self.mouse_y);
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
+        // Show the rank name as a tooltip when hovering the rank sigil.
+        if self.rank_sigil.is_hovered() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                self.rank_sigil.rank_name(),
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
+        if let Some(text) = self.rank_progress_line.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
+        if let Some(text) = self.vitality_bars.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
         }
         if self.is_mouse_over_ui() {
             return Ok(());
@@ -903,10 +927,9 @@ impl Scene for GameScene {
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
 
-        self.are_spell_effects_enabled = true;
-        self.master_volume = 1.0;
-        self.key_bindings = KeyBindings::default();
-        app_state.master_volume = self.master_volume;
+        app_state.settings.spell_effects_enabled = true;
+        app_state.settings.character.key_bindings = KeyBindings::default();
+        app_state.settings.master_volume = 1.0;
 
         let login_target = match app_state.api.login_target.clone() {
             Some(t) => t,
@@ -990,10 +1013,6 @@ impl Scene for GameScene {
 
             if self.settings_panel.is_visible() {
                 self.settings_panel.toggle();
-            }
-
-            if self.keybindings_panel.is_visible() {
-                self.keybindings_panel.toggle();
             }
 
             if self.inventory_panel.is_visible() {
@@ -1110,7 +1129,16 @@ impl Scene for GameScene {
                 return None;
             }
 
-            // --- StatusPanel toggle (upper-left sigil) ---
+            // --- Rank sigil (upper-left) ---
+            if self.rank_sigil.handle_event(&ui_event) == EventResponse::Consumed {
+                return None;
+            }
+
+            self.rank_progress_line.handle_event(&ui_event);
+
+            self.vitality_bars.handle_event(&ui_event);
+
+            // --- StatusPanel (WV/AV display, right of skill bar) ---
             if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
                 return None;
             }
@@ -1133,12 +1161,6 @@ impl Scene for GameScene {
                 if let Some(sc) = self.process_settings_panel_actions(app_state) {
                     return Some(sc);
                 }
-                return None;
-            }
-
-            // --- Dispatch to keybindings editor panel ---
-            if self.keybindings_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_keybindings_panel_actions(app_state);
                 return None;
             }
 
@@ -1185,14 +1207,7 @@ impl Scene for GameScene {
                                 }
                             }
                             HudPanel::Minimap => self.minimap_widget.toggle(),
-                            HudPanel::KeyBindings => {
-                                self.keybindings_panel.toggle();
-                                if self.keybindings_panel.is_visible() {
-                                    self.keybindings_panel.sync_state(&KeybindingsPanelData {
-                                        bindings: self.key_bindings.clone(),
-                                    });
-                                }
-                            }
+                            HudPanel::KeyBindings => {}
                         }
                     }
                 }
@@ -1210,7 +1225,12 @@ impl Scene for GameScene {
             let mods = KeyModifiers::from_sdl2(*keymod);
             let has_modifier = mods.ctrl || mods.alt;
             if has_modifier || !self.chat_box.is_focused() {
-                if let Some(action) = self.key_bindings.action_for_key(*kc, mods) {
+                if let Some(action) = app_state
+                    .settings
+                    .character
+                    .key_bindings
+                    .action_for_key(*kc, mods)
+                {
                     match action {
                         GameAction::ToggleSkills => self.skills_panel.toggle(),
                         GameAction::ToggleInventory => self.inventory_panel.toggle(),
@@ -1233,12 +1253,14 @@ impl Scene for GameScene {
                 | Keycode::Num7
                 | Keycode::Num8
                 | Keycode::Num9 => {
-                    if self.ctrl_held {
+                    if !self.chat_box.is_focused() {
                         let key_slot = (i32::from(*kc) - i32::from(Keycode::Num1)) as usize;
                         if let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
-                            if let Some(skill_nr) = ps.player_data().skill_keybinds[key_slot] {
+                            if let Some(skill_nr) =
+                                app_state.settings.character.skill_keybinds[key_slot]
+                            {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     skill_nr as u32,
@@ -1456,6 +1478,7 @@ impl Scene for GameScene {
         let AppState {
             ref mut gfx_cache,
             ref player_state,
+            ref settings,
             ..
         } = *app_state;
 
@@ -1465,10 +1488,19 @@ impl Scene for GameScene {
         };
 
         // 1. World tiles (two-pass painter order)
-        let shadows_on = ps.player_data().are_shadows_enabled != 0;
-        let effects_on = self.are_spell_effects_enabled;
+        let shadows_on = settings.shadows_enabled;
+        let effects_on = settings.spell_effects_enabled;
         self.perf_profiler.begin_sample(PerfLabel::DrawWorld);
-        self.draw_world(canvas, gfx_cache, ps, shadows_on, effects_on)?;
+        self.draw_world(
+            canvas,
+            gfx_cache,
+            ps,
+            shadows_on,
+            effects_on,
+            settings.show_names,
+            settings.show_proz,
+            settings.hide,
+        )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
         // 5. Chat log + input line (via ChatBox widget)
@@ -1482,17 +1514,25 @@ impl Scene for GameScene {
         }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
-        // 5a. Status panel (upper-left sigil + stat bars)
+        // 5a. Rank sigil + status panel (WV/AV)
         self.perf_profiler
             .begin_sample(PerfLabel::SyncAndDrawStatus);
         {
             if let Some(ps) = app_state.player_state.as_ref() {
                 let ci = ps.character_info();
                 let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
-                self.status_panel.sync(ps, rank_index);
-                self.rank_progress_line
-                    .set_progress(mag_core::ranks::rank_progress(ci.points_tot as u32));
+                self.rank_sigil.sync(rank_index);
+                self.status_panel.sync(ci.weapon, ci.armor);
+                self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);
+                self.vitality_bars.sync(
+                    ci.a_hp,
+                    ci.hp[5] as i32,
+                    ci.a_end,
+                    ci.end[5] as i32,
+                    ci.a_mana,
+                    ci.mana[5] as i32,
+                );
                 use crate::ui::skills_panel::{SkillsPanel as SP, SkillsPanelData};
                 let sorted = SP::build_sorted_skills(&ci.skill);
                 self.skills_panel.update_data(SkillsPanelData {
@@ -1518,11 +1558,12 @@ impl Scene for GameScene {
 
                 // Skill bar: 13 keybinds plus all 20 active spell/activity slots.
                 {
-                    use crate::types::player_data::NUMBER_OF_KEYBINDS;
+                    use crate::preferences::NUMBER_OF_KEYBINDS;
                     use crate::ui::skill_bar::SkillBarData;
                     let mut keybinds = [None; NUMBER_OF_KEYBINDS];
-                    keybinds
-                        .copy_from_slice(&ps.player_data().skill_keybinds[..NUMBER_OF_KEYBINDS]);
+                    keybinds.copy_from_slice(
+                        &app_state.settings.character.skill_keybinds[..NUMBER_OF_KEYBINDS],
+                    );
                     self.skill_bar.update_data(SkillBarData {
                         keybinds,
                         spell: ci.spell,
@@ -1540,7 +1581,9 @@ impl Scene for GameScene {
                 canvas,
                 gfx: gfx_cache,
             };
+            self.rank_sigil.render(&mut ctx)?;
             self.status_panel.render(&mut ctx)?;
+            self.vitality_bars.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::SyncAndDrawStatus);
 
@@ -1554,11 +1597,11 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
-            self.keybindings_panel.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
+            self.status_panel.render(&mut ctx)?;
             self.rank_progress_line.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }
@@ -1616,7 +1659,13 @@ impl Scene for GameScene {
         // 5f. Context-sensitive helper text near the cursor
         self.perf_profiler.begin_sample(PerfLabel::DrawHelperText);
         if let Some(ps) = app_state.player_state.as_ref() {
-            self.draw_helper_text(canvas, gfx_cache, ps)?;
+            self.draw_helper_text(
+                canvas,
+                gfx_cache,
+                ps,
+                app_state.settings.show_helper_text,
+                app_state.settings.show_positions,
+            )?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHelperText);
 

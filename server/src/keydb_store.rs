@@ -16,7 +16,7 @@
 /// - `game:motd`             — 1 key (UTF-8 string)
 /// - `game:meta:version`     — schema version integer
 use bincode::{Decode, Encode};
-use redis::{pipe, Commands, Connection};
+use redis::{Commands, Connection, pipe};
 
 /// Current schema version written to the `game:meta:version` key.
 ///

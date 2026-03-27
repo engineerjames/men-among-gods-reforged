@@ -6,8 +6,8 @@ use std::time::Duration;
 use sdl2::keyboard::Keycode;
 use serde::{Deserialize, Serialize};
 
-use super::style::Padding;
 use super::RenderContext;
+use super::style::Padding;
 use crate::preferences::DisplayMode;
 
 // ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ pub enum WidgetAction {
         /// The skilltab index of the skill to assign.
         skill_id: usize,
     },
-    /// Bind a skill to a CTRL+key slot (1-9).
+    /// Bind a skill to a numeric key slot (1–9).
     BindSkillKey {
         /// The protocol skill number to bind.
         skill_nr: usize,
@@ -321,6 +321,8 @@ pub enum WidgetAction {
     SetVSync(bool),
     /// Toggle context-sensitive helper text near the cursor.
     SetShowHelperText(bool),
+    /// Toggle rendering the cursor's logical screen coordinates as helper text.
+    SetShowPositions(bool),
     /// Update a keyboard binding for a game action.
     UpdateKeyBinding {
         /// The action whose binding changed.

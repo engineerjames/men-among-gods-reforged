@@ -29,6 +29,7 @@ pub mod quit_confirm_dialog;
 pub mod radio_group;
 pub mod rank_progress_arc;
 pub mod rank_progress_line;
+pub mod rank_sigil;
 pub mod request_reset_form;
 pub mod scrollable_list;
 pub mod settings_panel;
@@ -42,6 +43,7 @@ pub mod style;
 pub mod text_input;
 pub mod title_bar;
 pub mod tls_warning_banner;
+pub mod vitality_bars;
 pub mod widget;
 
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};

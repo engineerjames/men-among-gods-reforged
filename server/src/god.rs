@@ -1,7 +1,7 @@
 use core::{
     constants::{
-        character_flags_name, ArmorType, CharacterFlags, MagicArmorType, DX_DOWN, DX_LEFT,
-        DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP,
+        ArmorType, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
+        DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, MagicArmorType, character_flags_name,
     },
     ranks,
     string_operations::c_string_to_str,

@@ -11,11 +11,11 @@ use std::time::Duration;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use super::RenderContext;
 use super::button::RectButton;
 use super::scrollable_list::{ListItem, ScrollableList};
 use super::style::{Background, Border};
 use super::widget::{Bounds, EventResponse, UiEvent, Widget};
-use super::RenderContext;
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
 

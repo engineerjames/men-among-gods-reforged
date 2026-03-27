@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use bincode::{Decode, Encode};
-use redis::{pipe, Commands, Connection};
+use redis::{Commands, Connection, pipe};
 
 const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
 const NORMALIZED_VERSION: u32 = 1;

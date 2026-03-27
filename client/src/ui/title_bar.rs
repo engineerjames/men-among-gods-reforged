@@ -7,8 +7,8 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, MouseButton, UiEvent};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, MouseButton, UiEvent};
 use crate::font_cache;
 
 /// Height of the title bar in pixels.

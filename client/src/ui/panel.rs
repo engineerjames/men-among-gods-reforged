@@ -3,9 +3,9 @@
 
 use sdl2::render::BlendMode;
 
+use super::RenderContext;
 use super::style::{Background, Border, Padding};
 use super::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
-use super::RenderContext;
 
 /// A rectangular container that can hold child widgets.
 ///

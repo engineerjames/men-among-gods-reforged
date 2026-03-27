@@ -144,11 +144,7 @@ impl GameMap {
         } else {
             let base = self.last_setmap_index.map(|v| v as i32).unwrap_or(-1);
             let next = base + off as i32;
-            if next < 0 {
-                None
-            } else {
-                Some(next as u16)
-            }
+            if next < 0 { None } else { Some(next as u16) }
         };
 
         let Some(tile_index) = next_index else {

@@ -658,11 +658,7 @@ fn item_map_sprite(item: Item) -> Option<i16> {
         item.sprite[0]
     };
 
-    if sprite > 0 {
-        Some(sprite)
-    } else {
-        None
-    }
+    if sprite > 0 { Some(sprite) } else { None }
 }
 
 fn load_map_dat(path: &PathBuf) -> Result<Vec<Map>, String> {

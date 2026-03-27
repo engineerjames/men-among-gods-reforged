@@ -3,8 +3,8 @@ use std::time::Duration;
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
 use mag_core::traits::{Class, Sex};
-use reqwest::blocking::Client;
 use reqwest::StatusCode;
+use reqwest::blocking::Client;
 
 use crate::cert_trust;
 

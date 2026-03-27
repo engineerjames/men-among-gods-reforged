@@ -1,4 +1,4 @@
-use core::traits::{self, Class, Sex};
+use mag_core::traits::{self, Class, Sex};
 
 use crate::types;
 use log::info;

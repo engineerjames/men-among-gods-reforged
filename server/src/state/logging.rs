@@ -1,4 +1,4 @@
-use core::constants::{CharacterFlags, CT_LGUARD, MAXCHARS, MAXPLAYER};
+use core::constants::{CT_LGUARD, CharacterFlags, MAXCHARS, MAXPLAYER};
 use std::cmp;
 use std::sync::OnceLock;
 

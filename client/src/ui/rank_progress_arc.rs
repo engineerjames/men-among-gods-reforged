@@ -8,8 +8,8 @@ use std::f64::consts::PI;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 use super::RenderContext;
+use super::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 /// Default color for the unfilled (background) portion of the arc.
 const UNFILLED_COLOR: Color = Color::RGBA(60, 60, 80, 120);

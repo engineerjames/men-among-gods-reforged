@@ -1,14 +1,14 @@
 use core::{
     constants::{
-        CharacterFlags, ItemFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM,
-        ISUSABLE, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED,
+        CharacterFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE,
+        ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED,
         MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED, STUNNED, TICKS,
         UWATER,
     },
     encrypt::xcrypt,
     skills,
     string_operations::{c_string_to_str, write_ascii_into_fixed},
-    traits::{self, get_race_integer, Sex},
+    traits::{self, Sex, get_race_integer},
 };
 
 use crate::{

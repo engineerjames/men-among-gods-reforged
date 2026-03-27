@@ -14,9 +14,9 @@ use mag_core::constants::{
     WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
 
-use super::title_bar::{clamp_to_viewport, TitleBar, TITLE_BAR_H};
-use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use super::RenderContext;
+use super::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
+use super::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------
@@ -291,11 +291,7 @@ impl InventoryPanel {
                 return if data.citem > 0 { Some("DROP") } else { None };
             }
             return Some(if shift {
-                if data.citem > 0 {
-                    "SWAP"
-                } else {
-                    "PICK UP"
-                }
+                if data.citem > 0 { "SWAP" } else { "PICK UP" }
             } else {
                 "USE"
             });

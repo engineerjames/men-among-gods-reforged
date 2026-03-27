@@ -9,11 +9,11 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use super::RenderContext;
 use super::button::RectButton;
 use super::style::{Background, Border};
-use super::title_bar::{TitleBar, TITLE_BAR_H};
+use super::title_bar::{TITLE_BAR_H, TitleBar};
 use super::widget::{Bounds, EventResponse, UiEvent, Widget};
-use super::RenderContext;
 use crate::font_cache;
 
 // ---------------------------------------------------------------------------
@@ -125,6 +125,17 @@ impl QuitConfirmDialog {
         self.visible = true;
     }
 
+    /// Centers the dialog on the given parent bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `parent_bounds` - Bounds of the parent panel to center over.
+    pub fn center_on(&mut self, parent_bounds: &Bounds) {
+        let x = parent_bounds.x + (parent_bounds.width as i32 - self.bounds.width as i32) / 2;
+        let y = parent_bounds.y + (parent_bounds.height as i32 - self.bounds.height as i32) / 2;
+        self.set_position(x, y);
+    }
+
     /// Hides the dialog and clears any pending actions.
     pub fn hide(&mut self) {
         self.visible = false;
@@ -151,8 +162,20 @@ impl Widget for QuitConfirmDialog {
         &self.bounds
     }
 
-    fn set_position(&mut self, _x: i32, _y: i32) {
-        // Fixed center position — repositioning not supported.
+    fn set_position(&mut self, x: i32, y: i32) {
+        let dx = x - self.bounds.x;
+        let dy = y - self.bounds.y;
+        self.bounds.x = x;
+        self.bounds.y = y;
+        self.title_bar.set_bar_position(x, y);
+
+        let confirm_bounds = self.confirm_button.bounds();
+        self.confirm_button
+            .set_position(confirm_bounds.x + dx, confirm_bounds.y + dy);
+
+        let cancel_bounds = self.cancel_button.bounds();
+        self.cancel_button
+            .set_position(cancel_bounds.x + dx, cancel_bounds.y + dy);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {

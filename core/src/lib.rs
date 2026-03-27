@@ -5,7 +5,7 @@ use log4rs::{
         file::FileAppender,
     },
     config::{Appender, Config, Root},
-    encode::{pattern::PatternEncoder, Encode},
+    encode::{Encode, pattern::PatternEncoder},
     filter::threshold::ThresholdFilter,
 };
 use std::{backtrace, env};

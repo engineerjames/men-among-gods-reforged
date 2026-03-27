@@ -170,8 +170,8 @@ pub fn rank_progress(points: u32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        points2rank, rank_name, rank_name_by_index, rank_name_shortened, rank_progress, ranks,
-        RANK_NAMES, RANK_THRESHOLDS, TOTAL_RANKS,
+        RANK_NAMES, RANK_THRESHOLDS, TOTAL_RANKS, points2rank, rank_name, rank_name_by_index,
+        rank_name_shortened, rank_progress, ranks,
     };
 
     #[test]

@@ -108,7 +108,10 @@ mod tests {
     #[test]
     fn from_env_returns_none_without_smtp_host() {
         // Ensure SMTP_HOST is not set.
-        std::env::remove_var("SMTP_HOST");
+        // SAFETY: single-threaded test binary; no concurrent environment access.
+        unsafe {
+            std::env::remove_var("SMTP_HOST");
+        }
         assert!(EmailSender::from_env().is_none());
     }
 }

@@ -209,11 +209,17 @@ mod tests {
     #[test]
     fn mag_keydb_url_takes_precedence() {
         let _guard = env_test_guard();
-        std::env::set_var("MAG_KEYDB_URL", "redis://custom-host:1234/");
-        std::env::set_var("KEYDB_PASSWORD", "should-be-ignored");
+        // SAFETY: env_test_guard() serialises all environment mutations across tests.
+        unsafe {
+            std::env::set_var("MAG_KEYDB_URL", "redis://custom-host:1234/");
+            std::env::set_var("KEYDB_PASSWORD", "should-be-ignored");
+        }
         let url = keydb_url();
-        std::env::remove_var("MAG_KEYDB_URL");
-        std::env::remove_var("KEYDB_PASSWORD");
+        // SAFETY: env_test_guard() serialises all environment mutations across tests.
+        unsafe {
+            std::env::remove_var("MAG_KEYDB_URL");
+            std::env::remove_var("KEYDB_PASSWORD");
+        }
         assert_eq!(url, "redis://custom-host:1234/");
     }
 
@@ -222,10 +228,16 @@ mod tests {
     #[test]
     fn keydb_password_constructs_authenticated_url() {
         let _guard = env_test_guard();
-        std::env::remove_var("MAG_KEYDB_URL");
-        std::env::set_var("KEYDB_PASSWORD", "s3cr3t");
+        // SAFETY: env_test_guard() serialises all environment mutations across tests.
+        unsafe {
+            std::env::remove_var("MAG_KEYDB_URL");
+            std::env::set_var("KEYDB_PASSWORD", "s3cr3t");
+        }
         let url = keydb_url();
-        std::env::remove_var("KEYDB_PASSWORD");
+        // SAFETY: env_test_guard() serialises all environment mutations across tests.
+        unsafe {
+            std::env::remove_var("KEYDB_PASSWORD");
+        }
         assert_eq!(url, "redis://:s3cr3t@127.0.0.1:5556/");
     }
 
@@ -234,10 +246,16 @@ mod tests {
     #[test]
     fn keydb_password_special_chars_are_percent_encoded() {
         let _guard = env_test_guard();
-        std::env::remove_var("MAG_KEYDB_URL");
-        std::env::set_var("KEYDB_PASSWORD", "p@ss:w/rd!");
+        // SAFETY: env_test_guard() serialises all environment mutations across tests.
+        unsafe {
+            std::env::remove_var("MAG_KEYDB_URL");
+            std::env::set_var("KEYDB_PASSWORD", "p@ss:w/rd!");
+        }
         let url = keydb_url();
-        std::env::remove_var("KEYDB_PASSWORD");
+        // SAFETY: env_test_guard() serialises all environment mutations across tests.
+        unsafe {
+            std::env::remove_var("KEYDB_PASSWORD");
+        }
         assert_eq!(url, "redis://:p%40ss%3Aw%2Frd%21@127.0.0.1:5556/");
     }
 
@@ -246,8 +264,11 @@ mod tests {
     #[test]
     fn unauthenticated_fallback_when_no_env_vars() {
         let _guard = env_test_guard();
-        std::env::remove_var("MAG_KEYDB_URL");
-        std::env::remove_var("KEYDB_PASSWORD");
+        // SAFETY: env_test_guard() serialises all environment mutations across tests.
+        unsafe {
+            std::env::remove_var("MAG_KEYDB_URL");
+            std::env::remove_var("KEYDB_PASSWORD");
+        }
         let url = keydb_url();
         assert_eq!(url, "redis://127.0.0.1:5556/");
     }

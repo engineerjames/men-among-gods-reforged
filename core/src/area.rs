@@ -1058,7 +1058,7 @@ pub fn get_area_m(x: i32, y: i32) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_area_m, Area};
+    use super::{Area, get_area_m};
 
     #[test]
     fn contains_includes_edges() {

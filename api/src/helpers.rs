@@ -187,17 +187,23 @@ mod tests {
 
     fn set_env_var(key: &str, value: Option<&str>) -> Option<String> {
         let previous = std::env::var(key).ok();
-        match value {
-            Some(value) => std::env::set_var(key, value),
-            None => std::env::remove_var(key),
+        // SAFETY: Caller holds ENV_LOCK, serialising all environment mutations.
+        unsafe {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
         }
         previous
     }
 
     fn restore_env_var(key: &str, previous: Option<String>) {
-        match previous {
-            Some(value) => std::env::set_var(key, value),
-            None => std::env::remove_var(key),
+        // SAFETY: Caller holds ENV_LOCK, serialising all environment mutations.
+        unsafe {
+            match previous {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
         }
     }
 

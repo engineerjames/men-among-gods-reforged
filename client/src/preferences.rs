@@ -6,7 +6,51 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{types::player_data::NUMBER_OF_KEYBINDS, ui::widget::KeyBindings};
+use crate::ui::widget::KeyBindings;
+
+/// Number of numeric-key skill binding slots (keys 1–9 plus 4 reserved).
+pub const NUMBER_OF_KEYBINDS: usize = 13;
+
+// ---------------------------------------------------------------------------
+// Per-character settings
+// ---------------------------------------------------------------------------
+
+/// Settings that are scoped to a specific character.
+///
+/// These are persisted inside each character's entry in the profile file and
+/// are never shared across characters or stored in the global section.
+/// Only data that is truly character-specific lives here: skill keybinds,
+/// keyboard action bindings, and remembered panel positions.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CharacterSettings {
+    /// Skill keybinds for keys 1–13. Index 0 = key "1". `Some(skill_nr)` if bound.
+    #[serde(default)]
+    pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
+    /// Saved position of the inventory panel, or `None` for default.
+    #[serde(default)]
+    pub inventory_panel_pos: Option<(i32, i32)>,
+    /// Saved position of the skills panel, or `None` for default.
+    #[serde(default)]
+    pub skills_panel_pos: Option<(i32, i32)>,
+    /// Saved position of the settings panel, or `None` for default.
+    #[serde(default)]
+    pub settings_panel_pos: Option<(i32, i32)>,
+    /// Keyboard bindings mapping game actions to key combinations.
+    #[serde(default)]
+    pub key_bindings: KeyBindings,
+}
+
+impl Default for CharacterSettings {
+    fn default() -> Self {
+        Self {
+            skill_keybinds: [None; NUMBER_OF_KEYBINDS],
+            inventory_panel_pos: None,
+            skills_panel_pos: None,
+            settings_panel_pos: None,
+            key_bindings: KeyBindings::default(),
+        }
+    }
+}
 
 /// Window display mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,10 +100,13 @@ pub struct CharacterIdentity {
 /// Unified settings for both global (all-character) and per-character
 /// preferences. Loaded from / saved to the JSON profile file.
 ///
-/// Global fields: `music_enabled`, `display_mode`, `pixel_perfect_scaling`,
-/// `vsync_enabled`.
+/// Global fields apply to all characters on the machine: audio, display,
+/// and gameplay toggles that a player typically wants consistent regardless
+/// of which character they log in as.
 ///
-/// Per-character fields: everything else.
+/// Per-character fields are nested in [`CharacterSettings`] and are keyed by
+/// character identity, ensuring each character has its own independent
+/// skill keybinds and UI layout.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Settings {
     /// Whether background music is enabled.
@@ -72,44 +119,35 @@ pub struct Settings {
     #[serde(default)]
     pub pixel_perfect_scaling: bool,
     /// Whether VSync is enabled.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub vsync_enabled: bool,
     /// Whether shadow rendering is enabled.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub shadows_enabled: bool,
     /// Whether spell visual effects are rendered.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub spell_effects_enabled: bool,
     /// Master volume (0.0–1.0).
     #[serde(default)]
     pub master_volume: f32,
     /// Wall-hiding toggle.
     #[serde(default)]
-    pub hide: i32,
+    pub hide: bool,
     /// Overhead player name display toggle.
-    #[serde(default)]
-    pub show_names: i32,
+    #[serde(default = "default_true")]
+    pub show_names: bool,
     /// Overhead health percentage display toggle.
-    #[serde(default)]
-    pub show_proz: i32,
+    #[serde(default = "default_true")]
+    pub show_proz: bool,
     /// Whether context-sensitive helper text is shown near the cursor.
     #[serde(default = "default_true")]
     pub show_helper_text: bool,
-    /// Custom CTRL+1-9 skill keybinds. Index 0 = key "1", index 8 = key "9".
+    /// Whether helper text is replaced with the cursor's logical screen position.
     #[serde(default)]
-    pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
-    /// Saved position of the inventory panel, or `None` for default.
+    pub show_positions: bool,
+    /// Per-character settings (skill keybinds and UI panel positions).
     #[serde(default)]
-    pub inventory_panel_pos: Option<(i32, i32)>,
-    /// Saved position of the skills panel, or `None` for default.
-    #[serde(default)]
-    pub skills_panel_pos: Option<(i32, i32)>,
-    /// Saved position of the settings panel, or `None` for default.
-    #[serde(default)]
-    pub settings_panel_pos: Option<(i32, i32)>,
-    /// Keyboard bindings mapping game actions to key combinations.
-    #[serde(default)]
-    pub key_bindings: KeyBindings,
+    pub character: CharacterSettings,
 }
 
 impl Default for Settings {
@@ -118,19 +156,16 @@ impl Default for Settings {
             music_enabled: true,
             display_mode: DisplayMode::default(),
             pixel_perfect_scaling: false,
-            vsync_enabled: false,
-            shadows_enabled: false,
-            spell_effects_enabled: false,
+            vsync_enabled: true,
+            shadows_enabled: true,
+            spell_effects_enabled: true,
             master_volume: 0.0,
-            hide: 0,
-            show_names: 0,
-            show_proz: 0,
+            hide: false,
+            show_names: true,
+            show_proz: true,
             show_helper_text: true,
-            skill_keybinds: [None; NUMBER_OF_KEYBINDS],
-            inventory_panel_pos: None,
-            skills_panel_pos: None,
-            settings_panel_pos: None,
-            key_bindings: KeyBindings::default(),
+            show_positions: false,
+            character: CharacterSettings::default(),
         }
     }
 }
@@ -142,7 +177,7 @@ struct CharacterEntry {
     character_name: String,
     account_username: Option<String>,
     #[serde(flatten)]
-    settings: Settings,
+    character: CharacterSettings,
 }
 
 /// Top-level JSON structure persisted to `mag_profile.json`.
@@ -298,14 +333,21 @@ pub fn load_settings(identity: &CharacterIdentity) -> Option<Settings> {
     let storage = read_storage(&path);
     let key = profile_key(identity);
     let entry = storage.characters.get(&key)?;
-    let mut settings = entry.settings.clone();
-    // Global fields always come from the global section.
-    settings.music_enabled = storage.global.music_enabled;
-    settings.display_mode = storage.global.display_mode;
-    settings.pixel_perfect_scaling = storage.global.pixel_perfect_scaling;
-    settings.vsync_enabled = storage.global.vsync_enabled;
-    settings.master_volume = settings.master_volume.clamp(0.0, 1.0);
-    Some(settings)
+    Some(Settings {
+        music_enabled: storage.global.music_enabled,
+        display_mode: storage.global.display_mode,
+        pixel_perfect_scaling: storage.global.pixel_perfect_scaling,
+        vsync_enabled: storage.global.vsync_enabled,
+        shadows_enabled: storage.global.shadows_enabled,
+        spell_effects_enabled: storage.global.spell_effects_enabled,
+        master_volume: storage.global.master_volume.clamp(0.0, 1.0),
+        hide: storage.global.hide,
+        show_names: storage.global.show_names,
+        show_proz: storage.global.show_proz,
+        show_helper_text: storage.global.show_helper_text,
+        show_positions: storage.global.show_positions,
+        character: entry.character.clone(),
+    })
 }
 
 /// Loads the global (non-character) settings from disk, returning
@@ -324,9 +366,8 @@ pub fn load_global_settings() -> Settings {
 
 /// Persists the global fields of `settings` to the profile file.
 ///
-/// Only `music_enabled`, `display_mode`, `pixel_perfect_scaling`, and
-/// `vsync_enabled` are written. All other fields and the `last_username`
-/// value are preserved as-is.
+/// Only global settings fields are written. Per-character fields and the
+/// `last_username` value are preserved as-is.
 ///
 /// # Arguments
 /// * `settings` - The settings whose global fields to save.
@@ -340,6 +381,14 @@ pub fn save_global_settings(settings: &Settings) -> Result<(), String> {
     storage.global.display_mode = settings.display_mode;
     storage.global.pixel_perfect_scaling = settings.pixel_perfect_scaling;
     storage.global.vsync_enabled = settings.vsync_enabled;
+    storage.global.shadows_enabled = settings.shadows_enabled;
+    storage.global.spell_effects_enabled = settings.spell_effects_enabled;
+    storage.global.master_volume = settings.master_volume.clamp(0.0, 1.0);
+    storage.global.hide = settings.hide;
+    storage.global.show_names = settings.show_names;
+    storage.global.show_proz = settings.show_proz;
+    storage.global.show_helper_text = settings.show_helper_text;
+    storage.global.show_positions = settings.show_positions;
     write_storage(&path, &storage)
 }
 
@@ -383,6 +432,14 @@ pub fn save_settings(identity: &CharacterIdentity, settings: &Settings) -> Resul
     storage.global.display_mode = settings.display_mode;
     storage.global.pixel_perfect_scaling = settings.pixel_perfect_scaling;
     storage.global.vsync_enabled = settings.vsync_enabled;
+    storage.global.shadows_enabled = settings.shadows_enabled;
+    storage.global.spell_effects_enabled = settings.spell_effects_enabled;
+    storage.global.master_volume = settings.master_volume.clamp(0.0, 1.0);
+    storage.global.hide = settings.hide;
+    storage.global.show_names = settings.show_names;
+    storage.global.show_proz = settings.show_proz;
+    storage.global.show_helper_text = settings.show_helper_text;
+    storage.global.show_positions = settings.show_positions;
     // Insert / update character entry.
     let key = profile_key(identity);
     storage.characters.insert(
@@ -391,10 +448,7 @@ pub fn save_settings(identity: &CharacterIdentity, settings: &Settings) -> Resul
             character_id: identity.id,
             character_name: identity.name.clone(),
             account_username: identity.account_username.clone(),
-            settings: Settings {
-                master_volume: settings.master_volume.clamp(0.0, 1.0),
-                ..settings.clone()
-            },
+            character: settings.character.clone(),
         },
     );
     write_storage(&path, &storage)
@@ -411,7 +465,9 @@ mod tests {
         s.display_mode = DisplayMode::BorderlessFullscreen;
         s.shadows_enabled = true;
         s.master_volume = 0.75;
-        s.skill_keybinds = [
+        s.show_helper_text = false;
+        s.show_positions = true;
+        s.character.skill_keybinds = [
             None,
             Some(42),
             None,
@@ -426,7 +482,6 @@ mod tests {
             None,
             None,
         ];
-        s.show_helper_text = false;
 
         let json = serde_json::to_string(&s).unwrap();
         let deserialized: Settings = serde_json::from_str(&json).unwrap();
@@ -435,8 +490,12 @@ mod tests {
         assert_eq!(deserialized.display_mode, s.display_mode);
         assert_eq!(deserialized.shadows_enabled, s.shadows_enabled);
         assert!((deserialized.master_volume - s.master_volume).abs() < f32::EPSILON);
-        assert_eq!(deserialized.skill_keybinds, s.skill_keybinds);
+        assert_eq!(
+            deserialized.character.skill_keybinds,
+            s.character.skill_keybinds
+        );
         assert_eq!(deserialized.show_helper_text, s.show_helper_text);
+        assert_eq!(deserialized.show_positions, s.show_positions);
     }
 
     #[test]
@@ -449,7 +508,19 @@ mod tests {
         assert_eq!(deserialized.shadows_enabled, defaults.shadows_enabled);
         assert!((deserialized.master_volume - defaults.master_volume).abs() < f32::EPSILON);
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
-        assert_eq!(deserialized.skill_keybinds, defaults.skill_keybinds);
+        assert_eq!(deserialized.show_positions, defaults.show_positions);
+        assert_eq!(
+            deserialized.character.skill_keybinds,
+            defaults.character.skill_keybinds
+        );
+    }
+
+    #[test]
+    fn settings_missing_show_positions_defaults_false() {
+        let deserialized: Settings = serde_json::from_str(r#"{"show_helper_text":true}"#).unwrap();
+
+        assert!(deserialized.show_helper_text);
+        assert!(!deserialized.show_positions);
     }
 
     #[test]
@@ -493,5 +564,77 @@ mod tests {
         assert!(!deserialized.global.music_enabled);
         assert!(deserialized.global.vsync_enabled);
         assert!(deserialized.characters.is_empty());
+    }
+
+    #[test]
+    fn character_settings_skill_keybinds_default_all_none() {
+        let cs = CharacterSettings::default();
+        assert!(cs.skill_keybinds.iter().all(|s| s.is_none()));
+    }
+
+    #[test]
+    fn character_settings_independent_across_characters() {
+        // Two characters with different skill_keybinds must not share data.
+        let mut cs1 = CharacterSettings::default();
+        let cs2 = CharacterSettings::default();
+        cs1.skill_keybinds[0] = Some(5);
+        assert_ne!(cs1.skill_keybinds[0], cs2.skill_keybinds[0]);
+    }
+
+    #[test]
+    fn global_settings_shadows_and_volume_are_not_per_character() {
+        // Verify that shadows_enabled and master_volume live on Settings, not CharacterSettings.
+        let mut s = Settings::default();
+        s.shadows_enabled = true;
+        s.master_volume = 0.5;
+        // CharacterSettings must not have these fields — confirmed by the struct definition.
+        assert!(s.shadows_enabled);
+        assert!((s.master_volume - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn settings_hud_toggle_defaults() {
+        let s = Settings::default();
+        assert!(s.show_names);
+        assert!(s.show_proz);
+        assert!(!s.hide);
+        assert!(s.show_helper_text);
+        assert!(!s.show_positions);
+        assert!(s.spell_effects_enabled);
+    }
+
+    #[test]
+    fn settings_hud_toggles_serde_roundtrip() {
+        let mut s = Settings::default();
+        s.show_names = false;
+        s.show_proz = false;
+        s.hide = true;
+        s.show_positions = true;
+        s.spell_effects_enabled = false;
+
+        let json = serde_json::to_string(&s).unwrap();
+        let d: Settings = serde_json::from_str(&json).unwrap();
+
+        assert!(!d.show_names);
+        assert!(!d.show_proz);
+        assert!(d.hide);
+        assert!(d.show_positions);
+        assert!(!d.spell_effects_enabled);
+    }
+
+    #[test]
+    fn character_settings_key_bindings_serde_roundtrip() {
+        use crate::ui::widget::KeyBindings;
+        let mut cs = CharacterSettings::default();
+        let bindings = KeyBindings::default();
+        cs.key_bindings = bindings.clone();
+
+        let json = serde_json::to_string(&cs).unwrap();
+        let d: CharacterSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            serde_json::to_string(&d.key_bindings).unwrap(),
+            serde_json::to_string(&cs.key_bindings).unwrap()
+        );
     }
 }

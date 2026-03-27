@@ -2,7 +2,7 @@ use mag_core::constants::{INVIS, TILEX, TILEY};
 
 use crate::player_state::PlayerState;
 
-use super::{GameScene, FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, MAP_ORIGIN_X, MAP_ORIGIN_Y};
+use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene, MAP_ORIGIN_X, MAP_ORIGIN_Y};
 
 impl GameScene {
     /// Returns `true` if the tile at `(x, y)` should be hidden in the "hide"
@@ -150,9 +150,12 @@ impl GameScene {
 
     /// Scans visible map tiles for a character whose name is not yet known,
     /// returning its `ch_nr` for an auto-look request.
-    pub(super) fn find_unknown_look_target(ps: &PlayerState) -> Option<u32> {
-        let pdata = ps.player_data();
-        if pdata.show_names == 0 && pdata.show_proz == 0 {
+    pub(super) fn find_unknown_look_target(
+        ps: &PlayerState,
+        show_names: bool,
+        show_proz: bool,
+    ) -> Option<u32> {
+        if !show_names && !show_proz {
             return None;
         }
 

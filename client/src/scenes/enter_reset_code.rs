@@ -10,11 +10,10 @@ use crate::{
     scenes::scene::{Scene, SceneType},
     state::AppState,
     ui::{
-        self,
+        self, RenderContext,
         cert_dialog::{CertDialog, CertDialogAction},
         enter_reset_code_form::{EnterResetCodeForm, EnterResetCodeFormAction},
         widget::{KeyModifiers, Widget},
-        RenderContext,
     },
 };
 
@@ -116,8 +115,13 @@ impl EnterResetCodeScene {
         let confirm_password = self.form.confirm_password().to_owned();
 
         self.confirm_thread = Some(std::thread::spawn(move || {
-            let result =
-                Self::confirm_reset(&base_url, &username, &code, &new_password, &confirm_password);
+            let result = Self::confirm_reset(
+                &base_url,
+                &username,
+                &code,
+                &new_password,
+                &confirm_password,
+            );
             if let Err(error) = sender.send(result) {
                 log::error!("Failed to send reset confirm result: {}", error);
             }
@@ -251,8 +255,8 @@ impl Scene for EnterResetCodeScene {
         canvas: &mut Canvas<Window>,
     ) -> Result<(), String> {
         let AppState {
-            ref mut panning_background,
-            ref mut gfx_cache,
+            panning_background,
+            gfx_cache,
             ..
         } = app_state;
         let mut ctx = RenderContext {

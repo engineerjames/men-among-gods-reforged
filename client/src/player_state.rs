@@ -7,7 +7,7 @@ use mag_core::{
 use crate::{
     game_map::GameMap,
     network::server_commands::{ServerCommand, ServerCommandData, ServerCommandType},
-    types::{log_message::LogMessage, look::Look, player_data::PlayerData},
+    types::{log_message::LogMessage, look::Look},
 };
 
 /// Central per-character gameplay state on the client side.
@@ -24,7 +24,6 @@ pub struct PlayerState {
     incoming_look: Look,
     look_target: Look,
     shop_target: Look,
-    player_info: PlayerData,
     message_log: CircularBuffer<LogMessage>,
     should_show_look: bool,
     should_show_shop: bool,
@@ -65,7 +64,6 @@ impl Default for PlayerState {
             incoming_look: Look::default(),
             look_target: Look::default(),
             shop_target: Look::default(),
-            player_info: PlayerData::default(),
             message_log: CircularBuffer::new(300),
             should_show_look: false,
             should_show_shop: false,
@@ -176,16 +174,6 @@ impl PlayerState {
     /// Returns a shared reference to the current shop target data.
     pub fn shop_target(&self) -> &Look {
         &self.shop_target
-    }
-
-    /// Returns a shared reference to the player data (HUD toggle flags, etc.).
-    pub fn player_data(&self) -> &PlayerData {
-        &self.player_info
-    }
-
-    /// Returns a mutable reference to the player data.
-    pub fn player_data_mut(&mut self) -> &mut PlayerData {
-        &mut self.player_info
     }
 
     /// Looks up a cached character name by tile `nr` and optional `id`.

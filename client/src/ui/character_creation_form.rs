@@ -13,12 +13,12 @@ use sdl2::render::BlendMode;
 
 use mag_core::types::{Class, Sex};
 
+use super::RenderContext;
 use super::button::RectButton;
 use super::radio_group::RadioGroup;
 use super::style::{Background, Border};
 use super::text_input::TextInput;
 use super::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use super::RenderContext;
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
 
