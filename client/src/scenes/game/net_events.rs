@@ -268,12 +268,12 @@ impl GameScene {
                 WidgetAction::BeginSkillAssign { skill_id } => {
                     // Open the skill picker popup anchored above the clicked cell.
                     let bar = self.skill_bar.bounds();
-                    let (cx, _cy) = crate::ui::skill_bar::TOP_CELL_POSITIONS
+                    let (cx, _cy) = crate::ui::hud::skill_bar::TOP_CELL_POSITIONS
                         .get(skill_id)
                         .copied()
                         .unwrap_or((0, 0));
                     let anchor_x = bar.x + cx;
-                    let anchor_y = bar.y + crate::ui::skill_picker_popup::ANCHOR_Y_OFFSET; // above the skill bar
+                    let anchor_y = bar.y + crate::ui::hud::skill_picker_popup::ANCHOR_Y_OFFSET; // above the skill bar
                     let player_skills = app_state
                         .player_state
                         .as_ref()

@@ -10,8 +10,8 @@ use crate::{
     state::AppState,
     ui::{
         self, RenderContext,
-        cert_dialog::{CertDialog, CertDialogAction},
-        login_form::{LoginForm, LoginFormAction},
+        forms::cert_dialog::{CertDialog, CertDialogAction},
+        forms::login_form::{LoginForm, LoginFormAction},
         widget::{KeyModifiers, Widget},
     },
 };

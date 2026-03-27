@@ -11,7 +11,7 @@ use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
-use client::ui::panning_background::PanningBackground;
+use client::ui::visuals::panning_background::PanningBackground;
 use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
 
