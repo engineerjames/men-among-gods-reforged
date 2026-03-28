@@ -7,11 +7,11 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
-use crate::ui::widgets::button::RectButton;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
-use crate::font_cache;
+use crate::ui::widgets::button::RectButton;
 
 // ---------------------------------------------------------------------------
 // Layout constants

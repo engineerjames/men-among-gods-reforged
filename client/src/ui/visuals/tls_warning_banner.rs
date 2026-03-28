@@ -9,9 +9,9 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
-use crate::font_cache;
 
 /// Bitmap font index.
 const FONT: usize = 1;

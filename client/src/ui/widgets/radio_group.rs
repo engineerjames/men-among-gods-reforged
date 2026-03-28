@@ -10,9 +10,9 @@ use std::time::Duration;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use crate::font_cache;
 
 /// Radius of the radio circle in pixels.
 const RADIO_RADIUS: i32 = 5;

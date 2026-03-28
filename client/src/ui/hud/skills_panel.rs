@@ -12,10 +12,12 @@ use sdl2::render::BlendMode;
 
 use mag_core::skills::{MAX_SKILLS, get_skill_name, get_skill_nr, get_skill_sortkey};
 
-use crate::ui::RenderContext;
-use crate::ui::widgets::title_bar::{TitleBar, clamp_to_viewport};
-use crate::ui::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::font_cache;
+use crate::ui::RenderContext;
+use crate::ui::widget::{
+    Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction,
+};
+use crate::ui::widgets::title_bar::{TitleBar, clamp_to_viewport};
 
 /// Font index used for panel text (yellow bitmap font).
 const PANEL_FONT: usize = 1;

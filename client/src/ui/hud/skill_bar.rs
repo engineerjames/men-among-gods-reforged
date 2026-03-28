@@ -16,11 +16,11 @@ use sdl2::render::BlendMode;
 
 use mag_core::skills;
 
-use crate::ui::RenderContext;
-use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::filepaths;
 use crate::font_cache;
+use crate::ui::RenderContext;
+use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 
 // ---------------------------------------------------------------------------
 // Layout constants

@@ -9,21 +9,21 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
+use crate::preferences::DisplayMode;
 use crate::ui::RenderContext;
-use crate::ui::widgets::button::RectButton;
-use crate::ui::widgets::checkbox::Checkbox;
-use crate::ui::widgets::dropdown::Dropdown;
-use crate::ui::widgets::label::Label;
 use crate::ui::forms::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
-use crate::ui::widgets::slider::Slider;
 use crate::ui::style::{Background, Border};
-use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 use crate::ui::widget::{
     Bounds, EventResponse, GameAction, HudPanel, KeyBinding, KeyBindings, UiEvent, Widget,
     WidgetAction,
 };
-use crate::font_cache;
-use crate::preferences::DisplayMode;
+use crate::ui::widgets::button::RectButton;
+use crate::ui::widgets::checkbox::Checkbox;
+use crate::ui::widgets::dropdown::Dropdown;
+use crate::ui::widgets::label::Label;
+use crate::ui::widgets::slider::Slider;
+use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
 // ---------------------------------------------------------------------------
 // Layout constants — main panel

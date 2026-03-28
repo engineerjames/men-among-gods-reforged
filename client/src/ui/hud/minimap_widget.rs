@@ -7,8 +7,8 @@
 use sdl2::pixels::Color;
 
 use crate::ui::RenderContext;
-use crate::ui::widgets::button::CircleButton;
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
+use crate::ui::widgets::button::CircleButton;
 
 // ---------------------------------------------------------------------------
 // Layout constants

@@ -9,12 +9,12 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use crate::ui::RenderContext;
-use crate::ui::widgets::button::RectButton;
-use crate::ui::style::{Background, Border};
-use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar};
-use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 use crate::font_cache;
+use crate::ui::RenderContext;
+use crate::ui::style::{Background, Border};
+use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
+use crate::ui::widgets::button::RectButton;
+use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar};
 
 // ---------------------------------------------------------------------------
 // Layout constants

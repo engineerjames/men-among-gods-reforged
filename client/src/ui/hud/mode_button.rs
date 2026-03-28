@@ -10,8 +10,8 @@ use sdl2::pixels::Color;
 use crate::font_cache;
 
 use crate::ui::RenderContext;
-use crate::ui::widgets::button::CircleButton;
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
+use crate::ui::widgets::button::CircleButton;
 
 // ---------------------------------------------------------------------------
 // Per-mode visuals

@@ -1,8 +1,8 @@
 use crate::{
     preferences::{self, CharacterIdentity, Settings},
     state::AppState,
-    ui::widgets::title_bar::clamp_to_viewport,
     ui::widget::Widget,
+    ui::widgets::title_bar::clamp_to_viewport,
 };
 
 use super::GameScene;

@@ -14,10 +14,12 @@ use mag_core::constants::{
     WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
 };
 
-use crate::ui::RenderContext;
-use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
-use crate::ui::widget::{Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction};
 use crate::font_cache;
+use crate::ui::RenderContext;
+use crate::ui::widget::{
+    Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction,
+};
+use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
 // ---------------------------------------------------------------------------
 // Layout constants

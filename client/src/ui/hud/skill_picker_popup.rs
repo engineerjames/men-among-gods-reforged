@@ -14,9 +14,9 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 
+use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE, BITMAP_GLYPH_H};
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
-use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE, BITMAP_GLYPH_H};
 
 // ---------------------------------------------------------------------------
 // Layout constants

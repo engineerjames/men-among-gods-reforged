@@ -11,13 +11,13 @@ use std::time::Duration;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use crate::ui::RenderContext;
-use crate::ui::widgets::button::RectButton;
-use crate::ui::widgets::scrollable_list::{ListItem, ScrollableList};
-use crate::ui::style::{Background, Border};
-use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
+use crate::ui::RenderContext;
+use crate::ui::style::{Background, Border};
+use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
+use crate::ui::widgets::button::RectButton;
+use crate::ui::widgets::scrollable_list::{ListItem, ScrollableList};
 
 // ---------------------------------------------------------------------------
 // Layout constants
