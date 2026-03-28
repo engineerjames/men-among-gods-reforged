@@ -198,21 +198,22 @@ impl Scene for EnterResetCodeScene {
 
             // Forward to form.
             self.form.handle_event(&ui_event);
+        }
 
-            // Process form actions.
-            for action in self.form.take_actions() {
-                match action {
-                    EnterResetCodeFormAction::Submit {
-                        code,
-                        new_password: _,
-                    } => {
-                        log::info!("Reset confirm submitted with code={}", code);
-                        self.begin_confirm_request(app_state);
-                    }
-                    EnterResetCodeFormAction::Cancel => {
-                        log::info!("Cancel clicked");
-                        self.pending_scene = Some(SceneType::Login);
-                    }
+        // Drain form actions unconditionally — controller nav events bypass
+        // the sdl_to_ui_event block so actions must be processed regardless.
+        for action in self.form.take_actions() {
+            match action {
+                EnterResetCodeFormAction::Submit {
+                    code,
+                    new_password: _,
+                } => {
+                    log::info!("Reset confirm submitted with code={}", code);
+                    self.begin_confirm_request(app_state);
+                }
+                EnterResetCodeFormAction::Cancel => {
+                    log::info!("Cancel clicked");
+                    self.pending_scene = Some(SceneType::Login);
                 }
             }
         }

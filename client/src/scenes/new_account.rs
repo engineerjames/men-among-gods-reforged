@@ -184,26 +184,27 @@ impl Scene for NewAccountScene {
 
             // Forward to form.
             self.form.handle_event(&ui_event);
+        }
 
-            // Process form actions.
-            for action in self.form.take_actions() {
-                match action {
-                    NewAccountFormAction::Create {
+        // Drain form actions unconditionally — controller nav events bypass
+        // the sdl_to_ui_event block so actions must be processed regardless.
+        for action in self.form.take_actions() {
+            match action {
+                NewAccountFormAction::Create {
+                    email,
+                    username,
+                    password: _,
+                } => {
+                    log::info!(
+                        "Create new account clicked with email={}, username={}",
                         email,
-                        username,
-                        password: _,
-                    } => {
-                        log::info!(
-                            "Create new account clicked with email={}, username={}",
-                            email,
-                            username
-                        );
-                        self.begin_account_creation_request(app_state);
-                    }
-                    NewAccountFormAction::Cancel => {
-                        log::info!("Cancel clicked");
-                        self.pending_scene = Some(SceneType::Login);
-                    }
+                        username
+                    );
+                    self.begin_account_creation_request(app_state);
+                }
+                NewAccountFormAction::Cancel => {
+                    log::info!("Cancel clicked");
+                    self.pending_scene = Some(SceneType::Login);
                 }
             }
         }

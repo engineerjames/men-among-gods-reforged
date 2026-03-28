@@ -199,8 +199,9 @@ fn main() -> Result<(), String> {
                 }
                 sdl2::event::Event::ControllerAxisMotion { value, .. } => {
                     // Ignore small axis values inside the deadzone.
+                    // Use saturating_abs to avoid overflow on i16::MIN (-32768).
                     const DEADZONE: i16 = 8000;
-                    if value.abs() > DEADZONE && !app_state.controller_active {
+                    if value.saturating_abs() > DEADZONE && !app_state.controller_active {
                         log::info!("Controller input detected — switching to controller mode");
                         app_state.controller_active = true;
                     }

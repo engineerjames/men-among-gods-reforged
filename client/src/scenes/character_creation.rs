@@ -71,37 +71,39 @@ impl Scene for CharacterCreationScene {
 
         if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
             self.form.handle_event(&ui_event);
+        }
 
-            for action in self.form.take_actions() {
-                match action {
-                    CharacterCreationFormAction::Create {
-                        name,
-                        description: _,
-                        class: _,
-                        sex: _,
-                    } => {
-                        let name = name.trim().to_string();
+        // Drain form actions unconditionally — controller nav events bypass
+        // the sdl_to_ui_event block so actions must be processed regardless.
+        for action in self.form.take_actions() {
+            match action {
+                CharacterCreationFormAction::Create {
+                    name,
+                    description: _,
+                    class: _,
+                    sex: _,
+                } => {
+                    let name = name.trim().to_string();
 
-                        if name.is_empty() {
-                            self.form
-                                .set_error(Some("Character name is required".to_string()));
-                            continue;
-                        }
+                    if name.is_empty() {
+                        self.form
+                            .set_error(Some("Character name is required".to_string()));
+                        continue;
+                    }
 
-                        self.is_busy = true;
-                        self.form.set_busy(true);
-                        self.form.set_error(None);
-                        self.error = None;
-                        // Thread spawn deferred to update() which has app_state.
-                    }
-                    CharacterCreationFormAction::RandomName => {
-                        let new_name = names::randomly_generate_name();
-                        self.form.set_name(&new_name);
-                    }
-                    CharacterCreationFormAction::Back => {
-                        self.error = None;
-                        self.pending_scene = Some(SceneType::CharacterSelection);
-                    }
+                    self.is_busy = true;
+                    self.form.set_busy(true);
+                    self.form.set_error(None);
+                    self.error = None;
+                    // Thread spawn deferred to update() which has app_state.
+                }
+                CharacterCreationFormAction::RandomName => {
+                    let new_name = names::randomly_generate_name();
+                    self.form.set_name(&new_name);
+                }
+                CharacterCreationFormAction::Back => {
+                    self.error = None;
+                    self.pending_scene = Some(SceneType::CharacterSelection);
                 }
             }
         }
