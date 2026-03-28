@@ -25,7 +25,10 @@ use sdl2::{
     video::Window,
 };
 
-use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
+use mag_core::{
+    constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY},
+    ranks,
+};
 
 use crate::{
     cert_trust,
@@ -1619,8 +1622,8 @@ impl Scene for GameScene {
         {
             if let Some(ps) = app_state.player_state.as_ref() {
                 let ci = ps.character_info();
-                let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
-                self.rank_sigil.sync(rank_index);
+                let rank_index = ranks::points2rank(ci.points_tot as u32);
+                self.rank_sigil.sync(rank_index as usize);
                 self.status_panel.sync(ci.weapon, ci.armor);
                 self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);

@@ -94,60 +94,6 @@ impl GameScene {
         Self::screen_to_map_tile(screen_x, screen_y, cam_xoff, cam_yoff).is_some()
     }
 
-    /// Maps a total experience point value to a rank index (0–23).
-    pub(super) fn points_to_rank_index(points: u32) -> usize {
-        let v = points as i64;
-        if v < 50 {
-            0
-        } else if v < 850 {
-            1
-        } else if v < 4900 {
-            2
-        } else if v < 17700 {
-            3
-        } else if v < 48950 {
-            4
-        } else if v < 113750 {
-            5
-        } else if v < 233800 {
-            6
-        } else if v < 438600 {
-            7
-        } else if v < 766650 {
-            8
-        } else if v < 1266650 {
-            9
-        } else if v < 1998700 {
-            10
-        } else if v < 3035500 {
-            11
-        } else if v < 4463550 {
-            12
-        } else if v < 6384350 {
-            13
-        } else if v < 8915600 {
-            14
-        } else if v < 12192400 {
-            15
-        } else if v < 16368450 {
-            16
-        } else if v < 21617250 {
-            17
-        } else if v < 28133300 {
-            18
-        } else if v < 36133300 {
-            19
-        } else if v < 49014500 {
-            20
-        } else if v < 63000600 {
-            21
-        } else if v < 80977100 {
-            22
-        } else {
-            23
-        }
-    }
-
     /// Scans visible map tiles for a character whose name is not yet known,
     /// returning its `ch_nr` for an auto-look request.
     pub(super) fn find_unknown_look_target(
@@ -329,22 +275,6 @@ mod tests {
     fn cursor_center_inside() {
         let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
         assert!(GameScene::cursor_in_map_interaction_area(cx, cy + 8, 0, 0));
-    }
-
-    // -- points_to_rank_index --
-
-    #[test]
-    fn rank_boundaries() {
-        assert_eq!(GameScene::points_to_rank_index(0), 0);
-        assert_eq!(GameScene::points_to_rank_index(49), 0);
-        assert_eq!(GameScene::points_to_rank_index(50), 1);
-        assert_eq!(GameScene::points_to_rank_index(849), 1);
-        assert_eq!(GameScene::points_to_rank_index(850), 2);
-        assert_eq!(GameScene::points_to_rank_index(4899), 2);
-        assert_eq!(GameScene::points_to_rank_index(4900), 3);
-        assert_eq!(GameScene::points_to_rank_index(17700), 4);
-        assert_eq!(GameScene::points_to_rank_index(80977100), 23);
-        assert_eq!(GameScene::points_to_rank_index(u32::MAX), 23);
     }
 
     // -- screen_to_map_tile --
