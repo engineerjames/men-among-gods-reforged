@@ -2,7 +2,6 @@ mod area;
 mod background_saver;
 mod driver;
 mod effect;
-mod enums;
 mod game_state;
 mod god;
 mod keydb;
