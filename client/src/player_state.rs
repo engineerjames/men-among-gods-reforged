@@ -1,6 +1,7 @@
 use mag_core::{
     circular_buffer::CircularBuffer,
     constants::{MAX_SPEEDTAB_INDEX, TICKS},
+    logout_reasons::get_exit_reason,
     types::ClientPlayer,
 };
 
@@ -728,7 +729,7 @@ impl PlayerState {
                     3,
                     format!(
                         "Server requested exit (reason={})",
-                        mag_core::constants::get_exit_reason(*reason)
+                        get_exit_reason((*reason as u8).into())
                     ),
                 );
                 self.exit_requested_reason = Some(*reason);

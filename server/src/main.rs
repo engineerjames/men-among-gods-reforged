@@ -22,6 +22,7 @@ mod state;
 mod talk;
 mod tls;
 
+use core::logout_reasons::LogoutReason;
 use log;
 use std::env;
 use std::process;
@@ -124,7 +125,7 @@ fn main() -> Result<(), String> {
         logout_entries.push((gs.players[player_idx].usnr, player_idx));
     }
     for (usnr, n) in &logout_entries {
-        player::plr_logout(&mut gs, *usnr, *n, enums::LogoutReason::Shutdown);
+        player::plr_logout(&mut gs, *usnr, *n, LogoutReason::Shutdown);
     }
 
     server.shutdown_background_saver();

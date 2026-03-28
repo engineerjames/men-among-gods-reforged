@@ -700,54 +700,6 @@ pub const SV_PONG: u8 = 74;
 pub const SV_SETMAP: u8 = 128; // 128-255 are used !!!
 
 // =============================================================================
-// Logout Reasons (from client.h)
-// =============================================================================
-
-pub const LO_CHALLENGE: u8 = 1;
-pub const LO_IDLE: u8 = 2;
-pub const LO_NOROOM: u8 = 3;
-pub const LO_PARAMS: u8 = 4;
-pub const LO_NONACTIVE: u8 = 5;
-pub const LO_PASSWORD: u8 = 6;
-pub const LO_SLOW: u8 = 7;
-pub const LO_FAILURE: u8 = 8;
-pub const LO_SHUTDOWN: u8 = 9;
-pub const LO_TAVERN: u8 = 10;
-pub const LO_VERSION: u8 = 11;
-pub const LO_EXIT: u8 = 12;
-pub const LO_USURP: u8 = 13;
-pub const LO_KICKED: u8 = 14;
-
-/// Returns a human-readable description of a server exit/logout reason code.
-///
-/// # Arguments
-///
-/// * `code` - The `LO_*` reason code (as `u32`).
-///
-/// # Returns
-///
-/// * A bracketed label and description, e.g. `"[LO_IDLE] Player idle too long"`.
-pub fn get_exit_reason(code: u32) -> &'static str {
-    match code as u8 {
-        LO_CHALLENGE => "[LO_CHALLENGE] Challenge failure",
-        LO_IDLE => "[LO_IDLE] Player idle too long",
-        LO_NOROOM => "[LO_NOROOM] No room left on server",
-        LO_PARAMS => "[LO_PARAMS] Invalid parameters",
-        LO_NONACTIVE => "[LO_NONACTIVE] Player not active",
-        LO_PASSWORD => "[LO_PASSWORD] Invalid password",
-        LO_SLOW => "[LO_SLOW] Connection too slow",
-        LO_FAILURE => "[LO_FAILURE] Login failure",
-        LO_SHUTDOWN => "[LO_SHUTDOWN] Server shutting down",
-        LO_TAVERN => "[LO_TAVERN] Returned to tavern",
-        LO_VERSION => "[LO_VERSION] Version mismatch",
-        LO_EXIT => "[LO_EXIT] Client exit",
-        LO_USURP => "[LO_USURP] Logged in elsewhere",
-        LO_KICKED => "[LO_KICKED] Kicked from server",
-        _ => "[UNKNOWN] Unrecognized reason code",
-    }
-}
-
-// =============================================================================
 // Player States (from client.h)
 // =============================================================================
 
@@ -989,6 +941,8 @@ impl MagicArmorType {
 
 #[cfg(test)]
 mod tests {
+    use crate::logout_reasons::{LogoutReason, get_exit_reason};
+
     use super::*;
 
     #[test]
@@ -1211,16 +1165,16 @@ mod tests {
 
     #[test]
     fn get_exit_reason_returns_known_reasons() {
-        assert!(get_exit_reason(LO_CHALLENGE as u32).contains("Challenge"));
-        assert!(get_exit_reason(LO_IDLE as u32).contains("idle"));
-        assert!(get_exit_reason(LO_SHUTDOWN as u32).contains("shutting down"));
-        assert!(get_exit_reason(LO_KICKED as u32).contains("Kicked"));
+        assert!(get_exit_reason(LogoutReason::from(1)).contains("Challenge"));
+        assert!(get_exit_reason(LogoutReason::from(2)).contains("idle"));
+        assert!(get_exit_reason(LogoutReason::from(9)).contains("shutting down"));
+        assert!(get_exit_reason(LogoutReason::from(14)).contains("Kicked"));
     }
 
     #[test]
     fn get_exit_reason_returns_unknown_for_invalid_code() {
-        assert!(get_exit_reason(255).contains("UNKNOWN"));
-        assert!(get_exit_reason(0).contains("UNKNOWN"));
+        assert!(get_exit_reason(LogoutReason::from(255)).contains("UNKNOWN"));
+        assert!(get_exit_reason(LogoutReason::from(0)).contains("UNKNOWN"));
     }
 
     #[test]
