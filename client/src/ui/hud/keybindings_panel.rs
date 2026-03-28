@@ -89,7 +89,7 @@ impl KeybindingsPanel {
     /// # Arguments
     ///
     /// * `bounds` - Position and size of the panel.
-    /// * `bg_color` - Semi-transparent background colour.
+    /// * `bg_color` - Semi-transparent background color.
     ///
     /// # Returns
     ///

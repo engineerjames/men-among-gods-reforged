@@ -21,8 +21,8 @@ const PASSWORD_CHAR: char = '*';
 
 /// A single-line text input field.
 ///
-/// Renders a filled background box with a coloured border.  The border changes
-/// colour to `border_color_focused` while the widget has keyboard focus.
+/// Renders a filled background box with a colored border.  The border changes
+/// color to `border_color_focused` while the widget has keyboard focus.
 /// Typing appends characters up to `max_len`; `Backspace` removes the last
 /// character.  In password mode every character is rendered as `*` so the
 /// actual value is never shown.
@@ -46,9 +46,9 @@ pub struct TextInput {
     hovered: bool,
     /// When `true`, every character is rendered as [`PASSWORD_CHAR`].
     password_mode: bool,
-    /// Border colour used when the widget is not focused.
+    /// Border color used when the widget is not focused.
     border_color_normal: Color,
-    /// Border colour used when the widget is focused.
+    /// Border color used when the widget is focused.
     border_color_focused: Color,
     /// Border thickness in pixels (≥ 1).
     border_width: u32,
@@ -74,8 +74,8 @@ impl TextInput {
     /// * `font` - Bitmap font index (0–3).
     /// * `max_len` - Maximum number of characters the user may enter.
     /// * `password_mode` - When `true`, all rendered characters are replaced by `*`.
-    /// * `border_color_normal` - Border colour in the unfocused state.
-    /// * `border_color_focused` - Border colour when the widget has keyboard focus.
+    /// * `border_color_normal` - Border color in the unfocused state.
+    /// * `border_color_focused` - Border color when the widget has keyboard focus.
     ///
     /// # Returns
     ///

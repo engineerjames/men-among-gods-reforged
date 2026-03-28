@@ -61,10 +61,10 @@ use client::ui::{RenderContext, sdl_to_ui_event};
 // Layout constants — arranged as a gallery across the 960×540 viewport
 // ---------------------------------------------------------------------------
 
-/// Background colour shared by all HUD-style panels.
+/// Background color shared by all HUD-style panels.
 const PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
 
-/// Dark canvas clear colour.
+/// Dark canvas clear color.
 const CLEAR_COLOR: Color = Color::RGB(30, 30, 40);
 
 // Column X offsets for the gallery grid.

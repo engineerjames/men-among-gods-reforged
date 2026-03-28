@@ -30,7 +30,7 @@ const INPUT_AREA_H: u32 = font_cache::BITMAP_GLYPH_H + 4; // 2px gap above + 2px
 /// Default bitmap font index for the input line (yellow).
 const INPUT_FONT: usize = 1;
 
-/// Colour of the thin separator line between log and input.
+/// Color of the thin separator line between log and input.
 const SEPARATOR_COLOR: Color = Color::RGBA(120, 120, 140, 200);
 
 /// Seconds of inactivity before the fade-out animation begins.

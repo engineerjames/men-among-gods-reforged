@@ -8,7 +8,7 @@
 //! the same bottom (feet) y coordinate.
 //!
 //! Each chevron has a dark background track so missing values remain visible.
-//! Fill direction is **left-to-right**: at 50 % the left arm is fully coloured
+//! Fill direction is **left-to-right**: at 50 % the left arm is fully colored
 //! and the right arm is dark track.
 //!
 //! The position is stored in the public [`x`] and [`y`] fields:
@@ -51,13 +51,13 @@ const ARM_THICKNESS: i32 = 8;
 /// Dark background track drawn behind each chevron to show the empty portion.
 const TRACK_COLOR: Color = Color::RGB(30, 30, 30);
 
-/// HP chevron fill colour.
+/// HP chevron fill color.
 const HP_COLOR: Color = Color::RGB(180, 30, 30);
 
-/// Endurance chevron fill colour.
+/// Endurance chevron fill color.
 const END_COLOR: Color = Color::RGB(200, 180, 40);
 
-/// Mana chevron fill colour.
+/// Mana chevron fill color.
 const MANA_COLOR: Color = Color::RGB(40, 80, 200);
 
 /// Identifies which vitality chevron is currently hovered.
@@ -343,7 +343,7 @@ impl VitalityBars {
     /// * `half_w` - Half-width of the chevron at the feet.
     /// * `height` - Vertical span from feet to tip.
     /// * `fill` - Fill fraction in `[0.0, 1.0]` (left-to-right).
-    /// * `color` - Fill colour for the filled portion.
+    /// * `color` - Fill color for the filled portion.
     fn draw_chevron(
         canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
         cx: i32,
