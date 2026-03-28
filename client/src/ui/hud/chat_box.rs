@@ -303,13 +303,19 @@ impl Widget for ChatBox {
 
             UiEvent::KeyDown { keycode, .. } => {
                 if !self.focused {
-                    if matches!(
-                        *keycode,
-                        Keycode::Return | Keycode::KpEnter | Keycode::Slash
-                    ) {
-                        self.idle_elapsed = 0.0;
-                        self.focused = true;
-                        return EventResponse::Consumed;
+                    match *keycode {
+                        Keycode::Return | Keycode::KpEnter | Keycode::Slash => {
+                            self.idle_elapsed = 0.0;
+                            self.focused = true;
+                            return EventResponse::Consumed;
+                        }
+                        Keycode::Up => {
+                            self.idle_elapsed = 0.0;
+                            self.focused = true;
+                            self.history_back();
+                            return EventResponse::Consumed;
+                        }
+                        _ => {}
                     }
                     return EventResponse::Ignored;
                 }
@@ -711,6 +717,42 @@ mod tests {
         assert!(!cb.focused);
         // Input buffer preserved so player can re-open and continue
         assert_eq!(cb.input_text(), "half typed");
+    }
+
+    #[test]
+    fn up_when_unfocused_focuses_and_loads_last_message() {
+        let mut cb = test_chat_box();
+        cb.input_buf = "last sent".to_owned();
+        cb.submit_input();
+        cb.take_actions();
+
+        assert!(!cb.focused);
+
+        let event = UiEvent::KeyDown {
+            keycode: Keycode::Up,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        };
+        let resp = cb.handle_event(&event);
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(cb.focused);
+        assert_eq!(cb.input_text(), "last sent");
+    }
+
+    #[test]
+    fn up_when_unfocused_with_empty_history_only_focuses() {
+        let mut cb = test_chat_box();
+        assert!(!cb.focused);
+
+        let event = UiEvent::KeyDown {
+            keycode: Keycode::Up,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        };
+        let resp = cb.handle_event(&event);
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(cb.focused);
+        assert_eq!(cb.input_text(), "");
     }
 
     #[test]
