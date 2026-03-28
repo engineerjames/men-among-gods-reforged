@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::RenderContext;
 use super::style::Padding;
 use crate::preferences::DisplayMode;
+use crate::types::controller::ControllerButton;
 
 // ---------------------------------------------------------------------------
 // Geometry
@@ -329,6 +330,13 @@ pub enum WidgetAction {
         action: GameAction,
         /// The new key combination.
         binding: KeyBinding,
+    },
+    /// Update a controller button binding for a skill-bar slot.
+    UpdateControllerBinding {
+        /// Skill-bar slot index (0 = key "1", 8 = key "9").
+        slot: u8,
+        /// The controller button to bind, or `None` to clear.
+        button: Option<ControllerButton>,
     },
 }
 

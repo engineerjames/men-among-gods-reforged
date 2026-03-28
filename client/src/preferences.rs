@@ -6,6 +6,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::types::controller::ControllerBindings;
 use crate::ui::widget::KeyBindings;
 
 /// Number of numeric-key skill binding slots (keys 1–9 plus 4 reserved).
@@ -38,6 +39,9 @@ pub struct CharacterSettings {
     /// Keyboard bindings mapping game actions to key combinations.
     #[serde(default)]
     pub key_bindings: KeyBindings,
+    /// Controller button bindings for skill-bar slots 1–9.
+    #[serde(default)]
+    pub controller_bindings: ControllerBindings,
 }
 
 impl Default for CharacterSettings {
@@ -48,6 +52,7 @@ impl Default for CharacterSettings {
             skills_panel_pos: None,
             settings_panel_pos: None,
             key_bindings: KeyBindings::default(),
+            controller_bindings: ControllerBindings::default(),
         }
     }
 }
