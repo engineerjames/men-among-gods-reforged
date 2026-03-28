@@ -55,6 +55,8 @@ pub enum SkillIndex {
     DynamicModifier = 4,
     /// The total value of the skill, including all modifiers
     TotalValue = 5,
+    /// Maximum index for iterating over skill values
+    MaxIndex = 6,
 }
 
 /// A skill definition entry describing one learnable ability.

@@ -2,6 +2,7 @@
 
 use crate::{
     constants::{CharacterFlags, USE_EMPTY},
+    skills::SkillIndex,
     string_operations::c_string_to_str,
     traits,
 };
@@ -38,20 +39,13 @@ pub struct Character {
 
     pub temp: u16, // 321, created from template n
 
-    // character stats
-    // [0]=bare value, 0=unknown
-    // [1]=preset modifier, is race/npc dependend
-    // [2]=race specific maximum
-    // [3]=race specific difficulty to raise (0=not raisable, 1=easy ... 10=hard)
-    // [4]=dynamic modifier, depends on equipment and spells (this one is currently not used)
-    // [5]=total value
-    pub attrib: [[u8; 6]; 5], // 351
+    pub attrib: [[u8; SkillIndex::MaxIndex as usize]; 5], // 351
 
-    pub hp: [u16; 6],   // 363
-    pub end: [u16; 6],  // 375
-    pub mana: [u16; 6], // 387
+    pub hp: [u16; SkillIndex::MaxIndex as usize],  // 363
+    pub end: [u16; SkillIndex::MaxIndex as usize], // 375
+    pub mana: [u16; SkillIndex::MaxIndex as usize], // 387
 
-    pub skill: [[u8; 6]; 50], // 687
+    pub skill: [[u8; SkillIndex::MaxIndex as usize]; 50], // 687
 
     pub weapon_bonus: u8,
     pub armor_bonus: u8,
@@ -175,6 +169,14 @@ pub struct Character {
 
     // driver data
     pub data: [i32; 100],
+
+    /// Custom text lines for the character, used for NPC dialogue and player reference.
+    /// text[0] = After NPC kills an enemy
+    /// text[1] = When NPC first spots / engages an enemy
+    /// text[2] = Friendly greeting to a passing player
+    /// text[3] = When the NPC itself dies (chance-based)
+    /// text[4] = When the NPC is calling for help at low HP
+    /// text[5] = When responding to a shout
     pub text: [[u8; 160]; 10],
 }
 
