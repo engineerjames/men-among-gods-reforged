@@ -1270,12 +1270,26 @@ impl Scene for GameScene {
         match event {
             Event::ControllerButtonDown { button, .. } => {
                 use sdl2::controller::Button as Btn;
+                log::info!("Controller button pressed: {:?}", button);
                 match button {
                     Btn::LeftShoulder => self.lb_held = true,
                     Btn::RightShoulder => self.rb_held = true,
                     _ => {}
                 }
+                // If the controller bindings panel is waiting for a button
+                // press, capture it and skip the normal skill-dispatch path.
+                if self.settings_panel.is_controller_listening() {
+                    if let Some(cb) =
+                        ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held)
+                    {
+                        log::info!("Controller binding captured: {:?} -> {:?}", button, cb);
+                        self.settings_panel.capture_controller_button(cb);
+                        self.process_settings_panel_actions(app_state);
+                    }
+                    return None;
+                }
                 if let Some(cb) = ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held) {
+                    log::info!("Controller button mapped to {:?}", cb);
                     if let Some(slot) = app_state
                         .settings
                         .character

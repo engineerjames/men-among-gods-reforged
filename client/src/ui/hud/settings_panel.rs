@@ -1004,7 +1004,6 @@ impl ControllerBindingsSubPanel {
     /// # Arguments
     ///
     /// * `button` - The controller button that was pressed.
-    #[allow(dead_code)]
     pub fn capture_controller_button(&mut self, button: ControllerButton) {
         if let Some(slot) = self.listening_for {
             self.bindings.set(slot, Some(button));
@@ -1019,7 +1018,6 @@ impl ControllerBindingsSubPanel {
 
     /// Returns `true` if the sub-panel is currently listening for a
     /// controller button press.
-    #[allow(dead_code)]
     pub fn is_listening(&self) -> bool {
         self.listening_for.is_some()
     }
@@ -1370,6 +1368,23 @@ impl SettingsPanel {
     /// * `rtt_ms` - Latest round-trip time in milliseconds, or `None`.
     pub fn update_ping(&mut self, rtt_ms: Option<u32>) {
         self.sub_diagnostics.update_ping(rtt_ms);
+    }
+
+    /// Returns `true` if the controller bindings sub-panel is currently
+    /// waiting for a button press to complete a binding assignment.
+    pub fn is_controller_listening(&self) -> bool {
+        self.sub_controller.is_listening()
+    }
+
+    /// Forwards a captured controller button to the controller bindings
+    /// sub-panel and collects the resulting `UpdateControllerBinding` action.
+    ///
+    /// # Arguments
+    ///
+    /// * `button` - The controller button that was pressed.
+    pub fn capture_controller_button(&mut self, button: ControllerButton) {
+        self.sub_controller.capture_controller_button(button);
+        self.collect_sub_panel_actions();
     }
 
     /// Updates the profiler button label.
