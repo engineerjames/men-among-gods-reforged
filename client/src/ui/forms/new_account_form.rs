@@ -96,6 +96,8 @@ pub struct NewAccountForm {
     show_submitting: bool,
     /// Optional error message text.
     error_text: Option<String>,
+    /// Controller focus index: 0=create, 1=cancel.
+    controller_focused: Option<usize>,
 }
 
 impl NewAccountForm {
@@ -200,6 +202,7 @@ impl NewAccountForm {
             actions: Vec::new(),
             show_submitting: false,
             error_text: None,
+            controller_focused: None,
         };
         form.apply_focus();
         form
@@ -309,6 +312,16 @@ impl NewAccountForm {
             None
         }
     }
+
+    /// Total number of controller-focusable elements.
+    const FOCUSABLE_COUNT: usize = 2;
+
+    /// Applies the controller focus highlight to the appropriate child widget.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        self.create_button.set_hovered(focused == Some(0));
+        self.cancel_button.set_hovered(focused == Some(1));
+    }
 }
 
 impl Widget for NewAccountForm {
@@ -321,6 +334,42 @@ impl Widget for NewAccountForm {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        // ── Controller navigation ────────────────────────────────────────
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => self.push_create_action(),
+                    Some(1) => self.actions.push(NewAccountFormAction::Cancel),
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         // Tab / Enter key handling.
         if let UiEvent::KeyDown {
             keycode, modifiers, ..

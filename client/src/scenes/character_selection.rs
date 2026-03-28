@@ -12,6 +12,7 @@ use crate::{
     state::{AppState, GameLoginTarget},
     ui::{
         self, RenderContext,
+        controller_nav::ControllerNavState,
         forms::character_selection_form::{CharacterSelectionForm, CharacterSelectionFormAction},
         forms::delete_character_dialog::{DeleteCharacterDialog, DeleteCharacterDialogAction},
         widget::{KeyModifiers, Widget},
@@ -55,6 +56,9 @@ pub struct CharacterSelectionScene {
 
     mouse_x: i32,
     mouse_y: i32,
+
+    /// Rising-edge tracker for controller → nav events.
+    controller_nav: ControllerNavState,
 }
 
 impl CharacterSelectionScene {
@@ -85,6 +89,7 @@ impl CharacterSelectionScene {
             pending_scene: None,
             mouse_x: 0,
             mouse_y: 0,
+            controller_nav: ControllerNavState::new(),
         }
     }
 
@@ -202,6 +207,15 @@ impl Scene for CharacterSelectionScene {
 
         let modifiers =
             KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
+
+        // Controller → nav event (rising-edge gated for axes).
+        if let Some(nav_event) = self.controller_nav.process_event(event) {
+            if self.delete_dialog.is_visible() {
+                self.delete_dialog.handle_event(&nav_event);
+            } else {
+                self.form.handle_event(&nav_event);
+            }
+        }
 
         if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
             // Delete dialog is modal: blocks form input.

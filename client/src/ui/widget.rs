@@ -140,7 +140,7 @@ impl KeyModifiers {
 }
 
 /// An input event translated from SDL2 into widget-local terms.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UiEvent {
     /// A mouse button was pressed down (before release).
     MouseDown {
@@ -192,6 +192,12 @@ pub enum UiEvent {
         /// Modifier state at the time of press.
         modifiers: KeyModifiers,
     },
+    /// Controller navigation: advance focus to the next focusable element.
+    NavNext,
+    /// Controller navigation: retreat focus to the previous focusable element.
+    NavPrev,
+    /// Controller navigation: activate the currently focused element.
+    NavConfirm,
 }
 
 /// Whether a widget consumed an event or ignored it.

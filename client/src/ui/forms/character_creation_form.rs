@@ -116,6 +116,9 @@ pub struct CharacterCreationForm {
     show_busy: bool,
     /// Optional error message text.
     error_text: Option<String>,
+    /// Controller focus index, if any.
+    /// 0..2 = class options, 3..4 = sex options, 5=random_name, 6=create, 7=back.
+    controller_focused: Option<usize>,
 }
 
 impl CharacterCreationForm {
@@ -233,6 +236,7 @@ impl CharacterCreationForm {
             actions: Vec::new(),
             show_busy: false,
             error_text: None,
+            controller_focused: None,
         };
         form.apply_focus();
         form
@@ -335,6 +339,32 @@ impl CharacterCreationForm {
             None
         }
     }
+
+    /// Total number of controller-focusable elements.
+    /// 3 class options + 2 sex options + 3 buttons = 8.
+    const FOCUSABLE_COUNT: usize = 8;
+
+    /// Applies controller focus highlights to the appropriate child widgets.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+
+        // Class radio group options (slots 0..2).
+        match focused {
+            Some(i) if i < 3 => self.class_group.set_controller_focused(Some(i)),
+            _ => self.class_group.set_controller_focused(None),
+        }
+
+        // Sex radio group options (slots 3..4).
+        match focused {
+            Some(i) if (3..5).contains(&i) => self.sex_group.set_controller_focused(Some(i - 3)),
+            _ => self.sex_group.set_controller_focused(None),
+        }
+
+        // Buttons.
+        self.random_name_button.set_hovered(focused == Some(5));
+        self.create_button.set_hovered(focused == Some(6));
+        self.back_button.set_hovered(focused == Some(7));
+    }
 }
 
 impl Widget for CharacterCreationForm {
@@ -347,6 +377,45 @@ impl Widget for CharacterCreationForm {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        // ── Controller navigation ────────────────────────────────────────
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(i) if i < 3 => self.class_group.select_by_index(i),
+                    Some(i) if (3..5).contains(&i) => self.sex_group.select_by_index(i - 3),
+                    Some(5) => self.actions.push(CharacterCreationFormAction::RandomName),
+                    Some(6) => self.push_create_action(),
+                    Some(7) => self.actions.push(CharacterCreationFormAction::Back),
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         // Tab / Enter key handling.
         if let UiEvent::KeyDown {
             keycode, modifiers, ..

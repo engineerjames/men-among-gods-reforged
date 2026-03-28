@@ -5,6 +5,7 @@
 //! [`ChatBox`].  All rendering is done via SDL2 primitives and the existing
 //! bitmap font system — no additional dependencies are required.
 
+pub mod controller_nav;
 pub mod forms;
 pub mod hud;
 pub mod style;

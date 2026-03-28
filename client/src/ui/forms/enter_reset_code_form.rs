@@ -94,6 +94,8 @@ pub struct EnterResetCodeForm {
     error_text: Option<String>,
     /// Optional info/success message text.
     info_text: Option<String>,
+    /// Controller focus index: 0=submit, 1=cancel.
+    controller_focused: Option<usize>,
 }
 
 impl EnterResetCodeForm {
@@ -185,6 +187,7 @@ impl EnterResetCodeForm {
             show_submitting: false,
             error_text: None,
             info_text: None,
+            controller_focused: None,
         };
         form.apply_focus();
         form
@@ -245,6 +248,16 @@ impl EnterResetCodeForm {
         std::mem::take(&mut self.actions)
     }
 
+    /// Total number of controller-focusable elements.
+    const FOCUSABLE_COUNT: usize = 2;
+
+    /// Applies controller focus highlights to the two buttons.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        self.submit_button.set_hovered(focused == Some(0));
+        self.cancel_button.set_hovered(focused == Some(1));
+    }
+
     /// Pushes a Submit action with the current field values.
     fn push_submit_action(&mut self) {
         self.actions.push(EnterResetCodeFormAction::Submit {
@@ -300,6 +313,42 @@ impl Widget for EnterResetCodeForm {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        // ── Controller navigation ────────────────────────────────────
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => self.push_submit_action(),
+                    Some(1) => self.actions.push(EnterResetCodeFormAction::Cancel),
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         // Tab / Enter key handling.
         if let UiEvent::KeyDown {
             keycode, modifiers, ..

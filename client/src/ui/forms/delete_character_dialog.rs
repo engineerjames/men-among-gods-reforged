@@ -82,6 +82,8 @@ pub struct DeleteCharacterDialog {
     is_deleting: bool,
     /// Pending actions for the scene to drain.
     actions: Vec<DeleteCharacterDialogAction>,
+    /// Controller focus index: 0=confirm, 1=cancel.
+    controller_focused: Option<usize>,
 }
 
 impl DeleteCharacterDialog {
@@ -145,6 +147,7 @@ impl DeleteCharacterDialog {
             cancel_button,
             is_deleting: false,
             actions: Vec::new(),
+            controller_focused: None,
         };
         dialog.name_input.set_focused(true);
         dialog
@@ -201,6 +204,16 @@ impl DeleteCharacterDialog {
     fn name_matches(&self) -> bool {
         self.name_input.value() == self.expected_name
     }
+
+    /// Total number of controller-focusable elements.
+    const FOCUSABLE_COUNT: usize = 2;
+
+    /// Applies controller focus highlights.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        self.confirm_button.set_hovered(focused == Some(0));
+        self.cancel_button.set_hovered(focused == Some(1));
+    }
 }
 
 impl Widget for DeleteCharacterDialog {
@@ -215,6 +228,48 @@ impl Widget for DeleteCharacterDialog {
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
+        }
+
+        // ── Controller navigation ────────────────────────────────────────
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => {
+                        if self.name_matches() && !self.is_deleting {
+                            self.actions.push(DeleteCharacterDialogAction::Confirm {
+                                character_id: self.character_id,
+                            });
+                        }
+                    }
+                    Some(1) => self.actions.push(DeleteCharacterDialogAction::Cancel),
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
         }
 
         // Enter key: confirm if name matches.

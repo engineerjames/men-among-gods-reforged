@@ -12,6 +12,7 @@ use crate::{
     state::AppState,
     ui::{
         self, RenderContext,
+        controller_nav::ControllerNavState,
         forms::character_creation_form::{CharacterCreationForm, CharacterCreationFormAction},
         widget::{KeyModifiers, Widget},
     },
@@ -31,6 +32,9 @@ pub struct CharacterCreationScene {
     pending_scene: Option<SceneType>,
     mouse_x: i32,
     mouse_y: i32,
+
+    /// Rising-edge tracker for controller → nav events.
+    controller_nav: ControllerNavState,
 }
 
 impl CharacterCreationScene {
@@ -45,6 +49,7 @@ impl CharacterCreationScene {
             pending_scene: None,
             mouse_x: 0,
             mouse_y: 0,
+            controller_nav: ControllerNavState::new(),
         }
     }
 }
@@ -58,6 +63,11 @@ impl Scene for CharacterCreationScene {
 
         let modifiers =
             KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
+
+        // Controller → nav event (rising-edge gated for axes).
+        if let Some(nav_event) = self.controller_nav.process_event(event) {
+            self.form.handle_event(&nav_event);
+        }
 
         if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
             self.form.handle_event(&ui_event);

@@ -68,6 +68,8 @@ pub struct QuitConfirmDialog {
     cancel_button: RectButton,
     /// Pending actions for the owner to drain.
     actions: Vec<QuitConfirmDialogAction>,
+    /// Controller focus index: 0=confirm, 1=cancel.
+    controller_focused: Option<usize>,
 }
 
 impl QuitConfirmDialog {
@@ -117,6 +119,7 @@ impl QuitConfirmDialog {
             confirm_button,
             cancel_button,
             actions: Vec::new(),
+            controller_focused: None,
         }
     }
 
@@ -155,6 +158,16 @@ impl QuitConfirmDialog {
     pub fn take_actions(&mut self) -> Vec<QuitConfirmDialogAction> {
         std::mem::take(&mut self.actions)
     }
+
+    /// Total number of controller-focusable elements.
+    const FOCUSABLE_COUNT: usize = 2;
+
+    /// Applies controller focus highlights to the two buttons.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        self.confirm_button.set_hovered(focused == Some(0));
+        self.cancel_button.set_hovered(focused == Some(1));
+    }
 }
 
 impl Widget for QuitConfirmDialog {
@@ -181,6 +194,42 @@ impl Widget for QuitConfirmDialog {
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
+        }
+
+        // ── Controller navigation ────────────────────────────────────
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => self.actions.push(QuitConfirmDialogAction::Confirm),
+                    Some(1) => self.actions.push(QuitConfirmDialogAction::Cancel),
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
         }
 
         // Title bar close button acts as Cancel.

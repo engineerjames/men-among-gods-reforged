@@ -77,6 +77,18 @@ impl Checkbox {
         self.toggled = false;
         t
     }
+
+    /// Sets the hover/focus highlight state directly.
+    ///
+    /// Used by controller focus navigation to highlight the checkbox without a
+    /// mouse event.
+    ///
+    /// # Arguments
+    ///
+    /// * `hovered` - `true` to show the highlight, `false` to clear it.
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
+    }
 }
 
 impl Widget for Checkbox {

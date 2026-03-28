@@ -84,6 +84,18 @@ impl RectButton {
         self.hovered
     }
 
+    /// Sets the hover/focus highlight state directly.
+    ///
+    /// Used by controller focus navigation to highlight a button without a
+    /// mouse event.
+    ///
+    /// # Arguments
+    ///
+    /// * `hovered` - `true` to show the highlight, `false` to clear it.
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
+    }
+
     /// Replaces the button label text.
     ///
     /// # Arguments

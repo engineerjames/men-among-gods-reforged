@@ -11,6 +11,7 @@ use crate::{
     state::AppState,
     ui::{
         self, RenderContext,
+        controller_nav::ControllerNavState,
         forms::cert_dialog::{CertDialog, CertDialogAction},
         forms::enter_reset_code_form::{EnterResetCodeForm, EnterResetCodeFormAction},
         widget::{KeyModifiers, Widget},
@@ -34,6 +35,9 @@ pub struct EnterResetCodeScene {
 
     mouse_x: i32,
     mouse_y: i32,
+
+    /// Rising-edge tracker for controller → nav events.
+    controller_nav: ControllerNavState,
 }
 
 impl EnterResetCodeScene {
@@ -48,6 +52,7 @@ impl EnterResetCodeScene {
             confirm_thread: None,
             mouse_x: 0,
             mouse_y: 0,
+            controller_nav: ControllerNavState::new(),
         }
     }
 
@@ -138,6 +143,16 @@ impl Scene for EnterResetCodeScene {
 
         let modifiers =
             KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
+
+        // Controller → nav event (rising-edge gated for axes).
+        if let Some(nav_event) = self.controller_nav.process_event(event) {
+            if self.cert_dialog.is_some() {
+                let dialog = self.cert_dialog.as_mut().unwrap();
+                dialog.handle_event(&nav_event);
+            } else {
+                self.form.handle_event(&nav_event);
+            }
+        }
 
         if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
             // Certificate dialog blocks all input to the form behind it.

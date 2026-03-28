@@ -54,6 +54,8 @@ pub struct CertDialog {
     accept_button: RectButton,
     reject_button: RectButton,
     actions: Vec<CertDialogAction>,
+    /// Controller focus index: 0=accept, 1=reject.
+    controller_focused: Option<usize>,
 }
 
 impl CertDialog {
@@ -101,6 +103,7 @@ impl CertDialog {
             accept_button,
             reject_button,
             actions: Vec::new(),
+            controller_focused: None,
         }
     }
 
@@ -111,6 +114,16 @@ impl CertDialog {
     /// A vector of actions produced since the last call.
     pub fn take_cert_actions(&mut self) -> Vec<CertDialogAction> {
         std::mem::take(&mut self.actions)
+    }
+
+    /// Total number of controller-focusable elements.
+    const FOCUSABLE_COUNT: usize = 2;
+
+    /// Applies controller focus highlights to the two buttons.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        self.accept_button.set_hovered(focused == Some(0));
+        self.reject_button.set_hovered(focused == Some(1));
     }
 }
 
@@ -124,6 +137,42 @@ impl Widget for CertDialog {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        // ── Controller navigation ────────────────────────────────────
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => self.actions.push(CertDialogAction::Accept),
+                    Some(1) => self.actions.push(CertDialogAction::Reject),
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         if self.accept_button.handle_event(event) == EventResponse::Consumed {
             self.actions.push(CertDialogAction::Accept);
             return EventResponse::Consumed;
