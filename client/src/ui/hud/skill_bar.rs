@@ -330,9 +330,21 @@ impl Widget for SkillBar {
                 ctx.canvas.fill_rect(rect)?;
             }
 
-            // Content: skill name or "+" hint.
+            // Content: slot number on top row, skill name / "+" hint on bottom row.
             let cx = x + CELL / 2;
-            let cy = y + (CELL - 10) / 2; // 10 = glyph height
+            // Slot number (1-based) always shown near the top of the cell.
+            let slot_label = (i + 1).to_string();
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                UI_FONT,
+                &slot_label,
+                cx,
+                y + 1,
+                font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
+            )?;
+            // Skill name or "+" hint in the lower half of the cell.
+            let cy = y + 10; // 10 = glyph height; sits directly below the number
             if let Some(skill_nr) = data.keybinds[i] {
                 let name = skills::get_skill_name(skill_nr);
                 let abbr = Self::abbreviate(name);
