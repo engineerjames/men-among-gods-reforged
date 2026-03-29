@@ -2027,7 +2027,7 @@ impl Scene for GameScene {
         self.perf_profiler.end_sample(PerfLabel::DrawCarriedItem);
 
         // 5e-ii. Controller cursor (crosshair drawn when controller mode is active)
-        if self.controller_mode {
+        if self.controller_mode && !self.settings_panel.is_visible() {
             self.draw_controller_cursor(canvas)?;
         }
 
