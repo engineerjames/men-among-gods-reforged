@@ -26,6 +26,8 @@ pub struct Dropdown {
     selected: usize,
     expanded: bool,
     hovered_option: Option<usize>,
+    /// Whether the collapsed header is hovered (mouse or controller focus).
+    hovered: bool,
     font: usize,
     /// One-shot flag indicating the selection changed since last read.
     changed: bool,
@@ -64,6 +66,7 @@ impl Dropdown {
             selected,
             expanded: false,
             hovered_option: None,
+            hovered: false,
             font,
             changed: false,
             hover_alpha: 80,
@@ -106,6 +109,15 @@ impl Dropdown {
     /// Returns whether the option list is currently expanded.
     pub fn is_expanded(&self) -> bool {
         self.expanded
+    }
+
+    /// Sets the header hover highlight (used by controller focus).
+    ///
+    /// # Arguments
+    ///
+    /// * `hovered` - Whether the dropdown header should appear hovered.
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
     }
 
     /// Returns the bounding rectangle of the full expanded area
@@ -217,6 +229,15 @@ impl Widget for Dropdown {
         // Border
         ctx.canvas.set_draw_color(Color::RGBA(120, 120, 140, 200));
         ctx.canvas.draw_rect(header_rect)?;
+
+        // Hover highlight (controller focus or mouse hover)
+        if self.hovered {
+            ctx.canvas.set_blend_mode(BlendMode::Add);
+            ctx.canvas
+                .set_draw_color(Color::RGBA(255, 255, 255, self.hover_alpha));
+            ctx.canvas.fill_rect(header_rect)?;
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+        }
 
         // Selected text
         let text_y =

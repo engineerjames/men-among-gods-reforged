@@ -92,6 +92,17 @@ impl Slider {
         c
     }
 
+    /// Programmatically sets the hover highlight state.
+    ///
+    /// Used by controller navigation to visually indicate focus.
+    ///
+    /// # Arguments
+    ///
+    /// * `hovered` - `true` to show the hover highlight, `false` to hide it.
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
+    }
+
     /// Returns the track region (the clickable bar area), expressed as
     /// `(x_start, x_end, y_center)` in absolute coordinates.
     fn track_geometry(&self) -> (i32, i32, i32) {

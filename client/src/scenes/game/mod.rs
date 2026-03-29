@@ -64,6 +64,7 @@ use crate::{
             Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
             WidgetAction,
         },
+        widgets::on_screen_keyboard::{OnScreenKeyboard, OnScreenKeyboardAction},
     },
 };
 
@@ -271,6 +272,18 @@ pub struct GameScene {
     /// `AppState::controller_active`). Stored locally so `handle_event` can
     /// read it without re-borrowing `AppState`.
     pub(super) controller_mode: bool,
+    /// Virtual cursor X position (sub-pixel) for controller-driven cursor movement.
+    pub(super) vcursor_x: f32,
+    /// Virtual cursor Y position (sub-pixel) for controller-driven cursor movement.
+    pub(super) vcursor_y: f32,
+    /// Current raw left-stick X axis value (−32768..32767), updated each frame.
+    pub(super) left_stick_x: i16,
+    /// Current raw left-stick Y axis value (−32768..32767), updated each frame.
+    pub(super) left_stick_y: i16,
+    /// Controller navigation tracker for HUD panels (settings menu, etc.).
+    pub(super) hud_nav: crate::ui::controller_nav::ControllerNavState,
+    /// On-screen keyboard for controller chat input.
+    keyboard: OnScreenKeyboard,
 }
 
 impl GameScene {
@@ -371,6 +384,12 @@ impl GameScene {
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
             controller_mode: false,
+            vcursor_x: TARGET_WIDTH_INT as f32 / 2.0,
+            vcursor_y: TARGET_HEIGHT_INT as f32 / 2.0,
+            left_stick_x: 0,
+            left_stick_y: 0,
+            hud_nav: crate::ui::controller_nav::ControllerNavState::new(),
+            keyboard: OnScreenKeyboard::new(),
         }
     }
 
@@ -767,6 +786,46 @@ impl GameScene {
         )
     }
 
+    /// Draw a crosshair cursor at the virtual cursor position when controller
+    /// mode is active.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn draw_controller_cursor(&self, canvas: &mut Canvas<Window>) -> Result<(), String> {
+        let cx = self.mouse_x;
+        let cy = self.mouse_y;
+        let size = 8i32; // arm length in pixels
+
+        // White crosshair with slight transparency
+        canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+        canvas.set_draw_color(Color::RGBA(255, 255, 255, 220));
+
+        // Horizontal line
+        canvas.draw_line(
+            sdl2::rect::Point::new(cx - size, cy),
+            sdl2::rect::Point::new(cx + size, cy),
+        )?;
+        // Vertical line
+        canvas.draw_line(
+            sdl2::rect::Point::new(cx, cy - size),
+            sdl2::rect::Point::new(cx, cy + size),
+        )?;
+
+        // Small center dot
+        canvas.set_draw_color(Color::RGBA(255, 255, 100, 255));
+        canvas.draw_point(sdl2::rect::Point::new(cx, cy))?;
+        canvas.draw_point(sdl2::rect::Point::new(cx + 1, cy))?;
+        canvas.draw_point(sdl2::rect::Point::new(cx, cy + 1))?;
+        canvas.draw_point(sdl2::rect::Point::new(cx + 1, cy + 1))?;
+
+        Ok(())
+    }
+
     /// Repaint the persistent 1024×1024 world minimap buffer from the current
     /// map state.
     ///
@@ -952,6 +1011,10 @@ impl Scene for GameScene {
         self.last_look_tick = 0;
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
+        self.vcursor_x = TARGET_WIDTH_INT as f32 / 2.0;
+        self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
+        self.left_stick_x = 0;
+        self.left_stick_y = 0;
 
         app_state.settings.spell_effects_enabled = true;
         app_state.settings.character.key_bindings = KeyBindings::default();
@@ -1276,6 +1339,90 @@ impl Scene for GameScene {
                     Btn::RightShoulder => self.rb_held = true,
                     _ => {}
                 }
+
+                // On-screen keyboard intercept (must be checked before any
+                // other controller handling so X/Start/DPad are captured).
+                if self.keyboard.is_visible() {
+                    match button {
+                        Btn::X => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::KeyboardToggleShift);
+                            return None;
+                        }
+                        Btn::Start => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::KeyboardDismiss);
+                            for kb_action in self.keyboard.take_actions() {
+                                if let OnScreenKeyboardAction::Dismiss = kb_action {
+                                    self.keyboard.hide();
+                                    self.chat_box.set_focused(false);
+                                }
+                            }
+                            return None;
+                        }
+                        Btn::DPadUp => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::KeyboardRowUp);
+                            return None;
+                        }
+                        Btn::DPadDown => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::KeyboardRowDown);
+                            return None;
+                        }
+                        Btn::A => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::NavConfirm);
+                            for kb_action in self.keyboard.take_actions() {
+                                match kb_action {
+                                    OnScreenKeyboardAction::TypeChar(ch) => {
+                                        self.chat_box.inject_char(ch);
+                                    }
+                                    OnScreenKeyboardAction::Backspace => {
+                                        self.chat_box.inject_backspace();
+                                    }
+                                    OnScreenKeyboardAction::Dismiss => {
+                                        self.keyboard.hide();
+                                        self.chat_box.set_focused(false);
+                                    }
+                                }
+                            }
+                            return None;
+                        }
+                        Btn::B => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::NavBack);
+                            for kb_action in self.keyboard.take_actions() {
+                                if let OnScreenKeyboardAction::Backspace = kb_action {
+                                    self.chat_box.inject_backspace();
+                                }
+                            }
+                            return None;
+                        }
+                        Btn::DPadLeft => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::NavPrev);
+                            return None;
+                        }
+                        Btn::DPadRight => {
+                            self.keyboard
+                                .handle_event(&crate::ui::widget::UiEvent::NavNext);
+                            return None;
+                        }
+                        _ => {} // LB/RB/Y/etc. pass through
+                    }
+                }
+
+                // Y button → open chat with on-screen keyboard (controller mode only)
+                if *button == Btn::Y
+                    && self.controller_mode
+                    && !self.settings_panel.is_visible()
+                    && !self.keyboard.is_visible()
+                {
+                    self.chat_box.set_focused(true);
+                    self.keyboard.show();
+                    return None;
+                }
                 // If the controller bindings panel is waiting for a button
                 // press, capture it and skip the normal skill-dispatch path.
                 if self.settings_panel.is_controller_listening() {
@@ -1288,6 +1435,53 @@ impl Scene for GameScene {
                     }
                     return None;
                 }
+
+                // Start → toggle settings panel
+                if *button == Btn::Start {
+                    self.settings_panel.toggle();
+                    if self.settings_panel.is_visible() {
+                        let data = self.build_settings_panel_data(app_state);
+                        self.settings_panel.sync_state(&data);
+                    }
+                    return None;
+                }
+
+                // When the settings panel is open, forward nav events to it
+                if self.settings_panel.is_visible() {
+                    if let Some(nav_event) = self.hud_nav.process_event(event) {
+                        self.settings_panel.handle_event(&nav_event);
+                        if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                            return Some(sc);
+                        }
+                        // NavBack on main settings panel → close it
+                        if matches!(nav_event, crate::ui::widget::UiEvent::NavBack)
+                            && !self.settings_panel.is_visible()
+                        {
+                            // Panel already closed itself via NavBack handling
+                        }
+                        return None;
+                    }
+                }
+
+                // A button (no modifier) → move to hovered tile
+                if *button == Btn::A && !self.lb_held && !self.rb_held && self.controller_mode {
+                    if let Some(ps) = app_state.player_state.as_ref() {
+                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                        if let Some((mx, my)) =
+                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+                        {
+                            let tile = ps.map().tile_at_xy(mx, my);
+                            let (world_x, world_y) =
+                                tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
+                            if let Some(net) = app_state.network.as_ref() {
+                                self.play_click_sound(app_state);
+                                net.send(ClientCommand::new_move(world_x, world_y));
+                            }
+                        }
+                    }
+                    return None;
+                }
+
                 if let Some(cb) = ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held) {
                     log::info!("Controller button mapped to {:?}", cb);
                     if let Some(slot) = app_state
@@ -1324,6 +1518,25 @@ impl Scene for GameScene {
                 return None;
             }
             Event::ControllerAxisMotion { axis, value, .. } => {
+                // Track left-stick axes for virtual cursor movement in update()
+                use sdl2::controller::Axis;
+                match axis {
+                    Axis::LeftX => self.left_stick_x = *value,
+                    Axis::LeftY => self.left_stick_y = *value,
+                    _ => {}
+                }
+
+                // When settings panel is open (and keyboard hidden), forward nav events from stick
+                if self.settings_panel.is_visible() && !self.keyboard.is_visible() {
+                    if let Some(nav_event) = self.hud_nav.process_event(event) {
+                        self.settings_panel.handle_event(&nav_event);
+                        if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                            return Some(sc);
+                        }
+                        return None;
+                    }
+                }
+
                 if let Some(cb) = ControllerButton::from_trigger_axis(*axis, *value) {
                     if let Some(slot) = app_state
                         .settings
@@ -1536,6 +1749,46 @@ impl Scene for GameScene {
         // Sync controller mode from the central AppState flag.
         self.controller_mode = app_state.controller_active;
 
+        // --- Virtual cursor movement (controller mode) ---
+        // Suppress cursor movement while the on-screen keyboard is visible so the
+        // left stick doesn't drift the crosshair underneath the keyboard overlay.
+        if self.controller_mode && !self.keyboard.is_visible() {
+            const DEADZONE: f32 = 8000.0;
+            const MAX_AXIS: f32 = 32767.0;
+            const CURSOR_SPEED: f32 = 300.0; // pixels per second
+
+            let dt_secs = dt.as_secs_f32();
+
+            let raw_x = self.left_stick_x as f32;
+            let raw_y = self.left_stick_y as f32;
+
+            let norm_x = if raw_x.abs() > DEADZONE {
+                ((raw_x.abs() - DEADZONE) / (MAX_AXIS - DEADZONE))
+                    .min(1.0)
+                    .copysign(raw_x)
+            } else {
+                0.0
+            };
+            let norm_y = if raw_y.abs() > DEADZONE {
+                ((raw_y.abs() - DEADZONE) / (MAX_AXIS - DEADZONE))
+                    .min(1.0)
+                    .copysign(raw_y)
+            } else {
+                0.0
+            };
+
+            self.vcursor_x += norm_x * CURSOR_SPEED * dt_secs;
+            self.vcursor_y += norm_y * CURSOR_SPEED * dt_secs;
+
+            // Clamp to viewport
+            self.vcursor_x = self.vcursor_x.clamp(0.0, TARGET_WIDTH_INT as f32 - 1.0);
+            self.vcursor_y = self.vcursor_y.clamp(0.0, TARGET_HEIGHT_INT as f32 - 1.0);
+
+            // Override mouse_x/mouse_y so all existing consumers use the virtual cursor
+            self.mouse_x = self.vcursor_x as i32;
+            self.mouse_y = self.vcursor_y as i32;
+        }
+
         // Create the cert dialog widget when a mismatch is first detected.
         if self.certificate_mismatch.is_some() && self.cert_dialog.is_none() {
             let m = self.certificate_mismatch.as_ref().unwrap();
@@ -1627,6 +1880,7 @@ impl Scene for GameScene {
                 gfx: gfx_cache,
             };
             self.chat_box.render(&mut ctx)?;
+            self.keyboard.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
@@ -1771,6 +2025,11 @@ impl Scene for GameScene {
             self.draw_carried_item(canvas, gfx_cache, ps)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawCarriedItem);
+
+        // 5e-ii. Controller cursor (crosshair drawn when controller mode is active)
+        if self.controller_mode {
+            self.draw_controller_cursor(canvas)?;
+        }
 
         // 5f. Context-sensitive helper text near the cursor
         self.perf_profiler.begin_sample(PerfLabel::DrawHelperText);

@@ -231,6 +231,10 @@ struct DisplaySettingsSubPanel {
     chk_vsync: Checkbox,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
+    /// Controller focus index. 0=Shadows, 1=SpellEffects, 2=ShowNames,
+    /// 3=ShowHealth, 4=HelperText, 5=HideWalls, 6=DisplayMode,
+    /// 7=PixelPerfect, 8=VSync, 9=Close.
+    controller_focused: Option<usize>,
 }
 
 impl DisplaySettingsSubPanel {
@@ -303,7 +307,26 @@ impl DisplaySettingsSubPanel {
                 .with_label("Close", 0)
                 .with_border(btn_border()),
             pending_actions: Vec::new(),
+            controller_focused: None,
         }
+    }
+
+    /// Number of focusable elements in the display sub-panel.
+    const FOCUSABLE_COUNT: usize = 10;
+
+    /// Applies controller focus highlighting.
+    fn apply_controller_focus(&mut self) {
+        let f = self.controller_focused;
+        self.chk_shadows.set_hovered(f == Some(0));
+        self.chk_spell_effects.set_hovered(f == Some(1));
+        self.chk_show_names.set_hovered(f == Some(2));
+        self.chk_show_health.set_hovered(f == Some(3));
+        self.chk_helper_text.set_hovered(f == Some(4));
+        self.chk_hide_walls.set_hovered(f == Some(5));
+        self.drp_display_mode.set_hovered(f == Some(6));
+        self.chk_pixel_perfect.set_hovered(f == Some(7));
+        self.chk_vsync.set_hovered(f == Some(8));
+        self.btn_close.set_hovered(f == Some(9));
     }
 
     /// Loads widget values from the data snapshot.
@@ -415,6 +438,99 @@ impl DisplaySettingsSubPanel {
             return EventResponse::Consumed;
         }
 
+        // Controller navigation.
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => {
+                        let v = !self.chk_shadows.is_checked();
+                        self.chk_shadows.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetShadows(v));
+                    }
+                    Some(1) => {
+                        let v = !self.chk_spell_effects.is_checked();
+                        self.chk_spell_effects.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetSpellEffects(v));
+                    }
+                    Some(2) => {
+                        let v = !self.chk_show_names.is_checked();
+                        self.chk_show_names.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetShowNames(v));
+                    }
+                    Some(3) => {
+                        let v = !self.chk_show_health.is_checked();
+                        self.chk_show_health.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetShowHealthPct(v));
+                    }
+                    Some(4) => {
+                        let v = !self.chk_helper_text.is_checked();
+                        self.chk_helper_text.set_checked(v);
+                        self.pending_actions
+                            .push(WidgetAction::SetShowHelperText(v));
+                    }
+                    Some(5) => {
+                        let v = !self.chk_hide_walls.is_checked();
+                        self.chk_hide_walls.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetHideWalls(v));
+                    }
+                    Some(6) => {
+                        // Cycle display mode dropdown.
+                        let next =
+                            (self.drp_display_mode.selected_index() + 1) % DisplayMode::ALL.len();
+                        self.drp_display_mode.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetDisplayMode(DisplayMode::ALL[next]));
+                    }
+                    Some(7) => {
+                        let v = !self.chk_pixel_perfect.is_checked();
+                        self.chk_pixel_perfect.set_checked(v);
+                        self.pending_actions
+                            .push(WidgetAction::SetPixelPerfectScaling(v));
+                    }
+                    Some(8) => {
+                        let v = !self.chk_vsync.is_checked();
+                        self.chk_vsync.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetVSync(v));
+                    }
+                    Some(9) => {
+                        self.visible = false;
+                        self.controller_focused = None;
+                    }
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavBack => {
+                self.visible = false;
+                self.controller_focused = None;
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         if self.btn_close.handle_event(event) == EventResponse::Consumed {
             self.visible = false;
             return EventResponse::Consumed;
@@ -513,6 +629,8 @@ struct DiagnosticsSubPanel {
     btn_log_dir: RectButton,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
+    /// Controller focus index. 0=ShowPositions, 1=Profiler, 2=LogDir, 3=Close.
+    controller_focused: Option<usize>,
 }
 
 impl DiagnosticsSubPanel {
@@ -557,7 +675,20 @@ impl DiagnosticsSubPanel {
                 .with_label("Close", 0)
                 .with_border(btn_border()),
             pending_actions: Vec::new(),
+            controller_focused: None,
         }
+    }
+
+    /// Number of focusable elements.
+    const FOCUSABLE_COUNT: usize = 4;
+
+    /// Applies controller focus highlighting.
+    fn apply_controller_focus(&mut self) {
+        let f = self.controller_focused;
+        self.chk_show_positions.set_hovered(f == Some(0));
+        self.btn_profiler.set_hovered(f == Some(1));
+        self.btn_log_dir.set_hovered(f == Some(2));
+        self.btn_close.set_hovered(f == Some(3));
     }
 
     /// Loads widget values from the data snapshot.
@@ -614,6 +745,61 @@ impl DiagnosticsSubPanel {
         }
         if tb_resp == EventResponse::Consumed {
             return EventResponse::Consumed;
+        }
+
+        // Controller navigation.
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => {
+                        let new_val = !self.chk_show_positions.is_checked();
+                        self.chk_show_positions.set_checked(new_val);
+                        self.pending_actions
+                            .push(WidgetAction::SetShowPositions(new_val));
+                    }
+                    Some(1) => {
+                        self.pending_actions.push(WidgetAction::StartProfiler);
+                    }
+                    Some(2) => {
+                        self.pending_actions.push(WidgetAction::OpenLogDir);
+                    }
+                    Some(3) => {
+                        self.visible = false;
+                        self.controller_focused = None;
+                    }
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavBack => {
+                self.visible = false;
+                self.controller_focused = None;
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
         }
 
         if self.btn_close.handle_event(event) == EventResponse::Consumed {
@@ -681,6 +867,8 @@ struct ControlsSubPanel {
     bindings: KeyBindings,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
+    /// Controller focus index. 0..N-1 = binding buttons, N = Close.
+    controller_focused: Option<usize>,
 }
 
 impl ControlsSubPanel {
@@ -722,7 +910,23 @@ impl ControlsSubPanel {
                 .with_label("Close", 0)
                 .with_border(btn_border()),
             pending_actions: Vec::new(),
+            controller_focused: None,
         }
+    }
+
+    /// Returns the total number of focusable elements (binding buttons + close).
+    fn focusable_count(&self) -> usize {
+        self.binding_buttons.len() + 1
+    }
+
+    /// Applies controller focus highlighting.
+    fn apply_controller_focus(&mut self) {
+        let f = self.controller_focused;
+        for (i, btn) in self.binding_buttons.iter_mut().enumerate() {
+            btn.set_hovered(f == Some(i));
+        }
+        self.btn_close
+            .set_hovered(f == Some(self.binding_buttons.len()));
     }
 
     /// Loads widget values from the data snapshot.
@@ -839,6 +1043,59 @@ impl ControlsSubPanel {
             return EventResponse::Consumed;
         }
 
+        // Controller navigation.
+        match event {
+            UiEvent::NavNext => {
+                let count = self.focusable_count();
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % count,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                let count = self.focusable_count();
+                self.controller_focused = Some(match self.controller_focused {
+                    None => count - 1,
+                    Some(0) => count - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                let close_idx = self.binding_buttons.len();
+                match self.controller_focused {
+                    Some(i) if i < close_idx => {
+                        // Enter listening mode for this binding.
+                        self.listening_for = Some(i);
+                        if let Some(btn) = self.binding_buttons.get_mut(i) {
+                            btn.set_label("Press a key...");
+                        }
+                    }
+                    Some(i) if i == close_idx => {
+                        self.hide();
+                        self.controller_focused = None;
+                    }
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavBack => {
+                self.hide();
+                self.controller_focused = None;
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         if self.btn_close.handle_event(event) == EventResponse::Consumed {
             self.hide();
             return EventResponse::Consumed;
@@ -915,6 +1172,8 @@ struct ControllerBindingsSubPanel {
     bindings: ControllerBindings,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
+    /// Controller focus index. 0..8 = slot buttons, 9 = Close.
+    controller_focused: Option<usize>,
 }
 
 impl ControllerBindingsSubPanel {
@@ -954,7 +1213,23 @@ impl ControllerBindingsSubPanel {
                 .with_label("Close", 0)
                 .with_border(btn_border()),
             pending_actions: Vec::new(),
+            controller_focused: None,
         }
+    }
+
+    /// Returns the total number of focusable elements (slot buttons + close).
+    fn focusable_count(&self) -> usize {
+        self.binding_buttons.len() + 1
+    }
+
+    /// Applies controller focus highlighting.
+    fn apply_controller_focus(&mut self) {
+        let f = self.controller_focused;
+        for (i, btn) in self.binding_buttons.iter_mut().enumerate() {
+            btn.set_hovered(f == Some(i));
+        }
+        self.btn_close
+            .set_hovered(f == Some(self.binding_buttons.len()));
     }
 
     /// Loads widget values from the current controller bindings.
@@ -1077,6 +1352,63 @@ impl ControllerBindingsSubPanel {
         }
         if tb_resp == EventResponse::Consumed {
             return EventResponse::Consumed;
+        }
+
+        // Controller navigation.
+        match event {
+            UiEvent::NavNext => {
+                let count = self.focusable_count();
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % count,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                let count = self.focusable_count();
+                self.controller_focused = Some(match self.controller_focused {
+                    None => count - 1,
+                    Some(0) => count - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                let close_idx = self.binding_buttons.len();
+                match self.controller_focused {
+                    Some(i) if i < close_idx => {
+                        // Enter listening mode for this slot.
+                        self.listening_for = Some(i);
+                        if let Some(btn) = self.binding_buttons.get_mut(i) {
+                            btn.set_label("Press btn...");
+                        }
+                    }
+                    Some(i) if i == close_idx => {
+                        self.hide();
+                        self.controller_focused = None;
+                    }
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavBack => {
+                if self.listening_for.is_some() {
+                    self.cancel_listening();
+                } else {
+                    self.hide();
+                    self.controller_focused = None;
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
         }
 
         if self.btn_close.handle_event(event) == EventResponse::Consumed {
@@ -1221,6 +1553,11 @@ pub struct SettingsPanel {
     sub_diagnostics: DiagnosticsSubPanel,
     sub_controls: ControlsSubPanel,
     sub_controller: ControllerBindingsSubPanel,
+
+    /// Controller focus index into the focusable elements list, if any.
+    /// Order: 0=Display, 1=Diagnostics, 2=Controls, 3=Controller,
+    ///        4=Volume, 5=Disconnect, 6=Quit, 7=Return.
+    controller_focused: Option<usize>,
 }
 
 impl SettingsPanel {
@@ -1327,6 +1664,8 @@ impl SettingsPanel {
                 controller_y,
                 bounds.width,
             ),
+
+            controller_focused: None,
         }
     }
 
@@ -1335,6 +1674,7 @@ impl SettingsPanel {
         self.visible = !self.visible;
         if !self.visible {
             self.close_active_sub_panel();
+            self.controller_focused = None;
         }
     }
 
@@ -1418,6 +1758,30 @@ impl SettingsPanel {
                 SettingsSubPanel::Controls => self.sub_controls.hide(),
                 SettingsSubPanel::Controller => self.sub_controller.hide(),
             }
+        }
+    }
+
+    /// Number of focusable elements on the main panel.
+    const MAIN_FOCUSABLE_COUNT: usize = 8;
+
+    /// Applies controller focus highlighting to the main panel widgets.
+    fn apply_controller_focus(&mut self) {
+        let f = self.controller_focused;
+        self.btn_display.set_hovered(f == Some(0));
+        self.btn_diagnostics.set_hovered(f == Some(1));
+        self.btn_controls.set_hovered(f == Some(2));
+        self.btn_controller.set_hovered(f == Some(3));
+        self.sld_volume.set_hovered(f == Some(4));
+        self.btn_disconnect.set_hovered(f == Some(5));
+        self.btn_quit.set_hovered(f == Some(6));
+        self.btn_return.set_hovered(f == Some(7));
+    }
+
+    /// Resets the controller focus (e.g. when mouse takes over).
+    fn clear_controller_focus(&mut self) {
+        if self.controller_focused.is_some() {
+            self.controller_focused = None;
+            self.apply_controller_focus();
         }
     }
 
@@ -1515,6 +1879,67 @@ impl Widget for SettingsPanel {
             if resp == EventResponse::Consumed {
                 return EventResponse::Consumed;
             }
+        }
+
+        // 2b. Controller navigation for the main panel.
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::MAIN_FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::MAIN_FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::MAIN_FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => self.open_sub_panel(SettingsSubPanel::Display),
+                    Some(1) => self.open_sub_panel(SettingsSubPanel::Diagnostics),
+                    Some(2) => self.open_sub_panel(SettingsSubPanel::Controls),
+                    Some(3) => self.open_sub_panel(SettingsSubPanel::Controller),
+                    Some(4) => {
+                        // Volume slider: no-op on confirm (use left/right to
+                        // adjust when we add that, for now skip).
+                    }
+                    Some(5) => {
+                        self.pending_actions.push(WidgetAction::Disconnect);
+                    }
+                    Some(6) => {
+                        self.quit_dialog.center_on(&self.bounds);
+                        self.quit_dialog.show();
+                    }
+                    Some(7) => {
+                        self.visible = false;
+                        self.close_active_sub_panel();
+                        self.pending_actions
+                            .push(WidgetAction::TogglePanel(HudPanel::Settings));
+                    }
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavBack => {
+                // Close the settings panel entirely.
+                self.visible = false;
+                self.close_active_sub_panel();
+                self.controller_focused = None;
+                self.pending_actions
+                    .push(WidgetAction::TogglePanel(HudPanel::Settings));
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                self.clear_controller_focus();
+            }
+            _ => {}
         }
 
         // 3. Title bar: drag / close.

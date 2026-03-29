@@ -147,6 +147,38 @@ impl ChatBox {
         self.focused
     }
 
+    /// Programmatically sets the focus state of the chat input.
+    ///
+    /// # Arguments
+    ///
+    /// * `focused` - Whether the chat input should have focus.
+    pub fn set_focused(&mut self, focused: bool) {
+        self.focused = focused;
+        if focused {
+            self.idle_elapsed = 0.0;
+        }
+    }
+
+    /// Injects a single character into the input buffer (for the on-screen
+    /// keyboard).
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - The character to inject.
+    pub fn inject_char(&mut self, ch: char) {
+        self.idle_elapsed = 0.0;
+        if self.input_buf.len() + ch.len_utf8() <= MAX_INPUT_LEN {
+            self.input_buf.push(ch);
+        }
+    }
+
+    /// Removes the last character from the input buffer (for the on-screen
+    /// keyboard backspace).
+    pub fn inject_backspace(&mut self) {
+        self.idle_elapsed = 0.0;
+        self.input_buf.pop();
+    }
+
     /// Runs the follow-tail and clamping logic for the scroll offset.
     ///
     /// Call this once per frame before rendering so that new messages push the
@@ -349,7 +381,12 @@ impl Widget for ChatBox {
             | UiEvent::MouseDown { .. }
             | UiEvent::NavNext
             | UiEvent::NavPrev
-            | UiEvent::NavConfirm => EventResponse::Ignored,
+            | UiEvent::NavConfirm
+            | UiEvent::NavBack
+            | UiEvent::KeyboardRowUp
+            | UiEvent::KeyboardRowDown
+            | UiEvent::KeyboardToggleShift
+            | UiEvent::KeyboardDismiss => EventResponse::Ignored,
         }
     }
 

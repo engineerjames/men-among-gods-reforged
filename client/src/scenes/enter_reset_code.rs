@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
+use sdl2::{controller::Button as Btn, event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
     account_api, cert_trust,
@@ -14,7 +14,8 @@ use crate::{
         controller_nav::ControllerNavState,
         forms::cert_dialog::{CertDialog, CertDialogAction},
         forms::enter_reset_code_form::{EnterResetCodeForm, EnterResetCodeFormAction},
-        widget::{KeyModifiers, Widget},
+        widget::{KeyModifiers, UiEvent, Widget},
+        widgets::on_screen_keyboard::{OnScreenKeyboard, OnScreenKeyboardAction},
     },
 };
 
@@ -38,6 +39,8 @@ pub struct EnterResetCodeScene {
 
     /// Rising-edge tracker for controller → nav events.
     controller_nav: ControllerNavState,
+    /// On-screen keyboard for controller text input.
+    keyboard: OnScreenKeyboard,
 }
 
 impl EnterResetCodeScene {
@@ -53,6 +56,7 @@ impl EnterResetCodeScene {
             mouse_x: 0,
             mouse_y: 0,
             controller_nav: ControllerNavState::new(),
+            keyboard: OnScreenKeyboard::new(),
         }
     }
 
@@ -144,9 +148,55 @@ impl Scene for EnterResetCodeScene {
         let modifiers =
             KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
 
+        // When the on-screen keyboard is visible, intercept raw SDL
+        // controller buttons for keyboard-specific actions.
+        if self.keyboard.is_visible() {
+            if let Event::ControllerButtonDown { button, .. } = event {
+                match button {
+                    Btn::X => {
+                        self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
+                        return self.pending_scene.take();
+                    }
+                    Btn::Start => {
+                        self.keyboard.handle_event(&UiEvent::KeyboardDismiss);
+                        for kb_action in self.keyboard.take_actions() {
+                            if let OnScreenKeyboardAction::Dismiss = kb_action {
+                                self.keyboard.hide();
+                            }
+                        }
+                        return self.pending_scene.take();
+                    }
+                    Btn::DPadUp => {
+                        self.keyboard.handle_event(&UiEvent::KeyboardRowUp);
+                        return self.pending_scene.take();
+                    }
+                    Btn::DPadDown => {
+                        self.keyboard.handle_event(&UiEvent::KeyboardRowDown);
+                        return self.pending_scene.take();
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // Controller → nav event (rising-edge gated for axes).
         if let Some(nav_event) = self.controller_nav.process_event(event) {
-            if self.cert_dialog.is_some() {
+            if self.keyboard.is_visible() {
+                self.keyboard.handle_event(&nav_event);
+                for kb_action in self.keyboard.take_actions() {
+                    match kb_action {
+                        OnScreenKeyboardAction::TypeChar(ch) => {
+                            self.form.inject_char(ch);
+                        }
+                        OnScreenKeyboardAction::Backspace => {
+                            self.form.inject_backspace();
+                        }
+                        OnScreenKeyboardAction::Dismiss => {
+                            self.keyboard.hide();
+                        }
+                    }
+                }
+            } else if self.cert_dialog.is_some() {
                 let dialog = self.cert_dialog.as_mut().unwrap();
                 dialog.handle_event(&nav_event);
             } else {
@@ -215,6 +265,10 @@ impl Scene for EnterResetCodeScene {
                     log::info!("Cancel clicked");
                     self.pending_scene = Some(SceneType::Login);
                 }
+                EnterResetCodeFormAction::OpenKeyboard(field_idx) => {
+                    self.form.set_text_focus(field_idx);
+                    self.keyboard.show();
+                }
             }
         }
 
@@ -282,6 +336,7 @@ impl Scene for EnterResetCodeScene {
 
         panning_background.render(&mut ctx)?;
         self.form.render(&mut ctx)?;
+        self.keyboard.render(&mut ctx)?;
 
         if let Some(ref mut dialog) = self.cert_dialog {
             dialog.render(&mut ctx)?;

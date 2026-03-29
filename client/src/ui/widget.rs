@@ -198,6 +198,16 @@ pub enum UiEvent {
     NavPrev,
     /// Controller navigation: activate the currently focused element.
     NavConfirm,
+    /// Controller navigation: go back / cancel (B button).
+    NavBack,
+    /// On-screen keyboard: move focus one row up (D-pad Up).
+    KeyboardRowUp,
+    /// On-screen keyboard: move focus one row down (D-pad Down).
+    KeyboardRowDown,
+    /// On-screen keyboard: toggle shift layer (X button).
+    KeyboardToggleShift,
+    /// On-screen keyboard: dismiss the keyboard (Start button).
+    KeyboardDismiss,
 }
 
 /// Whether a widget consumed an event or ignored it.

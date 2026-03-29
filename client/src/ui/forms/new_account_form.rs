@@ -67,6 +67,9 @@ pub enum NewAccountFormAction {
     },
     /// User pressed Cancel.
     Cancel,
+    /// Controller wants to open the on-screen keyboard for a text field.
+    /// The `usize` is the text-field index (0 = email, 1 = username, 2 = password, 3 = confirm).
+    OpenKeyboard(usize),
 }
 
 // ---------------------------------------------------------------------------
@@ -314,13 +317,56 @@ impl NewAccountForm {
     }
 
     /// Total number of controller-focusable elements.
-    const FOCUSABLE_COUNT: usize = 2;
+    /// 0=email, 1=username, 2=password, 3=confirm, 4=create, 5=cancel.
+    const FOCUSABLE_COUNT: usize = 6;
 
     /// Applies the controller focus highlight to the appropriate child widget.
     fn apply_controller_focus(&mut self) {
         let focused = self.controller_focused;
-        self.create_button.set_hovered(focused == Some(0));
-        self.cancel_button.set_hovered(focused == Some(1));
+        self.email_input.set_hovered(focused == Some(0));
+        self.username_input.set_hovered(focused == Some(1));
+        self.password_input.set_hovered(focused == Some(2));
+        self.confirm_password_input.set_hovered(focused == Some(3));
+        self.create_button.set_hovered(focused == Some(4));
+        self.cancel_button.set_hovered(focused == Some(5));
+    }
+
+    /// Injects a character into the currently focused text field.
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - The character to inject.
+    pub fn inject_char(&mut self, ch: char) {
+        match self.focused_field {
+            0 => self.email_input.inject_char(ch),
+            1 => self.username_input.inject_char(ch),
+            2 => self.password_input.inject_char(ch),
+            3 => self.confirm_password_input.inject_char(ch),
+            _ => {}
+        }
+    }
+
+    /// Injects a backspace into the currently focused text field.
+    pub fn inject_backspace(&mut self) {
+        match self.focused_field {
+            0 => self.email_input.inject_backspace(),
+            1 => self.username_input.inject_backspace(),
+            2 => self.password_input.inject_backspace(),
+            3 => self.confirm_password_input.inject_backspace(),
+            _ => {}
+        }
+    }
+
+    /// Sets the focused text field by index and opens it for editing.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_index` - Text field index (0–3).
+    pub fn set_text_focus(&mut self, field_index: usize) {
+        if field_index < 4 {
+            self.focused_field = field_index;
+            self.apply_focus();
+        }
     }
 }
 
@@ -355,8 +401,13 @@ impl Widget for NewAccountForm {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(0) => self.push_create_action(),
-                    Some(1) => self.actions.push(NewAccountFormAction::Cancel),
+                    Some(i @ 0..=3) => {
+                        self.focused_field = i;
+                        self.apply_focus();
+                        self.actions.push(NewAccountFormAction::OpenKeyboard(i));
+                    }
+                    Some(4) => self.push_create_action(),
+                    Some(5) => self.actions.push(NewAccountFormAction::Cancel),
                     _ => {}
                 }
                 return EventResponse::Consumed;

@@ -223,6 +223,10 @@ impl Widget for QuitConfirmDialog {
                 }
                 return EventResponse::Consumed;
             }
+            UiEvent::NavBack => {
+                self.actions.push(QuitConfirmDialogAction::Cancel);
+                return EventResponse::Consumed;
+            }
             UiEvent::MouseMove { .. } => {
                 if self.controller_focused.is_some() {
                     self.controller_focused = None;

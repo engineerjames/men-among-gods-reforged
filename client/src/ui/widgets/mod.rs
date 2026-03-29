@@ -2,6 +2,7 @@ pub mod button;
 pub mod checkbox;
 pub mod dropdown;
 pub mod label;
+pub mod on_screen_keyboard;
 pub mod panel;
 pub mod radio_group;
 pub mod scrollable_list;

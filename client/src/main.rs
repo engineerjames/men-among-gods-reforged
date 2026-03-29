@@ -126,6 +126,10 @@ fn main() -> Result<(), String> {
 
     let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state, panning_background);
 
+    // Track the previous controller_active state so we can detect transitions
+    // and toggle the system cursor accordingly.
+    let mut prev_controller_active = false;
+
     // --- Apply persisted display settings ---------------------------------
     app_state.settings = preferences::load_global_settings();
 
@@ -257,6 +261,14 @@ fn main() -> Result<(), String> {
             if scene_manager.get_scene() == SceneType::Exit {
                 break 'running;
             }
+        }
+
+        // --- Toggle system cursor visibility on controller mode changes ---
+        if app_state.controller_active != prev_controller_active {
+            sdl_context
+                .mouse()
+                .show_cursor(!app_state.controller_active);
+            prev_controller_active = app_state.controller_active;
         }
 
         scene_manager.update(&mut app_state, dt);

@@ -66,6 +66,7 @@ impl ControllerNavState {
                     Btn::DPadDown | Btn::DPadRight => Some(UiEvent::NavNext),
                     Btn::DPadUp | Btn::DPadLeft => Some(UiEvent::NavPrev),
                     Btn::A | Btn::Start => Some(UiEvent::NavConfirm),
+                    Btn::B => Some(UiEvent::NavBack),
                     _ => None,
                 }
             }
@@ -218,5 +219,14 @@ mod tests {
         let mut state = ControllerNavState::new();
         let event = Event::Quit { timestamp: 0 };
         assert_eq!(state.process_event(&event), None);
+    }
+
+    #[test]
+    fn b_button_maps_to_nav_back() {
+        let mut state = ControllerNavState::new();
+        assert_eq!(
+            state.process_event(&btn_event(sdl2::controller::Button::B)),
+            Some(UiEvent::NavBack)
+        );
     }
 }
