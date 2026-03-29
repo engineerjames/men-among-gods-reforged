@@ -35,7 +35,7 @@ const FONT: usize = 1;
 pub struct StatusPanel {
     /// Bounding rectangle of the panel.
     bounds: Bounds,
-    /// Semi-transparent background fill colour.
+    /// Semi-transparent background fill color.
     bg_color: Color,
     /// Current weapon value.
     weapon: i32,

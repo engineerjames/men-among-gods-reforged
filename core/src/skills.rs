@@ -41,6 +41,24 @@ const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "S
 /// Maximum number of skill slots.
 pub const MAX_SKILLS: usize = 50;
 
+#[repr(usize)]
+pub enum SkillIndex {
+    /// The base value of the skill, before any modifiers.
+    BaseValue = 0,
+    /// The preset modifier for the skill
+    PresetModifier = 1,
+    /// The maximum value the skill can reach
+    MaxValue = 2,
+    /// The difficulty to raise the skill (0=not raisable, 1=easy ... 10=hard)
+    RaiseDifficulty = 3,
+    /// The dynamic modifier for the skill, depends on equipment and spells
+    DynamicModifier = 4,
+    /// The total value of the skill, including all modifiers
+    TotalValue = 5,
+    /// Maximum index for iterating over skill values
+    MaxIndex = 6,
+}
+
 /// A skill definition entry describing one learnable ability.
 ///
 /// Each entry records the skill's index, category code, name,

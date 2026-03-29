@@ -4,8 +4,8 @@
 use sdl2::pixels::Color;
 
 use crate::ui::RenderContext;
-use crate::ui::widgets::button::CircleButton;
 use crate::ui::widget::{Bounds, EventResponse, HudPanel, UiEvent, Widget, WidgetAction};
+use crate::ui::widgets::button::CircleButton;
 
 /// Default fill color for the HUD buttons (semi-transparent dark slate).
 const BUTTON_FILL: Color = Color::RGBA(20, 20, 40, 200);

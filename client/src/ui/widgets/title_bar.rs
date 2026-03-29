@@ -7,9 +7,9 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent};
-use crate::font_cache;
 
 /// Height of the title bar in pixels.
 pub const TITLE_BAR_H: i32 = 18;

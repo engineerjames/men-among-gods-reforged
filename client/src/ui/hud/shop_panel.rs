@@ -7,9 +7,9 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
-use crate::font_cache;
 
 // ---------------------------------------------------------------------------
 // Layout constants

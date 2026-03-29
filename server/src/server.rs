@@ -1,5 +1,6 @@
 use chrono::Timelike;
 use core::constants::{CharacterFlags, TILEX, TILEY};
+use core::logout_reasons::LogoutReason;
 use core::stat_buffer::StatisticsBuffer;
 use core::types::Map;
 use std::io::ErrorKind;
@@ -187,7 +188,7 @@ impl Server {
                 gs.characters[i].get_name(),
             );
 
-            player::plr_logout(gs, i, 0, crate::enums::LogoutReason::Shutdown);
+            player::plr_logout(gs, i, 0, LogoutReason::Shutdown);
         }
 
         // Initialize subsystems
@@ -1351,7 +1352,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
+                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
                 Ok(len) => {
                     gs.players[player_idx].in_len += len;
@@ -1367,7 +1368,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
+                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
             }
         }
@@ -1418,7 +1419,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
+                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
                 Ok(ret) => {
                     gs.globals.send += ret as i64;
@@ -1437,7 +1438,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, crate::enums::LogoutReason::Unknown);
+                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
             }
         }

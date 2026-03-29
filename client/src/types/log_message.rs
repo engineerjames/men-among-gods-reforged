@@ -1,4 +1,4 @@
-/// Colour used to render a chat log message.
+/// Color used to render a chat log message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LogMessageColor {
     Yellow,

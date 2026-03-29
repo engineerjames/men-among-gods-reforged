@@ -3,9 +3,9 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use crate::font_cache;
 
 /// Height of each option row in the expanded list in pixels.
 const OPTION_ROW_H: u32 = 14;

@@ -10,6 +10,7 @@ use crate::{
     state::AppState,
     ui::{
         self, RenderContext,
+        controller_nav::ControllerNavState,
         forms::cert_dialog::{CertDialog, CertDialogAction},
         forms::login_form::{LoginForm, LoginFormAction},
         widget::{KeyModifiers, Widget},
@@ -39,6 +40,9 @@ pub struct LoginScene {
     // -- Mouse position for SDL-->UiEvent conversion --
     mouse_x: i32,
     mouse_y: i32,
+
+    /// Rising-edge tracker for controller → nav events.
+    controller_nav: ControllerNavState,
 }
 
 impl LoginScene {
@@ -64,6 +68,7 @@ impl LoginScene {
             music_initialized: false,
             mouse_x: 0,
             mouse_y: 0,
+            controller_nav: ControllerNavState::new(),
         }
     }
 
@@ -188,6 +193,16 @@ impl Scene for LoginScene {
         let modifiers =
             KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
 
+        // Controller → nav event (rising-edge gated for axes).
+        if let Some(nav_event) = self.controller_nav.process_event(event) {
+            if self.cert_dialog.is_some() {
+                let dialog = self.cert_dialog.as_mut().unwrap();
+                dialog.handle_event(&nav_event);
+            } else {
+                self.login_form.handle_event(&nav_event);
+            }
+        }
+
         // Build UiEvent from the raw SDL event.
         if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
             // Certificate dialog blocks all input to the form behind it.
@@ -241,36 +256,38 @@ impl Scene for LoginScene {
 
             // ── Normal (no dialog) ──────────────────────────────────────
             self.login_form.handle_event(&ui_event);
+        }
 
-            for action in self.login_form.take_login_actions() {
-                match action {
-                    LoginFormAction::Login {
-                        ip,
-                        username,
-                        password,
-                    } => {
-                        self.handle_login_action(app_state, ip, username, password);
+        // Drain form actions unconditionally — controller nav events bypass
+        // the sdl_to_ui_event block so actions must be processed regardless.
+        for action in self.login_form.take_login_actions() {
+            match action {
+                LoginFormAction::Login {
+                    ip,
+                    username,
+                    password,
+                } => {
+                    self.handle_login_action(app_state, ip, username, password);
+                }
+                LoginFormAction::CreateAccount => {
+                    log::info!("Create new account clicked");
+                    return Some(SceneType::NewAccount);
+                }
+                LoginFormAction::ResetPassword => {
+                    log::info!("Reset password clicked");
+                    return Some(SceneType::RequestReset);
+                }
+                LoginFormAction::Quit => {
+                    return Some(SceneType::Exit);
+                }
+                LoginFormAction::ToggleMusic(enabled) => {
+                    app_state.settings.music_enabled = enabled;
+                    if enabled {
+                        app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
+                    } else {
+                        app_state.sfx_cache.stop_music();
                     }
-                    LoginFormAction::CreateAccount => {
-                        log::info!("Create new account clicked");
-                        return Some(SceneType::NewAccount);
-                    }
-                    LoginFormAction::ResetPassword => {
-                        log::info!("Reset password clicked");
-                        return Some(SceneType::RequestReset);
-                    }
-                    LoginFormAction::Quit => {
-                        return Some(SceneType::Exit);
-                    }
-                    LoginFormAction::ToggleMusic(enabled) => {
-                        app_state.settings.music_enabled = enabled;
-                        if enabled {
-                            app_state.sfx_cache.play_music(MusicTrack::LoginTheme);
-                        } else {
-                            app_state.sfx_cache.stop_music();
-                        }
-                        self.save_music_setting(enabled);
-                    }
+                    self.save_music_setting(enabled);
                 }
             }
         }

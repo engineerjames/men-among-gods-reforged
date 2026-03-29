@@ -10,9 +10,9 @@ use std::time::Duration;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use crate::font_cache;
 
 /// Radius of the radio circle in pixels.
 const RADIO_RADIUS: i32 = 5;
@@ -62,6 +62,8 @@ pub struct RadioGroup<T: Copy + PartialEq + Debug> {
     /// One-shot flag: set when the selection changes, cleared by
     /// [`was_changed`](Self::was_changed).
     changed: bool,
+    /// Controller focus highlight index, if any.
+    controller_focused: Option<usize>,
 }
 
 impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
@@ -90,6 +92,7 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
             selected,
             layout: Layout::Vertical,
             changed: false,
+            controller_focused: None,
         }
     }
 
@@ -118,6 +121,7 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
             selected,
             layout: Layout::Horizontal,
             changed: false,
+            controller_focused: None,
         }
     }
 
@@ -142,6 +146,39 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
         let c = self.changed;
         self.changed = false;
         c
+    }
+
+    /// Returns the number of options in this group.
+    pub fn option_count(&self) -> usize {
+        self.options.len()
+    }
+
+    /// Sets the controller focus highlight to a specific option index.
+    ///
+    /// Pass `None` to clear the highlight. The highlight is purely visual
+    /// and does not change the selected value.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Option index to highlight, or `None` to clear.
+    pub fn set_controller_focused(&mut self, index: Option<usize>) {
+        self.controller_focused = index;
+    }
+
+    /// Selects the option at the given index and sets the `changed` flag.
+    ///
+    /// Does nothing if `index` is out of range or already selected.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - The option index to select.
+    pub fn select_by_index(&mut self, index: usize) {
+        if let Some(opt) = self.options.get(index) {
+            if self.selected != opt.value {
+                self.selected = opt.value;
+                self.changed = true;
+            }
+        }
     }
 
     /// Returns the row height for a single radio option.
@@ -253,6 +290,15 @@ impl<T: Copy + PartialEq + Debug> Widget for RadioGroup<T> {
                 text_y,
                 font_cache::TextStyle::PLAIN,
             )?;
+
+            // Controller focus highlight (additive blend, same style as RectButton hover).
+            if self.controller_focused == Some(i) {
+                let highlight_rect = sdl2::rect::Rect::new(ob.x, ob.y, ob.width, ob.height);
+                ctx.canvas.set_blend_mode(BlendMode::Add);
+                ctx.canvas.set_draw_color(Color::RGBA(255, 255, 255, 96));
+                ctx.canvas.fill_rect(highlight_rect)?;
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
+            }
         }
 
         Ok(())

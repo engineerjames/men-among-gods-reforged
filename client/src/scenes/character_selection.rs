@@ -12,6 +12,7 @@ use crate::{
     state::{AppState, GameLoginTarget},
     ui::{
         self, RenderContext,
+        controller_nav::ControllerNavState,
         forms::character_selection_form::{CharacterSelectionForm, CharacterSelectionFormAction},
         forms::delete_character_dialog::{DeleteCharacterDialog, DeleteCharacterDialogAction},
         widget::{KeyModifiers, Widget},
@@ -55,6 +56,9 @@ pub struct CharacterSelectionScene {
 
     mouse_x: i32,
     mouse_y: i32,
+
+    /// Rising-edge tracker for controller → nav events.
+    controller_nav: ControllerNavState,
 }
 
 impl CharacterSelectionScene {
@@ -85,6 +89,7 @@ impl CharacterSelectionScene {
             pending_scene: None,
             mouse_x: 0,
             mouse_y: 0,
+            controller_nav: ControllerNavState::new(),
         }
     }
 
@@ -203,6 +208,15 @@ impl Scene for CharacterSelectionScene {
         let modifiers =
             KeyModifiers::from_sdl2(Mod::from_bits_truncate(sdl2::keyboard::Mod::empty().bits()));
 
+        // Controller → nav event (rising-edge gated for axes).
+        if let Some(nav_event) = self.controller_nav.process_event(event) {
+            if self.delete_dialog.is_visible() {
+                self.delete_dialog.handle_event(&nav_event);
+            } else {
+                self.form.handle_event(&nav_event);
+            }
+        }
+
         if let Some(ui_event) = ui::sdl_to_ui_event(event, self.mouse_x, self.mouse_y, modifiers) {
             // Delete dialog is modal: blocks form input.
             if self.delete_dialog.is_visible() {
@@ -253,77 +267,73 @@ impl Scene for CharacterSelectionScene {
 
             // Forward to form.
             self.form.handle_event(&ui_event);
+        }
 
-            // Track selection changes.
-            self.selected_character_id = self.form.selected_character_id();
+        // Track selection changes (unconditional — also needed after controller nav).
+        self.selected_character_id = self.form.selected_character_id();
 
-            // Process form actions.
-            for action in self.form.take_actions() {
-                match action {
-                    CharacterSelectionFormAction::CreateNew => {
-                        self.last_error = None;
-                        self.pending_scene = Some(SceneType::CharacterCreation);
+        // Drain form actions unconditionally — controller nav events bypass
+        // the sdl_to_ui_event block so actions must be processed regardless.
+        for action in self.form.take_actions() {
+            match action {
+                CharacterSelectionFormAction::CreateNew => {
+                    self.last_error = None;
+                    self.pending_scene = Some(SceneType::CharacterCreation);
+                }
+                CharacterSelectionFormAction::ContinueToGame { character_id } => {
+                    if self.logging_in || Self::is_thread_running(&self.login_thread) {
+                        self.form
+                            .set_error(Some("Login already in progress".to_string()));
+                        continue;
                     }
-                    CharacterSelectionFormAction::ContinueToGame { character_id } => {
-                        if self.logging_in || Self::is_thread_running(&self.login_thread) {
-                            self.form
-                                .set_error(Some("Login already in progress".to_string()));
-                            continue;
+
+                    let Some(token) = app_state.api.token.as_deref() else {
+                        self.form
+                            .set_error(Some("Missing account session token".to_string()));
+                        continue;
+                    };
+
+                    let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
+                    else {
+                        self.form
+                            .set_error(Some("Selected character not found".to_string()));
+                        continue;
+                    };
+
+                    let race_int =
+                        traits::get_race_integer(selected.sex == traits::Sex::Male, selected.class);
+
+                    self.pending_race = Some(race_int);
+                    self.form.set_error(None);
+
+                    let base_url = app_state.api.base_url.clone();
+                    let token = token.to_string();
+                    let (tx, rx) = mpsc::channel();
+                    self.login_thread = Some(std::thread::spawn(move || {
+                        let result =
+                            account_api::create_game_login_ticket(&base_url, &token, character_id);
+                        if let Err(err) = tx.send(result) {
+                            log::error!("Failed to send login result: {}", err);
                         }
+                    }));
 
-                        let Some(token) = app_state.api.token.as_deref() else {
-                            self.form
-                                .set_error(Some("Missing account session token".to_string()));
-                            continue;
-                        };
-
-                        let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
-                        else {
-                            self.form
-                                .set_error(Some("Selected character not found".to_string()));
-                            continue;
-                        };
-
-                        let race_int = traits::get_race_integer(
-                            selected.sex == traits::Sex::Male,
-                            selected.class,
-                        );
-
-                        self.pending_race = Some(race_int);
-                        self.form.set_error(None);
-
-                        let base_url = app_state.api.base_url.clone();
-                        let token = token.to_string();
-                        let (tx, rx) = mpsc::channel();
-                        self.login_thread = Some(std::thread::spawn(move || {
-                            let result = account_api::create_game_login_ticket(
-                                &base_url,
-                                &token,
-                                character_id,
-                            );
-                            if let Err(err) = tx.send(result) {
-                                log::error!("Failed to send login result: {}", err);
-                            }
-                        }));
-
-                        self.login_rx = Some(rx);
-                        self.logging_in = true;
-                    }
-                    CharacterSelectionFormAction::DeleteCharacter {
-                        character_id,
-                        character_name,
-                    } => {
-                        self.pending_delete_character_id = Some(character_id);
-                        self.pending_delete_character_name = Some(character_name.clone());
-                        self.delete_dialog.show(character_id, &character_name);
-                        self.form.set_error(None);
-                    }
-                    CharacterSelectionFormAction::LogOut => {
-                        app_state.api.token = None;
-                        app_state.api.username = None;
-                        self.last_error = None;
-                        self.pending_scene = Some(SceneType::Login);
-                    }
+                    self.login_rx = Some(rx);
+                    self.logging_in = true;
+                }
+                CharacterSelectionFormAction::DeleteCharacter {
+                    character_id,
+                    character_name,
+                } => {
+                    self.pending_delete_character_id = Some(character_id);
+                    self.pending_delete_character_name = Some(character_name.clone());
+                    self.delete_dialog.show(character_id, &character_name);
+                    self.form.set_error(None);
+                }
+                CharacterSelectionFormAction::LogOut => {
+                    app_state.api.token = None;
+                    app_state.api.username = None;
+                    self.last_error = None;
+                    self.pending_scene = Some(SceneType::Login);
                 }
             }
         }

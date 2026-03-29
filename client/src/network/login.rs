@@ -6,8 +6,8 @@ use std::{
 };
 
 use flate2::Decompress;
-use mag_core::constants::LO_PASSWORD;
 use mag_core::encrypt::xcrypt;
+use mag_core::logout_reasons::{LogoutReason, get_exit_reason};
 
 use super::{NetworkCommand, NetworkEvent, client_commands, server_commands, tick_stream};
 
@@ -80,14 +80,6 @@ impl Write for GameConnection {
             ConnectionStream::Plain(stream) => stream.flush(),
             ConnectionStream::Tls(stream) => stream.flush(),
         }
-    }
-}
-
-fn login_exit_reason_message(reason: u32) -> String {
-    if (reason as u8) == LO_PASSWORD {
-        "Invalid password".to_string()
-    } else {
-        mag_core::constants::get_exit_reason(reason).to_string()
     }
 }
 
@@ -230,7 +222,7 @@ fn login_handshake(
                 .map_err(|e| format!("Send failed: {e}"))?;
         }
         server_commands::ServerCommandData::Exit { reason } => {
-            return Err(login_exit_reason_message(reason));
+            return Err(get_exit_reason(LogoutReason::from(reason as u8)).to_string());
         }
         _ => {
             log::error!(
@@ -269,7 +261,7 @@ fn login_handshake(
             }
             server_commands::ServerCommandData::Exit { reason } => {
                 log::warn!("Server demanded exit during login, reason={reason}");
-                return Err(login_exit_reason_message(reason));
+                return Err(get_exit_reason(LogoutReason::from(reason as u8)).to_string());
             }
             _ => {
                 log::error!(

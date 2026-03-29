@@ -3,9 +3,9 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use crate::font_cache;
 
 /// Size of the checkbox square in pixels.
 const BOX_SIZE: u32 = 10;
@@ -76,6 +76,18 @@ impl Checkbox {
         let t = self.toggled;
         self.toggled = false;
         t
+    }
+
+    /// Sets the hover/focus highlight state directly.
+    ///
+    /// Used by controller focus navigation to highlight the checkbox without a
+    /// mouse event.
+    ///
+    /// # Arguments
+    ///
+    /// * `hovered` - `true` to show the highlight, `false` to clear it.
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
     }
 }
 

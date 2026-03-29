@@ -40,6 +40,31 @@ fn main() -> Result<(), String> {
     let _image_context = sdl2::image::init(InitFlag::PNG)?;
     let _audio_subsystem = sdl_context.audio()?;
 
+    // --- Game controller subsystem ----------------------------------------
+    let game_controller_subsystem = sdl_context.game_controller().map_err(|e| {
+        log::warn!("Failed to initialize game controller subsystem: {e}");
+        e
+    });
+    let mut _open_controllers: Vec<sdl2::controller::GameController> = Vec::new();
+    if let Ok(ref gc_subsystem) = game_controller_subsystem {
+        let num_joysticks = gc_subsystem.num_joysticks().map_err(|e| e.to_string())?;
+        log::info!("Detected {num_joysticks} joystick(s) at startup");
+        for i in 0..num_joysticks {
+            if gc_subsystem.is_game_controller(i) {
+                match gc_subsystem.open(i) {
+                    Ok(controller) => {
+                        log::info!("Opened game controller {i}: \"{}\"", controller.name());
+                        _open_controllers.push(controller);
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to open game controller {i}: {e}");
+                    }
+                }
+            }
+        }
+    }
+    // ----------------------------------------------------------------------
+
     let frequency = 44_100;
     let format = AUDIO_S16LSB;
     let channels = DEFAULT_CHANNELS; // Stereo
@@ -161,6 +186,63 @@ fn main() -> Result<(), String> {
             if let sdl2::event::Event::Quit { .. } = event {
                 scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
             }
+
+            // --- Controller input mode detection --------------------------
+            // Any gamepad input switches to controller mode; any
+            // keyboard/mouse input switches back.
+            match &event {
+                sdl2::event::Event::ControllerButtonDown { .. } => {
+                    if !app_state.controller_active {
+                        log::info!("Controller input detected — switching to controller mode");
+                        app_state.controller_active = true;
+                    }
+                }
+                sdl2::event::Event::ControllerAxisMotion { value, .. } => {
+                    // Ignore small axis values inside the deadzone.
+                    // Use saturating_abs to avoid overflow on i16::MIN (-32768).
+                    const DEADZONE: i16 = 8000;
+                    if value.saturating_abs() > DEADZONE && !app_state.controller_active {
+                        log::info!("Controller input detected — switching to controller mode");
+                        app_state.controller_active = true;
+                    }
+                }
+                sdl2::event::Event::ControllerDeviceAdded { which, .. } => {
+                    if let Ok(ref gc_subsystem) = game_controller_subsystem {
+                        match gc_subsystem.open(*which) {
+                            Ok(controller) => {
+                                log::info!(
+                                    "Game controller connected: \"{}\" (index {which})",
+                                    controller.name()
+                                );
+                                _open_controllers.push(controller);
+                            }
+                            Err(e) => {
+                                log::warn!(
+                                    "Failed to open newly connected controller {which}: {e}"
+                                );
+                            }
+                        }
+                    }
+                }
+                sdl2::event::Event::ControllerDeviceRemoved { which, .. } => {
+                    log::info!("Game controller disconnected (instance id {which})");
+                    _open_controllers.retain(|c| c.instance_id() != *which);
+                }
+                sdl2::event::Event::KeyDown { .. }
+                | sdl2::event::Event::KeyUp { .. }
+                | sdl2::event::Event::MouseButtonDown { .. }
+                | sdl2::event::Event::MouseButtonUp { .. }
+                | sdl2::event::Event::MouseMotion { .. }
+                | sdl2::event::Event::MouseWheel { .. }
+                | sdl2::event::Event::TextInput { .. } => {
+                    if app_state.controller_active {
+                        log::info!("Keyboard/mouse input detected — leaving controller mode");
+                        app_state.controller_active = false;
+                    }
+                }
+                _ => {}
+            }
+            // --------------------------------------------------------------
 
             let event = dpi_scaling::adjust_mouse_event_for_hidpi(
                 event,

@@ -1,8 +1,9 @@
 use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
+use core::logout_reasons::LogoutReason;
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
-use crate::{enums, game_state::GameState, player};
+use crate::{game_state::GameState, player};
 
 static PACKET_STATS: OnceLock<RwLock<PacketStats>> = OnceLock::new();
 
@@ -51,7 +52,7 @@ pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
             player_id
         );
         let cn = gs.players[player_id].usnr;
-        player::plr_logout(gs, cn, player_id, enums::LogoutReason::Unknown);
+        player::plr_logout(gs, cn, player_id, LogoutReason::Unknown);
         if let Some(s) = gs.players[player_id].sock.take() {
             let _ = s.shutdown(Shutdown::Both);
         }
@@ -125,7 +126,7 @@ pub fn csend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
         if tmp == gs.players[player_id].optr {
             log::warn!("Connection too slow for player {}, terminating", player_id);
             let cn = gs.players[player_id].usnr;
-            player::plr_logout(gs, cn, player_id, enums::LogoutReason::ClientTooSlow);
+            player::plr_logout(gs, cn, player_id, LogoutReason::ClientTooSlow);
             if let Some(s) = gs.players[player_id].sock.take() {
                 let _ = s.shutdown(Shutdown::Both);
             }

@@ -3,6 +3,7 @@ use core::{
         ArmorType, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
         DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, MagicArmorType, character_flags_name,
     },
+    logout_reasons::LogoutReason,
     ranks,
     string_operations::c_string_to_str,
     traits,
@@ -10,8 +11,7 @@ use core::{
 };
 
 use crate::{
-    area, chlog, driver, effect::EffectManager, enums::LogoutReason, game_state::GameState,
-    helpers, player, populate,
+    area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,
 };
 
 pub struct God {}

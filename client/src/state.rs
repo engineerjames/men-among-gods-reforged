@@ -75,6 +75,10 @@ pub struct AppState<'tc> {
     pub settings: Settings,
     /// Pending display change to be applied by the main loop.
     pub display_command: Option<DisplayCommand>,
+    /// `true` when the most recent input came from a game controller rather
+    /// than keyboard/mouse. Widgets read this flag to adapt their rendering
+    /// (e.g. show controller button prompts instead of key hints).
+    pub controller_active: bool,
     /// Shared panning background used by all pre-game scenes.
     pub panning_background: PanningBackground,
     /// Username carried between the request-reset and enter-reset-code scenes.
@@ -108,6 +112,7 @@ impl<'tc> AppState<'tc> {
             player_state: None,
             settings: Settings::default(),
             display_command: None,
+            controller_active: false,
             panning_background,
             reset_username: None,
         }

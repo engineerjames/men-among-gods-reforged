@@ -3,7 +3,7 @@
 //! Displays a subsection of a large image and slowly pans across it in a
 //! ping-pong pattern.  Every 30 seconds the widget crossfades to a randomly
 //! chosen image from the supplied list (excluding the one currently shown).
-//! An optional colour tint overlay can be applied to darken / colour-shift
+//! An optional color tint overlay can be applied to darken / color-shift
 //! the image so foreground UI elements stand out.
 
 use std::path::PathBuf;
@@ -109,7 +109,7 @@ pub struct PanningBackground {
     pan_speed_x: f32,
     /// Vertical pan speed in pixels per second (shared by all images).
     pan_speed_y: f32,
-    /// Optional RGBA colour drawn over the image with alpha blending.
+    /// Optional RGBA color drawn over the image with alpha blending.
     tint: Option<Color>,
 }
 
@@ -126,7 +126,7 @@ impl PanningBackground {
     ///   one path is required; the function panics if the slice is empty.
     /// * `pan_speed_x` - Horizontal pan speed in pixels per second.
     /// * `pan_speed_y` - Vertical pan speed in pixels per second.
-    /// * `tint` - Optional RGBA overlay colour.
+    /// * `tint` - Optional RGBA overlay color.
     ///
     /// # Returns
     ///
@@ -160,7 +160,7 @@ impl PanningBackground {
         }
     }
 
-    /// Replaces the tint colour.
+    /// Replaces the tint color.
     ///
     /// # Arguments
     ///

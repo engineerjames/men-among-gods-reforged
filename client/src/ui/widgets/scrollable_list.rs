@@ -10,9 +10,9 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use crate::font_cache;
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -66,6 +66,8 @@ pub struct ScrollableList {
     scroll_offset: usize,
     /// One-shot flag indicating the selection changed.
     selection_changed: bool,
+    /// Controller focus cursor (absolute item index), if any.
+    controller_cursor: Option<usize>,
 }
 
 impl ScrollableList {
@@ -85,6 +87,7 @@ impl ScrollableList {
             selected_id: None,
             scroll_offset: 0,
             selection_changed: false,
+            controller_cursor: None,
         }
     }
 
@@ -157,6 +160,52 @@ impl ScrollableList {
                 self.selected_id = self.items.first().map(|i| i.id);
             }
             self.clamp_scroll();
+        }
+    }
+
+    /// Returns the total number of items in the list.
+    pub fn item_count(&self) -> usize {
+        self.items.len()
+    }
+
+    /// Returns the controller focus cursor index, if any.
+    pub fn controller_cursor(&self) -> Option<usize> {
+        self.controller_cursor
+    }
+
+    /// Sets the controller focus cursor to a specific item index.
+    ///
+    /// Auto-scrolls so the targeted row is visible.  Pass `None` to clear.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Absolute item index to highlight, or `None` to clear.
+    pub fn set_controller_cursor(&mut self, index: Option<usize>) {
+        self.controller_cursor = index;
+        if let Some(idx) = index {
+            let visible = self.visible_rows();
+            // Scroll down if cursor is past the visible window.
+            if idx >= self.scroll_offset + visible {
+                self.scroll_offset = idx.saturating_sub(visible - 1);
+            }
+            // Scroll up if cursor is above the visible window.
+            if idx < self.scroll_offset {
+                self.scroll_offset = idx;
+            }
+            self.clamp_scroll();
+        }
+    }
+
+    /// Selects the item at the cursor position and sets the `selection_changed`
+    /// flag. Does nothing if no cursor is set or index is out of range.
+    pub fn confirm_controller_cursor(&mut self) {
+        if let Some(idx) = self.controller_cursor {
+            if let Some(item) = self.items.get(idx) {
+                if self.selected_id != Some(item.id) {
+                    self.selected_id = Some(item.id);
+                    self.selection_changed = true;
+                }
+            }
         }
     }
 }
@@ -260,6 +309,20 @@ impl Widget for ScrollableList {
                 );
                 ctx.canvas.set_draw_color(Color::RGBA(60, 60, 120, 180));
                 ctx.canvas.fill_rect(highlight)?;
+            }
+
+            // Controller focus cursor highlight (additive blend).
+            if self.controller_cursor == Some(index) {
+                let cursor_rect = Rect::new(
+                    self.bounds.x + 1,
+                    row_y,
+                    content_w.saturating_sub(1),
+                    ROW_H as u32,
+                );
+                ctx.canvas.set_blend_mode(BlendMode::Add);
+                ctx.canvas.set_draw_color(Color::RGBA(255, 255, 255, 96));
+                ctx.canvas.fill_rect(cursor_rect)?;
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
             }
 
             let mut text_x = self.bounds.x + PAD_X;

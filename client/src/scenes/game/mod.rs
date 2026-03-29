@@ -25,7 +25,10 @@ use sdl2::{
     video::Window,
 };
 
-use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY};
+use mag_core::{
+    constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY},
+    ranks,
+};
 
 use crate::{
     cert_trust,
@@ -36,6 +39,7 @@ use crate::{
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
+    types::controller::ControllerButton,
     ui::{
         self, RenderContext,
         forms::cert_dialog::{CertDialog, CertDialogAction},
@@ -237,6 +241,10 @@ pub struct GameScene {
     pub(super) ctrl_held: bool,
     pub(super) shift_held: bool,
     pub(super) alt_held: bool,
+    /// Whether the controller's left bumper (LB) is held.
+    pub(super) lb_held: bool,
+    /// Whether the controller's right bumper (RB) is held.
+    pub(super) rb_held: bool,
     pub(super) skill_scroll: usize,
     pub(super) inv_scroll: usize,
     pub(super) mouse_x: i32,
@@ -259,6 +267,10 @@ pub struct GameScene {
     pub(super) active_profile_character: Option<CharacterIdentity>,
     /// Wall-clock profiler for rendering functions (activated from escape menu).
     perf_profiler: PerfProfiler,
+    /// `true` when the player is using a game controller (mirrors
+    /// `AppState::controller_active`). Stored locally so `handle_event` can
+    /// read it without re-borrowing `AppState`.
+    pub(super) controller_mode: bool,
 }
 
 impl GameScene {
@@ -343,6 +355,8 @@ impl GameScene {
             ctrl_held: false,
             shift_held: false,
             alt_held: false,
+            lb_held: false,
+            rb_held: false,
             skill_scroll: 0,
             inv_scroll: 0,
             mouse_x: 0,
@@ -356,6 +370,7 @@ impl GameScene {
             pending_skill_assignment: None,
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
+            controller_mode: false,
         }
     }
 
@@ -424,6 +439,7 @@ impl GameScene {
                 None
             },
             key_bindings: app_state.settings.character.key_bindings.clone(),
+            controller_bindings: app_state.settings.character.controller_bindings.clone(),
         }
     }
 
@@ -509,6 +525,14 @@ impl GameScene {
                         .character
                         .key_bindings
                         .set_binding(action, binding);
+                    profile_changed = true;
+                }
+                WidgetAction::UpdateControllerBinding { slot, button } => {
+                    app_state
+                        .settings
+                        .character
+                        .controller_bindings
+                        .set(slot as usize, button);
                     profile_changed = true;
                 }
                 WidgetAction::TogglePanel(_) => {
@@ -914,6 +938,8 @@ impl Scene for GameScene {
         self.ctrl_held = false;
         self.shift_held = false;
         self.alt_held = false;
+        self.lb_held = false;
+        self.rb_held = false;
         self.skill_scroll = 0;
         self.inv_scroll = 0;
         self.mouse_x = 0;
@@ -1240,6 +1266,92 @@ impl Scene for GameScene {
             }
         }
 
+        // --- Controller bumper tracking and skill binding dispatch ---
+        match event {
+            Event::ControllerButtonDown { button, .. } => {
+                use sdl2::controller::Button as Btn;
+                log::info!("Controller button pressed: {:?}", button);
+                match button {
+                    Btn::LeftShoulder => self.lb_held = true,
+                    Btn::RightShoulder => self.rb_held = true,
+                    _ => {}
+                }
+                // If the controller bindings panel is waiting for a button
+                // press, capture it and skip the normal skill-dispatch path.
+                if self.settings_panel.is_controller_listening() {
+                    if let Some(cb) =
+                        ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held)
+                    {
+                        log::info!("Controller binding captured: {:?} -> {:?}", button, cb);
+                        self.settings_panel.capture_controller_button(cb);
+                        self.process_settings_panel_actions(app_state);
+                    }
+                    return None;
+                }
+                if let Some(cb) = ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held) {
+                    log::info!("Controller button mapped to {:?}", cb);
+                    if let Some(slot) = app_state
+                        .settings
+                        .character
+                        .controller_bindings
+                        .slot_for_button(cb)
+                    {
+                        if let (Some(net), Some(ps)) =
+                            (app_state.network.as_ref(), app_state.player_state.as_ref())
+                        {
+                            if let Some(skill_nr) =
+                                app_state.settings.character.skill_keybinds[slot]
+                            {
+                                self.play_click_sound(app_state);
+                                net.send(ClientCommand::new_skill(
+                                    skill_nr as u32,
+                                    Self::default_skill_target(ps),
+                                    ps.character_info().attrib[0][0] as u32,
+                                ));
+                            }
+                        }
+                    }
+                }
+                return None;
+            }
+            Event::ControllerButtonUp { button, .. } => {
+                use sdl2::controller::Button as Btn;
+                match button {
+                    Btn::LeftShoulder => self.lb_held = false,
+                    Btn::RightShoulder => self.rb_held = false,
+                    _ => {}
+                }
+                return None;
+            }
+            Event::ControllerAxisMotion { axis, value, .. } => {
+                if let Some(cb) = ControllerButton::from_trigger_axis(*axis, *value) {
+                    if let Some(slot) = app_state
+                        .settings
+                        .character
+                        .controller_bindings
+                        .slot_for_button(cb)
+                    {
+                        if let (Some(net), Some(ps)) =
+                            (app_state.network.as_ref(), app_state.player_state.as_ref())
+                        {
+                            if let Some(skill_nr) =
+                                app_state.settings.character.skill_keybinds[slot]
+                            {
+                                self.play_click_sound(app_state);
+                                net.send(ClientCommand::new_skill(
+                                    skill_nr as u32,
+                                    Self::default_skill_target(ps),
+                                    ps.character_info().attrib[0][0] as u32,
+                                ));
+                            }
+                        }
+                    }
+                }
+                return None;
+            }
+            _ => {}
+        }
+
         match event {
             Event::KeyDown {
                 keycode: Some(kc), ..
@@ -1420,6 +1532,10 @@ impl Scene for GameScene {
         self.mode_button.update(dt);
         self.shop_panel.update(dt);
         self.perf_profiler.check_expired();
+
+        // Sync controller mode from the central AppState flag.
+        self.controller_mode = app_state.controller_active;
+
         // Create the cert dialog widget when a mismatch is first detected.
         if self.certificate_mismatch.is_some() && self.cert_dialog.is_none() {
             let m = self.certificate_mismatch.as_ref().unwrap();
@@ -1520,8 +1636,8 @@ impl Scene for GameScene {
         {
             if let Some(ps) = app_state.player_state.as_ref() {
                 let ci = ps.character_info();
-                let rank_index = Self::points_to_rank_index(ci.points_tot as u32);
-                self.rank_sigil.sync(rank_index);
+                let rank_index = ranks::points2rank(ci.points_tot as u32);
+                self.rank_sigil.sync(rank_index as usize);
                 self.status_panel.sync(ci.weapon, ci.armor);
                 self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);

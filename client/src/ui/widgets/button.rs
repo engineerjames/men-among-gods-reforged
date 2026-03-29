@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use crate::font_cache;
 
 // ---------------------------------------------------------------------------
 // RectButton
@@ -82,6 +82,18 @@ impl RectButton {
     /// Returns whether the button is currently hovered.
     pub fn is_hovered(&self) -> bool {
         self.hovered
+    }
+
+    /// Sets the hover/focus highlight state directly.
+    ///
+    /// Used by controller focus navigation to highlight a button without a
+    /// mouse event.
+    ///
+    /// # Arguments
+    ///
+    /// * `hovered` - `true` to show the highlight, `false` to clear it.
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
     }
 
     /// Replaces the button label text.

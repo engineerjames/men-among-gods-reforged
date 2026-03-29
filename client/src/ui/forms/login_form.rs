@@ -11,13 +11,13 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use crate::font_cache;
 use crate::ui::RenderContext;
+use crate::ui::style::{Background, Border};
+use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use crate::ui::widgets::button::RectButton;
 use crate::ui::widgets::checkbox::Checkbox;
-use crate::ui::style::{Background, Border};
 use crate::ui::widgets::text_input::TextInput;
-use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
-use crate::font_cache;
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -110,6 +110,9 @@ pub struct LoginForm {
     error_text: Option<String>,
     /// Whether to show the unencrypted-connection warning banner.
     show_unencrypted_warning: bool,
+    /// Controller focus index into the focusable elements list, if any.
+    /// Order: 0=music_checkbox, 1=login, 2=create, 3=reset, 4=quit.
+    controller_focused: Option<usize>,
 }
 
 impl LoginForm {
@@ -235,6 +238,7 @@ impl LoginForm {
             show_submitting: false,
             error_text: None,
             show_unencrypted_warning: false,
+            controller_focused: None,
         }
     }
 
@@ -337,6 +341,19 @@ impl LoginForm {
             None
         }
     }
+
+    /// Total number of controller-focusable elements.
+    const FOCUSABLE_COUNT: usize = 5;
+
+    /// Applies the controller focus highlight to the appropriate child widget.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        self.music_checkbox.set_hovered(focused == Some(0));
+        self.login_button.set_hovered(focused == Some(1));
+        self.create_button.set_hovered(focused == Some(2));
+        self.reset_button.set_hovered(focused == Some(3));
+        self.quit_button.set_hovered(focused == Some(4));
+    }
 }
 
 impl Widget for LoginForm {
@@ -349,6 +366,51 @@ impl Widget for LoginForm {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        // ── Controller navigation ────────────────────────────────────────
+        match event {
+            UiEvent::NavNext => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => Self::FOCUSABLE_COUNT - 1,
+                    Some(0) => Self::FOCUSABLE_COUNT - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                match self.controller_focused {
+                    Some(0) => {
+                        // Toggle music checkbox.
+                        let new_val = !self.music_checkbox.is_checked();
+                        self.music_checkbox.set_checked(new_val);
+                        self.actions.push(LoginFormAction::ToggleMusic(new_val));
+                    }
+                    Some(1) => self.push_login_action(),
+                    Some(2) => self.actions.push(LoginFormAction::CreateAccount),
+                    Some(3) => self.actions.push(LoginFormAction::ResetPassword),
+                    Some(4) => self.actions.push(LoginFormAction::Quit),
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            // Mouse movement clears controller focus.
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         // ── Tab / Enter key handling ──────────────────────────────────────
         if let UiEvent::KeyDown {
             keycode, modifiers, ..

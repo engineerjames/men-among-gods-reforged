@@ -11,13 +11,13 @@ use std::time::Duration;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use crate::ui::RenderContext;
-use crate::ui::widgets::button::RectButton;
-use crate::ui::widgets::scrollable_list::{ListItem, ScrollableList};
-use crate::ui::style::{Background, Border};
-use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
+use crate::ui::RenderContext;
+use crate::ui::style::{Background, Border};
+use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
+use crate::ui::widgets::button::RectButton;
+use crate::ui::widgets::scrollable_list::{ListItem, ScrollableList};
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -97,6 +97,9 @@ pub struct CharacterSelectionForm {
     username: Option<String>,
     /// Cached character names keyed by ID (for delete dialog).
     character_names: Vec<(u64, String)>,
+    /// Controller focus index, if any.
+    /// Slots 0..N = list rows, N..N+4 = create/continue/delete/logout.
+    controller_focused: Option<usize>,
 }
 
 impl CharacterSelectionForm {
@@ -166,6 +169,7 @@ impl CharacterSelectionForm {
             status_text: None,
             username: None,
             character_names: Vec::new(),
+            controller_focused: None,
         }
     }
 
@@ -252,6 +256,40 @@ impl CharacterSelectionForm {
             .find(|(cid, _)| *cid == id)
             .map(|(_, name)| name.as_str())
     }
+
+    /// Number of buttons below the list.
+    const BUTTON_COUNT: usize = 4;
+
+    /// Total number of controller-focusable elements (list rows + buttons).
+    fn focusable_count(&self) -> usize {
+        self.character_list.item_count() + Self::BUTTON_COUNT
+    }
+
+    /// Applies controller focus highlights to the appropriate child widgets.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        let list_len = self.character_list.item_count();
+
+        // List cursor.
+        if let Some(i) = focused {
+            if i < list_len {
+                self.character_list.set_controller_cursor(Some(i));
+            } else {
+                self.character_list.set_controller_cursor(None);
+            }
+        } else {
+            self.character_list.set_controller_cursor(None);
+        }
+
+        // Buttons.
+        self.create_button.set_hovered(focused == Some(list_len));
+        self.continue_button
+            .set_hovered(focused == Some(list_len + 1));
+        self.delete_button
+            .set_hovered(focused == Some(list_len + 2));
+        self.logout_button
+            .set_hovered(focused == Some(list_len + 3));
+    }
 }
 
 impl Widget for CharacterSelectionForm {
@@ -264,6 +302,69 @@ impl Widget for CharacterSelectionForm {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        // ── Controller navigation ────────────────────────────────────────
+        let fc = self.focusable_count();
+        match event {
+            UiEvent::NavNext if fc > 0 => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(i) => (i + 1) % fc,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev if fc > 0 => {
+                self.controller_focused = Some(match self.controller_focused {
+                    None => fc - 1,
+                    Some(0) => fc - 1,
+                    Some(i) => i - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                let list_len = self.character_list.item_count();
+                match self.controller_focused {
+                    Some(i) if i < list_len => {
+                        self.character_list.confirm_controller_cursor();
+                    }
+                    Some(i) if i == list_len => {
+                        self.actions.push(CharacterSelectionFormAction::CreateNew);
+                    }
+                    Some(i) if i == list_len + 1 => {
+                        if let Some(id) = self.character_list.selected_id() {
+                            self.actions
+                                .push(CharacterSelectionFormAction::ContinueToGame {
+                                    character_id: id,
+                                });
+                        }
+                    }
+                    Some(i) if i == list_len + 2 => {
+                        if let Some(id) = self.character_list.selected_id() {
+                            let name = self.character_name_for_id(id).unwrap_or("").to_owned();
+                            self.actions
+                                .push(CharacterSelectionFormAction::DeleteCharacter {
+                                    character_id: id,
+                                    character_name: name,
+                                });
+                        }
+                    }
+                    Some(i) if i == list_len + 3 => {
+                        self.actions.push(CharacterSelectionFormAction::LogOut);
+                    }
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } => {
+                if self.controller_focused.is_some() {
+                    self.controller_focused = None;
+                    self.apply_controller_focus();
+                }
+            }
+            _ => {}
+        }
+
         // Forward to character list.
         if self.character_list.handle_event(event) == EventResponse::Consumed {
             return EventResponse::Consumed;

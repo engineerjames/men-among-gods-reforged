@@ -67,7 +67,7 @@ const SIGIL_TRIM_ROWS: [(u32, u32); TOTAL_RANKS] = [
 pub struct RankSigil {
     /// Bounding rectangle of the panel (sigil + padding).
     bounds: Bounds,
-    /// Semi-transparent background fill colour.
+    /// Semi-transparent background fill color.
     bg_color: Color,
     /// Current rank index (0–23).
     rank_index: usize,
@@ -82,7 +82,7 @@ impl RankSigil {
     ///
     /// * `x` - Left edge in logical pixels.
     /// * `y` - Top edge in logical pixels.
-    /// * `bg_color` - Semi-transparent panel background colour.
+    /// * `bg_color` - Semi-transparent panel background color.
     ///
     /// # Returns
     ///

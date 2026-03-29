@@ -22,7 +22,7 @@ pub struct CachedRgbaImage {
 /// Lazy-loading sprite and texture cache backed by a ZIP archive.
 ///
 /// Textures are loaded from `images.zip` on first access and kept in memory
-/// for the lifetime of the cache. Average per-sprite colours and raw RGBA
+/// for the lifetime of the cache. Average per-sprite colors and raw RGBA
 /// pixel data are also cached for minimap and hit-test use.
 ///
 /// The lifetime `'tc` ties all GPU textures to the [`TextureCreator`] that

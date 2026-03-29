@@ -34,37 +34,37 @@ use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
 use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
-use client::ui::widgets::button::{CircleButton, RectButton};
 use client::ui::hud::button_arc::HudButtonBar;
 use client::ui::hud::chat_box::ChatBox;
-use client::ui::widgets::checkbox::Checkbox;
-use client::ui::widgets::dropdown::Dropdown;
 use client::ui::hud::inventory_panel::{InventoryPanel, InventoryPanelData};
-use client::ui::widgets::label::Label;
 use client::ui::hud::look_panel::LookPanel;
 use client::ui::hud::minimap_widget::MinimapWidget;
 use client::ui::hud::mode_button::ModeButton;
-use client::ui::widgets::panel::Panel;
-use client::ui::visuals::rank_progress_arc::RankArc;
 use client::ui::hud::settings_panel::{SETTINGS_PANEL_H, SettingsPanel};
 use client::ui::hud::shop_panel::ShopPanel;
 use client::ui::hud::skill_bar::SkillBarConfig;
 use client::ui::hud::skill_bar::{SkillBar, SkillBarData};
 use client::ui::hud::skills_panel::{SkillsPanel, SkillsPanelData};
-use client::ui::widgets::slider::Slider;
 use client::ui::style::{Background, Border, Padding};
-use client::ui::widgets::text_input::TextInput;
+use client::ui::visuals::rank_progress_arc::RankArc;
 use client::ui::widget::{Bounds, EventResponse, HudPanel, Widget, WidgetAction};
+use client::ui::widgets::button::{CircleButton, RectButton};
+use client::ui::widgets::checkbox::Checkbox;
+use client::ui::widgets::dropdown::Dropdown;
+use client::ui::widgets::label::Label;
+use client::ui::widgets::panel::Panel;
+use client::ui::widgets::slider::Slider;
+use client::ui::widgets::text_input::TextInput;
 use client::ui::{RenderContext, sdl_to_ui_event};
 
 // ---------------------------------------------------------------------------
 // Layout constants — arranged as a gallery across the 960×540 viewport
 // ---------------------------------------------------------------------------
 
-/// Background colour shared by all HUD-style panels.
+/// Background color shared by all HUD-style panels.
 const PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
 
-/// Dark canvas clear colour.
+/// Dark canvas clear color.
 const CLEAR_COLOR: Color = Color::RGB(30, 30, 40);
 
 // Column X offsets for the gallery grid.
