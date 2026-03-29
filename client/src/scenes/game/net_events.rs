@@ -1,10 +1,15 @@
 use mag_core::skills;
 
 use crate::{
+    cert_trust,
     network::{NetworkEvent, client_commands::ClientCommand},
     scenes::scene::SceneType,
     state::AppState,
-    ui::widget::{Widget, WidgetAction},
+    ui::{
+        forms::cert_dialog::CertDialogAction,
+        widget::UiEvent,
+        widget::{HudPanel, Widget, WidgetAction},
+    },
 };
 
 use super::{GameScene, MAX_TICK_GROUPS_PER_FRAME, QSIZE};
@@ -409,5 +414,161 @@ impl GameScene {
                 _ => {}
             }
         }
+    }
+
+    /// Dispatch a pre-converted [`UiEvent`] through the full HUD widget stack.
+    ///
+    /// This method encapsulates _Block 3_ from `handle_event`: the priority-
+    /// ordered chain of widget `handle_event` calls that runs after the SDL2
+    /// event has been converted into a UI-level event.  It is called once per
+    /// frame event through the thin wrapper in `handle_event`.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network + player state).
+    /// * `ui_event` - The already-converted [`UiEvent`] to dispatch.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(SceneType)` if the certificate dialog triggers a scene change.
+    /// * `None` for all other outcomes (event consumed or ignored).
+    pub(super) fn handle_ui_widget_events(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        ui_event: &UiEvent,
+    ) -> Option<SceneType> {
+        // --- Certificate mismatch dialog (modal, blocks all other input) ---
+        if let Some(ref mut dialog) = self.cert_dialog {
+            dialog.handle_event(ui_event);
+            for action in dialog.take_cert_actions() {
+                match action {
+                    CertDialogAction::Accept => {
+                        if let Some(mismatch) = self.certificate_mismatch.take() {
+                            match cert_trust::trust_fingerprint(
+                                &mismatch.host,
+                                &mismatch.received_fingerprint,
+                            ) {
+                                Ok(()) => {
+                                    self.cert_dialog = None;
+                                    if let Err(err) = self.start_game_network_session(app_state) {
+                                        self.pending_exit = Some(err);
+                                        return Some(SceneType::CharacterSelection);
+                                    }
+                                    return None;
+                                }
+                                Err(err) => {
+                                    self.cert_dialog = None;
+                                    self.pending_exit =
+                                        Some(format!("Failed to update known hosts: {err}"));
+                                    return Some(SceneType::CharacterSelection);
+                                }
+                            }
+                        }
+                    }
+                    CertDialogAction::Reject => {
+                        self.certificate_mismatch = None;
+                        self.cert_dialog = None;
+                        return Some(SceneType::CharacterSelection);
+                    }
+                }
+            }
+            return None;
+        }
+
+        // --- Skill picker popup (modal — must come before skill bar) ---
+        if self.skill_picker.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_skill_picker_actions(app_state);
+            return None;
+        }
+
+        // --- Rank sigil (upper-left) ---
+        if self.rank_sigil.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            return None;
+        }
+
+        self.rank_progress_line.handle_event(ui_event);
+
+        self.vitality_bars.handle_event(ui_event);
+
+        // --- StatusPanel (WV/AV display, right of skill bar) ---
+        if self.status_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            return None;
+        }
+
+        if self.chat_box.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_chat_box_actions(app_state);
+            return None;
+        }
+
+        // --- Dispatch to open HUD panels (eat clicks so they don't reach the world) ---
+        if self.skills_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_skills_panel_actions(app_state);
+            return None;
+        }
+        if self.inventory_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        {
+            self.process_inventory_panel_actions(app_state);
+            return None;
+        }
+        if self.settings_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        {
+            if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                return Some(sc);
+            }
+            return None;
+        }
+
+        // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
+        if self.shop_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_shop_panel_actions(app_state);
+            return None;
+        }
+
+        // --- Dispatch to minimap toggle button / panel ---
+        if self.minimap_widget.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        {
+            return None;
+        }
+
+        // --- Dispatch to mode button ---
+        if self.mode_button.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_mode_button_actions(app_state);
+            return None;
+        }
+
+        // --- Dispatch to look panel ---
+        if self.look_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            return None;
+        }
+
+        // --- Dispatch to skill bar ---
+        if self.skill_bar.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_skill_bar_actions(app_state);
+            return None;
+        }
+
+        // --- Dispatch to HUD button bar ---
+        if self.hud_buttons.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            for action in self.hud_buttons.take_actions() {
+                if let WidgetAction::TogglePanel(panel) = action {
+                    match panel {
+                        HudPanel::Skills => self.skills_panel.toggle(),
+                        HudPanel::Inventory => self.inventory_panel.toggle(),
+                        HudPanel::Settings => {
+                            self.settings_panel.toggle();
+                            if self.settings_panel.is_visible() {
+                                let data = self.build_settings_panel_data(app_state);
+                                self.settings_panel.sync_state(&data);
+                            }
+                        }
+                        HudPanel::Minimap => self.minimap_widget.toggle(),
+                        HudPanel::KeyBindings => {}
+                    }
+                }
+            }
+            return None;
+        }
+
+        None
     }
 }

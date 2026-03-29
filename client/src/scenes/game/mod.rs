@@ -10,23 +10,22 @@
 //! | [`net_events`] | Per-frame network tick processing and auto-look |
 //! | [`perf_profiler`] | Wall-clock profiler for rendering functions (activated from escape menu) |
 
+mod controller_input;
 mod game_math;
 mod net_events;
 mod perf_profiler;
 mod profile;
+mod world_input;
 mod world_render;
 
 use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::time::Duration;
 
-use sdl2::{
-    event::Event, keyboard::Keycode, mouse::MouseButton, pixels::Color, render::Canvas,
-    video::Window,
-};
+use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video::Window};
 
 use mag_core::{
-    constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY},
+    constants::{TILEX, TILEY},
     ranks,
 };
 
@@ -39,10 +38,9 @@ use crate::{
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
-    types::controller::ControllerButton,
     ui::{
         self, RenderContext,
-        forms::cert_dialog::{CertDialog, CertDialogAction},
+        forms::cert_dialog::CertDialog,
         hud::button_arc::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::inventory_panel::InventoryPanel,
@@ -60,11 +58,8 @@ use crate::{
         visuals::rank_sigil::RankSigil,
         visuals::tls_warning_banner::TlsWarningBanner,
         visuals::vitality_bars::VitalityBars,
-        widget::{
-            Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
-            WidgetAction,
-        },
-        widgets::on_screen_keyboard::{OnScreenKeyboard, OnScreenKeyboardAction},
+        widget::{Bounds, GameAction, KeyBindings, KeyModifiers, Widget, WidgetAction},
+        widgets::on_screen_keyboard::OnScreenKeyboard,
     },
 };
 
@@ -567,6 +562,7 @@ impl GameScene {
 
         scene_change
     }
+
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.
     ///
     /// Messages are fetched in insertion order (oldest-first) starting from
@@ -1162,7 +1158,7 @@ impl Scene for GameScene {
             _ => {}
         }
 
-        // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
+        // --- UI widget stack ---
         if let Some(ui_event) = ui::sdl_to_ui_event(
             event,
             self.mouse_x,
@@ -1173,134 +1169,8 @@ impl Scene for GameScene {
                 alt: self.alt_held,
             },
         ) {
-            // --- Certificate mismatch dialog (modal, blocks all other input) ---
-            if let Some(ref mut dialog) = self.cert_dialog {
-                dialog.handle_event(&ui_event);
-                for action in dialog.take_cert_actions() {
-                    match action {
-                        CertDialogAction::Accept => {
-                            if let Some(mismatch) = self.certificate_mismatch.take() {
-                                match cert_trust::trust_fingerprint(
-                                    &mismatch.host,
-                                    &mismatch.received_fingerprint,
-                                ) {
-                                    Ok(()) => {
-                                        self.cert_dialog = None;
-                                        if let Err(err) = self.start_game_network_session(app_state)
-                                        {
-                                            self.pending_exit = Some(err);
-                                            return Some(SceneType::CharacterSelection);
-                                        }
-                                        return None;
-                                    }
-                                    Err(err) => {
-                                        self.cert_dialog = None;
-                                        self.pending_exit =
-                                            Some(format!("Failed to update known hosts: {err}"));
-                                        return Some(SceneType::CharacterSelection);
-                                    }
-                                }
-                            }
-                        }
-                        CertDialogAction::Reject => {
-                            self.certificate_mismatch = None;
-                            self.cert_dialog = None;
-                            return Some(SceneType::CharacterSelection);
-                        }
-                    }
-                }
-                return None;
-            }
-
-            // --- Skill picker popup (modal — must come before skill bar) ---
-            if self.skill_picker.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_skill_picker_actions(app_state);
-                return None;
-            }
-
-            // --- Rank sigil (upper-left) ---
-            if self.rank_sigil.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            self.rank_progress_line.handle_event(&ui_event);
-
-            self.vitality_bars.handle_event(&ui_event);
-
-            // --- StatusPanel (WV/AV display, right of skill bar) ---
-            if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            if self.chat_box.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_chat_box_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to open HUD panels (eat clicks so they don't reach the world) ---
-            if self.skills_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_skills_panel_actions(app_state);
-                return None;
-            }
-            if self.inventory_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_inventory_panel_actions(app_state);
-                return None;
-            }
-            if self.settings_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                    return Some(sc);
-                }
-                return None;
-            }
-
-            // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
-            if self.shop_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_shop_panel_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to minimap toggle button / panel ---
-            if self.minimap_widget.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            // --- Dispatch to mode button ---
-            if self.mode_button.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_mode_button_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to look panel ---
-            if self.look_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            // --- Dispatch to skill bar ---
-            if self.skill_bar.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_skill_bar_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to HUD button bar ---
-            if self.hud_buttons.handle_event(&ui_event) == EventResponse::Consumed {
-                for action in self.hud_buttons.take_actions() {
-                    if let WidgetAction::TogglePanel(panel) = action {
-                        match panel {
-                            HudPanel::Skills => self.skills_panel.toggle(),
-                            HudPanel::Inventory => self.inventory_panel.toggle(),
-                            HudPanel::Settings => {
-                                self.settings_panel.toggle();
-                                if self.settings_panel.is_visible() {
-                                    let data = self.build_settings_panel_data(app_state);
-                                    self.settings_panel.sync_state(&data);
-                                }
-                            }
-                            HudPanel::Minimap => self.minimap_widget.toggle(),
-                            HudPanel::KeyBindings => {}
-                        }
-                    }
-                }
-                return None;
+            if let Some(sc) = self.handle_ui_widget_events(app_state, &ui_event) {
+                return Some(sc);
             }
         }
 
@@ -1329,392 +1199,46 @@ impl Scene for GameScene {
             }
         }
 
-        // --- Controller bumper tracking and skill binding dispatch ---
-        match event {
-            Event::ControllerButtonDown { button, .. } => {
-                use sdl2::controller::Button as Btn;
-                log::info!("Controller button pressed: {:?}", button);
-                match button {
-                    Btn::LeftShoulder => self.lb_held = true,
-                    Btn::RightShoulder => self.rb_held = true,
-                    _ => {}
-                }
-
-                // On-screen keyboard intercept (must be checked before any
-                // other controller handling so X/Start/DPad are captured).
-                if self.keyboard.is_visible() {
-                    match button {
-                        Btn::X => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::KeyboardToggleShift);
-                            return None;
-                        }
-                        Btn::Start => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::KeyboardDismiss);
-                            for kb_action in self.keyboard.take_actions() {
-                                if let OnScreenKeyboardAction::Dismiss = kb_action {
-                                    self.keyboard.hide();
-                                    self.chat_box.set_focused(false);
-                                }
-                            }
-                            return None;
-                        }
-                        Btn::DPadUp => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::KeyboardRowUp);
-                            return None;
-                        }
-                        Btn::DPadDown => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::KeyboardRowDown);
-                            return None;
-                        }
-                        Btn::A => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::NavConfirm);
-                            for kb_action in self.keyboard.take_actions() {
-                                match kb_action {
-                                    OnScreenKeyboardAction::TypeChar(ch) => {
-                                        self.chat_box.inject_char(ch);
-                                    }
-                                    OnScreenKeyboardAction::Backspace => {
-                                        self.chat_box.inject_backspace();
-                                    }
-                                    OnScreenKeyboardAction::Dismiss => {
-                                        self.keyboard.hide();
-                                        self.chat_box.set_focused(false);
-                                    }
-                                }
-                            }
-                            return None;
-                        }
-                        Btn::B => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::NavBack);
-                            for kb_action in self.keyboard.take_actions() {
-                                if let OnScreenKeyboardAction::Backspace = kb_action {
-                                    self.chat_box.inject_backspace();
-                                }
-                            }
-                            return None;
-                        }
-                        Btn::DPadLeft => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::NavPrev);
-                            return None;
-                        }
-                        Btn::DPadRight => {
-                            self.keyboard
-                                .handle_event(&crate::ui::widget::UiEvent::NavNext);
-                            return None;
-                        }
-                        _ => {} // LB/RB/Y/etc. pass through
-                    }
-                }
-
-                // Y button → open chat with on-screen keyboard (controller mode only)
-                if *button == Btn::Y
-                    && self.controller_mode
-                    && !self.settings_panel.is_visible()
-                    && !self.keyboard.is_visible()
-                {
-                    self.chat_box.set_focused(true);
-                    self.keyboard.show();
-                    return None;
-                }
-                // If the controller bindings panel is waiting for a button
-                // press, capture it and skip the normal skill-dispatch path.
-                if self.settings_panel.is_controller_listening() {
-                    if let Some(cb) =
-                        ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held)
-                    {
-                        log::info!("Controller binding captured: {:?} -> {:?}", button, cb);
-                        self.settings_panel.capture_controller_button(cb);
-                        self.process_settings_panel_actions(app_state);
-                    }
-                    return None;
-                }
-
-                // Start → toggle settings panel
-                if *button == Btn::Start {
-                    self.settings_panel.toggle();
-                    if self.settings_panel.is_visible() {
-                        let data = self.build_settings_panel_data(app_state);
-                        self.settings_panel.sync_state(&data);
-                    }
-                    return None;
-                }
-
-                // When the settings panel is open, forward nav events to it
-                if self.settings_panel.is_visible() {
-                    if let Some(nav_event) = self.hud_nav.process_event(event) {
-                        self.settings_panel.handle_event(&nav_event);
-                        if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                            return Some(sc);
-                        }
-                        // NavBack on main settings panel → close it
-                        if matches!(nav_event, crate::ui::widget::UiEvent::NavBack)
-                            && !self.settings_panel.is_visible()
-                        {
-                            // Panel already closed itself via NavBack handling
-                        }
-                        return None;
-                    }
-                }
-
-                // A button (no modifier) → move to hovered tile
-                if *button == Btn::A && !self.lb_held && !self.rb_held && self.controller_mode {
-                    if let Some(ps) = app_state.player_state.as_ref() {
-                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-                        if let Some((mx, my)) =
-                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
-                        {
-                            let tile = ps.map().tile_at_xy(mx, my);
-                            let (world_x, world_y) =
-                                tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
-                            if let Some(net) = app_state.network.as_ref() {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_move(world_x, world_y));
-                            }
-                        }
-                    }
-                    return None;
-                }
-
-                if let Some(cb) = ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held) {
-                    log::info!("Controller button mapped to {:?}", cb);
-                    if let Some(slot) = app_state
-                        .settings
-                        .character
-                        .controller_bindings
-                        .slot_for_button(cb)
-                    {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            if let Some(skill_nr) =
-                                app_state.settings.character.skill_keybinds[slot]
-                            {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    }
-                }
-                return None;
-            }
-            Event::ControllerButtonUp { button, .. } => {
-                use sdl2::controller::Button as Btn;
-                match button {
-                    Btn::LeftShoulder => self.lb_held = false,
-                    Btn::RightShoulder => self.rb_held = false,
-                    _ => {}
-                }
-                return None;
-            }
-            Event::ControllerAxisMotion { axis, value, .. } => {
-                // Track left-stick axes for virtual cursor movement in update()
-                use sdl2::controller::Axis;
-                match axis {
-                    Axis::LeftX => self.left_stick_x = *value,
-                    Axis::LeftY => self.left_stick_y = *value,
-                    _ => {}
-                }
-
-                // When settings panel is open (and keyboard hidden), forward nav events from stick
-                if self.settings_panel.is_visible() && !self.keyboard.is_visible() {
-                    if let Some(nav_event) = self.hud_nav.process_event(event) {
-                        self.settings_panel.handle_event(&nav_event);
-                        if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                            return Some(sc);
-                        }
-                        return None;
-                    }
-                }
-
-                if let Some(cb) = ControllerButton::from_trigger_axis(*axis, *value) {
-                    if let Some(slot) = app_state
-                        .settings
-                        .character
-                        .controller_bindings
-                        .slot_for_button(cb)
-                    {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            if let Some(skill_nr) =
-                                app_state.settings.character.skill_keybinds[slot]
-                            {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    }
-                }
-                return None;
-            }
-            _ => {}
+        // --- Controller events ---
+        if matches!(
+            event,
+            Event::ControllerButtonDown { .. }
+                | Event::ControllerButtonUp { .. }
+                | Event::ControllerAxisMotion { .. }
+        ) {
+            return self.handle_controller_event(app_state, event);
         }
 
-        match event {
-            Event::KeyDown {
-                keycode: Some(kc), ..
-            } => match *kc {
+        // --- Num1-9 hotkeys ---
+        if let Event::KeyDown {
+            keycode: Some(kc), ..
+        } = event
+        {
+            if matches!(
+                *kc,
                 Keycode::Num1
-                | Keycode::Num2
-                | Keycode::Num3
-                | Keycode::Num4
-                | Keycode::Num5
-                | Keycode::Num6
-                | Keycode::Num7
-                | Keycode::Num8
-                | Keycode::Num9 => {
-                    if !self.chat_box.is_focused() {
-                        let key_slot = (i32::from(*kc) - i32::from(Keycode::Num1)) as usize;
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            if let Some(skill_nr) =
-                                app_state.settings.character.skill_keybinds[key_slot]
-                            {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            },
-            Event::MouseButtonUp {
-                mouse_btn, x, y, ..
-            } => {
-                let Some(ps) = app_state.player_state.as_ref() else {
-                    log::warn!("Mouse click with no player state");
-                    return None;
-                };
-
-                let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-
-                let Some((mx, my)) = Self::screen_to_map_tile(*x, *y, cam_xoff, cam_yoff) else {
-                    log::warn!("Click outside of map area: screen=({}, {})", x, y);
-                    return None;
-                };
-
-                let has_ctrl = self.ctrl_held;
-                let has_shift = self.shift_held;
-                let has_alt = self.alt_held;
-
-                // Read citem early so we can suppress ISITEM snapping when the
-                // player is carrying an item and wants to drop, not pick up.
-                let citem = ps.character_info().citem;
-
-                let snapped = if has_ctrl || has_alt {
-                    Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).unwrap_or((mx, my))
-                } else if has_shift && citem == 0 {
-                    // Only snap to the nearest item tile when the hand is empty.
-                    // With a citem held, use the raw tile so the drop lands where
-                    // the player clicked rather than locking onto a nearby item.
-                    Self::nearest_tile_with_flag(ps, mx, my, ISITEM).unwrap_or((mx, my))
-                } else {
-                    (mx, my)
-                };
-
-                let (sx, sy) = snapped;
-                let tile = ps.map().tile_at_xy(sx, sy);
-                let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
-                let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
-                let (world_x, world_y) = tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
-                // citem already read above.
-                let selected_char = ps.selected_char();
-
-                let Some(net) = app_state.network.as_ref() else {
-                    return None;
-                };
-
-                match *mouse_btn {
-                    MouseButton::Left if has_alt => {
-                        if let Some(ps_mut) = app_state.player_state.as_mut() {
-                            if target_cn != 0 {
-                                if selected_char == target_cn as u16 {
-                                    ps_mut.clear_selected_char();
-                                } else {
-                                    ps_mut.set_selected_char_with_id(target_cn as u16, target_id);
-                                }
-                            } else {
-                                ps_mut.clear_selected_char();
-                            }
-                        }
-                    }
-                    MouseButton::Right if has_alt => {
-                        if target_cn != 0 {
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_look(target_cn));
-                        }
-                    }
-                    MouseButton::Left if has_ctrl => {
-                        if target_cn != 0 {
-                            self.play_click_sound(app_state);
-                            if citem != 0 {
-                                net.send(ClientCommand::new_give(target_cn));
-                            } else {
-                                net.send(ClientCommand::new_attack(target_cn));
-                            }
-                        }
-                    }
-                    MouseButton::Right if has_ctrl => {
-                        if target_cn != 0 {
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_look(target_cn));
-                        }
-                    }
-                    MouseButton::Left if has_shift => {
-                        let tile_flags = tile.map(|t| t.flags).unwrap_or(0);
-                        let is_item = (tile_flags & ISITEM) != 0;
-                        let is_usable = (tile_flags & ISUSABLE) != 0;
-                        if citem != 0 && !is_item {
-                            // Holding item, clicked non-item tile --> drop
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_drop(world_x, world_y));
-                        } else if is_item && is_usable {
-                            // Item is usable --> use
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_use(world_x, world_y));
-                        } else if is_item {
-                            // Item not usable --> pickup
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_pickup(world_x, world_y));
-                        }
-                    }
-                    MouseButton::Right if has_shift => {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_look_item(world_x, world_y));
-                    }
-                    MouseButton::Left => {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_move(world_x, world_y));
-                    }
-                    MouseButton::Right => {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_turn(world_x, world_y));
-                    }
-                    _ => {}
-                }
+                    | Keycode::Num2
+                    | Keycode::Num3
+                    | Keycode::Num4
+                    | Keycode::Num5
+                    | Keycode::Num6
+                    | Keycode::Num7
+                    | Keycode::Num8
+                    | Keycode::Num9
+            ) {
+                self.handle_num_hotkey(app_state, *kc);
+                return None;
             }
-            _ => {}
         }
+
+        // --- Mouse world interactions ---
+        if let Event::MouseButtonUp {
+            mouse_btn, x, y, ..
+        } = event
+        {
+            return self.handle_world_click(app_state, *mouse_btn, *x, *y);
+        }
+
         None
     }
 
