@@ -117,6 +117,21 @@ impl GameScene {
                     }
                 }
 
+                // Skill picker popup intercept (modal for controller input).
+                if self.skill_picker.is_visible() {
+                    match button {
+                        Btn::Back => {
+                            self.skill_picker.controller_cancel();
+                        }
+                        Btn::RightStick => {
+                            self.skill_picker.controller_confirm();
+                            self.process_skill_picker_actions(app_state);
+                        }
+                        _ => {}
+                    }
+                    return None;
+                }
+
                 // Y button → open chat with on-screen keyboard (controller mode only)
                 if *button == Btn::Y
                     && self.controller_mode
@@ -189,14 +204,24 @@ impl GameScene {
                     return None;
                 }
 
-                // Right stick press (R3) → activate highlighted skill
+                // Back (Select) button → clear the highlighted skill slot binding
+                if *button == Btn::Back && self.controller_mode {
+                    if let Some(slot) = self.skill_bar.controller_selected_slot() {
+                        if slot < app_state.settings.character.skill_keybinds.len() {
+                            app_state.settings.character.skill_keybinds[slot] = None;
+                            self.save_active_profile(app_state);
+                        }
+                    }
+                    return None;
+                }
+
+                // Right stick press (R3) → activate highlighted skill or assign empty slot
                 if *button == Btn::RightStick && self.controller_mode {
                     if let Some(slot) = self.skill_bar.controller_selected_slot() {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            if let Some(skill_nr) =
-                                app_state.settings.character.skill_keybinds[slot]
+                        if let Some(skill_nr) = app_state.settings.character.skill_keybinds[slot] {
+                            // Slot is bound → cast the skill.
+                            if let (Some(net), Some(ps)) =
+                                (app_state.network.as_ref(), app_state.player_state.as_ref())
                             {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
@@ -205,6 +230,25 @@ impl GameScene {
                                     ps.character_info().attrib[0][0] as u32,
                                 ));
                             }
+                        } else {
+                            // Slot is empty → open skill picker to assign.
+                            // TODO: Refactor this nonsense--controller input shouldn't be responsible
+                            // for opening up UI widgets.
+                            let bar = self.skill_bar.bounds();
+                            let (cx, _cy) = crate::ui::hud::skill_bar::TOP_CELL_POSITIONS
+                                .get(slot)
+                                .copied()
+                                .unwrap_or((0, 0));
+                            let anchor_x = bar.x + cx;
+                            let anchor_y =
+                                bar.y + crate::ui::hud::skill_picker_popup::ANCHOR_Y_OFFSET;
+                            let player_skills = app_state
+                                .player_state
+                                .as_ref()
+                                .map(|ps| ps.character_info().skill.as_slice())
+                                .unwrap_or(&[]);
+                            self.skill_picker
+                                .show(slot as u8, anchor_x, anchor_y, player_skills);
                         }
                     }
                     return None;
@@ -285,6 +329,10 @@ impl GameScene {
                     _ => {}
                 }
 
+                if self.skill_picker.is_visible() {
+                    return None;
+                }
+
                 // Left stick release (L3) → short press = select/deselect character
                 if *button == Btn::LeftStick && self.controller_mode {
                     if let Some(_pressed_at) = self.l3_pressed_at.take() {
@@ -338,7 +386,12 @@ impl GameScene {
                     Axis::LeftX => self.left_stick_x = *value,
                     Axis::LeftY => self.left_stick_y = *value,
                     Axis::RightX => self.right_stick_x = *value,
+                    Axis::RightY => self.right_stick_y = *value,
                     _ => {}
+                }
+
+                if self.skill_picker.is_visible() {
+                    return None;
                 }
 
                 // When settings panel is open (and keyboard hidden), forward nav events from stick

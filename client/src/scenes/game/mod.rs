@@ -277,6 +277,8 @@ pub struct GameScene {
     pub(super) left_stick_y: i16,
     /// Current raw right-stick X axis value (−32768..32767), updated each frame.
     pub(super) right_stick_x: i16,
+    /// Current raw right-stick Y axis value (−32768..32767), updated each frame.
+    pub(super) right_stick_y: i16,
     /// Cooldown timer (seconds) to debounce right-stick skill bar navigation.
     pub(super) right_stick_cooldown: f32,
     /// Timestamp of the most recent left-stick press (L3) for
@@ -300,6 +302,12 @@ impl GameScene {
         let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
         let panel_bottom = HUD_ARC_CENTER_Y - HUD_ARC_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 20;
         let panel_y = panel_bottom - HUD_PANEL_H as i32;
+        let mut keyboard = OnScreenKeyboard::new();
+        let keyboard_y = TARGET_HEIGHT_INT as i32
+            - keyboard.bounds().height as i32
+            - SkillBar::height() as i32
+            - 8;
+        keyboard.set_position(keyboard.bounds().x, keyboard_y);
 
         Self {
             status_panel: StatusPanel::new(STATUS_PANEL_X, STATUS_PANEL_Y, HUD_PANEL_BG),
@@ -391,10 +399,11 @@ impl GameScene {
             left_stick_x: 0,
             left_stick_y: 0,
             right_stick_x: 0,
+            right_stick_y: 0,
             right_stick_cooldown: 0.0,
             l3_pressed_at: None,
             hud_nav: crate::ui::controller_nav::ControllerNavState::new(),
-            keyboard: OnScreenKeyboard::new(),
+            keyboard,
         }
     }
 
@@ -1321,21 +1330,34 @@ impl Scene for GameScene {
             // Override mouse_x/mouse_y so all existing consumers use the virtual cursor
             self.mouse_x = self.vcursor_x as i32;
             self.mouse_y = self.vcursor_y as i32;
+
+            // Sync modifier flags from bumpers so that helper text,
+            // hover highlights, and tile snapping work with the controller
+            // the same way they do with keyboard Shift/Ctrl.
+            self.shift_held = self.lb_held;
+            self.ctrl_held = self.rb_held;
         }
 
-        // --- Right-stick skill bar navigation (controller mode) ---
+        // --- Right-stick navigation (controller mode) ---
         if self.controller_mode {
-            use crate::ui::hud::skill_bar::TOP_CELLS;
-
             self.right_stick_cooldown = (self.right_stick_cooldown - dt.as_secs_f32()).max(0.0);
 
             const RS_DEADZONE: f32 = 8000.0;
-            let rs_x = self.right_stick_x as f32;
+            if self.skill_picker.is_visible() {
+                let rs_y = self.right_stick_y as f32;
+                if self.right_stick_cooldown <= 0.0 && rs_y.abs() > RS_DEADZONE {
+                    self.skill_picker
+                        .controller_move_selection(if rs_y > 0.0 { 1 } else { -1 });
+                    self.right_stick_cooldown = 0.2;
+                }
+            } else {
+                use crate::ui::hud::skill_bar::TOP_CELLS;
 
-            if self.right_stick_cooldown <= 0.0 && rs_x.abs() > RS_DEADZONE {
-                let current = self.skill_bar.controller_selected_slot();
-                let next =
-                    if rs_x > 0.0 {
+                let rs_x = self.right_stick_x as f32;
+
+                if self.right_stick_cooldown <= 0.0 && rs_x.abs() > RS_DEADZONE {
+                    let current = self.skill_bar.controller_selected_slot();
+                    let next = if rs_x > 0.0 {
                         // Right → advance (wrap 12 → 0)
                         Some(current.map_or(0, |s| (s + 1) % TOP_CELLS))
                     } else {
@@ -1344,8 +1366,9 @@ impl Scene for GameScene {
                             if s == 0 { TOP_CELLS - 1 } else { s - 1 }
                         }))
                     };
-                self.skill_bar.set_controller_selected_slot(next);
-                self.right_stick_cooldown = 0.2;
+                    self.skill_bar.set_controller_selected_slot(next);
+                    self.right_stick_cooldown = 0.2;
+                }
             }
         }
 
