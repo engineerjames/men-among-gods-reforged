@@ -20,7 +20,7 @@ mod world_render;
 
 use perf_profiler::{PerfLabel, PerfProfiler};
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video::Window};
 
@@ -275,6 +275,13 @@ pub struct GameScene {
     pub(super) left_stick_x: i16,
     /// Current raw left-stick Y axis value (−32768..32767), updated each frame.
     pub(super) left_stick_y: i16,
+    /// Current raw right-stick X axis value (−32768..32767), updated each frame.
+    pub(super) right_stick_x: i16,
+    /// Cooldown timer (seconds) to debounce right-stick skill bar navigation.
+    pub(super) right_stick_cooldown: f32,
+    /// Timestamp of the most recent left-stick press (L3) for
+    /// short-press (select) vs hold (look) detection.
+    pub(super) l3_pressed_at: Option<Instant>,
     /// Controller navigation tracker for HUD panels (settings menu, etc.).
     pub(super) hud_nav: crate::ui::controller_nav::ControllerNavState,
     /// On-screen keyboard for controller chat input.
@@ -383,6 +390,9 @@ impl GameScene {
             vcursor_y: TARGET_HEIGHT_INT as f32 / 2.0,
             left_stick_x: 0,
             left_stick_y: 0,
+            right_stick_x: 0,
+            right_stick_cooldown: 0.0,
+            l3_pressed_at: None,
             hud_nav: crate::ui::controller_nav::ControllerNavState::new(),
             keyboard: OnScreenKeyboard::new(),
         }
@@ -1311,6 +1321,65 @@ impl Scene for GameScene {
             // Override mouse_x/mouse_y so all existing consumers use the virtual cursor
             self.mouse_x = self.vcursor_x as i32;
             self.mouse_y = self.vcursor_y as i32;
+        }
+
+        // --- Right-stick skill bar navigation (controller mode) ---
+        if self.controller_mode {
+            use crate::ui::hud::skill_bar::TOP_CELLS;
+
+            self.right_stick_cooldown = (self.right_stick_cooldown - dt.as_secs_f32()).max(0.0);
+
+            const RS_DEADZONE: f32 = 8000.0;
+            let rs_x = self.right_stick_x as f32;
+
+            if self.right_stick_cooldown <= 0.0 && rs_x.abs() > RS_DEADZONE {
+                let current = self.skill_bar.controller_selected_slot();
+                let next =
+                    if rs_x > 0.0 {
+                        // Right → advance (wrap 12 → 0)
+                        Some(current.map_or(0, |s| (s + 1) % TOP_CELLS))
+                    } else {
+                        // Left → retreat (wrap 0 → 12)
+                        Some(current.map_or(TOP_CELLS - 1, |s| {
+                            if s == 0 { TOP_CELLS - 1 } else { s - 1 }
+                        }))
+                    };
+                self.skill_bar.set_controller_selected_slot(next);
+                self.right_stick_cooldown = 0.2;
+            }
+        }
+
+        // --- L3 hold detection: look at nearest character ---
+        if self.controller_mode {
+            if let Some(pressed_at) = self.l3_pressed_at {
+                const L3_HOLD_THRESHOLD: Duration = Duration::from_millis(500);
+                if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
+                    self.l3_pressed_at = None; // consumed
+                    if let Some(ps) = app_state.player_state.as_ref() {
+                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                        if let Some((mx, my)) =
+                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+                        {
+                            use mag_core::constants::ISCHAR;
+                            if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
+                            {
+                                let tile = ps.map().tile_at_xy(sx, sy);
+                                let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
+                                if target_cn != 0 {
+                                    if let Some(net) = app_state.network.as_ref() {
+                                        self.play_click_sound(app_state);
+                                        net.send(
+                                            crate::network::client_commands::ClientCommand::new_look(
+                                                target_cn,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Create the cert dialog widget when a mismatch is first detected.

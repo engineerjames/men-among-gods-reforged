@@ -4,9 +4,12 @@
 //! `ControllerAxisMotion` events dispatched from `handle_event` are routed
 //! here so that the main event handler stays readable.
 
+use std::time::Instant;
+
 use sdl2::{
     controller::{Axis, Button as Btn},
     event::Event,
+    mouse::MouseButton,
 };
 
 use crate::{
@@ -165,22 +168,85 @@ impl GameScene {
                     }
                 }
 
-                // A button (no modifier) → move to hovered tile
-                if *button == Btn::A && !self.lb_held && !self.rb_held && self.controller_mode {
-                    if let Some(ps) = app_state.player_state.as_ref() {
-                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-                        if let Some((mx, my)) =
-                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+                // D-pad left/right → skill bar slot navigation (gameplay only)
+                if self.controller_mode && (*button == Btn::DPadLeft || *button == Btn::DPadRight) {
+                    use crate::ui::hud::skill_bar::TOP_CELLS;
+                    let current = self.skill_bar.controller_selected_slot();
+                    let next = if *button == Btn::DPadRight {
+                        Some(current.map_or(0, |s| (s + 1) % TOP_CELLS))
+                    } else {
+                        Some(current.map_or(TOP_CELLS - 1, |s| {
+                            if s == 0 { TOP_CELLS - 1 } else { s - 1 }
+                        }))
+                    };
+                    self.skill_bar.set_controller_selected_slot(next);
+                    return None;
+                }
+
+                // B button → clear skill bar selection (gameplay only)
+                if *button == Btn::B && self.controller_mode {
+                    self.skill_bar.set_controller_selected_slot(None);
+                    return None;
+                }
+
+                // Right stick press (R3) → activate highlighted skill
+                if *button == Btn::RightStick && self.controller_mode {
+                    if let Some(slot) = self.skill_bar.controller_selected_slot() {
+                        if let (Some(net), Some(ps)) =
+                            (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
-                            let tile = ps.map().tile_at_xy(mx, my);
-                            let (world_x, world_y) =
-                                tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
-                            if let Some(net) = app_state.network.as_ref() {
+                            if let Some(skill_nr) =
+                                app_state.settings.character.skill_keybinds[slot]
+                            {
                                 self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_move(world_x, world_y));
+                                net.send(ClientCommand::new_skill(
+                                    skill_nr as u32,
+                                    Self::default_skill_target(ps),
+                                    ps.character_info().attrib[0][0] as u32,
+                                ));
                             }
                         }
                     }
+                    return None;
+                }
+
+                // Left stick press (L3) → start press timer for select/look
+                if *button == Btn::LeftStick && self.controller_mode {
+                    self.l3_pressed_at = Some(Instant::now());
+                    return None;
+                }
+
+                // A button → left-click equivalent (LB = shift, RB = ctrl)
+                if *button == Btn::A && self.controller_mode {
+                    let orig_shift = self.shift_held;
+                    let orig_ctrl = self.ctrl_held;
+                    self.shift_held = self.lb_held;
+                    self.ctrl_held = self.rb_held;
+                    self.handle_world_click(
+                        app_state,
+                        MouseButton::Left,
+                        self.mouse_x,
+                        self.mouse_y,
+                    );
+                    self.shift_held = orig_shift;
+                    self.ctrl_held = orig_ctrl;
+                    return None;
+                }
+
+                // X button → right-click equivalent (LB = shift, RB = ctrl)
+                if *button == Btn::X && self.controller_mode {
+                    let orig_shift = self.shift_held;
+                    let orig_ctrl = self.ctrl_held;
+                    self.shift_held = self.lb_held;
+                    self.ctrl_held = self.rb_held;
+                    self.handle_world_click(
+                        app_state,
+                        MouseButton::Right,
+                        self.mouse_x,
+                        self.mouse_y,
+                    );
+                    self.shift_held = orig_shift;
+                    self.ctrl_held = orig_ctrl;
                     return None;
                 }
 
@@ -218,14 +284,60 @@ impl GameScene {
                     Btn::RightShoulder => self.rb_held = false,
                     _ => {}
                 }
+
+                // Left stick release (L3) → short press = select/deselect character
+                if *button == Btn::LeftStick && self.controller_mode {
+                    if let Some(_pressed_at) = self.l3_pressed_at.take() {
+                        // Hold threshold not reached (would have been consumed
+                        // in update()), so this is a short press → select.
+                        if let Some(ps) = app_state.player_state.as_ref() {
+                            let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                            if let Some((mx, my)) = Self::screen_to_map_tile(
+                                self.mouse_x,
+                                self.mouse_y,
+                                cam_xoff,
+                                cam_yoff,
+                            ) {
+                                use mag_core::constants::ISCHAR;
+                                let selected_char = ps.selected_char();
+                                if let Some((sx, sy)) =
+                                    Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
+                                {
+                                    let tile = ps.map().tile_at_xy(sx, sy);
+                                    let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
+                                    let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
+                                    if target_cn != 0 {
+                                        if let Some(ps_mut) = app_state.player_state.as_mut() {
+                                            if selected_char == target_cn as u16 {
+                                                ps_mut.clear_selected_char();
+                                            } else {
+                                                ps_mut.set_selected_char_with_id(
+                                                    target_cn as u16,
+                                                    target_id,
+                                                );
+                                            }
+                                        }
+                                    }
+                                } else if selected_char != 0 {
+                                    // No character near cursor but one is selected → deselect
+                                    if let Some(ps_mut) = app_state.player_state.as_mut() {
+                                        ps_mut.clear_selected_char();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 None
             }
 
             Event::ControllerAxisMotion { axis, value, .. } => {
-                // Track left-stick axes for virtual cursor movement in update()
+                // Track stick axes for virtual cursor and skill bar navigation in update()
                 match axis {
                     Axis::LeftX => self.left_stick_x = *value,
                     Axis::LeftY => self.left_stick_y = *value,
+                    Axis::RightX => self.right_stick_x = *value,
                     _ => {}
                 }
 

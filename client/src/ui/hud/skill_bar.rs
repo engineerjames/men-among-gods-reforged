@@ -30,7 +30,7 @@ use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, Wid
 const CELL: i32 = 20;
 
 /// Number of cells in the top (skill-bind) row.
-const TOP_CELLS: usize = 13;
+pub const TOP_CELLS: usize = 13;
 
 /// Vertical offset of all cells relative to the widget (background image)
 /// origin.  Increase to scoot cells downward.
@@ -73,6 +73,9 @@ const EMPTY_HINT_COLOR: Color = Color::RGBA(100, 100, 120, 180);
 
 /// Hover highlight overlay color.
 const HOVER_COLOR: Color = Color::RGBA(255, 255, 255, 40);
+
+/// Golden stroke color for the controller-selected skill slot.
+const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
 
 /// Bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
@@ -132,6 +135,8 @@ pub struct SkillBar {
     bg_texture_id: Option<usize>,
     /// Active-spell sprite layout configuration.
     config: SkillBarConfig,
+    /// Controller-selected skill slot index (0..12), or `None` if no slot is highlighted.
+    controller_selected_slot: Option<usize>,
 }
 
 impl SkillBar {
@@ -156,6 +161,7 @@ impl SkillBar {
             actions: Vec::new(),
             bg_texture_id: None,
             config,
+            controller_selected_slot: None,
         }
     }
 
@@ -176,6 +182,24 @@ impl SkillBar {
     /// * `data` - Current skill-bind and spell/effect state.
     pub fn update_data(&mut self, data: SkillBarData) {
         self.data = Some(data);
+    }
+
+    /// Set the controller-highlighted skill slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `slot` - Slot index (0..12) to highlight, or `None` to clear.
+    pub fn set_controller_selected_slot(&mut self, slot: Option<usize>) {
+        self.controller_selected_slot = slot;
+    }
+
+    /// Get the currently controller-highlighted skill slot.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(index)` if a slot is highlighted, `None` otherwise.
+    pub fn controller_selected_slot(&self) -> Option<usize> {
+        self.controller_selected_slot
     }
 
     // -----------------------------------------------------------------------
@@ -328,6 +352,17 @@ impl Widget for SkillBar {
             if self.hit_top_cell(self.mouse_x, self.mouse_y) == Some(i) {
                 ctx.canvas.set_draw_color(HOVER_COLOR);
                 ctx.canvas.fill_rect(rect)?;
+            }
+
+            // Controller-selected golden stroke.
+            if self.controller_selected_slot == Some(i) {
+                ctx.canvas.set_draw_color(CONTROLLER_SELECT_COLOR);
+                ctx.canvas.draw_rect(rect)?;
+                // Inner rect for a 2px-thick border effect.
+                if CELL > 2 {
+                    let inner = Rect::new(x + 1, y + 1, (CELL - 2) as u32, (CELL - 2) as u32);
+                    ctx.canvas.draw_rect(inner)?;
+                }
             }
 
             // Content: slot number on top row, skill name / "+" hint on bottom row.
