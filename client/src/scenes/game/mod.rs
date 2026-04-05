@@ -1121,10 +1121,12 @@ impl Scene for GameScene {
 
             if self.inventory_panel.is_visible() {
                 self.inventory_panel.toggle();
+                self.inventory_panel.clear_controller_selection();
             }
 
             if self.skills_panel.is_visible() {
                 self.skills_panel.toggle();
+                self.skills_panel.clear_controller_focus();
             }
 
             if self.minimap_widget.is_visible() {

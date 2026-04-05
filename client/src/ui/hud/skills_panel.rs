@@ -22,6 +22,9 @@ use crate::ui::widgets::title_bar::{TitleBar, clamp_to_viewport};
 /// Font index used for panel text (yellow bitmap font).
 const PANEL_FONT: usize = 1;
 
+/// Golden highlight color for controller-focused +/- buttons.
+const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
+
 /// Row height in pixels for attribute/skill rows.
 const ROW_H: i32 = 14;
 
@@ -33,6 +36,15 @@ const SKILL_SCROLL_MAX: usize = 90;
 
 /// Attribute names matching the 5-element attrib array.
 const ATTR_NAMES: [&str; 5] = ["Bravery", "Willpower", "Intuition", "Agility", "Strength"];
+
+/// Which column the controller focus is on in the skills panel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SkillsFocusCol {
+    /// The "+" (raise) button.
+    Plus,
+    /// The "-" (lower) button.
+    Minus,
+}
 
 /// Per-frame data snapshot fed by GameScene.
 ///
@@ -79,6 +91,12 @@ pub struct SkillsPanel {
     pending_actions: Vec<WidgetAction>,
     /// Draggable title bar with pin and close buttons.
     title_bar: TitleBar,
+    /// Controller-focused row (persisted across toggle cycles).
+    /// Rows: 0–4 = attributes, 5–7 = pools (HP/End/Mana),
+    /// 8–13 = visible skill rows, 14 = Update button.
+    controller_focused_row: Option<usize>,
+    /// Controller-focused column (+/-).
+    controller_focused_col: SkillsFocusCol,
 }
 
 impl SkillsPanel {
@@ -105,6 +123,8 @@ impl SkillsPanel {
             skill_scroll: 0,
             pending_actions: Vec::new(),
             title_bar,
+            controller_focused_row: None,
+            controller_focused_col: SkillsFocusCol::Plus,
         }
     }
 
@@ -178,6 +198,147 @@ impl SkillsPanel {
         let minus_x = cb.x + 180;
         let cost_x = cb.x + 195;
         (name_x, value_x, plus_x, minus_x, cost_x)
+    }
+
+    // ---- Controller navigation -------------------------------------------
+
+    /// Maximum controller row index.
+    /// 0–4 = attributes, 5–7 = pools, 8–13 = visible skills, 14 = Update.
+    const MAX_FOCUS_ROW: usize = 14;
+
+    /// Returns the current controller focus (row, column), if any.
+    pub fn controller_focus(&self) -> Option<(usize, SkillsFocusCol)> {
+        self.controller_focused_row
+            .map(|r| (r, self.controller_focused_col))
+    }
+
+    /// Clears the controller focus.
+    pub fn clear_controller_focus(&mut self) {
+        self.controller_focused_row = None;
+    }
+
+    /// Ensures a controller focus exists; if `None`, initialises to row 0
+    /// (first attribute), Plus column.
+    pub fn ensure_controller_focus(&mut self) {
+        if self.controller_focused_row.is_none() {
+            self.controller_focused_row = Some(0);
+            self.controller_focused_col = SkillsFocusCol::Plus;
+        }
+    }
+
+    /// Navigate the controller focus upward.
+    pub fn controller_nav_up(&mut self) {
+        match self.controller_focused_row {
+            None => self.ensure_controller_focus(),
+            Some(0) => {} // already at top
+            Some(row) if row == 8 && self.skill_scroll > 0 => {
+                // At first visible skill row with room to scroll up.
+                self.skill_scroll = self.skill_scroll.saturating_sub(1);
+            }
+            Some(row) => {
+                self.controller_focused_row = Some(row - 1);
+            }
+        }
+    }
+
+    /// Navigate the controller focus downward.
+    pub fn controller_nav_down(&mut self) {
+        match self.controller_focused_row {
+            None => self.ensure_controller_focus(),
+            Some(row) if row >= Self::MAX_FOCUS_ROW => {} // at Update row
+            Some(row) if row == 13 => {
+                // At last visible skill row — try to scroll down.
+                if self.skill_scroll < SKILL_SCROLL_MAX {
+                    self.skill_scroll += 1;
+                } else {
+                    // Can't scroll further → move to Update row.
+                    self.controller_focused_row = Some(14);
+                }
+            }
+            Some(row) => {
+                self.controller_focused_row = Some(row + 1);
+            }
+        }
+    }
+
+    /// Toggle the controller focus between Plus and Minus columns.
+    pub fn controller_nav_left_right(&mut self) {
+        if self.controller_focused_row.is_none() {
+            self.ensure_controller_focus();
+            return;
+        }
+        self.controller_focused_col = match self.controller_focused_col {
+            SkillsFocusCol::Plus => SkillsFocusCol::Minus,
+            SkillsFocusCol::Minus => SkillsFocusCol::Plus,
+        };
+    }
+
+    /// Activate the currently focused +/- or Update button.
+    ///
+    /// # Arguments
+    ///
+    /// * `shift` - `true` when LB (shift-equivalent) is held (10× raise).
+    pub fn controller_activate(&mut self, shift: bool) {
+        let row = match self.controller_focused_row {
+            Some(r) => r,
+            None => return,
+        };
+        let data = match self.data.as_ref() {
+            Some(d) => d.clone(),
+            None => return,
+        };
+
+        // Update button row
+        if row == Self::MAX_FOCUS_ROW {
+            self.handle_update_click(&data);
+            return;
+        }
+
+        let is_plus = self.controller_focused_col == SkillsFocusCol::Plus;
+        let repeats = if shift { 10 } else { 1 };
+
+        if row < 5 {
+            // Attribute row
+            let n = row;
+            for _ in 0..repeats {
+                if is_plus {
+                    self.raise_attrib(&data, n);
+                } else {
+                    self.lower_attrib(&data, n);
+                }
+            }
+        } else if row < 8 {
+            // Pool row (5=HP, 6=End, 7=Mana)
+            let idx = row; // stat_raised index
+            let pool = row - 5; // 0=HP, 1=End, 2=Mana
+            for _ in 0..repeats {
+                if is_plus {
+                    self.raise_pool(&data, idx, pool);
+                } else {
+                    self.lower_pool(&data, idx, pool);
+                }
+            }
+        } else if row <= 13 {
+            // Skill row (8–13 → visible rows 0–5)
+            let vis_row = row - 8;
+            let sorted_idx = self.skill_scroll + vis_row;
+            let raised_idx = 8 + sorted_idx;
+            if raised_idx >= 108 {
+                return;
+            }
+            if let Some(&skill_id) = data.sorted_skills.get(sorted_idx) {
+                if data.skill[skill_id][0] == 0 || get_skill_name(skill_id).is_empty() {
+                    return;
+                }
+                for _ in 0..repeats {
+                    if is_plus {
+                        self.raise_skill(&data, skill_id, raised_idx);
+                    } else {
+                        self.lower_skill(&data, skill_id, raised_idx);
+                    }
+                }
+            }
+        }
     }
 
     // ---- Cost calculation (mirrors legacy formulas) ----------------------
@@ -915,6 +1076,47 @@ impl Widget for SkillsPanel {
             update_y,
             font_cache::TextStyle::PLAIN,
         )?;
+
+        // --- Controller focus highlight (golden stroke) ---
+        if let Some(row) = self.controller_focused_row {
+            let highlight_rect = if row == Self::MAX_FOCUS_ROW {
+                // Update button — highlight the "Update" text area.
+                Some(sdl2::rect::Rect::new(
+                    cb.x + 78,
+                    update_y - 1,
+                    56,
+                    ROW_H as u32 + 2,
+                ))
+            } else {
+                // +/- column highlight
+                let col_x = match self.controller_focused_col {
+                    SkillsFocusCol::Plus => plus_x,
+                    SkillsFocusCol::Minus => minus_x,
+                };
+                let row_y = if row < 5 {
+                    Some(self.attr_row_y(row))
+                } else if row < 8 {
+                    Some(self.pool_row_y(row - 5))
+                } else if row <= 13 {
+                    Some(self.skill_row_y(row - 8))
+                } else {
+                    None
+                };
+                row_y.map(|y| sdl2::rect::Rect::new(col_x - 1, y - 1, 14, ROW_H as u32 + 2))
+            };
+
+            if let Some(r) = highlight_rect {
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
+                ctx.canvas.set_draw_color(CONTROLLER_SELECT_COLOR);
+                ctx.canvas.draw_rect(r)?;
+                // Inner rect for 2px-thick border effect.
+                if r.width() > 2 && r.height() > 2 {
+                    let inner =
+                        sdl2::rect::Rect::new(r.x() + 1, r.y() + 1, r.width() - 2, r.height() - 2);
+                    ctx.canvas.draw_rect(inner)?;
+                }
+            }
+        }
 
         Ok(())
     }

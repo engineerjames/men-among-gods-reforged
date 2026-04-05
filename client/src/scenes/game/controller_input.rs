@@ -188,23 +188,61 @@ impl GameScene {
                     }
                 }
 
-                // D-pad left/right → skill bar slot navigation (gameplay only)
-                if self.controller_mode && (*button == Btn::DPadLeft || *button == Btn::DPadRight) {
-                    use crate::ui::hud::skill_bar::TOP_CELLS;
-                    let current = self.skill_bar.controller_selected_slot();
-                    let next = if *button == Btn::DPadRight {
-                        Some(current.map_or(0, |s| (s + 1) % TOP_CELLS))
+                // D-pad → panel toggles and in-panel navigation (controller mode)
+                if self.controller_mode
+                    && matches!(
+                        button,
+                        Btn::DPadUp | Btn::DPadDown | Btn::DPadLeft | Btn::DPadRight
+                    )
+                {
+                    if self.inventory_panel.is_visible() {
+                        match button {
+                            Btn::DPadUp => self.inventory_panel.controller_nav_up(),
+                            Btn::DPadDown => self.inventory_panel.controller_nav_down(),
+                            Btn::DPadLeft => self.inventory_panel.controller_nav_left(),
+                            Btn::DPadRight => self.inventory_panel.controller_nav_right(),
+                            _ => {}
+                        }
+                    } else if self.skills_panel.is_visible() {
+                        match button {
+                            Btn::DPadUp => self.skills_panel.controller_nav_up(),
+                            Btn::DPadDown => self.skills_panel.controller_nav_down(),
+                            Btn::DPadLeft | Btn::DPadRight => {
+                                self.skills_panel.controller_nav_left_right()
+                            }
+                            _ => {}
+                        }
                     } else {
-                        Some(current.map_or(TOP_CELLS - 1, |s| {
-                            if s == 0 { TOP_CELLS - 1 } else { s - 1 }
-                        }))
-                    };
-                    self.skill_bar.set_controller_selected_slot(next);
+                        // No panel open → toggle inventory or skills
+                        match button {
+                            Btn::DPadUp => {
+                                self.inventory_panel.toggle();
+                                if self.inventory_panel.is_visible() {
+                                    self.inventory_panel.ensure_controller_selection();
+                                }
+                            }
+                            Btn::DPadDown => {
+                                self.skills_panel.toggle();
+                                if self.skills_panel.is_visible() {
+                                    self.skills_panel.ensure_controller_focus();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     return None;
                 }
 
-                // B button → clear skill bar selection (gameplay only)
+                // B button → close panels or clear skill bar selection
                 if *button == Btn::B && self.controller_mode {
+                    if self.inventory_panel.is_visible() {
+                        self.inventory_panel.toggle();
+                        return None;
+                    }
+                    if self.skills_panel.is_visible() {
+                        self.skills_panel.toggle();
+                        return None;
+                    }
                     self.skill_bar.set_controller_selected_slot(None);
                     return None;
                 }
@@ -270,6 +308,31 @@ impl GameScene {
                 if *button == Btn::LeftStick && self.controller_mode {
                     self.l3_pressed_at = Some(Instant::now());
                     return None;
+                }
+
+                // A button → controller-specific panel interaction
+                // When inventory or skills is open with a focused slot, handle
+                // the action directly rather than synthesizing a mouse click.
+                if *button == Btn::A && self.controller_mode {
+                    // Inventory panel: A = interact with selected slot
+                    if self.inventory_panel.is_visible() {
+                        if let Some(slot) = self.inventory_panel.controller_selected() {
+                            let shift = self.lb_held;
+                            self.inventory_panel.controller_activate(slot, shift);
+                            self.process_inventory_panel_actions(app_state);
+                            return None;
+                        }
+                    }
+
+                    // Skills panel: A = activate focused +/- or Update
+                    if self.skills_panel.is_visible() {
+                        if self.skills_panel.controller_focus().is_some() {
+                            let shift = self.lb_held;
+                            self.skills_panel.controller_activate(shift);
+                            self.process_skills_panel_actions(app_state);
+                            return None;
+                        }
+                    }
                 }
 
                 // A button → left-click equivalent (LB = shift, RB = ctrl)

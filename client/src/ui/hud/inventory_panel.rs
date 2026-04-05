@@ -64,6 +64,9 @@ const CELL_GRID_COLOR: Color = Color::RGBA(80, 80, 100, 180);
 /// Bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
 
+/// Golden highlight color for controller-selected slots.
+const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
+
 /// Maps the 12 equipment grid positions (row-major, 2 cols × 6 rows) to
 /// `WN_*` wear-slot indices.  Matches the original C `wntab[]` order.
 /// TODO: Refactor this to put this logic all in one place.
@@ -79,6 +82,19 @@ const EQUIP_LABELS: [&str; 12] = [
     "Head", "Cloak", "Body", "Arms", "Neck", "Belt", "Weapon", "Shield", "Ring", "Ring", "Legs",
     "Feet",
 ];
+
+// ---------------------------------------------------------------------------
+// Controller selection
+// ---------------------------------------------------------------------------
+
+/// Identifies which slot is currently selected by the controller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InvSlotKind {
+    /// A backpack slot (absolute index 0..39).
+    Backpack(usize),
+    /// An equipment grid position (0..11, row-major 2 cols × 6 rows).
+    Equipment(usize),
+}
 
 // ---------------------------------------------------------------------------
 // Data snapshot
@@ -127,6 +143,8 @@ pub struct InventoryPanel {
     actions: Vec<WidgetAction>,
     /// Draggable title bar with pin and close buttons.
     title_bar: TitleBar,
+    /// Controller-selected slot (persisted across toggle cycles).
+    controller_selected: Option<InvSlotKind>,
 }
 
 impl InventoryPanel {
@@ -153,6 +171,7 @@ impl InventoryPanel {
             mouse_y: 0,
             actions: Vec::new(),
             title_bar,
+            controller_selected: None,
         }
     }
 
@@ -312,6 +331,194 @@ impl InventoryPanel {
         }
 
         None
+    }
+
+    // -----------------------------------------------------------------------
+    // Controller navigation
+    // -----------------------------------------------------------------------
+
+    /// Returns the current controller-selected slot, if any.
+    pub fn controller_selected(&self) -> Option<InvSlotKind> {
+        self.controller_selected
+    }
+
+    /// Sets the controller-selected slot.
+    pub fn set_controller_selected(&mut self, slot: Option<InvSlotKind>) {
+        self.controller_selected = slot;
+    }
+
+    /// Clears the controller selection.
+    pub fn clear_controller_selection(&mut self) {
+        self.controller_selected = None;
+    }
+
+    /// Ensures a controller selection exists; if `None`, initialises to
+    /// `Backpack(0)`.  Called when the panel is opened via D-PAD.
+    pub fn ensure_controller_selection(&mut self) {
+        if self.controller_selected.is_none() {
+            self.controller_selected = Some(InvSlotKind::Backpack(self.inv_scroll));
+        }
+    }
+
+    /// Navigate the controller selection upward.
+    pub fn controller_nav_up(&mut self) {
+        match self.controller_selected {
+            None => self.ensure_controller_selection(),
+            Some(InvSlotKind::Backpack(idx)) => {
+                let col = (idx - self.inv_scroll) % 2;
+                if idx >= self.inv_scroll + 2 {
+                    // Move up one row within visible area.
+                    self.controller_selected = Some(InvSlotKind::Backpack(idx - 2));
+                } else if self.inv_scroll >= 2 {
+                    // Scroll up and keep top row selected.
+                    self.inv_scroll -= 2;
+                    self.inv_scroll &= !1usize;
+                    self.controller_selected = Some(InvSlotKind::Backpack(self.inv_scroll + col));
+                }
+                // else: already at top, do nothing
+            }
+            Some(InvSlotKind::Equipment(pos)) => {
+                let col = pos % 2;
+                let row = pos / 2;
+                if row > 0 {
+                    self.controller_selected = Some(InvSlotKind::Equipment((row - 1) * 2 + col));
+                }
+            }
+        }
+    }
+
+    /// Navigate the controller selection downward.
+    pub fn controller_nav_down(&mut self) {
+        match self.controller_selected {
+            None => self.ensure_controller_selection(),
+            Some(InvSlotKind::Backpack(idx)) => {
+                let col = (idx - self.inv_scroll) % 2;
+                let vis_row = (idx - self.inv_scroll) / 2;
+                if vis_row + 1 < INV_VISIBLE_ROWS {
+                    // Move down within visible area.
+                    let new = idx + 2;
+                    if new < INV_TOTAL_SLOTS {
+                        self.controller_selected = Some(InvSlotKind::Backpack(new));
+                    }
+                } else if self.inv_scroll + 2 <= INV_SCROLL_MAX {
+                    // Scroll down and keep bottom row selected.
+                    self.inv_scroll += 2;
+                    self.inv_scroll &= !1usize;
+                    let new = self.inv_scroll + (INV_VISIBLE_ROWS - 1) * 2 + col;
+                    if new < INV_TOTAL_SLOTS {
+                        self.controller_selected = Some(InvSlotKind::Backpack(new));
+                    }
+                }
+            }
+            Some(InvSlotKind::Equipment(pos)) => {
+                let col = pos % 2;
+                let row = pos / 2;
+                if row + 1 < EQUIP_ROWS {
+                    self.controller_selected = Some(InvSlotKind::Equipment((row + 1) * 2 + col));
+                }
+            }
+        }
+    }
+
+    /// Navigate the controller selection left.
+    pub fn controller_nav_left(&mut self) {
+        match self.controller_selected {
+            None => self.ensure_controller_selection(),
+            Some(InvSlotKind::Backpack(idx)) => {
+                let col = (idx - self.inv_scroll) % 2;
+                if col > 0 {
+                    self.controller_selected = Some(InvSlotKind::Backpack(idx - 1));
+                }
+            }
+            Some(InvSlotKind::Equipment(pos)) => {
+                let col = pos % 2;
+                let row = pos / 2;
+                if col > 0 {
+                    self.controller_selected = Some(InvSlotKind::Equipment(row * 2 + col - 1));
+                } else {
+                    // Jump from equipment col 0 → backpack col 1 (same row,
+                    // clamped to the backpack's visible area).
+                    let bp_row = row.min(INV_VISIBLE_ROWS - 1);
+                    let bp_idx = self.inv_scroll + bp_row * 2 + 1;
+                    if bp_idx < INV_TOTAL_SLOTS {
+                        self.controller_selected = Some(InvSlotKind::Backpack(bp_idx));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Navigate the controller selection right.
+    pub fn controller_nav_right(&mut self) {
+        match self.controller_selected {
+            None => self.ensure_controller_selection(),
+            Some(InvSlotKind::Backpack(idx)) => {
+                let col = (idx - self.inv_scroll) % 2;
+                if col == 0 {
+                    // Move to col 1 in backpack.
+                    let new = idx + 1;
+                    if new < INV_TOTAL_SLOTS {
+                        self.controller_selected = Some(InvSlotKind::Backpack(new));
+                    }
+                } else {
+                    // Jump from backpack col 1 → equipment col 0 (same row,
+                    // clamped to equipment grid height).
+                    let vis_row = (idx - self.inv_scroll) / 2;
+                    let eq_row = vis_row.min(EQUIP_ROWS - 1);
+                    self.controller_selected = Some(InvSlotKind::Equipment(eq_row * 2));
+                }
+            }
+            Some(InvSlotKind::Equipment(pos)) => {
+                let col = pos % 2;
+                let row = pos / 2;
+                if col == 0 {
+                    self.controller_selected = Some(InvSlotKind::Equipment(row * 2 + 1));
+                }
+                // col 1 is rightmost in equipment grid — do nothing
+            }
+        }
+    }
+
+    /// Activate (use / pick up / equip) the given controller-selected slot.
+    ///
+    /// Emits the same `WidgetAction::InvAction` as a mouse click would.
+    ///
+    /// # Arguments
+    ///
+    /// * `slot` - Which slot to interact with.
+    /// * `shift` - `true` when LB (shift-equivalent) is held.
+    pub fn controller_activate(&mut self, slot: InvSlotKind, shift: bool) {
+        let data = match self.data.as_ref() {
+            Some(d) => d,
+            None => return,
+        };
+        let selected_char = data.selected_char as u32;
+
+        match slot {
+            InvSlotKind::Backpack(idx) => {
+                if idx >= INV_TOTAL_SLOTS {
+                    return;
+                }
+                let a = if shift { 0u32 } else { 6u32 };
+                self.actions.push(WidgetAction::InvAction {
+                    a,
+                    b: idx as u32,
+                    selected_char,
+                });
+            }
+            InvSlotKind::Equipment(pos) => {
+                if pos >= 12 {
+                    return;
+                }
+                let wn_slot = EQUIP_WNTAB[pos];
+                let a = if shift { 1u32 } else { 5u32 };
+                self.actions.push(WidgetAction::InvAction {
+                    a,
+                    b: wn_slot as u32,
+                    selected_char,
+                });
+            }
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -673,6 +880,55 @@ impl Widget for InventoryPanel {
                         None,
                         Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
                     )?;
+                }
+            }
+        }
+
+        // --- Controller selection highlight (golden stroke) ---
+        if let Some(sel) = self.controller_selected {
+            let sel_rect = match sel {
+                InvSlotKind::Backpack(idx) => {
+                    // Only draw if the slot is in the visible scroll window.
+                    if idx >= self.inv_scroll && idx < self.inv_scroll + INV_VISIBLE_ROWS * 2 {
+                        let vis = idx - self.inv_scroll;
+                        let col = (vis % 2) as i32;
+                        let row = (vis / 2) as i32;
+                        Some(sdl2::rect::Rect::new(
+                            inv_x + col * CELL,
+                            inv_y + row * CELL,
+                            CELL as u32,
+                            CELL as u32,
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                InvSlotKind::Equipment(pos) if pos < 12 => {
+                    let col = (pos % 2) as i32;
+                    let row = (pos / 2) as i32;
+                    Some(sdl2::rect::Rect::new(
+                        eq_x + col * (CELL + EQUIP_COL_GAP),
+                        eq_y + row * CELL,
+                        CELL as u32,
+                        CELL as u32,
+                    ))
+                }
+                _ => None,
+            };
+
+            if let Some(r) = sel_rect {
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
+                ctx.canvas.set_draw_color(CONTROLLER_SELECT_COLOR);
+                ctx.canvas.draw_rect(r)?;
+                // Inner rect for 2px-thick border effect.
+                if CELL > 2 {
+                    let inner = sdl2::rect::Rect::new(
+                        r.x() + 1,
+                        r.y() + 1,
+                        (CELL - 2) as u32,
+                        (CELL - 2) as u32,
+                    );
+                    ctx.canvas.draw_rect(inner)?;
                 }
             }
         }
