@@ -195,7 +195,16 @@ impl GameScene {
                         Btn::DPadUp | Btn::DPadDown | Btn::DPadLeft | Btn::DPadRight
                     )
                 {
-                    if self.inventory_panel.is_visible() {
+                    if self.shop_panel.is_visible() {
+                        self.shop_panel.ensure_controller_selection();
+                        match button {
+                            Btn::DPadUp => self.shop_panel.controller_nav_up(),
+                            Btn::DPadDown => self.shop_panel.controller_nav_down(),
+                            Btn::DPadLeft => self.shop_panel.controller_nav_left(),
+                            Btn::DPadRight => self.shop_panel.controller_nav_right(),
+                            _ => {}
+                        }
+                    } else if self.inventory_panel.is_visible() {
                         match button {
                             Btn::DPadUp => self.inventory_panel.controller_nav_up(),
                             Btn::DPadDown => self.inventory_panel.controller_nav_down(),
@@ -235,6 +244,12 @@ impl GameScene {
 
                 // B button → close panels or clear skill bar selection
                 if *button == Btn::B && self.controller_mode {
+                    if self.shop_panel.is_visible() {
+                        self.shop_panel.clear_controller_selection();
+                        self.shop_panel.handle_event(&UiEvent::NavBack);
+                        self.process_shop_panel_actions(app_state);
+                        return None;
+                    }
                     if self.inventory_panel.is_visible() {
                         self.inventory_panel.toggle();
                         return None;
@@ -314,6 +329,13 @@ impl GameScene {
                 // When inventory or skills is open with a focused slot, handle
                 // the action directly rather than synthesizing a mouse click.
                 if *button == Btn::A && self.controller_mode {
+                    // Shop/grave panel: A = interact with selected slot
+                    if self.shop_panel.is_visible() {
+                        self.shop_panel.controller_activate();
+                        self.process_shop_panel_actions(app_state);
+                        return None;
+                    }
+
                     // Inventory panel: A = interact with selected slot
                     if self.inventory_panel.is_visible() {
                         if let Some(slot) = self.inventory_panel.controller_selected() {
@@ -514,6 +536,45 @@ impl GameScene {
                 }
 
                 if self.skill_picker.is_visible() {
+                    return None;
+                }
+
+                // When on-screen keyboard is visible, use left stick for 2D navigation.
+                if self.keyboard.is_visible() {
+                    const KB_DEADZONE: i16 = 16_000;
+                    match axis {
+                        Axis::LeftX => {
+                            let v = *value;
+                            if v > KB_DEADZONE && !self.kb_stick_pos_x {
+                                self.kb_stick_pos_x = true;
+                                self.keyboard.handle_event(&UiEvent::NavNext);
+                            } else if v <= KB_DEADZONE {
+                                self.kb_stick_pos_x = false;
+                            }
+                            if v < -KB_DEADZONE && !self.kb_stick_neg_x {
+                                self.kb_stick_neg_x = true;
+                                self.keyboard.handle_event(&UiEvent::NavPrev);
+                            } else if v >= -KB_DEADZONE {
+                                self.kb_stick_neg_x = false;
+                            }
+                        }
+                        Axis::LeftY => {
+                            let v = *value;
+                            if v > KB_DEADZONE && !self.kb_stick_pos_y {
+                                self.kb_stick_pos_y = true;
+                                self.keyboard.handle_event(&UiEvent::KeyboardRowDown);
+                            } else if v <= KB_DEADZONE {
+                                self.kb_stick_pos_y = false;
+                            }
+                            if v < -KB_DEADZONE && !self.kb_stick_neg_y {
+                                self.kb_stick_neg_y = true;
+                                self.keyboard.handle_event(&UiEvent::KeyboardRowUp);
+                            } else if v >= -KB_DEADZONE {
+                                self.kb_stick_neg_y = false;
+                            }
+                        }
+                        _ => {}
+                    }
                     return None;
                 }
 

@@ -1591,6 +1591,9 @@ pub struct SettingsPanel {
     /// Order: 0=Display, 1=Diagnostics, 2=Controls, 3=Controller,
     ///        4=Volume, 5=Disconnect, 6=Quit, 7=Return.
     controller_focused: Option<usize>,
+    /// `true` when the controller is actively adjusting the volume slider
+    /// (entered via NavConfirm on index 4, exited via NavConfirm or NavBack).
+    volume_adjusting: bool,
 }
 
 impl SettingsPanel {
@@ -1699,6 +1702,7 @@ impl SettingsPanel {
             ),
 
             controller_focused: None,
+            volume_adjusting: false,
         }
     }
 
@@ -1706,6 +1710,7 @@ impl SettingsPanel {
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
         if !self.visible {
+            self.volume_adjusting = false;
             self.close_active_sub_panel();
             self.controller_focused = None;
         }
@@ -1829,6 +1834,7 @@ impl SettingsPanel {
         self.btn_controls.set_hovered(f == Some(2));
         self.btn_controller.set_hovered(f == Some(3));
         self.sld_volume.set_hovered(f == Some(4));
+        self.sld_volume.set_active(self.volume_adjusting);
         self.btn_disconnect.set_hovered(f == Some(5));
         self.btn_quit.set_hovered(f == Some(6));
         self.btn_return.set_hovered(f == Some(7));
@@ -1939,8 +1945,34 @@ impl Widget for SettingsPanel {
         }
 
         // 2b. Controller navigation for the main panel.
+
+        // When volume adjust mode is active, intercept nav events to
+        // adjust the slider rather than moving focus.
+        if self.volume_adjusting {
+            const VOLUME_STEP: f32 = 0.05;
+            match event {
+                UiEvent::NavNext => {
+                    self.sld_volume.adjust_by(VOLUME_STEP);
+                    self.collect_main_actions();
+                    return EventResponse::Consumed;
+                }
+                UiEvent::NavPrev => {
+                    self.sld_volume.adjust_by(-VOLUME_STEP);
+                    self.collect_main_actions();
+                    return EventResponse::Consumed;
+                }
+                UiEvent::NavConfirm | UiEvent::NavBack => {
+                    self.volume_adjusting = false;
+                    self.sld_volume.set_active(false);
+                    return EventResponse::Consumed;
+                }
+                _ => {}
+            }
+        }
+
         match event {
             UiEvent::NavNext => {
+                self.volume_adjusting = false;
                 self.controller_focused = Some(match self.controller_focused {
                     None => 0,
                     Some(i) => (i + 1) % Self::MAIN_FOCUSABLE_COUNT,
@@ -1949,6 +1981,7 @@ impl Widget for SettingsPanel {
                 return EventResponse::Consumed;
             }
             UiEvent::NavPrev => {
+                self.volume_adjusting = false;
                 self.controller_focused = Some(match self.controller_focused {
                     None => Self::MAIN_FOCUSABLE_COUNT - 1,
                     Some(0) => Self::MAIN_FOCUSABLE_COUNT - 1,
@@ -1964,8 +1997,10 @@ impl Widget for SettingsPanel {
                     Some(2) => self.open_sub_panel(SettingsSubPanel::Controls),
                     Some(3) => self.open_sub_panel(SettingsSubPanel::Controller),
                     Some(4) => {
-                        // Volume slider: no-op on confirm (use left/right to
-                        // adjust when we add that, for now skip).
+                        // Volume slider: enter adjust mode so NavNext/NavPrev
+                        // will increase/decrease volume until confirmed.
+                        self.volume_adjusting = true;
+                        self.sld_volume.set_active(true);
                     }
                     Some(5) => {
                         self.pending_actions.push(WidgetAction::Disconnect);
@@ -1987,6 +2022,7 @@ impl Widget for SettingsPanel {
             UiEvent::NavBack => {
                 // Close the settings panel entirely.
                 self.visible = false;
+                self.volume_adjusting = false;
                 self.close_active_sub_panel();
                 self.controller_focused = None;
                 self.pending_actions
@@ -1994,6 +2030,7 @@ impl Widget for SettingsPanel {
                 return EventResponse::Consumed;
             }
             UiEvent::MouseMove { .. } => {
+                self.volume_adjusting = false;
                 self.clear_controller_focus();
             }
             _ => {}

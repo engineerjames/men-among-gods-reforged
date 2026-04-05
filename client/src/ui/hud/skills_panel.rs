@@ -227,10 +227,20 @@ impl SkillsPanel {
     }
 
     /// Navigate the controller focus upward.
+    ///
+    /// Wraps from the first attribute row (0) to the Update button, and
+    /// scrolls the skill list when the focus is at the top visible skill row.
     pub fn controller_nav_up(&mut self) {
         match self.controller_focused_row {
             None => self.ensure_controller_focus(),
-            Some(0) => {} // already at top
+            Some(0) => {
+                // Wrap to Update button.
+                self.controller_focused_row = Some(Self::MAX_FOCUS_ROW);
+            }
+            Some(row) if row == Self::MAX_FOCUS_ROW => {
+                // From Update, go to the last visible skill row.
+                self.controller_focused_row = Some(13);
+            }
             Some(row) if row == 8 && self.skill_scroll > 0 => {
                 // At first visible skill row with room to scroll up.
                 self.skill_scroll = self.skill_scroll.saturating_sub(1);
@@ -242,17 +252,23 @@ impl SkillsPanel {
     }
 
     /// Navigate the controller focus downward.
+    ///
+    /// From the last skill row, jumps to Update when no more scrolling is
+    /// possible. Wraps from Update back to the first attribute row (0).
     pub fn controller_nav_down(&mut self) {
         match self.controller_focused_row {
             None => self.ensure_controller_focus(),
-            Some(row) if row >= Self::MAX_FOCUS_ROW => {} // at Update row
+            Some(row) if row >= Self::MAX_FOCUS_ROW => {
+                // Wrap from Update to first attribute.
+                self.controller_focused_row = Some(0);
+            }
             Some(row) if row == 13 => {
                 // At last visible skill row — try to scroll down.
                 if self.skill_scroll < SKILL_SCROLL_MAX {
                     self.skill_scroll += 1;
                 } else {
-                    // Can't scroll further → move to Update row.
-                    self.controller_focused_row = Some(14);
+                    // Can't scroll further → jump to Update row.
+                    self.controller_focused_row = Some(Self::MAX_FOCUS_ROW);
                 }
             }
             Some(row) => {
@@ -1102,7 +1118,7 @@ impl Widget for SkillsPanel {
                 } else {
                     None
                 };
-                row_y.map(|y| sdl2::rect::Rect::new(col_x - 1, y - 1, 14, ROW_H as u32 + 2))
+                row_y.map(|y| sdl2::rect::Rect::new(col_x - 2, y - 2, 8, 10))
             };
 
             if let Some(r) = highlight_rect {

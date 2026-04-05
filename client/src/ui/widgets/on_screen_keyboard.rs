@@ -184,13 +184,36 @@ impl OnScreenKeyboard {
 
     /// Returns the pixel origin (x, y) for a key at (row, col).
     fn key_origin(&self, row: usize, col: usize) -> (i32, i32) {
+        let ky = self.bounds.y + PAD_Y + row as i32 * (KEY_H as i32 + KEY_GAP as i32);
+
+        // Bottom row (SPACE + ENTER) uses custom widths, not the standard grid.
+        if row == ROWS.len() - 1 {
+            let (space_w, enter_w) = self.bottom_row_widths();
+            let total_w = space_w as i32 + KEY_GAP as i32 + enter_w as i32;
+            let row_x = self.bounds.x + (self.bounds.width as i32 - total_w) / 2;
+            let kx = if col == 0 {
+                row_x
+            } else {
+                row_x + space_w as i32 + KEY_GAP as i32
+            };
+            return (kx, ky);
+        }
+
         let row_keys = self.rows()[row];
         // Center each row within the panel width.
         let row_w = row_keys.len() as i32 * (KEY_W as i32 + KEY_GAP as i32) - KEY_GAP as i32;
         let row_x_offset = (self.bounds.width as i32 - row_w) / 2;
         let kx = self.bounds.x + row_x_offset + col as i32 * (KEY_W as i32 + KEY_GAP as i32);
-        let ky = self.bounds.y + PAD_Y + row as i32 * (KEY_H as i32 + KEY_GAP as i32);
         (kx, ky)
+    }
+
+    /// Returns `(space_width, enter_width)` for the bottom row keys.
+    fn bottom_row_widths(&self) -> (u32, u32) {
+        // Use the widest normal row as reference width for the bottom row.
+        let ref_w = MAX_COLS as u32 * (KEY_W + KEY_GAP) - KEY_GAP;
+        let enter_w = KEY_W * 3 + KEY_GAP * 2; // 3 keys wide
+        let space_w = ref_w - enter_w - KEY_GAP; // remainder for space bar
+        (space_w, enter_w)
     }
 }
 
@@ -315,10 +338,10 @@ impl Widget for OnScreenKeyboard {
         for (ri, row) in rows.iter().enumerate() {
             for (ci, label) in row.iter().enumerate() {
                 let (kx, ky) = self.key_origin(ri, ci);
-                let key_w = if *label == "SPACE" {
-                    // Space bar spans the remaining width.
-                    let row_w = row.len() as u32 * (KEY_W + KEY_GAP) - KEY_GAP;
-                    row_w.max(KEY_W * 5)
+                let key_w = if ri == rows.len() - 1 {
+                    // Bottom row: use pre-computed widths for SPACE / ENTER.
+                    let (space_w, enter_w) = self.bottom_row_widths();
+                    if ci == 0 { space_w } else { enter_w }
                 } else {
                     KEY_W
                 };

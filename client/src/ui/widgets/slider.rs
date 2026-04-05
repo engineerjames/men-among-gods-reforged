@@ -35,6 +35,8 @@ pub struct Slider {
     changed: bool,
     /// Additive tint alpha applied on hover (0–255).
     hover_alpha: u8,
+    /// Whether the slider is in active controller-adjust mode.
+    active: bool,
 }
 
 impl Slider {
@@ -64,6 +66,7 @@ impl Slider {
             dragging: false,
             changed: false,
             hover_alpha: 48,
+            active: false,
         }
     }
 
@@ -101,6 +104,33 @@ impl Slider {
     /// * `hovered` - `true` to show the hover highlight, `false` to hide it.
     pub fn set_hovered(&mut self, hovered: bool) {
         self.hovered = hovered;
+    }
+
+    /// Adjusts the slider value by `delta`, clamping to `[min, max]`.
+    ///
+    /// Sets the changed flag if the value actually moved.
+    ///
+    /// # Arguments
+    ///
+    /// * `delta` - Amount to add (positive = increase, negative = decrease).
+    pub fn adjust_by(&mut self, delta: f32) {
+        let new_val = (self.value + delta).clamp(self.min, self.max);
+        if (new_val - self.value).abs() > f32::EPSILON {
+            self.value = new_val;
+            self.changed = true;
+        }
+    }
+
+    /// Sets whether the slider is in active controller-adjust mode.
+    ///
+    /// When active, a gold border is drawn to indicate the slider is
+    /// being adjusted via controller input.
+    ///
+    /// # Arguments
+    ///
+    /// * `active` - `true` to show active highlight, `false` to clear it.
+    pub fn set_active(&mut self, active: bool) {
+        self.active = active;
     }
 
     /// Returns the track region (the clickable bar area), expressed as
@@ -259,6 +289,28 @@ impl Widget for Slider {
                 .set_draw_color(Color::RGBA(255, 255, 255, self.hover_alpha));
             ctx.canvas.fill_rect(full_rect)?;
             ctx.canvas.set_blend_mode(BlendMode::Blend);
+        }
+
+        // Active adjust mode: draw gold border to indicate controller is adjusting.
+        if self.active {
+            let full_rect = sdl2::rect::Rect::new(
+                self.bounds.x,
+                self.bounds.y,
+                self.bounds.width,
+                self.bounds.height,
+            );
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            ctx.canvas.set_draw_color(Color::RGBA(255, 200, 50, 220));
+            ctx.canvas.draw_rect(full_rect)?;
+            if full_rect.width() > 2 && full_rect.height() > 2 {
+                let inner = sdl2::rect::Rect::new(
+                    full_rect.x() + 1,
+                    full_rect.y() + 1,
+                    full_rect.width() - 2,
+                    full_rect.height() - 2,
+                );
+                ctx.canvas.draw_rect(inner)?;
+            }
         }
 
         Ok(())

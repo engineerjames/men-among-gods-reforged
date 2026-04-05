@@ -286,6 +286,14 @@ pub struct GameScene {
     pub(super) l3_pressed_at: Option<Instant>,
     /// Controller navigation tracker for HUD panels (settings menu, etc.).
     pub(super) hud_nav: crate::ui::controller_nav::ControllerNavState,
+    /// Rising-edge flag: left-stick X was positive (right) last frame, for keyboard nav.
+    pub(super) kb_stick_pos_x: bool,
+    /// Rising-edge flag: left-stick X was negative (left) last frame, for keyboard nav.
+    pub(super) kb_stick_neg_x: bool,
+    /// Rising-edge flag: left-stick Y was positive (down) last frame, for keyboard nav.
+    pub(super) kb_stick_pos_y: bool,
+    /// Rising-edge flag: left-stick Y was negative (up) last frame, for keyboard nav.
+    pub(super) kb_stick_neg_y: bool,
     /// On-screen keyboard for controller chat input.
     keyboard: OnScreenKeyboard,
 }
@@ -403,6 +411,10 @@ impl GameScene {
             right_stick_cooldown: 0.0,
             l3_pressed_at: None,
             hud_nav: crate::ui::controller_nav::ControllerNavState::new(),
+            kb_stick_pos_x: false,
+            kb_stick_neg_x: false,
+            kb_stick_pos_y: false,
+            kb_stick_neg_y: false,
             keyboard,
         }
     }
