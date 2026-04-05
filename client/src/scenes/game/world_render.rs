@@ -319,9 +319,6 @@ impl GameScene {
         if ps.should_show_shop() {
             return None;
         }
-        if self.settings_panel.is_visible() {
-            return None;
-        }
 
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
         if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {

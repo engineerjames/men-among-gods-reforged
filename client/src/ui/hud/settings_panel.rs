@@ -1297,32 +1297,6 @@ impl ControllerBindingsSubPanel {
         self.listening_for.is_some()
     }
 
-    /// Clears the currently listening or focused controller binding.
-    ///
-    /// # Returns
-    ///
-    /// `true` if a binding row was cleared, `false` otherwise.
-    fn clear_active_binding(&mut self) -> bool {
-        let close_index = self.binding_buttons.len();
-        let slot = self
-            .listening_for
-            .or_else(|| self.controller_focused.filter(|&index| index < close_index));
-
-        let Some(slot) = slot else {
-            return false;
-        };
-
-        self.bindings.set(slot, None);
-        self.pending_actions
-            .push(WidgetAction::UpdateControllerBinding {
-                slot: slot as u8,
-                button: None,
-            });
-        self.cancel_listening();
-        self.apply_controller_focus();
-        true
-    }
-
     /// Shifts all widgets by a pixel delta.
     fn shift_all(&mut self, dx: i32, dy: i32) {
         self.bounds.x += dx;
@@ -1742,11 +1716,6 @@ impl SettingsPanel {
         self.sub_controller.is_listening()
     }
 
-    /// Returns `true` when the controller bindings sub-panel is active.
-    pub fn is_controller_sub_panel_active(&self) -> bool {
-        matches!(self.active_sub_panel, Some(SettingsSubPanel::Controller))
-    }
-
     /// Forwards a captured controller button to the controller bindings
     /// sub-panel and collects the resulting `UpdateControllerBinding` action.
     ///
@@ -1756,23 +1725,6 @@ impl SettingsPanel {
     pub fn capture_controller_button(&mut self, button: ControllerButton) {
         self.sub_controller.capture_controller_button(button);
         self.collect_sub_panel_actions();
-    }
-
-    /// Clears the currently focused or listening controller binding row.
-    ///
-    /// # Returns
-    ///
-    /// `true` if a binding was cleared, `false` otherwise.
-    pub fn clear_controller_binding(&mut self) -> bool {
-        if !self.is_controller_sub_panel_active() {
-            return false;
-        }
-
-        let cleared = self.sub_controller.clear_active_binding();
-        if cleared {
-            self.collect_sub_panel_actions();
-        }
-        cleared
     }
 
     /// Updates the profiler button label.
@@ -2525,51 +2477,5 @@ mod tests {
 
         assert_eq!(dialog_center_x, panel_center_x);
         assert_eq!(dialog_center_y, panel_center_y);
-    }
-
-    #[test]
-    fn clear_controller_binding_emits_none_for_focused_slot() {
-        let mut panel = make_panel();
-        panel.toggle();
-        panel.open_sub_panel(SettingsSubPanel::Controller);
-        panel.sub_controller.bindings.set(0, Some(ControllerButton::A));
-        panel.sub_controller.refresh_button_labels();
-        panel.sub_controller.controller_focused = Some(0);
-        panel.sub_controller.apply_controller_focus();
-
-        assert!(panel.clear_controller_binding());
-
-        let actions = panel.take_actions();
-        assert!(actions.iter().any(|action| matches!(
-            action,
-            WidgetAction::UpdateControllerBinding {
-                slot: 0,
-                button: None,
-            }
-        )));
-        assert_eq!(panel.sub_controller.bindings.get(0), None);
-    }
-
-    #[test]
-    fn clear_controller_binding_emits_none_for_listening_slot() {
-        let mut panel = make_panel();
-        panel.toggle();
-        panel.open_sub_panel(SettingsSubPanel::Controller);
-        panel.sub_controller.bindings.set(1, Some(ControllerButton::B));
-        panel.sub_controller.refresh_button_labels();
-        panel.sub_controller.listening_for = Some(1);
-
-        assert!(panel.clear_controller_binding());
-
-        let actions = panel.take_actions();
-        assert!(actions.iter().any(|action| matches!(
-            action,
-            WidgetAction::UpdateControllerBinding {
-                slot: 1,
-                button: None,
-            }
-        )));
-        assert_eq!(panel.sub_controller.bindings.get(1), None);
-        assert_eq!(panel.sub_controller.listening_for, None);
     }
 }

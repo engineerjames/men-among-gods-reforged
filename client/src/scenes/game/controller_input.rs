@@ -9,8 +9,7 @@ use std::time::Instant;
 use sdl2::{
     controller::{Axis, Button as Btn},
     event::Event,
-    keyboard::Keycode,
-    mouse::MouseButton as SdlMouseButton,
+    mouse::MouseButton,
 };
 
 use crate::{
@@ -18,7 +17,7 @@ use crate::{
     scenes::scene::SceneType,
     state::AppState,
     types::controller::ControllerButton,
-    ui::widget::{KeyModifiers, MouseButton as UiMouseButton, UiEvent, Widget},
+    ui::widget::{UiEvent, Widget},
     ui::widgets::on_screen_keyboard::OnScreenKeyboardAction,
 };
 
@@ -89,15 +88,6 @@ impl GameScene {
                                     OnScreenKeyboardAction::Backspace => {
                                         self.chat_box.inject_backspace();
                                     }
-                                    OnScreenKeyboardAction::Submit => {
-                                        self.chat_box.handle_event(&UiEvent::KeyDown {
-                                            keycode: Keycode::Return,
-                                            modifiers: KeyModifiers::default(),
-                                        });
-                                        self.process_chat_box_actions(app_state);
-                                        self.keyboard.hide();
-                                        self.chat_box.set_focused(false);
-                                    }
                                     OnScreenKeyboardAction::Dismiss => {
                                         self.keyboard.hide();
                                         self.chat_box.set_focused(false);
@@ -153,17 +143,6 @@ impl GameScene {
                     return None;
                 }
 
-                // Back in the controller bindings settings UI clears the
-                // current binding instead of binding Back to that slot.
-                if *button == Btn::Back && self.settings_panel.is_controller_sub_panel_active() {
-                    if self.settings_panel.clear_controller_binding() {
-                        if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                            return Some(sc);
-                        }
-                    }
-                    return None;
-                }
-
                 // If the controller bindings panel is waiting for a button
                 // press, capture it and skip the normal skill-dispatch path.
                 if self.settings_panel.is_controller_listening() {
@@ -202,7 +181,6 @@ impl GameScene {
                         }
                         return None;
                     }
-                    return None;
                 }
 
                 // D-pad left/right → skill bar slot navigation (gameplay only)
@@ -284,35 +262,13 @@ impl GameScene {
 
                 // A button → left-click equivalent (LB = shift, RB = ctrl)
                 if *button == Btn::A && self.controller_mode {
-                    let click_modifiers = KeyModifiers {
-                        ctrl: self.rb_held || self.ctrl_held,
-                        shift: self.lb_held || self.shift_held,
-                        alt: self.alt_held,
-                    };
-                    if self.is_point_over_interactive_ui(self.mouse_x, self.mouse_y) {
-                        if let Some(sc) = self.handle_ui_widget_events(
-                            app_state,
-                            &UiEvent::MouseClick {
-                                x: self.mouse_x,
-                                y: self.mouse_y,
-                                button: UiMouseButton::Left,
-                                modifiers: click_modifiers,
-                            },
-                        ) {
-                            return Some(sc);
-                        }
-                        return None;
-                    }
-                    if self.has_blocking_game_menu_open() {
-                        return None;
-                    }
                     let orig_shift = self.shift_held;
                     let orig_ctrl = self.ctrl_held;
                     self.shift_held = self.lb_held;
                     self.ctrl_held = self.rb_held;
                     self.handle_world_click(
                         app_state,
-                        SdlMouseButton::Left,
+                        MouseButton::Left,
                         self.mouse_x,
                         self.mouse_y,
                     );
@@ -323,16 +279,13 @@ impl GameScene {
 
                 // X button → right-click equivalent (LB = shift, RB = ctrl)
                 if *button == Btn::X && self.controller_mode {
-                    if self.ui_blocks_world_input_at(self.mouse_x, self.mouse_y) {
-                        return None;
-                    }
                     let orig_shift = self.shift_held;
                     let orig_ctrl = self.ctrl_held;
                     self.shift_held = self.lb_held;
                     self.ctrl_held = self.rb_held;
                     self.handle_world_click(
                         app_state,
-                        SdlMouseButton::Right,
+                        MouseButton::Right,
                         self.mouse_x,
                         self.mouse_y,
                     );
@@ -450,7 +403,6 @@ impl GameScene {
                         }
                         return None;
                     }
-                    return None;
                 }
 
                 // Trigger axis → skill dispatch
