@@ -58,7 +58,7 @@ use crate::{
         visuals::rank_sigil::RankSigil,
         visuals::tls_warning_banner::TlsWarningBanner,
         visuals::vitality_bars::VitalityBars,
-        widget::{Bounds, GameAction, KeyBindings, KeyModifiers, Widget, WidgetAction},
+        widget::{Bounds, GameAction, KeyBindings, KeyModifiers, UiEvent, Widget, WidgetAction},
         widgets::on_screen_keyboard::OnScreenKeyboard,
     },
 };
@@ -1178,6 +1178,7 @@ impl Scene for GameScene {
         }
 
         // --- UI widget stack ---
+        let mut ui_consumed = false;
         if let Some(ui_event) = ui::sdl_to_ui_event(
             event,
             self.mouse_x,
@@ -1188,8 +1189,12 @@ impl Scene for GameScene {
                 alt: self.alt_held,
             },
         ) {
-            if let Some(sc) = self.handle_ui_widget_events(app_state, &ui_event) {
-                return Some(sc);
+            match self.handle_ui_widget_events(app_state, &ui_event) {
+                net_events::UiHandleResult::SceneChange(sc) => return Some(sc),
+                net_events::UiHandleResult::Consumed => {
+                    ui_consumed = true;
+                }
+                net_events::UiHandleResult::NotConsumed => {}
             }
         }
 
@@ -1251,11 +1256,13 @@ impl Scene for GameScene {
         }
 
         // --- Mouse world interactions ---
-        if let Event::MouseButtonUp {
-            mouse_btn, x, y, ..
-        } = event
-        {
-            return self.handle_world_click(app_state, *mouse_btn, *x, *y);
+        if !ui_consumed {
+            if let Event::MouseButtonUp {
+                mouse_btn, x, y, ..
+            } = event
+            {
+                return self.handle_world_click(app_state, *mouse_btn, *x, *y);
+            }
         }
 
         None
@@ -1293,9 +1300,14 @@ impl Scene for GameScene {
         self.controller_mode = app_state.controller_active;
 
         // --- Virtual cursor movement (controller mode) ---
-        // Suppress cursor movement while the on-screen keyboard is visible so the
-        // left stick doesn't drift the crosshair underneath the keyboard overlay.
-        if self.controller_mode && !self.keyboard.is_visible() {
+        // Suppress cursor movement while the on-screen keyboard, settings
+        // panel, shop overlay, or skill picker popup is visible so the left
+        // stick doesn't drift the crosshair underneath modal overlays.
+        let modal_ui_open = self.keyboard.is_visible()
+            || self.settings_panel.is_visible()
+            || self.shop_panel.is_visible()
+            || self.skill_picker.is_visible();
+        if self.controller_mode && !modal_ui_open {
             const DEADZONE: f32 = 8000.0;
             const MAX_AXIS: f32 = 32767.0;
             const CURSOR_SPEED: f32 = 300.0; // pixels per second
@@ -1330,6 +1342,18 @@ impl Scene for GameScene {
             // Override mouse_x/mouse_y so all existing consumers use the virtual cursor
             self.mouse_x = self.vcursor_x as i32;
             self.mouse_y = self.vcursor_y as i32;
+
+            // Dispatch a synthetic MouseMove so widgets see hover state
+            // changes from the virtual cursor (left stick) just like they
+            // would from a real mouse.
+            let synthetic_move = UiEvent::MouseMove {
+                x: self.mouse_x,
+                y: self.mouse_y,
+            };
+            // A MouseMove is not expected to trigger a scene change, but
+            // handle it defensively without returning early — the rest of
+            // update() (network processing, L3 hold, etc.) must still run.
+            self.handle_ui_widget_events(app_state, &synthetic_move);
 
             // Sync modifier flags from bumpers so that helper text,
             // hover highlights, and tile snapping work with the controller
@@ -1642,8 +1666,13 @@ impl Scene for GameScene {
         }
         self.perf_profiler.end_sample(PerfLabel::DrawCarriedItem);
 
-        // 5e-ii. Controller cursor (crosshair drawn when controller mode is active)
-        if self.controller_mode && !self.settings_panel.is_visible() {
+        // 5e-ii. Controller cursor (crosshair drawn when controller mode is active
+        // and no modal panel is open)
+        if self.controller_mode
+            && !self.settings_panel.is_visible()
+            && !self.shop_panel.is_visible()
+            && !self.skill_picker.is_visible()
+        {
             self.draw_controller_cursor(canvas)?;
         }
 

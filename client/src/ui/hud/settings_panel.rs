@@ -1297,6 +1297,39 @@ impl ControllerBindingsSubPanel {
         self.listening_for.is_some()
     }
 
+    /// Returns the currently controller-focused binding slot index, if one
+    /// is highlighted and it is a binding row (not the Close button).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(slot)` — the 0-based binding slot index that has focus.
+    /// * `None` — no binding slot is focused (or the Close button is focused).
+    fn focused_binding_slot(&self) -> Option<usize> {
+        if !self.visible {
+            return None;
+        }
+        match self.controller_focused {
+            Some(i) if i < self.binding_buttons.len() => Some(i),
+            _ => None,
+        }
+    }
+
+    /// Clears the controller binding for the given slot and emits the
+    /// corresponding widget action so the caller can persist the change.
+    ///
+    /// # Arguments
+    ///
+    /// * `slot` - The 0-based binding slot index to clear.
+    fn clear_binding(&mut self, slot: usize) {
+        self.bindings.set(slot, None);
+        self.pending_actions
+            .push(WidgetAction::UpdateControllerBinding {
+                slot: slot as u8,
+                button: None,
+            });
+        self.refresh_button_labels();
+    }
+
     /// Shifts all widgets by a pixel delta.
     fn shift_all(&mut self, dx: i32, dy: i32) {
         self.bounds.x += dx;
@@ -1724,6 +1757,30 @@ impl SettingsPanel {
     /// * `button` - The controller button that was pressed.
     pub fn capture_controller_button(&mut self, button: ControllerButton) {
         self.sub_controller.capture_controller_button(button);
+        self.collect_sub_panel_actions();
+    }
+
+    /// Returns the controller-focused binding slot in the controller
+    /// bindings sub-panel, if one is highlighted (excludes the Close
+    /// button).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(slot)` — the 0-based slot index.
+    /// * `None` — the sub-panel is hidden or no binding row is focused.
+    pub fn controller_focused_binding_slot(&self) -> Option<usize> {
+        self.sub_controller.focused_binding_slot()
+    }
+
+    /// Clears the controller binding at `slot` in the controller bindings
+    /// sub-panel and collects the resulting action for the caller to
+    /// persist.
+    ///
+    /// # Arguments
+    ///
+    /// * `slot` - The 0-based binding slot to clear.
+    pub fn clear_controller_binding(&mut self, slot: usize) {
+        self.sub_controller.clear_binding(slot);
         self.collect_sub_panel_actions();
     }
 

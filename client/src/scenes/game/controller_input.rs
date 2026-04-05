@@ -17,11 +17,11 @@ use crate::{
     scenes::scene::SceneType,
     state::AppState,
     types::controller::ControllerButton,
-    ui::widget::{UiEvent, Widget},
+    ui::widget::{KeyModifiers, MouseButton as UiMouseButton, UiEvent, Widget},
     ui::widgets::on_screen_keyboard::OnScreenKeyboardAction,
 };
 
-use super::GameScene;
+use super::{GameScene, net_events::UiHandleResult};
 
 impl GameScene {
     /// Handle all controller SDL2 events: button down/up and axis motion.
@@ -91,6 +91,11 @@ impl GameScene {
                                     OnScreenKeyboardAction::Dismiss => {
                                         self.keyboard.hide();
                                         self.chat_box.set_focused(false);
+                                    }
+                                    OnScreenKeyboardAction::Submit => {
+                                        self.chat_box.submit_input();
+                                        self.process_chat_box_actions(app_state);
+                                        self.keyboard.hide();
                                     }
                                 }
                             }
@@ -204,8 +209,15 @@ impl GameScene {
                     return None;
                 }
 
-                // Back (Select) button → clear the highlighted skill slot binding
+                // Back (Select) button → clear the focused controller binding
+                // if the controller bindings sub-panel is open, otherwise
+                // clear the highlighted skill slot binding.
                 if *button == Btn::Back && self.controller_mode {
+                    if let Some(slot) = self.settings_panel.controller_focused_binding_slot() {
+                        self.settings_panel.clear_controller_binding(slot);
+                        self.process_settings_panel_actions(app_state);
+                        return None;
+                    }
                     if let Some(slot) = self.skill_bar.controller_selected_slot() {
                         if slot < app_state.settings.character.skill_keybinds.len() {
                             app_state.settings.character.skill_keybinds[slot] = None;
@@ -261,34 +273,82 @@ impl GameScene {
                 }
 
                 // A button → left-click equivalent (LB = shift, RB = ctrl)
+                // Route through the UI widget stack first; only fall through
+                // to the world click handler if no widget consumed the event.
                 if *button == Btn::A && self.controller_mode {
                     let orig_shift = self.shift_held;
                     let orig_ctrl = self.ctrl_held;
                     self.shift_held = self.lb_held;
                     self.ctrl_held = self.rb_held;
-                    self.handle_world_click(
-                        app_state,
-                        MouseButton::Left,
-                        self.mouse_x,
-                        self.mouse_y,
-                    );
+
+                    let ui_event = UiEvent::MouseClick {
+                        x: self.mouse_x,
+                        y: self.mouse_y,
+                        button: UiMouseButton::Left,
+                        modifiers: KeyModifiers {
+                            ctrl: self.ctrl_held,
+                            shift: self.shift_held,
+                            alt: self.alt_held,
+                        },
+                    };
+                    match self.handle_ui_widget_events(app_state, &ui_event) {
+                        UiHandleResult::SceneChange(sc) => {
+                            self.shift_held = orig_shift;
+                            self.ctrl_held = orig_ctrl;
+                            return Some(sc);
+                        }
+                        UiHandleResult::Consumed => {}
+                        UiHandleResult::NotConsumed => {
+                            self.handle_world_click(
+                                app_state,
+                                MouseButton::Left,
+                                self.mouse_x,
+                                self.mouse_y,
+                            );
+                        }
+                    }
+
                     self.shift_held = orig_shift;
                     self.ctrl_held = orig_ctrl;
                     return None;
                 }
 
                 // X button → right-click equivalent (LB = shift, RB = ctrl)
+                // Route through the UI widget stack first; only fall through
+                // to the world click handler if no widget consumed the event.
                 if *button == Btn::X && self.controller_mode {
                     let orig_shift = self.shift_held;
                     let orig_ctrl = self.ctrl_held;
                     self.shift_held = self.lb_held;
                     self.ctrl_held = self.rb_held;
-                    self.handle_world_click(
-                        app_state,
-                        MouseButton::Right,
-                        self.mouse_x,
-                        self.mouse_y,
-                    );
+
+                    let ui_event = UiEvent::MouseClick {
+                        x: self.mouse_x,
+                        y: self.mouse_y,
+                        button: UiMouseButton::Right,
+                        modifiers: KeyModifiers {
+                            ctrl: self.ctrl_held,
+                            shift: self.shift_held,
+                            alt: self.alt_held,
+                        },
+                    };
+                    match self.handle_ui_widget_events(app_state, &ui_event) {
+                        UiHandleResult::SceneChange(sc) => {
+                            self.shift_held = orig_shift;
+                            self.ctrl_held = orig_ctrl;
+                            return Some(sc);
+                        }
+                        UiHandleResult::Consumed => {}
+                        UiHandleResult::NotConsumed => {
+                            self.handle_world_click(
+                                app_state,
+                                MouseButton::Right,
+                                self.mouse_x,
+                                self.mouse_y,
+                            );
+                        }
+                    }
+
                     self.shift_held = orig_shift;
                     self.ctrl_held = orig_ctrl;
                     return None;

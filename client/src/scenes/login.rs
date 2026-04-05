@@ -243,7 +243,7 @@ impl Scene for LoginScene {
                         OnScreenKeyboardAction::Backspace => {
                             self.login_form.inject_backspace();
                         }
-                        OnScreenKeyboardAction::Dismiss => {
+                        OnScreenKeyboardAction::Dismiss | OnScreenKeyboardAction::Submit => {
                             self.keyboard.hide();
                         }
                     }

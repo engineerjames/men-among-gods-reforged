@@ -42,7 +42,7 @@ const ROWS: &[&[&str]] = &[
     &["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
     &["a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'"],
     &["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"],
-    &["SPACE"],
+    &["SPACE", "ENTER"],
 ];
 
 /// Shifted equivalents for each row.
@@ -51,7 +51,7 @@ const ROWS_SHIFT: &[&[&str]] = &[
     &["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
     &["A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "\""],
     &["Z", "X", "C", "V", "B", "N", "M", "<", ">", "?"],
-    &["SPACE"],
+    &["SPACE", "ENTER"],
 ];
 
 /// Returns the number of columns in the widest row.
@@ -91,6 +91,8 @@ pub enum OnScreenKeyboardAction {
     Backspace,
     /// The keyboard was dismissed (Start pressed).
     Dismiss,
+    /// The Enter/Send key was pressed on the on-screen keyboard.
+    Submit,
 }
 
 // ---------------------------------------------------------------------------
@@ -247,6 +249,8 @@ impl Widget for OnScreenKeyboard {
                 let label = self.focused_label();
                 if label == "SPACE" {
                     self.actions.push(OnScreenKeyboardAction::TypeChar(' '));
+                } else if label == "ENTER" {
+                    self.actions.push(OnScreenKeyboardAction::Submit);
                 } else {
                     for ch in label.chars() {
                         self.actions.push(OnScreenKeyboardAction::TypeChar(ch));

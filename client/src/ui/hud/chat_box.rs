@@ -238,7 +238,7 @@ impl ChatBox {
     // -- Input / history helpers --
 
     /// Handles the Enter key: sends the current input and records history.
-    fn submit_input(&mut self) {
+    pub fn submit_input(&mut self) {
         self.focused = false;
         if self.input_buf.is_empty() {
             return;

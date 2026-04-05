@@ -191,7 +191,7 @@ impl Scene for EnterResetCodeScene {
                         OnScreenKeyboardAction::Backspace => {
                             self.form.inject_backspace();
                         }
-                        OnScreenKeyboardAction::Dismiss => {
+                        OnScreenKeyboardAction::Dismiss | OnScreenKeyboardAction::Submit => {
                             self.keyboard.hide();
                         }
                     }
