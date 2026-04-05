@@ -1,7 +1,7 @@
 //! On-screen QWERTY keyboard for controller text input.
 //!
 //! Displayed when controller mode is active and a text field has focus.
-//! Navigation: D-pad/left-stick to move between keys, A to type, B to
+//! Navigation: D-pad/left-stick to move between keys, A to type/submit, B to
 //! backspace, X to toggle shift/caps, Start to dismiss.
 
 use std::time::Duration;
@@ -43,6 +43,7 @@ const ROWS: &[&[&str]] = &[
     &["a", "s", "d", "f", "g", "h", "j", "k", "l", ";", "'"],
     &["z", "x", "c", "v", "b", "n", "m", ",", ".", "/"],
     &["SPACE"],
+    &["ENT"],
 ];
 
 /// Shifted equivalents for each row.
@@ -52,6 +53,7 @@ const ROWS_SHIFT: &[&[&str]] = &[
     &["A", "S", "D", "F", "G", "H", "J", "K", "L", ":", "\""],
     &["Z", "X", "C", "V", "B", "N", "M", "<", ">", "?"],
     &["SPACE"],
+    &["ENT"],
 ];
 
 /// Returns the number of columns in the widest row.
@@ -89,6 +91,8 @@ pub enum OnScreenKeyboardAction {
     TypeChar(char),
     /// Backspace was pressed.
     Backspace,
+    /// The currently focused submit/enter key was pressed.
+    Submit,
     /// The keyboard was dismissed (Start pressed).
     Dismiss,
 }
@@ -242,11 +246,13 @@ impl Widget for OnScreenKeyboard {
                 }
                 EventResponse::Consumed
             }
-            // A button → type the focused key.
+            // A button → activate the focused key.
             UiEvent::NavConfirm => {
                 let label = self.focused_label();
                 if label == "SPACE" {
                     self.actions.push(OnScreenKeyboardAction::TypeChar(' '));
+                } else if label == "ENT" {
+                    self.actions.push(OnScreenKeyboardAction::Submit);
                 } else {
                     for ch in label.chars() {
                         self.actions.push(OnScreenKeyboardAction::TypeChar(ch));
@@ -358,7 +364,7 @@ impl Widget for OnScreenKeyboard {
         // Hint bar.
         let hint_y = self.bounds.y + self.bounds.height as i32 - HINT_H - 2;
         let shift_label = if self.shift_active { "SHIFT" } else { "shift" };
-        let hint = format!("A=type  B=bksp  X={}  Start=done", shift_label);
+        let hint = format!("A=type  B=bksp  X={}  Start=dismiss", shift_label);
         let hint_x =
             self.bounds.x + (self.bounds.width as i32 - font_cache::text_width(&hint) as i32) / 2;
         font_cache::draw_text(
@@ -448,6 +454,19 @@ mod tests {
         kb.handle_event(&UiEvent::NavConfirm);
         let actions = kb.take_actions();
         assert_eq!(actions, vec![OnScreenKeyboardAction::TypeChar(' ')]);
+    }
+
+    #[test]
+    fn enter_key_emits_submit_action() {
+        let mut kb = OnScreenKeyboard::new();
+        kb.show();
+        kb.handle_event(&UiEvent::KeyboardRowDown);
+        kb.handle_event(&UiEvent::KeyboardRowDown);
+        kb.handle_event(&UiEvent::KeyboardRowDown);
+        kb.handle_event(&UiEvent::KeyboardRowDown);
+        kb.handle_event(&UiEvent::NavConfirm);
+        let actions = kb.take_actions();
+        assert_eq!(actions, vec![OnScreenKeyboardAction::Submit]);
     }
 
     #[test]

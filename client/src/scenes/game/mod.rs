@@ -58,7 +58,7 @@ use crate::{
         visuals::rank_sigil::RankSigil,
         visuals::tls_warning_banner::TlsWarningBanner,
         visuals::vitality_bars::VitalityBars,
-        widget::{Bounds, GameAction, KeyBindings, KeyModifiers, Widget, WidgetAction},
+        widget::{Bounds, GameAction, KeyBindings, KeyModifiers, UiEvent, Widget, WidgetAction},
         widgets::on_screen_keyboard::OnScreenKeyboard,
     },
 };
@@ -663,6 +663,79 @@ impl GameScene {
         )
     }
 
+    /// Returns `true` when a gameplay menu or modal UI should block world
+    /// interaction beneath it.
+    fn has_blocking_game_menu_open(&self) -> bool {
+        self.cert_dialog.is_some()
+            || self.keyboard.is_visible()
+            || self.skill_picker.is_visible()
+            || self.settings_panel.is_visible()
+            || self.skills_panel.is_visible()
+            || self.inventory_panel.is_visible()
+            || self.shop_panel.is_visible()
+            || self.minimap_widget.is_visible()
+    }
+
+    /// Returns `true` when the controller virtual cursor should stop moving.
+    fn should_freeze_controller_cursor(&self) -> bool {
+        self.settings_panel.is_visible()
+    }
+
+    /// Returns `true` when the given point is over gameplay UI that should
+    /// consume clicks before they can reach the world.
+    fn is_point_over_interactive_ui(&self, x: i32, y: i32) -> bool {
+        if self.chat_box.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.rank_sigil.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.vitality_bars.contains_point(x, y) {
+            return true;
+        }
+        if self.status_panel.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.hud_buttons.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.skill_bar.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.minimap_widget.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.mode_button.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.rank_progress_line.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.inventory_panel.is_visible() && self.inventory_panel.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.settings_panel.is_visible() && self.settings_panel.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(x, y) {
+            return true;
+        }
+        if self.skill_picker.is_visible() && self.skill_picker.bounds().contains_point(x, y) {
+            return true;
+        }
+
+        false
+    }
+
+    /// Returns `true` when world clicks should be suppressed at the given
+    /// point because UI owns the interaction.
+    fn ui_blocks_world_input_at(&self, x: i32, y: i32) -> bool {
+        self.has_blocking_game_menu_open() || self.is_point_over_interactive_ui(x, y)
+    }
+
     /// Returns `true` when the mouse cursor is hovering over any visible UI
     /// widget, in which case helper text should be suppressed.
     fn is_mouse_over_ui(&self) -> bool {
@@ -726,6 +799,9 @@ impl GameScene {
         show_positions: bool,
     ) -> Result<(), String> {
         if !show_helper_text {
+            return Ok(());
+        }
+        if self.settings_panel.is_visible() {
             return Ok(());
         }
         if show_positions {
@@ -1255,6 +1331,9 @@ impl Scene for GameScene {
             mouse_btn, x, y, ..
         } = event
         {
+            if self.ui_blocks_world_input_at(*x, *y) {
+                return None;
+            }
             return self.handle_world_click(app_state, *mouse_btn, *x, *y);
         }
 
@@ -1295,7 +1374,7 @@ impl Scene for GameScene {
         // --- Virtual cursor movement (controller mode) ---
         // Suppress cursor movement while the on-screen keyboard is visible so the
         // left stick doesn't drift the crosshair underneath the keyboard overlay.
-        if self.controller_mode && !self.keyboard.is_visible() {
+        if self.controller_mode && !self.keyboard.is_visible() && !self.should_freeze_controller_cursor() {
             const DEADZONE: f32 = 8000.0;
             const MAX_AXIS: f32 = 32767.0;
             const CURSOR_SPEED: f32 = 300.0; // pixels per second
@@ -1336,6 +1415,16 @@ impl Scene for GameScene {
             // the same way they do with keyboard Shift/Ctrl.
             self.shift_held = self.lb_held;
             self.ctrl_held = self.rb_held;
+
+            if self.cert_dialog.is_none() && !self.skill_picker.is_visible() {
+                let _ = self.handle_ui_widget_events(
+                    app_state,
+                    &UiEvent::MouseMove {
+                        x: self.mouse_x,
+                        y: self.mouse_y,
+                    },
+                );
+            }
         }
 
         // --- Right-stick navigation (controller mode) ---

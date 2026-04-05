@@ -163,6 +163,7 @@ impl Scene for RequestResetScene {
                         OnScreenKeyboardAction::Backspace => {
                             self.form.inject_backspace();
                         }
+                        OnScreenKeyboardAction::Submit => {}
                         OnScreenKeyboardAction::Dismiss => {
                             self.keyboard.hide();
                         }
