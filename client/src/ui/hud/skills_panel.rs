@@ -309,9 +309,7 @@ impl SkillsPanel {
         };
         let sorted_idx = self.skill_scroll + vis_row;
         match data.sorted_skills.get(sorted_idx) {
-            Some(&skill_id) => {
-                data.skill[skill_id][0] != 0 && !get_skill_name(skill_id).is_empty()
-            }
+            Some(&skill_id) => data.skill[skill_id][0] != 0 && !get_skill_name(skill_id).is_empty(),
             None => false,
         }
     }

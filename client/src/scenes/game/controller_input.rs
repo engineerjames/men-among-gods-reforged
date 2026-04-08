@@ -151,9 +151,13 @@ impl GameScene {
                 // If the controller bindings panel is waiting for a button
                 // press, capture it and skip the normal skill-dispatch path.
                 if self.settings_panel.is_controller_listening() {
-                    if let Some(cb) =
-                        ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held)
-                    {
+                    if let Some(cb) = ControllerButton::from_sdl2(
+                        *button,
+                        self.lb_held,
+                        self.rb_held,
+                        self.lt_held,
+                        self.rt_held,
+                    ) {
                         log::info!("Controller binding captured: {:?} -> {:?}", button, cb);
                         self.settings_panel.capture_controller_button(cb);
                         self.process_settings_panel_actions(app_state);
@@ -456,7 +460,13 @@ impl GameScene {
                 }
 
                 // Mapped controller button → skill dispatch
-                if let Some(cb) = ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held) {
+                if let Some(cb) = ControllerButton::from_sdl2(
+                    *button,
+                    self.lb_held,
+                    self.rb_held,
+                    self.lt_held,
+                    self.rt_held,
+                ) {
                     log::info!("Controller button mapped to {:?}", cb);
                     if let Some(slot) = app_state
                         .settings
@@ -548,7 +558,23 @@ impl GameScene {
                     Axis::LeftY => self.left_stick_y = *value,
                     Axis::RightX => self.right_stick_x = *value,
                     Axis::RightY => self.right_stick_y = *value,
-                    _ => {}
+                    Axis::TriggerLeft => {
+                        self.lt_held = *value >= ControllerButton::TRIGGER_THRESHOLD;
+                    }
+                    Axis::TriggerRight => {
+                        self.rt_held = *value >= ControllerButton::TRIGGER_THRESHOLD;
+                    }
+                }
+
+                // If the bindings panel is listening for a trigger press,
+                // capture standalone Lt/Rt directly from the axis event.
+                if self.settings_panel.is_controller_listening() {
+                    if let Some(cb) = ControllerButton::from_trigger_axis(*axis, *value) {
+                        log::info!("Controller binding captured via axis: {:?}", cb);
+                        self.settings_panel.capture_controller_button(cb);
+                        self.process_settings_panel_actions(app_state);
+                    }
+                    return None;
                 }
 
                 if self.skill_picker.is_visible() {
