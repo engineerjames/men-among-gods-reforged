@@ -46,6 +46,9 @@ pub const SHOP_PANEL_H: u32 = (PAD_TOP + GRID_ROWS as i32 * CELL + PRICE_AREA_H 
 /// Border color matching the other HUD panels.
 const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
 
+/// Golden highlight color for controller-selected item slot.
+const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
+
 /// Bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
 
@@ -93,6 +96,8 @@ pub struct ShopPanel {
     mouse_x: i32,
     mouse_y: i32,
     actions: Vec<WidgetAction>,
+    /// Controller-selected slot index (0–61), or `None` when mouse is active.
+    controller_selected: Option<usize>,
 }
 
 impl ShopPanel {
@@ -114,6 +119,7 @@ impl ShopPanel {
             mouse_x: 0,
             mouse_y: 0,
             actions: Vec::new(),
+            controller_selected: None,
         }
     }
 
@@ -207,6 +213,77 @@ impl ShopPanel {
         let idx = row as usize * GRID_COLS + col as usize;
         if idx < SHOP_SLOTS { Some(idx) } else { None }
     }
+
+    // ── Controller navigation ───────────────────────────────────────────
+
+    /// Ensures a controller selection exists; defaults to slot 0.
+    pub fn ensure_controller_selection(&mut self) {
+        if self.controller_selected.is_none() {
+            self.controller_selected = Some(0);
+        }
+    }
+
+    /// Clears the controller selection (e.g. when mouse takes over).
+    pub fn clear_controller_selection(&mut self) {
+        self.controller_selected = None;
+    }
+
+    /// Returns the currently controller-selected slot, if any.
+    pub fn controller_selected(&self) -> Option<usize> {
+        self.controller_selected
+    }
+
+    /// Move controller selection right within the grid.
+    pub fn controller_nav_right(&mut self) {
+        let idx = self.controller_selected.unwrap_or(0);
+        let next = if idx + 1 >= SHOP_SLOTS { 0 } else { idx + 1 };
+        self.controller_selected = Some(next);
+    }
+
+    /// Move controller selection left within the grid.
+    pub fn controller_nav_left(&mut self) {
+        let idx = self.controller_selected.unwrap_or(0);
+        let next = if idx == 0 { SHOP_SLOTS - 1 } else { idx - 1 };
+        self.controller_selected = Some(next);
+    }
+
+    /// Move controller selection down one row.
+    pub fn controller_nav_down(&mut self) {
+        let idx = self.controller_selected.unwrap_or(0);
+        let next = idx + GRID_COLS;
+        self.controller_selected = Some(if next >= SHOP_SLOTS {
+            idx % GRID_COLS
+        } else {
+            next
+        });
+    }
+
+    /// Move controller selection up one row.
+    pub fn controller_nav_up(&mut self) {
+        let idx = self.controller_selected.unwrap_or(0);
+        self.controller_selected = Some(if idx < GRID_COLS {
+            // Wrap to last row, same column.
+            let last_row_idx = (GRID_ROWS - 1) * GRID_COLS + (idx % GRID_COLS);
+            if last_row_idx >= SHOP_SLOTS {
+                // Last row doesn't have this column → use last valid slot.
+                SHOP_SLOTS - 1
+            } else {
+                last_row_idx
+            }
+        } else {
+            idx - GRID_COLS
+        });
+    }
+
+    /// Activate the controller-selected slot (left-click equivalent).
+    pub fn controller_activate(&mut self) {
+        if let (Some(idx), Some(data)) = (self.controller_selected, self.data.as_ref()) {
+            self.actions.push(WidgetAction::ShopAction {
+                shop_nr: data.shop_nr as i16,
+                action: idx as i32,
+            });
+        }
+    }
 }
 
 impl Widget for ShopPanel {
@@ -298,6 +375,23 @@ impl Widget for ShopPanel {
                 } else {
                     EventResponse::Ignored
                 }
+            }
+            // Controller navigation events.
+            UiEvent::NavConfirm => {
+                self.controller_activate();
+                EventResponse::Consumed
+            }
+            UiEvent::NavBack => {
+                self.actions.push(WidgetAction::CloseShop);
+                EventResponse::Consumed
+            }
+            UiEvent::NavNext => {
+                self.controller_nav_right();
+                EventResponse::Consumed
+            }
+            UiEvent::NavPrev => {
+                self.controller_nav_left();
+                EventResponse::Consumed
             }
             _ => EventResponse::Ignored,
         }
@@ -392,6 +486,23 @@ impl Widget for ShopPanel {
                 texture.set_alpha_mod(255);
                 texture.set_blend_mode(BlendMode::Blend);
                 result?;
+            }
+        }
+
+        // Controller selection highlight (gold box).
+        if let Some(sel) = self.controller_selected {
+            let col = (sel % GRID_COLS) as i32;
+            let row = (sel / GRID_COLS) as i32;
+            let sx = grid_x + col * CELL;
+            let sy = grid_y + row * CELL;
+            let sel_rect = sdl2::rect::Rect::new(sx, sy, CELL as u32, CELL as u32);
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            ctx.canvas.set_draw_color(CONTROLLER_SELECT_COLOR);
+            ctx.canvas.draw_rect(sel_rect)?;
+            // Inner rect for 2px-thick border effect.
+            if CELL > 2 {
+                let inner = sdl2::rect::Rect::new(sx + 1, sy + 1, CELL as u32 - 2, CELL as u32 - 2);
+                ctx.canvas.draw_rect(inner)?;
             }
         }
 

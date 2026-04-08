@@ -159,6 +159,43 @@ impl TextInput {
         self.cursor_visible = true;
     }
 
+    /// Sets the hover highlight state (used by controller focus navigation).
+    ///
+    /// # Arguments
+    ///
+    /// * `hovered` - `true` to activate the highlight, `false` to clear it.
+    pub fn set_hovered(&mut self, hovered: bool) {
+        self.hovered = hovered;
+    }
+
+    /// Inserts a character as if the user typed it.
+    ///
+    /// Respects `max_len`. Does nothing if the field is already at capacity.
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - The character to insert.
+    pub fn inject_char(&mut self, ch: char) {
+        if self.value.len() < self.max_len {
+            self.value.push(ch);
+            self.recalculate_view_offset();
+            self.changed = true;
+        }
+    }
+
+    /// Removes the last character as if the user pressed Backspace.
+    pub fn inject_backspace(&mut self) {
+        if self.value.pop().is_some() {
+            self.recalculate_view_offset();
+            self.changed = true;
+        }
+    }
+
+    /// Returns whether this field currently has keyboard focus.
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+
     // -----------------------------------------------------------------------
     // Internal helpers
     // -----------------------------------------------------------------------

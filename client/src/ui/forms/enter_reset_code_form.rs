@@ -65,6 +65,9 @@ pub enum EnterResetCodeFormAction {
     },
     /// User pressed Cancel.
     Cancel,
+    /// Controller wants to open the on-screen keyboard for a text field.
+    /// The `usize` is the text-field index (0 = code, 1 = password, 2 = confirm).
+    OpenKeyboard(usize),
 }
 
 // ---------------------------------------------------------------------------
@@ -249,13 +252,53 @@ impl EnterResetCodeForm {
     }
 
     /// Total number of controller-focusable elements.
-    const FOCUSABLE_COUNT: usize = 2;
+    /// 0=code, 1=password, 2=confirm, 3=submit, 4=cancel.
+    const FOCUSABLE_COUNT: usize = 5;
 
     /// Applies controller focus highlights to the two buttons.
     fn apply_controller_focus(&mut self) {
         let focused = self.controller_focused;
-        self.submit_button.set_hovered(focused == Some(0));
-        self.cancel_button.set_hovered(focused == Some(1));
+        self.code_input.set_hovered(focused == Some(0));
+        self.password_input.set_hovered(focused == Some(1));
+        self.confirm_input.set_hovered(focused == Some(2));
+        self.submit_button.set_hovered(focused == Some(3));
+        self.cancel_button.set_hovered(focused == Some(4));
+    }
+
+    /// Injects a character into the currently focused text field.
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - The character to inject.
+    pub fn inject_char(&mut self, ch: char) {
+        match self.focused_field {
+            0 => self.code_input.inject_char(ch),
+            1 => self.password_input.inject_char(ch),
+            2 => self.confirm_input.inject_char(ch),
+            _ => {}
+        }
+    }
+
+    /// Injects a backspace into the currently focused text field.
+    pub fn inject_backspace(&mut self) {
+        match self.focused_field {
+            0 => self.code_input.inject_backspace(),
+            1 => self.password_input.inject_backspace(),
+            2 => self.confirm_input.inject_backspace(),
+            _ => {}
+        }
+    }
+
+    /// Sets the focused text field by index and opens it for editing.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_index` - Text field index (0–2).
+    pub fn set_text_focus(&mut self, field_index: usize) {
+        if field_index < 3 {
+            self.focused_field = field_index;
+            self.apply_focus();
+        }
     }
 
     /// Pushes a Submit action with the current field values.
@@ -334,8 +377,13 @@ impl Widget for EnterResetCodeForm {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(0) => self.push_submit_action(),
-                    Some(1) => self.actions.push(EnterResetCodeFormAction::Cancel),
+                    Some(i @ 0..=2) => {
+                        self.focused_field = i;
+                        self.apply_focus();
+                        self.actions.push(EnterResetCodeFormAction::OpenKeyboard(i));
+                    }
+                    Some(3) => self.push_submit_action(),
+                    Some(4) => self.actions.push(EnterResetCodeFormAction::Cancel),
                     _ => {}
                 }
                 return EventResponse::Consumed;

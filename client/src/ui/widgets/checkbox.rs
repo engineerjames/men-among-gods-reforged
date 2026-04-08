@@ -78,6 +78,15 @@ impl Checkbox {
         t
     }
 
+    /// Sets the toggled flag so the next `was_toggled()` call returns `true`.
+    ///
+    /// Used when programmatically toggling the checkbox (e.g. via controller
+    /// NavConfirm) so that the parent widget can detect the change via the
+    /// normal `was_toggled()` / `collect_child_actions()` path.
+    pub fn mark_toggled(&mut self) {
+        self.toggled = true;
+    }
+
     /// Sets the hover/focus highlight state directly.
     ///
     /// Used by controller focus navigation to highlight the checkbox without a

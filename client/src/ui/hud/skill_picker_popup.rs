@@ -100,6 +100,8 @@ pub struct SkillPickerPopup {
     scroll_offset: usize,
     /// Index of the row under the mouse (-1 if none).
     hover_index: Option<usize>,
+    /// Index of the row selected for controller-driven navigation.
+    selected_index: Option<usize>,
     /// Mouse position (screen coords) for hover tracking.
     mouse_x: i32,
     mouse_y: i32,
@@ -132,6 +134,7 @@ impl SkillPickerPopup {
             entries,
             scroll_offset: 0,
             hover_index: None,
+            selected_index: None,
             mouse_x: 0,
             mouse_y: 0,
             actions: Vec::new(),
@@ -170,6 +173,7 @@ impl SkillPickerPopup {
                 !e.name.is_empty() && player_skills.get(e.skill_nr).map_or(false, |s| s[0] > 0)
             })
             .collect();
+        self.selected_index = (!self.entries.is_empty()).then_some(0);
 
         let visible_rows = (self.entries.len() as u32).min(MAX_VISIBLE_ROWS);
         let popup_h = visible_rows * ROW_H + PAD_Y as u32 * 2;
@@ -185,6 +189,8 @@ impl SkillPickerPopup {
     /// Hides the popup without producing an action.
     pub fn hide(&mut self) {
         self.visible = false;
+        self.hover_index = None;
+        self.selected_index = None;
     }
 
     /// Returns whether the popup is currently visible.
@@ -201,6 +207,52 @@ impl SkillPickerPopup {
         std::mem::take(&mut self.actions)
     }
 
+    /// Move the controller selection up or down by one row.
+    ///
+    /// # Arguments
+    ///
+    /// * `delta` - Negative to move up, positive to move down.
+    pub fn controller_move_selection(&mut self, delta: i32) {
+        if !self.visible || self.entries.is_empty() || delta == 0 {
+            return;
+        }
+
+        let current = self.selected_index.unwrap_or(0);
+        let max_index = self.entries.len() - 1;
+        let next = if delta > 0 {
+            current.saturating_add(1).min(max_index)
+        } else {
+            current.saturating_sub(1)
+        };
+        self.selected_index = Some(next);
+        self.ensure_selected_visible();
+    }
+
+    /// Confirm the current controller selection and emit a bind action.
+    pub fn controller_confirm(&mut self) {
+        if !self.visible {
+            return;
+        }
+
+        let Some(idx) = self.selected_index else {
+            return;
+        };
+        let Some(entry) = self.entries.get(idx) else {
+            return;
+        };
+
+        self.actions.push(WidgetAction::BindSkillKey {
+            skill_nr: entry.skill_nr,
+            key_slot: self.target_slot,
+        });
+        self.hide();
+    }
+
+    /// Cancel controller-driven selection and close the popup.
+    pub fn controller_cancel(&mut self) {
+        self.hide();
+    }
+
     // ---- helpers -------------------------------------------------------- //
 
     /// Number of fully visible rows.
@@ -212,6 +264,27 @@ impl SkillPickerPopup {
     /// Maximum valid scroll offset.
     fn max_scroll(&self) -> usize {
         self.entries.len().saturating_sub(self.visible_rows())
+    }
+
+    /// Adjust the scroll offset so the selected row stays visible.
+    fn ensure_selected_visible(&mut self) {
+        let Some(selected) = self.selected_index else {
+            return;
+        };
+
+        let visible_rows = self.visible_rows();
+        if visible_rows == 0 {
+            return;
+        }
+
+        if selected < self.scroll_offset {
+            self.scroll_offset = selected;
+        } else {
+            let last_visible = self.scroll_offset + visible_rows - 1;
+            if selected > last_visible {
+                self.scroll_offset = selected + 1 - visible_rows;
+            }
+        }
     }
 
     /// Returns the entry index for a screen coordinate, if any.
@@ -284,6 +357,7 @@ impl Widget for SkillPickerPopup {
 
                 if *button == MouseButton::Left {
                     if let Some(idx) = self.hit_row(*x, *y) {
+                        self.selected_index = Some(idx);
                         let entry = &self.entries[idx];
                         self.actions.push(WidgetAction::BindSkillKey {
                             skill_nr: entry.skill_nr,
@@ -356,8 +430,8 @@ impl Widget for SkillPickerPopup {
             }
             let row_y = self.bounds.y + PAD_Y + i as i32 * ROW_H as i32;
 
-            // Highlight hovered row.
-            if self.hover_index == Some(idx) {
+            // Highlight hovered row, otherwise show the controller selection.
+            if self.hover_index.or(self.selected_index) == Some(idx) {
                 ctx.canvas.set_draw_color(HOVER_COLOR);
                 ctx.canvas.fill_rect(Rect::new(
                     self.bounds.x + 1,
@@ -567,5 +641,48 @@ mod tests {
         let sh = crate::constants::TARGET_HEIGHT_INT as i32;
         assert!(popup.bounds.x + popup.bounds.width as i32 <= sw);
         assert!(popup.bounds.y + popup.bounds.height as i32 <= sh);
+    }
+
+    #[test]
+    fn show_selects_first_entry_for_controller_navigation() {
+        let mut popup = SkillPickerPopup::new();
+        popup.show(0, 0, 0, &all_skills_learned());
+        assert_eq!(popup.selected_index, Some(0));
+    }
+
+    #[test]
+    fn controller_move_selection_advances_selected_row() {
+        let mut popup = SkillPickerPopup::new();
+        popup.show(0, 0, 0, &all_skills_learned());
+        popup.controller_move_selection(1);
+        assert_eq!(popup.selected_index, Some(1));
+        popup.controller_move_selection(-1);
+        assert_eq!(popup.selected_index, Some(0));
+    }
+
+    #[test]
+    fn controller_confirm_emits_bind_action() {
+        let mut popup = SkillPickerPopup::new();
+        popup.show(4, 0, 0, &all_skills_learned());
+        popup.controller_move_selection(1);
+        popup.controller_confirm();
+        assert!(!popup.is_visible());
+        let actions = popup.take_actions();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                assert_eq!(*key_slot, 4);
+                assert_eq!(*skill_nr, popup.entries[1].skill_nr);
+            }
+            other => panic!("Expected BindSkillKey, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn controller_cancel_hides_popup() {
+        let mut popup = SkillPickerPopup::new();
+        popup.show(0, 0, 0, &all_skills_learned());
+        popup.controller_cancel();
+        assert!(!popup.is_visible());
     }
 }

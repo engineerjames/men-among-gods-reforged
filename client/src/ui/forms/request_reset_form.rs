@@ -65,6 +65,9 @@ pub enum RequestResetFormAction {
     },
     /// User pressed Cancel.
     Cancel,
+    /// Controller wants to open the on-screen keyboard for a text field.
+    /// The `usize` is the text-field index (0 = username, 1 = email).
+    OpenKeyboard(usize),
 }
 
 // ---------------------------------------------------------------------------
@@ -228,13 +231,50 @@ impl RequestResetForm {
     }
 
     /// Total number of controller-focusable elements.
-    const FOCUSABLE_COUNT: usize = 2;
+    /// 0=username, 1=email, 2=submit, 3=cancel.
+    const FOCUSABLE_COUNT: usize = 4;
 
     /// Applies controller focus highlights to the two buttons.
     fn apply_controller_focus(&mut self) {
         let focused = self.controller_focused;
-        self.submit_button.set_hovered(focused == Some(0));
-        self.cancel_button.set_hovered(focused == Some(1));
+        self.username_input.set_hovered(focused == Some(0));
+        self.email_input.set_hovered(focused == Some(1));
+        self.submit_button.set_hovered(focused == Some(2));
+        self.cancel_button.set_hovered(focused == Some(3));
+    }
+
+    /// Injects a character into the currently focused text field.
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - The character to inject.
+    pub fn inject_char(&mut self, ch: char) {
+        match self.focused_field {
+            0 => self.username_input.inject_char(ch),
+            1 => self.email_input.inject_char(ch),
+            _ => {}
+        }
+    }
+
+    /// Injects a backspace into the currently focused text field.
+    pub fn inject_backspace(&mut self) {
+        match self.focused_field {
+            0 => self.username_input.inject_backspace(),
+            1 => self.email_input.inject_backspace(),
+            _ => {}
+        }
+    }
+
+    /// Sets the focused text field by index and opens it for editing.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_index` - Text field index (0–1).
+    pub fn set_text_focus(&mut self, field_index: usize) {
+        if field_index < 2 {
+            self.focused_field = field_index;
+            self.apply_focus();
+        }
     }
 
     /// Pushes a Submit action with the current field values.
@@ -306,8 +346,13 @@ impl Widget for RequestResetForm {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(0) => self.push_submit_action(),
-                    Some(1) => self.actions.push(RequestResetFormAction::Cancel),
+                    Some(i @ 0..=1) => {
+                        self.focused_field = i;
+                        self.apply_focus();
+                        self.actions.push(RequestResetFormAction::OpenKeyboard(i));
+                    }
+                    Some(2) => self.push_submit_action(),
+                    Some(3) => self.actions.push(RequestResetFormAction::Cancel),
                     _ => {}
                 }
                 return EventResponse::Consumed;

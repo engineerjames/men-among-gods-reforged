@@ -10,23 +10,22 @@
 //! | [`net_events`] | Per-frame network tick processing and auto-look |
 //! | [`perf_profiler`] | Wall-clock profiler for rendering functions (activated from escape menu) |
 
+mod controller_input;
 mod game_math;
 mod net_events;
 mod perf_profiler;
 mod profile;
+mod world_input;
 mod world_render;
 
 use perf_profiler::{PerfLabel, PerfProfiler};
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use sdl2::{
-    event::Event, keyboard::Keycode, mouse::MouseButton, pixels::Color, render::Canvas,
-    video::Window,
-};
+use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video::Window};
 
 use mag_core::{
-    constants::{ISCHAR, ISITEM, ISUSABLE, TILEX, TILEY},
+    constants::{TILEX, TILEY},
     ranks,
 };
 
@@ -39,10 +38,9 @@ use crate::{
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
-    types::controller::ControllerButton,
     ui::{
         self, RenderContext,
-        forms::cert_dialog::{CertDialog, CertDialogAction},
+        forms::cert_dialog::CertDialog,
         hud::button_arc::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::inventory_panel::InventoryPanel,
@@ -60,10 +58,8 @@ use crate::{
         visuals::rank_sigil::RankSigil,
         visuals::tls_warning_banner::TlsWarningBanner,
         visuals::vitality_bars::VitalityBars,
-        widget::{
-            Bounds, EventResponse, GameAction, HudPanel, KeyBindings, KeyModifiers, Widget,
-            WidgetAction,
-        },
+        widget::{Bounds, GameAction, KeyBindings, KeyModifiers, UiEvent, Widget, WidgetAction},
+        widgets::on_screen_keyboard::OnScreenKeyboard,
     },
 };
 
@@ -271,6 +267,35 @@ pub struct GameScene {
     /// `AppState::controller_active`). Stored locally so `handle_event` can
     /// read it without re-borrowing `AppState`.
     pub(super) controller_mode: bool,
+    /// Virtual cursor X position (sub-pixel) for controller-driven cursor movement.
+    pub(super) vcursor_x: f32,
+    /// Virtual cursor Y position (sub-pixel) for controller-driven cursor movement.
+    pub(super) vcursor_y: f32,
+    /// Current raw left-stick X axis value (−32768..32767), updated each frame.
+    pub(super) left_stick_x: i16,
+    /// Current raw left-stick Y axis value (−32768..32767), updated each frame.
+    pub(super) left_stick_y: i16,
+    /// Current raw right-stick X axis value (−32768..32767), updated each frame.
+    pub(super) right_stick_x: i16,
+    /// Current raw right-stick Y axis value (−32768..32767), updated each frame.
+    pub(super) right_stick_y: i16,
+    /// Cooldown timer (seconds) to debounce right-stick skill bar navigation.
+    pub(super) right_stick_cooldown: f32,
+    /// Timestamp of the most recent left-stick press (L3) for
+    /// short-press (select) vs hold (look) detection.
+    pub(super) l3_pressed_at: Option<Instant>,
+    /// Controller navigation tracker for HUD panels (settings menu, etc.).
+    pub(super) hud_nav: crate::ui::controller_nav::ControllerNavState,
+    /// Rising-edge flag: left-stick X was positive (right) last frame, for keyboard nav.
+    pub(super) kb_stick_pos_x: bool,
+    /// Rising-edge flag: left-stick X was negative (left) last frame, for keyboard nav.
+    pub(super) kb_stick_neg_x: bool,
+    /// Rising-edge flag: left-stick Y was positive (down) last frame, for keyboard nav.
+    pub(super) kb_stick_pos_y: bool,
+    /// Rising-edge flag: left-stick Y was negative (up) last frame, for keyboard nav.
+    pub(super) kb_stick_neg_y: bool,
+    /// On-screen keyboard for controller chat input.
+    keyboard: OnScreenKeyboard,
 }
 
 impl GameScene {
@@ -285,6 +310,12 @@ impl GameScene {
         let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
         let panel_bottom = HUD_ARC_CENTER_Y - HUD_ARC_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 20;
         let panel_y = panel_bottom - HUD_PANEL_H as i32;
+        let mut keyboard = OnScreenKeyboard::new();
+        let keyboard_y = TARGET_HEIGHT_INT as i32
+            - keyboard.bounds().height as i32
+            - SkillBar::height() as i32
+            - 8;
+        keyboard.set_position(keyboard.bounds().x, keyboard_y);
 
         Self {
             status_panel: StatusPanel::new(STATUS_PANEL_X, STATUS_PANEL_Y, HUD_PANEL_BG),
@@ -371,6 +402,20 @@ impl GameScene {
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
             controller_mode: false,
+            vcursor_x: TARGET_WIDTH_INT as f32 / 2.0,
+            vcursor_y: TARGET_HEIGHT_INT as f32 / 2.0,
+            left_stick_x: 0,
+            left_stick_y: 0,
+            right_stick_x: 0,
+            right_stick_y: 0,
+            right_stick_cooldown: 0.0,
+            l3_pressed_at: None,
+            hud_nav: crate::ui::controller_nav::ControllerNavState::new(),
+            kb_stick_pos_x: false,
+            kb_stick_neg_x: false,
+            kb_stick_pos_y: false,
+            kb_stick_neg_y: false,
+            keyboard,
         }
     }
 
@@ -548,6 +593,7 @@ impl GameScene {
 
         scene_change
     }
+
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.
     ///
     /// Messages are fetched in insertion order (oldest-first) starting from
@@ -767,6 +813,46 @@ impl GameScene {
         )
     }
 
+    /// Draw a crosshair cursor at the virtual cursor position when controller
+    /// mode is active.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn draw_controller_cursor(&self, canvas: &mut Canvas<Window>) -> Result<(), String> {
+        let cx = self.mouse_x;
+        let cy = self.mouse_y;
+        let size = 8i32; // arm length in pixels
+
+        // White crosshair with slight transparency
+        canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+        canvas.set_draw_color(Color::RGBA(255, 255, 255, 220));
+
+        // Horizontal line
+        canvas.draw_line(
+            sdl2::rect::Point::new(cx - size, cy),
+            sdl2::rect::Point::new(cx + size, cy),
+        )?;
+        // Vertical line
+        canvas.draw_line(
+            sdl2::rect::Point::new(cx, cy - size),
+            sdl2::rect::Point::new(cx, cy + size),
+        )?;
+
+        // Small center dot
+        canvas.set_draw_color(Color::RGBA(255, 255, 100, 255));
+        canvas.draw_point(sdl2::rect::Point::new(cx, cy))?;
+        canvas.draw_point(sdl2::rect::Point::new(cx + 1, cy))?;
+        canvas.draw_point(sdl2::rect::Point::new(cx, cy + 1))?;
+        canvas.draw_point(sdl2::rect::Point::new(cx + 1, cy + 1))?;
+
+        Ok(())
+    }
+
     /// Repaint the persistent 1024×1024 world minimap buffer from the current
     /// map state.
     ///
@@ -952,6 +1038,10 @@ impl Scene for GameScene {
         self.last_look_tick = 0;
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
+        self.vcursor_x = TARGET_WIDTH_INT as f32 / 2.0;
+        self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
+        self.left_stick_x = 0;
+        self.left_stick_y = 0;
 
         app_state.settings.spell_effects_enabled = true;
         app_state.settings.character.key_bindings = KeyBindings::default();
@@ -1043,10 +1133,12 @@ impl Scene for GameScene {
 
             if self.inventory_panel.is_visible() {
                 self.inventory_panel.toggle();
+                self.inventory_panel.clear_controller_selection();
             }
 
             if self.skills_panel.is_visible() {
                 self.skills_panel.toggle();
+                self.skills_panel.clear_controller_focus();
             }
 
             if self.minimap_widget.is_visible() {
@@ -1099,7 +1191,8 @@ impl Scene for GameScene {
             _ => {}
         }
 
-        // --- Dispatch to ChatBox first; if consumed, act on pending actions ---
+        // --- UI widget stack ---
+        let mut ui_consumed = false;
         if let Some(ui_event) = ui::sdl_to_ui_event(
             event,
             self.mouse_x,
@@ -1110,134 +1203,12 @@ impl Scene for GameScene {
                 alt: self.alt_held,
             },
         ) {
-            // --- Certificate mismatch dialog (modal, blocks all other input) ---
-            if let Some(ref mut dialog) = self.cert_dialog {
-                dialog.handle_event(&ui_event);
-                for action in dialog.take_cert_actions() {
-                    match action {
-                        CertDialogAction::Accept => {
-                            if let Some(mismatch) = self.certificate_mismatch.take() {
-                                match cert_trust::trust_fingerprint(
-                                    &mismatch.host,
-                                    &mismatch.received_fingerprint,
-                                ) {
-                                    Ok(()) => {
-                                        self.cert_dialog = None;
-                                        if let Err(err) = self.start_game_network_session(app_state)
-                                        {
-                                            self.pending_exit = Some(err);
-                                            return Some(SceneType::CharacterSelection);
-                                        }
-                                        return None;
-                                    }
-                                    Err(err) => {
-                                        self.cert_dialog = None;
-                                        self.pending_exit =
-                                            Some(format!("Failed to update known hosts: {err}"));
-                                        return Some(SceneType::CharacterSelection);
-                                    }
-                                }
-                            }
-                        }
-                        CertDialogAction::Reject => {
-                            self.certificate_mismatch = None;
-                            self.cert_dialog = None;
-                            return Some(SceneType::CharacterSelection);
-                        }
-                    }
+            match self.handle_ui_widget_events(app_state, &ui_event) {
+                net_events::UiHandleResult::SceneChange(sc) => return Some(sc),
+                net_events::UiHandleResult::Consumed => {
+                    ui_consumed = true;
                 }
-                return None;
-            }
-
-            // --- Skill picker popup (modal — must come before skill bar) ---
-            if self.skill_picker.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_skill_picker_actions(app_state);
-                return None;
-            }
-
-            // --- Rank sigil (upper-left) ---
-            if self.rank_sigil.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            self.rank_progress_line.handle_event(&ui_event);
-
-            self.vitality_bars.handle_event(&ui_event);
-
-            // --- StatusPanel (WV/AV display, right of skill bar) ---
-            if self.status_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            if self.chat_box.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_chat_box_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to open HUD panels (eat clicks so they don't reach the world) ---
-            if self.skills_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_skills_panel_actions(app_state);
-                return None;
-            }
-            if self.inventory_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_inventory_panel_actions(app_state);
-                return None;
-            }
-            if self.settings_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                    return Some(sc);
-                }
-                return None;
-            }
-
-            // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
-            if self.shop_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_shop_panel_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to minimap toggle button / panel ---
-            if self.minimap_widget.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            // --- Dispatch to mode button ---
-            if self.mode_button.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_mode_button_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to look panel ---
-            if self.look_panel.handle_event(&ui_event) == EventResponse::Consumed {
-                return None;
-            }
-
-            // --- Dispatch to skill bar ---
-            if self.skill_bar.handle_event(&ui_event) == EventResponse::Consumed {
-                self.process_skill_bar_actions(app_state);
-                return None;
-            }
-
-            // --- Dispatch to HUD button bar ---
-            if self.hud_buttons.handle_event(&ui_event) == EventResponse::Consumed {
-                for action in self.hud_buttons.take_actions() {
-                    if let WidgetAction::TogglePanel(panel) = action {
-                        match panel {
-                            HudPanel::Skills => self.skills_panel.toggle(),
-                            HudPanel::Inventory => self.inventory_panel.toggle(),
-                            HudPanel::Settings => {
-                                self.settings_panel.toggle();
-                                if self.settings_panel.is_visible() {
-                                    let data = self.build_settings_panel_data(app_state);
-                                    self.settings_panel.sync_state(&data);
-                                }
-                            }
-                            HudPanel::Minimap => self.minimap_widget.toggle(),
-                            HudPanel::KeyBindings => {}
-                        }
-                    }
-                }
-                return None;
+                net_events::UiHandleResult::NotConsumed => {}
             }
         }
 
@@ -1266,242 +1237,48 @@ impl Scene for GameScene {
             }
         }
 
-        // --- Controller bumper tracking and skill binding dispatch ---
-        match event {
-            Event::ControllerButtonDown { button, .. } => {
-                use sdl2::controller::Button as Btn;
-                log::info!("Controller button pressed: {:?}", button);
-                match button {
-                    Btn::LeftShoulder => self.lb_held = true,
-                    Btn::RightShoulder => self.rb_held = true,
-                    _ => {}
-                }
-                // If the controller bindings panel is waiting for a button
-                // press, capture it and skip the normal skill-dispatch path.
-                if self.settings_panel.is_controller_listening() {
-                    if let Some(cb) =
-                        ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held)
-                    {
-                        log::info!("Controller binding captured: {:?} -> {:?}", button, cb);
-                        self.settings_panel.capture_controller_button(cb);
-                        self.process_settings_panel_actions(app_state);
-                    }
-                    return None;
-                }
-                if let Some(cb) = ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held) {
-                    log::info!("Controller button mapped to {:?}", cb);
-                    if let Some(slot) = app_state
-                        .settings
-                        .character
-                        .controller_bindings
-                        .slot_for_button(cb)
-                    {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            if let Some(skill_nr) =
-                                app_state.settings.character.skill_keybinds[slot]
-                            {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    }
-                }
-                return None;
-            }
-            Event::ControllerButtonUp { button, .. } => {
-                use sdl2::controller::Button as Btn;
-                match button {
-                    Btn::LeftShoulder => self.lb_held = false,
-                    Btn::RightShoulder => self.rb_held = false,
-                    _ => {}
-                }
-                return None;
-            }
-            Event::ControllerAxisMotion { axis, value, .. } => {
-                if let Some(cb) = ControllerButton::from_trigger_axis(*axis, *value) {
-                    if let Some(slot) = app_state
-                        .settings
-                        .character
-                        .controller_bindings
-                        .slot_for_button(cb)
-                    {
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            if let Some(skill_nr) =
-                                app_state.settings.character.skill_keybinds[slot]
-                            {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    }
-                }
-                return None;
-            }
-            _ => {}
+        // --- Controller events ---
+        if matches!(
+            event,
+            Event::ControllerButtonDown { .. }
+                | Event::ControllerButtonUp { .. }
+                | Event::ControllerAxisMotion { .. }
+        ) {
+            return self.handle_controller_event(app_state, event);
         }
 
-        match event {
-            Event::KeyDown {
-                keycode: Some(kc), ..
-            } => match *kc {
+        // --- Num1-9 hotkeys ---
+        if let Event::KeyDown {
+            keycode: Some(kc), ..
+        } = event
+        {
+            if matches!(
+                *kc,
                 Keycode::Num1
-                | Keycode::Num2
-                | Keycode::Num3
-                | Keycode::Num4
-                | Keycode::Num5
-                | Keycode::Num6
-                | Keycode::Num7
-                | Keycode::Num8
-                | Keycode::Num9 => {
-                    if !self.chat_box.is_focused() {
-                        let key_slot = (i32::from(*kc) - i32::from(Keycode::Num1)) as usize;
-                        if let (Some(net), Some(ps)) =
-                            (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            if let Some(skill_nr) =
-                                app_state.settings.character.skill_keybinds[key_slot]
-                            {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
-                                ));
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            },
-            Event::MouseButtonUp {
-                mouse_btn, x, y, ..
-            } => {
-                let Some(ps) = app_state.player_state.as_ref() else {
-                    log::warn!("Mouse click with no player state");
-                    return None;
-                };
-
-                let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-
-                let Some((mx, my)) = Self::screen_to_map_tile(*x, *y, cam_xoff, cam_yoff) else {
-                    log::warn!("Click outside of map area: screen=({}, {})", x, y);
-                    return None;
-                };
-
-                let has_ctrl = self.ctrl_held;
-                let has_shift = self.shift_held;
-                let has_alt = self.alt_held;
-
-                // Read citem early so we can suppress ISITEM snapping when the
-                // player is carrying an item and wants to drop, not pick up.
-                let citem = ps.character_info().citem;
-
-                let snapped = if has_ctrl || has_alt {
-                    Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).unwrap_or((mx, my))
-                } else if has_shift && citem == 0 {
-                    // Only snap to the nearest item tile when the hand is empty.
-                    // With a citem held, use the raw tile so the drop lands where
-                    // the player clicked rather than locking onto a nearby item.
-                    Self::nearest_tile_with_flag(ps, mx, my, ISITEM).unwrap_or((mx, my))
-                } else {
-                    (mx, my)
-                };
-
-                let (sx, sy) = snapped;
-                let tile = ps.map().tile_at_xy(sx, sy);
-                let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
-                let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
-                let (world_x, world_y) = tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
-                // citem already read above.
-                let selected_char = ps.selected_char();
-
-                let Some(net) = app_state.network.as_ref() else {
-                    return None;
-                };
-
-                match *mouse_btn {
-                    MouseButton::Left if has_alt => {
-                        if let Some(ps_mut) = app_state.player_state.as_mut() {
-                            if target_cn != 0 {
-                                if selected_char == target_cn as u16 {
-                                    ps_mut.clear_selected_char();
-                                } else {
-                                    ps_mut.set_selected_char_with_id(target_cn as u16, target_id);
-                                }
-                            } else {
-                                ps_mut.clear_selected_char();
-                            }
-                        }
-                    }
-                    MouseButton::Right if has_alt => {
-                        if target_cn != 0 {
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_look(target_cn));
-                        }
-                    }
-                    MouseButton::Left if has_ctrl => {
-                        if target_cn != 0 {
-                            self.play_click_sound(app_state);
-                            if citem != 0 {
-                                net.send(ClientCommand::new_give(target_cn));
-                            } else {
-                                net.send(ClientCommand::new_attack(target_cn));
-                            }
-                        }
-                    }
-                    MouseButton::Right if has_ctrl => {
-                        if target_cn != 0 {
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_look(target_cn));
-                        }
-                    }
-                    MouseButton::Left if has_shift => {
-                        let tile_flags = tile.map(|t| t.flags).unwrap_or(0);
-                        let is_item = (tile_flags & ISITEM) != 0;
-                        let is_usable = (tile_flags & ISUSABLE) != 0;
-                        if citem != 0 && !is_item {
-                            // Holding item, clicked non-item tile --> drop
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_drop(world_x, world_y));
-                        } else if is_item && is_usable {
-                            // Item is usable --> use
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_use(world_x, world_y));
-                        } else if is_item {
-                            // Item not usable --> pickup
-                            self.play_click_sound(app_state);
-                            net.send(ClientCommand::new_pickup(world_x, world_y));
-                        }
-                    }
-                    MouseButton::Right if has_shift => {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_look_item(world_x, world_y));
-                    }
-                    MouseButton::Left => {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_move(world_x, world_y));
-                    }
-                    MouseButton::Right => {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_turn(world_x, world_y));
-                    }
-                    _ => {}
-                }
+                    | Keycode::Num2
+                    | Keycode::Num3
+                    | Keycode::Num4
+                    | Keycode::Num5
+                    | Keycode::Num6
+                    | Keycode::Num7
+                    | Keycode::Num8
+                    | Keycode::Num9
+            ) {
+                self.handle_num_hotkey(app_state, *kc);
+                return None;
             }
-            _ => {}
         }
+
+        // --- Mouse world interactions ---
+        if !ui_consumed {
+            if let Event::MouseButtonUp {
+                mouse_btn, x, y, ..
+            } = event
+            {
+                return self.handle_world_click(app_state, *mouse_btn, *x, *y);
+            }
+        }
+
         None
     }
 
@@ -1535,6 +1312,136 @@ impl Scene for GameScene {
 
         // Sync controller mode from the central AppState flag.
         self.controller_mode = app_state.controller_active;
+
+        // --- Virtual cursor movement (controller mode) ---
+        // Suppress cursor movement while the on-screen keyboard, settings
+        // panel, shop overlay, or skill picker popup is visible so the left
+        // stick doesn't drift the crosshair underneath modal overlays.
+        let modal_ui_open = self.keyboard.is_visible()
+            || self.settings_panel.is_visible()
+            || self.shop_panel.is_visible()
+            || self.skill_picker.is_visible();
+        if self.controller_mode && !modal_ui_open {
+            const DEADZONE: f32 = 8000.0;
+            const MAX_AXIS: f32 = 32767.0;
+            const CURSOR_SPEED: f32 = 300.0; // pixels per second
+
+            let dt_secs = dt.as_secs_f32();
+
+            let raw_x = self.left_stick_x as f32;
+            let raw_y = self.left_stick_y as f32;
+
+            let norm_x = if raw_x.abs() > DEADZONE {
+                ((raw_x.abs() - DEADZONE) / (MAX_AXIS - DEADZONE))
+                    .min(1.0)
+                    .copysign(raw_x)
+            } else {
+                0.0
+            };
+            let norm_y = if raw_y.abs() > DEADZONE {
+                ((raw_y.abs() - DEADZONE) / (MAX_AXIS - DEADZONE))
+                    .min(1.0)
+                    .copysign(raw_y)
+            } else {
+                0.0
+            };
+
+            self.vcursor_x += norm_x * CURSOR_SPEED * dt_secs;
+            self.vcursor_y += norm_y * CURSOR_SPEED * dt_secs;
+
+            // Clamp to viewport
+            self.vcursor_x = self.vcursor_x.clamp(0.0, TARGET_WIDTH_INT as f32 - 1.0);
+            self.vcursor_y = self.vcursor_y.clamp(0.0, TARGET_HEIGHT_INT as f32 - 1.0);
+
+            // Override mouse_x/mouse_y so all existing consumers use the virtual cursor
+            self.mouse_x = self.vcursor_x as i32;
+            self.mouse_y = self.vcursor_y as i32;
+
+            // Dispatch a synthetic MouseMove so widgets see hover state
+            // changes from the virtual cursor (left stick) just like they
+            // would from a real mouse.
+            let synthetic_move = UiEvent::MouseMove {
+                x: self.mouse_x,
+                y: self.mouse_y,
+            };
+            // A MouseMove is not expected to trigger a scene change, but
+            // handle it defensively without returning early — the rest of
+            // update() (network processing, L3 hold, etc.) must still run.
+            self.handle_ui_widget_events(app_state, &synthetic_move);
+
+            // Sync modifier flags from bumpers so that helper text,
+            // hover highlights, and tile snapping work with the controller
+            // the same way they do with keyboard Shift/Ctrl.
+            self.shift_held = self.lb_held;
+            self.ctrl_held = self.rb_held;
+        }
+
+        // --- Right-stick navigation (controller mode) ---
+        if self.controller_mode {
+            self.right_stick_cooldown = (self.right_stick_cooldown - dt.as_secs_f32()).max(0.0);
+
+            const RS_DEADZONE: f32 = 8000.0;
+            if self.skill_picker.is_visible() {
+                let rs_y = self.right_stick_y as f32;
+                if self.right_stick_cooldown <= 0.0 && rs_y.abs() > RS_DEADZONE {
+                    self.skill_picker
+                        .controller_move_selection(if rs_y > 0.0 { 1 } else { -1 });
+                    self.right_stick_cooldown = 0.2;
+                }
+            } else {
+                use crate::ui::hud::skill_bar::TOP_CELLS;
+
+                let rs_x = self.right_stick_x as f32;
+
+                if self.right_stick_cooldown <= 0.0 && rs_x.abs() > RS_DEADZONE {
+                    let current = self.skill_bar.controller_selected_slot();
+                    let next = if rs_x > 0.0 {
+                        // Right → advance (wrap 12 → 0)
+                        Some(current.map_or(0, |s| (s + 1) % TOP_CELLS))
+                    } else {
+                        // Left → retreat (wrap 0 → 12)
+                        Some(current.map_or(TOP_CELLS - 1, |s| {
+                            if s == 0 { TOP_CELLS - 1 } else { s - 1 }
+                        }))
+                    };
+                    self.skill_bar.set_controller_selected_slot(next);
+                    self.right_stick_cooldown = 0.2;
+                }
+            }
+        }
+
+        // --- L3 hold detection: look at nearest character ---
+        if self.controller_mode {
+            if let Some(pressed_at) = self.l3_pressed_at {
+                const L3_HOLD_THRESHOLD: Duration = Duration::from_millis(500);
+                if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
+                    self.l3_pressed_at = None; // consumed
+                    if let Some(ps) = app_state.player_state.as_ref() {
+                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                        if let Some((mx, my)) =
+                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+                        {
+                            use mag_core::constants::ISCHAR;
+                            if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
+                            {
+                                let tile = ps.map().tile_at_xy(sx, sy);
+                                let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
+                                if target_cn != 0 {
+                                    if let Some(net) = app_state.network.as_ref() {
+                                        self.play_click_sound(app_state);
+                                        net.send(
+                                            crate::network::client_commands::ClientCommand::new_look(
+                                                target_cn,
+                                            ),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Create the cert dialog widget when a mismatch is first detected.
         if self.certificate_mismatch.is_some() && self.cert_dialog.is_none() {
@@ -1627,6 +1534,7 @@ impl Scene for GameScene {
                 gfx: gfx_cache,
             };
             self.chat_box.render(&mut ctx)?;
+            self.keyboard.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawChat);
 
@@ -1771,6 +1679,16 @@ impl Scene for GameScene {
             self.draw_carried_item(canvas, gfx_cache, ps)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawCarriedItem);
+
+        // 5e-ii. Controller cursor (crosshair drawn when controller mode is active
+        // and no modal panel is open)
+        if self.controller_mode
+            && !self.settings_panel.is_visible()
+            && !self.shop_panel.is_visible()
+            && !self.skill_picker.is_visible()
+        {
+            self.draw_controller_cursor(canvas)?;
+        }
 
         // 5f. Context-sensitive helper text near the cursor
         self.perf_profiler.begin_sample(PerfLabel::DrawHelperText);

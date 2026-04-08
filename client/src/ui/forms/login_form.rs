@@ -75,6 +75,9 @@ pub enum LoginFormAction {
     Quit,
     /// Music checkbox was toggled.
     ToggleMusic(bool),
+    /// Controller wants to open the on-screen keyboard for a text field.
+    /// The `usize` is the text-field index (0 = IP, 1 = username, 2 = password).
+    OpenKeyboard(usize),
 }
 
 // ---------------------------------------------------------------------------
@@ -343,16 +346,56 @@ impl LoginForm {
     }
 
     /// Total number of controller-focusable elements.
-    const FOCUSABLE_COUNT: usize = 5;
+    /// 0=IP, 1=username, 2=password, 3=music_checkbox, 4=login, 5=create, 6=reset, 7=quit.
+    const FOCUSABLE_COUNT: usize = 8;
 
     /// Applies the controller focus highlight to the appropriate child widget.
     fn apply_controller_focus(&mut self) {
         let focused = self.controller_focused;
-        self.music_checkbox.set_hovered(focused == Some(0));
-        self.login_button.set_hovered(focused == Some(1));
-        self.create_button.set_hovered(focused == Some(2));
-        self.reset_button.set_hovered(focused == Some(3));
-        self.quit_button.set_hovered(focused == Some(4));
+        self.ip_input.set_hovered(focused == Some(0));
+        self.username_input.set_hovered(focused == Some(1));
+        self.password_input.set_hovered(focused == Some(2));
+        self.music_checkbox.set_hovered(focused == Some(3));
+        self.login_button.set_hovered(focused == Some(4));
+        self.create_button.set_hovered(focused == Some(5));
+        self.reset_button.set_hovered(focused == Some(6));
+        self.quit_button.set_hovered(focused == Some(7));
+    }
+
+    /// Injects a character into the currently focused text field.
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - The character to inject.
+    pub fn inject_char(&mut self, ch: char) {
+        match self.focused_field {
+            0 => self.ip_input.inject_char(ch),
+            1 => self.username_input.inject_char(ch),
+            2 => self.password_input.inject_char(ch),
+            _ => {}
+        }
+    }
+
+    /// Injects a backspace into the currently focused text field.
+    pub fn inject_backspace(&mut self) {
+        match self.focused_field {
+            0 => self.ip_input.inject_backspace(),
+            1 => self.username_input.inject_backspace(),
+            2 => self.password_input.inject_backspace(),
+            _ => {}
+        }
+    }
+
+    /// Sets the focused text field by index and opens it for editing.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_index` - Text field index (0 = IP, 1 = username, 2 = password).
+    pub fn set_text_focus(&mut self, field_index: usize) {
+        if field_index < 3 {
+            self.focused_field = field_index;
+            self.apply_focus();
+        }
     }
 }
 
@@ -387,16 +430,22 @@ impl Widget for LoginForm {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(0) => {
+                    Some(i @ 0..=2) => {
+                        // Text input — tell scene to open on-screen keyboard.
+                        self.focused_field = i;
+                        self.apply_focus();
+                        self.actions.push(LoginFormAction::OpenKeyboard(i));
+                    }
+                    Some(3) => {
                         // Toggle music checkbox.
                         let new_val = !self.music_checkbox.is_checked();
                         self.music_checkbox.set_checked(new_val);
                         self.actions.push(LoginFormAction::ToggleMusic(new_val));
                     }
-                    Some(1) => self.push_login_action(),
-                    Some(2) => self.actions.push(LoginFormAction::CreateAccount),
-                    Some(3) => self.actions.push(LoginFormAction::ResetPassword),
-                    Some(4) => self.actions.push(LoginFormAction::Quit),
+                    Some(4) => self.push_login_action(),
+                    Some(5) => self.actions.push(LoginFormAction::CreateAccount),
+                    Some(6) => self.actions.push(LoginFormAction::ResetPassword),
+                    Some(7) => self.actions.push(LoginFormAction::Quit),
                     _ => {}
                 }
                 return EventResponse::Consumed;

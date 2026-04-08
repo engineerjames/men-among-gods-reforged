@@ -85,6 +85,9 @@ pub enum CharacterCreationFormAction {
     RandomName,
     /// User pressed Back.
     Back,
+    /// Controller wants to open the on-screen keyboard for a text field.
+    /// The `usize` is the text-field index (0 = name, 1 = description).
+    OpenKeyboard(usize),
 }
 
 // ---------------------------------------------------------------------------
@@ -341,29 +344,68 @@ impl CharacterCreationForm {
     }
 
     /// Total number of controller-focusable elements.
-    /// 3 class options + 2 sex options + 3 buttons = 8.
-    const FOCUSABLE_COUNT: usize = 8;
+    /// 0=name, 1=description, 2..4=class options, 5..6=sex options,
+    /// 7=random_name, 8=create, 9=back.
+    const FOCUSABLE_COUNT: usize = 10;
 
     /// Applies controller focus highlights to the appropriate child widgets.
     fn apply_controller_focus(&mut self) {
         let focused = self.controller_focused;
 
-        // Class radio group options (slots 0..2).
+        // Text inputs (slots 0..1).
+        self.name_input.set_hovered(focused == Some(0));
+        self.description_input.set_hovered(focused == Some(1));
+
+        // Class radio group options (slots 2..4).
         match focused {
-            Some(i) if i < 3 => self.class_group.set_controller_focused(Some(i)),
+            Some(i) if (2..5).contains(&i) => self.class_group.set_controller_focused(Some(i - 2)),
             _ => self.class_group.set_controller_focused(None),
         }
 
-        // Sex radio group options (slots 3..4).
+        // Sex radio group options (slots 5..6).
         match focused {
-            Some(i) if (3..5).contains(&i) => self.sex_group.set_controller_focused(Some(i - 3)),
+            Some(i) if (5..7).contains(&i) => self.sex_group.set_controller_focused(Some(i - 5)),
             _ => self.sex_group.set_controller_focused(None),
         }
 
         // Buttons.
-        self.random_name_button.set_hovered(focused == Some(5));
-        self.create_button.set_hovered(focused == Some(6));
-        self.back_button.set_hovered(focused == Some(7));
+        self.random_name_button.set_hovered(focused == Some(7));
+        self.create_button.set_hovered(focused == Some(8));
+        self.back_button.set_hovered(focused == Some(9));
+    }
+
+    /// Injects a character into the currently focused text field.
+    ///
+    /// # Arguments
+    ///
+    /// * `ch` - The character to inject.
+    pub fn inject_char(&mut self, ch: char) {
+        match self.focused_field {
+            0 => self.name_input.inject_char(ch),
+            1 => self.description_input.inject_char(ch),
+            _ => {}
+        }
+    }
+
+    /// Injects a backspace into the currently focused text field.
+    pub fn inject_backspace(&mut self) {
+        match self.focused_field {
+            0 => self.name_input.inject_backspace(),
+            1 => self.description_input.inject_backspace(),
+            _ => {}
+        }
+    }
+
+    /// Sets the focused text field by index and opens it for editing.
+    ///
+    /// # Arguments
+    ///
+    /// * `field_index` - Text field index (0 = name, 1 = description).
+    pub fn set_text_focus(&mut self, field_index: usize) {
+        if field_index < 2 {
+            self.focused_field = field_index;
+            self.apply_focus();
+        }
     }
 }
 
@@ -398,11 +440,17 @@ impl Widget for CharacterCreationForm {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(i) if i < 3 => self.class_group.select_by_index(i),
-                    Some(i) if (3..5).contains(&i) => self.sex_group.select_by_index(i - 3),
-                    Some(5) => self.actions.push(CharacterCreationFormAction::RandomName),
-                    Some(6) => self.push_create_action(),
-                    Some(7) => self.actions.push(CharacterCreationFormAction::Back),
+                    Some(i @ 0..=1) => {
+                        self.focused_field = i;
+                        self.apply_focus();
+                        self.actions
+                            .push(CharacterCreationFormAction::OpenKeyboard(i));
+                    }
+                    Some(i) if (2..5).contains(&i) => self.class_group.select_by_index(i - 2),
+                    Some(i) if (5..7).contains(&i) => self.sex_group.select_by_index(i - 5),
+                    Some(7) => self.actions.push(CharacterCreationFormAction::RandomName),
+                    Some(8) => self.push_create_action(),
+                    Some(9) => self.actions.push(CharacterCreationFormAction::Back),
                     _ => {}
                 }
                 return EventResponse::Consumed;
