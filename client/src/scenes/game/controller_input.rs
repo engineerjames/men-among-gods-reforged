@@ -222,7 +222,7 @@ impl GameScene {
                             _ => {}
                         }
                     } else {
-                        // No panel open → toggle inventory or skills
+                        // No panel open → toggle inventory, skills, minimap, or mode
                         match button {
                             Btn::DPadUp => {
                                 self.inventory_panel.toggle();
@@ -235,6 +235,22 @@ impl GameScene {
                                 if self.skills_panel.is_visible() {
                                     self.skills_panel.ensure_controller_focus();
                                 }
+                            }
+                            Btn::DPadLeft => {
+                                self.minimap_widget.toggle();
+                            }
+                            Btn::DPadRight => {
+                                // Synthesize a click at the mode button center to cycle mode.
+                                let b = *self.mode_button.bounds();
+                                let cx = b.x + b.width as i32 / 2;
+                                let cy = b.y + b.height as i32 / 2;
+                                self.mode_button.handle_event(&UiEvent::MouseClick {
+                                    x: cx,
+                                    y: cy,
+                                    button: UiMouseButton::Left,
+                                    modifiers: KeyModifiers::default(),
+                                });
+                                self.process_mode_button_actions(app_state);
                             }
                             _ => {}
                         }

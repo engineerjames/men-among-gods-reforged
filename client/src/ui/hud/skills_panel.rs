@@ -254,7 +254,9 @@ impl SkillsPanel {
     /// Navigate the controller focus downward.
     ///
     /// From the last skill row, jumps to Update when no more scrolling is
-    /// possible. Wraps from Update back to the first attribute row (0).
+    /// possible. Skips empty skill rows entirely — jumps straight to the
+    /// Update button if the next row is empty. Wraps from Update back to the
+    /// first attribute row (0).
     pub fn controller_nav_down(&mut self) {
         match self.controller_focused_row {
             None => self.ensure_controller_focus(),
@@ -262,18 +264,55 @@ impl SkillsPanel {
                 // Wrap from Update to first attribute.
                 self.controller_focused_row = Some(0);
             }
-            Some(row) if row == 13 => {
-                // At last visible skill row — try to scroll down.
-                if self.skill_scroll < SKILL_SCROLL_MAX {
-                    self.skill_scroll += 1;
+            Some(row) if (8..=13).contains(&row) => {
+                if row < 13 {
+                    // Rows 8–12: check if the next visible skill row is non-empty.
+                    let next_vis = (row - 8) + 1;
+                    if self.skill_row_is_nonempty(next_vis) {
+                        self.controller_focused_row = Some(row + 1);
+                    } else {
+                        // Next row is empty — skip all empties and go to Update.
+                        self.controller_focused_row = Some(Self::MAX_FOCUS_ROW);
+                    }
                 } else {
-                    // Can't scroll further → jump to Update row.
-                    self.controller_focused_row = Some(Self::MAX_FOCUS_ROW);
+                    // Row 13: try to scroll down to reveal the next skill.
+                    if self.skill_scroll < SKILL_SCROLL_MAX {
+                        self.skill_scroll += 1;
+                        // After scroll, check whether the new bottom row has a skill.
+                        if !self.skill_row_is_nonempty(VISIBLE_SKILL_ROWS - 1) {
+                            // No skill revealed — jump to Update.
+                            self.controller_focused_row = Some(Self::MAX_FOCUS_ROW);
+                        }
+                        // else: stay on row 13, which now shows a valid skill.
+                    } else {
+                        // Can't scroll further → jump to Update row.
+                        self.controller_focused_row = Some(Self::MAX_FOCUS_ROW);
+                    }
                 }
             }
             Some(row) => {
                 self.controller_focused_row = Some(row + 1);
             }
+        }
+    }
+
+    /// Returns `true` if the skill at visible row `vis_row` (0-based) is
+    /// non-empty (learned and named).
+    ///
+    /// # Arguments
+    ///
+    /// * `vis_row` - 0-based index into the currently visible skill rows.
+    fn skill_row_is_nonempty(&self, vis_row: usize) -> bool {
+        let data = match self.data.as_ref() {
+            Some(d) => d,
+            None => return false,
+        };
+        let sorted_idx = self.skill_scroll + vis_row;
+        match data.sorted_skills.get(sorted_idx) {
+            Some(&skill_id) => {
+                data.skill[skill_id][0] != 0 && !get_skill_name(skill_id).is_empty()
+            }
+            None => false,
         }
     }
 
@@ -1098,10 +1137,10 @@ impl Widget for SkillsPanel {
             let highlight_rect = if row == Self::MAX_FOCUS_ROW {
                 // Update button — highlight the "Update" text area.
                 Some(sdl2::rect::Rect::new(
-                    cb.x + 78,
-                    update_y - 1,
-                    56,
-                    ROW_H as u32 + 2,
+                    cb.x + 77,
+                    update_y - 2,
+                    48,
+                    ROW_H as u32,
                 ))
             } else {
                 // +/- column highlight
@@ -1118,7 +1157,7 @@ impl Widget for SkillsPanel {
                 } else {
                     None
                 };
-                row_y.map(|y| sdl2::rect::Rect::new(col_x - 2, y - 2, 8, 10))
+                row_y.map(|y| sdl2::rect::Rect::new(col_x - 2, y - 2, 9, 11))
             };
 
             if let Some(r) = highlight_rect {
