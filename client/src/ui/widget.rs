@@ -436,9 +436,22 @@ impl fmt::Display for KeyBinding {
         if self.modifiers.shift {
             write!(f, "Shift+")?;
         }
-        // Display the key name from the keycode.
+        // Avoid calling SDL_GetKeyName here: on Linux it requires SDL to be
+        // initialised and returns garbage in unit-test contexts.  For printable
+        // ASCII keys we can derive a user-friendly name directly from the
+        // keycode value.  Letter keys are stored as lowercase ASCII (97-122),
+        // so we uppercase them; other printable chars (digits, punctuation)
+        // are shown as-is.  Only non-printable / non-ASCII keys (F-keys,
+        // arrows, etc.) fall back to the SDL runtime call, which is fine
+        // because those are only reachable from a running game with SDL init.
         if let Some(kc) = Keycode::from_i32(self.keycode) {
-            write!(f, "{}", kc.name())
+            let raw = i32::from(kc);
+            if (32..=126).contains(&raw) {
+                let ch = char::from(raw as u8);
+                write!(f, "{}", ch.to_ascii_uppercase())
+            } else {
+                write!(f, "{}", kc.name())
+            }
         } else {
             write!(f, "???")
         }
