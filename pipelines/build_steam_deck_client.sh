@@ -74,6 +74,7 @@ docker run --rm \
       unzip \
       zip \
       libasound2-dev \
+      libpulse-dev \
       libudev-dev
     rm -rf /var/lib/apt/lists/*
 

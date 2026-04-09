@@ -8,6 +8,7 @@ sudo apt-get update
 sudo apt-get install -y \
   pkg-config \
   libasound2-dev \
+  libpulse-dev \
   libudev-dev \
   libwayland-dev \
   libxkbcommon-dev \
