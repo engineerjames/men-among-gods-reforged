@@ -38,7 +38,13 @@ fn main() -> Result<(), String> {
     fps_manager.set_framerate(60)?;
     let sdl_context = sdl2::init()?;
     let _image_context = sdl2::image::init(InitFlag::PNG)?;
-    let _audio_subsystem = sdl_context.audio()?;
+    let _audio_subsystem = sdl_context
+        .audio()
+        .map_err(|e| {
+            log::warn!("Failed to initialise audio subsystem (audio will be disabled): {e}");
+            e
+        })
+        .ok();
 
     // --- Game controller subsystem ----------------------------------------
     let game_controller_subsystem = sdl_context.game_controller().map_err(|e| {
@@ -69,10 +75,15 @@ fn main() -> Result<(), String> {
     let format = AUDIO_S16LSB;
     let channels = DEFAULT_CHANNELS; // Stereo
     let chunk_size = 1_024;
-    sdl2::mixer::open_audio(frequency, format, channels, chunk_size)?;
-
-    // Initialize the mixer with desired frequency, format, channels, and chunk size
-    sdl2::mixer::init(sdl2::mixer::InitFlag::MP3)?;
+    let audio_available = _audio_subsystem.is_some()
+        && sdl2::mixer::open_audio(frequency, format, channels, chunk_size)
+            .map_err(|e| log::warn!("Failed to open audio device (audio will be disabled): {e}"))
+            .is_ok()
+        && sdl2::mixer::init(sdl2::mixer::InitFlag::MP3)
+            .map_err(|e| {
+                log::warn!("Failed to initialise SDL2_mixer (audio will be disabled): {e}")
+            })
+            .is_ok();
 
     log::info!("Creating window and event pump...");
     let video = sdl_context.video()?;
@@ -94,13 +105,17 @@ fn main() -> Result<(), String> {
 
     let mut event_pump = sdl_context.event_pump()?;
 
-    log::info!("Initializing graphics and sound caches...");
+    log::info!("Initializing graphics and sound caches (audio_available={audio_available})...");
     let texture_creator = canvas.texture_creator();
     let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
-    let sfx_cache = SoundCache::new(
-        filepaths::get_sfx_directory(),
-        filepaths::get_music_directory(),
-    );
+    let sfx_cache = if audio_available {
+        SoundCache::new(
+            filepaths::get_sfx_directory(),
+            filepaths::get_music_directory(),
+        )
+    } else {
+        SoundCache::new_disabled()
+    };
     let api_state = ApiTokenState::new(hosts::get_api_base_url());
 
     let asset_gfx = filepaths::get_asset_directory().join("gfx");

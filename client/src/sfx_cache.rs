@@ -8,10 +8,15 @@ const LOGIN_MUSIC_CHANNEL: i32 = 0;
 /// Sound effects are identified by numeric sprite IDs; music tracks by the
 /// [`MusicTrack`] enum. All audio data is loaded eagerly at construction
 /// and played through SDL2_mixer channels.
+///
+/// When constructed via [`SoundCache::new_disabled`] (e.g. because no audio
+/// device is available), all play operations are silent no-ops.
 pub struct SoundCache {
     sfx_cache: HashMap<usize, Chunk>,
     music_cache: HashMap<MusicTrack, Chunk>,
     click_sfx: Option<Chunk>,
+    /// When `true`, all playback methods are silent no-ops.
+    disabled: bool,
 }
 
 /// Named background-music tracks that can be played or stopped.
@@ -47,6 +52,22 @@ impl SoundCache {
         } else {
             // Preserve compatibility with callers already using SDL's 0..255 convention.
             pan.clamp(0, 255) as u8
+        }
+    }
+
+    /// Returns a no-op `SoundCache` that silently ignores all playback calls.
+    ///
+    /// Use this when audio initialisation has failed (e.g. no audio device is
+    /// available) so the rest of the application can continue without sound.
+    ///
+    /// # Returns
+    /// * A disabled `SoundCache` whose play methods are all silent no-ops.
+    pub fn new_disabled() -> Self {
+        SoundCache {
+            sfx_cache: HashMap::new(),
+            music_cache: HashMap::new(),
+            click_sfx: None,
+            disabled: true,
         }
     }
 
@@ -129,6 +150,7 @@ impl SoundCache {
             sfx_cache,
             music_cache,
             click_sfx,
+            disabled: false,
         }
     }
 
@@ -136,6 +158,9 @@ impl SoundCache {
     /// with 128 as center. `master_volume` is a 0.0–1.0 multiplier applied on top.
     /// Mismatched or missing IDs are silently ignored.
     pub fn play_sfx(&self, nr: usize, vol: i32, pan: i32, master_volume: f32) {
+        if self.disabled {
+            return;
+        }
         let Some(chunk) = self.sfx_cache.get(&nr) else {
             return;
         };
@@ -159,6 +184,9 @@ impl SoundCache {
 
     /// Plays the classic UI click sound (`click.wav`) if present in the asset pack.
     pub fn play_click(&self, master_volume: f32) {
+        if self.disabled {
+            return;
+        }
         let Some(chunk) = self.click_sfx.as_ref() else {
             return;
         };
@@ -183,6 +211,9 @@ impl SoundCache {
     /// # Arguments
     /// * `track` - The [`MusicTrack`] to play.
     pub fn play_music(&self, track: MusicTrack) {
+        if self.disabled {
+            return;
+        }
         if let Some(chunk) = self.music_cache.get(&track) {
             if let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1) {
                 log::warn!("Failed to play music: {}", e);
@@ -192,6 +223,9 @@ impl SoundCache {
 
     /// Stops any currently playing music on the dedicated music channel.
     pub fn stop_music(&self) {
+        if self.disabled {
+            return;
+        }
         Channel(LOGIN_MUSIC_CHANNEL).halt();
     }
 }
