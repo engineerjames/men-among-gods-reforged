@@ -7,6 +7,7 @@ use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 use sdl2::video::FullscreenType;
 
 use client::gfx_cache::GraphicsCache;
+use client::platform::PlatformProfile;
 use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
@@ -32,6 +33,9 @@ fn main() -> Result<(), String> {
             eprintln!("Failed to initialize logger: {}. Exiting.", e);
             process::exit(1);
         });
+
+    let platform = PlatformProfile::detect();
+    let is_first_run = !preferences::profile_exists();
 
     log::info!("Initializing SDL2 contexts...");
     let mut fps_manager = FPSManager::new();
@@ -139,7 +143,13 @@ fn main() -> Result<(), String> {
         Some(sdl2::pixels::Color::RGBA(10, 10, 30, 100)),
     );
 
-    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state, panning_background);
+    let mut app_state = AppState::new(
+        gfx_cache,
+        sfx_cache,
+        api_state,
+        panning_background,
+        platform,
+    );
 
     // Track the previous controller_active state so we can detect transitions
     // and toggle the system cursor accordingly.
@@ -147,6 +157,15 @@ fn main() -> Result<(), String> {
 
     // --- Apply persisted display settings ---------------------------------
     app_state.settings = preferences::load_global_settings();
+
+    // On the very first run apply platform-specific defaults, then persist
+    // them immediately so subsequent runs treat them as the user's baseline.
+    if is_first_run {
+        platform.apply_first_run_defaults(&mut app_state.settings);
+        if let Err(e) = preferences::save_global_settings(&app_state.settings) {
+            log::warn!("Failed to persist first-run platform defaults: {e}");
+        }
+    }
 
     // Display mode
     let requested_mode = app_state.settings.display_mode;
