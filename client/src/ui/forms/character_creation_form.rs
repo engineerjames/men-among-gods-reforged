@@ -28,7 +28,7 @@ use crate::ui::widgets::text_input::TextInput;
 
 /// Panel dimensions.
 const PANEL_W: u32 = 360;
-const PANEL_H: u32 = 420;
+const PANEL_H: u32 = 470;
 
 /// Horizontal padding inside the panel.
 const PAD_X: i32 = 20;
@@ -36,14 +36,20 @@ const PAD_X: i32 = 20;
 /// Width of text input fields.
 const INPUT_W: u32 = PANEL_W - (PAD_X as u32) * 2;
 
-/// Size of the portrait sprite preview next to the race selection.
-const SPRITE_PREVIEW_SIZE: u32 = 64;
+/// Width of each class selection column (three columns share INPUT_W).
+const CLASS_COL_W: u32 = INPUT_W / 3;
 
-/// Gap between the race radio group and the sprite preview.
-const SPRITE_PREVIEW_GAP: u32 = 8;
+/// Size of the portrait sprite inside each class column.
+const CLASS_COL_SPRITE_SIZE: u32 = 64;
 
-/// Width of the race radio group (narrowed to make room for the sprite preview).
-const CLASS_GROUP_W: u32 = INPUT_W - SPRITE_PREVIEW_SIZE - SPRITE_PREVIEW_GAP;
+/// Total height of each class column: 4px top pad + sprite + 4px gap + label + 4px bottom pad.
+const CLASS_COL_H: u32 = 4 + CLASS_COL_SPRITE_SIZE + 4 + 10 + 4;
+
+/// Height of the class description flavor text box shown below the action buttons.
+const FLAVOR_BOX_H: u32 = 120;
+
+/// Interior horizontal and vertical padding of the flavor text box.
+const FLAVOR_BOX_PAD: i32 = 6;
 
 /// Height of each text input field.
 const INPUT_H: u32 = 16;
@@ -62,6 +68,27 @@ const BTN_GAP: i32 = 6;
 
 /// Bitmap font index.
 const FONT: usize = 1;
+
+/// Flavor text shown when Harakim is selected.
+const CLASS_DESC_HARAKIM: &str = "Harakims draw their magical prowess from nature. They can use the elements to create \
+brutal attacks or draw spirits from the very earth, creating armored spirits to tirelessly \
+fight at their side. Harakims devote their life to the study of the elements and magic \
+within them, and as such are pitiful fighters. Fortunately, there is rarely a foe capable \
+of placing even a scratch on the Harakim.";
+
+/// Flavor text shown when Templar is selected.
+const CLASS_DESC_TEMPLAR: &str = "The Templar are a singular clan from an inaccessible mountainous region, trained as \
+children to fight and die for their calling. For centuries they have honed their craft of \
+carving through their enemies with massive blades. Templar know only the most rudimentary \
+magic, powered not through the earth but faith or frenzy.";
+
+/// Flavor text shown when Mercenary is selected.
+const CLASS_DESC_MERCENARY: &str = "The Mercenary is not easily defined - they come from many walks of life, some more \
+skilled with spells and poisons, others fighters who've honed their skills not with holy \
+vengeance or bloodlust, but deceit and understanding of a quick blade into soft flesh. As \
+they grow in experience, they can choose to become more skilled with blades, assassination \
+and stealth or choose to forgo elemental magic, and embrace dark arts to spread disease and \
+decay.";
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -101,9 +128,12 @@ pub struct CharacterCreationForm {
     name_input: TextInput,
     /// Description input.
     description_input: TextInput,
-    /// Class (race) selection.
-    class_group: RadioGroup<Class>,
-    /// Sex selection.
+    /// Currently selected class.
+    selected_class: Class,
+    /// Precomputed hit-boxes for the three class columns (Harakim, Templar, Mercenary).
+    /// Updated each render call so hit-testing matches the rendered layout.
+    class_col_bounds: [Bounds; 3],
+    /// Body type selection.
     sex_group: RadioGroup<Sex>,
     /// Create character button.
     create_button: RectButton,
@@ -120,7 +150,8 @@ pub struct CharacterCreationForm {
     /// Optional error message text.
     error_text: Option<String>,
     /// Controller focus index, if any.
-    /// 0..2 = class options, 3..4 = sex options, 5=random_name, 6=create, 7=back.
+    /// 0=name, 1=description, 2..4=class columns, 5..6=body type options,
+    /// 7=random_name, 8=create, 9=back.
     controller_focused: Option<usize>,
 }
 
@@ -187,26 +218,22 @@ impl CharacterCreationForm {
         );
         cursor_y = desc_y + INPUT_H as i32 + FIELD_GAP;
 
-        // --- Race (class) radio group ---
-        let class_label_y = cursor_y;
-        cursor_y = class_label_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        let class_group = RadioGroup::new(
-            Bounds::new(panel_x + PAD_X, cursor_y, CLASS_GROUP_W, 60),
-            &[
-                (Class::Harakim, "Harakim"),
-                (Class::Templar, "Templar"),
-                (Class::Mercenary, "Mercenary"),
-            ],
-            Class::Mercenary,
-        );
-        cursor_y += 60 + FIELD_GAP;
+        // --- Class columns ---
+        // Positions are placeholders; render() writes exact positions each frame.
+        cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
+        let class_col_bounds = [
+            Bounds::new(0, 0, CLASS_COL_W, CLASS_COL_H),
+            Bounds::new(0, 0, CLASS_COL_W, CLASS_COL_H),
+            Bounds::new(0, 0, CLASS_COL_W, CLASS_COL_H),
+        ];
+        cursor_y += CLASS_COL_H as i32 + FIELD_GAP;
 
         // --- Sex radio group ---
         let sex_label_y = cursor_y;
         cursor_y = sex_label_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let sex_group = RadioGroup::horizontal(
             Bounds::new(panel_x + PAD_X, cursor_y, INPUT_W, 20),
-            &[(Sex::Male, "Male"), (Sex::Female, "Female")],
+            &[(Sex::Male, "Type 1"), (Sex::Female, "Type 2")],
             Sex::Male,
         );
         cursor_y += 20 + FIELD_GAP + 4;
@@ -230,7 +257,8 @@ impl CharacterCreationForm {
             bounds,
             name_input,
             description_input,
-            class_group,
+            selected_class: Class::Mercenary,
+            class_col_bounds,
             sex_group,
             create_button,
             random_name_button,
@@ -247,7 +275,7 @@ impl CharacterCreationForm {
 
     /// Returns the currently selected class.
     pub fn selected_class(&self) -> Class {
-        self.class_group.selected()
+        self.selected_class
     }
 
     /// Returns the currently selected sex.
@@ -309,7 +337,7 @@ impl CharacterCreationForm {
         self.actions.push(CharacterCreationFormAction::Create {
             name: self.name_input.value().to_owned(),
             description: self.description_input.value().to_owned(),
-            class: self.class_group.selected(),
+            class: self.selected_class,
             sex: self.sex_group.selected(),
         });
     }
@@ -356,13 +384,9 @@ impl CharacterCreationForm {
         self.name_input.set_hovered(focused == Some(0));
         self.description_input.set_hovered(focused == Some(1));
 
-        // Class radio group options (slots 2..4).
-        match focused {
-            Some(i) if (2..5).contains(&i) => self.class_group.set_controller_focused(Some(i - 2)),
-            _ => self.class_group.set_controller_focused(None),
-        }
+        // Class columns (slots 2..4) — highlight applied in render() via controller_focused.
 
-        // Sex radio group options (slots 5..6).
+        // Body type options (slots 5..6).
         match focused {
             Some(i) if (5..7).contains(&i) => self.sex_group.set_controller_focused(Some(i - 5)),
             _ => self.sex_group.set_controller_focused(None),
@@ -446,7 +470,11 @@ impl Widget for CharacterCreationForm {
                         self.actions
                             .push(CharacterCreationFormAction::OpenKeyboard(i));
                     }
-                    Some(i) if (2..5).contains(&i) => self.class_group.select_by_index(i - 2),
+                    Some(i) if (2..5).contains(&i) => {
+                        const CLASS_ORDER: [Class; 3] =
+                            [Class::Harakim, Class::Templar, Class::Mercenary];
+                        self.selected_class = CLASS_ORDER[i - 2];
+                    }
                     Some(i) if (5..7).contains(&i) => self.sex_group.select_by_index(i - 5),
                     Some(7) => self.actions.push(CharacterCreationFormAction::RandomName),
                     Some(8) => self.push_create_action(),
@@ -500,10 +528,24 @@ impl Widget for CharacterCreationForm {
             }
         }
 
-        // Forward to radio groups.
-        if self.class_group.handle_event(event) == EventResponse::Consumed {
-            return EventResponse::Consumed;
+        // Class column click handling.
+        if let UiEvent::MouseClick {
+            x,
+            y,
+            button: MouseButton::Left,
+            ..
+        } = event
+        {
+            const CLASS_ORDER: [Class; 3] = [Class::Harakim, Class::Templar, Class::Mercenary];
+            for (i, col_bounds) in self.class_col_bounds.iter().enumerate() {
+                if col_bounds.contains_point(*x, *y) {
+                    self.selected_class = CLASS_ORDER[i];
+                    return EventResponse::Consumed;
+                }
+            }
         }
+
+        // Forward to body type group.
         if self.sex_group.handle_event(event) == EventResponse::Consumed {
             return EventResponse::Consumed;
         }
@@ -613,44 +655,77 @@ impl Widget for CharacterCreationForm {
         self.description_input.render(ctx)?;
         cursor_y += INPUT_H as i32 + FIELD_GAP;
 
-        // Race (class) radio group.
+        // Class selection — three columns (Harakim | Templar | Mercenary).
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
-            "Race",
+            "Class",
             self.bounds.x + PAD_X,
             cursor_y,
             font_cache::TextStyle::PLAIN,
         )?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        let class_group_y = cursor_y;
-        self.class_group
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.class_group.render(ctx)?;
 
-        // Portrait sprite preview to the right of the race radio group.
-        let sprite_id = mag_core::traits::get_sprite_id_for_class_and_sex(
-            self.class_group.selected(),
-            self.sex_group.selected(),
-        );
-        let sprite_x = self.bounds.x + PAD_X + CLASS_GROUP_W as i32 + SPRITE_PREVIEW_GAP as i32;
-        let sprite_rect = sdl2::rect::Rect::new(
-            sprite_x,
-            class_group_y,
-            SPRITE_PREVIEW_SIZE,
-            SPRITE_PREVIEW_SIZE,
-        );
-        let texture = ctx.gfx.get_texture(sprite_id);
-        let _ = ctx.canvas.copy(texture, None, sprite_rect);
-        cursor_y += 60 + FIELD_GAP;
+        const CLASS_ORDER: [(Class, &str); 3] = [
+            (Class::Harakim, "Harakim"),
+            (Class::Templar, "Templar"),
+            (Class::Mercenary, "Mercenary"),
+        ];
+        let class_col_y = cursor_y;
+        for (i, (class, name)) in CLASS_ORDER.iter().enumerate() {
+            let col_x = self.bounds.x + PAD_X + i as i32 * CLASS_COL_W as i32;
+            // Keep bounds in sync for hit-testing.
+            self.class_col_bounds[i] = Bounds::new(col_x, class_col_y, CLASS_COL_W, CLASS_COL_H);
 
-        // Sex radio group.
+            let col_rect = sdl2::rect::Rect::new(col_x, class_col_y, CLASS_COL_W, CLASS_COL_H);
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            ctx.canvas.set_draw_color(Color::RGBA(20, 20, 40, 200));
+            ctx.canvas.fill_rect(col_rect)?;
+
+            let border_color = if *class == self.selected_class {
+                Color::RGBA(180, 180, 255, 255)
+            } else if self.controller_focused == Some(i + 2) {
+                Color::RGBA(120, 120, 200, 200)
+            } else {
+                Color::RGBA(80, 80, 120, 180)
+            };
+            ctx.canvas.set_draw_color(border_color);
+            ctx.canvas.draw_rect(col_rect)?;
+
+            let sprite_id = mag_core::traits::get_sprite_id_for_class_and_sex(
+                *class,
+                self.sex_group.selected(),
+            );
+            let sprite_x = col_x + (CLASS_COL_W as i32 - CLASS_COL_SPRITE_SIZE as i32) / 2;
+            let sprite_rect = sdl2::rect::Rect::new(
+                sprite_x,
+                class_col_y + 4,
+                CLASS_COL_SPRITE_SIZE,
+                CLASS_COL_SPRITE_SIZE,
+            );
+            let texture = ctx.gfx.get_texture(sprite_id);
+            let _ = ctx.canvas.copy(texture, None, sprite_rect);
+
+            let name_y = class_col_y + 4 + CLASS_COL_SPRITE_SIZE as i32 + 4;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                FONT,
+                name,
+                col_x + CLASS_COL_W as i32 / 2,
+                name_y,
+                font_cache::TextStyle::centered(),
+            )?;
+        }
+        cursor_y += CLASS_COL_H as i32 + FIELD_GAP;
+
+        // Body type selection.
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
             FONT,
-            "Sex",
+            "Body Type",
             self.bounds.x + PAD_X,
             cursor_y,
             font_cache::TextStyle::PLAIN,
@@ -669,6 +744,31 @@ impl Widget for CharacterCreationForm {
         self.create_button.render(ctx)?;
         self.back_button.render(ctx)?;
         cursor_y += BTN_H as i32 + 8;
+
+        // Class description flavor text box.
+        let flavor_desc = match self.selected_class {
+            Class::Harakim => CLASS_DESC_HARAKIM,
+            Class::Templar => CLASS_DESC_TEMPLAR,
+            _ => CLASS_DESC_MERCENARY,
+        };
+        let box_x = self.bounds.x + PAD_X;
+        let box_rect = sdl2::rect::Rect::new(box_x, cursor_y, INPUT_W, FLAVOR_BOX_H);
+        ctx.canvas.set_blend_mode(BlendMode::Blend);
+        ctx.canvas.set_draw_color(Color::RGBA(10, 10, 25, 200));
+        ctx.canvas.fill_rect(box_rect)?;
+        ctx.canvas.set_draw_color(Color::RGBA(80, 80, 120, 180));
+        ctx.canvas.draw_rect(box_rect)?;
+        font_cache::draw_wrapped_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            flavor_desc,
+            box_x + FLAVOR_BOX_PAD,
+            cursor_y + FLAVOR_BOX_PAD,
+            INPUT_W - (FLAVOR_BOX_PAD as u32) * 2,
+            font_cache::TextStyle::tinted(Color::RGBA(200, 200, 230, 255)),
+        )?;
+        cursor_y += FLAVOR_BOX_H as i32 + 4;
 
         // Status / error labels.
         if self.show_busy {
