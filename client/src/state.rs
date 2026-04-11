@@ -1,6 +1,7 @@
 use crate::{
     gfx_cache::GraphicsCache,
     network::NetworkRuntime,
+    platform::PlatformProfile,
     player_state::PlayerState,
     preferences::{DisplayMode, Settings},
     sfx_cache::SoundCache,
@@ -83,6 +84,8 @@ pub struct AppState<'tc> {
     pub panning_background: PanningBackground,
     /// Username carried between the request-reset and enter-reset-code scenes.
     pub reset_username: Option<String>,
+    /// The platform detected at startup, used for platform-specific behaviour.
+    pub platform: PlatformProfile,
 }
 
 impl<'tc> AppState<'tc> {
@@ -95,6 +98,8 @@ impl<'tc> AppState<'tc> {
     /// * `gfx_cache` - Pre-loaded sprite / texture cache.
     /// * `sfx_cache` - Pre-loaded sound effect and music cache.
     /// * `api` - Initialized API token state.
+    /// * `panning_background` - Pre-built panning background for pre-game scenes.
+    /// * `platform` - The platform detected at startup.
     ///
     /// # Returns
     /// * A new `AppState` ready for use in the scene manager.
@@ -103,6 +108,7 @@ impl<'tc> AppState<'tc> {
         sfx_cache: SoundCache,
         api: ApiTokenState,
         panning_background: PanningBackground,
+        platform: PlatformProfile,
     ) -> Self {
         Self {
             gfx_cache,
@@ -115,6 +121,7 @@ impl<'tc> AppState<'tc> {
             controller_active: false,
             panning_background,
             reset_username: None,
+            platform,
         }
     }
 }

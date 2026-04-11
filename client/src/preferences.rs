@@ -279,6 +279,18 @@ pub fn profile_file_path() -> PathBuf {
     data_directory().join(PROFILE_FILE_NAME)
 }
 
+/// Returns `true` if a saved profile file already exists on disk.
+///
+/// Used at startup to determine whether this is the first run so that
+/// platform-specific defaults can be applied exactly once.
+///
+/// # Returns
+///
+/// * `true` if `mag_profile.json` is present, `false` otherwise.
+pub fn profile_exists() -> bool {
+    profile_file_path().exists()
+}
+
 /// Returns the path to the log file (`mag_client.log`).
 pub fn log_file_path() -> PathBuf {
     data_directory().join(LOG_FILE_NAME)
