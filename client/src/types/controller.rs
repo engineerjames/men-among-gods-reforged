@@ -15,6 +15,8 @@ pub const CONTROLLER_BIND_SLOTS: usize = 9;
 ///
 /// Variants without a modifier prefix represent a single button press.
 /// `Lb*` variants represent a button press while the left bumper is held.
+/// `Lt*` variants represent a button press while the left trigger is held past
+/// [`ControllerButton::TRIGGER_THRESHOLD`], and likewise for `Rt*`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ControllerButton {
     /// A / Cross button.
@@ -57,6 +59,30 @@ pub enum ControllerButton {
     RbX,
     /// RB + Y combo.
     RbY,
+    /// LT + A combo.
+    LtA,
+    /// LT + B combo.
+    LtB,
+    /// LT + X combo.
+    LtX,
+    /// LT + Y combo.
+    LtY,
+    /// LT + Back combo.
+    LtBack,
+    /// LT + Start combo.
+    LtStart,
+    /// RT + A combo.
+    RtA,
+    /// RT + B combo.
+    RtB,
+    /// RT + X combo.
+    RtX,
+    /// RT + Y combo.
+    RtY,
+    /// RT + Back combo.
+    RtBack,
+    /// RT + Start combo.
+    RtStart,
 }
 
 impl ControllerButton {
@@ -98,7 +124,22 @@ impl ControllerButton {
         ControllerButton::RbB,
         ControllerButton::RbX,
         ControllerButton::RbY,
+        ControllerButton::LtA,
+        ControllerButton::LtB,
+        ControllerButton::LtX,
+        ControllerButton::LtY,
+        ControllerButton::LtBack,
+        ControllerButton::LtStart,
+        ControllerButton::RtA,
+        ControllerButton::RtB,
+        ControllerButton::RtX,
+        ControllerButton::RtY,
+        ControllerButton::RtBack,
+        ControllerButton::RtStart,
     ];
+
+    /// Axis threshold above which a trigger is considered fully pressed.
+    pub const TRIGGER_THRESHOLD: i16 = 16000;
 
     /// Short display label suitable for UI buttons.
     pub fn label(self) -> &'static str {
@@ -123,17 +164,57 @@ impl ControllerButton {
             Self::RbB => "RB+B",
             Self::RbX => "RB+X",
             Self::RbY => "RB+Y",
+            Self::LtA => "LT+A",
+            Self::LtB => "LT+B",
+            Self::LtX => "LT+X",
+            Self::LtY => "LT+Y",
+            Self::LtBack => "LT+Back",
+            Self::LtStart => "LT+Start",
+            Self::RtA => "RT+A",
+            Self::RtB => "RT+B",
+            Self::RtX => "RT+X",
+            Self::RtY => "RT+Y",
+            Self::RtBack => "RT+Back",
+            Self::RtStart => "RT+Start",
         }
     }
 
+    /// Returns `true` if this button requires a trigger (LT or RT) to be held.
+    ///
+    /// Used by [`ControllerBindingsSubPanel`] to enforce that skill-bar
+    /// bindings must always involve a trigger so they cannot conflict with
+    /// default gameplay controls.
+    pub fn is_trigger_combo(self) -> bool {
+        matches!(
+            self,
+            Self::LtA
+                | Self::LtB
+                | Self::LtX
+                | Self::LtY
+                | Self::LtBack
+                | Self::LtStart
+                | Self::RtA
+                | Self::RtB
+                | Self::RtX
+                | Self::RtY
+                | Self::RtBack
+                | Self::RtStart
+        )
+    }
+
     /// Attempt to match an SDL2 `GameController` button to a
-    /// [`ControllerButton`], optionally considering a held modifier (LB or RB).
+    /// [`ControllerButton`], considering any held modifier (LT, RT, LB, RB).
+    ///
+    /// Trigger modifiers take priority over bumper modifiers: if both LT and
+    /// LB are held the LT combo is produced.
     ///
     /// # Arguments
     ///
     /// * `sdl_button` - The SDL2 controller button that was pressed.
     /// * `lb_held` - Whether the left bumper is currently held.
     /// * `rb_held` - Whether the right bumper is currently held.
+    /// * `lt_held` - Whether the left trigger is past the press threshold.
+    /// * `rt_held` - Whether the right trigger is past the press threshold.
     ///
     /// # Returns
     ///
@@ -143,17 +224,36 @@ impl ControllerButton {
         sdl_button: sdl2::controller::Button,
         lb_held: bool,
         rb_held: bool,
+        lt_held: bool,
+        rt_held: bool,
     ) -> Option<Self> {
         use sdl2::controller::Button as Btn;
         match sdl_button {
+            // LT combos (highest priority).
+            Btn::A if lt_held => Some(Self::LtA),
+            Btn::B if lt_held => Some(Self::LtB),
+            Btn::X if lt_held => Some(Self::LtX),
+            Btn::Y if lt_held => Some(Self::LtY),
+            Btn::Back if lt_held => Some(Self::LtBack),
+            Btn::Start if lt_held => Some(Self::LtStart),
+            // RT combos.
+            Btn::A if rt_held => Some(Self::RtA),
+            Btn::B if rt_held => Some(Self::RtB),
+            Btn::X if rt_held => Some(Self::RtX),
+            Btn::Y if rt_held => Some(Self::RtY),
+            Btn::Back if rt_held => Some(Self::RtBack),
+            Btn::Start if rt_held => Some(Self::RtStart),
+            // LB combos.
             Btn::A if lb_held => Some(Self::LbA),
             Btn::B if lb_held => Some(Self::LbB),
             Btn::X if lb_held => Some(Self::LbX),
             Btn::Y if lb_held => Some(Self::LbY),
+            // RB combos.
             Btn::A if rb_held => Some(Self::RbA),
             Btn::B if rb_held => Some(Self::RbB),
             Btn::X if rb_held => Some(Self::RbX),
             Btn::Y if rb_held => Some(Self::RbY),
+            // Plain buttons.
             Btn::A => Some(Self::A),
             Btn::B => Some(Self::B),
             Btn::X => Some(Self::X),
@@ -180,8 +280,7 @@ impl ControllerButton {
     /// `Some(Lt)` or `Some(Rt)` if the trigger is past the threshold, `None`
     /// otherwise.
     pub fn from_trigger_axis(axis: sdl2::controller::Axis, value: i16) -> Option<Self> {
-        const TRIGGER_THRESHOLD: i16 = 16000;
-        if value < TRIGGER_THRESHOLD {
+        if value < Self::TRIGGER_THRESHOLD {
             return None;
         }
         match axis {
@@ -340,11 +439,11 @@ mod tests {
     fn from_sdl2_single_button() {
         use sdl2::controller::Button as Btn;
         assert_eq!(
-            ControllerButton::from_sdl2(Btn::A, false, false),
+            ControllerButton::from_sdl2(Btn::A, false, false, false, false),
             Some(ControllerButton::A)
         );
         assert_eq!(
-            ControllerButton::from_sdl2(Btn::Y, false, false),
+            ControllerButton::from_sdl2(Btn::Y, false, false, false, false),
             Some(ControllerButton::Y)
         );
     }
@@ -353,11 +452,11 @@ mod tests {
     fn from_sdl2_combo_with_lb() {
         use sdl2::controller::Button as Btn;
         assert_eq!(
-            ControllerButton::from_sdl2(Btn::A, true, false),
+            ControllerButton::from_sdl2(Btn::A, true, false, false, false),
             Some(ControllerButton::LbA)
         );
         assert_eq!(
-            ControllerButton::from_sdl2(Btn::X, true, false),
+            ControllerButton::from_sdl2(Btn::X, true, false, false, false),
             Some(ControllerButton::LbX)
         );
     }
@@ -366,14 +465,74 @@ mod tests {
     fn from_sdl2_combo_with_rb() {
         use sdl2::controller::Button as Btn;
         assert_eq!(
-            ControllerButton::from_sdl2(Btn::A, false, true),
+            ControllerButton::from_sdl2(Btn::A, false, true, false, false),
             Some(ControllerButton::RbA)
+        );
+    }
+
+    #[test]
+    fn from_sdl2_combo_with_lt() {
+        use sdl2::controller::Button as Btn;
+        assert_eq!(
+            ControllerButton::from_sdl2(Btn::A, false, false, true, false),
+            Some(ControllerButton::LtA)
+        );
+        assert_eq!(
+            ControllerButton::from_sdl2(Btn::Back, false, false, true, false),
+            Some(ControllerButton::LtBack)
+        );
+        assert_eq!(
+            ControllerButton::from_sdl2(Btn::Start, false, false, true, false),
+            Some(ControllerButton::LtStart)
+        );
+    }
+
+    #[test]
+    fn from_sdl2_combo_with_rt() {
+        use sdl2::controller::Button as Btn;
+        assert_eq!(
+            ControllerButton::from_sdl2(Btn::Y, false, false, false, true),
+            Some(ControllerButton::RtY)
+        );
+        assert_eq!(
+            ControllerButton::from_sdl2(Btn::Back, false, false, false, true),
+            Some(ControllerButton::RtBack)
+        );
+    }
+
+    #[test]
+    fn lt_takes_priority_over_lb() {
+        use sdl2::controller::Button as Btn;
+        // LT and LB held simultaneously → LT combo wins.
+        assert_eq!(
+            ControllerButton::from_sdl2(Btn::A, true, false, true, false),
+            Some(ControllerButton::LtA)
         );
     }
 
     #[test]
     fn from_sdl2_dpad_returns_none() {
         use sdl2::controller::Button as Btn;
-        assert_eq!(ControllerButton::from_sdl2(Btn::DPadUp, false, false), None);
+        assert_eq!(
+            ControllerButton::from_sdl2(Btn::DPadUp, false, false, false, false),
+            None
+        );
+    }
+
+    #[test]
+    fn is_trigger_combo_variants() {
+        assert!(!ControllerButton::Lt.is_trigger_combo());
+        assert!(!ControllerButton::Rt.is_trigger_combo());
+        assert!(ControllerButton::LtA.is_trigger_combo());
+        assert!(ControllerButton::LtBack.is_trigger_combo());
+        assert!(ControllerButton::LtStart.is_trigger_combo());
+        assert!(ControllerButton::RtY.is_trigger_combo());
+        assert!(ControllerButton::RtBack.is_trigger_combo());
+        assert!(ControllerButton::RtStart.is_trigger_combo());
+        // Non-trigger combos should return false.
+        assert!(!ControllerButton::A.is_trigger_combo());
+        assert!(!ControllerButton::LbA.is_trigger_combo());
+        assert!(!ControllerButton::RbX.is_trigger_combo());
+        assert!(!ControllerButton::Lb.is_trigger_combo());
     }
 }

@@ -241,6 +241,10 @@ pub struct GameScene {
     pub(super) lb_held: bool,
     /// Whether the controller's right bumper (RB) is held.
     pub(super) rb_held: bool,
+    /// Whether the controller's left trigger (LT) is past the press threshold.
+    pub(super) lt_held: bool,
+    /// Whether the controller's right trigger (RT) is past the press threshold.
+    pub(super) rt_held: bool,
     pub(super) skill_scroll: usize,
     pub(super) inv_scroll: usize,
     pub(super) mouse_x: i32,
@@ -388,6 +392,8 @@ impl GameScene {
             alt_held: false,
             lb_held: false,
             rb_held: false,
+            lt_held: false,
+            rt_held: false,
             skill_scroll: 0,
             inv_scroll: 0,
             mouse_x: 0,

@@ -99,7 +99,14 @@ const CT_PANEL_H: u32 = controls_panel_height(GameAction::ALL.len());
 
 const CB_ROW_H: i32 = 20;
 const CB_BTN_W: u32 = 120;
-const CB_Y_FIRST_ROW: i32 = TITLE_BAR_H + 8;
+/// Y of the first hint line ("Bindings must be set using").
+const CB_Y_HINT: i32 = TITLE_BAR_H + 8;
+/// Y of the second hint line ("left or right triggers and a button").
+const CB_Y_HINT2: i32 = CB_Y_HINT + ROW_H;
+/// Y of the validation-error label (empty when no error).
+const CB_Y_ERROR: i32 = CB_Y_HINT2 + ROW_H + 2;
+/// Y of the first binding-row button, shifted down to make room for hint + error.
+const CB_Y_FIRST_ROW: i32 = CB_Y_ERROR + ROW_H + 6;
 
 const fn controller_panel_height(slot_count: usize) -> u32 {
     (CB_Y_FIRST_ROW + CB_ROW_H * slot_count as i32 + 10 + BTN_H as i32 + 8) as u32
@@ -1174,6 +1181,12 @@ struct ControllerBindingsSubPanel {
     pending_actions: Vec<WidgetAction>,
     /// Controller focus index. 0..8 = slot buttons, 9 = Close.
     controller_focused: Option<usize>,
+    /// First line of the static hint label ("Bindings must be set using").
+    lbl_hint: Label,
+    /// Second line of the static hint label ("left or right triggers and a button").
+    lbl_hint2: Label,
+    /// Validation-error label shown when an invalid binding attempt is made.
+    lbl_error: Label,
 }
 
 impl ControllerBindingsSubPanel {
@@ -1194,6 +1207,7 @@ impl ControllerBindingsSubPanel {
         let close_x = origin_x + H_INSET;
         let close_w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
         let close_y = origin_y + CB_PANEL_H as i32 - BTN_H as i32 - 8;
+        let label_x = origin_x + H_INSET;
         let binding_buttons = (0..CONTROLLER_BIND_SLOTS)
             .map(|index| {
                 let y = origin_y + CB_Y_FIRST_ROW + CB_ROW_H * index as i32 + 2;
@@ -1214,6 +1228,19 @@ impl ControllerBindingsSubPanel {
                 .with_border(btn_border()),
             pending_actions: Vec::new(),
             controller_focused: None,
+            lbl_hint: Label::new(
+                "Bindings must be set using",
+                0,
+                label_x,
+                origin_y + CB_Y_HINT,
+            ),
+            lbl_hint2: Label::new(
+                "left or right triggers and a button",
+                0,
+                label_x,
+                origin_y + CB_Y_HINT2,
+            ),
+            lbl_error: Label::new("", 0, label_x, origin_y + CB_Y_ERROR),
         }
     }
 
@@ -1259,6 +1286,7 @@ impl ControllerBindingsSubPanel {
     /// Cancels any in-progress listening state and restores labels.
     fn cancel_listening(&mut self) {
         self.listening_for = None;
+        self.lbl_error.set_text("");
         self.refresh_button_labels();
     }
 
@@ -1276,11 +1304,26 @@ impl ControllerBindingsSubPanel {
 
     /// Records a captured controller button press for the active slot.
     ///
+    /// Rejects the button if it is not a trigger combo (i.e. does not involve
+    /// LT or RT). On rejection, an error message is shown in the panel and the
+    /// listening state is preserved so the user can try again.
+    ///
     /// # Arguments
     ///
     /// * `button` - The controller button that was pressed.
     pub fn capture_controller_button(&mut self, button: ControllerButton) {
         if let Some(slot) = self.listening_for {
+            if !button.is_trigger_combo() {
+                // Reject: must include a trigger modifier.
+                self.lbl_error
+                    .set_text("Must use LT or RT! Try again or press Escape.");
+                // Restore the button label so the slot still shows "Press btn..."
+                if let Some(btn) = self.binding_buttons.get_mut(slot) {
+                    btn.set_label("Press btn...");
+                }
+                return;
+            }
+            self.lbl_error.set_text("");
             self.bindings.set(slot, Some(button));
             self.pending_actions
                 .push(WidgetAction::UpdateControllerBinding {
@@ -1340,6 +1383,9 @@ impl ControllerBindingsSubPanel {
             shift(button, dx, dy);
         }
         shift(&mut self.btn_close, dx, dy);
+        shift(&mut self.lbl_hint, dx, dy);
+        shift(&mut self.lbl_hint2, dx, dy);
+        shift(&mut self.lbl_error, dx, dy);
     }
 
     /// Returns whether the title bar close button was pressed.
@@ -1470,6 +1516,9 @@ impl ControllerBindingsSubPanel {
 
         draw_sub_panel_frame(ctx, &self.bounds, SUB_PANEL_BG, BORDER_COLOR)?;
         self.title_bar.render(ctx)?;
+        self.lbl_hint.render(ctx)?;
+        self.lbl_hint2.render(ctx)?;
+        self.lbl_error.render(ctx)?;
 
         let label_x = self.bounds.x + H_INSET;
         for slot in 0..CONTROLLER_BIND_SLOTS {

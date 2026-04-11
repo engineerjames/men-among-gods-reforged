@@ -151,9 +151,13 @@ impl GameScene {
                 // If the controller bindings panel is waiting for a button
                 // press, capture it and skip the normal skill-dispatch path.
                 if self.settings_panel.is_controller_listening() {
-                    if let Some(cb) =
-                        ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held)
-                    {
+                    if let Some(cb) = ControllerButton::from_sdl2(
+                        *button,
+                        self.lb_held,
+                        self.rb_held,
+                        self.lt_held,
+                        self.rt_held,
+                    ) {
                         log::info!("Controller binding captured: {:?} -> {:?}", button, cb);
                         self.settings_panel.capture_controller_button(cb);
                         self.process_settings_panel_actions(app_state);
@@ -341,6 +345,44 @@ impl GameScene {
                     return None;
                 }
 
+                // Trigger+button combos → skill binding dispatch takes priority
+                // over all normal button behaviour (walk, world-click, panel
+                // interaction). Without this guard, LT+A would fall through to
+                // the A-button walk/click path before reaching the skill
+                // dispatch block at the bottom.
+                if (self.lt_held || self.rt_held) && self.controller_mode {
+                    if let Some(cb) = ControllerButton::from_sdl2(
+                        *button,
+                        self.lb_held,
+                        self.rb_held,
+                        self.lt_held,
+                        self.rt_held,
+                    ) {
+                        if let Some(slot) = app_state
+                            .settings
+                            .character
+                            .controller_bindings
+                            .slot_for_button(cb)
+                        {
+                            if let (Some(net), Some(ps)) =
+                                (app_state.network.as_ref(), app_state.player_state.as_ref())
+                            {
+                                if let Some(skill_nr) =
+                                    app_state.settings.character.skill_keybinds[slot]
+                                {
+                                    self.play_click_sound(app_state);
+                                    net.send(ClientCommand::new_skill(
+                                        skill_nr as u32,
+                                        Self::default_skill_target(ps),
+                                        ps.character_info().attrib[0][0] as u32,
+                                    ));
+                                }
+                            }
+                            return None;
+                        }
+                    }
+                }
+
                 // A button → controller-specific panel interaction
                 // When inventory or skills is open with a focused slot, handle
                 // the action directly rather than synthesizing a mouse click.
@@ -456,7 +498,13 @@ impl GameScene {
                 }
 
                 // Mapped controller button → skill dispatch
-                if let Some(cb) = ControllerButton::from_sdl2(*button, self.lb_held, self.rb_held) {
+                if let Some(cb) = ControllerButton::from_sdl2(
+                    *button,
+                    self.lb_held,
+                    self.rb_held,
+                    self.lt_held,
+                    self.rt_held,
+                ) {
                     log::info!("Controller button mapped to {:?}", cb);
                     if let Some(slot) = app_state
                         .settings
@@ -548,7 +596,12 @@ impl GameScene {
                     Axis::LeftY => self.left_stick_y = *value,
                     Axis::RightX => self.right_stick_x = *value,
                     Axis::RightY => self.right_stick_y = *value,
-                    _ => {}
+                    Axis::TriggerLeft => {
+                        self.lt_held = *value >= ControllerButton::TRIGGER_THRESHOLD;
+                    }
+                    Axis::TriggerRight => {
+                        self.rt_held = *value >= ControllerButton::TRIGGER_THRESHOLD;
+                    }
                 }
 
                 if self.skill_picker.is_visible() {
