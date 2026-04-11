@@ -7,6 +7,7 @@ use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 use sdl2::video::FullscreenType;
 
 use client::gfx_cache::GraphicsCache;
+use client::platform::PlatformProfile;
 use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
@@ -33,12 +34,21 @@ fn main() -> Result<(), String> {
             process::exit(1);
         });
 
+    let platform = PlatformProfile::detect();
+    let is_first_run = !preferences::profile_exists();
+
     log::info!("Initializing SDL2 contexts...");
     let mut fps_manager = FPSManager::new();
     fps_manager.set_framerate(60)?;
     let sdl_context = sdl2::init()?;
     let _image_context = sdl2::image::init(InitFlag::PNG)?;
-    let _audio_subsystem = sdl_context.audio()?;
+    let _audio_subsystem = sdl_context
+        .audio()
+        .map_err(|e| {
+            log::warn!("Failed to initialise audio subsystem (audio will be disabled): {e}");
+            e
+        })
+        .ok();
 
     // --- Game controller subsystem ----------------------------------------
     let game_controller_subsystem = sdl_context.game_controller().map_err(|e| {
@@ -69,10 +79,15 @@ fn main() -> Result<(), String> {
     let format = AUDIO_S16LSB;
     let channels = DEFAULT_CHANNELS; // Stereo
     let chunk_size = 1_024;
-    sdl2::mixer::open_audio(frequency, format, channels, chunk_size)?;
-
-    // Initialize the mixer with desired frequency, format, channels, and chunk size
-    sdl2::mixer::init(sdl2::mixer::InitFlag::MP3)?;
+    let audio_available = _audio_subsystem.is_some()
+        && sdl2::mixer::open_audio(frequency, format, channels, chunk_size)
+            .map_err(|e| log::warn!("Failed to open audio device (audio will be disabled): {e}"))
+            .is_ok()
+        && sdl2::mixer::init(sdl2::mixer::InitFlag::MP3)
+            .map_err(|e| {
+                log::warn!("Failed to initialise SDL2_mixer (audio will be disabled): {e}")
+            })
+            .is_ok();
 
     log::info!("Creating window and event pump...");
     let video = sdl_context.video()?;
@@ -94,13 +109,17 @@ fn main() -> Result<(), String> {
 
     let mut event_pump = sdl_context.event_pump()?;
 
-    log::info!("Initializing graphics and sound caches...");
+    log::info!("Initializing graphics and sound caches (audio_available={audio_available})...");
     let texture_creator = canvas.texture_creator();
     let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
-    let sfx_cache = SoundCache::new(
-        filepaths::get_sfx_directory(),
-        filepaths::get_music_directory(),
-    );
+    let sfx_cache = if audio_available {
+        SoundCache::new(
+            filepaths::get_sfx_directory(),
+            filepaths::get_music_directory(),
+        )
+    } else {
+        SoundCache::new_disabled()
+    };
     let api_state = ApiTokenState::new(hosts::get_api_base_url());
 
     let asset_gfx = filepaths::get_asset_directory().join("gfx");
@@ -124,7 +143,13 @@ fn main() -> Result<(), String> {
         Some(sdl2::pixels::Color::RGBA(10, 10, 30, 100)),
     );
 
-    let mut app_state = AppState::new(gfx_cache, sfx_cache, api_state, panning_background);
+    let mut app_state = AppState::new(
+        gfx_cache,
+        sfx_cache,
+        api_state,
+        panning_background,
+        platform,
+    );
 
     // Track the previous controller_active state so we can detect transitions
     // and toggle the system cursor accordingly.
@@ -132,6 +157,15 @@ fn main() -> Result<(), String> {
 
     // --- Apply persisted display settings ---------------------------------
     app_state.settings = preferences::load_global_settings();
+
+    // On the very first run apply platform-specific defaults, then persist
+    // them immediately so subsequent runs treat them as the user's baseline.
+    if is_first_run {
+        platform.apply_first_run_defaults(&mut app_state.settings);
+        if let Err(e) = preferences::save_global_settings(&app_state.settings) {
+            log::warn!("Failed to persist first-run platform defaults: {e}");
+        }
+    }
 
     // Display mode
     let requested_mode = app_state.settings.display_mode;
