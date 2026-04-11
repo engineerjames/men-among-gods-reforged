@@ -83,7 +83,7 @@ carving through their enemies with massive blades. Templar know only the most ru
 magic, powered not through the earth but faith or frenzy.";
 
 /// Flavor text shown when Mercenary is selected.
-const CLASS_DESC_MERCENARY: &str = "The Mercenary is not easily defined- they come from many walks of life, some more \
+const CLASS_DESC_MERCENARY: &str = "The Mercenary is not easily defined - they come from many walks of life, some more \
 skilled with spells and poisons, others fighters who've honed their skills not with holy \
 vengeance or bloodlust, but deceit and understanding of a quick blade into soft flesh. As \
 they grow in experience, they can choose to become more skilled with blades, assassination \
