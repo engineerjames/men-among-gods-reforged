@@ -345,6 +345,44 @@ impl GameScene {
                     return None;
                 }
 
+                // Trigger+button combos → skill binding dispatch takes priority
+                // over all normal button behaviour (walk, world-click, panel
+                // interaction). Without this guard, LT+A would fall through to
+                // the A-button walk/click path before reaching the skill
+                // dispatch block at the bottom.
+                if (self.lt_held || self.rt_held) && self.controller_mode {
+                    if let Some(cb) = ControllerButton::from_sdl2(
+                        *button,
+                        self.lb_held,
+                        self.rb_held,
+                        self.lt_held,
+                        self.rt_held,
+                    ) {
+                        if let Some(slot) = app_state
+                            .settings
+                            .character
+                            .controller_bindings
+                            .slot_for_button(cb)
+                        {
+                            if let (Some(net), Some(ps)) =
+                                (app_state.network.as_ref(), app_state.player_state.as_ref())
+                            {
+                                if let Some(skill_nr) =
+                                    app_state.settings.character.skill_keybinds[slot]
+                                {
+                                    self.play_click_sound(app_state);
+                                    net.send(ClientCommand::new_skill(
+                                        skill_nr as u32,
+                                        Self::default_skill_target(ps),
+                                        ps.character_info().attrib[0][0] as u32,
+                                    ));
+                                }
+                            }
+                            return None;
+                        }
+                    }
+                }
+
                 // A button → controller-specific panel interaction
                 // When inventory or skills is open with a focused slot, handle
                 // the action directly rather than synthesizing a mouse click.
@@ -564,17 +602,6 @@ impl GameScene {
                     Axis::TriggerRight => {
                         self.rt_held = *value >= ControllerButton::TRIGGER_THRESHOLD;
                     }
-                }
-
-                // If the bindings panel is listening for a trigger press,
-                // capture standalone Lt/Rt directly from the axis event.
-                if self.settings_panel.is_controller_listening() {
-                    if let Some(cb) = ControllerButton::from_trigger_axis(*axis, *value) {
-                        log::info!("Controller binding captured via axis: {:?}", cb);
-                        self.settings_panel.capture_controller_button(cb);
-                        self.process_settings_panel_actions(app_state);
-                    }
-                    return None;
                 }
 
                 if self.skill_picker.is_visible() {

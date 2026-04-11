@@ -187,9 +187,7 @@ impl ControllerButton {
     pub fn is_trigger_combo(self) -> bool {
         matches!(
             self,
-            Self::Lt
-                | Self::Rt
-                | Self::LtA
+            Self::LtA
                 | Self::LtB
                 | Self::LtX
                 | Self::LtY
@@ -523,8 +521,8 @@ mod tests {
 
     #[test]
     fn is_trigger_combo_variants() {
-        assert!(ControllerButton::Lt.is_trigger_combo());
-        assert!(ControllerButton::Rt.is_trigger_combo());
+        assert!(!ControllerButton::Lt.is_trigger_combo());
+        assert!(!ControllerButton::Rt.is_trigger_combo());
         assert!(ControllerButton::LtA.is_trigger_combo());
         assert!(ControllerButton::LtBack.is_trigger_combo());
         assert!(ControllerButton::LtStart.is_trigger_combo());

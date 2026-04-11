@@ -99,10 +99,12 @@ const CT_PANEL_H: u32 = controls_panel_height(GameAction::ALL.len());
 
 const CB_ROW_H: i32 = 20;
 const CB_BTN_W: u32 = 120;
-/// Y of the hint label ("Bindings must be set using left or right triggers…").
+/// Y of the first hint line ("Bindings must be set using").
 const CB_Y_HINT: i32 = TITLE_BAR_H + 8;
+/// Y of the second hint line ("left or right triggers and a button").
+const CB_Y_HINT2: i32 = CB_Y_HINT + ROW_H;
 /// Y of the validation-error label (empty when no error).
-const CB_Y_ERROR: i32 = CB_Y_HINT + ROW_H + 2;
+const CB_Y_ERROR: i32 = CB_Y_HINT2 + ROW_H + 2;
 /// Y of the first binding-row button, shifted down to make room for hint + error.
 const CB_Y_FIRST_ROW: i32 = CB_Y_ERROR + ROW_H + 6;
 
@@ -1179,8 +1181,10 @@ struct ControllerBindingsSubPanel {
     pending_actions: Vec<WidgetAction>,
     /// Controller focus index. 0..8 = slot buttons, 9 = Close.
     controller_focused: Option<usize>,
-    /// Static hint label shown at the top of the panel.
+    /// First line of the static hint label ("Bindings must be set using").
     lbl_hint: Label,
+    /// Second line of the static hint label ("left or right triggers and a button").
+    lbl_hint2: Label,
     /// Validation-error label shown when an invalid binding attempt is made.
     lbl_error: Label,
 }
@@ -1225,10 +1229,16 @@ impl ControllerBindingsSubPanel {
             pending_actions: Vec::new(),
             controller_focused: None,
             lbl_hint: Label::new(
-                "Bindings must be set using left or right triggers and a button",
+                "Bindings must be set using",
                 0,
                 label_x,
                 origin_y + CB_Y_HINT,
+            ),
+            lbl_hint2: Label::new(
+                "left or right triggers and a button",
+                0,
+                label_x,
+                origin_y + CB_Y_HINT2,
             ),
             lbl_error: Label::new("", 0, label_x, origin_y + CB_Y_ERROR),
         }
@@ -1374,6 +1384,7 @@ impl ControllerBindingsSubPanel {
         }
         shift(&mut self.btn_close, dx, dy);
         shift(&mut self.lbl_hint, dx, dy);
+        shift(&mut self.lbl_hint2, dx, dy);
         shift(&mut self.lbl_error, dx, dy);
     }
 
@@ -1506,6 +1517,7 @@ impl ControllerBindingsSubPanel {
         draw_sub_panel_frame(ctx, &self.bounds, SUB_PANEL_BG, BORDER_COLOR)?;
         self.title_bar.render(ctx)?;
         self.lbl_hint.render(ctx)?;
+        self.lbl_hint2.render(ctx)?;
         self.lbl_error.render(ctx)?;
 
         let label_x = self.bounds.x + H_INSET;
