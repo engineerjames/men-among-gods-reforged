@@ -3,25 +3,22 @@
 ## Big picture architecture
 - This is a Rust workspace with five crates: `core`, `server`, `client`, `api`, `server/utils`, plus `client/utils`.
 - `core` is the shared protocol/types layer used by both `server` and `client`.
-- `server` is the real-time game loop (target 36 TPS) and loads world data into memory. Persistence is configurable: legacy `.dat` files or KeyDB (set `MAG_STORAGE_BACKEND=keydb`).
+- `server` is the real-time game loop (target 36 TPS) and loads world data into memory. Persistence is via KeyDB; the background saver thread writes data back on a rotating ~60s schedule for crash resilience.
 - `api` is a separate Axum auth/account service backed by KeyDB/Redis.
 - `client` is an SDL2 app; account/character flows go through `api`, gameplay TCP goes to `server`.
 - Read first for boundaries and flow: `docs/server/DESIGN.md`, `api/README.md`, `server/src/server.rs`, `client/src/account_api.rs`.
 
 ## Service boundaries and data flow
 - API (`:5554`) stores account/character metadata in KeyDB via keys like `account:*`, `character:*`.
-- Server (`:5555`) loads gameplay state into memory from either `.dat` files (legacy) or KeyDB (`MAG_STORAGE_BACKEND=keydb`). When using KeyDB, a background saver thread writes data back on a rotating ~60s schedule for crash resilience.
+- Server (`:5555`) loads gameplay state into memory from KeyDB. A background saver thread writes data back on a rotating ~60s schedule for crash resilience.
 - Integration bridge is login tickets: API writes one-time `game_login_ticket:{ticket}` keys; server consumes them atomically (`server/src/keydb.rs`).
-- Character ownership/management is enforced in API routes; game world state persistence is via `server/src/keydb_store.rs` (KeyDB mode) or `server/src/repository.rs` (`.dat` mode).
+- Character ownership/management is enforced in API routes; game world state persistence is via `server/src/keydb_store.rs`.
 
 ## Required runtime assumptions
-- Server storage backend is selected via `MAG_STORAGE_BACKEND` env var: `dat` (default) uses `.dat` files, `keydb` uses KeyDB.
-- `.dat` mode: server expects `.dat` directory next to executable (`<exe_parent>/.dat/*`), see `Repository::get_dat_file_path` in `server/src/repository.rs`.
-- KeyDB mode: game data must be seeded first via `cargo run -p server --bin dat-to-keydb`. The background saver thread writes data back every ~10s per data type.
-- In local debug runs (`.dat` mode), copy assets with the workspace task `copy .dat to target` after build.
+- Server always uses KeyDB for persistence. No `MAG_STORAGE_BACKEND` env var is needed.
+- KeyDB mode: game data must be seeded first via `cargo run -p server --bin world-snapshot -- import --input server/assets/world_seed.wsnap`. The background saver thread writes data back every ~10s per data type.
 - Key env vars:
   - `MAG_KEYDB_URL` (used by both API and server)
-  - `MAG_STORAGE_BACKEND` (`dat` or `keydb`, server only)
   - `API_JWT_SECRET` (API refuses to start without it)
   - `API_BIND_ADDR`, `API_PORT`, `MAG_API_BASE_URL`, `MAG_ASSETS_DIR`, `MAG_LOG_DIR`
 
@@ -84,4 +81,4 @@ Every public function, struct, enum, trait, and constant **must** have a `///` d
 - Auth/account routes and key schema assumptions: `api/src/routes.rs`, `api/src/pipelines.rs`, `api/README.md`
 - Client state machine and scene management: `client/src/main.rs`, `client/src/network/mod.rs`
 - Release packaging/CI: `.github/workflows/rust.yml`, `.github/workflows/release.yml`, `pipelines/README.md`
-- Migration tool: `server/src/bin/dat_to_keydb.rs`
+- World snapshot tool: `server/src/bin/world_snapshot.rs`, `server/src/snapshot.rs`

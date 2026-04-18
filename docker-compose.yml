@@ -59,7 +59,7 @@ services:
     command:
       - /bin/sh
       - -lc
-      - /app/dat-to-keydb --skip-if-seeded
+      - /app/world-snapshot import --skip-if-seeded /app/world_seed.wsnap
     restart: "no"
 
   api:

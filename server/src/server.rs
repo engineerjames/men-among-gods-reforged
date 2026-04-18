@@ -11,7 +11,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::background_saver::{self, BackgroundSaver, SaveJob};
 use crate::effect::EffectManager;
-use crate::game_state::{GameState, StorageBackend};
+use crate::game_state::GameState;
 use crate::god::God;
 use crate::tls::{self, GameStream};
 use crate::types::cmap::CMap;
@@ -166,13 +166,8 @@ impl Server {
 
         crate::network_manager::initialize_packet_stats()?;
 
-        // Mark data as dirty (in use) only for legacy `.dat` mode.
-        //
-        // In KeyDB mode we persist regularly and should not hard-fail future
-        // startups when a container is terminated before clean shutdown.
-        if gs.storage_backend() == StorageBackend::DatFiles {
-            gs.globals.set_dirty(true);
-        }
+        // Mark data as dirty so a crash before clean shutdown is detectable.
+        gs.globals.set_dirty(true);
 
         // Log out all active characters (cleanup from previous run)
         for i in 0..core::constants::MAXCHARS {
@@ -243,11 +238,9 @@ impl Server {
             }
         }
 
-        // Spawn background saver if using KeyDB backend
-        if gs.storage_backend() == StorageBackend::KeyDb {
-            log::info!("Starting background KeyDB saver thread...");
-            self.background_saver = Some(background_saver::spawn());
-        }
+        // Always spawn the background KeyDB saver.
+        log::info!("Starting background KeyDB saver thread...");
+        self.background_saver = Some(background_saver::spawn());
 
         Ok(())
     }
