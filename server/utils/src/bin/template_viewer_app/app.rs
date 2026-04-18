@@ -5,22 +5,7 @@ use egui::Vec2;
 use mag_core::skills;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::{ranks, traits};
-use std::fs;
-use std::path::{Path, PathBuf};
-
-use bincode::{Decode, Encode};
-
-const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
-const NORMALIZED_VERSION: u32 = 1;
-
-#[derive(Debug, Encode, Decode)]
-struct NormalizedDataSet<T> {
-    magic: [u8; 4],
-    version: u32,
-    source_file: String,
-    source_record_size: usize,
-    records: Vec<T>,
-}
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ItemDetailsSource {
@@ -56,7 +41,6 @@ pub(crate) struct TemplateViewerApp {
     load_error: Option<String>,
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
-    dat_dir: Option<PathBuf>,
     dirty: bool,
     save_status: Option<String>,
     data_source: DataSource,
@@ -68,71 +52,6 @@ enum ViewMode {
     CharacterTemplates,
     Items,
     Characters,
-}
-
-fn load_normalized_records<T: Decode<()>>(
-    path: &Path,
-    expected_record_count: usize,
-) -> Result<Vec<T>, String> {
-    let data = fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
-    let (payload, consumed): (NormalizedDataSet<T>, usize) =
-        bincode::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| format!("Failed to decode {}: {e}", path.display()))?;
-
-    if payload.magic != NORMALIZED_MAGIC {
-        return Err(format!(
-            "Invalid normalized magic in {}: {:?}",
-            path.display(),
-            payload.magic
-        ));
-    }
-
-    if payload.version != NORMALIZED_VERSION {
-        return Err(format!(
-            "Unsupported normalized version in {}: {}",
-            path.display(),
-            payload.version
-        ));
-    }
-
-    if payload.records.len() != expected_record_count {
-        return Err(format!(
-            "Record count mismatch in {}: expected {}, got {}",
-            path.display(),
-            expected_record_count,
-            payload.records.len()
-        ));
-    }
-
-    if consumed != data.len() {
-        log::warn!(
-            "Trailing bytes in normalized dataset {}: {}",
-            path.display(),
-            data.len() - consumed
-        );
-    }
-
-    Ok(payload.records)
-}
-
-fn save_normalized_records<T: Encode>(
-    path: &Path,
-    source_file: &str,
-    source_record_size: usize,
-    records: Vec<T>,
-) -> Result<(), String> {
-    let payload = NormalizedDataSet {
-        magic: NORMALIZED_MAGIC,
-        version: NORMALIZED_VERSION,
-        source_file: source_file.to_string(),
-        source_record_size,
-        records,
-    };
-
-    let bytes = bincode::encode_to_vec(payload, bincode::config::standard())
-        .map_err(|e| format!("Failed to encode {}: {e}", path.display()))?;
-
-    fs::write(path, bytes).map_err(|e| format!("Failed to write {}: {e}", path.display()))
 }
 
 impl Default for TemplateViewerApp {
@@ -159,7 +78,6 @@ impl Default for TemplateViewerApp {
             load_error: None,
             graphics_zip: None,
             graphics_zip_error: None,
-            dat_dir: None,
             dirty: false,
             save_status: None,
             data_source: DataSource::default(),
@@ -178,8 +96,8 @@ impl TemplateViewerApp {
             DataSource::KeyDb => {
                 app.load_from_keydb();
             }
-            DataSource::DatFiles(dir) => {
-                app.load_templates_from_dir(dir);
+            DataSource::Snapshot(path) => {
+                app.load_from_snapshot(path);
             }
         }
 
@@ -189,15 +107,6 @@ impl TemplateViewerApp {
             app.load_graphics_zip(zip_path);
         }
         app
-    }
-
-    fn default_save_filename(&self) -> &'static str {
-        match self.view_mode {
-            ViewMode::ItemTemplates => "titem_new.dat",
-            ViewMode::CharacterTemplates => "tchar_new.dat",
-            ViewMode::Items => "items_new.dat",
-            ViewMode::Characters => "chars_new.dat",
-        }
     }
 
     fn save_current_view_dialog(&mut self) {
@@ -213,56 +122,9 @@ impl TemplateViewerApp {
                     self.save_status = Some(format!("Save failed: {e}"));
                 }
             },
-            DataSource::DatFiles(_) => {
-                let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-                if let Some(dir) = self.dat_dir.as_ref() {
-                    dialog = dialog.set_directory(dir);
-                }
-                dialog = dialog.set_file_name(self.default_save_filename());
-
-                let Some(path) = dialog.save_file() else {
-                    return;
-                };
-
-                match self.save_current_view_to_path(&path) {
-                    Ok(()) => {
-                        self.dirty = false;
-                        self.save_status = Some(format!("Saved to {}", path.display()));
-                    }
-                    Err(e) => {
-                        self.save_status = Some(format!("Save failed: {e}"));
-                    }
-                }
+            DataSource::Snapshot(_) => {
+                // Read-only — save is not available for snapshot sources.
             }
-        }
-    }
-
-    fn save_current_view_to_path(&self, path: &PathBuf) -> Result<(), String> {
-        match self.view_mode {
-            ViewMode::ItemTemplates => save_normalized_records(
-                path,
-                "titem.dat",
-                std::mem::size_of::<mag_core::types::Item>(),
-                self.item_templates.clone(),
-            ),
-            ViewMode::CharacterTemplates => save_normalized_records(
-                path,
-                "tchar.dat",
-                std::mem::size_of::<mag_core::types::Character>(),
-                self.character_templates.clone(),
-            ),
-            ViewMode::Items => save_normalized_records(
-                path,
-                "item.dat",
-                std::mem::size_of::<mag_core::types::Item>(),
-                self.items.clone(),
-            ),
-            ViewMode::Characters => save_normalized_records(
-                path,
-                "char.dat",
-                std::mem::size_of::<mag_core::types::Character>(),
-                self.characters.clone(),
-            ),
         }
     }
 
@@ -364,6 +226,48 @@ impl TemplateViewerApp {
         }
     }
 
+    /// Load all game data from a `.wsnap` snapshot file.
+    ///
+    /// Extracts item/character templates, instances, and map tiles.
+    /// Data is loaded as read-only; save operations are unavailable
+    /// while this data source is active.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the `.wsnap` file to load.
+    fn load_from_snapshot(&mut self, path: PathBuf) {
+        self.load_error = None;
+        self.save_status = None;
+        self.dirty = false;
+
+        match server::snapshot::WorldSnapshot::from_file(&path) {
+            Ok(snap) => {
+                self.item_templates = snap.item_templates;
+                self.character_templates = snap.character_templates;
+                self.items = snap.items;
+                self.characters = snap.characters;
+                self.map_tiles = snap.map;
+                self.save_status = Some(format!("Loaded snapshot: {}", path.display()));
+                log::info!(
+                    "Loaded snapshot: item_templates={} char_templates={} items={} chars={} map={}",
+                    self.item_templates.len(),
+                    self.character_templates.len(),
+                    self.items.len(),
+                    self.characters.len(),
+                    self.map_tiles.len()
+                );
+                if !self.item_templates.is_empty() {
+                    self.view_mode = ViewMode::ItemTemplates;
+                } else if !self.character_templates.is_empty() {
+                    self.view_mode = ViewMode::CharacterTemplates;
+                }
+            }
+            Err(e) => {
+                self.load_error = Some(format!("snapshot: {e}"));
+            }
+        }
+    }
+
     fn revert_unsaved_changes(&mut self) {
         self.save_status = None;
 
@@ -373,17 +277,12 @@ impl TemplateViewerApp {
         let prev_selected_item_instance_index = self.selected_item_instance_index;
         let prev_selected_character_instance_index = self.selected_character_instance_index;
 
-        match &self.data_source {
+        match self.data_source.clone() {
             DataSource::KeyDb => {
                 self.load_from_keydb();
             }
-            DataSource::DatFiles(_) => {
-                let Some(dir) = self.dat_dir.clone() else {
-                    self.save_status =
-                        Some("Revert failed: no data directory selected".to_string());
-                    return;
-                };
-                self.load_templates_from_dir(dir);
+            DataSource::Snapshot(path) => {
+                self.load_from_snapshot(path);
             }
         }
 
@@ -437,58 +336,6 @@ impl TemplateViewerApp {
             Err(e) => {
                 self.graphics_zip = None;
                 self.graphics_zip_error = Some(e);
-            }
-        }
-    }
-
-    fn load_items_from_file(&mut self, path: PathBuf) {
-        self.load_error = None;
-        self.save_status = None;
-        self.dirty = false;
-        self.selected_item_instance_index = None;
-
-        if let Some(parent) = path.parent() {
-            self.dat_dir = Some(parent.to_path_buf());
-        }
-
-        match self.load_items(&path) {
-            Ok(items) => {
-                self.items = items;
-                self.view_mode = ViewMode::Items;
-                self.save_status = Some(format!("Loaded items from {}", path.display()));
-                log::info!("Loaded {} items from {:?}", self.items.len(), path);
-            }
-            Err(e) => {
-                self.load_error = Some(format!("Failed to load items: {}", e));
-                log::error!("Failed to load items from {:?}: {}", path, e);
-            }
-        }
-    }
-
-    fn load_characters_from_file(&mut self, path: PathBuf) {
-        self.load_error = None;
-        self.save_status = None;
-        self.dirty = false;
-        self.selected_character_instance_index = None;
-
-        if let Some(parent) = path.parent() {
-            self.dat_dir = Some(parent.to_path_buf());
-        }
-
-        match self.load_characters(&path) {
-            Ok(chars) => {
-                self.characters = chars;
-                self.view_mode = ViewMode::Characters;
-                self.save_status = Some(format!("Loaded characters from {}", path.display()));
-                log::info!(
-                    "Loaded {} characters from {:?}",
-                    self.characters.len(),
-                    path
-                );
-            }
-            Err(e) => {
-                self.load_error = Some(format!("Failed to load characters: {}", e));
-                log::error!("Failed to load characters from {:?}: {}", path, e);
             }
         }
     }
@@ -626,141 +473,6 @@ impl TemplateViewerApp {
                 self.view_mode = ViewMode::Items;
             }
         }
-    }
-
-    fn load_templates_from_dir(&mut self, dir: PathBuf) {
-        self.load_error = None;
-        self.save_status = None;
-        self.dat_dir = Some(dir.clone());
-        self.dirty = false;
-        log::info!("Loading templates from {:?}", dir);
-
-        let item_path = dir.join("titem.dat");
-        match self.load_item_templates(&item_path) {
-            Ok(items) => {
-                self.item_templates = items;
-                self.view_mode = ViewMode::ItemTemplates;
-                log::info!("Loaded {} item templates", self.item_templates.len());
-            }
-            Err(e) => {
-                self.load_error = Some(format!("Failed to load item templates: {}", e));
-                log::error!("Failed to load item templates: {}", e);
-            }
-        }
-
-        let char_path = dir.join("tchar.dat");
-        match self.load_character_templates(&char_path) {
-            Ok(chars) => {
-                self.character_templates = chars;
-                if self.item_templates.is_empty() {
-                    self.view_mode = ViewMode::CharacterTemplates;
-                }
-                log::info!(
-                    "Loaded {} character templates",
-                    self.character_templates.len()
-                );
-            }
-            Err(e) => {
-                let message = format!("Failed to load character templates: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load character templates: {}", e);
-            }
-        }
-
-        let item_path = dir.join("item.dat");
-        match self.load_items(&item_path) {
-            Ok(items) => {
-                self.items = items;
-                log::info!("Loaded {} items", self.items.len());
-            }
-            Err(e) => {
-                let message = format!("Failed to load items: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load items: {}", e);
-            }
-        }
-
-        let char_path = dir.join("char.dat");
-        match self.load_characters(&char_path) {
-            Ok(chars) => {
-                self.characters = chars;
-                log::info!("Loaded {} characters", self.characters.len());
-            }
-            Err(e) => {
-                let message = format!("Failed to load characters: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load characters: {}", e);
-            }
-        }
-
-        let map_path = dir.join("map.dat");
-        match self.load_map(&map_path) {
-            Ok(map_tiles) => {
-                self.map_tiles = map_tiles;
-                log::info!("Loaded {} map tiles", self.map_tiles.len());
-            }
-            Err(e) => {
-                let message = format!("Failed to load map: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load map: {}", e);
-            }
-        }
-
-        // Pick a sensible default view.
-        if !self.item_templates.is_empty() {
-            self.view_mode = ViewMode::ItemTemplates;
-        } else if !self.character_templates.is_empty() {
-            self.view_mode = ViewMode::CharacterTemplates;
-        } else if !self.items.is_empty() {
-            self.view_mode = ViewMode::Items;
-        } else if !self.characters.is_empty() {
-            self.view_mode = ViewMode::Characters;
-        }
-    }
-
-    fn load_item_templates(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
-        load_normalized_records(path, mag_core::constants::MAXTITEM)
-    }
-
-    fn load_items(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
-        load_normalized_records(path, mag_core::constants::MAXITEM)
-    }
-
-    fn load_character_templates(
-        &self,
-        path: &PathBuf,
-    ) -> Result<Vec<mag_core::types::Character>, String> {
-        load_normalized_records(path, mag_core::constants::MAXTCHARS)
-    }
-
-    fn load_characters(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Character>, String> {
-        load_normalized_records(path, mag_core::constants::MAXCHARS)
-    }
-
-    fn load_map(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Map>, String> {
-        let tile_count = (mag_core::constants::SERVER_MAPX as usize)
-            * (mag_core::constants::SERVER_MAPY as usize);
-        load_normalized_records(path, tile_count)
     }
 
     fn render_item_list(&mut self, ui: &mut egui::Ui) {
@@ -2031,20 +1743,17 @@ impl eframe::App for TemplateViewerApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui
-                        .add_enabled(self.dirty, egui::Button::new("Save...\tCtrl+S"))
+                        .add_enabled(
+                            self.dirty && matches!(self.data_source, DataSource::KeyDb),
+                            egui::Button::new("Save...\tCtrl+S"),
+                        )
                         .clicked()
                     {
                         self.save_current_view_dialog();
                         ui.close_menu();
                     }
 
-                    let can_revert = self.dirty
-                        && matches!(
-                            self.data_source,
-                            DataSource::KeyDb | DataSource::DatFiles(_)
-                        )
-                        && (matches!(self.data_source, DataSource::KeyDb)
-                            || self.dat_dir.is_some());
+                    let can_revert = self.dirty && matches!(self.data_source, DataSource::KeyDb);
                     if ui
                         .add_enabled(can_revert, egui::Button::new("Revert (discard changes)"))
                         .clicked()
@@ -2066,14 +1775,17 @@ impl eframe::App for TemplateViewerApp {
                             self.dirty = false;
                             ui.close_menu();
                         }
-                        let is_dat = matches!(self.data_source, DataSource::DatFiles(_));
-                        if ui.selectable_label(is_dat, ".dat Files").clicked() {
-                            if let Some(dir) = rfd::FileDialog::new()
-                                .set_can_create_directories(true)
-                                .pick_folder()
+                        let is_snapshot = matches!(self.data_source, DataSource::Snapshot(_));
+                        if ui
+                            .selectable_label(is_snapshot, ".wsnap Snapshot")
+                            .clicked()
+                        {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("World Snapshot", &["wsnap"])
+                                .pick_file()
                             {
-                                self.data_source = DataSource::DatFiles(dir.clone());
-                                self.load_templates_from_dir(dir);
+                                self.data_source = DataSource::Snapshot(path.clone());
+                                self.load_from_snapshot(path);
                                 self.dirty = false;
                             }
                             ui.close_menu();
@@ -2082,34 +1794,13 @@ impl eframe::App for TemplateViewerApp {
 
                     ui.separator();
 
-                    if ui.button("Open Items File... (item.dat)").clicked() {
+                    if ui.button("Open snapshot...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("DAT", &["dat"])
+                            .add_filter("World Snapshot", &["wsnap"])
                             .pick_file()
                         {
-                            self.load_items_from_file(path);
-                        }
-                        ui.close_menu();
-                    }
-
-                    if ui.button("Open Characters File... (char.dat)").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("DAT", &["dat"])
-                            .pick_file()
-                        {
-                            self.load_characters_from_file(path);
-                        }
-                        ui.close_menu();
-                    }
-
-                    ui.separator();
-
-                    if ui.button("Select Data Directory...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .set_can_create_directories(true)
-                            .pick_folder()
-                        {
-                            self.load_templates_from_dir(path);
+                            self.data_source = DataSource::Snapshot(path.clone());
+                            self.load_from_snapshot(path);
                         }
                         ui.close_menu();
                     }

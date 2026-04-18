@@ -113,6 +113,21 @@ services:
     stop_grace_period: 2m
     restart: unless-stopped
 
+  devtools:
+    build:
+      context: .
+      dockerfile: server/utils/Dockerfile
+    profiles: [tools]
+    depends_on:
+      keydb:
+        condition: service_healthy
+    environment:
+      MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
+    command: sleep infinity
+    volumes:
+      - ./client/assets/gfx:/assets/gfx:ro
+      - ./server/assets:/snapshots:ro
+
 volumes:
   keydb-data:
   tls-certs:

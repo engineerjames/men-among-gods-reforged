@@ -6,22 +6,7 @@ use mag_core::constants::{
     ItemFlags, MAXITEM, MAXTITEM, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS,
 };
 use mag_core::types::{Item, Map};
-use std::fs;
-use std::path::{Path, PathBuf};
-
-use bincode::{Decode, Encode};
-
-const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
-const NORMALIZED_VERSION: u32 = 1;
-
-#[derive(Debug, Encode, Decode)]
-struct NormalizedDataSet<T> {
-    magic: [u8; 4],
-    version: u32,
-    source_file: String,
-    source_record_size: usize,
-    records: Vec<T>,
-}
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaletteEntryKind {
@@ -36,8 +21,6 @@ struct PaletteEntry {
 
 #[derive(Default)]
 pub(crate) struct MapViewerApp {
-    dat_dir: Option<PathBuf>,
-    map_path: Option<PathBuf>,
     map_tiles: Vec<Map>,
     map_error: Option<String>,
 
@@ -180,80 +163,41 @@ impl MapViewerApp {
         }
     }
 
-    pub(crate) fn load_map_from_dir(&mut self, dir: PathBuf) {
-        self.load_map_from_path(dir.join("map.dat"));
-    }
-
-    pub(crate) fn load_map_from_path(&mut self, map_path: PathBuf) {
+    /// Load map tiles, items, and item templates from a `.wsnap` snapshot file.
+    ///
+    /// Data is loaded as read-only; save and revert are disabled while this
+    /// data source is active.
+    ///
+    /// # Arguments
+    ///
+    /// * `path` - Path to the `.wsnap` file to load.
+    pub(crate) fn load_from_snapshot(&mut self, path: PathBuf) {
         self.map_error = None;
         self.items_error = None;
         self.item_templates_error = None;
         self.pan_initialized = false;
         self.dirty = false;
 
-        self.dat_dir = map_path.parent().map(|p| p.to_path_buf());
-        self.map_path = Some(map_path.clone());
-
-        let display_name = map_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("(unknown)");
-        self.save_status = Some(format!("Loaded {}", display_name));
-
-        match load_map_dat(&map_path) {
-            Ok(tiles) => {
-                self.map_tiles = tiles;
-                log::info!("Loaded map tiles: {}", self.map_tiles.len());
+        match server::snapshot::WorldSnapshot::from_file(&path) {
+            Ok(snap) => {
+                self.map_tiles = snap.map;
+                self.items = snap.items;
+                self.item_templates = snap.item_templates;
+                self.save_status = Some(format!("Loaded snapshot: {}", path.display()));
+                log::info!(
+                    "Loaded snapshot: map={} items={} templates={}",
+                    self.map_tiles.len(),
+                    self.items.len(),
+                    self.item_templates.len()
+                );
             }
             Err(e) => {
                 self.map_tiles.clear();
-                self.map_error = Some(e);
+                self.items.clear();
+                self.item_templates.clear();
+                self.map_error = Some(format!("snapshot: {e}"));
             }
         }
-
-        let Some(dir) = self.dat_dir.clone() else {
-            self.items.clear();
-            self.item_templates.clear();
-            return;
-        };
-
-        // Optional: load item instances so we can render `Map.it` overlays.
-        let item_path = dir.join("item.dat");
-        if item_path.is_file() {
-            match load_item_dat(&item_path) {
-                Ok(items) => {
-                    self.items = items;
-                    log::info!("Loaded items: {}", self.items.len());
-                }
-                Err(e) => {
-                    self.items.clear();
-                    self.items_error = Some(e);
-                }
-            }
-        } else {
-            self.items.clear();
-        }
-
-        // Optional: load item templates for palette item previews.
-        let item_templates_path = dir.join("titem.dat");
-        if item_templates_path.is_file() {
-            match load_item_templates_dat(&item_templates_path) {
-                Ok(templates) => {
-                    self.item_templates = templates;
-                    log::info!("Loaded item templates: {}", self.item_templates.len());
-                }
-                Err(e) => {
-                    self.item_templates.clear();
-                    self.item_templates_error = Some(e);
-                }
-            }
-        } else {
-            self.item_templates.clear();
-        }
-    }
-
-    fn default_save_filename(&self) -> &'static str {
-        "map_new.dat"
     }
 
     fn save_map_dialog(&mut self) {
@@ -269,43 +213,10 @@ impl MapViewerApp {
                     self.save_status = Some(format!("Save failed: {e}"));
                 }
             },
-            DataSource::DatFiles(_) => {
-                let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-                if let Some(dir) = self.dat_dir.as_ref() {
-                    dialog = dialog.set_directory(dir);
-                }
-                dialog = dialog.set_file_name(self.default_save_filename());
-
-                let Some(path) = dialog.save_file() else {
-                    return;
-                };
-
-                match self.save_map_to_path(&path) {
-                    Ok(()) => {
-                        self.dirty = false;
-                        self.dat_dir = path.parent().map(|p| p.to_path_buf());
-                        self.map_path = Some(path.clone());
-                        self.save_status = Some(format!("Saved: {}", path.display()));
-                    }
-                    Err(e) => {
-                        self.save_status = Some(format!("Save failed: {e}"));
-                    }
-                }
+            DataSource::Snapshot(_) => {
+                // Read-only — save is not available for snapshot sources.
             }
         }
-    }
-
-    fn save_map_to_path(&self, path: &PathBuf) -> Result<(), String> {
-        if self.map_tiles.is_empty() {
-            return Err("No map loaded".to_string());
-        }
-
-        save_normalized_records(
-            path,
-            "map.dat",
-            std::mem::size_of::<Map>(),
-            self.map_tiles.clone(),
-        )
     }
 
     /// Load map tiles, items, and item templates from KeyDB.
@@ -376,20 +287,12 @@ impl MapViewerApp {
     }
 
     fn revert_unsaved_changes(&mut self) {
-        match &self.data_source {
+        match self.data_source.clone() {
             DataSource::KeyDb => {
                 self.load_from_keydb();
             }
-            DataSource::DatFiles(_) => {
-                if let Some(path) = self.map_path.clone() {
-                    self.load_map_from_path(path);
-                } else {
-                    let Some(dir) = self.dat_dir.clone() else {
-                        self.save_status = Some("Revert failed: no map loaded".to_string());
-                        return;
-                    };
-                    self.load_map_from_dir(dir);
-                }
+            DataSource::Snapshot(path) => {
+                self.load_from_snapshot(path);
             }
         }
         self.dirty = false;
@@ -577,73 +480,6 @@ impl MapViewerApp {
     }
 }
 
-fn load_normalized_records<T: Decode<()>>(
-    path: &Path,
-    expected_record_count: usize,
-) -> Result<Vec<T>, String> {
-    let data = fs::read(path).map_err(|e| format!("Failed to read {:?}: {e}", path))?;
-    let (payload, consumed): (NormalizedDataSet<T>, usize) =
-        bincode::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| format!("Failed to decode {:?}: {e}", path))?;
-
-    if payload.magic != NORMALIZED_MAGIC {
-        return Err(format!(
-            "Invalid normalized magic in {:?}: {:?}",
-            path, payload.magic
-        ));
-    }
-
-    if payload.version != NORMALIZED_VERSION {
-        return Err(format!(
-            "Unsupported normalized version in {:?}: {}",
-            path, payload.version
-        ));
-    }
-
-    if payload.records.len() != expected_record_count {
-        return Err(format!(
-            "Record count mismatch in {:?}: expected {}, got {}",
-            path,
-            expected_record_count,
-            payload.records.len()
-        ));
-    }
-
-    if consumed != data.len() {
-        log::warn!(
-            "Trailing bytes in normalized dataset {:?}: {}",
-            path,
-            data.len() - consumed
-        );
-    }
-
-    Ok(payload.records)
-}
-
-fn save_normalized_records<T: Encode>(
-    path: &Path,
-    source_file: &str,
-    source_record_size: usize,
-    records: Vec<T>,
-) -> Result<(), String> {
-    let payload = NormalizedDataSet {
-        magic: NORMALIZED_MAGIC,
-        version: NORMALIZED_VERSION,
-        source_file: source_file.to_string(),
-        source_record_size,
-        records,
-    };
-
-    let bytes = bincode::encode_to_vec(payload, bincode::config::standard())
-        .map_err(|e| format!("Failed to encode {:?}: {e}", path))?;
-
-    fs::write(path, bytes).map_err(|e| format!("Failed to write {:?}: {e}", path))
-}
-
-fn load_item_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
-    load_normalized_records(path, MAXITEM)
-}
-
 #[inline]
 fn item_map_sprite(item: Item) -> Option<i16> {
     // Mirror server logic used to populate client map tiles.
@@ -659,11 +495,6 @@ fn item_map_sprite(item: Item) -> Option<i16> {
     };
 
     if sprite > 0 { Some(sprite) } else { None }
-}
-
-fn load_map_dat(path: &PathBuf) -> Result<Vec<Map>, String> {
-    let expected_tiles = (SERVER_MAPX as usize) * (SERVER_MAPY as usize);
-    load_normalized_records(path, expected_tiles)
 }
 
 #[inline]
@@ -718,12 +549,12 @@ impl eframe::App for MapViewerApp {
         // Load map/graphics after a couple frames (window has appeared)
         if !self.initial_load_done && self.frame_count > 2 {
             self.initial_load_done = true;
-            match &self.data_source {
+            match self.data_source.clone() {
                 DataSource::KeyDb => {
                     self.load_from_keydb();
                 }
-                DataSource::DatFiles(dir) => {
-                    self.load_map_from_dir(dir.clone());
+                DataSource::Snapshot(path) => {
+                    self.load_from_snapshot(path);
                 }
             }
             if let Some(zip_path) =
@@ -767,21 +598,14 @@ impl eframe::App for MapViewerApp {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open dat dir...").clicked() {
+                    if ui.button("Open snapshot...").clicked() {
                         ui.close_menu();
-                        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                            self.load_map_from_dir(dir);
-                        }
-                    }
-
-                    if ui.button("Open map file...").clicked() {
-                        ui.close_menu();
-                        let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-                        if let Some(dir) = self.dat_dir.as_ref() {
-                            dialog = dialog.set_directory(dir);
-                        }
-                        if let Some(path) = dialog.pick_file() {
-                            self.load_map_from_path(path);
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("World Snapshot", &["wsnap"])
+                            .pick_file()
+                        {
+                            self.data_source = DataSource::Snapshot(path.clone());
+                            self.load_from_snapshot(path);
                         }
                     }
 
@@ -797,7 +621,9 @@ impl eframe::App for MapViewerApp {
 
                     ui.separator();
 
-                    let save_enabled = !self.map_tiles.is_empty() && self.dirty;
+                    let save_enabled = !self.map_tiles.is_empty()
+                        && self.dirty
+                        && matches!(self.data_source, DataSource::KeyDb);
                     if ui
                         .add_enabled(save_enabled, egui::Button::new("Save..."))
                         .clicked()
@@ -806,9 +632,8 @@ impl eframe::App for MapViewerApp {
                         self.save_map_dialog();
                     }
 
-                    let revert_enabled = self.dirty
-                        && (matches!(self.data_source, DataSource::KeyDb)
-                            || self.dat_dir.is_some());
+                    let revert_enabled =
+                        self.dirty && matches!(self.data_source, DataSource::KeyDb);
                     if ui
                         .add_enabled(
                             revert_enabled,
@@ -833,14 +658,14 @@ impl eframe::App for MapViewerApp {
                             self.dirty = false;
                             ui.close_menu();
                         }
-                        let is_dat = matches!(self.data_source, DataSource::DatFiles(_));
-                        if ui.selectable_label(is_dat, ".dat Files").clicked() {
-                            if let Some(dir) = rfd::FileDialog::new()
-                                .set_can_create_directories(true)
-                                .pick_folder()
+                        let is_snap = matches!(self.data_source, DataSource::Snapshot(_));
+                        if ui.selectable_label(is_snap, ".wsnap Snapshot").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("World Snapshot", &["wsnap"])
+                                .pick_file()
                             {
-                                self.data_source = DataSource::DatFiles(dir.clone());
-                                self.load_map_from_dir(dir);
+                                self.data_source = DataSource::Snapshot(path.clone());
+                                self.load_from_snapshot(path);
                                 self.dirty = false;
                             }
                             ui.close_menu();
@@ -880,11 +705,6 @@ impl eframe::App for MapViewerApp {
                         egui::Color32::LIGHT_GREEN
                     };
                     ui.colored_label(color, status);
-                }
-
-                if let Some(dir) = &self.dat_dir {
-                    ui.separator();
-                    ui.label(format!("dat: {}", dir.display()));
                 }
             });
         });
@@ -1430,10 +1250,6 @@ impl eframe::App for MapViewerApp {
             }
         });
     }
-}
-
-fn load_item_templates_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
-    load_normalized_records(path, MAXTITEM)
 }
 
 fn paint_sprite_dd(

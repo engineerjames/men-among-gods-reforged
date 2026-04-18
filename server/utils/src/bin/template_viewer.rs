@@ -6,42 +6,31 @@ use std::path::PathBuf;
 
 use template_viewer_app::TemplateViewerApp;
 
-/// The data backend the viewer reads from and writes to.
+/// The data backend the viewer reads from.
 #[derive(Clone, Debug, Default)]
 enum DataSource {
-    /// Read/write from `.dat` files in the given directory.
-    DatFiles(PathBuf),
+    /// Load world data from a `.wsnap` snapshot file (read-only).
+    Snapshot(PathBuf),
     /// Read/write via KeyDB at `redis://127.0.0.1:5556/`.
     #[default]
     KeyDb,
 }
 
-fn default_dat_dir() -> Option<PathBuf> {
-    let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let candidate = crate_dir.join("../assets/.dat");
-    if candidate.is_dir() {
-        return Some(candidate);
-    }
-
-    None
-}
-
-fn dat_dir_from_args() -> Option<PathBuf> {
+/// Return the path supplied after `--snapshot` on the command line, if any.
+///
+/// # Returns
+///
+/// * `Some(PathBuf)` when `--snapshot <path>` is present and the file exists.
+/// * `None` otherwise.
+fn snapshot_from_args() -> Option<PathBuf> {
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
-        if arg == "--dat-dir" || arg == "--data-dir" || arg == "--dat" {
-            if let Some(dir) = args.next().map(PathBuf::from) {
-                if dir.is_dir() {
-                    return Some(dir);
+        if arg == "--snapshot" {
+            if let Some(path) = args.next().map(PathBuf::from) {
+                if path.is_file() {
+                    return Some(path);
                 }
             }
-            // --dat with no valid path: fall back to default
-            return default_dat_dir();
-        }
-
-        let dir = PathBuf::from(arg);
-        if dir.is_dir() {
-            return Some(dir);
         }
     }
     None
@@ -49,20 +38,14 @@ fn dat_dir_from_args() -> Option<PathBuf> {
 
 /// Determine the data source from CLI arguments.
 ///
-/// Defaults to `KeyDb`. Pass `--dat [path]` to switch to `.dat` mode.
-/// If `--dat` is given without a valid path, falls back to the default
-/// `.dat` directory.
+/// Defaults to [`DataSource::KeyDb`]. Pass `--snapshot <path>` to load a
+/// `.wsnap` file for offline, read-only inspection instead.
 fn data_source_from_args() -> DataSource {
-    let args: Vec<String> = std::env::args().collect();
-    for arg in &args[1..] {
-        if arg == "--dat" || arg == "--dat-dir" || arg == "--data-dir" {
-            let dir = dat_dir_from_args()
-                .or_else(default_dat_dir)
-                .unwrap_or_else(|| PathBuf::from("."));
-            return DataSource::DatFiles(dir);
-        }
+    if let Some(path) = snapshot_from_args() {
+        DataSource::Snapshot(path)
+    } else {
+        DataSource::KeyDb
     }
-    DataSource::KeyDb
 }
 
 fn default_graphics_zip_path() -> Option<PathBuf> {
