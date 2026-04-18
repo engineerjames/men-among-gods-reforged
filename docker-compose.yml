@@ -59,7 +59,7 @@ services:
     command:
       - /bin/sh
       - -lc
-      - /app/world-snapshot import --skip-if-seeded /app/world_seed.wsnap
+      - /app/world-snapshot import --skip-if-seeded --input /app/world_seed.wsnap
     restart: "no"
 
   api:

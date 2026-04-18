@@ -8,7 +8,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /workspace
 
 COPY . .
-RUN cargo build --release -p server
+RUN cargo build --release -p server --bins
 
 FROM ubuntu:24.04
 RUN apt-get update \
