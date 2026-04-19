@@ -301,9 +301,9 @@ sequenceDiagram
 ```
 
 ## Communication flow - Playing the game
-This is where things get a bit tricky.  Currently the game data is all stored in .dat files that are loaded into memory by the game server at runtime. This means that when an account creates a character, the game server doesn't know about it.  The link gets established when the player logs into the game server for the first time as a new character--this is when the character data gets placed into the char.dat file and assigned a character ID.
+This is where the API and game server meet. Gameplay world state is persisted in KeyDB and loaded into memory by the game server at startup. Fresh environments are seeded ahead of time from a `.wsnap` world snapshot, so the server starts from KeyDB rather than a removed flat-file backend.
 
-The game server will then need to set the character ID on the character hash in the database so that the authentication service can enforce ownership and provide the character list to the client.
+When an account creates a character, the API writes the character metadata to KeyDB immediately. The game server establishes the runtime link the first time the player logs in with a one-time ticket: it loads the character record, creates or reuses the in-game character slot as needed, and then stores the active `server_id` back on the character record so the authentication service can enforce ownership and provide the character list to the client.
 
 ### First Login Flow
 ```mermaid
@@ -428,4 +428,4 @@ When this API is exposed outside a single host, these are the high-impact improv
 
 ## Feature Improvements
 - Account management: password reset, email verification, account deletion.
-- When a character is deleted - we need to actually remove the character's data from the server; but until we unify the data model and remove the .dat files, we can at least mark the character as deleted in the database and hide it from the character list.
+- When a character is deleted - we still need to remove or tombstone the character's gameplay state in KeyDB and reclaim any linked in-world state; until that flow exists, we can at least mark the character as deleted in the database and hide it from the character list.

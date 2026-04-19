@@ -1,7 +1,7 @@
 //! `world_snapshot` — Export, import, and verify world snapshots.
 //!
-//! This binary replaces the legacy `dat-to-keydb` migration tool with a
-//! round-trip workflow:
+//! This binary provides the supported snapshot import/export workflow for
+//! seeding and backing up KeyDB world data:
 //!
 //! ```text
 //! # Export the current KeyDB world state to a file

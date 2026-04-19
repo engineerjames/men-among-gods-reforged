@@ -35,7 +35,7 @@ services:
       - keydb-data:/data
     ports:
       # Expose KeyDB to localhost only so local dev tools (map viewer,
-      # template viewer, dat-to-keydb, etc.) can reach it without
+      # template viewer, world-snapshot, etc.) can reach it without
       # publishing the port on all host interfaces.
       - "127.0.0.1:5556:5556"
     healthcheck:

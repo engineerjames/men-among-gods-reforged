@@ -22,9 +22,6 @@ cargo run --package server-utils --bin template_viewer
 
 # Open an editable world snapshot backup
 cargo run --package server-utils --bin template_viewer -- --snapshot server/assets/world_seed.wsnap
-
-# Or use the helper launcher from the repo root
-./scripts/run_devtool.sh template_viewer
 ```
 
 **Features:**
@@ -71,9 +68,6 @@ cargo run --package server-utils --bin map_viewer
 
 # Open an editable world snapshot backup
 cargo run --package server-utils --bin map_viewer -- --snapshot server/assets/world_seed.wsnap
-
-# Or use the helper launcher from the repo root
-./scripts/run_devtool.sh map_viewer
 ```
 
 **Optional args:**
@@ -92,8 +86,8 @@ Run the services in Docker, but run the viewers natively on the host:
 
 ```bash
 docker compose up -d --build
-./scripts/run_devtool.sh map_viewer
-./scripts/run_devtool.sh template_viewer
+cargo run --package server-utils --bin map_viewer
+cargo run --package server-utils --bin template_viewer
 ```
 
 The viewers use the same KeyDB URL resolution as the server crate:
@@ -103,38 +97,6 @@ The viewers use the same KeyDB URL resolution as the server crate:
 - otherwise unauthenticated `redis://127.0.0.1:5556/`
 
 That means a normal repo-local `.env` file is enough for host-native viewer runs.
-
-### DAT Normalizer
-
-A CLI migration tool that converts legacy packed `.dat` files into a normalized, non-packed Rust representation and writes them using `bincode`.
-
-**Usage:**
-```bash
-cargo run --package server-utils --bin dat_normalizer -- --dat-dir server/assets/.dat
-```
-
-**Options:**
-- `--dat-dir <path>`: directory containing server `.dat` files
-- `--in-place`: replace each `.dat` file with normalized data and create a `.legacy` backup
-- `--reverse`: convert normalized output back into legacy packed `.dat` format
-
-**Output behavior:**
-- Default mode writes side-by-side files with `.normalized` suffix (e.g. `map.dat.normalized`)
-- `--in-place` mode writes normalized data into the original `.dat` paths after creating backups
-
-**Reverse mode behavior:**
-- Reads normalized payloads and writes legacy packed bytes back to `.dat`
-- Side-by-side reverse mode reads `*.dat.normalized` and writes `*.dat.restored`
-- `--reverse --in-place` restores directly to `*.dat` and creates `*.normalized.bak` backups
-
-**Files converted:**
-- `map.dat`
-- `item.dat`
-- `titem.dat`
-- `char.dat`
-- `tchar.dat`
-- `effect.dat`
-- `global.dat`
 
 ## Adding New Utilities
 

@@ -823,7 +823,7 @@ impl eframe::App for MapViewerApp {
                                 let sprite = item_map_sprite(item).unwrap_or(0);
                                 ui.label(format!("item sprite: {}", sprite));
                             } else {
-                                ui.label("item sprite: (item.dat not loaded)");
+                                ui.label("item sprite: (item data not loaded)");
                             }
                         } else {
                             ui.label("item sprite: N/A");
@@ -884,7 +884,7 @@ impl eframe::App for MapViewerApp {
                                     let sprite = item_map_sprite(item).unwrap_or(0);
                                     ui.label(format!("item sprite: {}", sprite));
                                 } else {
-                                    ui.label("item sprite: (item.dat not loaded)");
+                                    ui.label("item sprite: (item data not loaded)");
                                 }
                             } else {
                                 ui.label("item sprite: N/A");

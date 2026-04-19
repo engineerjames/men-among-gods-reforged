@@ -1029,7 +1029,7 @@ impl TemplateViewerApp {
                 ui.separator();
 
                 // For templates, the *slot index* is the template id. The `temp` field inside
-                // `titem.dat` entries is not reliable for this purpose.
+                // stored template entries is not reliable for this purpose.
                 let temp_u16 = Self::clamp_u16(temp);
                 let template_id = self
                     .selected_item_index

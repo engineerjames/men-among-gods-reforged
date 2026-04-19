@@ -298,7 +298,7 @@ pub struct GameData {
 pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     if !has_game_data(con)? {
         return Err("No game data found in KeyDB (game:meta:version missing). \
-             Run the dat-to-keydb migration tool first."
+             Seed KeyDB with world-snapshot import first."
             .to_string());
     }
 

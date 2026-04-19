@@ -1,6 +1,6 @@
 # Pipelines
 
-This folder contains small scripts used by GitHub Actions workflows (and runnable locally) for building, packaging, and publishing releases.
+This folder contains small scripts used by GitHub Actions workflows, and runnable locally, for building and packaging releases.
 
 ## Scripts
 
@@ -9,18 +9,16 @@ This folder contains small scripts used by GitHub Actions workflows (and runnabl
 - `install_macos_deps.sh`
   - Installs macOS build dependencies for SDL2 (intended for `macos-latest`).
 - `build_release.sh`
-  - Builds release binaries for `server` and `client`.
-- `build_steam_deck_client.sh`
-  - Builds the `client` for Steam Deck (`x86_64-unknown-linux-gnu`) in Docker.
-  - Produces `dist/men-among-gods-client-steamdeck/` and `.tar.gz`.
+  - Builds release binaries for the workspace.
 - `package.sh`
   - Creates release `.zip` packages on Linux/macOS.
   - Produces `dist/men-among-gods-{server,client}-<version>-<platform>.zip`.
+  - The server archive includes `server`, `api`, `map_viewer`, `template_viewer`, `world-snapshot`, and `assets/world_seed.wsnap`.
 - `package_windows.ps1`
   - Creates release `.zip` packages on Windows.
   - Produces `dist/men-among-gods-{server,client}-<version>-<platform>.zip`.
-- `create_github_release.sh`
-  - Creates (or updates) a GitHub release and uploads `.zip` assets from an artifacts directory.
+
+GitHub release creation and artifact upload are handled directly in [.github/workflows/release.yml](../.github/workflows/release.yml).
 
 ## Prerequisites
 
@@ -45,46 +43,21 @@ bash pipelines/install_linux_deps.sh
 bash pipelines/build_release.sh
 ```
 
-### Build Steam Deck client via Docker
-
-```bash
-bash pipelines/build_steam_deck_client.sh
-```
-
-Optional:
-
-```bash
-bash pipelines/build_steam_deck_client.sh --profile debug
-```
-
 ### Package on macOS/Linux
 
 ```bash
+bash pipelines/build_release.sh
 bash pipelines/package.sh --version v0.1.0 --platform macos
 # or
+bash pipelines/build_release.sh
 bash pipelines/package.sh --version v0.1.0 --platform linux
 ```
 
 ### Package on Windows
 
 ```powershell
+bash pipelines/build_release.sh
 pwsh -File pipelines/package_windows.ps1 -Version v0.1.0 -Platform windows
 ```
 
-### Create/update a GitHub release (upload assets)
-
-Requirements:
-- `gh` installed
-- `GH_TOKEN` set (a token with `repo` scope for private repos or appropriate permissions)
-- `GH_REPO` set to `owner/repo`
-
-Example:
-
-```bash
-export GH_REPO="owner/repo"
-export GH_TOKEN="..."
-
-bash pipelines/create_github_release.sh --version v0.1.0 --artifacts-dir dist
-```
-
-In GitHub Actions, `GH_REPO` and `GH_TOKEN` are provided by the workflow.
+The package scripts expect the release build outputs to already exist and fail fast if any required binary or the bundled snapshot seed file is missing.
