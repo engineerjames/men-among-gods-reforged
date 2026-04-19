@@ -1141,7 +1141,7 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 }
 
 pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
-    let skill_nr = gs.items[item_idx].data[0] as usize;
+    let skill_nr = skills::canonicalize_weapon_skill(gs.items[item_idx].data[0] as usize);
     let teaches_only = gs.items[item_idx].data[1] != 0;
 
     if skill_nr >= MAXSKILL {
@@ -1805,7 +1805,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
             }
 
             // choose weapon based on skills/attribs (partial port of original logic)
-            if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 60
+            helpers::sync_weapon_skill(&mut gs.characters[cc].skill);
+            if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 60
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 50
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 75
             {
@@ -1814,7 +1815,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 45
+            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 45
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 60
             {
@@ -1823,7 +1824,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 30
+            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 30
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 30
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 40
             {
@@ -1832,7 +1833,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 15
+            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 15
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 20
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 24
             {
@@ -1841,7 +1842,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_TWOHAND][0] as i32 >= 1
+            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 1
                 && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
                 && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 12
             {
@@ -5652,26 +5653,12 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
                     item.attrib[attr_idx][0] =
                         item.attrib[attr_idx][0].saturating_add((stren / 2) as i8);
                 }
-                7 => {
-                    let current = item.skill[skills::SK_DAGGER][2] as u32;
-                    item.skill[skills::SK_DAGGER][2] =
+                7..=9 => {
+                    let current = item.skill[skills::SK_WEAPON][2] as u32;
+                    item.skill[skills::SK_WEAPON][2] =
                         std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[skills::SK_DAGGER][0] =
-                        item.skill[skills::SK_DAGGER][0].saturating_add(stren as i8);
-                }
-                8 => {
-                    let current = item.skill[skills::SK_SWORD][2] as u32;
-                    item.skill[skills::SK_SWORD][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[skills::SK_SWORD][0] =
-                        item.skill[skills::SK_SWORD][0].saturating_add(stren as i8);
-                }
-                9 => {
-                    let current = item.skill[skills::SK_TWOHAND][2] as u32;
-                    item.skill[skills::SK_TWOHAND][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
-                    item.skill[skills::SK_TWOHAND][0] =
-                        item.skill[skills::SK_TWOHAND][0].saturating_add(stren as i8);
+                    item.skill[skills::SK_WEAPON][0] =
+                        item.skill[skills::SK_WEAPON][0].saturating_add(stren as i8);
                 }
                 10 => {
                     let current = item.skill[skills::SK_STEALTH][2] as u32;

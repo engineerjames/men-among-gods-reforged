@@ -2,7 +2,7 @@ use core::{
     constants::{
         AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE, CNTSAY, COMPANION_TIMEOUT, CT_COMPANION,
         CharacterFlags, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, ItemFlags, MAXSAY, NT_DIDHIT, NT_GOTHIT,
-        NT_GOTMISS, SERVER_MAPX, TICKS, USE_EMPTY,
+        NT_GOTMISS, TICKS, USE_EMPTY,
     },
     skills,
     string_operations::c_string_to_str,
@@ -1677,40 +1677,33 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
     );
 
     let co_orig = co;
-    let (x, y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
-    let adj: [(i32, i32); 4] = [(1, 0), (-1, 0), (0, 1), (0, -1)];
+    let curse_base = gs.characters[cn].skill[skills::SK_CURSE][0] as i32;
+    let curse_power = gs.characters[cn].skill[skills::SK_CURSE][5] as i32;
+    let aoe_base = if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
+        curse_base
+    } else {
+        1
+    };
+    let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
+    let caster_x = gs.characters[cn].x as i32;
+    let caster_y = gs.characters[cn].y as i32;
 
-    for (dx, dy) in adj {
-        let nx = x + dx;
-        let ny = y + dy;
-
-        // Prevent negative/out-of-bounds coords from wrapping into huge usize indices.
-        if nx < 0
-            || ny < 0
-            || nx >= core::constants::SERVER_MAPX
-            || ny >= core::constants::SERVER_MAPY
-        {
+    for maybe_co in helpers::skill_aoe_targets(gs, caster_x, caster_y, aoe_base) {
+        if maybe_co == cn || maybe_co == co_orig {
             continue;
         }
-
-        let idx = (nx + ny * core::constants::SERVER_MAPX) as usize;
-        let maybe_co = gs.map[idx].ch as usize;
-        if maybe_co == 0 || maybe_co >= core::constants::MAXCHARS {
+        if use_legacy_cross && gs.characters[maybe_co].attack_cn as usize != cn {
             continue;
         }
-        if maybe_co != 0 && gs.characters[maybe_co].attack_cn as usize == cn && co_orig != maybe_co
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        if curse_power + helpers::random_mod_i32(20)
+            > gs.characters[maybe_co].skill[skills::SK_RESIST][5] as i32
+                + helpers::random_mod_i32(20)
+            && spell_curse(gs, cn, maybe_co, curse_power)
         {
-            if gs.characters[cn].skill[skills::SK_CURSE][5] as i32 + helpers::random_mod_i32(20)
-                > gs.characters[maybe_co].skill[skills::SK_RESIST][5] as i32
-                    + helpers::random_mod_i32(20)
-            {
-                spell_curse(
-                    gs,
-                    cn,
-                    maybe_co,
-                    gs.characters[cn].skill[skills::SK_CURSE][5] as i32,
-                );
-            }
+            gs.remember_pvp(cn, maybe_co);
         }
     }
 
@@ -2378,41 +2371,28 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
     let co_orig = co;
     dam = dam / 2 + dam / 4;
 
-    let (cx, cy) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
-    let mut neighbors: [(i32, i32); 4] = [(0, 0); 4];
-    let mut neighbor_count = 0usize;
+    let blast_base = gs.characters[cn].skill[skills::SK_BLAST][0] as i32;
+    let aoe_base = if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
+        blast_base
+    } else {
+        1
+    };
+    let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
+    let caster_x = gs.characters[cn].x as i32;
+    let caster_y = gs.characters[cn].y as i32;
 
-    if cx + 1 < SERVER_MAPX {
-        neighbors[neighbor_count] = (cx + 1, cy);
-        neighbor_count += 1;
-    }
-    if cx - 1 >= 0 {
-        neighbors[neighbor_count] = (cx - 1, cy);
-        neighbor_count += 1;
-    }
-    if cy + 1 < core::constants::SERVER_MAPY {
-        neighbors[neighbor_count] = (cx, cy + 1);
-        neighbor_count += 1;
-    }
-    if cy - 1 >= 0 {
-        neighbors[neighbor_count] = (cx, cy - 1);
-        neighbor_count += 1;
-    }
-
-    // Check four adjacent tiles
-    for (nx, ny) in neighbors.into_iter().take(neighbor_count) {
-        let idx = (nx as usize) + (ny as usize) * SERVER_MAPX as usize;
-        let maybe_co = gs.map[idx].ch as usize;
-        if maybe_co == 0 || maybe_co >= core::constants::MAXCHARS {
+    for maybe_co in helpers::skill_aoe_targets(gs, caster_x, caster_y, aoe_base) {
+        if maybe_co == cn || maybe_co == co_orig {
             continue;
         }
-        if maybe_co == co_orig {
+        if use_legacy_cross && gs.characters[maybe_co].attack_cn != cn as u16 {
             continue;
         }
-        if gs.characters[maybe_co].attack_cn != cn as u16 {
+        if !gs.may_attack_msg(cn, maybe_co, false) {
             continue;
         }
 
+        gs.remember_pvp(cn, maybe_co);
         let tmp2 = gs.do_hurt(cn, maybe_co, dam, 1);
         if tmp2 < 1 {
             gs.do_character_log(
@@ -3522,7 +3502,8 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 "You use this skill automatically when you stand still.\n",
             );
         }
-        x if x == skills::SK_DAGGER as i32
+        x if x == skills::SK_WEAPON as i32
+            || x == skills::SK_DAGGER as i32
             || x == skills::SK_SWORD as i32
             || x == skills::SK_AXE as i32
             || x == skills::SK_STAFF as i32

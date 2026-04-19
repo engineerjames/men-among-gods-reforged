@@ -1,5 +1,6 @@
 use core::{
     constants::{AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, CharacterFlags},
+    skills::{self, SkillIndex},
     string_operations::c_string_to_str,
     types::{Character, FontColor},
 };
@@ -70,6 +71,189 @@ pub fn write_c_string(buf: &mut [u8], s: &str) {
     let bytes = s.as_bytes();
     let n = bytes.len().min(buf.len().saturating_sub(1));
     buf[..n].copy_from_slice(&bytes[..n]);
+}
+
+/// Synchronizes the canonical Weapon Skill slot from legacy combat weapon skills.
+///
+/// This keeps the fixed 50-slot character schema intact while letting gameplay
+/// logic read a single canonical combat skill.
+///
+/// # Arguments
+///
+/// * `skill` - Mutable character skill array to normalize.
+pub(crate) fn sync_weapon_skill(
+    skill: &mut [[u8; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS],
+) {
+    let base_idx = SkillIndex::BaseValue as usize;
+    let preset_idx = SkillIndex::PresetModifier as usize;
+    let max_idx = SkillIndex::MaxValue as usize;
+    let diff_idx = SkillIndex::RaiseDifficulty as usize;
+
+    let mut base = skill[skills::SK_WEAPON][base_idx];
+    let mut preset = skill[skills::SK_WEAPON][preset_idx];
+    let mut max_value = skill[skills::SK_WEAPON][max_idx];
+    let mut difficulty = skill[skills::SK_WEAPON][diff_idx];
+
+    for legacy in skills::LEGACY_WEAPON_SKILLS {
+        base = base.max(skill[legacy][base_idx]);
+        preset = preset.max(skill[legacy][preset_idx]);
+        max_value = max_value.max(skill[legacy][max_idx]);
+
+        let legacy_difficulty = skill[legacy][diff_idx];
+        if legacy_difficulty != 0 && (difficulty == 0 || legacy_difficulty < difficulty) {
+            difficulty = legacy_difficulty;
+        }
+    }
+
+    if max_value < base {
+        max_value = base;
+    }
+
+    skill[skills::SK_WEAPON][base_idx] = base;
+    skill[skills::SK_WEAPON][preset_idx] = preset;
+    skill[skills::SK_WEAPON][max_idx] = max_value;
+    skill[skills::SK_WEAPON][diff_idx] = difficulty;
+}
+
+/// Returns the highest weapon-skill requirement encoded on an item.
+///
+/// # Arguments
+///
+/// * `skill` - Item skill modifier/requirement array.
+///
+/// # Returns
+///
+/// * The maximum requirement from `Weapon Skill` or any retired weapon slot.
+pub(crate) fn item_weapon_requirement(skill: &[[i8; 3]; skills::MAX_SKILLS]) -> i8 {
+    let mut requirement = skill[skills::SK_WEAPON][2];
+
+    for legacy in skills::LEGACY_WEAPON_SKILLS {
+        requirement = requirement.max(skill[legacy][2]);
+    }
+
+    requirement
+}
+
+/// Returns the AoE square radius for a skill base value.
+///
+/// Bases `1..=3` keep the original cross-shaped footprint, represented here
+/// as radius `0`. Higher bases expand to square areas around the caster.
+///
+/// # Arguments
+///
+/// * `base` - Learned base level of the skill.
+///
+/// # Returns
+///
+/// * `0` for the legacy cross shape, `1` for a `3x3`, `2` for `5x5`, or `3` for `7x7`.
+pub(crate) fn skill_aoe_radius(base: i32) -> i32 {
+    match base {
+        i32::MIN..=3 => 0,
+        4..=6 => 1,
+        7..=9 => 2,
+        _ => 3,
+    }
+}
+
+/// Returns whether a skill base still uses the original cross-shaped secondary-target rules.
+///
+/// # Arguments
+///
+/// * `base` - Learned base level of the skill.
+///
+/// # Returns
+///
+/// * `true` when the skill should only consider adjacent cross tiles.
+pub(crate) fn skill_aoe_uses_legacy_cross(base: i32) -> bool {
+    skill_aoe_radius(base) == 0
+}
+
+/// Enumerates the map tiles affected by an expanding caster-centered AoE.
+///
+/// Low bases use the original four-tile cross around the caster. Higher bases
+/// expand into square footprints similar to Warcry, excluding the center tile.
+///
+/// # Arguments
+///
+/// * `center_x` - Caster X coordinate.
+/// * `center_y` - Caster Y coordinate.
+/// * `base` - Learned base level of the skill.
+///
+/// # Returns
+///
+/// * Ordered list of in-bounds map coordinates affected by the AoE.
+pub(crate) fn skill_aoe_tiles(center_x: i32, center_y: i32, base: i32) -> Vec<(i32, i32)> {
+    if skill_aoe_uses_legacy_cross(base) {
+        let mut tiles = Vec::with_capacity(4);
+        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            let x = center_x + dx;
+            let y = center_y + dy;
+            if x >= 0
+                && y >= 0
+                && x < core::constants::SERVER_MAPX
+                && y < core::constants::SERVER_MAPY
+            {
+                tiles.push((x, y));
+            }
+        }
+        return tiles;
+    }
+
+    let radius = skill_aoe_radius(base);
+    let min_x = (center_x - radius).max(0);
+    let max_x = (center_x + radius).min(core::constants::SERVER_MAPX - 1);
+    let min_y = (center_y - radius).max(0);
+    let max_y = (center_y + radius).min(core::constants::SERVER_MAPY - 1);
+
+    let mut tiles = Vec::with_capacity(((max_x - min_x + 1) * (max_y - min_y + 1)) as usize);
+    for y in min_y..=max_y {
+        for x in min_x..=max_x {
+            if x == center_x && y == center_y {
+                continue;
+            }
+            tiles.push((x, y));
+        }
+    }
+
+    tiles
+}
+
+/// Collects live character ids occupying the tiles of an expanding AoE.
+///
+/// # Arguments
+///
+/// * `gs` - Shared immutable game state.
+/// * `center_x` - Caster X coordinate.
+/// * `center_y` - Caster Y coordinate.
+/// * `base` - Learned base level of the skill.
+///
+/// # Returns
+///
+/// * Character ids occupying affected tiles, excluding bodies and unused slots.
+pub(crate) fn skill_aoe_targets(
+    gs: &GameState,
+    center_x: i32,
+    center_y: i32,
+    base: i32,
+) -> Vec<usize> {
+    let mut targets = Vec::new();
+
+    for (x, y) in skill_aoe_tiles(center_x, center_y, base) {
+        let idx = (x + y * core::constants::SERVER_MAPX) as usize;
+        let target = gs.map[idx].ch as usize;
+        if target == 0 || target >= core::constants::MAXCHARS {
+            continue;
+        }
+        if gs.characters[target].used != core::constants::USE_ACTIVE {
+            continue;
+        }
+        if (gs.characters[target].flags & CharacterFlags::Body.bits()) != 0 {
+            continue;
+        }
+        targets.push(target);
+    }
+
+    targets
 }
 
 /// Port of `create_special_item(int temp)` from `server/src/orig/helper.c`.
@@ -892,6 +1076,7 @@ pub fn skill_needed(v: i32, diff: i32) -> i32 {
 #[cfg(test)]
 mod tests {
     use core::constants::TICKS;
+    use core::skills::{self, SkillIndex};
 
     use super::*;
 
@@ -977,6 +1162,75 @@ mod tests {
         assert_eq!(get_class_name(-100), "err... nothing");
         assert_eq!(get_class_name(77), "umm... whatzit");
         assert_eq!(get_class_name(1000), "umm... whatzit");
+    }
+
+    #[test]
+    fn sync_weapon_skill_promotes_legacy_maximums() {
+        let mut skill = [[0u8; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS];
+        skill[skills::SK_SWORD][SkillIndex::BaseValue as usize] = 5;
+        skill[skills::SK_SWORD][SkillIndex::MaxValue as usize] = 20;
+        skill[skills::SK_SWORD][SkillIndex::RaiseDifficulty as usize] = 4;
+        skill[skills::SK_STAFF][SkillIndex::BaseValue as usize] = 7;
+        skill[skills::SK_STAFF][SkillIndex::MaxValue as usize] = 18;
+        skill[skills::SK_STAFF][SkillIndex::RaiseDifficulty as usize] = 2;
+
+        sync_weapon_skill(&mut skill);
+
+        assert_eq!(skill[skills::SK_WEAPON][SkillIndex::BaseValue as usize], 7);
+        assert_eq!(skill[skills::SK_WEAPON][SkillIndex::MaxValue as usize], 20);
+        assert_eq!(
+            skill[skills::SK_WEAPON][SkillIndex::RaiseDifficulty as usize],
+            2
+        );
+    }
+
+    #[test]
+    fn item_weapon_requirement_uses_highest_legacy_requirement() {
+        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        skill[skills::SK_WEAPON][2] = 3;
+        skill[skills::SK_DAGGER][2] = 5;
+        skill[skills::SK_STAFF][2] = 7;
+
+        assert_eq!(item_weapon_requirement(&skill), 7);
+    }
+
+    #[test]
+    fn skill_aoe_radius_expands_in_steps() {
+        assert_eq!(skill_aoe_radius(1), 0);
+        assert_eq!(skill_aoe_radius(3), 0);
+        assert_eq!(skill_aoe_radius(4), 1);
+        assert_eq!(skill_aoe_radius(7), 2);
+        assert_eq!(skill_aoe_radius(10), 3);
+    }
+
+    #[test]
+    fn skill_aoe_tiles_low_base_uses_cross_shape() {
+        let tiles = skill_aoe_tiles(10, 10, 3);
+
+        assert_eq!(tiles, vec![(11, 10), (9, 10), (10, 11), (10, 9)]);
+    }
+
+    #[test]
+    fn skill_aoe_tiles_high_base_uses_square_shape() {
+        let tiles = skill_aoe_tiles(10, 10, 7);
+
+        assert_eq!(tiles.len(), 24);
+        assert!(tiles.contains(&(8, 8)));
+        assert!(tiles.contains(&(12, 12)));
+        assert!(!tiles.contains(&(10, 10)));
+    }
+
+    #[test]
+    fn skill_aoe_tiles_clamp_at_map_edges() {
+        let tiles = skill_aoe_tiles(0, 0, 12);
+
+        assert_eq!(tiles.len(), 15);
+        assert!(tiles.iter().all(|(x, y)| {
+            *x >= 0
+                && *y >= 0
+                && *x < core::constants::SERVER_MAPX
+                && *y < core::constants::SERVER_MAPY
+        }));
     }
 
     #[test]

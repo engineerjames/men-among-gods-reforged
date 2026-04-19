@@ -449,34 +449,34 @@ pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
                         item.skill[skills::SK_WARCRY][0] = 12;
                     }
                 }
-                // Hand to Hand
+                // Weapon Skill
                 10 => {
-                    item.skill[skills::SK_HAND][0] += skill_value as i8;
-                    if item.skill[skills::SK_HAND][0] > 12 {
-                        item.skill[skills::SK_HAND][0] = 12;
+                    item.skill[skills::SK_WEAPON][0] += skill_value as i8;
+                    if item.skill[skills::SK_WEAPON][0] > 12 {
+                        item.skill[skills::SK_WEAPON][0] = 12;
                     }
-                    item.skill[skills::SK_HAND][2] =
-                        (item.skill[skills::SK_HAND][0] as u32 * helpers::random_mod(7)) as i8;
+                    item.skill[skills::SK_WEAPON][2] =
+                        (item.skill[skills::SK_WEAPON][0] as u32 * helpers::random_mod(7)) as i8;
                 }
-                // Sword
+                // Weapon Skill
                 11 => {
-                    item.skill[skills::SK_SWORD][0] += skill_value as i8;
-                    if item.skill[skills::SK_SWORD][0] > 12 {
-                        item.skill[skills::SK_SWORD][0] = 12;
+                    item.skill[skills::SK_WEAPON][0] += skill_value as i8;
+                    if item.skill[skills::SK_WEAPON][0] > 12 {
+                        item.skill[skills::SK_WEAPON][0] = 12;
                     }
                 }
-                // Dagger
+                // Weapon Skill
                 12 => {
-                    item.skill[skills::SK_DAGGER][0] += skill_value as i8;
-                    if item.skill[skills::SK_DAGGER][0] > 12 {
-                        item.skill[skills::SK_DAGGER][0] = 12;
+                    item.skill[skills::SK_WEAPON][0] += skill_value as i8;
+                    if item.skill[skills::SK_WEAPON][0] > 12 {
+                        item.skill[skills::SK_WEAPON][0] = 12;
                     }
                 }
-                // Two-Handed
+                // Weapon Skill
                 13 => {
-                    item.skill[skills::SK_TWOHAND][0] += skill_value as i8;
-                    if item.skill[skills::SK_TWOHAND][0] > 12 {
-                        item.skill[skills::SK_TWOHAND][0] = 12;
+                    item.skill[skills::SK_WEAPON][0] += skill_value as i8;
+                    if item.skill[skills::SK_WEAPON][0] > 12 {
+                        item.skill[skills::SK_WEAPON][0] = 12;
                     }
                 }
                 // Lockpick
@@ -1029,6 +1029,8 @@ pub fn pop_skill(gs: &mut GameState) {
             ch.skill[n][2] = temp_skill[2];
             ch.skill[n][3] = temp_skill[3];
         }
+
+        helpers::sync_weapon_skill(&mut gs.characters[cn].skill);
     }
     log::info!("Changed Skills.");
 }

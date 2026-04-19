@@ -5,6 +5,19 @@ pub const SK_AXE: usize = 4;
 pub const SK_DAGGER: usize = 2;
 pub const SK_STAFF: usize = 5;
 pub const SK_TWOHAND: usize = 6; // two handed weapon
+/// Canonical combat skill used for all weapon and unarmed fighting.
+pub const SK_WEAPON: usize = 36;
+
+/// Legacy combat skill slots now unified under [`SK_WEAPON`].
+pub const LEGACY_WEAPON_SKILLS: [usize; 7] = [
+    SK_HAND,
+    SK_KARATE,
+    SK_DAGGER,
+    SK_SWORD,
+    SK_AXE,
+    SK_STAFF,
+    SK_TWOHAND,
+];
 pub const SK_LOCK: usize = 7;
 pub const SK_STEALTH: usize = 8;
 pub const SK_PERCEPT: usize = 9;
@@ -40,6 +53,39 @@ const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "S
 
 /// Maximum number of skill slots.
 pub const MAX_SKILLS: usize = 50;
+
+/// Returns whether `skill` is one of the retired per-weapon combat slots.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index to inspect.
+///
+/// # Returns
+///
+/// * `true` if the skill feeds the unified [`SK_WEAPON`] slot.
+pub const fn is_legacy_weapon_skill(skill: usize) -> bool {
+    matches!(
+        skill,
+        SK_HAND | SK_KARATE | SK_DAGGER | SK_SWORD | SK_AXE | SK_STAFF | SK_TWOHAND
+    )
+}
+
+/// Maps retired combat-weapon skill slots onto the canonical [`SK_WEAPON`] slot.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index to canonicalize.
+///
+/// # Returns
+///
+/// * [`SK_WEAPON`] for retired combat weapon skills, otherwise `skill` unchanged.
+pub const fn canonicalize_weapon_skill(skill: usize) -> usize {
+    if is_legacy_weapon_skill(skill) {
+        SK_WEAPON
+    } else {
+        skill
+    }
+}
 
 #[repr(usize)]
 pub enum SkillIndex {
@@ -397,8 +443,16 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         0,
         4,
     ),
-    // 36..49 reserved empty
-    SkillTab::new(36, 'Z', "", "", 0, 0, 0),
+    SkillTab::new(
+        36,
+        'C',
+        "Weapon Skill",
+        "Fighting with weapons or in close combat.",
+        0,
+        3,
+        4,
+    ),
+    // 37..49 reserved empty
     SkillTab::new(37, 'Z', "", "", 0, 0, 0),
     SkillTab::new(38, 'Z', "", "", 0, 0, 0),
     SkillTab::new(39, 'Z', "", "", 0, 0, 0),
@@ -546,7 +600,7 @@ const SKILL_NAMES: [&str; 50] = [
     "Surround Hit",
     "Concentrate",
     "Warcry",
-    "",
+    "Weapon Skill",
     "",
     "",
     "",
@@ -704,8 +758,10 @@ mod tests {
         assert_eq!(get_skill_name(9), "Perception");
         assert_eq!(get_skill_name(12), "Bartering");
 
+        assert_eq!(get_skill_name(SK_WEAPON), "Weapon Skill");
+
         // Test empty skills (reserved slots)
-        assert_eq!(get_skill_name(36), "");
+        assert_eq!(get_skill_name(37), "");
         assert_eq!(get_skill_name(49), "");
     }
 
@@ -750,6 +806,7 @@ mod tests {
         assert_eq!(SKILLTAB[4].cat, 'C'); // Axe
         assert_eq!(SKILLTAB[5].cat, 'C'); // Staff
         assert_eq!(SKILLTAB[6].cat, 'C'); // Two-Handed
+        assert_eq!(SKILLTAB[SK_WEAPON].cat, 'C'); // Weapon Skill
 
         // Test General skills (category 'G')
         assert_eq!(SKILLTAB[7].cat, 'G'); // Lock-Picking
@@ -773,15 +830,15 @@ mod tests {
         assert_eq!(SKILLTAB[10].cat, 'M'); // Swimming
 
         // Test empty skills (category 'Z')
-        assert_eq!(SKILLTAB[36].cat, 'Z');
+        assert_eq!(SKILLTAB[37].cat, 'Z');
         assert_eq!(SKILLTAB[49].cat, 'Z');
     }
 
     #[test]
     fn test_skill_descriptions() {
         // Test that all active skills have non-empty descriptions
-        for i in 0..36 {
-            // First 36 are active skills
+        for i in 0..=SK_WEAPON {
+            // Active skills including the unified Weapon Skill slot.
             assert!(
                 !SKILLTAB[i].desc.is_empty(),
                 "Skill {} '{}' should have a description",
@@ -867,6 +924,7 @@ mod tests {
         assert_eq!(skill_lookup("sw"), 3);
         assert_eq!(skill_lookup("Hand"), 0);
         assert_eq!(skill_lookup("Heal"), 26);
+        assert_eq!(skill_lookup("Weapon"), SK_WEAPON as i32);
     }
 
     #[test]
@@ -917,7 +975,20 @@ mod tests {
         assert_eq!(get_skill_sortkey(10), 'M');
         assert_eq!(get_skill_sortkey(11), 'R');
         assert_eq!(get_skill_sortkey(28), 'B');
-        assert_eq!(get_skill_sortkey(36), 'Z');
+        assert_eq!(get_skill_sortkey(SK_WEAPON), 'C');
+        assert_eq!(get_skill_sortkey(37), 'Z');
+    }
+
+    #[test]
+    fn legacy_weapon_skills_map_to_weapon_skill() {
+        for legacy in LEGACY_WEAPON_SKILLS {
+            assert!(is_legacy_weapon_skill(legacy));
+            assert_eq!(canonicalize_weapon_skill(legacy), SK_WEAPON);
+        }
+
+        assert!(!is_legacy_weapon_skill(SK_WEAPON));
+        assert_eq!(canonicalize_weapon_skill(SK_WEAPON), SK_WEAPON);
+        assert_eq!(canonicalize_weapon_skill(SK_BLAST), SK_BLAST);
     }
 
     #[test]
