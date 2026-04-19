@@ -218,11 +218,12 @@ pub(crate) fn skill_aoe_tiles(center_x: i32, center_y: i32, base: i32) -> Vec<(i
     tiles
 }
 
-/// Collects live character ids occupying the tiles of an expanding AoE.
+/// Collects character ids occupying the tiles of an expanding AoE.
 ///
 /// # Arguments
 ///
-/// * `gs` - Shared immutable game state.
+/// * `gs` - Shared mutable game state.
+/// * `viewer` - Optional character id whose visibility rules should filter targets.
 /// * `center_x` - Caster X coordinate.
 /// * `center_y` - Caster Y coordinate.
 /// * `base` - Learned base level of the skill.
@@ -230,8 +231,10 @@ pub(crate) fn skill_aoe_tiles(center_x: i32, center_y: i32, base: i32) -> Vec<(i
 /// # Returns
 ///
 /// * Character ids occupying affected tiles, excluding bodies and unused slots.
+///   When `viewer` is `Some`, only currently visible targets are returned.
 pub(crate) fn skill_aoe_targets(
-    gs: &GameState,
+    gs: &mut GameState,
+    viewer: Option<usize>,
     center_x: i32,
     center_y: i32,
     base: i32,
@@ -249,6 +252,11 @@ pub(crate) fn skill_aoe_targets(
         }
         if (gs.characters[target].flags & CharacterFlags::Body.bits()) != 0 {
             continue;
+        }
+        if let Some(viewer) = viewer {
+            if gs.do_char_can_see(viewer, target) == 0 {
+                continue;
+            }
         }
         targets.push(target);
     }
@@ -1231,6 +1239,51 @@ mod tests {
                 && *x < core::constants::SERVER_MAPX
                 && *y < core::constants::SERVER_MAPY
         }));
+    }
+
+    #[test]
+    fn skill_aoe_targets_optionally_filter_by_visibility() {
+        std::thread::Builder::new()
+            .name("skill_aoe_targets".to_string())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mut gs = GameState::new();
+                let viewer = 1;
+                let visible_target = 2;
+                let hidden_target = 3;
+
+                gs.characters[viewer].used = core::constants::USE_ACTIVE;
+                gs.characters[viewer].x = 10;
+                gs.characters[viewer].y = 10;
+                gs.characters[viewer].flags = CharacterFlags::Infrared.bits();
+
+                gs.characters[visible_target].used = core::constants::USE_ACTIVE;
+                gs.characters[visible_target].x = 11;
+                gs.characters[visible_target].y = 10;
+
+                gs.characters[hidden_target].used = core::constants::USE_ACTIVE;
+                gs.characters[hidden_target].x = 12;
+                gs.characters[hidden_target].y = 10;
+                gs.characters[hidden_target].flags =
+                    (CharacterFlags::Invisible | CharacterFlags::Staff).bits();
+
+                let visible_map_idx = 11 + 10 * core::constants::SERVER_MAPX as usize;
+                let hidden_map_idx = 12 + 10 * core::constants::SERVER_MAPX as usize;
+                gs.map[visible_map_idx].ch = visible_target as u32;
+                gs.map[hidden_map_idx].ch = hidden_target as u32;
+
+                assert_eq!(
+                    skill_aoe_targets(&mut gs, None, 10, 10, 7),
+                    vec![visible_target, hidden_target]
+                );
+                assert_eq!(
+                    skill_aoe_targets(&mut gs, Some(viewer), 10, 10, 7),
+                    vec![visible_target]
+                );
+            })
+            .expect("spawn visibility regression test")
+            .join()
+            .expect("run visibility regression test");
     }
 
     #[test]
