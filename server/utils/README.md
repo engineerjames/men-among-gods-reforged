@@ -6,27 +6,31 @@ Utility executables for the Men Among Gods Reforged server.
 
 ### Template Viewer
 
-A graphical tool built with egui for viewing and editing character and item templates.
+A graphical tool built with egui for viewing and editing item templates, character templates, item instances, and character instances.
 
-By default it connects to **KeyDB** at `127.0.0.1:5556` and loads all game data (templates, instances, map). Pass `--dat [path]` to fall back to `.dat` files instead. The data source can also be switched at runtime from `File --> Data Source`.
+The viewer now supports two world-data sources:
 
-When character templates are saved back to KeyDB, `points_tot` is automatically recalculated for every template.
+- Live KeyDB at `127.0.0.1:5556`: read-only view of the latest persisted server state.
+- `.wsnap` snapshot files: editable offline backups with `Save Snapshot As...`.
+
+Live KeyDB mode intentionally does not write back while the server is running. The game server owns the authoritative in-memory state and periodically persists to KeyDB, so external live edits would be overwritten.
 
 **Usage:**
 ```bash
-# Default: connect to KeyDB
+# Default: connect to live KeyDB in read-only mode
 cargo run --package server-utils --bin template_viewer
 
-# Use .dat files from the default assets directory
-cargo run --package server-utils --bin template_viewer -- --dat
+# Open an editable world snapshot backup
+cargo run --package server-utils --bin template_viewer -- --snapshot server/assets/world_seed.wsnap
 
-# Use .dat files from a specific directory
-cargo run --package server-utils --bin template_viewer -- --dat /path/to/.dat
+# Or use the helper launcher from the repo root
+./scripts/run_devtool.sh template_viewer
 ```
 
 **Features:**
-- Open and browse item templates (titem.dat) by selecting a `.dat` directory
-- Open and browse character templates (tchar.dat) by selecting a `.dat` directory
+- Open and browse live persisted data from KeyDB in read-only mode
+- Open and edit `.wsnap` backup files
+- Save edited backups with `Save Snapshot As...`
 - View detailed information about each template including:
   - Basic properties (name, description, sprite, etc.)
   - Attributes and stats
@@ -34,12 +38,12 @@ cargo run --package server-utils --bin template_viewer -- --dat /path/to/.dat
   - Inventory and equipment (for characters)
   - Driver data
 - Filter templates by name
-- Native folder picker for selecting the `.dat` directory
 
 **How to Use:**
-1. Run the application (connects to KeyDB by default, or pass `--dat` for file mode)
-2. Browse item/character templates using the tabs in the top bar
-3. To switch data source at runtime: **File** --> **Data Source**
+1. Start the local Docker stack if you want live data: `docker compose up -d --build`
+2. Run the application on the host
+3. Use `File --> Data Source` to switch between live KeyDB and snapshot mode
+4. In snapshot mode, edit data and use `File --> Save Snapshot As...`
 
 **Running from the project root:**
 ```bash
@@ -55,28 +59,50 @@ cargo build --package server-utils
 
 An egui tool for viewing and editing the world map using the client sprite archive.
 
-By default it connects to **KeyDB** at `127.0.0.1:5556` and loads map tiles, item instances, and item templates. Pass `--dat [path]` to fall back to `.dat` files instead. The data source can also be switched at runtime from `File --> Data Source`.
+Like the template viewer, it supports two world-data sources:
+
+- Live KeyDB at `127.0.0.1:5556`: read-only view of the latest persisted world state.
+- `.wsnap` snapshot files: editable offline backups with `Save Snapshot As...`.
 
 **Usage:**
 ```bash
-# Default: connect to KeyDB
+# Default: connect to live KeyDB in read-only mode
 cargo run --package server-utils --bin map_viewer
 
-# Use .dat files from the default assets directory
-cargo run --package server-utils --bin map_viewer -- --dat
+# Open an editable world snapshot backup
+cargo run --package server-utils --bin map_viewer -- --snapshot server/assets/world_seed.wsnap
 
-# Use .dat files from a specific directory
-cargo run --package server-utils --bin map_viewer -- --dat /path/to/.dat
+# Or use the helper launcher from the repo root
+./scripts/run_devtool.sh map_viewer
 ```
 
 **Optional args:**
-- `--dat [path]` (use `.dat` files; optionally specify directory containing `map.dat`)
-- `--dat-dir <path>` (alias for `--dat`, directory containing `map.dat`)
+- `--snapshot <path>` (open an editable `.wsnap` backup)
 - `--graphics-zip <path>` (path to `images.zip`)
 
 **Controls:**
 - `W/A/S/D`: pan
 - Drag with mouse: pan
+- Left click: inspect tiles
+- In snapshot mode, use the palette and tile controls to edit the map
+
+## Local Development Workflow
+
+Run the services in Docker, but run the viewers natively on the host:
+
+```bash
+docker compose up -d --build
+./scripts/run_devtool.sh map_viewer
+./scripts/run_devtool.sh template_viewer
+```
+
+The viewers use the same KeyDB URL resolution as the server crate:
+
+- `MAG_KEYDB_URL` if set
+- otherwise `KEYDB_PASSWORD` from the repo `.env`
+- otherwise unauthenticated `redis://127.0.0.1:5556/`
+
+That means a normal repo-local `.env` file is enough for host-native viewer runs.
 
 ### DAT Normalizer
 
