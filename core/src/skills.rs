@@ -10,13 +10,7 @@ pub const SK_WEAPON: usize = 36;
 
 /// Legacy combat skill slots now unified under [`SK_WEAPON`].
 pub const LEGACY_WEAPON_SKILLS: [usize; 7] = [
-    SK_HAND,
-    SK_KARATE,
-    SK_DAGGER,
-    SK_SWORD,
-    SK_AXE,
-    SK_STAFF,
-    SK_TWOHAND,
+    SK_HAND, SK_KARATE, SK_DAGGER, SK_SWORD, SK_AXE, SK_STAFF, SK_TWOHAND,
 ];
 pub const SK_LOCK: usize = 7;
 pub const SK_STEALTH: usize = 8;

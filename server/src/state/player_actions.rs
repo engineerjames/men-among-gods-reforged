@@ -169,11 +169,7 @@ impl GameState {
             if (self.items[tmp].placement & core::constants::PL_WEAPON) != 0
                 && !traits::kindred_can_use_weapon(self.characters[cn].kindred, item_flags)
             {
-                self.do_character_log(
-                    cn,
-                    FontColor::Red,
-                    "Your class cannot use that weapon.\n",
-                );
+                self.do_character_log(cn, FontColor::Red, "Your class cannot use that weapon.\n");
                 return -1;
             }
 

@@ -130,7 +130,10 @@ impl TemplateViewerApp {
         self.save_status = Some(status);
         self.dirty = false;
 
-        if matches!(self.view_mode, ViewMode::ItemTemplates | ViewMode::CharacterTemplates) {
+        if matches!(
+            self.view_mode,
+            ViewMode::ItemTemplates | ViewMode::CharacterTemplates
+        ) {
             if !self.item_templates.is_empty() {
                 self.view_mode = ViewMode::ItemTemplates;
             } else if !self.character_templates.is_empty() {
