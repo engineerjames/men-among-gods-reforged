@@ -41,6 +41,8 @@ impl GameState {
     /// # Arguments
     /// * `cn` - Character id to recompute
     pub(crate) fn really_update_char(&mut self, cn: usize) {
+        helpers::sync_weapon_skill(&mut self.characters[cn].skill);
+
         // Clear regeneration prevention flags and sprite override
         self.characters[cn].flags &= !(CharacterFlags::NoHpReg.bits()
             | CharacterFlags::NoEndReg.bits()
@@ -146,11 +148,13 @@ impl GameState {
                 };
 
                 for z in 0..50 {
-                    skill_bonus[z] += if item.active != 0 {
+                    let skill_idx = skills::canonicalize_weapon_skill(z);
+                    let bonus = if item.active != 0 {
                         item.skill[z][1] as i32
                     } else {
                         item.skill[z][0] as i32
                     };
+                    skill_bonus[skill_idx] += bonus;
                 }
             }
 
@@ -205,7 +209,8 @@ impl GameState {
                 mana_bonus += spell.mana[1] as i32;
 
                 for z in 0..50 {
-                    skill_bonus[z] += spell.skill[z][1] as i32;
+                    let skill_idx = skills::canonicalize_weapon_skill(z);
+                    skill_bonus[skill_idx] += spell.skill[z][1] as i32;
                 }
 
                 armor += spell.armor[1] as i32;
@@ -1040,7 +1045,9 @@ impl GameState {
     /// # Returns
     /// * `true` when the skill was increased, `false` otherwise
     pub(crate) fn do_raise_skill(&mut self, cn: usize, skill: i32) -> bool {
-        let skill_idx = skill as usize;
+        helpers::sync_weapon_skill(&mut self.characters[cn].skill);
+
+        let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
         if skill_idx >= 50 {
             return false;
         }

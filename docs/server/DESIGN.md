@@ -288,25 +288,19 @@ sequenceDiagram
 - Because `game_tick()` runs before `rec_player()` inside a scheduling iteration, input commonly incurs up to one tick of delay before affecting simulation.
 - `SV_TICK` is currently emitted during login flows; most other per-tick updates are sent as `xsend` messages batched into the tick payload.
 
-## Persistence: Storage Backends
+## Persistence
 
-The server supports two storage backends, controlled by the `MAG_STORAGE_BACKEND` environment variable:
+All game world data is persisted exclusively via **KeyDB**. The legacy `.dat`
+file backend has been removed.
 
-| Value | Backend | Description |
-|-------|---------|-------------|
-| *(unset)* or `dat` | `.dat` files | Legacy binary files in `<exe_parent>/.dat/`. Default. |
-| `keydb` or `redis` | KeyDB | All game data stored as bincode-encoded blobs in KeyDB. |
-
-### KeyDB Backend
-
-When using the KeyDB backend, the server:
+### Startup flow
 
 1. **Loads** all game data from KeyDB on startup via pipelined `GET` commands.
-2. Operates on in-memory data identically to the `.dat` path — the game loop is unchanged.
+2. Operates on in-memory data — the game loop is unchanged during execution.
 3. **Background saver thread** periodically clones slices of data from the main thread and writes them to KeyDB on a rotating schedule (~60 second full rotation, ~10 seconds between individual saves).
 4. **On shutdown**, performs a synchronous full save to KeyDB before exiting.
 
-#### Key Schema
+### Key Schema
 
 | Key pattern | Data type | Count |
 |---|---|---|
@@ -322,7 +316,7 @@ When using the KeyDB backend, the server:
 | `game:motd` | UTF-8 string | 1 |
 | `game:meta:version` | integer | 1 |
 
-#### Background Save Rotation
+### Background Save Rotation
 
 | Cycle | Data | Approx timing |
 |-------|------|---------------|
@@ -335,34 +329,37 @@ When using the KeyDB backend, the server:
 
 Maximum data loss on server crash: ~60 seconds of gameplay.
 
-#### Migration Tool
+### World Snapshot Tool
 
-To migrate existing `.dat` files to KeyDB:
+The `world-snapshot` binary manages portable `.wsnap` snapshot files:
 
 ```sh
-cargo run -p server --bin dat-to-keydb -- --dat-dir /path/to/.dat
+# Export the live KeyDB state to a snapshot file
+cargo run -p server --bin world-snapshot -- export --output server/assets/world_seed.wsnap
+
+# Import a snapshot into KeyDB (idempotent first-run seeding)
+cargo run -p server --bin world-snapshot -- import --input server/assets/world_seed.wsnap --skip-if-seeded
+
+# Verify a snapshot file without touching KeyDB
+cargo run -p server --bin world-snapshot -- verify --input server/assets/world_seed.wsnap
 ```
 
-Use `--force` to overwrite existing game data in KeyDB.
+Use `--force` with `import` to overwrite existing game data in KeyDB.
 
-Use `--skip-if-seeded` to exit successfully if `game:meta:version` already
-exists (useful for idempotent startup jobs).
-
-#### Docker Compose Bootstrap (KeyDB mode)
+### Docker Compose Bootstrap
 
 The compose stack runs an idempotent seed step before the game server starts:
 
 1. `keydb` starts and becomes healthy.
-2. `server-seed` runs `dat-to-keydb --skip-if-seeded`.
-	- First run: imports `.dat` into KeyDB.
-	- Later runs: detects existing `game:meta:version` and exits success.
-3. `server` starts with `MAG_STORAGE_BACKEND=keydb` after `server-seed`
-	completes successfully.
+2. `server-seed` runs `world-snapshot import --skip-if-seeded /app/world_seed.wsnap`.
+	- First run: imports the bundled snapshot into KeyDB.
+	- Later runs: detects existing `game:meta:version` and exits successfully.
+3. `server` starts after `server-seed` completes successfully.
 
 This ensures KeyDB is initialized exactly once per persistent KeyDB volume while
 keeping `docker compose up` deterministic.
 
-#### Recommended KeyDB Configuration
+### Recommended KeyDB Configuration
 
 ```conf
 appendonly yes

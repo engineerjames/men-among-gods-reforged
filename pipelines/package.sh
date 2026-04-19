@@ -10,6 +10,24 @@ EOF
 VERSION=""
 PLATFORM=""
 
+require_file() {
+  local path="$1"
+
+  if [[ ! -f "$path" ]]; then
+    echo "Missing required file: $path" >&2
+    exit 1
+  fi
+}
+
+copy_required_file() {
+  local src="$1"
+  local dest="$2"
+
+  require_file "$src"
+  mkdir -p "$(dirname "$dest")"
+  cp "$src" "$dest"
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version)
@@ -36,13 +54,14 @@ SERVER_DIR="men-among-gods-server-${VERSION}-${PLATFORM}"
 CLIENT_DIR="men-among-gods-client-${VERSION}-${PLATFORM}"
 
 rm -rf dist
-mkdir -p "dist/${SERVER_DIR}/.dat"
+mkdir -p "dist/${SERVER_DIR}"
 
-cp -R server/assets/.dat/. "dist/${SERVER_DIR}/.dat/"
-cp "target/release/server" "dist/${SERVER_DIR}/server"
-cp "target/release/map_viewer" "dist/${SERVER_DIR}/map_viewer"
-cp "target/release/template_viewer" "dist/${SERVER_DIR}/template_viewer"
-cp "target/release/api" "dist/${SERVER_DIR}/api"
+copy_required_file "target/release/server" "dist/${SERVER_DIR}/server"
+copy_required_file "target/release/map_viewer" "dist/${SERVER_DIR}/map_viewer"
+copy_required_file "target/release/template_viewer" "dist/${SERVER_DIR}/template_viewer"
+copy_required_file "target/release/api" "dist/${SERVER_DIR}/api"
+copy_required_file "target/release/world-snapshot" "dist/${SERVER_DIR}/world-snapshot"
+copy_required_file "server/assets/world_seed.wsnap" "dist/${SERVER_DIR}/assets/world_seed.wsnap"
 
 if [[ "$PLATFORM" == "macos" ]]; then
   # If you double-click a raw executable on macOS, Finder launches it via Terminal.
@@ -59,7 +78,7 @@ if [[ "$PLATFORM" == "macos" ]]; then
   # The client expects assets next to the executable (current_exe()/assets).
   cp -R client/assets/. "${MACOS_DIR}/assets/"
 
-  cp "target/release/men-among-gods-client" "${MACOS_DIR}/men-among-gods-client"
+  copy_required_file "target/release/men-among-gods-client" "${MACOS_DIR}/men-among-gods-client"
   chmod +x "${MACOS_DIR}/men-among-gods-client"
 
   # Bundle a proper macOS app icon.
@@ -136,7 +155,7 @@ EOF
 else
   mkdir -p "dist/${CLIENT_DIR}/assets"
   cp -R client/assets/. "dist/${CLIENT_DIR}/assets/"
-  cp "target/release/men-among-gods-client" "dist/${CLIENT_DIR}/men-among-gods-client"
+  copy_required_file "target/release/men-among-gods-client" "dist/${CLIENT_DIR}/men-among-gods-client"
 fi
 
 (cd dist && zip -r "${SERVER_DIR}.zip" "${SERVER_DIR}")

@@ -24,3 +24,10 @@ pub mod keydb_store;
 /// experience a character template is worth, based on its attributes, HP,
 /// endurance, mana, and skills.
 pub mod points;
+
+/// World snapshot format for portable, versioned game-world backups.
+///
+/// Provides [`snapshot::WorldSnapshot`] for reading and writing `.wsnap`
+/// files that capture the complete server game state in a single binary
+/// file suitable for backup, transfer, or manual editing.
+pub mod snapshot;

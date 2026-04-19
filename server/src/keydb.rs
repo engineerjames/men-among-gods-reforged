@@ -19,24 +19,22 @@ fn load_dotenv_once() {
     });
 }
 
-/// Return the KeyDB connection URL.
+/// Resolve the KeyDB connection URL from process environment.
 ///
-/// Resolution order:
+/// Unit tests intentionally skip `.env` loading so they can control the
+/// environment deterministically without host-specific leakage.
 ///
-/// 1. `MAG_KEYDB_URL` — used verbatim when set (covers all deployment
-///    environments where the full URL including credentials is provided).
-/// 2. `KEYDB_PASSWORD` — when only the password is available (e.g. a
-///    developer sourcing the project `.env` file before running a local
-///    utility against the docker-compose KeyDB), the URL is constructed as
-///    `redis://:<password>@127.0.0.1:5556/`.
-/// 3. Hard-coded `redis://127.0.0.1:5556/` — unauthenticated local fallback
-///    for development environments that run KeyDB without a password.
+/// # Arguments
+///
+/// * `load_dotenv` - Whether to load the project `.env` file first.
 ///
 /// # Returns
 ///
-/// * The connection URL string.
-pub fn keydb_url() -> String {
-    load_dotenv_once();
+/// * The resolved connection URL string.
+fn keydb_url_with_dotenv(load_dotenv: bool) -> String {
+    if load_dotenv {
+        load_dotenv_once();
+    }
 
     if let Ok(url) = env::var("MAG_KEYDB_URL") {
         return url;
@@ -55,6 +53,26 @@ pub fn keydb_url() -> String {
         return format!("redis://:{encoded}@127.0.0.1:5556/");
     }
     "redis://127.0.0.1:5556/".to_string()
+}
+
+/// Return the KeyDB connection URL.
+///
+/// Resolution order:
+///
+/// 1. `MAG_KEYDB_URL` — used verbatim when set (covers all deployment
+///    environments where the full URL including credentials is provided).
+/// 2. `KEYDB_PASSWORD` — when only the password is available (e.g. a
+///    developer sourcing the project `.env` file before running a local
+///    utility against the docker-compose KeyDB), the URL is constructed as
+///    `redis://:<password>@127.0.0.1:5556/`.
+/// 3. Hard-coded `redis://127.0.0.1:5556/` — unauthenticated local fallback
+///    for development environments that run KeyDB without a password.
+///
+/// # Returns
+///
+/// * The connection URL string.
+pub fn keydb_url() -> String {
+    keydb_url_with_dotenv(!cfg!(test))
 }
 
 /// Open a synchronous Redis/KeyDB connection.
@@ -194,6 +212,7 @@ pub fn set_character_server_id(character_id: u64, server_id: u32) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
     use std::sync::{Mutex, OnceLock};
 
     /// Global guard to serialize tests that mutate process environment vars.
@@ -202,24 +221,91 @@ mod tests {
         ENV_TEST_MUTEX
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .expect("env test mutex poisoned")
+            .unwrap_or_else(|poison| poison.into_inner())
+    }
+
+    /// Save and restore KeyDB-related environment variables around a test.
+    struct KeyDbEnvScope {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        mag_keydb_url: Option<OsString>,
+        keydb_password: Option<OsString>,
+    }
+
+    impl KeyDbEnvScope {
+        /// Capture the current KeyDB-related environment variables.
+        fn capture() -> Self {
+            let guard = env_test_guard();
+            Self {
+                _guard: guard,
+                mag_keydb_url: std::env::var_os("MAG_KEYDB_URL"),
+                keydb_password: std::env::var_os("KEYDB_PASSWORD"),
+            }
+        }
+
+        /// Set `MAG_KEYDB_URL` for the current test scope.
+        ///
+        /// # Arguments
+        ///
+        /// * `value` - URL value to install.
+        fn set_mag_keydb_url(&self, value: &str) {
+            // SAFETY: `KeyDbEnvScope` holds the process-wide env mutex for its lifetime.
+            unsafe {
+                std::env::set_var("MAG_KEYDB_URL", value);
+            }
+        }
+
+        /// Remove `MAG_KEYDB_URL` for the current test scope.
+        fn remove_mag_keydb_url(&self) {
+            // SAFETY: `KeyDbEnvScope` holds the process-wide env mutex for its lifetime.
+            unsafe {
+                std::env::remove_var("MAG_KEYDB_URL");
+            }
+        }
+
+        /// Set `KEYDB_PASSWORD` for the current test scope.
+        ///
+        /// # Arguments
+        ///
+        /// * `value` - Password value to install.
+        fn set_keydb_password(&self, value: &str) {
+            // SAFETY: `KeyDbEnvScope` holds the process-wide env mutex for its lifetime.
+            unsafe {
+                std::env::set_var("KEYDB_PASSWORD", value);
+            }
+        }
+
+        /// Remove `KEYDB_PASSWORD` for the current test scope.
+        fn remove_keydb_password(&self) {
+            // SAFETY: `KeyDbEnvScope` holds the process-wide env mutex for its lifetime.
+            unsafe {
+                std::env::remove_var("KEYDB_PASSWORD");
+            }
+        }
+    }
+
+    impl Drop for KeyDbEnvScope {
+        fn drop(&mut self) {
+            // SAFETY: `KeyDbEnvScope` still holds the process-wide env mutex during drop.
+            unsafe {
+                match &self.mag_keydb_url {
+                    Some(value) => std::env::set_var("MAG_KEYDB_URL", value),
+                    None => std::env::remove_var("MAG_KEYDB_URL"),
+                }
+                match &self.keydb_password {
+                    Some(value) => std::env::set_var("KEYDB_PASSWORD", value),
+                    None => std::env::remove_var("KEYDB_PASSWORD"),
+                }
+            }
+        }
     }
 
     /// `MAG_KEYDB_URL` takes precedence over everything else.
     #[test]
     fn mag_keydb_url_takes_precedence() {
-        let _guard = env_test_guard();
-        // SAFETY: env_test_guard() serialises all environment mutations across tests.
-        unsafe {
-            std::env::set_var("MAG_KEYDB_URL", "redis://custom-host:1234/");
-            std::env::set_var("KEYDB_PASSWORD", "should-be-ignored");
-        }
+        let env_scope = KeyDbEnvScope::capture();
+        env_scope.set_mag_keydb_url("redis://custom-host:1234/");
+        env_scope.set_keydb_password("should-be-ignored");
         let url = keydb_url();
-        // SAFETY: env_test_guard() serialises all environment mutations across tests.
-        unsafe {
-            std::env::remove_var("MAG_KEYDB_URL");
-            std::env::remove_var("KEYDB_PASSWORD");
-        }
         assert_eq!(url, "redis://custom-host:1234/");
     }
 
@@ -227,17 +313,10 @@ mod tests {
     /// against the default local address.
     #[test]
     fn keydb_password_constructs_authenticated_url() {
-        let _guard = env_test_guard();
-        // SAFETY: env_test_guard() serialises all environment mutations across tests.
-        unsafe {
-            std::env::remove_var("MAG_KEYDB_URL");
-            std::env::set_var("KEYDB_PASSWORD", "s3cr3t");
-        }
+        let env_scope = KeyDbEnvScope::capture();
+        env_scope.remove_mag_keydb_url();
+        env_scope.set_keydb_password("s3cr3t");
         let url = keydb_url();
-        // SAFETY: env_test_guard() serialises all environment mutations across tests.
-        unsafe {
-            std::env::remove_var("KEYDB_PASSWORD");
-        }
         assert_eq!(url, "redis://:s3cr3t@127.0.0.1:5556/");
     }
 
@@ -245,17 +324,10 @@ mod tests {
     /// remains valid.
     #[test]
     fn keydb_password_special_chars_are_percent_encoded() {
-        let _guard = env_test_guard();
-        // SAFETY: env_test_guard() serialises all environment mutations across tests.
-        unsafe {
-            std::env::remove_var("MAG_KEYDB_URL");
-            std::env::set_var("KEYDB_PASSWORD", "p@ss:w/rd!");
-        }
+        let env_scope = KeyDbEnvScope::capture();
+        env_scope.remove_mag_keydb_url();
+        env_scope.set_keydb_password("p@ss:w/rd!");
         let url = keydb_url();
-        // SAFETY: env_test_guard() serialises all environment mutations across tests.
-        unsafe {
-            std::env::remove_var("KEYDB_PASSWORD");
-        }
         assert_eq!(url, "redis://:p%40ss%3Aw%2Frd%21@127.0.0.1:5556/");
     }
 
@@ -263,12 +335,9 @@ mod tests {
     /// returned.
     #[test]
     fn unauthenticated_fallback_when_no_env_vars() {
-        let _guard = env_test_guard();
-        // SAFETY: env_test_guard() serialises all environment mutations across tests.
-        unsafe {
-            std::env::remove_var("MAG_KEYDB_URL");
-            std::env::remove_var("KEYDB_PASSWORD");
-        }
+        let env_scope = KeyDbEnvScope::capture();
+        env_scope.remove_mag_keydb_url();
+        env_scope.remove_keydb_password();
         let url = keydb_url();
         assert_eq!(url, "redis://127.0.0.1:5556/");
     }

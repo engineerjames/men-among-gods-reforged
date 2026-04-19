@@ -1,3 +1,4 @@
+use crate::constants::ItemFlags;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -201,9 +202,91 @@ impl Sex {
     }
 }
 
+/// Resolves the primary player class encoded in a `kindred` bitfield.
+///
+/// # Arguments
+/// * `kindred` - Raw kindred bitmask from a character.
+///
+/// # Returns
+/// * `Some(Class)` when a known player class bit is present, otherwise `None`.
+pub fn class_from_kindred(kindred: i32) -> Option<Class> {
+    let kindred = kindred as u32;
+
+    if kindred & KIN_ARCHTEMPLAR != 0 {
+        Some(Class::ArchTemplar)
+    } else if kindred & KIN_ARCHHARAKIM != 0 {
+        Some(Class::ArchHarakim)
+    } else if kindred & KIN_SORCERER != 0 {
+        Some(Class::Sorcerer)
+    } else if kindred & KIN_WARRIOR != 0 {
+        Some(Class::Warrior)
+    } else if kindred & KIN_SEYAN_DU != 0 {
+        Some(Class::SeyanDu)
+    } else if kindred & KIN_HARAKIM != 0 {
+        Some(Class::Harakim)
+    } else if kindred & KIN_TEMPLAR != 0 {
+        Some(Class::Templar)
+    } else if kindred & KIN_MERCENARY != 0 {
+        Some(Class::Mercenary)
+    } else {
+        None
+    }
+}
+
+/// Returns the weapon categories a class is allowed to equip.
+///
+/// # Arguments
+/// * `class` - Player class whose allowed weapon categories are requested.
+///
+/// # Returns
+/// * [`ItemFlags`] mask containing the permitted weapon-category bits.
+pub fn allowed_weapon_flags_for_class(class: Class) -> ItemFlags {
+    match class {
+        Class::Templar | Class::ArchTemplar | Class::SeyanDu => {
+            ItemFlags::IF_WP_SWORD
+                | ItemFlags::IF_WP_DAGGER
+                | ItemFlags::IF_WP_AXE
+                | ItemFlags::IF_WP_TWOHAND
+        }
+        Class::Warrior => ItemFlags::IF_WP_SWORD | ItemFlags::IF_WP_DAGGER | ItemFlags::IF_WP_AXE,
+        Class::Sorcerer => {
+            ItemFlags::IF_WP_SWORD | ItemFlags::IF_WP_DAGGER | ItemFlags::IF_WP_STAFF
+        }
+        Class::Harakim | Class::ArchHarakim => ItemFlags::IF_WP_DAGGER | ItemFlags::IF_WP_STAFF,
+        Class::Mercenary => ItemFlags::IF_WP_SWORD | ItemFlags::IF_WP_DAGGER,
+    }
+}
+
+/// Checks whether a `kindred` bitfield may equip a weapon with the given category flags.
+///
+/// # Arguments
+/// * `kindred` - Raw kindred bitmask from a character.
+/// * `weapon_flags` - Item flags for the weapon being equipped.
+///
+/// # Returns
+/// * `true` if the class is allowed to equip every declared weapon category.
+pub fn kindred_can_use_weapon(kindred: i32, weapon_flags: ItemFlags) -> bool {
+    let weapon_flags = weapon_flags & ItemFlags::IF_WEAPON;
+    if weapon_flags.is_empty() {
+        return true;
+    }
+
+    let Some(class) = class_from_kindred(kindred) else {
+        return true;
+    };
+
+    let allowed = allowed_weapon_flags_for_class(class);
+    (weapon_flags.bits() & !allowed.bits()) == 0
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Class, Sex, get_race_integer, get_sex_and_class, get_sprite_id_for_class_and_sex};
+    use super::{
+        Class, Sex, allowed_weapon_flags_for_class, class_from_kindred, get_race_integer,
+        get_sex_and_class, get_sprite_id_for_class_and_sex, kindred_can_use_weapon,
+    };
+    use crate::constants::ItemFlags;
+    use crate::traits;
 
     #[test]
     fn race_mapping_roundtrips_for_all_classes_and_sexes() {
@@ -304,5 +387,61 @@ mod tests {
             get_sprite_id_for_class_and_sex(Class::ArchTemplar, Sex::Male),
             5072
         );
+    }
+
+    #[test]
+    fn class_from_kindred_prefers_primary_class_bits() {
+        assert_eq!(
+            class_from_kindred(traits::KIN_TEMPLAR as i32),
+            Some(Class::Templar)
+        );
+        assert_eq!(
+            class_from_kindred((traits::KIN_ARCHHARAKIM | traits::KIN_FEMALE) as i32),
+            Some(Class::ArchHarakim)
+        );
+        assert_eq!(class_from_kindred(0), None);
+    }
+
+    #[test]
+    fn allowed_weapon_flags_match_design_matrix() {
+        assert_eq!(
+            allowed_weapon_flags_for_class(Class::Templar),
+            ItemFlags::IF_WP_SWORD
+                | ItemFlags::IF_WP_DAGGER
+                | ItemFlags::IF_WP_AXE
+                | ItemFlags::IF_WP_TWOHAND
+        );
+        assert_eq!(
+            allowed_weapon_flags_for_class(Class::Sorcerer),
+            ItemFlags::IF_WP_SWORD | ItemFlags::IF_WP_DAGGER | ItemFlags::IF_WP_STAFF
+        );
+        assert_eq!(
+            allowed_weapon_flags_for_class(Class::Mercenary),
+            ItemFlags::IF_WP_SWORD | ItemFlags::IF_WP_DAGGER
+        );
+    }
+
+    #[test]
+    fn kindred_can_use_weapon_enforces_category_matrix() {
+        assert!(kindred_can_use_weapon(
+            traits::KIN_TEMPLAR as i32,
+            ItemFlags::IF_WP_TWOHAND
+        ));
+        assert!(kindred_can_use_weapon(
+            traits::KIN_HARAKIM as i32,
+            ItemFlags::IF_WP_STAFF
+        ));
+        assert!(!kindred_can_use_weapon(
+            traits::KIN_MERCENARY as i32,
+            ItemFlags::IF_WP_AXE
+        ));
+        assert!(!kindred_can_use_weapon(
+            traits::KIN_SORCERER as i32,
+            ItemFlags::IF_WP_TWOHAND
+        ));
+        assert!(kindred_can_use_weapon(
+            traits::KIN_WARRIOR as i32,
+            ItemFlags::IF_WP_SWORD | ItemFlags::IF_WP_DAGGER
+        ));
     }
 }

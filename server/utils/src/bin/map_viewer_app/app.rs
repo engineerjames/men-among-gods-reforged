@@ -1,27 +1,12 @@
 use super::graphics::GraphicsZipCache;
-use crate::DataSource;
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
-use mag_core::constants::{
-    ItemFlags, MAXITEM, MAXTITEM, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS,
-};
+use mag_core::constants::{ItemFlags, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS};
 use mag_core::types::{Item, Map};
-use std::fs;
-use std::path::{Path, PathBuf};
-
-use bincode::{Decode, Encode};
-
-const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
-const NORMALIZED_VERSION: u32 = 1;
-
-#[derive(Debug, Encode, Decode)]
-struct NormalizedDataSet<T> {
-    magic: [u8; 4],
-    version: u32,
-    source_file: String,
-    source_record_size: usize,
-    records: Vec<T>,
-}
+use server::snapshot::WorldSnapshot;
+use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaletteEntryKind {
@@ -36,8 +21,7 @@ struct PaletteEntry {
 
 #[derive(Default)]
 pub(crate) struct MapViewerApp {
-    dat_dir: Option<PathBuf>,
-    map_path: Option<PathBuf>,
+    loaded_world: Option<WorldSnapshot>,
     map_tiles: Vec<Map>,
     map_error: Option<String>,
 
@@ -80,7 +64,7 @@ pub(crate) struct MapViewerApp {
     draft_item_instance_id: u32,
     palette_rect: Option<Rect>,
 
-    /// Active data backend (KeyDB or .dat files).
+    /// Active data backend (live KeyDB or snapshot file).
     data_source: DataSource,
 }
 
@@ -92,6 +76,93 @@ impl MapViewerApp {
             data_source,
             ..Self::default()
         }
+    }
+
+    fn can_edit_world(&self) -> bool {
+        self.data_source.can_edit()
+    }
+
+    fn clear_loaded_world(&mut self) {
+        self.loaded_world = None;
+        self.map_tiles.clear();
+        self.items.clear();
+        self.item_templates.clear();
+        self.hovered_tile = None;
+        self.selected_tile = None;
+        self.selected_palette_index = None;
+        self.dirty = false;
+    }
+
+    fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
+        self.map_tiles = world.map.clone();
+        self.items = world.items.clone();
+        self.item_templates = world.item_templates.clone();
+        self.loaded_world = Some(world);
+        self.save_status = Some(status);
+        self.pan_initialized = false;
+        self.hovered_tile = None;
+        self.selected_tile = None;
+        self.selected_palette_index = None;
+        self.dirty = false;
+    }
+
+    fn load_current_source(&mut self) {
+        self.map_error = None;
+        self.items_error = None;
+        self.item_templates_error = None;
+        self.save_status = None;
+        self.pan_initialized = false;
+
+        match load_world_snapshot(&self.data_source) {
+            Ok(world) => {
+                let status = if self.data_source.is_live_keydb() {
+                    "Loaded persisted KeyDB state (read-only)".to_string()
+                } else if let Some(path) = self.data_source.snapshot_path() {
+                    format!("Loaded snapshot: {}", path.display())
+                } else {
+                    "Loaded world state".to_string()
+                };
+                log::info!(
+                    "Loaded world for map viewer: map={} items={} templates={} source={}",
+                    world.map.len(),
+                    world.items.len(),
+                    world.item_templates.len(),
+                    self.data_source.display_label()
+                );
+                self.apply_loaded_world(world, status);
+            }
+            Err(e) => {
+                self.clear_loaded_world();
+                self.map_error = Some(e);
+            }
+        }
+    }
+
+    fn sync_loaded_world_from_views(&mut self) -> Result<(), String> {
+        let Some(world) = self.loaded_world.as_mut() else {
+            return Err("No world loaded".to_string());
+        };
+
+        world.map = self.map_tiles.clone();
+        world.items = self.items.clone();
+        world.item_templates = self.item_templates.clone();
+        Ok(())
+    }
+
+    fn save_snapshot_as(&mut self, path: &Path) -> Result<(), String> {
+        if !self.can_edit_world() {
+            return Err("Live KeyDB mode is read-only".to_string());
+        }
+
+        self.sync_loaded_world_from_views()?;
+        let world = self
+            .loaded_world
+            .as_ref()
+            .ok_or_else(|| "No world loaded".to_string())?;
+
+        save_world_snapshot(world, path)?;
+        self.data_source = DataSource::SnapshotFile(path.to_path_buf());
+        Ok(())
     }
 
     fn ui_tile_preview_row(
@@ -180,218 +251,50 @@ impl MapViewerApp {
         }
     }
 
-    pub(crate) fn load_map_from_dir(&mut self, dir: PathBuf) {
-        self.load_map_from_path(dir.join("map.dat"));
+    pub(crate) fn load_from_snapshot(&mut self, path: PathBuf) {
+        self.data_source = DataSource::SnapshotFile(path);
+        self.load_current_source();
     }
 
-    pub(crate) fn load_map_from_path(&mut self, map_path: PathBuf) {
-        self.map_error = None;
-        self.items_error = None;
-        self.item_templates_error = None;
-        self.pan_initialized = false;
-        self.dirty = false;
+    fn save_snapshot_as_dialog(&mut self) {
+        self.save_status = None;
 
-        self.dat_dir = map_path.parent().map(|p| p.to_path_buf());
-        self.map_path = Some(map_path.clone());
-
-        let display_name = map_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("(unknown)");
-        self.save_status = Some(format!("Loaded {}", display_name));
-
-        match load_map_dat(&map_path) {
-            Ok(tiles) => {
-                self.map_tiles = tiles;
-                log::info!("Loaded map tiles: {}", self.map_tiles.len());
-            }
-            Err(e) => {
-                self.map_tiles.clear();
-                self.map_error = Some(e);
-            }
+        if !self.can_edit_world() {
+            self.save_status = Some("Live KeyDB mode is read-only".to_string());
+            return;
         }
 
-        let Some(dir) = self.dat_dir.clone() else {
-            self.items.clear();
-            self.item_templates.clear();
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("World Snapshot", &["wsnap"])
+            .set_file_name("world_snapshot.wsnap")
+            .save_file()
+        else {
             return;
         };
 
-        // Optional: load item instances so we can render `Map.it` overlays.
-        let item_path = dir.join("item.dat");
-        if item_path.is_file() {
-            match load_item_dat(&item_path) {
-                Ok(items) => {
-                    self.items = items;
-                    log::info!("Loaded items: {}", self.items.len());
-                }
-                Err(e) => {
-                    self.items.clear();
-                    self.items_error = Some(e);
-                }
-            }
-        } else {
-            self.items.clear();
-        }
-
-        // Optional: load item templates for palette item previews.
-        let item_templates_path = dir.join("titem.dat");
-        if item_templates_path.is_file() {
-            match load_item_templates_dat(&item_templates_path) {
-                Ok(templates) => {
-                    self.item_templates = templates;
-                    log::info!("Loaded item templates: {}", self.item_templates.len());
-                }
-                Err(e) => {
-                    self.item_templates.clear();
-                    self.item_templates_error = Some(e);
-                }
-            }
-        } else {
-            self.item_templates.clear();
-        }
-    }
-
-    fn default_save_filename(&self) -> &'static str {
-        "map_new.dat"
-    }
-
-    fn save_map_dialog(&mut self) {
-        self.save_status = None;
-
-        match &self.data_source {
-            DataSource::KeyDb => match self.save_map_to_keydb() {
-                Ok(()) => {
-                    self.dirty = false;
-                    self.save_status = Some("Saved to KeyDB".to_string());
-                }
-                Err(e) => {
-                    self.save_status = Some(format!("Save failed: {e}"));
-                }
-            },
-            DataSource::DatFiles(_) => {
-                let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-                if let Some(dir) = self.dat_dir.as_ref() {
-                    dialog = dialog.set_directory(dir);
-                }
-                dialog = dialog.set_file_name(self.default_save_filename());
-
-                let Some(path) = dialog.save_file() else {
-                    return;
-                };
-
-                match self.save_map_to_path(&path) {
-                    Ok(()) => {
-                        self.dirty = false;
-                        self.dat_dir = path.parent().map(|p| p.to_path_buf());
-                        self.map_path = Some(path.clone());
-                        self.save_status = Some(format!("Saved: {}", path.display()));
-                    }
-                    Err(e) => {
-                        self.save_status = Some(format!("Save failed: {e}"));
-                    }
-                }
-            }
-        }
-    }
-
-    fn save_map_to_path(&self, path: &PathBuf) -> Result<(), String> {
-        if self.map_tiles.is_empty() {
-            return Err("No map loaded".to_string());
-        }
-
-        save_normalized_records(
-            path,
-            "map.dat",
-            std::mem::size_of::<Map>(),
-            self.map_tiles.clone(),
-        )
-    }
-
-    /// Load map tiles, items, and item templates from KeyDB.
-    fn load_from_keydb(&mut self) {
-        self.map_error = None;
-        self.items_error = None;
-        self.item_templates_error = None;
-        self.pan_initialized = false;
-        self.dirty = false;
-
-        match server::keydb::connect() {
-            Ok(mut con) => {
-                // Map tiles
-                match server::keydb_store::load_map(&mut con) {
-                    Ok(v) => {
-                        self.map_tiles = v;
-                        log::info!("Loaded map tiles from KeyDB: {}", self.map_tiles.len());
-                    }
-                    Err(e) => {
-                        self.map_tiles.clear();
-                        self.map_error = Some(format!("map: {e}"));
-                        return;
-                    }
-                }
-                // Item instances (for map overlays)
-                match server::keydb_store::load_indexed_entities::<Item>(
-                    &mut con,
-                    "game:item:",
-                    MAXITEM,
-                ) {
-                    Ok(v) => self.items = v,
-                    Err(e) => {
-                        self.items.clear();
-                        self.items_error = Some(format!("item: {e}"));
-                    }
-                }
-                // Item templates (for palette previews)
-                match server::keydb_store::load_indexed_entities::<Item>(
-                    &mut con,
-                    "game:titem:",
-                    MAXTITEM,
-                ) {
-                    Ok(v) => self.item_templates = v,
-                    Err(e) => {
-                        self.item_templates.clear();
-                        self.item_templates_error = Some(format!("titem: {e}"));
-                    }
-                }
-                self.save_status = Some("Loaded from KeyDB".to_string());
+        match self.save_snapshot_as(&path) {
+            Ok(()) => {
+                self.dirty = false;
+                self.save_status = Some(format!("Saved snapshot: {}", path.display()));
             }
             Err(e) => {
-                self.map_error = Some(format!("KeyDB connect: {e}"));
+                self.save_status = Some(format!("Save failed: {e}"));
             }
         }
     }
 
-    /// Save the current map data back to KeyDB.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` on success, or an `Err` describing the failure.
-    fn save_map_to_keydb(&self) -> Result<(), String> {
-        if self.map_tiles.is_empty() {
-            return Err("No map loaded".to_string());
-        }
-        let mut con = server::keydb::connect().map_err(|e| format!("KeyDB connect: {e}"))?;
-        server::keydb_store::save_map(&mut con, &self.map_tiles)
+    fn load_from_keydb(&mut self) {
+        self.data_source = DataSource::LiveKeyDbReadOnly;
+        self.load_current_source();
     }
 
     fn revert_unsaved_changes(&mut self) {
-        match &self.data_source {
-            DataSource::KeyDb => {
-                self.load_from_keydb();
-            }
-            DataSource::DatFiles(_) => {
-                if let Some(path) = self.map_path.clone() {
-                    self.load_map_from_path(path);
-                } else {
-                    let Some(dir) = self.dat_dir.clone() else {
-                        self.save_status = Some("Revert failed: no map loaded".to_string());
-                        return;
-                    };
-                    self.load_map_from_dir(dir);
-                }
-            }
+        if !self.can_edit_world() {
+            self.save_status = Some("Live KeyDB mode is read-only".to_string());
+            return;
         }
+
+        self.load_current_source();
         self.dirty = false;
         self.save_status = Some("Reverted (discarded unsaved changes)".to_string());
     }
@@ -403,245 +306,190 @@ impl MapViewerApp {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_min_width(260.0);
+                    let can_edit_world = self.can_edit_world();
                     ui.vertical(|ui| {
                         ui.strong("Palette");
+                        if !can_edit_world {
+                            ui.label("Disabled in live KeyDB mode");
+                        }
                         ui.separator();
 
-                        ui.horizontal(|ui| {
-                            ui.label("sprite:");
-                            ui.add(egui::DragValue::new(&mut self.draft_sprite));
+                        ui.add_enabled_ui(can_edit_world, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("sprite:");
+                                ui.add(egui::DragValue::new(&mut self.draft_sprite));
 
-                            let preview_size = Vec2::new(96.0, 96.0);
-                            let mut preview_drawn = false;
+                                let preview_size = Vec2::new(96.0, 96.0);
+                                let mut preview_drawn = false;
 
-                            if let Some(cache) = self.graphics_zip.as_mut() {
-                                if let Ok(Some(texture)) =
-                                    cache.texture_for(ctx, self.draft_sprite as usize)
+                                if let Some(cache) = self.graphics_zip.as_mut() {
+                                    if let Ok(Some(texture)) =
+                                        cache.texture_for(ctx, self.draft_sprite as usize)
+                                    {
+                                        ui.add(
+                                            egui::Image::new(texture)
+                                                .fit_to_exact_size(preview_size)
+                                                .maintain_aspect_ratio(true),
+                                        );
+                                        preview_drawn = true;
+                                    }
+                                }
+
+                                if !preview_drawn {
+                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                                }
+
+                                if ui.small_button("Add").clicked() {
+                                    if self.draft_sprite != 0 {
+                                        self.palette.push(PaletteEntry {
+                                            kind: PaletteEntryKind::Sprite(self.draft_sprite),
+                                        });
+                                    }
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("it:");
+                                ui.add(egui::DragValue::new(&mut self.draft_item_instance_id));
+
+                                let preview_size = Vec2::new(96.0, 96.0);
+                                let mut preview_drawn = false;
+                                let it_idx = self.draft_item_instance_id as usize;
+
+                                if it_idx < self.item_templates.len()
+                                    && self.item_templates[it_idx].used != USE_EMPTY
                                 {
-                                    ui.add(
-                                        egui::Image::new(texture)
-                                            .fit_to_exact_size(preview_size)
-                                            .maintain_aspect_ratio(true),
-                                    );
-                                    preview_drawn = true;
-                                }
-                            }
-
-                            if !preview_drawn {
-                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                            }
-
-                            if ui.small_button("Add").clicked() {
-                                if self.draft_sprite != 0 {
-                                    self.palette.push(PaletteEntry {
-                                        kind: PaletteEntryKind::Sprite(self.draft_sprite),
-                                    });
-                                }
-                            }
-                        });
-
-                        ui.horizontal(|ui| {
-                            ui.label("it:");
-                            ui.add(egui::DragValue::new(&mut self.draft_item_instance_id));
-
-                            let preview_size = Vec2::new(96.0, 96.0);
-                            let mut preview_drawn = false;
-                            let it_idx = self.draft_item_instance_id as usize;
-
-                            if it_idx < self.item_templates.len()
-                                && self.item_templates[it_idx].used != USE_EMPTY
-                            {
-                                if let Some(sprite) = item_map_sprite(self.item_templates[it_idx]) {
-                                    if let Some(cache) = self.graphics_zip.as_mut() {
-                                        if let Ok(Some(texture)) =
-                                            cache.texture_for(ctx, sprite as usize)
-                                        {
-                                            ui.add(
-                                                egui::Image::new(texture)
-                                                    .fit_to_exact_size(preview_size)
-                                                    .maintain_aspect_ratio(true),
-                                            );
-                                            preview_drawn = true;
+                                    if let Some(sprite) =
+                                        item_map_sprite(self.item_templates[it_idx])
+                                    {
+                                        if let Some(cache) = self.graphics_zip.as_mut() {
+                                            if let Ok(Some(texture)) =
+                                                cache.texture_for(ctx, sprite as usize)
+                                            {
+                                                ui.add(
+                                                    egui::Image::new(texture)
+                                                        .fit_to_exact_size(preview_size)
+                                                        .maintain_aspect_ratio(true),
+                                                );
+                                                preview_drawn = true;
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            if !preview_drawn {
-                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                            }
-
-                            if ui.small_button("Add").clicked() {
-                                if self.draft_item_instance_id != 0 {
-                                    self.palette.push(PaletteEntry {
-                                        kind: PaletteEntryKind::Item(self.draft_item_instance_id),
-                                    });
+                                if !preview_drawn {
+                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
                                 }
-                            }
-                        });
 
-                        ui.separator();
+                                if ui.small_button("Add").clicked() {
+                                    if self.draft_item_instance_id != 0 {
+                                        self.palette.push(PaletteEntry {
+                                            kind: PaletteEntryKind::Item(
+                                                self.draft_item_instance_id,
+                                            ),
+                                        });
+                                    }
+                                }
+                            });
 
-                        egui::ScrollArea::vertical()
-                            .max_height(260.0)
-                            .show(ui, |ui| {
-                                let icon_size = Vec2::new(48.0, 48.0);
-                                egui::Grid::new("palette_image_grid")
-                                    .num_columns(4)
-                                    .spacing([6.0, 6.0])
-                                    .show(ui, |ui| {
-                                        let mut col = 0;
-                                        for (idx, entry) in self.palette.iter().enumerate() {
-                                            let sprite_id: Option<usize> = match entry.kind {
-                                                PaletteEntryKind::Sprite(sprite) => {
-                                                    if sprite == 0 {
-                                                        None
-                                                    } else {
-                                                        Some(sprite as usize)
-                                                    }
-                                                }
-                                                PaletteEntryKind::Item(it) => {
-                                                    if it == 0 {
-                                                        None
-                                                    } else {
-                                                        let it_idx = it as usize;
-                                                        if it_idx < self.item_templates.len()
-                                                            && self.item_templates[it_idx].used
-                                                                != USE_EMPTY
-                                                        {
-                                                            let item = self.item_templates[it_idx];
-                                                            item_map_sprite(item)
-                                                                .map(|s| s as usize)
-                                                        } else {
+                            ui.separator();
+
+                            egui::ScrollArea::vertical()
+                                .max_height(260.0)
+                                .show(ui, |ui| {
+                                    let icon_size = Vec2::new(48.0, 48.0);
+                                    egui::Grid::new("palette_image_grid")
+                                        .num_columns(4)
+                                        .spacing([6.0, 6.0])
+                                        .show(ui, |ui| {
+                                            let mut col = 0;
+                                            for (idx, entry) in self.palette.iter().enumerate() {
+                                                let sprite_id: Option<usize> = match entry.kind {
+                                                    PaletteEntryKind::Sprite(sprite) => {
+                                                        if sprite == 0 {
                                                             None
+                                                        } else {
+                                                            Some(sprite as usize)
                                                         }
                                                     }
-                                                }
-                                            };
+                                                    PaletteEntryKind::Item(it) => {
+                                                        if it == 0 {
+                                                            None
+                                                        } else {
+                                                            let it_idx = it as usize;
+                                                            if it_idx < self.item_templates.len()
+                                                                && self.item_templates[it_idx].used
+                                                                    != USE_EMPTY
+                                                            {
+                                                                let item =
+                                                                    self.item_templates[it_idx];
+                                                                item_map_sprite(item)
+                                                                    .map(|s| s as usize)
+                                                            } else {
+                                                                None
+                                                            }
+                                                        }
+                                                    }
+                                                };
 
-                                            let Some(sprite_id) = sprite_id else {
-                                                continue;
-                                            };
+                                                let Some(sprite_id) = sprite_id else {
+                                                    continue;
+                                                };
 
-                                            let Some(cache) = self.graphics_zip.as_mut() else {
-                                                break;
-                                            };
+                                                let Some(cache) = self.graphics_zip.as_mut() else {
+                                                    break;
+                                                };
 
-                                            let Ok(Some(texture)) =
-                                                cache.texture_for(ctx, sprite_id)
-                                            else {
-                                                continue;
-                                            };
+                                                let Ok(Some(texture)) =
+                                                    cache.texture_for(ctx, sprite_id)
+                                                else {
+                                                    continue;
+                                                };
 
-                                            let selected = self.selected_palette_index == Some(idx);
-                                            let tint = if selected {
-                                                egui::Color32::from_rgb(180, 255, 180)
-                                            } else {
-                                                egui::Color32::WHITE
-                                            };
-
-                                            let clicked = ui
-                                                .add(
-                                                    egui::Image::new(texture)
-                                                        .fit_to_exact_size(icon_size)
-                                                        .maintain_aspect_ratio(true)
-                                                        .tint(tint)
-                                                        .sense(egui::Sense::click()),
-                                                )
-                                                .clicked();
-
-                                            if clicked {
-                                                if selected {
-                                                    self.selected_palette_index = None;
+                                                let selected =
+                                                    self.selected_palette_index == Some(idx);
+                                                let tint = if selected {
+                                                    egui::Color32::from_rgb(180, 255, 180)
                                                 } else {
-                                                    self.selected_palette_index = Some(idx);
+                                                    egui::Color32::WHITE
+                                                };
+
+                                                let clicked = ui
+                                                    .add(
+                                                        egui::Image::new(texture)
+                                                            .fit_to_exact_size(icon_size)
+                                                            .maintain_aspect_ratio(true)
+                                                            .tint(tint)
+                                                            .sense(egui::Sense::click()),
+                                                    )
+                                                    .clicked();
+
+                                                if clicked {
+                                                    if selected {
+                                                        self.selected_palette_index = None;
+                                                    } else {
+                                                        self.selected_palette_index = Some(idx);
+                                                    }
+                                                }
+
+                                                col += 1;
+                                                if col == 4 {
+                                                    ui.end_row();
+                                                    col = 0;
                                                 }
                                             }
-
-                                            col += 1;
-                                            if col == 4 {
+                                            if col != 0 {
                                                 ui.end_row();
-                                                col = 0;
                                             }
-                                        }
-                                        if col != 0 {
-                                            ui.end_row();
-                                        }
-                                    });
-                            });
+                                        });
+                                });
+                        });
                     });
                 });
             });
 
         response.response.rect
     }
-}
-
-fn load_normalized_records<T: Decode<()>>(
-    path: &Path,
-    expected_record_count: usize,
-) -> Result<Vec<T>, String> {
-    let data = fs::read(path).map_err(|e| format!("Failed to read {:?}: {e}", path))?;
-    let (payload, consumed): (NormalizedDataSet<T>, usize) =
-        bincode::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| format!("Failed to decode {:?}: {e}", path))?;
-
-    if payload.magic != NORMALIZED_MAGIC {
-        return Err(format!(
-            "Invalid normalized magic in {:?}: {:?}",
-            path, payload.magic
-        ));
-    }
-
-    if payload.version != NORMALIZED_VERSION {
-        return Err(format!(
-            "Unsupported normalized version in {:?}: {}",
-            path, payload.version
-        ));
-    }
-
-    if payload.records.len() != expected_record_count {
-        return Err(format!(
-            "Record count mismatch in {:?}: expected {}, got {}",
-            path,
-            expected_record_count,
-            payload.records.len()
-        ));
-    }
-
-    if consumed != data.len() {
-        log::warn!(
-            "Trailing bytes in normalized dataset {:?}: {}",
-            path,
-            data.len() - consumed
-        );
-    }
-
-    Ok(payload.records)
-}
-
-fn save_normalized_records<T: Encode>(
-    path: &Path,
-    source_file: &str,
-    source_record_size: usize,
-    records: Vec<T>,
-) -> Result<(), String> {
-    let payload = NormalizedDataSet {
-        magic: NORMALIZED_MAGIC,
-        version: NORMALIZED_VERSION,
-        source_file: source_file.to_string(),
-        source_record_size,
-        records,
-    };
-
-    let bytes = bincode::encode_to_vec(payload, bincode::config::standard())
-        .map_err(|e| format!("Failed to encode {:?}: {e}", path))?;
-
-    fs::write(path, bytes).map_err(|e| format!("Failed to write {:?}: {e}", path))
-}
-
-fn load_item_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
-    load_normalized_records(path, MAXITEM)
 }
 
 #[inline]
@@ -659,11 +507,6 @@ fn item_map_sprite(item: Item) -> Option<i16> {
     };
 
     if sprite > 0 { Some(sprite) } else { None }
-}
-
-fn load_map_dat(path: &PathBuf) -> Result<Vec<Map>, String> {
-    let expected_tiles = (SERVER_MAPX as usize) * (SERVER_MAPY as usize);
-    load_normalized_records(path, expected_tiles)
 }
 
 #[inline]
@@ -711,23 +554,16 @@ impl eframe::App for MapViewerApp {
 
         // Save shortcut (Cmd+S on macOS, Ctrl+S elsewhere).
         let save_shortcut = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S));
-        if save_shortcut {
-            self.save_map_dialog();
+        if save_shortcut && self.can_edit_world() {
+            self.save_snapshot_as_dialog();
         }
 
         // Load map/graphics after a couple frames (window has appeared)
         if !self.initial_load_done && self.frame_count > 2 {
             self.initial_load_done = true;
-            match &self.data_source {
-                DataSource::KeyDb => {
-                    self.load_from_keydb();
-                }
-                DataSource::DatFiles(dir) => {
-                    self.load_map_from_dir(dir.clone());
-                }
-            }
-            if let Some(zip_path) =
-                crate::graphics_zip_from_args().or_else(crate::default_graphics_zip_path)
+            self.load_current_source();
+            if let Some(zip_path) = server_utils::graphics_zip_from_args()
+                .or_else(server_utils::default_graphics_zip_path)
             {
                 self.load_graphics_zip(zip_path);
             }
@@ -767,22 +603,24 @@ impl eframe::App for MapViewerApp {
         egui::TopBottomPanel::top("top_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    if ui.button("Open dat dir...").clicked() {
+                    if ui.button("Open snapshot...").clicked() {
                         ui.close_menu();
-                        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                            self.load_map_from_dir(dir);
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("World Snapshot", &["wsnap"])
+                            .pick_file()
+                        {
+                            self.load_from_snapshot(path);
                         }
                     }
 
-                    if ui.button("Open map file...").clicked() {
+                    let reload_label = if self.data_source.is_live_keydb() {
+                        "Refresh live data"
+                    } else {
+                        "Reload snapshot"
+                    };
+                    if ui.button(reload_label).clicked() {
+                        self.load_current_source();
                         ui.close_menu();
-                        let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-                        if let Some(dir) = self.dat_dir.as_ref() {
-                            dialog = dialog.set_directory(dir);
-                        }
-                        if let Some(path) = dialog.pick_file() {
-                            self.load_map_from_path(path);
-                        }
                     }
 
                     if ui.button("Open graphics zip...").clicked() {
@@ -797,18 +635,16 @@ impl eframe::App for MapViewerApp {
 
                     ui.separator();
 
-                    let save_enabled = !self.map_tiles.is_empty() && self.dirty;
+                    let save_enabled = self.can_edit_world() && self.loaded_world.is_some();
                     if ui
-                        .add_enabled(save_enabled, egui::Button::new("Save..."))
+                        .add_enabled(save_enabled, egui::Button::new("Save Snapshot As..."))
                         .clicked()
                     {
                         ui.close_menu();
-                        self.save_map_dialog();
+                        self.save_snapshot_as_dialog();
                     }
 
-                    let revert_enabled = self.dirty
-                        && (matches!(self.data_source, DataSource::KeyDb)
-                            || self.dat_dir.is_some());
+                    let revert_enabled = self.can_edit_world() && self.dirty;
                     if ui
                         .add_enabled(
                             revert_enabled,
@@ -823,25 +659,21 @@ impl eframe::App for MapViewerApp {
                     ui.separator();
 
                     ui.menu_button("Data Source", |ui| {
-                        let is_keydb = matches!(self.data_source, DataSource::KeyDb);
+                        let is_keydb = self.data_source.is_live_keydb();
                         if ui
-                            .selectable_label(is_keydb, "KeyDB (127.0.0.1:5556)")
+                            .selectable_label(is_keydb, "Live KeyDB (read-only)")
                             .clicked()
                         {
-                            self.data_source = DataSource::KeyDb;
                             self.load_from_keydb();
-                            self.dirty = false;
                             ui.close_menu();
                         }
-                        let is_dat = matches!(self.data_source, DataSource::DatFiles(_));
-                        if ui.selectable_label(is_dat, ".dat Files").clicked() {
-                            if let Some(dir) = rfd::FileDialog::new()
-                                .set_can_create_directories(true)
-                                .pick_folder()
+                        let is_snap = matches!(self.data_source, DataSource::SnapshotFile(_));
+                        if ui.selectable_label(is_snap, ".wsnap Snapshot").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("World Snapshot", &["wsnap"])
+                                .pick_file()
                             {
-                                self.data_source = DataSource::DatFiles(dir.clone());
-                                self.load_map_from_dir(dir);
-                                self.dirty = false;
+                                self.load_from_snapshot(path);
                             }
                             ui.close_menu();
                         }
@@ -881,11 +713,6 @@ impl eframe::App for MapViewerApp {
                     };
                     ui.colored_label(color, status);
                 }
-
-                if let Some(dir) = &self.dat_dir {
-                    ui.separator();
-                    ui.label(format!("dat: {}", dir.display()));
-                }
             });
         });
 
@@ -893,6 +720,15 @@ impl eframe::App for MapViewerApp {
             .default_width(340.0)
             .show(ctx, |ui| {
                 ui.heading("Map Viewer");
+
+                ui.separator();
+                ui.label(format!("Source: {}", self.data_source.display_label()));
+                if self.data_source.is_live_keydb() {
+                    ui.colored_label(
+                        egui::Color32::LIGHT_YELLOW,
+                        "Viewing persisted KeyDB state only. The running server may be ahead.",
+                    );
+                }
 
                 if let Some(err) = &self.map_error {
                     ui.separator();
@@ -987,7 +823,7 @@ impl eframe::App for MapViewerApp {
                                 let sprite = item_map_sprite(item).unwrap_or(0);
                                 ui.label(format!("item sprite: {}", sprite));
                             } else {
-                                ui.label("item sprite: (item.dat not loaded)");
+                                ui.label("item sprite: (item data not loaded)");
                             }
                         } else {
                             ui.label("item sprite: N/A");
@@ -1029,7 +865,7 @@ impl eframe::App for MapViewerApp {
                             let preview_size = Vec2::new(64.0, 64.0);
                             self.ui_tile_preview_row(ui, ctx, sprite, fsprite, it, preview_size);
 
-                            if sprite != 0 && fsprite != 0 {
+                            if sprite != 0 && fsprite != 0 && self.can_edit_world() {
                                 if ui.button("Clear fsprite").clicked() {
                                     let mut updated = self.map_tiles[idx];
                                     updated.fsprite = 0;
@@ -1048,7 +884,7 @@ impl eframe::App for MapViewerApp {
                                     let sprite = item_map_sprite(item).unwrap_or(0);
                                     ui.label(format!("item sprite: {}", sprite));
                                 } else {
-                                    ui.label("item sprite: (item.dat not loaded)");
+                                    ui.label("item sprite: (item data not loaded)");
                                 }
                             } else {
                                 ui.label("item sprite: N/A");
@@ -1088,33 +924,35 @@ impl eframe::App for MapViewerApp {
                                 (mag_core::constants::MF_GFX_CMAGIC1, "MF_GFX_CMAGIC1"),
                             ];
 
-                            egui::ScrollArea::vertical()
-                                .max_height(220.0)
-                                .show(ui, |ui| {
-                                    egui::Grid::new("selected_tile_map_flags")
-                                        .num_columns(2)
-                                        .spacing([10.0, 4.0])
-                                        .show(ui, |ui| {
-                                            for (i, (mask, name)) in defs.iter().enumerate() {
-                                                let mut on = (flags & *mask) != 0;
-                                                if ui.checkbox(&mut on, *name).changed() {
-                                                    if on {
-                                                        flags |= *mask;
-                                                    } else {
-                                                        flags &= !*mask;
+                            ui.add_enabled_ui(self.can_edit_world(), |ui| {
+                                egui::ScrollArea::vertical()
+                                    .max_height(220.0)
+                                    .show(ui, |ui| {
+                                        egui::Grid::new("selected_tile_map_flags")
+                                            .num_columns(2)
+                                            .spacing([10.0, 4.0])
+                                            .show(ui, |ui| {
+                                                for (i, (mask, name)) in defs.iter().enumerate() {
+                                                    let mut on = (flags & *mask) != 0;
+                                                    if ui.checkbox(&mut on, *name).changed() {
+                                                        if on {
+                                                            flags |= *mask;
+                                                        } else {
+                                                            flags &= !*mask;
+                                                        }
+                                                    }
+                                                    if i % 2 == 1 {
+                                                        ui.end_row();
                                                     }
                                                 }
-                                                if i % 2 == 1 {
+                                                if defs.len() % 2 == 1 {
                                                     ui.end_row();
                                                 }
-                                            }
-                                            if defs.len() % 2 == 1 {
-                                                ui.end_row();
-                                            }
-                                        });
-                                });
+                                            });
+                                    });
+                            });
 
-                            if flags != original_flags {
+                            if self.can_edit_world() && flags != original_flags {
                                 let mut updated = self.map_tiles[idx];
                                 updated.flags = flags;
                                 if updated != self.map_tiles[idx] {
@@ -1157,6 +995,13 @@ impl eframe::App for MapViewerApp {
                         }
                         return;
                     };
+                    if !self.can_edit_world() {
+                        if let Some((x, y)) = self.hovered_tile {
+                            self.selected_tile = Some((x, y));
+                            ctx.request_repaint();
+                        }
+                        return;
+                    }
                     if sel_idx >= self.palette.len() {
                         self.selected_palette_index = None;
                         return;
@@ -1430,10 +1275,6 @@ impl eframe::App for MapViewerApp {
             }
         });
     }
-}
-
-fn load_item_templates_dat(path: &PathBuf) -> Result<Vec<Item>, String> {
-    load_normalized_records(path, MAXTITEM)
 }
 
 fn paint_sprite_dd(

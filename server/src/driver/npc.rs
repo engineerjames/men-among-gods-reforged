@@ -652,7 +652,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
         // Quest-requested items: teach skill / give exp
         let nr = gs.characters[cn].data[50];
         if nr != 0 {
-            let mut skill_nr = nr as usize;
+            let mut skill_nr = skills::canonicalize_weapon_skill(nr as usize);
             let co_kindred = gs.characters[co].kindred as u32;
 
             if skill_nr == skills::SK_STUN

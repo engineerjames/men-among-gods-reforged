@@ -1,26 +1,13 @@
 use super::graphics::GraphicsZipCache;
-use crate::DataSource;
 use eframe::egui;
 use egui::Vec2;
 use mag_core::skills;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::{ranks, traits};
-use std::fs;
-use std::path::{Path, PathBuf};
-
-use bincode::{Decode, Encode};
-
-const NORMALIZED_MAGIC: [u8; 4] = *b"MAG2";
-const NORMALIZED_VERSION: u32 = 1;
-
-#[derive(Debug, Encode, Decode)]
-struct NormalizedDataSet<T> {
-    magic: [u8; 4],
-    version: u32,
-    source_file: String,
-    source_record_size: usize,
-    records: Vec<T>,
-}
+use server::snapshot::WorldSnapshot;
+use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
+use std::path::Path;
+use std::path::PathBuf;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ItemDetailsSource {
@@ -35,6 +22,7 @@ enum CharacterDetailsSource {
 }
 
 pub(crate) struct TemplateViewerApp {
+    loaded_world: Option<WorldSnapshot>,
     item_templates: Vec<mag_core::types::Item>,
     character_templates: Vec<mag_core::types::Character>,
     items: Vec<mag_core::types::Item>,
@@ -56,9 +44,10 @@ pub(crate) struct TemplateViewerApp {
     load_error: Option<String>,
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
-    dat_dir: Option<PathBuf>,
     dirty: bool,
     save_status: Option<String>,
+    initial_load_done: bool,
+    frame_count: u32,
     data_source: DataSource,
 }
 
@@ -70,74 +59,10 @@ enum ViewMode {
     Characters,
 }
 
-fn load_normalized_records<T: Decode<()>>(
-    path: &Path,
-    expected_record_count: usize,
-) -> Result<Vec<T>, String> {
-    let data = fs::read(path).map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
-    let (payload, consumed): (NormalizedDataSet<T>, usize) =
-        bincode::decode_from_slice(&data, bincode::config::standard())
-            .map_err(|e| format!("Failed to decode {}: {e}", path.display()))?;
-
-    if payload.magic != NORMALIZED_MAGIC {
-        return Err(format!(
-            "Invalid normalized magic in {}: {:?}",
-            path.display(),
-            payload.magic
-        ));
-    }
-
-    if payload.version != NORMALIZED_VERSION {
-        return Err(format!(
-            "Unsupported normalized version in {}: {}",
-            path.display(),
-            payload.version
-        ));
-    }
-
-    if payload.records.len() != expected_record_count {
-        return Err(format!(
-            "Record count mismatch in {}: expected {}, got {}",
-            path.display(),
-            expected_record_count,
-            payload.records.len()
-        ));
-    }
-
-    if consumed != data.len() {
-        log::warn!(
-            "Trailing bytes in normalized dataset {}: {}",
-            path.display(),
-            data.len() - consumed
-        );
-    }
-
-    Ok(payload.records)
-}
-
-fn save_normalized_records<T: Encode>(
-    path: &Path,
-    source_file: &str,
-    source_record_size: usize,
-    records: Vec<T>,
-) -> Result<(), String> {
-    let payload = NormalizedDataSet {
-        magic: NORMALIZED_MAGIC,
-        version: NORMALIZED_VERSION,
-        source_file: source_file.to_string(),
-        source_record_size,
-        records,
-    };
-
-    let bytes = bincode::encode_to_vec(payload, bincode::config::standard())
-        .map_err(|e| format!("Failed to encode {}: {e}", path.display()))?;
-
-    fs::write(path, bytes).map_err(|e| format!("Failed to write {}: {e}", path.display()))
-}
-
 impl Default for TemplateViewerApp {
     fn default() -> Self {
         Self {
+            loaded_world: None,
             item_templates: Vec::new(),
             character_templates: Vec::new(),
             items: Vec::new(),
@@ -159,9 +84,10 @@ impl Default for TemplateViewerApp {
             load_error: None,
             graphics_zip: None,
             graphics_zip_error: None,
-            dat_dir: None,
             dirty: false,
             save_status: None,
+            initial_load_done: false,
+            frame_count: 0,
             data_source: DataSource::default(),
         }
     }
@@ -169,202 +95,162 @@ impl Default for TemplateViewerApp {
 
 impl TemplateViewerApp {
     pub(crate) fn new(data_source: DataSource) -> Self {
-        let mut app = Self {
+        Self {
             data_source: data_source.clone(),
             ..Self::default()
-        };
-
-        match data_source {
-            DataSource::KeyDb => {
-                app.load_from_keydb();
-            }
-            DataSource::DatFiles(dir) => {
-                app.load_templates_from_dir(dir);
-            }
-        }
-
-        if let Some(zip_path) =
-            crate::graphics_zip_from_args().or_else(crate::default_graphics_zip_path)
-        {
-            app.load_graphics_zip(zip_path);
-        }
-        app
-    }
-
-    fn default_save_filename(&self) -> &'static str {
-        match self.view_mode {
-            ViewMode::ItemTemplates => "titem_new.dat",
-            ViewMode::CharacterTemplates => "tchar_new.dat",
-            ViewMode::Items => "items_new.dat",
-            ViewMode::Characters => "chars_new.dat",
         }
     }
 
-    fn save_current_view_dialog(&mut self) {
+    fn can_edit_world(&self) -> bool {
+        self.data_source.can_edit()
+    }
+
+    fn clear_loaded_world(&mut self) {
+        self.loaded_world = None;
+        self.item_templates.clear();
+        self.character_templates.clear();
+        self.items.clear();
+        self.characters.clear();
+        self.map_tiles.clear();
+        self.selected_item_index = None;
+        self.selected_character_index = None;
+        self.selected_item_instance_index = None;
+        self.selected_character_instance_index = None;
+        self.item_popup_id = None;
+        self.dirty = false;
+    }
+
+    fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
+        self.item_templates = world.item_templates.clone();
+        self.character_templates = world.character_templates.clone();
+        self.items = world.items.clone();
+        self.characters = world.characters.clone();
+        self.map_tiles = world.map.clone();
+        self.loaded_world = Some(world);
+        self.save_status = Some(status);
+        self.dirty = false;
+
+        if matches!(
+            self.view_mode,
+            ViewMode::ItemTemplates | ViewMode::CharacterTemplates
+        ) {
+            if !self.item_templates.is_empty() {
+                self.view_mode = ViewMode::ItemTemplates;
+            } else if !self.character_templates.is_empty() {
+                self.view_mode = ViewMode::CharacterTemplates;
+            }
+        }
+    }
+
+    fn load_current_source(&mut self) {
+        self.load_error = None;
         self.save_status = None;
 
-        match &self.data_source {
-            DataSource::KeyDb => match self.save_current_view_to_keydb() {
-                Ok(()) => {
-                    self.dirty = false;
-                    self.save_status = Some("Saved to KeyDB".to_string());
-                }
-                Err(e) => {
-                    self.save_status = Some(format!("Save failed: {e}"));
-                }
-            },
-            DataSource::DatFiles(_) => {
-                let mut dialog = rfd::FileDialog::new().add_filter("DAT", &["dat"]);
-                if let Some(dir) = self.dat_dir.as_ref() {
-                    dialog = dialog.set_directory(dir);
-                }
-                dialog = dialog.set_file_name(self.default_save_filename());
-
-                let Some(path) = dialog.save_file() else {
-                    return;
+        match load_world_snapshot(&self.data_source) {
+            Ok(world) => {
+                let status = if self.data_source.is_live_keydb() {
+                    "Loaded persisted KeyDB state (read-only)".to_string()
+                } else if let Some(path) = self.data_source.snapshot_path() {
+                    format!("Loaded snapshot: {}", path.display())
+                } else {
+                    "Loaded world state".to_string()
                 };
 
-                match self.save_current_view_to_path(&path) {
-                    Ok(()) => {
-                        self.dirty = false;
-                        self.save_status = Some(format!("Saved to {}", path.display()));
-                    }
-                    Err(e) => {
-                        self.save_status = Some(format!("Save failed: {e}"));
-                    }
-                }
-            }
-        }
-    }
+                log::info!(
+                    "Loaded world for template viewer: items={} chars={} item_templates={} char_templates={} map={} source={}",
+                    world.items.len(),
+                    world.characters.len(),
+                    world.item_templates.len(),
+                    world.character_templates.len(),
+                    world.map.len(),
+                    self.data_source.display_label()
+                );
 
-    fn save_current_view_to_path(&self, path: &PathBuf) -> Result<(), String> {
-        match self.view_mode {
-            ViewMode::ItemTemplates => save_normalized_records(
-                path,
-                "titem.dat",
-                std::mem::size_of::<mag_core::types::Item>(),
-                self.item_templates.clone(),
-            ),
-            ViewMode::CharacterTemplates => save_normalized_records(
-                path,
-                "tchar.dat",
-                std::mem::size_of::<mag_core::types::Character>(),
-                self.character_templates.clone(),
-            ),
-            ViewMode::Items => save_normalized_records(
-                path,
-                "item.dat",
-                std::mem::size_of::<mag_core::types::Item>(),
-                self.items.clone(),
-            ),
-            ViewMode::Characters => save_normalized_records(
-                path,
-                "char.dat",
-                std::mem::size_of::<mag_core::types::Character>(),
-                self.characters.clone(),
-            ),
-        }
-    }
-
-    /// Load all game data from KeyDB at `127.0.0.1:5556`.
-    ///
-    /// Populates item/character templates, instances, and map tiles
-    /// from the KeyDB store, replacing any previously-loaded data.
-    fn load_from_keydb(&mut self) {
-        self.load_error = None;
-        match server::keydb::connect() {
-            Ok(mut con) => {
-                // Item templates
-                match server::keydb_store::load_indexed_entities::<mag_core::types::Item>(
-                    &mut con,
-                    "game:titem:",
-                    mag_core::constants::MAXTITEM,
-                ) {
-                    Ok(v) => self.item_templates = v,
-                    Err(e) => {
-                        self.load_error = Some(format!("titem: {e}"));
-                        return;
-                    }
-                }
-                // Character templates
-                match server::keydb_store::load_indexed_entities::<mag_core::types::Character>(
-                    &mut con,
-                    "game:tchar:",
-                    mag_core::constants::MAXTCHARS,
-                ) {
-                    Ok(v) => self.character_templates = v,
-                    Err(e) => {
-                        self.load_error = Some(format!("tchar: {e}"));
-                        return;
-                    }
-                }
-                // Item instances
-                match server::keydb_store::load_indexed_entities::<mag_core::types::Item>(
-                    &mut con,
-                    "game:item:",
-                    mag_core::constants::MAXITEM,
-                ) {
-                    Ok(v) => self.items = v,
-                    Err(e) => {
-                        self.load_error = Some(format!("item: {e}"));
-                        return;
-                    }
-                }
-                // Character instances
-                match server::keydb_store::load_indexed_entities::<mag_core::types::Character>(
-                    &mut con,
-                    "game:char:",
-                    mag_core::constants::MAXCHARS,
-                ) {
-                    Ok(v) => self.characters = v,
-                    Err(e) => {
-                        self.load_error = Some(format!("char: {e}"));
-                        return;
-                    }
-                }
-                // Map tiles
-                match server::keydb_store::load_map(&mut con) {
-                    Ok(v) => self.map_tiles = v,
-                    Err(e) => {
-                        self.load_error = Some(format!("map: {e}"));
-                    }
-                }
+                self.apply_loaded_world(world, status);
             }
             Err(e) => {
-                self.load_error = Some(format!("KeyDB connect: {e}"));
+                self.clear_loaded_world();
+                self.load_error = Some(e);
             }
         }
     }
 
-    /// Save the current view's data back to KeyDB.
-    ///
-    /// For character templates, `points_tot` is recalculated before saving.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(())` on success, or an `Err` describing the failure.
-    fn save_current_view_to_keydb(&mut self) -> Result<(), String> {
-        let mut con = server::keydb::connect().map_err(|e| format!("KeyDB connect: {e}"))?;
+    fn sync_loaded_world_from_views(&mut self) -> Result<(), String> {
+        for tpl in &mut self.character_templates {
+            tpl.points_tot = server::points::calculate_points_tot(tpl);
+        }
 
-        match self.view_mode {
-            ViewMode::ItemTemplates => {
-                server::keydb_store::save_item_templates(&mut con, &self.item_templates)
+        let Some(world) = self.loaded_world.as_mut() else {
+            return Err("No world loaded".to_string());
+        };
+
+        world.item_templates = self.item_templates.clone();
+        world.character_templates = self.character_templates.clone();
+        world.items = self.items.clone();
+        world.characters = self.characters.clone();
+        world.map = self.map_tiles.clone();
+        Ok(())
+    }
+
+    fn save_snapshot_as(&mut self, path: &Path) -> Result<(), String> {
+        if !self.can_edit_world() {
+            return Err("Live KeyDB mode is read-only".to_string());
+        }
+
+        self.sync_loaded_world_from_views()?;
+        let world = self
+            .loaded_world
+            .as_ref()
+            .ok_or_else(|| "No world loaded".to_string())?;
+
+        save_world_snapshot(world, path)?;
+        self.data_source = DataSource::SnapshotFile(path.to_path_buf());
+        Ok(())
+    }
+
+    fn save_snapshot_as_dialog(&mut self) {
+        self.save_status = None;
+
+        if !self.can_edit_world() {
+            self.save_status = Some("Live KeyDB mode is read-only".to_string());
+            return;
+        }
+
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("World Snapshot", &["wsnap"])
+            .set_file_name("world_snapshot.wsnap")
+            .save_file()
+        else {
+            return;
+        };
+
+        match self.save_snapshot_as(&path) {
+            Ok(()) => {
+                self.dirty = false;
+                self.save_status = Some(format!("Saved snapshot: {}", path.display()));
             }
-            ViewMode::CharacterTemplates => {
-                // Recalculate points_tot for every template before saving.
-                for tpl in &mut self.character_templates {
-                    tpl.points_tot = server::points::calculate_points_tot(tpl);
-                }
-                server::keydb_store::save_character_templates(&mut con, &self.character_templates)
-            }
-            ViewMode::Items => server::keydb_store::save_items(&mut con, &self.items),
-            ViewMode::Characters => {
-                server::keydb_store::save_characters(&mut con, &self.characters)
+            Err(e) => {
+                self.save_status = Some(format!("Save failed: {e}"));
             }
         }
+    }
+
+    fn load_from_keydb(&mut self) {
+        self.data_source = DataSource::LiveKeyDbReadOnly;
+        self.load_current_source();
+    }
+
+    fn load_from_snapshot(&mut self, path: PathBuf) {
+        self.data_source = DataSource::SnapshotFile(path);
+        self.load_current_source();
     }
 
     fn revert_unsaved_changes(&mut self) {
+        if !self.can_edit_world() {
+            self.save_status = Some("Live KeyDB mode is read-only".to_string());
+            return;
+        }
+
         self.save_status = None;
 
         let prev_view_mode = self.view_mode;
@@ -373,19 +259,7 @@ impl TemplateViewerApp {
         let prev_selected_item_instance_index = self.selected_item_instance_index;
         let prev_selected_character_instance_index = self.selected_character_instance_index;
 
-        match &self.data_source {
-            DataSource::KeyDb => {
-                self.load_from_keydb();
-            }
-            DataSource::DatFiles(_) => {
-                let Some(dir) = self.dat_dir.clone() else {
-                    self.save_status =
-                        Some("Revert failed: no data directory selected".to_string());
-                    return;
-                };
-                self.load_templates_from_dir(dir);
-            }
-        }
+        self.load_current_source();
 
         // Restore view and selections where possible.
         self.view_mode = prev_view_mode;
@@ -437,58 +311,6 @@ impl TemplateViewerApp {
             Err(e) => {
                 self.graphics_zip = None;
                 self.graphics_zip_error = Some(e);
-            }
-        }
-    }
-
-    fn load_items_from_file(&mut self, path: PathBuf) {
-        self.load_error = None;
-        self.save_status = None;
-        self.dirty = false;
-        self.selected_item_instance_index = None;
-
-        if let Some(parent) = path.parent() {
-            self.dat_dir = Some(parent.to_path_buf());
-        }
-
-        match self.load_items(&path) {
-            Ok(items) => {
-                self.items = items;
-                self.view_mode = ViewMode::Items;
-                self.save_status = Some(format!("Loaded items from {}", path.display()));
-                log::info!("Loaded {} items from {:?}", self.items.len(), path);
-            }
-            Err(e) => {
-                self.load_error = Some(format!("Failed to load items: {}", e));
-                log::error!("Failed to load items from {:?}: {}", path, e);
-            }
-        }
-    }
-
-    fn load_characters_from_file(&mut self, path: PathBuf) {
-        self.load_error = None;
-        self.save_status = None;
-        self.dirty = false;
-        self.selected_character_instance_index = None;
-
-        if let Some(parent) = path.parent() {
-            self.dat_dir = Some(parent.to_path_buf());
-        }
-
-        match self.load_characters(&path) {
-            Ok(chars) => {
-                self.characters = chars;
-                self.view_mode = ViewMode::Characters;
-                self.save_status = Some(format!("Loaded characters from {}", path.display()));
-                log::info!(
-                    "Loaded {} characters from {:?}",
-                    self.characters.len(),
-                    path
-                );
-            }
-            Err(e) => {
-                self.load_error = Some(format!("Failed to load characters: {}", e));
-                log::error!("Failed to load characters from {:?}: {}", path, e);
             }
         }
     }
@@ -626,141 +448,6 @@ impl TemplateViewerApp {
                 self.view_mode = ViewMode::Items;
             }
         }
-    }
-
-    fn load_templates_from_dir(&mut self, dir: PathBuf) {
-        self.load_error = None;
-        self.save_status = None;
-        self.dat_dir = Some(dir.clone());
-        self.dirty = false;
-        log::info!("Loading templates from {:?}", dir);
-
-        let item_path = dir.join("titem.dat");
-        match self.load_item_templates(&item_path) {
-            Ok(items) => {
-                self.item_templates = items;
-                self.view_mode = ViewMode::ItemTemplates;
-                log::info!("Loaded {} item templates", self.item_templates.len());
-            }
-            Err(e) => {
-                self.load_error = Some(format!("Failed to load item templates: {}", e));
-                log::error!("Failed to load item templates: {}", e);
-            }
-        }
-
-        let char_path = dir.join("tchar.dat");
-        match self.load_character_templates(&char_path) {
-            Ok(chars) => {
-                self.character_templates = chars;
-                if self.item_templates.is_empty() {
-                    self.view_mode = ViewMode::CharacterTemplates;
-                }
-                log::info!(
-                    "Loaded {} character templates",
-                    self.character_templates.len()
-                );
-            }
-            Err(e) => {
-                let message = format!("Failed to load character templates: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load character templates: {}", e);
-            }
-        }
-
-        let item_path = dir.join("item.dat");
-        match self.load_items(&item_path) {
-            Ok(items) => {
-                self.items = items;
-                log::info!("Loaded {} items", self.items.len());
-            }
-            Err(e) => {
-                let message = format!("Failed to load items: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load items: {}", e);
-            }
-        }
-
-        let char_path = dir.join("char.dat");
-        match self.load_characters(&char_path) {
-            Ok(chars) => {
-                self.characters = chars;
-                log::info!("Loaded {} characters", self.characters.len());
-            }
-            Err(e) => {
-                let message = format!("Failed to load characters: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load characters: {}", e);
-            }
-        }
-
-        let map_path = dir.join("map.dat");
-        match self.load_map(&map_path) {
-            Ok(map_tiles) => {
-                self.map_tiles = map_tiles;
-                log::info!("Loaded {} map tiles", self.map_tiles.len());
-            }
-            Err(e) => {
-                let message = format!("Failed to load map: {}", e);
-                if let Some(ref mut error) = self.load_error {
-                    error.push_str("\n");
-                    error.push_str(&message);
-                } else {
-                    self.load_error = Some(message);
-                }
-                log::error!("Failed to load map: {}", e);
-            }
-        }
-
-        // Pick a sensible default view.
-        if !self.item_templates.is_empty() {
-            self.view_mode = ViewMode::ItemTemplates;
-        } else if !self.character_templates.is_empty() {
-            self.view_mode = ViewMode::CharacterTemplates;
-        } else if !self.items.is_empty() {
-            self.view_mode = ViewMode::Items;
-        } else if !self.characters.is_empty() {
-            self.view_mode = ViewMode::Characters;
-        }
-    }
-
-    fn load_item_templates(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
-        load_normalized_records(path, mag_core::constants::MAXTITEM)
-    }
-
-    fn load_items(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Item>, String> {
-        load_normalized_records(path, mag_core::constants::MAXITEM)
-    }
-
-    fn load_character_templates(
-        &self,
-        path: &PathBuf,
-    ) -> Result<Vec<mag_core::types::Character>, String> {
-        load_normalized_records(path, mag_core::constants::MAXTCHARS)
-    }
-
-    fn load_characters(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Character>, String> {
-        load_normalized_records(path, mag_core::constants::MAXCHARS)
-    }
-
-    fn load_map(&self, path: &PathBuf) -> Result<Vec<mag_core::types::Map>, String> {
-        let tile_count = (mag_core::constants::SERVER_MAPX as usize)
-            * (mag_core::constants::SERVER_MAPY as usize);
-        load_normalized_records(path, tile_count)
     }
 
     fn render_item_list(&mut self, ui: &mut egui::Ui) {
@@ -1345,7 +1032,7 @@ impl TemplateViewerApp {
                 ui.separator();
 
                 // For templates, the *slot index* is the template id. The `temp` field inside
-                // `titem.dat` entries is not reliable for this purpose.
+                // stored template entries is not reliable for this purpose.
                 let temp_u16 = Self::clamp_u16(temp);
                 let template_id = self
                     .selected_item_index
@@ -2019,32 +1706,41 @@ impl TemplateViewerApp {
 
 impl eframe::App for TemplateViewerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.frame_count += 1;
+
         let save_shortcut = ctx.input(|i| {
             let mods = i.modifiers;
             (mods.command || mods.ctrl) && i.key_pressed(egui::Key::S)
         });
-        if save_shortcut {
-            self.save_current_view_dialog();
+        if save_shortcut && self.can_edit_world() && self.loaded_world.is_some() {
+            self.save_snapshot_as_dialog();
+        }
+
+        if !self.initial_load_done && self.frame_count > 2 {
+            self.initial_load_done = true;
+            self.load_current_source();
+            if let Some(zip_path) = server_utils::graphics_zip_from_args()
+                .or_else(server_utils::default_graphics_zip_path)
+            {
+                self.load_graphics_zip(zip_path);
+            }
         }
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui
-                        .add_enabled(self.dirty, egui::Button::new("Save...\tCtrl+S"))
+                        .add_enabled(
+                            self.can_edit_world() && self.loaded_world.is_some(),
+                            egui::Button::new("Save Snapshot As...\tCtrl+S"),
+                        )
                         .clicked()
                     {
-                        self.save_current_view_dialog();
+                        self.save_snapshot_as_dialog();
                         ui.close_menu();
                     }
 
-                    let can_revert = self.dirty
-                        && matches!(
-                            self.data_source,
-                            DataSource::KeyDb | DataSource::DatFiles(_)
-                        )
-                        && (matches!(self.data_source, DataSource::KeyDb)
-                            || self.dat_dir.is_some());
+                    let can_revert = self.can_edit_world() && self.dirty;
                     if ui
                         .add_enabled(can_revert, egui::Button::new("Revert (discard changes)"))
                         .clicked()
@@ -2055,26 +1751,37 @@ impl eframe::App for TemplateViewerApp {
 
                     ui.separator();
 
+                    let reload_label = if self.data_source.is_live_keydb() {
+                        "Refresh live data"
+                    } else {
+                        "Reload snapshot"
+                    };
+                    if ui.button(reload_label).clicked() {
+                        self.load_current_source();
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
                     ui.menu_button("Data Source", |ui| {
-                        let is_keydb = matches!(self.data_source, DataSource::KeyDb);
+                        let is_keydb = self.data_source.is_live_keydb();
                         if ui
-                            .selectable_label(is_keydb, "KeyDB (127.0.0.1:5556)")
+                            .selectable_label(is_keydb, "Live KeyDB (read-only)")
                             .clicked()
                         {
-                            self.data_source = DataSource::KeyDb;
                             self.load_from_keydb();
-                            self.dirty = false;
                             ui.close_menu();
                         }
-                        let is_dat = matches!(self.data_source, DataSource::DatFiles(_));
-                        if ui.selectable_label(is_dat, ".dat Files").clicked() {
-                            if let Some(dir) = rfd::FileDialog::new()
-                                .set_can_create_directories(true)
-                                .pick_folder()
+                        let is_snapshot = matches!(self.data_source, DataSource::SnapshotFile(_));
+                        if ui
+                            .selectable_label(is_snapshot, ".wsnap Snapshot")
+                            .clicked()
+                        {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("World Snapshot", &["wsnap"])
+                                .pick_file()
                             {
-                                self.data_source = DataSource::DatFiles(dir.clone());
-                                self.load_templates_from_dir(dir);
-                                self.dirty = false;
+                                self.load_from_snapshot(path);
                             }
                             ui.close_menu();
                         }
@@ -2082,34 +1789,12 @@ impl eframe::App for TemplateViewerApp {
 
                     ui.separator();
 
-                    if ui.button("Open Items File... (item.dat)").clicked() {
+                    if ui.button("Open snapshot...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("DAT", &["dat"])
+                            .add_filter("World Snapshot", &["wsnap"])
                             .pick_file()
                         {
-                            self.load_items_from_file(path);
-                        }
-                        ui.close_menu();
-                    }
-
-                    if ui.button("Open Characters File... (char.dat)").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("DAT", &["dat"])
-                            .pick_file()
-                        {
-                            self.load_characters_from_file(path);
-                        }
-                        ui.close_menu();
-                    }
-
-                    ui.separator();
-
-                    if ui.button("Select Data Directory...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .set_can_create_directories(true)
-                            .pick_folder()
-                        {
-                            self.load_templates_from_dir(path);
+                            self.load_from_snapshot(path);
                         }
                         ui.close_menu();
                     }
@@ -2170,6 +1855,15 @@ impl eframe::App for TemplateViewerApp {
                 }
             });
 
+            ui.separator();
+            ui.label(format!("Source: {}", self.data_source.display_label()));
+            if self.data_source.is_live_keydb() {
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "Viewing persisted KeyDB state only. The running server may be ahead.",
+                );
+            }
+
             if let Some(ref error) = self.load_error {
                 ui.separator();
                 ui.colored_label(egui::Color32::RED, format!("Error: {}", error));
@@ -2198,6 +1892,7 @@ impl eframe::App for TemplateViewerApp {
 
         egui::CentralPanel::default().show(ctx, |ui| match self.view_mode {
             ViewMode::ItemTemplates => {
+                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("item_template_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2221,13 +1916,19 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
+                    if !can_edit_world {
+                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
+                        ui.separator();
+                    }
                     if let Some(idx) = self.selected_item_index {
                         if idx < self.item_templates.len() {
-                            self.render_item_details_by_index(
-                                ui,
-                                ItemDetailsSource::ItemTemplates,
-                                idx,
-                            );
+                            ui.add_enabled_ui(can_edit_world, |ui| {
+                                self.render_item_details_by_index(
+                                    ui,
+                                    ItemDetailsSource::ItemTemplates,
+                                    idx,
+                                );
+                            });
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2237,6 +1938,7 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::CharacterTemplates => {
+                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("character_template_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2260,13 +1962,19 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
+                    if !can_edit_world {
+                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
+                        ui.separator();
+                    }
                     if let Some(idx) = self.selected_character_index {
                         if idx < self.character_templates.len() {
-                            self.render_character_details_by_index(
-                                ui,
-                                CharacterDetailsSource::CharacterTemplates,
-                                idx,
-                            );
+                            ui.add_enabled_ui(can_edit_world, |ui| {
+                                self.render_character_details_by_index(
+                                    ui,
+                                    CharacterDetailsSource::CharacterTemplates,
+                                    idx,
+                                );
+                            });
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2276,6 +1984,7 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::Items => {
+                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("item_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2291,9 +2000,19 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
+                    if !can_edit_world {
+                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
+                        ui.separator();
+                    }
                     if let Some(idx) = self.selected_item_instance_index {
                         if idx < self.items.len() {
-                            self.render_item_details_by_index(ui, ItemDetailsSource::Items, idx);
+                            ui.add_enabled_ui(can_edit_world, |ui| {
+                                self.render_item_details_by_index(
+                                    ui,
+                                    ItemDetailsSource::Items,
+                                    idx,
+                                );
+                            });
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2303,6 +2022,7 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::Characters => {
+                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("character_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2318,13 +2038,19 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
+                    if !can_edit_world {
+                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
+                        ui.separator();
+                    }
                     if let Some(idx) = self.selected_character_instance_index {
                         if idx < self.characters.len() {
-                            self.render_character_details_by_index(
-                                ui,
-                                CharacterDetailsSource::Characters,
-                                idx,
-                            );
+                            ui.add_enabled_ui(can_edit_world, |ui| {
+                                self.render_character_details_by_index(
+                                    ui,
+                                    CharacterDetailsSource::Characters,
+                                    idx,
+                                );
+                            });
                         }
                     } else {
                         ui.centered_and_justified(|ui| {

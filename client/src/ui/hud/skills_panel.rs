@@ -10,7 +10,9 @@ use std::cmp::Ordering;
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
-use mag_core::skills::{MAX_SKILLS, get_skill_name, get_skill_nr, get_skill_sortkey};
+use mag_core::skills::{
+    MAX_SKILLS, get_skill_name, get_skill_nr, get_skill_sortkey, is_legacy_weapon_skill,
+};
 
 use crate::font_cache;
 use crate::ui::RenderContext;
@@ -64,7 +66,7 @@ pub struct SkillsPanelData {
     pub skill: [[u8; 6]; 100],
     /// Available experience points for raising.
     pub points: i32,
-    /// Pre-sorted skill indices (learned first, then by sort key).
+    /// Pre-sorted visible skill indices (learned first, then by sort key).
     pub sorted_skills: Vec<usize>,
 }
 
@@ -691,9 +693,11 @@ impl SkillsPanel {
     ///
     /// # Returns
     ///
-    /// A vector of `MAX_SKILLS` indices sorted for display.
+    /// A vector of visible skill indices sorted for display.
     pub fn build_sorted_skills(skill: &[[u8; 6]; 100]) -> Vec<usize> {
-        let mut out: Vec<usize> = (0..MAX_SKILLS).collect();
+        let mut out: Vec<usize> = (0..MAX_SKILLS)
+            .filter(|&skill_id| !is_legacy_weapon_skill(skill_id))
+            .collect();
         out.sort_by(|&a, &b| {
             let a_unused = get_skill_sortkey(a) == 'Z' || get_skill_name(a).is_empty();
             let b_unused = get_skill_sortkey(b) == 'Z' || get_skill_name(b).is_empty();
@@ -1196,7 +1200,7 @@ mod tests {
             mana: [50, 0, 200, 10, 0, 50],
             skill: [[0; 6]; 100],
             points: 10000,
-            sorted_skills: (0..MAX_SKILLS).collect(),
+            sorted_skills: SkillsPanel::build_sorted_skills(&[[0; 6]; 100]),
         }
     }
 
@@ -1331,6 +1335,11 @@ mod tests {
     fn build_sorted_skills_handles_empty() {
         let skill = [[0u8; 6]; 100];
         let sorted = SkillsPanel::build_sorted_skills(&skill);
-        assert_eq!(sorted.len(), MAX_SKILLS);
+        assert_eq!(
+            sorted.len(),
+            MAX_SKILLS - mag_core::skills::LEGACY_WEAPON_SKILLS.len()
+        );
+        assert!(sorted.contains(&mag_core::skills::SK_WEAPON));
+        assert!(!sorted.contains(&mag_core::skills::SK_SWORD));
     }
 }

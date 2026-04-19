@@ -12,40 +12,7 @@ impl GameState {
     ///
     /// Calculate effective fighting skill based on character's skills and attributes.
     pub(crate) fn get_fight_skill(&mut self, cn: usize) -> i32 {
-        // Read worn right-hand item index and the relevant skill values.
-        let in_idx = self.characters[cn].worn[core::constants::WN_RHAND] as usize;
-        let s_hand = self.characters[cn].skill[skills::SK_HAND][5] as i32;
-        let s_karate = self.characters[cn].skill[skills::SK_KARATE][5] as i32;
-        let s_sword = self.characters[cn].skill[skills::SK_SWORD][5] as i32;
-        let s_dagger = self.characters[cn].skill[skills::SK_DAGGER][5] as i32;
-        let s_axe = self.characters[cn].skill[skills::SK_AXE][5] as i32;
-        let s_staff = self.characters[cn].skill[skills::SK_STAFF][5] as i32;
-        let s_twohand = self.characters[cn].skill[skills::SK_TWOHAND][5] as i32;
-
-        if in_idx == 0 {
-            return std::cmp::max(s_karate, s_hand);
-        }
-
-        // Get item flags for the item in right hand.
-        let flags = self.items[in_idx].flags;
-
-        if (flags & core::constants::ItemFlags::IF_WP_SWORD.bits()) != 0 {
-            return s_sword;
-        }
-        if (flags & core::constants::ItemFlags::IF_WP_DAGGER.bits()) != 0 {
-            return s_dagger;
-        }
-        if (flags & core::constants::ItemFlags::IF_WP_AXE.bits()) != 0 {
-            return s_axe;
-        }
-        if (flags & core::constants::ItemFlags::IF_WP_STAFF.bits()) != 0 {
-            return s_staff;
-        }
-        if (flags & core::constants::ItemFlags::IF_WP_TWOHAND.bits()) != 0 {
-            return s_twohand;
-        }
-
-        std::cmp::max(s_karate, s_hand)
+        self.characters[cn].skill[skills::SK_WEAPON][5] as i32
     }
 
     pub(crate) fn do_enemy(&mut self, cn: usize, npc: &str, victim: &str) {
@@ -380,7 +347,7 @@ impl GameState {
                 Self::char_play_sound(self, co, base_sound + 4, -150, 0);
             }
 
-            // Surrounding strikes (cardinal neighbors around attacker)
+            // Surrounding strikes grow from the original cross into larger AoE footprints.
             if is_surround {
                 // Match original C++ behavior: surround hits only happen if the
                 // character actually *has learned* Surround Hit.
@@ -391,28 +358,24 @@ impl GameState {
                 let surround_base = self.characters[cn].skill[skills::SK_SURROUND][0] as i32;
                 let surround_eff = self.characters[cn].skill[skills::SK_SURROUND][5] as i32;
                 if surround_base != 0 {
-                    let ax = self.characters[cn].x as i32;
-                    let ay = self.characters[cn].y as i32;
-                    // cardinal neighbor offsets: +1, -1, +MAPX, -MAPX -> translate to coords
-                    let neighbors = [(ax + 1, ay), (ax - 1, ay), (ax, ay + 1), (ax, ay - 1)];
-                    for (nx, ny) in neighbors.iter() {
-                        if *nx < 0
-                            || *ny < 0
-                            || *nx >= core::constants::SERVER_MAPX
-                            || *ny >= core::constants::SERVER_MAPY
-                        {
+                    let aoe_base = if cn_is_player { surround_base } else { 1 };
+                    let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
+                    let attacker_x = self.characters[cn].x as i32;
+                    let attacker_y = self.characters[cn].y as i32;
+
+                    for co2 in helpers::skill_aoe_targets(self, attacker_x, attacker_y, aoe_base) {
+                        if co2 == cn || co2 == co {
                             continue;
                         }
-                        let idx = (*nx + *ny * core::constants::SERVER_MAPX) as usize;
-                        let co2 = self.map[idx].ch as usize;
-                        if co2 == 0 || co2 == cn || co2 == co {
+                        if use_legacy_cross && self.characters[co2].attack_cn as usize != cn {
                             continue;
                         }
-                        if self.characters[co2].attack_cn as usize != cn {
+                        if !self.may_attack_msg(cn, co2, false) {
                             continue;
                         }
                         if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
                             let sdam = odam - odam / 4;
+                            self.remember_pvp(cn, co2);
                             self.do_hurt(cn, co2, sdam, 0);
                         }
                     }

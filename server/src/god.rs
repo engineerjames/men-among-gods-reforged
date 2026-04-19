@@ -4,7 +4,7 @@ use core::{
         DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, MagicArmorType, character_flags_name,
     },
     logout_reasons::LogoutReason,
-    ranks,
+    ranks, skills,
     string_operations::c_string_to_str,
     traits,
     types::{Character, Map},
@@ -2960,13 +2960,13 @@ impl God {
                 != 0
             {
                 // TH -> hand2hand (str,str,agi)
-                mirror.skill[0][0] = (target_skill[6][0] as i32
+                mirror.skill[0][0] = (target_skill[skills::SK_WEAPON][0] as i32
                     + bonus
                     + (target_attrib[4][0] as i32 - target_attrib[0][0] as i32) / 5)
                     .clamp(0, 255) as u8;
             } else if target_kindred & (traits::KIN_HARAKIM | traits::KIN_ARCHHARAKIM) != 0 {
                 // Dag-> hand2hand (wil,agi,int)
-                mirror.skill[0][0] = (target_skill[2][0] as i32
+                mirror.skill[0][0] = (target_skill[skills::SK_WEAPON][0] as i32
                     + bonus
                     + (target_attrib[2][0] as i32 - target_attrib[4][0] as i32) / 5)
                     .clamp(0, 255) as u8;
@@ -2975,7 +2975,8 @@ impl God {
                 != 0
             {
                 // Swo-> hand2hand (wil,agi,str)
-                mirror.skill[0][0] = (target_skill[3][0] as i32 + bonus).clamp(0, 255) as u8;
+                mirror.skill[0][0] =
+                    (target_skill[skills::SK_WEAPON][0] as i32 + bonus).clamp(0, 255) as u8;
             }
 
             mirror.weapon = caster_weapon;

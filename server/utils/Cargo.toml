@@ -28,6 +28,4 @@ path = "src/bin/template_viewer.rs"
 name = "map_viewer"
 path = "src/bin/map_viewer.rs"
 
-[[bin]]
-name = "dat_normalizer"
-path = "src/bin/dat_normalizer.rs"
+

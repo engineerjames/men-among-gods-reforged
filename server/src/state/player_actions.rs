@@ -1,4 +1,5 @@
 use core::constants::CharacterFlags;
+use core::skills;
 use core::string_operations::c_string_to_str;
 use core::traits;
 use core::types::FontColor;
@@ -6,6 +7,7 @@ use core::types::FontColor;
 use crate::driver;
 use crate::game_state::GameState;
 use crate::god::God;
+use crate::helpers;
 
 impl GameState {
     /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
@@ -44,6 +46,8 @@ impl GameState {
 
         // Check prerequisites if there's an item to equip
         if tmp != 0 {
+            helpers::sync_weapon_skill(&mut self.characters[cn].skill);
+
             // Driver 52: Personal item with character binding
             if self.items[tmp].driver == 52 && self.items[tmp].data[0] as usize != cn {
                 if self.items[tmp].data[0] == 0 {
@@ -89,8 +93,18 @@ impl GameState {
                 }
             }
 
+            let weapon_requirement = helpers::item_weapon_requirement(&self.items[tmp].skill);
+            if weapon_requirement > self.characters[cn].skill[skills::SK_WEAPON][0] as i8 {
+                self.do_character_log(cn, FontColor::Red, "You don't know how to use that.\n");
+                return -1;
+            }
+
             // Check skill requirements
             for m in 0..50 {
+                if skills::is_legacy_weapon_skill(m) || m == skills::SK_WEAPON {
+                    continue;
+                }
+
                 if self.items[tmp].skill[m][2] > self.characters[cn].skill[m][0] as i8 {
                     self.do_character_log(cn, FontColor::Red, "You don't know how to use that.\n");
                     return -1;
@@ -148,6 +162,14 @@ impl GameState {
                     FontColor::Red,
                     "You're not experienced enough to use that.\n",
                 );
+                return -1;
+            }
+
+            let item_flags = core::constants::ItemFlags::from_bits_truncate(self.items[tmp].flags);
+            if (self.items[tmp].placement & core::constants::PL_WEAPON) != 0
+                && !traits::kindred_can_use_weapon(self.characters[cn].kindred, item_flags)
+            {
+                self.do_character_log(cn, FontColor::Red, "Your class cannot use that weapon.\n");
                 return -1;
             }
 

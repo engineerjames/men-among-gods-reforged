@@ -6,9 +6,6 @@ use bitflags::bitflags;
 // General Definitions (from gendefs.h)
 // =============================================================================
 
-/// Data directory
-pub const DATDIR: &str = ".dat";
-
 /// Version number encoded as major.minor.patch in hex
 pub const VERSION: u32 = 0x020E07;
 pub const MINVERSION: u32 = 0x020E06;

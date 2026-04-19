@@ -7,16 +7,6 @@
       "problemMatcher": ["$rustc"],
       "group": "build",
       "label": "cargo build"
-    },
-    {
-      "label": "copy .dat to target",
-      "type": "shell",
-      "command": "cp -R \"${workspaceFolder}/server/assets/.dat\" \"${workspaceFolder}/target/debug/\"",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "silent",
-        "panel": "shared"
-      }
     }
   ]
 }

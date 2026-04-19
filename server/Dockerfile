@@ -8,7 +8,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 WORKDIR /workspace
 
 COPY . .
-RUN cargo build --release -p server
+RUN cargo build --release -p server --bins
 
 FROM ubuntu:24.04
 RUN apt-get update \
@@ -17,8 +17,8 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=builder /workspace/target/release/server /app/server
-COPY --from=builder /workspace/target/release/dat-to-keydb /app/dat-to-keydb
-COPY --from=builder /workspace/server/assets/.dat /app/.dat
+COPY --from=builder /workspace/target/release/world-snapshot /app/world-snapshot
+COPY server/assets/world_seed.wsnap /app/world_seed.wsnap
 
 EXPOSE 5555
 CMD ["/app/server"]
