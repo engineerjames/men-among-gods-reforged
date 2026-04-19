@@ -192,11 +192,32 @@ fn load_world_snapshot_from_keydb() -> Result<WorldSnapshot, String> {
 mod tests {
     use super::*;
 
+    /// Convert arbitrary test names into a filename-safe path component.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - Raw string that may contain characters invalid in filenames.
+    ///
+    /// # Returns
+    ///
+    /// * A string containing only ASCII letters, digits, `_`, `-`, and `.`.
+    fn sanitize_filename_component(value: &str) -> String {
+        value
+            .chars()
+            .map(|ch| match ch {
+                'a'..='z' | 'A'..='Z' | '0'..='9' | '_' | '-' | '.' => ch,
+                _ => '_',
+            })
+            .collect()
+    }
+
     fn unique_test_path(name: &str) -> PathBuf {
+        let thread_name =
+            sanitize_filename_component(std::thread::current().name().unwrap_or("test"));
         std::env::temp_dir().join(format!(
             "men_among_gods_reforged_{name}_{}_{}.wsnap",
             std::process::id(),
-            std::thread::current().name().unwrap_or("test")
+            thread_name
         ))
     }
 
@@ -230,5 +251,14 @@ mod tests {
     fn snapshot_sources_are_editable() {
         assert!(DataSource::SnapshotFile(PathBuf::from("world.wsnap")).can_edit());
         assert!(!DataSource::LiveKeyDbReadOnly.can_edit());
+    }
+
+    /// Replace path-hostile characters so generated temp files work on Windows.
+    #[test]
+    fn sanitize_filename_component_replaces_colons() {
+        assert_eq!(
+            sanitize_filename_component("viewer_support::tests::args_resolve_snapshot_source"),
+            "viewer_support__tests__args_resolve_snapshot_source"
+        );
     }
 }
