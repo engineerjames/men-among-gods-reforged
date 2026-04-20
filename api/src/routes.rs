@@ -195,9 +195,9 @@ pub(crate) async fn create_new_character(
                     description,
                     sex,
                     class,
-                    selection_sprite_id: Some(
-                        mag_core::traits::get_sprite_id_for_class_and_sex(class, sex) as u16,
-                    ),
+                    selection_sprite_id: Some(mag_core::traits::get_sprite_id_for_class_and_sex(
+                        class, sex,
+                    ) as u16),
                     server_id: None,
                 }),
             )
