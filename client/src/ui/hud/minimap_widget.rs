@@ -7,8 +7,9 @@
 use sdl2::pixels::Color;
 
 use crate::ui::RenderContext;
+use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
-use crate::ui::widgets::button::CircleButton;
+use crate::ui::widgets::button::{CircleButton, RectButton};
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -32,6 +33,30 @@ const PANEL_BORDER: u32 = 1;
 /// Vertical gap between the bottom of the circle button and the top of the
 /// map panel (pixels).
 const BUTTON_MAP_GAP: i32 = 4;
+
+/// Width of each zoom control button in pixels.
+const ZOOM_BUTTON_W: u32 = 16;
+
+/// Height of each zoom control button in pixels.
+const ZOOM_BUTTON_H: u32 = 16;
+
+/// Horizontal gap between the zoom buttons.
+const ZOOM_BUTTON_GAP: i32 = 4;
+
+/// Vertical gap between the zoom buttons and the minimap panel.
+const ZOOM_BUTTON_PANEL_GAP: i32 = 4;
+
+/// Horizontal pixel offset applied to the minimap zoom button labels.
+const ZOOM_LABEL_OFFSET_X: i32 = 1;
+
+/// Vertical pixel offset applied to the minimap zoom button labels.
+const ZOOM_LABEL_OFFSET_Y: i32 = 1;
+
+/// World-window sizes sampled into the fixed minimap viewport for each zoom level.
+const ZOOM_SAMPLE_SIZES: [u32; 5] = [64, 96, 128, 160, 192];
+
+/// Default zoom level preserving the current 128×128 sampling behavior.
+const DEFAULT_ZOOM_LEVEL: usize = 2;
 
 /// Background color for the panel area behind the minimap pixels.
 const PANEL_BG: Color = Color::RGBA(10, 10, 30, 200);
@@ -62,8 +87,14 @@ const BUTTON_SPRITE: usize = 1231;
 pub struct MinimapWidget {
     /// The circle toggle button.
     button: CircleButton,
+    /// Button that reduces the sampled world area, magnifying the minimap.
+    zoom_in_button: RectButton,
+    /// Button that increases the sampled world area, zooming the minimap out.
+    zoom_out_button: RectButton,
     /// Whether the expanded map panel is currently shown.
     visible: bool,
+    /// Index into [`ZOOM_SAMPLE_SIZES`] selecting the current zoom level.
+    zoom_level: usize,
     /// Pre-allocated pixel buffer for the viewport (VIEW_SIZE² × 4 bytes RGBA).
     viewport_pixels: Vec<u8>,
     /// True when `viewport_pixels` contains valid data ready to blit.
@@ -103,11 +134,6 @@ impl MinimapWidget {
         let panel_w = view + 2 * (PANEL_PADDING + PANEL_BORDER);
         let panel_h = panel_w; // square
 
-        // Center the panel horizontally below the button, clamped to screen.
-        let screen_w = crate::constants::TARGET_WIDTH_INT as i32;
-        let panel_x = (button_cx - panel_w as i32 / 2).min(screen_w - panel_w as i32);
-        let panel_y = button_cy + button_radius as i32 + BUTTON_MAP_GAP;
-
         let bounds_collapsed = Bounds::new(
             button_cx - button_radius as i32,
             button_cy - button_radius as i32,
@@ -115,34 +141,30 @@ impl MinimapWidget {
             button_radius * 2,
         );
 
-        let total_h = (panel_y + panel_h as i32) - bounds_collapsed.y;
-        let min_x = bounds_collapsed.x.min(panel_x);
-        let max_x =
-            (bounds_collapsed.x + bounds_collapsed.width as i32).max(panel_x + panel_w as i32);
-        let bounds_expanded = Bounds::new(
-            min_x,
-            bounds_collapsed.y,
-            (max_x - min_x) as u32,
-            total_h as u32,
-        );
-
-        Self {
+        let mut widget = Self {
             button,
+            zoom_in_button: Self::make_zoom_button("+"),
+            zoom_out_button: Self::make_zoom_button("-"),
             visible: false,
+            zoom_level: DEFAULT_ZOOM_LEVEL,
             viewport_pixels: vec![0u8; (view as usize) * (view as usize) * 4],
             viewport_dirty: false,
-            panel_x,
-            panel_y,
+            panel_x: 0,
+            panel_y: 0,
             panel_w,
             panel_h,
-            bounds_expanded,
+            bounds_expanded: bounds_collapsed,
             bounds_collapsed,
-        }
+        };
+        widget.recompute_layout();
+        widget
     }
 
     /// Toggle the map viewport open or closed.
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
+        self.zoom_in_button.set_hovered(false);
+        self.zoom_out_button.set_hovered(false);
     }
 
     /// Returns whether the map viewport is currently visible.
@@ -150,12 +172,106 @@ impl MinimapWidget {
         self.visible
     }
 
+    /// Returns the world-window size currently sampled into the viewport.
+    fn current_sample_size(&self) -> usize {
+        ZOOM_SAMPLE_SIZES[self.zoom_level] as usize
+    }
+
+    /// Creates a small labeled button used for minimap zoom controls.
+    fn make_zoom_button(label: &str) -> RectButton {
+        // TODO: Clean this up...
+        if label == "+" {
+            RectButton::new(
+                Bounds::new(0, 0, ZOOM_BUTTON_W, ZOOM_BUTTON_H),
+                Background::SolidColor(BUTTON_FILL),
+            )
+            .with_border(Border {
+                color: BUTTON_BORDER,
+                width: 1,
+            })
+            .with_label(label, 1)
+            .with_label_offset(0, ZOOM_LABEL_OFFSET_Y)
+        } else {
+            RectButton::new(
+                Bounds::new(0, 0, ZOOM_BUTTON_W, ZOOM_BUTTON_H),
+                Background::SolidColor(BUTTON_FILL),
+            )
+            .with_border(Border {
+                color: BUTTON_BORDER,
+                width: 1,
+            })
+            .with_label(label, 1)
+            .with_label_offset(ZOOM_LABEL_OFFSET_X, ZOOM_LABEL_OFFSET_Y)
+        }
+    }
+    /// Recomputes the minimap panel, zoom-button, and aggregate hit-test bounds.
+    fn recompute_layout(&mut self) {
+        let button_bounds = *self.button.bounds();
+        let button_radius = button_bounds.width / 2;
+        let button_cx = button_bounds.x + button_bounds.width as i32 / 2;
+        let button_cy = button_bounds.y + button_bounds.height as i32 / 2;
+
+        let screen_w = crate::constants::TARGET_WIDTH_INT as i32;
+        let max_panel_x = (screen_w - self.panel_w as i32).max(0);
+        let panel_x = (button_cx - self.panel_w as i32 / 2).clamp(0, max_panel_x);
+        let panel_y = button_cy + button_radius as i32 + BUTTON_MAP_GAP;
+
+        let zoom_y = panel_y - ZOOM_BUTTON_H as i32 - ZOOM_BUTTON_PANEL_GAP;
+        let zoom_in_x = panel_x;
+        let zoom_out_x = zoom_in_x + ZOOM_BUTTON_W as i32 + ZOOM_BUTTON_GAP;
+
+        self.zoom_in_button.set_position(zoom_in_x, zoom_y);
+        self.zoom_out_button.set_position(zoom_out_x, zoom_y);
+
+        self.panel_x = panel_x;
+        self.panel_y = panel_y;
+        self.bounds_collapsed = button_bounds;
+
+        let zoom_in_bounds = *self.zoom_in_button.bounds();
+        let zoom_out_bounds = *self.zoom_out_button.bounds();
+        let min_x = button_bounds
+            .x
+            .min(panel_x)
+            .min(zoom_in_bounds.x)
+            .min(zoom_out_bounds.x);
+        let min_y = button_bounds
+            .y
+            .min(panel_y)
+            .min(zoom_in_bounds.y)
+            .min(zoom_out_bounds.y);
+        let max_x = (button_bounds.x + button_bounds.width as i32)
+            .max(panel_x + self.panel_w as i32)
+            .max(zoom_in_bounds.x + zoom_in_bounds.width as i32)
+            .max(zoom_out_bounds.x + zoom_out_bounds.width as i32);
+        let max_y = (button_bounds.y + button_bounds.height as i32)
+            .max(panel_y + self.panel_h as i32)
+            .max(zoom_in_bounds.y + zoom_in_bounds.height as i32)
+            .max(zoom_out_bounds.y + zoom_out_bounds.height as i32);
+
+        self.bounds_expanded =
+            Bounds::new(min_x, min_y, (max_x - min_x) as u32, (max_y - min_y) as u32);
+    }
+
+    /// Advances to the next zoomed-in sampling window, clamped at the closest level.
+    fn zoom_in(&mut self) {
+        if self.zoom_level > 0 {
+            self.zoom_level -= 1;
+        }
+    }
+
+    /// Advances to the next zoomed-out sampling window, clamped at the widest level.
+    fn zoom_out(&mut self) {
+        if self.zoom_level + 1 < ZOOM_SAMPLE_SIZES.len() {
+            self.zoom_level += 1;
+        }
+    }
+
     /// Extract the viewport from the full-world xmap buffer and store it for
     /// the next render pass.
     ///
-    /// This performs the same viewport extraction that the old `draw_minimap()`
-    /// did: a [`MINIMAP_WIDGET_VIEW_SIZE`]² window centered on the player
-    /// position, clamped to world bounds.
+    /// This samples a square world window centered on the player position,
+    /// clamped to world bounds, and rescales it into the fixed
+    /// [`MINIMAP_WIDGET_VIEW_SIZE`]² output buffer.
     ///
     /// # Arguments
     ///
@@ -166,11 +282,10 @@ impl MinimapWidget {
         // Always update the pixel buffer even when hidden, so the minimap
         // displays current data immediately when opened.
         let view = MINIMAP_WIDGET_VIEW_SIZE as usize;
-        let half = (MINIMAP_WIDGET_VIEW_SIZE as i32) / 2;
-        let mapx = ((center_x as i32) - half)
-            .clamp(0, WORLD_SIZE as i32 - MINIMAP_WIDGET_VIEW_SIZE as i32);
-        let mapy = ((center_y as i32) - half)
-            .clamp(0, WORLD_SIZE as i32 - MINIMAP_WIDGET_VIEW_SIZE as i32);
+        let sample = self.current_sample_size();
+        let half = sample as i32 / 2;
+        let mapx = ((center_x as i32) - half).clamp(0, WORLD_SIZE as i32 - sample as i32);
+        let mapy = ((center_y as i32) - half).clamp(0, WORLD_SIZE as i32 - sample as i32);
 
         // C call convention: dd_show_map(xmap, mapy, mapx).
         // xo = mapy (column offset in global Y), yo = mapx (row offset in global X).
@@ -178,9 +293,9 @@ impl MinimapWidget {
         let yo = mapx as usize;
 
         for row in 0..view {
+            let src_row = yo + ((row * sample) / view).min(sample.saturating_sub(1));
             for col in 0..view {
-                let src_row = yo + row;
-                let src_col = xo + col;
+                let src_col = xo + ((col * sample) / view).min(sample.saturating_sub(1));
                 if src_row >= WORLD_SIZE || src_col >= WORLD_SIZE {
                     continue;
                 }
@@ -218,21 +333,18 @@ impl Widget for MinimapWidget {
     }
 
     fn set_position(&mut self, x: i32, y: i32) {
-        let dx = x - self.bounds_collapsed.x;
-        let dy = y - self.bounds_collapsed.y;
-        self.bounds_collapsed.x = x;
-        self.bounds_collapsed.y = y;
-        self.bounds_expanded.x += dx;
-        self.bounds_expanded.y += dy;
-        self.panel_x += dx;
-        self.panel_y += dy;
         self.button.set_position(x, y);
+        self.recompute_layout();
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         // Always delegate mouse-move to the button for hover tracking.
         if let UiEvent::MouseMove { .. } = event {
             self.button.handle_event(event);
+            if self.visible {
+                self.zoom_in_button.handle_event(event);
+                self.zoom_out_button.handle_event(event);
+            }
         }
 
         // Button click toggles visibility.
@@ -240,6 +352,17 @@ impl Widget for MinimapWidget {
             if self.button.handle_event(event) == EventResponse::Consumed {
                 self.toggle();
                 return EventResponse::Consumed;
+            }
+
+            if self.visible {
+                if self.zoom_in_button.handle_event(event) == EventResponse::Consumed {
+                    self.zoom_in();
+                    return EventResponse::Consumed;
+                }
+                if self.zoom_out_button.handle_event(event) == EventResponse::Consumed {
+                    self.zoom_out();
+                    return EventResponse::Consumed;
+                }
             }
         }
 
@@ -297,6 +420,9 @@ impl Widget for MinimapWidget {
             }
         }
 
+        self.zoom_in_button.render(ctx)?;
+        self.zoom_out_button.render(ctx)?;
+
         Ok(())
     }
 }
@@ -305,6 +431,33 @@ impl Widget for MinimapWidget {
 mod tests {
     use super::*;
     use crate::ui::widget::MouseButton;
+
+    fn click_in_bounds(bounds: Bounds) -> UiEvent {
+        UiEvent::MouseClick {
+            x: bounds.x + bounds.width as i32 / 2,
+            y: bounds.y + bounds.height as i32 / 2,
+            button: MouseButton::Left,
+            modifiers: Default::default(),
+        }
+    }
+
+    fn fill_gradient_region(
+        xmap: &mut [u8],
+        row_start: usize,
+        row_end: usize,
+        col_start: usize,
+        col_end: usize,
+    ) {
+        for row in row_start..row_end {
+            for col in col_start..col_end {
+                let idx = (row * WORLD_SIZE + col) * 4;
+                xmap[idx] = col as u8;
+                xmap[idx + 1] = row as u8;
+                xmap[idx + 2] = 0;
+                xmap[idx + 3] = 255;
+            }
+        }
+    }
 
     #[test]
     fn toggle_changes_visibility() {
@@ -330,6 +483,24 @@ mod tests {
     }
 
     #[test]
+    fn expanded_bounds_include_zoom_buttons() {
+        let mut w = MinimapWidget::new(200, 30, 14);
+        w.toggle();
+        let expanded = *w.bounds();
+        let zoom_in = *w.zoom_in_button.bounds();
+        let zoom_out = *w.zoom_out_button.bounds();
+
+        assert!(expanded.contains_point(
+            zoom_in.x + zoom_in.width as i32 / 2,
+            zoom_in.y + zoom_in.height as i32 / 2,
+        ));
+        assert!(expanded.contains_point(
+            zoom_out.x + zoom_out.width as i32 / 2,
+            zoom_out.y + zoom_out.height as i32 / 2,
+        ));
+    }
+
+    #[test]
     fn panel_hit_test() {
         let mut w = MinimapWidget::new(200, 30, 14);
         w.toggle();
@@ -341,7 +512,7 @@ mod tests {
     }
 
     #[test]
-    fn update_viewport_no_op_when_hidden() {
+    fn update_viewport_updates_even_when_hidden() {
         let mut w = MinimapWidget::new(100, 30, 14);
         let xmap = vec![0u8; WORLD_SIZE * WORLD_SIZE * 4];
         w.update_viewport(&xmap, 512, 512);
@@ -388,6 +559,64 @@ mod tests {
     }
 
     #[test]
+    fn zoom_buttons_are_ignored_when_hidden() {
+        let mut w = MinimapWidget::new(200, 30, 14);
+        let click = click_in_bounds(*w.zoom_in_button.bounds());
+
+        assert_eq!(w.handle_event(&click), EventResponse::Ignored);
+        assert_eq!(w.current_sample_size(), 128);
+    }
+
+    #[test]
+    fn zoom_buttons_change_sample_size_when_visible() {
+        let mut w = MinimapWidget::new(200, 30, 14);
+        w.toggle();
+
+        let zoom_in = click_in_bounds(*w.zoom_in_button.bounds());
+        let zoom_out = click_in_bounds(*w.zoom_out_button.bounds());
+
+        assert_eq!(w.current_sample_size(), 128);
+        assert_eq!(w.handle_event(&zoom_in), EventResponse::Consumed);
+        assert_eq!(w.current_sample_size(), 96);
+        assert_eq!(w.handle_event(&zoom_out), EventResponse::Consumed);
+        assert_eq!(w.current_sample_size(), 128);
+    }
+
+    #[test]
+    fn zoom_level_clamps_at_limits() {
+        let mut w = MinimapWidget::new(200, 30, 14);
+        w.toggle();
+
+        let zoom_in = click_in_bounds(*w.zoom_in_button.bounds());
+        let zoom_out = click_in_bounds(*w.zoom_out_button.bounds());
+
+        for _ in 0..10 {
+            assert_eq!(w.handle_event(&zoom_in), EventResponse::Consumed);
+        }
+        assert_eq!(w.current_sample_size(), 64);
+
+        for _ in 0..10 {
+            assert_eq!(w.handle_event(&zoom_out), EventResponse::Consumed);
+        }
+        assert_eq!(w.current_sample_size(), 192);
+    }
+
+    #[test]
+    fn zoom_level_persists_across_toggle() {
+        let mut w = MinimapWidget::new(200, 30, 14);
+        w.toggle();
+        let zoom_in = click_in_bounds(*w.zoom_in_button.bounds());
+
+        assert_eq!(w.handle_event(&zoom_in), EventResponse::Consumed);
+        assert_eq!(w.current_sample_size(), 96);
+
+        w.toggle();
+        w.toggle();
+
+        assert_eq!(w.current_sample_size(), 96);
+    }
+
+    #[test]
     fn click_on_panel_ignored_when_visible() {
         let mut w = MinimapWidget::new(200, 30, 14);
         w.toggle();
@@ -398,5 +627,50 @@ mod tests {
             modifiers: Default::default(),
         };
         assert_eq!(w.handle_event(&click), EventResponse::Ignored);
+    }
+
+    #[test]
+    fn zoomed_in_viewport_duplicates_source_pixels() {
+        let mut w = MinimapWidget::new(100, 30, 14);
+        w.toggle();
+        let zoom_in = click_in_bounds(*w.zoom_in_button.bounds());
+        let zoom_in_again = click_in_bounds(*w.zoom_in_button.bounds());
+        assert_eq!(w.handle_event(&zoom_in), EventResponse::Consumed);
+        assert_eq!(w.handle_event(&zoom_in_again), EventResponse::Consumed);
+        assert_eq!(w.current_sample_size(), 64);
+
+        let mut xmap = vec![0u8; WORLD_SIZE * WORLD_SIZE * 4];
+        fill_gradient_region(&mut xmap, 96, 160, 160, 224);
+
+        w.update_viewport(&xmap, 128, 192);
+
+        assert_eq!(w.viewport_pixels[0], 160);
+        assert_eq!(w.viewport_pixels[1], 96);
+        assert_eq!(w.viewport_pixels[4], 160);
+        assert_eq!(w.viewport_pixels[5], 96);
+    }
+
+    #[test]
+    fn zoomed_out_viewport_clamps_to_world_edges() {
+        let mut w = MinimapWidget::new(100, 30, 14);
+        w.toggle();
+        let zoom_out = click_in_bounds(*w.zoom_out_button.bounds());
+        let zoom_out_again = click_in_bounds(*w.zoom_out_button.bounds());
+        assert_eq!(w.handle_event(&zoom_out), EventResponse::Consumed);
+        assert_eq!(w.handle_event(&zoom_out_again), EventResponse::Consumed);
+        assert_eq!(w.current_sample_size(), 192);
+
+        let mut xmap = vec![0u8; WORLD_SIZE * WORLD_SIZE * 4];
+        fill_gradient_region(&mut xmap, 0, 192, 0, 192);
+
+        w.update_viewport(&xmap, 10, 20);
+
+        assert_eq!(w.viewport_pixels[0], 0);
+        assert_eq!(w.viewport_pixels[1], 0);
+
+        let last =
+            ((MINIMAP_WIDGET_VIEW_SIZE as usize * MINIMAP_WIDGET_VIEW_SIZE as usize) - 1) * 4;
+        assert_eq!(w.viewport_pixels[last], 190);
+        assert_eq!(w.viewport_pixels[last + 1], 190);
     }
 }

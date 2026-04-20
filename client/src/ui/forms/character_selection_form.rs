@@ -42,6 +42,9 @@ const BTN_H: u32 = 22;
 /// Gap between buttons.
 const BTN_GAP: i32 = 6;
 
+/// Extra gap before the destructive delete action.
+const DELETE_BTN_GAP: i32 = 12;
+
 /// Bitmap font index.
 const FONT: usize = 1;
 
@@ -83,10 +86,10 @@ pub struct CharacterSelectionForm {
     create_button: RectButton,
     /// "Continue to game" button.
     continue_button: RectButton,
-    /// "Delete character" button.
-    delete_button: RectButton,
     /// "Log out" button.
     logout_button: RectButton,
+    /// "Delete character" button.
+    delete_button: RectButton,
     /// Pending actions for the scene to drain.
     actions: Vec<CharacterSelectionFormAction>,
     /// Optional error message.
@@ -98,7 +101,7 @@ pub struct CharacterSelectionForm {
     /// Cached character names keyed by ID (for delete dialog).
     character_names: Vec<(u64, String)>,
     /// Controller focus index, if any.
-    /// Slots 0..N = list rows, N..N+4 = create/continue/delete/logout.
+    /// Slots 0..N = list rows, N..N+4 = create/continue/logout/delete.
     controller_focused: Option<usize>,
 }
 
@@ -146,24 +149,24 @@ impl CharacterSelectionForm {
                 .with_label("Continue to game", FONT);
         btn_y += BTN_H as i32 + BTN_GAP;
 
-        let delete_button =
-            RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), delete_bg)
-                .with_border(delete_border)
-                .with_label("Delete character", FONT);
-        btn_y += BTN_H as i32 + BTN_GAP;
-
         let logout_button =
             RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), btn_bg)
                 .with_border(btn_border)
                 .with_label("Log out", FONT);
+        btn_y += BTN_H as i32 + DELETE_BTN_GAP;
+
+        let delete_button =
+            RectButton::new(Bounds::new(panel_x + PAD_X, btn_y, BTN_W, BTN_H), delete_bg)
+                .with_border(delete_border)
+                .with_label("Delete character", FONT);
 
         Self {
             bounds,
             character_list,
             create_button,
             continue_button,
-            delete_button,
             logout_button,
+            delete_button,
             actions: Vec::new(),
             error_text: None,
             status_text: None,
@@ -285,9 +288,9 @@ impl CharacterSelectionForm {
         self.create_button.set_hovered(focused == Some(list_len));
         self.continue_button
             .set_hovered(focused == Some(list_len + 1));
-        self.delete_button
-            .set_hovered(focused == Some(list_len + 2));
         self.logout_button
+            .set_hovered(focused == Some(list_len + 2));
+        self.delete_button
             .set_hovered(focused == Some(list_len + 3));
     }
 }
@@ -340,6 +343,9 @@ impl Widget for CharacterSelectionForm {
                         }
                     }
                     Some(i) if i == list_len + 2 => {
+                        self.actions.push(CharacterSelectionFormAction::LogOut);
+                    }
+                    Some(i) if i == list_len + 3 => {
                         if let Some(id) = self.character_list.selected_id() {
                             let name = self.character_name_for_id(id).unwrap_or("").to_owned();
                             self.actions
@@ -348,9 +354,6 @@ impl Widget for CharacterSelectionForm {
                                     character_name: name,
                                 });
                         }
-                    }
-                    Some(i) if i == list_len + 3 => {
-                        self.actions.push(CharacterSelectionFormAction::LogOut);
                     }
                     _ => {}
                 }
@@ -382,6 +385,10 @@ impl Widget for CharacterSelectionForm {
             }
             return EventResponse::Consumed;
         }
+        if self.logout_button.handle_event(event) == EventResponse::Consumed {
+            self.actions.push(CharacterSelectionFormAction::LogOut);
+            return EventResponse::Consumed;
+        }
         if self.delete_button.handle_event(event) == EventResponse::Consumed {
             if let Some(id) = self.character_list.selected_id() {
                 let name = self.character_name_for_id(id).unwrap_or("").to_owned();
@@ -391,10 +398,6 @@ impl Widget for CharacterSelectionForm {
                         character_name: name,
                     });
             }
-            return EventResponse::Consumed;
-        }
-        if self.logout_button.handle_event(event) == EventResponse::Consumed {
-            self.actions.push(CharacterSelectionFormAction::LogOut);
             return EventResponse::Consumed;
         }
 
@@ -514,14 +517,14 @@ impl Widget for CharacterSelectionForm {
         self.continue_button.render(ctx)?;
         cursor_y += BTN_H as i32 + BTN_GAP;
 
-        self.delete_button
-            .set_position(self.bounds.x + PAD_X, cursor_y);
-        self.delete_button.render(ctx)?;
-        cursor_y += BTN_H as i32 + BTN_GAP;
-
         self.logout_button
             .set_position(self.bounds.x + PAD_X, cursor_y);
         self.logout_button.render(ctx)?;
+        cursor_y += BTN_H as i32 + DELETE_BTN_GAP;
+
+        self.delete_button
+            .set_position(self.bounds.x + PAD_X, cursor_y);
+        self.delete_button.render(ctx)?;
 
         Ok(())
     }

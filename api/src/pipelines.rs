@@ -316,6 +316,7 @@ pub(crate) async fn insert_new_character(
 ) -> Result<u64, redis::RedisError> {
     let character_id: u64 = con.incr("character:next_id", 1).await?;
     let character_key = format!("character:{}", character_id);
+    let selection_sprite_id = traits::get_sprite_id_for_class_and_sex(class, sex) as u16;
 
     // Single write command for the character.
     redis::cmd("HSET")
@@ -330,6 +331,8 @@ pub(crate) async fn insert_new_character(
         .arg(sex as u32)
         .arg("class")
         .arg(class as u32)
+        .arg("selection_sprite_id")
+        .arg(selection_sprite_id)
         .query_async::<()>(&mut *con)
         .await?;
 
@@ -624,6 +627,9 @@ pub(crate) async fn list_characters_for_account_scan(
         let server_id = character_map
             .get("server_id")
             .and_then(|value| value.parse::<u32>().ok());
+        let selection_sprite_id = character_map
+            .get("selection_sprite_id")
+            .and_then(|value| value.parse::<u16>().ok());
 
         characters.push(types::CharacterSummary {
             id: character_id,
@@ -631,6 +637,7 @@ pub(crate) async fn list_characters_for_account_scan(
             description,
             sex,
             class: class,
+            selection_sprite_id,
             server_id,
         });
     }

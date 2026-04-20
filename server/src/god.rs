@@ -11,11 +11,50 @@ use core::{
 };
 
 use crate::{
-    area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,
+    area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, keydb, player,
+    populate,
 };
 
 pub struct God {}
 impl God {
+    /// Sync selection metadata for an online player character back into KeyDB.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used to resolve the controlling player slot.
+    /// * `character_id` - Live gameplay character slot whose metadata should be mirrored.
+    fn sync_character_selection_metadata(gs: &GameState, character_id: usize) {
+        if !Character::is_sane_character(character_id) {
+            return;
+        }
+
+        let player_id = gs.characters[character_id].player;
+        if player_id <= 0 {
+            return;
+        }
+
+        let player_id = player_id as usize;
+        if player_id >= core::constants::MAXPLAYER {
+            return;
+        }
+
+        let api_character_id = gs.players[player_id].api_character_id;
+        if api_character_id == 0 {
+            return;
+        }
+
+        if let Err(err) =
+            keydb::sync_character_selection_metadata(api_character_id, &gs.characters[character_id])
+        {
+            log::warn!(
+                "Failed to sync selection metadata for live character {} (api id {}): {}",
+                character_id,
+                api_character_id,
+                err
+            );
+        }
+    }
+
     /// Drop a character near the target using an explicit game-state borrow.
     pub fn drop_char_fuzzy_large(
         gs: &mut GameState,
@@ -4065,6 +4104,7 @@ impl God {
         }
 
         gs.do_update_char(co);
+        Self::sync_character_selection_metadata(gs, co);
     }
 
     /// Save character `co` to persistent storage.
@@ -4559,6 +4599,7 @@ impl God {
         }
 
         gs.do_check_new_level(cn);
+        Self::sync_character_selection_metadata(gs, cn);
     }
 
     /// Force a target to say text as if they had typed it.

@@ -1688,7 +1688,7 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
     let caster_x = gs.characters[cn].x as i32;
     let caster_y = gs.characters[cn].y as i32;
 
-    for maybe_co in helpers::skill_aoe_targets(gs, caster_x, caster_y, aoe_base) {
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, aoe_base) {
         if maybe_co == cn || maybe_co == co_orig {
             continue;
         }
@@ -2381,7 +2381,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
     let caster_x = gs.characters[cn].x as i32;
     let caster_y = gs.characters[cn].y as i32;
 
-    for maybe_co in helpers::skill_aoe_targets(gs, caster_x, caster_y, aoe_base) {
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, aoe_base) {
         if maybe_co == cn || maybe_co == co_orig {
             continue;
         }

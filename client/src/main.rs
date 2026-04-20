@@ -140,6 +140,7 @@ fn main() -> Result<(), String> {
         bg_paths,
         6.0,
         2.0,
+        0.9,
         Some(sdl2::pixels::Color::RGBA(10, 10, 30, 100)),
     );
 

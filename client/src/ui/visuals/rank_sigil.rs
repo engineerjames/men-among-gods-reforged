@@ -76,6 +76,9 @@ pub struct RankSigil {
 }
 
 impl RankSigil {
+    /// Lowest rank index that should display a sigil.
+    const FIRST_VISIBLE_RANK: usize = 1;
+
     /// Create a new `RankSigil` positioned at `(x, y)`.
     ///
     /// # Arguments
@@ -148,6 +151,15 @@ impl RankSigil {
             self.rank_index = rank_index;
             self.bounds = Self::compute_bounds(self.bounds.x, self.bounds.y, rank_index);
         }
+
+        if !self.is_visible() {
+            self.hovered = false;
+        }
+    }
+
+    /// Returns `true` when the sigil should be visible for the current rank.
+    pub fn is_visible(&self) -> bool {
+        self.rank_index >= Self::FIRST_VISIBLE_RANK
     }
 
     /// Returns `true` when the mouse cursor is over this widget.
@@ -195,6 +207,11 @@ impl Widget for RankSigil {
     ///
     /// * `Consumed` if a click landed inside the sigil bounds, `Ignored` otherwise.
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if !self.is_visible() {
+            self.hovered = false;
+            return EventResponse::Ignored;
+        }
+
         match event {
             UiEvent::MouseMove { x, y } => {
                 self.hovered = self.bounds.contains_point(*x, *y);
@@ -221,6 +238,10 @@ impl Widget for RankSigil {
     ///
     /// * `Ok(())` on success, or an SDL2 error string.
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if !self.is_visible() {
+            return Ok(());
+        }
+
         ctx.canvas.set_blend_mode(BlendMode::Blend);
         ctx.canvas.set_draw_color(self.bg_color);
         ctx.canvas.fill_rect(sdl2::rect::Rect::new(
@@ -294,6 +315,23 @@ mod tests {
     }
 
     #[test]
+    fn rank_zero_is_hidden() {
+        let mut sigil = RankSigil::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        sigil.sync(0);
+
+        assert!(!sigil.is_visible());
+        assert!(!sigil.is_hovered());
+    }
+
+    #[test]
+    fn first_non_private_rank_is_visible() {
+        let mut sigil = RankSigil::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        sigil.sync(1);
+
+        assert!(sigil.is_visible());
+    }
+
+    #[test]
     fn rank_name_matches_index() {
         let mut sigil = RankSigil::new(4, 4, Color::RGBA(10, 10, 30, 180));
         sigil.sync(0);
@@ -305,6 +343,7 @@ mod tests {
     #[test]
     fn click_inside_is_consumed() {
         let mut sigil = RankSigil::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        sigil.sync(1);
         // Bounds: x=4, y=4, w=40, h varies; point (20, 8) is inside.
         let click = UiEvent::MouseClick {
             x: 20,
@@ -330,11 +369,26 @@ mod tests {
     #[test]
     fn mouse_move_tracks_hover() {
         let mut sigil = RankSigil::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        sigil.sync(1);
         assert!(!sigil.is_hovered());
         sigil.handle_event(&UiEvent::MouseMove { x: 20, y: 8 });
         assert!(sigil.is_hovered());
         sigil.handle_event(&UiEvent::MouseMove { x: 500, y: 500 });
         assert!(!sigil.is_hovered());
+    }
+
+    #[test]
+    fn hidden_rank_does_not_consume_clicks() {
+        let mut sigil = RankSigil::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        sigil.sync(0);
+        let click = UiEvent::MouseClick {
+            x: 20,
+            y: 8,
+            button: crate::ui::widget::MouseButton::Left,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        };
+
+        assert_eq!(sigil.handle_event(&click), EventResponse::Ignored);
     }
 
     #[test]

@@ -109,6 +109,12 @@ pub struct PanningBackground {
     pan_speed_x: f32,
     /// Vertical pan speed in pixels per second (shared by all images).
     pan_speed_y: f32,
+    /// Baseline render scale applied to each image.
+    ///
+    /// Values below `1.0` zoom out to show more of the source image, while
+    /// values above `1.0` zoom in. The effective scale is clamped so the
+    /// image always covers the viewport bounds.
+    image_scale: f32,
     /// Optional RGBA color drawn over the image with alpha blending.
     tint: Option<Color>,
 }
@@ -126,6 +132,7 @@ impl PanningBackground {
     ///   one path is required; the function panics if the slice is empty.
     /// * `pan_speed_x` - Horizontal pan speed in pixels per second.
     /// * `pan_speed_y` - Vertical pan speed in pixels per second.
+    /// * `image_scale` - Baseline render scale. Values below `1.0` zoom out.
     /// * `tint` - Optional RGBA overlay color.
     ///
     /// # Returns
@@ -140,6 +147,7 @@ impl PanningBackground {
         image_paths: Vec<PathBuf>,
         pan_speed_x: f32,
         pan_speed_y: f32,
+        image_scale: f32,
         tint: Option<Color>,
     ) -> Self {
         assert!(
@@ -156,6 +164,7 @@ impl PanningBackground {
             transition_progress: 0.0,
             pan_speed_x,
             pan_speed_y,
+            image_scale: image_scale.max(0.01),
             tint,
         }
     }
@@ -169,6 +178,30 @@ impl PanningBackground {
         self.tint = tint;
     }
 
+    /// Returns the effective render scale for an image.
+    ///
+    /// The configured `image_scale` is clamped upward when necessary so the
+    /// scaled image still fully covers `self.bounds`.
+    ///
+    /// # Arguments
+    ///
+    /// * `image_width` - Source image width in pixels.
+    /// * `image_height` - Source image height in pixels.
+    ///
+    /// # Returns
+    ///
+    /// * The scale factor used for rendering and pan bounds.
+    fn effective_scale(&self, image_width: u32, image_height: u32) -> f32 {
+        if image_width == 0 || image_height == 0 {
+            return self.image_scale;
+        }
+
+        let min_scale_x = self.bounds.width as f32 / image_width as f32;
+        let min_scale_y = self.bounds.height as f32 / image_height as f32;
+
+        self.image_scale.max(min_scale_x.max(min_scale_y))
+    }
+
     /// Advances the ping-pong pan state for the image at `idx`.
     ///
     /// Does nothing if the image has not yet been loaded (i.e. its dimensions
@@ -179,13 +212,21 @@ impl PanningBackground {
     /// * `idx` - Index into `self.images` to update.
     /// * `dt_secs` - Elapsed time in seconds since the last update.
     fn advance_pan(&mut self, idx: usize, dt_secs: f32) {
-        let img = &mut self.images[idx];
-        if img.width == 0 {
+        let (width, height) = {
+            let img = &self.images[idx];
+            (img.width, img.height)
+        };
+        if width == 0 {
             return;
         }
 
+        let scale = self.effective_scale(width, height);
+        let rendered_width = width as f32 * scale;
+        let rendered_height = height as f32 * scale;
+        let img = &mut self.images[idx];
+
         // Horizontal ping-pong
-        let max_x = img.width.saturating_sub(self.bounds.width) as f32;
+        let max_x = (rendered_width - self.bounds.width as f32).max(0.0);
         if max_x > 0.0 {
             img.pan_x += self.pan_speed_x * img.dir_x * dt_secs;
             if img.pan_x >= max_x {
@@ -198,7 +239,7 @@ impl PanningBackground {
         }
 
         // Vertical ping-pong
-        let max_y = img.height.saturating_sub(self.bounds.height) as f32;
+        let max_y = (rendered_height - self.bounds.height as f32).max(0.0);
         if max_y > 0.0 {
             img.pan_y += self.pan_speed_y * img.dir_y * dt_secs;
             if img.pan_y >= max_y {
@@ -308,11 +349,12 @@ impl Widget for PanningBackground {
 
         // --- Draw current image (full opacity) --------------------------------
         let cur = &self.images[self.current_idx];
+        let cur_scale = self.effective_scale(cur.width, cur.height);
         let cur_dst = FRect::new(
             self.bounds.x as f32 - cur.pan_x,
             self.bounds.y as f32 - cur.pan_y,
-            cur.width as f32,
-            cur.height as f32,
+            cur.width as f32 * cur_scale,
+            cur.height as f32 * cur_scale,
         );
         let cur_id = cur.texture_id.unwrap();
         let cur_tex = ctx.gfx.get_texture(cur_id);
@@ -342,11 +384,12 @@ impl Widget for PanningBackground {
 
             if let Some(next_id) = self.images[next].texture_id {
                 let nxt = &self.images[next];
+                let next_scale = self.effective_scale(nxt.width, nxt.height);
                 let nxt_dst = FRect::new(
                     self.bounds.x as f32 - nxt.pan_x,
                     self.bounds.y as f32 - nxt.pan_y,
-                    nxt.width as f32,
-                    nxt.height as f32,
+                    nxt.width as f32 * next_scale,
+                    nxt.height as f32 * next_scale,
                 );
                 let alpha = (self.transition_progress.clamp(0.0, 1.0) * 255.0) as u8;
                 let nxt_tex = ctx.gfx.get_texture(next_id);
@@ -388,11 +431,23 @@ mod tests {
     /// of the given pixel dimensions.  The image list has `count` entries and
     /// all are pre-populated with fake texture IDs so `update` can run.
     fn make_bg_many(w: u32, h: u32, count: usize) -> PanningBackground {
+        make_bg_many_scaled(w, h, count, 1.0)
+    }
+
+    /// Creates a `PanningBackground` with a caller-controlled render scale.
+    fn make_bg_many_scaled(w: u32, h: u32, count: usize, image_scale: f32) -> PanningBackground {
         assert!(count >= 1);
         let paths: Vec<PathBuf> = (0..count)
             .map(|i| PathBuf::from(format!("dummy{}.png", i)))
             .collect();
-        let mut bg = PanningBackground::new(Bounds::new(0, 0, 960, 540), paths, 15.0, 5.0, None);
+        let mut bg = PanningBackground::new(
+            Bounds::new(0, 0, 960, 540),
+            paths,
+            15.0,
+            5.0,
+            image_scale,
+            None,
+        );
         for (i, img) in bg.images.iter_mut().enumerate() {
             img.texture_id = Some(1000 + i);
             img.width = w;
@@ -404,6 +459,26 @@ mod tests {
     /// Convenience wrapper for the common single-image case.
     fn make_bg(w: u32, h: u32) -> PanningBackground {
         make_bg_many(w, h, 1)
+    }
+
+    #[test]
+    fn zoom_out_reduces_rendered_pan_range() {
+        let mut bg = make_bg_many_scaled(1920, 540, 1, 0.9);
+
+        for _ in 0..1000 {
+            bg.update(Duration::from_millis(100));
+        }
+
+        assert!(bg.images[0].pan_x <= 1920.0 * 0.9 - 960.0);
+    }
+
+    #[test]
+    fn effective_scale_keeps_small_images_covering_viewport() {
+        let bg = make_bg_many_scaled(960, 540, 1, 0.9);
+
+        assert!((bg.effective_scale(1920, 1080) - 0.9).abs() < f32::EPSILON);
+        assert!((bg.effective_scale(960, 540) - 1.0).abs() < f32::EPSILON);
+        assert!((bg.effective_scale(800, 600) - 1.2).abs() < 0.001);
     }
 
     #[test]

@@ -363,7 +363,9 @@ impl GameState {
                     let attacker_x = self.characters[cn].x as i32;
                     let attacker_y = self.characters[cn].y as i32;
 
-                    for co2 in helpers::skill_aoe_targets(self, attacker_x, attacker_y, aoe_base) {
+                    for co2 in
+                        helpers::skill_aoe_targets(self, Some(cn), attacker_x, attacker_y, aoe_base)
+                    {
                         if co2 == cn || co2 == co {
                             continue;
                         }

@@ -233,6 +233,25 @@ pub fn class_from_kindred(kindred: i32) -> Option<Class> {
     }
 }
 
+/// Resolves the player sex encoded in a `kindred` bitfield.
+///
+/// # Arguments
+/// * `kindred` - Raw kindred bitmask from a character.
+///
+/// # Returns
+/// * `Some(Sex)` when a known sex bit is present, otherwise `None`.
+pub fn sex_from_kindred(kindred: i32) -> Option<Sex> {
+    let kindred = kindred as u32;
+
+    if kindred & KIN_FEMALE != 0 {
+        Some(Sex::Female)
+    } else if kindred & KIN_MALE != 0 {
+        Some(Sex::Male)
+    } else {
+        None
+    }
+}
+
 /// Returns the weapon categories a class is allowed to equip.
 ///
 /// # Arguments
@@ -284,6 +303,7 @@ mod tests {
     use super::{
         Class, Sex, allowed_weapon_flags_for_class, class_from_kindred, get_race_integer,
         get_sex_and_class, get_sprite_id_for_class_and_sex, kindred_can_use_weapon,
+        sex_from_kindred,
     };
     use crate::constants::ItemFlags;
     use crate::traits;
@@ -400,6 +420,16 @@ mod tests {
             Some(Class::ArchHarakim)
         );
         assert_eq!(class_from_kindred(0), None);
+    }
+
+    #[test]
+    fn sex_from_kindred_returns_expected_variant() {
+        assert_eq!(sex_from_kindred(traits::KIN_MALE as i32), Some(Sex::Male));
+        assert_eq!(
+            sex_from_kindred((traits::KIN_ARCHTEMPLAR | traits::KIN_FEMALE) as i32),
+            Some(Sex::Female)
+        );
+        assert_eq!(sex_from_kindred(0), None);
     }
 
     #[test]

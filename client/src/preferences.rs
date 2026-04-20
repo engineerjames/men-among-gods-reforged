@@ -213,6 +213,29 @@ fn default_true() -> bool {
     true
 }
 
+/// Returns a `Settings` snapshot containing only global fields.
+///
+/// Character-scoped fields are always reset to defaults so account-level
+/// profile state cannot leak skill bindings or panel layout between
+/// characters.
+fn global_settings_only(settings: &Settings) -> Settings {
+    Settings {
+        music_enabled: settings.music_enabled,
+        display_mode: settings.display_mode,
+        pixel_perfect_scaling: settings.pixel_perfect_scaling,
+        vsync_enabled: settings.vsync_enabled,
+        shadows_enabled: settings.shadows_enabled,
+        spell_effects_enabled: settings.spell_effects_enabled,
+        master_volume: settings.master_volume.clamp(0.0, 1.0),
+        hide: settings.hide,
+        show_names: settings.show_names,
+        show_proz: settings.show_proz,
+        show_helper_text: settings.show_helper_text,
+        show_positions: settings.show_positions,
+        character: CharacterSettings::default(),
+    }
+}
+
 /// Builds the BTreeMap key used to store a character's profile.
 ///
 /// # Arguments
@@ -342,29 +365,18 @@ fn write_storage(path: &Path, storage: &ProfileStorage) -> Result<(), String> {
 /// * `identity` - The character to look up.
 ///
 /// # Returns
-/// * `Some(Settings)` if the character's entry exists, `None` otherwise.
-///   Global fields are always populated from the global section;
-///   per-character fields come from the character entry.
-pub fn load_settings(identity: &CharacterIdentity) -> Option<Settings> {
+/// * The merged character settings. Global fields always come from the
+///   global section. Per-character fields come from the character entry
+///   when present, otherwise they fall back to defaults.
+pub fn load_settings(identity: &CharacterIdentity) -> Settings {
     let path = profile_file_path();
     let storage = read_storage(&path);
+    let mut settings = global_settings_only(&storage.global);
     let key = profile_key(identity);
-    let entry = storage.characters.get(&key)?;
-    Some(Settings {
-        music_enabled: storage.global.music_enabled,
-        display_mode: storage.global.display_mode,
-        pixel_perfect_scaling: storage.global.pixel_perfect_scaling,
-        vsync_enabled: storage.global.vsync_enabled,
-        shadows_enabled: storage.global.shadows_enabled,
-        spell_effects_enabled: storage.global.spell_effects_enabled,
-        master_volume: storage.global.master_volume.clamp(0.0, 1.0),
-        hide: storage.global.hide,
-        show_names: storage.global.show_names,
-        show_proz: storage.global.show_proz,
-        show_helper_text: storage.global.show_helper_text,
-        show_positions: storage.global.show_positions,
-        character: entry.character.clone(),
-    })
+    if let Some(entry) = storage.characters.get(&key) {
+        settings.character = entry.character.clone();
+    }
+    settings
 }
 
 /// Loads the global (non-character) settings from disk, returning
@@ -378,7 +390,7 @@ pub fn load_settings(identity: &CharacterIdentity) -> Option<Settings> {
 pub fn load_global_settings() -> Settings {
     let path = profile_file_path();
     let storage = read_storage(&path);
-    storage.global
+    global_settings_only(&storage.global)
 }
 
 /// Persists the global fields of `settings` to the profile file.
@@ -394,18 +406,7 @@ pub fn load_global_settings() -> Settings {
 pub fn save_global_settings(settings: &Settings) -> Result<(), String> {
     let path = profile_file_path();
     let mut storage = read_storage(&path);
-    storage.global.music_enabled = settings.music_enabled;
-    storage.global.display_mode = settings.display_mode;
-    storage.global.pixel_perfect_scaling = settings.pixel_perfect_scaling;
-    storage.global.vsync_enabled = settings.vsync_enabled;
-    storage.global.shadows_enabled = settings.shadows_enabled;
-    storage.global.spell_effects_enabled = settings.spell_effects_enabled;
-    storage.global.master_volume = settings.master_volume.clamp(0.0, 1.0);
-    storage.global.hide = settings.hide;
-    storage.global.show_names = settings.show_names;
-    storage.global.show_proz = settings.show_proz;
-    storage.global.show_helper_text = settings.show_helper_text;
-    storage.global.show_positions = settings.show_positions;
+    storage.global = global_settings_only(settings);
     write_storage(&path, &storage)
 }
 
@@ -445,18 +446,7 @@ pub fn save_settings(identity: &CharacterIdentity, settings: &Settings) -> Resul
     let path = profile_file_path();
     let mut storage = read_storage(&path);
     // Update global fields.
-    storage.global.music_enabled = settings.music_enabled;
-    storage.global.display_mode = settings.display_mode;
-    storage.global.pixel_perfect_scaling = settings.pixel_perfect_scaling;
-    storage.global.vsync_enabled = settings.vsync_enabled;
-    storage.global.shadows_enabled = settings.shadows_enabled;
-    storage.global.spell_effects_enabled = settings.spell_effects_enabled;
-    storage.global.master_volume = settings.master_volume.clamp(0.0, 1.0);
-    storage.global.hide = settings.hide;
-    storage.global.show_names = settings.show_names;
-    storage.global.show_proz = settings.show_proz;
-    storage.global.show_helper_text = settings.show_helper_text;
-    storage.global.show_positions = settings.show_positions;
+    storage.global = global_settings_only(settings);
     // Insert / update character entry.
     let key = profile_key(identity);
     storage.characters.insert(
@@ -653,5 +643,27 @@ mod tests {
             serde_json::to_string(&d.key_bindings).unwrap(),
             serde_json::to_string(&cs.key_bindings).unwrap()
         );
+    }
+
+    #[test]
+    fn global_settings_only_clears_character_scoped_fields() {
+        let mut settings = Settings::default();
+        settings.character.skill_keybinds[0] = Some(42);
+        settings.character.inventory_panel_pos = Some((99, 88));
+        settings.character.settings_panel_pos = Some((77, 66));
+
+        let global = global_settings_only(&settings);
+
+        assert_eq!(global.music_enabled, settings.music_enabled);
+        assert_eq!(global.display_mode, settings.display_mode);
+        assert!(
+            global
+                .character
+                .skill_keybinds
+                .iter()
+                .all(|slot| slot.is_none())
+        );
+        assert_eq!(global.character.inventory_panel_pos, None);
+        assert_eq!(global.character.settings_panel_pos, None);
     }
 }
