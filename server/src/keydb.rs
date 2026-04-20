@@ -1,5 +1,5 @@
-use core::traits::{Class, Sex};
-use core::types::CharacterSummary;
+use core::traits::{Class, Sex, class_from_kindred, sex_from_kindred};
+use core::types::{Character, CharacterSummary};
 use redis::Commands;
 use std::collections::HashMap;
 use std::env;
@@ -178,22 +178,102 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
     let server_id = character_map
         .get("server_id")
         .and_then(|value| value.parse::<u32>().ok());
-
-    let id = character_map
-        .get("id")
-        .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or(0);
+    let selection_sprite_id = character_map
+        .get("selection_sprite_id")
+        .and_then(|value| value.parse::<u16>().ok());
 
     Ok(Some(CharacterSummary {
-        id,
+        id: character_id,
         name,
         description,
         sex,
         class,
+        selection_sprite_id,
         server_id,
     }))
 }
 
+/// Derives character-selection metadata from a live gameplay character slot.
+///
+/// # Arguments
+///
+/// * `character` - Live gameplay character whose class, sex, and sprite should be mirrored.
+///
+/// # Returns
+///
+/// * `Some((class, sex, selection_sprite_id))` when the live character encodes both class and sex.
+/// * `None` when the live character does not contain enough metadata to build a selection record.
+fn derive_character_selection_metadata(character: &Character) -> Option<(Class, Sex, u16)> {
+    let class = class_from_kindred(character.kindred)?;
+    let sex = sex_from_kindred(character.kindred)?;
+    Some((class, sex, character.sprite))
+}
+
+/// Writes selection metadata fields for an API-side character hash.
+///
+/// # Arguments
+///
+/// * `character_id` - API character ID whose `character:{id}` hash should be updated.
+/// * `class` - Current class to expose to the selection screen and login flow.
+/// * `sex` - Current sex to expose to the selection screen and login flow.
+/// * `selection_sprite_id` - Server-authored sprite ID for selection portraits.
+///
+/// # Returns
+///
+/// * `Ok(())` on success.
+/// * `Err(String)` when connecting to KeyDB or updating the hash fails.
+fn set_character_selection_metadata(
+    character_id: u64,
+    class: Class,
+    sex: Sex,
+    selection_sprite_id: u16,
+) -> Result<(), String> {
+    let mut con = connect()?;
+    let key = format!("character:{}", character_id);
+    redis::cmd("HSET")
+        .arg(&key)
+        .arg("class")
+        .arg(class as u32)
+        .arg("sex")
+        .arg(sex as u32)
+        .arg("selection_sprite_id")
+        .arg(selection_sprite_id)
+        .query::<()>(&mut con)
+        .map_err(|err| format!("Failed to set character selection metadata: {err}"))
+}
+
+/// Derives and writes selection metadata for a live gameplay character.
+///
+/// # Arguments
+///
+/// * `character_id` - API character ID whose `character:{id}` hash should be updated.
+/// * `character` - Live gameplay character whose class, sex, and sprite should be mirrored.
+///
+/// # Returns
+///
+/// * `Ok(())` on success.
+/// * `Err(String)` when the metadata cannot be derived or the KeyDB update fails.
+pub fn sync_character_selection_metadata(
+    character_id: u64,
+    character: &Character,
+) -> Result<(), String> {
+    let (class, sex, selection_sprite_id) = derive_character_selection_metadata(character)
+        .ok_or_else(|| "Failed to derive live character selection metadata".to_string())?;
+
+    set_character_selection_metadata(character_id, class, sex, selection_sprite_id)
+}
+
+/// Persists the linked gameplay `server_id` for an API-side character hash.
+///
+/// # Arguments
+///
+/// * `character_id` - API character ID whose `character:{id}` hash should be updated.
+/// * `server_id` - Internal gameplay slot index stored by the server.
+///
+/// # Returns
+///
+/// * `Ok(())` on success.
+/// * `Err(String)` when connecting to KeyDB or updating the hash fails.
 pub fn set_character_server_id(character_id: u64, server_id: u32) -> Result<(), String> {
     let mut con = connect()?;
     let key = format!("character:{}", character_id);
@@ -212,6 +292,8 @@ pub fn set_character_server_id(character_id: u64, server_id: u32) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::traits;
+    use core::types::Character;
     use std::ffi::OsString;
     use std::sync::{Mutex, OnceLock};
 
@@ -340,5 +422,26 @@ mod tests {
         env_scope.remove_keydb_password();
         let url = keydb_url();
         assert_eq!(url, "redis://127.0.0.1:5556/");
+    }
+
+    #[test]
+    fn derive_character_selection_metadata_uses_live_values() {
+        let mut character = Character::default();
+        character.kindred = (traits::KIN_ARCHTEMPLAR | traits::KIN_FEMALE) as i32;
+        character.sprite = 8144;
+
+        assert_eq!(
+            derive_character_selection_metadata(&character),
+            Some((Class::ArchTemplar, Sex::Female, 8144))
+        );
+    }
+
+    #[test]
+    fn derive_character_selection_metadata_requires_class_and_sex_bits() {
+        let mut character = Character::default();
+        character.kindred = traits::KIN_ARCHTEMPLAR as i32;
+        character.sprite = 8144;
+
+        assert_eq!(derive_character_selection_metadata(&character), None);
     }
 }

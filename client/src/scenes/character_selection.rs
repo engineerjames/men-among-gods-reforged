@@ -375,10 +375,15 @@ impl Scene for CharacterSelectionScene {
                         let items: Vec<ListItem> = characters
                             .iter()
                             .map(|c| {
-                                let sprite_id =
-                                    Some(mag_core::traits::get_sprite_id_for_class_and_sex(
-                                        c.class, c.sex,
-                                    ));
+                                let sprite_id = Some(
+                                    c.selection_sprite_id
+                                        .map(usize::from)
+                                        .unwrap_or_else(|| {
+                                            mag_core::traits::get_sprite_id_for_class_and_sex(
+                                                c.class, c.sex,
+                                            )
+                                        }),
+                                );
                                 ListItem {
                                     id: c.id,
                                     label: format!("{} ({})", c.name, c.class.to_string()),

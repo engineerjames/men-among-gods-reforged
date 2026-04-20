@@ -153,12 +153,14 @@ erDiagram
         string name
         string description
         u32 sex
-        u32 race
+        u32 class
+        u16 selection_sprite_id
     }
 ```
 
 Notes:
 - The `ACCOUNT -> CHARACTER` relationship is materialized via the `account_id` field stored on `character:{character_id}`.
+- The API-side `CHARACTER` hash stores the current selection/login `class`, `sex`, and server-authored `selection_sprite_id`, not just the original creation-time class.
 - Username/email uniqueness and username->account resolution are implemented via the claim keys described above.
 
 # Client auth + JWT usage flow
@@ -304,6 +306,7 @@ sequenceDiagram
 This is where the API and game server meet. Gameplay world state is persisted in KeyDB and loaded into memory by the game server at startup. Fresh environments are seeded ahead of time from a `.wsnap` world snapshot, so the server starts from KeyDB rather than a removed flat-file backend.
 
 When an account creates a character, the API writes the character metadata to KeyDB immediately. The game server establishes the runtime link the first time the player logs in with a one-time ticket: it loads the character record, creates or reuses the in-game character slot as needed, and then stores the active `server_id` back on the character record so the authentication service can enforce ownership and provide the character list to the client.
+After that link exists, the game server also keeps the API-side `class`, `sex`, and `selection_sprite_id` fields synchronized with the live gameplay character so promoted and transformed characters render correctly on the selection screen.
 
 ### First Login Flow
 ```mermaid
@@ -321,8 +324,8 @@ sequenceDiagram
     opt Character created via API
         C->>API: POST /characters (Authorization: Bearer JWT)
         API->>DB: INCR character:next_id
-        API->>DB: HSET character:{character_id} { account_id, name, description, sex, race }
-        API-->>C: 200 CharacterSummary { id, server_id: null }
+        API->>DB: HSET character:{character_id} { account_id, name, description, sex, class, selection_sprite_id }
+        API-->>C: 200 CharacterSummary { id, selection_sprite_id, server_id: null }
     end
 
     C->>GS: TCP connect :5555
@@ -339,7 +342,7 @@ sequenceDiagram
     GS->>DB: GET+DEL game_login_ticket:{ticket} (atomic consume)
     GS->>DB: HGETALL character:{character_id}
     GS->>GS: Create in-game character slot if needed and set name/description
-    GS->>DB: HSET character:{character_id} server_id={cn}
+    GS->>DB: HSET character:{character_id} { server_id={cn}, class, sex, selection_sprite_id }
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 
@@ -358,7 +361,7 @@ sequenceDiagram
 
     C->>API: GET /characters (Authorization: Bearer JWT)
     API->>DB: SCAN character:*;
-    API-->>C: 200 { characters: [ ... server_id=cn ... ] }
+    API-->>C: 200 { characters: [ ... server_id=cn, selection_sprite_id=... ... ] }
 
     C->>GS: TCP connect :5555
     Note over C,API: Client mints a fresh one-time ticket each login

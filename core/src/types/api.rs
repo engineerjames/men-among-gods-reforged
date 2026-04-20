@@ -58,11 +58,17 @@ pub struct CharacterSummary {
     /// Character description
     pub description: String,
 
-    /// Male or Female
+    /// Current sex used for character selection and game login.
     pub sex: Sex,
 
-    /// Class of the character
+    /// Current class used for character selection and game login.
     pub class: Class,
+
+    /// Server-authored sprite ID for the character-selection screen.
+    ///
+    /// This is optional during rollout so older KeyDB hashes can still be
+    /// loaded before the selection metadata backfill has been applied.
+    pub selection_sprite_id: Option<u16>,
 
     /// Server id
     pub server_id: Option<u32>,
@@ -76,6 +82,7 @@ impl Default for CharacterSummary {
             description: String::new(),
             sex: Sex::Male,
             class: Class::Mercenary,
+            selection_sprite_id: None,
             server_id: None,
         }
     }

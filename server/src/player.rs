@@ -303,6 +303,7 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
 
     gs.players[player_id].state = core::constants::ST_EXIT;
     gs.players[player_id].lasttick = ticker;
+    gs.players[player_id].api_character_id = 0;
 
     let maybe_char = gs
         .characters
@@ -2867,7 +2868,7 @@ fn plr_login(gs: &mut GameState, nr: usize) {
 
 fn resolve_api_login_character(
     gs: &mut GameState,
-    _nr: usize,
+    nr: usize,
     login_ticket: u64,
 ) -> Result<usize, LogoutReason> {
     let character_id = match keydb::consume_login_ticket(login_ticket) {
@@ -2978,6 +2979,16 @@ fn resolve_api_login_character(
                 err
             );
         }
+    }
+
+    gs.players[nr].api_character_id = character_id;
+
+    if let Err(err) = keydb::sync_character_selection_metadata(character_id, &gs.characters[cn]) {
+        log::warn!(
+            "Failed to sync selection metadata for API character {}: {}",
+            character_id,
+            err
+        );
     }
 
     Ok(cn)
@@ -4535,6 +4546,8 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
     gs.players[nr].usnr = cn;
     gs.players[nr].pass1 = pass1;
     gs.players[nr].pass2 = pass2;
+    gs.players[nr].login_ticket = 0;
+    gs.players[nr].api_character_id = 0;
 
     log::info!(
         "Player logged in as character index={} (players index={})",
@@ -4578,6 +4591,7 @@ fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
     gs.players[nr].usnr = 0;
     gs.players[nr].pass1 = 0;
     gs.players[nr].pass2 = 0;
+    gs.players[nr].api_character_id = 0;
 
     let mut buf: [u8; 16] = [0; 16];
     buf[0] = core::constants::SV_CHALLENGE;
