@@ -21,6 +21,8 @@ pub struct RectButton {
     border: Option<Border>,
     label_text: Option<String>,
     label_font: usize,
+    label_offset_x: i32,
+    label_offset_y: i32,
     hovered: bool,
     /// Additive tint alpha applied on hover (0–255).
     hover_alpha: u8,
@@ -44,6 +46,8 @@ impl RectButton {
             border: None,
             label_text: None,
             label_font: 1,
+            label_offset_x: 0,
+            label_offset_y: 0,
             hovered: false,
             hover_alpha: 96,
         }
@@ -76,6 +80,22 @@ impl RectButton {
     pub fn with_label(mut self, text: &str, font: usize) -> Self {
         self.label_text = Some(text.to_owned());
         self.label_font = font;
+        self
+    }
+
+    /// Offsets the button label relative to its default centered position.
+    ///
+    /// # Arguments
+    ///
+    /// * `offset_x` - Horizontal pixel offset applied to the label center.
+    /// * `offset_y` - Vertical pixel offset applied to the label baseline origin.
+    ///
+    /// # Returns
+    ///
+    /// `self` for chaining.
+    pub fn with_label_offset(mut self, offset_x: i32, offset_y: i32) -> Self {
+        self.label_offset_x = offset_x;
+        self.label_offset_y = offset_y;
         self
     }
 
@@ -164,9 +184,10 @@ impl Widget for RectButton {
 
         // Label (centered)
         if let Some(ref text) = self.label_text {
-            let center_x = self.bounds.x + self.bounds.width as i32 / 2;
-            let center_y =
-                self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
+            let center_x = self.bounds.x + self.bounds.width as i32 / 2 + self.label_offset_x;
+            let center_y = self.bounds.y
+                + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2
+                + self.label_offset_y;
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,

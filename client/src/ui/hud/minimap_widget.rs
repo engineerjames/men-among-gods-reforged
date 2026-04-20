@@ -35,16 +35,22 @@ const PANEL_BORDER: u32 = 1;
 const BUTTON_MAP_GAP: i32 = 4;
 
 /// Width of each zoom control button in pixels.
-const ZOOM_BUTTON_W: u32 = 18;
+const ZOOM_BUTTON_W: u32 = 16;
 
 /// Height of each zoom control button in pixels.
-const ZOOM_BUTTON_H: u32 = 18;
+const ZOOM_BUTTON_H: u32 = 16;
 
 /// Horizontal gap between the zoom buttons.
 const ZOOM_BUTTON_GAP: i32 = 4;
 
 /// Vertical gap between the zoom buttons and the minimap panel.
 const ZOOM_BUTTON_PANEL_GAP: i32 = 4;
+
+/// Horizontal pixel offset applied to the minimap zoom button labels.
+const ZOOM_LABEL_OFFSET_X: i32 = 1;
+
+/// Vertical pixel offset applied to the minimap zoom button labels.
+const ZOOM_LABEL_OFFSET_Y: i32 = 1;
 
 /// World-window sizes sampled into the fixed minimap viewport for each zoom level.
 const ZOOM_SAMPLE_SIZES: [u32; 5] = [64, 96, 128, 160, 192];
@@ -173,17 +179,31 @@ impl MinimapWidget {
 
     /// Creates a small labeled button used for minimap zoom controls.
     fn make_zoom_button(label: &str) -> RectButton {
-        RectButton::new(
-            Bounds::new(0, 0, ZOOM_BUTTON_W, ZOOM_BUTTON_H),
-            Background::SolidColor(BUTTON_FILL),
-        )
-        .with_border(Border {
-            color: BUTTON_BORDER,
-            width: 1,
-        })
-        .with_label(label, 1)
+        // TODO: Clean this up...
+        if label == "+" {
+            RectButton::new(
+                Bounds::new(0, 0, ZOOM_BUTTON_W, ZOOM_BUTTON_H),
+                Background::SolidColor(BUTTON_FILL),
+            )
+            .with_border(Border {
+                color: BUTTON_BORDER,
+                width: 1,
+            })
+            .with_label(label, 1)
+            .with_label_offset(0, ZOOM_LABEL_OFFSET_Y)
+        } else {
+            RectButton::new(
+                Bounds::new(0, 0, ZOOM_BUTTON_W, ZOOM_BUTTON_H),
+                Background::SolidColor(BUTTON_FILL),
+            )
+            .with_border(Border {
+                color: BUTTON_BORDER,
+                width: 1,
+            })
+            .with_label(label, 1)
+            .with_label_offset(ZOOM_LABEL_OFFSET_X, ZOOM_LABEL_OFFSET_Y)
+        }
     }
-
     /// Recomputes the minimap panel, zoom-button, and aggregate hit-test bounds.
     fn recompute_layout(&mut self) {
         let button_bounds = *self.button.bounds();
