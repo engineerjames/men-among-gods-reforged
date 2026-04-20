@@ -688,7 +688,7 @@ impl GameScene {
         if self.chat_box.is_focused() && self.chat_box.bounds().contains_point(mx, my) {
             return true;
         }
-        if self.rank_sigil.bounds().contains_point(mx, my) {
+        if self.rank_sigil.is_visible() && self.rank_sigil.bounds().contains_point(mx, my) {
             return true;
         }
         if self.vitality_bars.contains_point(mx, my) {
@@ -1611,7 +1611,9 @@ impl Scene for GameScene {
                 canvas,
                 gfx: gfx_cache,
             };
-            self.rank_sigil.render(&mut ctx)?;
+            if self.rank_sigil.is_visible() {
+                self.rank_sigil.render(&mut ctx)?;
+            }
             self.status_panel.render(&mut ctx)?;
             self.vitality_bars.render(&mut ctx)?;
         }
