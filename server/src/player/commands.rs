@@ -2070,3 +2070,1124 @@ pub fn plr_doact(gs: &mut GameState, cn: usize) {
         driver::driver(gs, cn);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::{
+        constants::{
+            CharacterFlags, ItemFlags, MF_BANK, MF_MOVEBLOCK, MF_SIGHTBLOCK, ST_EXIT, USE_ACTIVE,
+            USE_EMPTY, USE_NONACTIVE,
+        },
+        server_commands::ServerCommandType,
+        skills,
+        string_operations::{c_string_to_str, write_ascii_into_fixed},
+        traits,
+    };
+    use std::net::{TcpListener, TcpStream};
+
+    use crate::{
+        test_helpers::{add_test_player, with_test_gs, write_inbuf},
+        tls::GameStream,
+    };
+
+    fn map_index(x: i16, y: i16) -> usize {
+        x as usize + y as usize * core::constants::SERVER_MAPX as usize
+    }
+
+    fn attach_test_socket(gs: &mut GameState, nr: usize) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = listener.local_addr().expect("get listener address");
+        let client = TcpStream::connect(addr).expect("connect test client");
+        let (server, _) = listener.accept().expect("accept test client");
+        drop(client);
+        gs.players[nr].sock = Some(GameStream::Plain(server));
+    }
+
+    fn reset_packets(gs: &mut GameState, nr: usize) {
+        gs.players[nr].tptr = 0;
+        gs.players[nr].tbuf.fill(0);
+    }
+
+    fn place_character(gs: &mut GameState, cn: usize, x: i16, y: i16, flags: u64, name: &str) {
+        gs.characters[cn] = core::types::Character::default();
+        gs.characters[cn].used = USE_ACTIVE;
+        gs.characters[cn].flags = flags;
+        gs.characters[cn].x = x;
+        gs.characters[cn].y = y;
+        gs.characters[cn].tox = x;
+        gs.characters[cn].toy = y;
+        gs.characters[cn].frx = x;
+        gs.characters[cn].fry = y;
+        gs.characters[cn].dir = core::constants::DX_RIGHT;
+        write_ascii_into_fixed(&mut gs.characters[cn].name, name);
+        write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
+        gs.map[map_index(x, y)].ch = cn as u32;
+    }
+
+    fn configure_item(
+        gs: &mut GameState,
+        item_idx: usize,
+        name: &str,
+        reference: &str,
+        description: &str,
+        flags: u64,
+        temp: u16,
+        position: Option<(i16, i16)>,
+    ) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].flags = flags;
+        gs.items[item_idx].temp = temp;
+        write_ascii_into_fixed(&mut gs.items[item_idx].name, name);
+        write_ascii_into_fixed(&mut gs.items[item_idx].reference, reference);
+        write_ascii_into_fixed(&mut gs.items[item_idx].description, description);
+
+        if let Some((x, y)) = position {
+            gs.items[item_idx].x = x as u16;
+            gs.items[item_idx].y = y as u16;
+            gs.map[map_index(x, y)].it = item_idx as u32;
+            gs.map[map_index(x, y)].light = 64;
+        }
+    }
+
+    fn build_u16_packet(value: u16) -> [u8; 3] {
+        let mut packet = [0u8; 3];
+        packet[1..3].copy_from_slice(&value.to_le_bytes());
+        packet
+    }
+
+    fn build_u32_packet(value: u32) -> [u8; 5] {
+        let mut packet = [0u8; 5];
+        packet[1..5].copy_from_slice(&value.to_le_bytes());
+        packet
+    }
+
+    #[test]
+    fn plr_cmd_look_handles_character_and_depot_requests() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            write_inbuf(gs, nr, &build_u16_packet(cn as u16));
+            plr_cmd_look(gs, nr, false);
+            assert_eq!(gs.characters[cn].data[71], core::constants::CNTSAY);
+
+            gs.characters[cn].data[71] = 0;
+            write_inbuf(gs, nr, &build_u16_packet(cn as u16));
+            plr_cmd_look(gs, nr, true);
+            assert_eq!(gs.characters[cn].data[71], 0);
+
+            reset_packets(gs, nr);
+            gs.map[map_index(10, 10)].flags |= MF_BANK as u64;
+            write_inbuf(gs, nr, &build_u16_packet((cn as u16) | 0x8000));
+            plr_cmd_look(gs, nr, false);
+            assert!(gs.players[nr].tptr >= 16);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::Look1 as u8);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_setuser_writes_chunks_and_commits_valid_new_user_data() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            let mut name_chunk = [0u8; 16];
+            name_chunk[1] = 0;
+            name_chunk[2] = 0;
+            name_chunk[3..8].copy_from_slice(b"alice");
+            write_inbuf(gs, nr, &name_chunk);
+            plr_cmd_setuser(gs, nr);
+            assert_eq!(c_string_to_str(&gs.characters[cn].text[0]), "alice");
+
+            let mut desc_chunk = [0u8; 16];
+            desc_chunk[1] = 1;
+            desc_chunk[2] = 0;
+            desc_chunk[3..16].copy_from_slice(b"Alice is a Wa");
+            write_inbuf(gs, nr, &desc_chunk);
+            plr_cmd_setuser(gs, nr);
+
+            let mut desc_chunk_2 = [0u8; 16];
+            desc_chunk_2[1] = 1;
+            desc_chunk_2[2] = 13;
+            desc_chunk_2[3..9].copy_from_slice(b"rrior.");
+            write_inbuf(gs, nr, &desc_chunk_2);
+            plr_cmd_setuser(gs, nr);
+
+            gs.characters[cn].flags |= CharacterFlags::NewUser.bits();
+            gs.characters[cn].kindred = traits::KIN_WARRIOR as i32;
+
+            let mut final_chunk = [0u8; 16];
+            final_chunk[1] = 2;
+            final_chunk[2] = 65;
+            write_inbuf(gs, nr, &final_chunk);
+            plr_cmd_setuser(gs, nr);
+
+            assert_eq!(gs.characters[cn].get_name(), "Alice");
+            assert_eq!(gs.characters[cn].get_reference(), "Alice");
+            assert_eq!(
+                c_string_to_str(&gs.characters[cn].description),
+                "Alice is a Warrior."
+            );
+            assert_eq!(gs.characters[cn].flags & CharacterFlags::NewUser.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_setuser_uses_fallback_description_for_invalid_text() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            write_ascii_into_fixed(&mut gs.characters[cn].text[1], "short");
+            gs.characters[cn].kindred = traits::KIN_WARRIOR as i32;
+
+            let mut final_chunk = [0u8; 16];
+            final_chunk[1] = 2;
+            final_chunk[2] = 65;
+            write_inbuf(gs, nr, &final_chunk);
+            plr_cmd_setuser(gs, nr);
+
+            let description = c_string_to_str(&gs.characters[cn].description);
+            assert!(description.contains("Tester is a Warrior."));
+            assert!(description.contains("looks somewhat nondescript"));
+        });
+    }
+
+    #[test]
+    fn plr_cmd_stat_raises_each_supported_stat_family() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.characters[cn].points = 50_000;
+            gs.characters[cn].attrib[0][0] = 1;
+            gs.characters[cn].attrib[0][2] = 10;
+            gs.characters[cn].attrib[0][3] = 1;
+            gs.characters[cn].hp[0] = 10;
+            gs.characters[cn].hp[2] = 20;
+            gs.characters[cn].hp[3] = 1;
+            gs.characters[cn].end[0] = 10;
+            gs.characters[cn].end[2] = 20;
+            gs.characters[cn].end[3] = 1;
+            gs.characters[cn].mana[0] = 10;
+            gs.characters[cn].mana[2] = 20;
+            gs.characters[cn].mana[3] = 1;
+            gs.characters[cn].skill[skills::SK_LIGHT][0] = 1;
+            gs.characters[cn].skill[skills::SK_LIGHT][2] = 20;
+            gs.characters[cn].skill[skills::SK_LIGHT][3] = 1;
+
+            let cases = [
+                (0u16, 1u16, "attrib"),
+                (5u16, 1u16, "hp"),
+                (6u16, 1u16, "end"),
+                (7u16, 1u16, "mana"),
+                ((8 + skills::SK_LIGHT) as u16, 1u16, "skill"),
+            ];
+
+            for (stat_idx, amount, kind) in cases {
+                let mut packet = [0u8; 5];
+                packet[1..3].copy_from_slice(&stat_idx.to_le_bytes());
+                packet[3..5].copy_from_slice(&amount.to_le_bytes());
+                write_inbuf(gs, nr, &packet);
+                plr_cmd_stat(gs, nr);
+
+                match kind {
+                    "attrib" => assert_eq!(gs.characters[cn].attrib[0][0], 2),
+                    "hp" => assert_eq!(gs.characters[cn].hp[0], 11),
+                    "end" => assert_eq!(gs.characters[cn].end[0], 11),
+                    "mana" => assert_eq!(gs.characters[cn].mana[0], 11),
+                    "skill" => assert_eq!(gs.characters[cn].skill[skills::SK_LIGHT][0], 2),
+                    _ => unreachable!(),
+                }
+            }
+
+            let previous_points = gs.characters[cn].points;
+            let mut invalid_packet = [0u8; 5];
+            invalid_packet[1..3].copy_from_slice(&108u16.to_le_bytes());
+            invalid_packet[3..5].copy_from_slice(&100u16.to_le_bytes());
+            write_inbuf(gs, nr, &invalid_packet);
+            plr_cmd_stat(gs, nr);
+            assert_eq!(gs.characters[cn].points, previous_points);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_input_buffers_chunks_and_runs_final_do_say() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            let input = core::constants::GODPASSWORD.as_bytes();
+            for part in 1..=8u8 {
+                let start = ((part - 1) as usize) * 15;
+                let end = (start + 15).min(input.len());
+                let mut packet = [0u8; 16];
+                if start < input.len() {
+                    packet[1..1 + (end - start)].copy_from_slice(&input[start..end]);
+                }
+                write_inbuf(gs, nr, &packet);
+                plr_cmd_input(gs, nr, part);
+            }
+
+            let flags = gs.characters[cn].flags;
+            assert_ne!(flags & CharacterFlags::God.bits(), 0);
+            assert_ne!(flags & CharacterFlags::Creator.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_ctick_updates_roundtrip_timing() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            gs.globals.ticker = 777;
+            let mut packet = [0u8; 5];
+            packet[1..5].copy_from_slice(&123_456u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_ctick(gs, nr);
+            assert_eq!(gs.players[nr].rtick, 123_456);
+            assert_eq!(gs.players[nr].lasttick, 777);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_ping_queues_pong_packet() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let mut packet = [0u8; 9];
+            packet[1..5].copy_from_slice(&77u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&1234u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            plr_cmd_ping(gs, nr);
+
+            assert_eq!(gs.players[nr].tptr, 16);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::Pong as u8);
+            assert_eq!(
+                u32::from_le_bytes(gs.players[nr].tbuf[1..5].try_into().unwrap()),
+                77
+            );
+            assert_eq!(
+                u32::from_le_bytes(gs.players[nr].tbuf[5..9].try_into().unwrap()),
+                1234
+            );
+        });
+    }
+
+    #[test]
+    fn plr_cmd_look_item_validates_coordinates_and_visible_items() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            configure_item(
+                gs,
+                10,
+                "Torch",
+                "torch",
+                "A testing torch.",
+                ItemFlags::IF_LOOK.bits(),
+                99,
+                Some((10, 10)),
+            );
+            gs.characters[cn].item[0] = 10;
+
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(10u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(10u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_look_item(gs, nr);
+            assert!(gs.players[nr].tptr > 0);
+
+            reset_packets(gs, nr);
+            let old_tptr = gs.players[nr].tptr;
+            packet[1..3].copy_from_slice(&(core::constants::SERVER_MAPX as u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_look_item(gs, nr);
+            assert_eq!(gs.players[nr].tptr, old_tptr);
+            assert_eq!(gs.characters[cn].x, 10);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_give_sets_give_action_for_valid_targets() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.globals.ticker = 88;
+            gs.characters[cn].attack_cn = 9;
+            let packet = build_u32_packet(2);
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_give(gs, nr);
+            assert_eq!(gs.characters[cn].attack_cn, 0);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_GIVE as u16
+            );
+            assert_eq!(gs.characters[cn].misc_target1, 2);
+            assert_eq!(gs.characters[cn].data[12], 88);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_turn_sets_turn_target_unless_building() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.globals.ticker = 42;
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(13u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(17u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_turn(gs, nr);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_TURN as u16
+            );
+            assert_eq!(gs.characters[cn].misc_target1, 13);
+            assert_eq!(gs.characters[cn].misc_target2, 17);
+            assert_eq!(gs.characters[cn].data[12], 42);
+
+            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
+            gs.characters[cn].misc_target1 = 0;
+            gs.characters[cn].misc_target2 = 0;
+            plr_cmd_turn(gs, nr);
+            assert_eq!(gs.characters[cn].misc_target1, 0);
+            assert_eq!(gs.characters[cn].misc_target2, 0);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_drop_handles_normal_and_build_mode_variants() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.globals.ticker = 123;
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(12u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(14u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            plr_cmd_drop(gs, nr);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_DROP as u16
+            );
+            assert_eq!(gs.characters[cn].misc_target1, 12);
+            assert_eq!(gs.characters[cn].misc_target2, 14);
+            assert_eq!(gs.characters[cn].data[12], 123);
+
+            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
+            gs.characters[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
+            plr_cmd_drop(gs, nr);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_AREABUILD2 as u16
+            );
+            assert_eq!(gs.characters[cn].misc_target1, 12);
+            assert_eq!(gs.characters[cn].misc_target2, 14);
+
+            gs.characters[cn].misc_action = core::constants::DR_AREABUILD2 as u16;
+            gs.characters[cn].misc_target1 = 8;
+            gs.characters[cn].misc_target2 = 9;
+            plr_cmd_drop(gs, nr);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_AREABUILD1 as u16
+            );
+        });
+    }
+
+    #[test]
+    fn plr_cmd_pickup_removes_build_objects_or_schedules_pickup() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            configure_item(
+                gs,
+                10,
+                "Build Marker",
+                "marker",
+                "Temporary build marker.",
+                0,
+                10,
+                Some((12, 10)),
+            );
+            gs.map[map_index(12, 10)].fsprite = 55;
+            gs.map[map_index(12, 10)].flags |= MF_MOVEBLOCK as u64 | MF_SIGHTBLOCK as u64;
+
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(12u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(10u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
+            plr_cmd_pickup(gs, nr);
+            assert_eq!(gs.map[map_index(12, 10)].it, 0);
+            assert_eq!(gs.items[10].used, USE_EMPTY);
+            assert_eq!(gs.map[map_index(12, 10)].fsprite, 0);
+            assert_eq!(
+                gs.map[map_index(12, 10)].flags & ((MF_MOVEBLOCK | MF_SIGHTBLOCK) as u64),
+                0
+            );
+
+            gs.characters[cn].flags &= !CharacterFlags::BuildMode.bits();
+            gs.globals.ticker = 90;
+            plr_cmd_pickup(gs, nr);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_PICKUP as u16
+            );
+            assert_eq!(gs.characters[cn].misc_target1, 12);
+            assert_eq!(gs.characters[cn].misc_target2, 10);
+            assert_eq!(gs.characters[cn].data[12], 90);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_attack_sets_attack_state_and_remembers_pvp() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let target = 2;
+            place_character(
+                gs,
+                target,
+                11,
+                10,
+                CharacterFlags::Player.bits(),
+                "Purple Target",
+            );
+            gs.characters[cn].kindred = traits::KIN_PURPLE as i32;
+            gs.characters[target].kindred = traits::KIN_PURPLE as i32;
+            gs.globals.ticker = 314;
+
+            write_inbuf(gs, nr, &build_u32_packet(target as u32));
+            plr_cmd_attack(gs, nr);
+
+            assert_eq!(gs.characters[cn].attack_cn, target as u16);
+            assert_eq!(gs.characters[cn].goto_x, 0);
+            assert_eq!(gs.characters[cn].misc_action, 0);
+            assert_eq!(
+                gs.characters[cn].data[core::constants::CHD_ATTACKVICT],
+                target as i32
+            );
+            assert_eq!(gs.characters[cn].data[core::constants::CHD_ATTACKTIME], 314);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_mode_validates_speed_modes() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            write_inbuf(gs, nr, &build_u16_packet(2));
+            plr_cmd_mode(gs, nr);
+            assert_eq!(gs.characters[cn].mode, 2);
+
+            write_inbuf(gs, nr, &build_u16_packet(3));
+            plr_cmd_mode(gs, nr);
+            assert_eq!(gs.characters[cn].mode, 2);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_move_and_reset_update_navigation_fields() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.globals.ticker = 5150;
+            let mut move_packet = [0u8; 5];
+            move_packet[1..3].copy_from_slice(&(15u16).to_le_bytes());
+            move_packet[3..5].copy_from_slice(&(18u16).to_le_bytes());
+            write_inbuf(gs, nr, &move_packet);
+            plr_cmd_move(gs, nr);
+            assert_eq!(gs.characters[cn].goto_x, 15);
+            assert_eq!(gs.characters[cn].goto_y, 18);
+            assert_eq!(gs.characters[cn].data[12], 5150);
+
+            gs.characters[cn].use_nr = 7;
+            gs.characters[cn].skill_nr = 9;
+            gs.characters[cn].attack_cn = 5;
+            gs.characters[cn].misc_action = 8;
+            plr_cmd_reset(gs, nr);
+            assert_eq!(gs.characters[cn].use_nr, 0);
+            assert_eq!(gs.characters[cn].skill_nr, 0);
+            assert_eq!(gs.characters[cn].attack_cn, 0);
+            assert_eq!(gs.characters[cn].goto_x, 0);
+            assert_eq!(gs.characters[cn].goto_y, 0);
+            assert_eq!(gs.characters[cn].misc_action, 0);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_skill_requires_a_known_skill_and_valid_target() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let target = 2;
+            place_character(gs, target, 11, 10, 0, "Skill Target");
+
+            let mut packet = [0u8; 9];
+            packet[1..5].copy_from_slice(&(skills::SK_LIGHT as u32).to_le_bytes());
+            packet[5..9].copy_from_slice(&(target as u32).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_skill(gs, nr);
+            assert_eq!(gs.characters[cn].skill_nr, 0);
+
+            gs.characters[cn].skill[skills::SK_LIGHT][0] = 1;
+            plr_cmd_skill(gs, nr);
+            assert_eq!(gs.characters[cn].skill_nr, skills::SK_LIGHT as u16);
+            assert_eq!(gs.characters[cn].skill_target1, target as u16);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_inv_look_handles_build_mode_and_regular_item_lookups() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            configure_item(gs, 10, "Gem", "gem", "A bright test gem.", 0, 55, None);
+            gs.characters[cn].item[3] = 10;
+
+            write_inbuf(gs, nr, &build_u16_packet(3));
+            plr_cmd_inv_look(gs, nr);
+            assert!(gs.players[nr].tptr > 0);
+
+            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
+            gs.characters[cn].item[5] = 10;
+            reset_packets(gs, nr);
+            write_inbuf(gs, nr, &build_u16_packet(5));
+            plr_cmd_inv_look(gs, nr);
+            assert_eq!(gs.characters[cn].citem, 10);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_AREABUILD1 as u16
+            );
+        });
+    }
+
+    #[test]
+    fn plr_cmd_use_sets_use_action_target() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.globals.ticker = 200;
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(14u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(9u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_use(gs, nr);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_USE as u16
+            );
+            assert_eq!(gs.characters[cn].misc_target1, 14);
+            assert_eq!(gs.characters[cn].misc_target2, 9);
+            assert_eq!(gs.characters[cn].data[12], 200);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_autoloot_transfers_matching_corpse_items_and_gold() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let corpse = 2;
+            place_character(gs, corpse, 11, 10, CharacterFlags::Body.bits(), "Corpse");
+            gs.characters[corpse].gold = 123;
+
+            let inv_item = 20;
+            configure_item(gs, inv_item, "Bone", "bone", "A bone.", 0, 1, None);
+            gs.characters[corpse].item[0] = inv_item as u32;
+
+            let worn_item = 21;
+            configure_item(gs, worn_item, "Skull", "skull", "A skull.", 0, 2, None);
+            gs.characters[corpse].worn[0] = worn_item as u32;
+
+            configure_item(
+                gs,
+                30,
+                "Tombstone",
+                "tombstone",
+                "A marked tombstone.",
+                0,
+                core::constants::IT_TOMBSTONE as u16,
+                Some((11, 10)),
+            );
+            gs.items[30].data[0] = corpse as u32;
+
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(11u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(10u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_autoloot(gs, nr);
+
+            assert_eq!(gs.characters[cn].gold, 123);
+            assert_eq!(gs.characters[corpse].gold, 0);
+            assert_eq!(gs.characters[corpse].item[0], inv_item as u32);
+            assert_eq!(gs.characters[corpse].worn[0], worn_item as u32);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_inv_covers_swap_gold_use_and_look_branches() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            configure_item(
+                gs,
+                10,
+                "Cursor Item",
+                "cursor item",
+                "Cursor item description.",
+                0,
+                10,
+                None,
+            );
+            configure_item(
+                gs,
+                11,
+                "Inventory Item",
+                "inventory item",
+                "Inventory item description.",
+                0,
+                11,
+                None,
+            );
+            configure_item(
+                gs,
+                12,
+                "Worn Item",
+                "worn item",
+                "Worn item description.",
+                0,
+                12,
+                None,
+            );
+
+            gs.characters[cn].citem = 10;
+            gs.characters[cn].item[3] = 11;
+
+            let mut packet = [0u8; 13];
+            packet[1..5].copy_from_slice(&0u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&3u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_inv(gs, nr);
+            assert_eq!(gs.characters[cn].item[3], 10);
+            assert_eq!(gs.characters[cn].citem, 11);
+
+            gs.characters[cn].citem = 0;
+            gs.characters[cn].worn[0] = 12;
+            packet[1..5].copy_from_slice(&1u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&0u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_inv(gs, nr);
+            assert_eq!(gs.characters[cn].citem, 12);
+            assert_eq!(gs.characters[cn].worn[0], 0);
+
+            gs.characters[cn].citem = 0;
+            gs.characters[cn].gold = 500;
+            packet[1..5].copy_from_slice(&2u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&123u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_inv(gs, nr);
+            assert_eq!(gs.characters[cn].citem, 0x8000_0000 | 123);
+            assert_eq!(gs.characters[cn].gold, 377);
+
+            packet[1..5].copy_from_slice(&5u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&2u32.to_le_bytes());
+            packet[9..13].copy_from_slice(&7u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_inv(gs, nr);
+            assert_eq!(gs.characters[cn].use_nr, 2);
+            assert_eq!(gs.characters[cn].skill_target1, 7);
+
+            packet[1..5].copy_from_slice(&6u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&4u32.to_le_bytes());
+            packet[9..13].copy_from_slice(&8u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_inv(gs, nr);
+            assert_eq!(gs.characters[cn].use_nr, 24);
+            assert_eq!(gs.characters[cn].skill_target1, 8);
+
+            gs.characters[cn].worn[1] = 12;
+            reset_packets(gs, nr);
+            packet[1..5].copy_from_slice(&7u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&1u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_inv(gs, nr);
+            assert!(gs.players[nr].tptr > 0);
+
+            reset_packets(gs, nr);
+            gs.characters[cn].item[2] = 11;
+            packet[1..5].copy_from_slice(&8u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&2u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_inv(gs, nr);
+            assert!(gs.players[nr].tptr > 0);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_exit_punishes_and_disconnects_the_player() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].hp[5] = 10;
+            gs.characters[cn].a_hp = 20_000;
+            gs.characters[cn].gold = 1_000;
+            gs.characters[cn].citem = 0x8000_0000 | 50;
+            gs.map[map_index(10, 10)].ch = cn as u32;
+
+            plr_cmd_exit(gs, nr);
+
+            assert_eq!(gs.characters[cn].a_hp, 12_000);
+            assert_eq!(gs.characters[cn].gold, 900);
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.characters[cn].used, USE_NONACTIVE);
+            assert_eq!(gs.characters[cn].player, 0);
+            assert_eq!(gs.map[map_index(10, 10)].ch, 0);
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_shop_handles_depot_withdrawals_and_corpse_gold() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.map[map_index(10, 10)].flags |= MF_BANK as u64;
+
+            configure_item(
+                gs,
+                10,
+                "Depot Item",
+                "depot item",
+                "Stored in the depot.",
+                0,
+                10,
+                None,
+            );
+            gs.characters[cn].depot[0] = 10;
+
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&((cn as u16) | 0x8000).to_le_bytes());
+            packet[3..5].copy_from_slice(&0u16.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_shop(gs, nr);
+            assert_eq!(gs.characters[cn].depot[0], 0);
+            assert!(gs.characters[cn].item.iter().any(|&item| item == 10));
+
+            let corpse = 2;
+            place_character(gs, corpse, 11, 10, CharacterFlags::Body.bits(), "Corpse");
+            gs.characters[corpse].gold = 345;
+            packet[1..3].copy_from_slice(&(corpse as u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&61u16.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_shop(gs, nr);
+            assert_eq!(gs.characters[cn].gold, 345);
+            assert_eq!(gs.characters[corpse].gold, 0);
+        });
+    }
+
+    #[test]
+    fn movement_wrappers_move_characters_and_update_map_state() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let moves: [(&str, fn(&mut GameState, usize), i16, i16); 8] = [
+                ("up", plr_move_up, 0, -1),
+                ("down", plr_move_down, 0, 1),
+                ("left", plr_move_left, -1, 0),
+                ("right", plr_move_right, 1, 0),
+                ("leftup", plr_move_leftup, -1, -1),
+                ("leftdown", plr_move_leftdown, -1, 1),
+                ("rightup", plr_move_rightup, 1, -1),
+                ("rightdown", plr_move_rightdown, 1, 1),
+            ];
+
+            for (_, func, dx, dy) in moves {
+                gs.map[map_index(gs.characters[cn].x, gs.characters[cn].y)].ch = 0;
+                place_character(gs, cn, 10, 10, CharacterFlags::Player.bits(), "Mover");
+                func(gs, cn);
+                assert_eq!(gs.characters[cn].frx, 10);
+                assert_eq!(gs.characters[cn].fry, 10);
+                assert_eq!(gs.characters[cn].x, 10 + dx);
+                assert_eq!(gs.characters[cn].y, 10 + dy);
+                assert_eq!(gs.characters[cn].tox, 10 + dx);
+                assert_eq!(gs.characters[cn].toy, 10 + dy);
+                assert_eq!(gs.map[map_index(10, 10)].ch, 0);
+                assert_eq!(gs.map[map_index(10 + dx, 10 + dy)].ch, cn as u32);
+                assert_eq!(
+                    gs.characters[cn].cerrno,
+                    core::constants::ERR_SUCCESS as u16
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn turn_wrappers_and_front_tile_helpers_resolve_expected_directions() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let turns: [(fn(&mut GameState, usize), u8); 8] = [
+                (plr_turn_up, core::constants::DX_UP),
+                (plr_turn_leftup, core::constants::DX_LEFTUP),
+                (plr_turn_leftdown, core::constants::DX_LEFTDOWN),
+                (plr_turn_down, core::constants::DX_DOWN),
+                (plr_turn_rightdown, core::constants::DX_RIGHTDOWN),
+                (plr_turn_rightup, core::constants::DX_RIGHTUP),
+                (plr_turn_left, core::constants::DX_LEFT),
+                (plr_turn_right, core::constants::DX_RIGHT),
+            ];
+
+            for (func, expected_dir) in turns {
+                func(gs, cn);
+                assert_eq!(gs.characters[cn].dir, expected_dir);
+                assert_eq!(
+                    gs.characters[cn].cerrno,
+                    core::constants::ERR_SUCCESS as u16
+                );
+            }
+
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 10;
+            gs.characters[cn].dir = core::constants::DX_UP;
+            assert_eq!(
+                plr_front_tile(gs, cn, "test"),
+                Some((map_index(10, 9) as usize, 10, 9))
+            );
+            assert_eq!(
+                plr_cardinal_front_tile(gs, cn),
+                Some((map_index(10, 9), 10, 9))
+            );
+
+            gs.characters[cn].dir = 99;
+            assert_eq!(plr_front_tile(gs, cn, "bad"), None);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+
+            gs.characters[cn].dir = core::constants::DX_LEFTUP;
+            assert_eq!(plr_cardinal_front_tile(gs, cn), None);
+        });
+    }
+
+    #[test]
+    fn plr_attack_and_plr_give_handle_front_tile_interactions() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].dir = core::constants::DX_RIGHT;
+
+            plr_attack(gs, cn, false);
+            assert!(gs.players[nr].tptr > 0);
+
+            reset_packets(gs, nr);
+            let target = 2;
+            place_character(gs, target, 11, 10, 0, "NPC Target");
+            gs.characters[cn].attack_cn = target as u16;
+            plr_attack(gs, cn, false);
+            assert_eq!(gs.characters[cn].current_enemy, target as u16);
+
+            place_character(gs, target, 11, 10, 0, "NPC Target");
+            gs.map[map_index(11, 10)].ch = 0;
+            gs.map[map_index(11, 10)].to_ch = target as u32;
+            gs.characters[cn].citem = 0x8000_0000 | 250;
+            plr_give(gs, cn);
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(
+                gs.characters[cn].cerrno,
+                core::constants::ERR_SUCCESS as u16
+            );
+        });
+    }
+
+    #[test]
+    fn social_actions_and_wrappers_log_messages_and_set_success() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            plr_social_action(gs, cn, "You grin.\n", "{} grins.\n", "grins");
+            assert_eq!(
+                gs.characters[cn].cerrno,
+                core::constants::ERR_SUCCESS as u16
+            );
+            assert!(gs.players[nr].tptr > 0);
+
+            reset_packets(gs, nr);
+            plr_bow(gs, cn);
+            assert!(gs.players[nr].tptr > 0);
+
+            reset_packets(gs, nr);
+            plr_wave(gs, cn);
+            assert!(gs.players[nr].tptr > 0);
+        });
+    }
+
+    #[test]
+    fn plr_pickup_handles_citem_money_and_regular_items() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].dir = core::constants::DX_RIGHT;
+
+            gs.characters[cn].citem = 99;
+            plr_pickup(gs, cn);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+
+            gs.characters[cn].citem = 0;
+            configure_item(
+                gs,
+                10,
+                "Coin Pile",
+                "coins",
+                "A test pile of money.",
+                (ItemFlags::IF_TAKE | ItemFlags::IF_MONEY).bits(),
+                10,
+                Some((11, 10)),
+            );
+            gs.items[10].value = 345;
+            plr_pickup(gs, cn);
+            assert_eq!(gs.characters[cn].gold, 345);
+            assert_eq!(gs.map[map_index(11, 10)].it, 0);
+            assert_eq!(gs.items[10].used, USE_EMPTY);
+
+            configure_item(
+                gs,
+                11,
+                "Rock",
+                "rock",
+                "A test rock.",
+                ItemFlags::IF_TAKE.bits(),
+                11,
+                Some((11, 10)),
+            );
+            plr_pickup(gs, cn);
+            assert_eq!(gs.characters[cn].item[0], 11);
+            assert_eq!(gs.items[11].carried, cn as u16);
+            assert_eq!(gs.map[map_index(11, 10)].it, 0);
+        });
+    }
+
+    #[test]
+    fn plr_use_and_plr_skill_cover_guard_paths() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].dir = core::constants::DX_RIGHT;
+
+            plr_use(gs, cn);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+
+            configure_item(
+                gs,
+                10,
+                "Decoration",
+                "decoration",
+                "Not actually usable.",
+                0,
+                10,
+                Some((11, 10)),
+            );
+            plr_use(gs, cn);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+
+            reset_packets(gs, nr);
+            gs.characters[cn].skill_target2 = skills::SK_LIGHT as u16;
+            plr_skill(gs, cn);
+            assert!(gs.players[nr].tptr > 0);
+        });
+    }
+
+    #[test]
+    fn plr_drop_handles_blocked_tiles_and_money_drops() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].dir = core::constants::DX_RIGHT;
+
+            configure_item(
+                gs,
+                10,
+                "Carried Item",
+                "carried item",
+                "A test carried item.",
+                0,
+                10,
+                None,
+            );
+            gs.characters[cn].citem = 10;
+            gs.map[map_index(11, 10)].flags |= MF_MOVEBLOCK as u64;
+            plr_drop(gs, cn);
+            assert_eq!(gs.characters[cn].citem, 10);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+
+            gs.map[map_index(11, 10)].flags = 0;
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].citem = 0x8000_0000 | 250;
+            plr_drop(gs, cn);
+            let dropped = gs.map[map_index(11, 10)].it as usize;
+            assert_ne!(dropped, 0);
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_ne!(gs.items[dropped].flags & ItemFlags::IF_MONEY.bits(), 0);
+            assert_eq!(gs.items[dropped].value, 250);
+            assert_eq!(gs.items[dropped].carried, 0);
+            assert_eq!(gs.items[dropped].x, 11);
+            assert_eq!(gs.items[dropped].y, 10);
+        });
+    }
+
+    #[test]
+    fn plr_misc_dispatch_and_status_helpers_cover_known_and_unknown_paths() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            gs.characters[cn].status2 = 7;
+            plr_misc(gs, cn);
+            assert_eq!(
+                gs.characters[cn].cerrno,
+                core::constants::ERR_SUCCESS as u16
+            );
+
+            gs.characters[cn].status2 = 999;
+            plr_misc(gs, cn);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+
+            gs.characters[cn].dir = core::constants::DX_LEFTDOWN;
+            plr_reset_status(gs, cn);
+            assert_eq!(gs.characters[cn].status, 5);
+
+            gs.characters[cn].dir = 255;
+            plr_reset_status(gs, cn);
+            assert_eq!(gs.characters[cn].dir, core::constants::DX_UP);
+            assert_eq!(gs.characters[cn].status, 0);
+        });
+    }
+
+    #[test]
+    fn target_helpers_and_doact_handle_empty_and_blocked_tiles() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let target_tile = map_index(11, 10);
+
+            assert!(plr_check_target(gs, target_tile));
+            assert!(plr_set_target(gs, target_tile, cn));
+            assert_eq!(gs.map[target_tile].to_ch, cn as u32);
+
+            gs.map[target_tile].to_ch = 0;
+            gs.map[target_tile].ch = 3;
+            assert!(!plr_check_target(gs, target_tile));
+            gs.map[target_tile].ch = 0;
+
+            configure_item(
+                gs,
+                10,
+                "Blocker",
+                "blocker",
+                "A blocking item.",
+                ItemFlags::IF_MOVEBLOCK.bits(),
+                10,
+                Some((11, 10)),
+            );
+            assert!(!plr_check_target(gs, target_tile));
+
+            gs.characters[cn].dir = core::constants::DX_RIGHTDOWN;
+            gs.characters[cn].status = 99;
+            gs.characters[cn].flags = 0;
+            gs.characters[cn].used = USE_EMPTY;
+            plr_doact(gs, cn);
+            assert_eq!(gs.characters[cn].status, 7);
+        });
+    }
+}
