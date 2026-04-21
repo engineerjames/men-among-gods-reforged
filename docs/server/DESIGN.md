@@ -297,8 +297,8 @@ file backend has been removed.
 
 1. **Loads** all game data from KeyDB on startup via pipelined `GET` commands.
 2. Operates on in-memory data — the game loop is unchanged during execution.
-3. **Background saver thread** periodically clones slices of data from the main thread and writes them to KeyDB on a rotating schedule (~60 second full rotation, ~10 seconds between individual saves).
-4. **On shutdown**, performs a synchronous full save to KeyDB before exiting.
+3. **Background saver thread** periodically clones slices of data from the main thread and writes them to KeyDB on a rotating schedule (~12 minute full rotation, ~2 minutes between individual saves).
+4. **On shutdown**, performs a synchronous save of mutable runtime data to KeyDB before exiting. Character and item templates are excluded from this live-server save path.
 
 ### Key Schema
 
@@ -320,14 +320,16 @@ file backend has been removed.
 
 | Cycle | Data | Approx timing |
 |-------|------|---------------|
-| 0 | Characters (all 8,192) | T+10s |
-| 1 | Items first half (0..49,152) | T+20s |
-| 2 | Items second half (49,152..98,304) | T+30s |
-| 3 | Effects + Globals + Templates | T+40s |
-| 4 | Map first half | T+50s |
-| 5 | Map second half | T+60s |
+| 0 | Characters (all 8,192) | T+2m |
+| 1 | Items first half (0..49,152) | T+4m |
+| 2 | Items second half (49,152..98,304) | T+6m |
+| 3 | Effects + Globals | T+8m |
+| 4 | Map first half | T+10m |
+| 5 | Map second half | T+12m |
 
-Maximum data loss on server crash: ~60 seconds of gameplay.
+Template keys (`game:titem:*` and `game:tchar:*`) are not part of the background rotation and are not rewritten by the live server on shutdown. They are treated as immutable content during normal operation and are written by `world-snapshot` import or other maintenance tooling that explicitly saves templates.
+
+Clean shutdown paths perform a synchronous mutable-runtime save. Hard crashes can still lose up to roughly one background-save rotation (~12 minutes of gameplay).
 
 ### World Snapshot Tool
 

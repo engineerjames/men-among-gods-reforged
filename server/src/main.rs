@@ -81,9 +81,9 @@ fn main() -> Result<(), String> {
 
     let handler_result = ctrlc::set_handler(move || {
         if !quit_flag_clone.load(Ordering::SeqCst) {
-            log::info!("Ctrl-C received. Shutdown initiated...");
+            log::info!("Shutdown signal received. Shutdown initiated...");
         } else {
-            log::info!("Alright, alright, I'm already terminating!");
+            log::info!("Shutdown already in progress.");
         }
         quit_flag_clone.store(true, Ordering::SeqCst);
     });
