@@ -968,7 +968,7 @@ fn plr_change_hp(gs: &mut GameState, nr: usize, cn: usize) {
 
     if current_hp != player_hp {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = ServerCommandType::SetCharHp as u8;
+        buf[0] = ServerCommandType::SetCharAHP as u8;
         buf[1] = current_hp as u8;
         buf[2] = (current_hp >> 8) as u8;
 
@@ -984,7 +984,7 @@ fn plr_change_end(gs: &mut GameState, nr: usize, cn: usize) {
 
     if current_end != player_end {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = ServerCommandType::SetCharEndur as u8;
+        buf[0] = ServerCommandType::SetCharAEnd as u8;
         buf[1] = current_end as u8;
         buf[2] = (current_end >> 8) as u8;
 
@@ -1000,7 +1000,7 @@ fn plr_change_mana(gs: &mut GameState, nr: usize, cn: usize) {
 
     if current_mana != player_mana {
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = ServerCommandType::SetCharMana as u8;
+        buf[0] = ServerCommandType::SetCharAMana as u8;
         buf[1] = current_mana as u8;
         buf[2] = (current_mana >> 8) as u8;
 
@@ -1635,7 +1635,7 @@ mod tests {
             plr_change_hp(gs, nr, cn);
             assert_eq!(
                 gs.players[nr].tbuf[..3],
-                [ServerCommandType::SetCharHp as u8, 3, 0]
+                [ServerCommandType::SetCharAHP as u8, 3, 0]
             );
             assert_eq!(gs.players[nr].cpl.a_hp, 3);
 
@@ -1644,7 +1644,7 @@ mod tests {
             plr_change_end(gs, nr, cn);
             assert_eq!(
                 gs.players[nr].tbuf[..3],
-                [ServerCommandType::SetCharEndur as u8, 4, 0]
+                [ServerCommandType::SetCharAEnd as u8, 4, 0]
             );
             assert_eq!(gs.players[nr].cpl.a_end, 4);
 
@@ -1653,7 +1653,7 @@ mod tests {
             plr_change_mana(gs, nr, cn);
             assert_eq!(
                 gs.players[nr].tbuf[..3],
-                [ServerCommandType::SetCharMana as u8, 5, 0]
+                [ServerCommandType::SetCharAMana as u8, 5, 0]
             );
             assert_eq!(gs.players[nr].cpl.a_mana, 5);
 
