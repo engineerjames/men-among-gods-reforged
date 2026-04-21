@@ -2946,7 +2946,7 @@ mod tests {
             gs.characters[cn].dir = core::constants::DX_UP;
             assert_eq!(
                 plr_front_tile(gs, cn, "test"),
-                Some((map_index(10, 9) as usize, 10, 9))
+                Some((map_index(10, 9), 10, 9))
             );
             assert_eq!(
                 plr_cardinal_front_tile(gs, cn),

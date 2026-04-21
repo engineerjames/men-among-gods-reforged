@@ -6,7 +6,7 @@ use core::{
     skills,
     string_operations::{c_string_to_str, write_ascii_into_fixed},
     traits::get_race_integer,
-    types::Sex,
+    types::{CharacterSummary, Sex},
 };
 
 use server::keydb;
@@ -479,7 +479,33 @@ fn resolve_api_login_character(
     nr: usize,
     login_ticket: u64,
 ) -> Result<usize, LogoutReason> {
-    let character_id = match keydb::consume_login_ticket(login_ticket) {
+    resolve_api_login_character_with_ops(
+        gs,
+        nr,
+        login_ticket,
+        keydb::consume_login_ticket,
+        keydb::load_character,
+        keydb::set_character_server_id,
+        keydb::sync_character_selection_metadata,
+    )
+}
+
+fn resolve_api_login_character_with_ops<ConsumeTicket, LoadCharacter, SetServerId, SyncMetadata>(
+    gs: &mut GameState,
+    nr: usize,
+    login_ticket: u64,
+    mut consume_ticket: ConsumeTicket,
+    mut load_character: LoadCharacter,
+    mut set_server_id: SetServerId,
+    mut sync_selection_metadata: SyncMetadata,
+) -> Result<usize, LogoutReason>
+where
+    ConsumeTicket: FnMut(u64) -> Result<Option<u64>, String>,
+    LoadCharacter: FnMut(u64) -> Result<Option<CharacterSummary>, String>,
+    SetServerId: FnMut(u64, u32) -> Result<(), String>,
+    SyncMetadata: FnMut(u64, &core::types::Character) -> Result<(), String>,
+{
+    let character_id = match consume_ticket(login_ticket) {
         Ok(Some(value)) => value,
         Ok(None) => {
             log::warn!("API login ticket not found or expired");
@@ -491,7 +517,7 @@ fn resolve_api_login_character(
         }
     };
 
-    let character = match keydb::load_character(character_id) {
+    let character = match load_character(character_id) {
         Ok(Some(value)) => value,
         Ok(None) => {
             log::warn!("API character {} not found", character_id);
@@ -503,6 +529,35 @@ fn resolve_api_login_character(
         }
     };
 
+    let (cn, is_brand_new_character) = apply_api_login_character_record(gs, &character)?;
+
+    if is_brand_new_character {
+        if let Err(err) = set_server_id(character_id, cn as u32) {
+            log::warn!(
+                "Failed to persist server_id for API character {}: {}",
+                character_id,
+                err
+            );
+        }
+    }
+
+    gs.players[nr].api_character_id = character_id;
+
+    if let Err(err) = sync_selection_metadata(character_id, &gs.characters[cn]) {
+        log::warn!(
+            "Failed to sync selection metadata for API character {}: {}",
+            character_id,
+            err
+        );
+    }
+
+    Ok(cn)
+}
+
+fn apply_api_login_character_record(
+    gs: &mut GameState,
+    character: &CharacterSummary,
+) -> Result<(usize, bool), LogoutReason> {
     let is_brand_new_character = character.server_id.is_none();
 
     let cn = match character.server_id {
@@ -515,7 +570,7 @@ fn resolve_api_login_character(
             if !candidate_is_valid {
                 log::error!(
                     "API character {} has invalid/stale server_id={} (slot missing or empty)",
-                    character_id,
+                    character.id,
                     server_id
                 );
                 return Err(LogoutReason::Failure);
@@ -529,7 +584,7 @@ fn resolve_api_login_character(
             let cn = match maybe_cn {
                 Some(value) => value as usize,
                 None => {
-                    log::error!("Failed to create character for API id {}", character_id);
+                    log::error!("Failed to create character for API id {}", character.id);
                     return Err(LogoutReason::Failure);
                 }
             };
@@ -579,27 +634,7 @@ fn resolve_api_login_character(
     };
     write_ascii_into_fixed(&mut gs.characters[cn].description, &desc);
 
-    if is_brand_new_character {
-        if let Err(err) = keydb::set_character_server_id(character_id, cn as u32) {
-            log::warn!(
-                "Failed to persist server_id for API character {}: {}",
-                character_id,
-                err
-            );
-        }
-    }
-
-    gs.players[nr].api_character_id = character_id;
-
-    if let Err(err) = keydb::sync_character_selection_metadata(character_id, &gs.characters[cn]) {
-        log::warn!(
-            "Failed to sync selection metadata for API character {}: {}",
-            character_id,
-            err
-        );
-    }
-
-    Ok(cn)
+    Ok((cn, is_brand_new_character))
 }
 
 /// Port of `plr_logout(int cn, int player_id, LogoutReason reason)` from `svr_tick.cpp`
@@ -1247,4 +1282,595 @@ pub fn plr_perf_report(gs: &mut GameState, nr: usize) {
 
     // Optional: log performance metrics (commented out in original)
     // log::trace!("Player {} perf: ticksize={}, skip={}%, idle={}%", nr, ticksize, skip, idle);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::{
+        constants::{
+            CharacterFlags, HOME_MERCENARY_X, HOME_MERCENARY_Y, ST_CHALLENGE, ST_EXIT, ST_LOGIN,
+            ST_LOGIN_CHALLENGE, ST_NEW_CHALLENGE, ST_NEWLOGIN, ST_NORMAL, USE_ACTIVE, USE_EMPTY,
+            USE_NONACTIVE,
+        },
+        string_operations::c_string_to_str,
+        traits,
+        types::Class,
+    };
+    use std::{
+        cell::Cell,
+        net::{TcpListener, TcpStream},
+    };
+
+    use crate::{
+        test_helpers::{add_test_player, with_test_gs, write_inbuf},
+        tls::GameStream,
+    };
+
+    fn attach_test_socket(gs: &mut GameState, nr: usize) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let client = TcpStream::connect(addr).expect("connect client");
+        let (server, _) = listener.accept().expect("accept client");
+        drop(client);
+        gs.players[nr].sock = Some(GameStream::Plain(server));
+    }
+
+    fn reset_buffers(gs: &mut GameState, nr: usize) {
+        gs.players[nr].tptr = 0;
+        gs.players[nr].tbuf.fill(0);
+        gs.players[nr].iptr = 0;
+        gs.players[nr].optr = 0;
+        gs.players[nr].obuf.fill(0);
+    }
+
+    fn map_index(x: i16, y: i16) -> usize {
+        x as usize + y as usize * core::constants::SERVER_MAPX as usize
+    }
+
+    fn seed_character_template(gs: &mut GameState, template_id: usize, kindred: i32) {
+        gs.character_templates[template_id] = core::types::Character::default();
+        gs.character_templates[template_id].used = USE_ACTIVE;
+        gs.character_templates[template_id].kindred = kindred;
+        gs.character_templates[template_id].mode = 1;
+        gs.character_templates[template_id].x = HOME_MERCENARY_X as i16;
+        gs.character_templates[template_id].y = HOME_MERCENARY_Y as i16;
+        gs.character_templates[template_id].tox = HOME_MERCENARY_X as i16;
+        gs.character_templates[template_id].toy = HOME_MERCENARY_Y as i16;
+        gs.character_templates[template_id].dir = core::constants::DX_DOWN;
+    }
+
+    fn setup_existing_character(gs: &mut GameState, cn: usize, player: i32, used: u8, name: &str) {
+        gs.characters[cn] = core::types::Character::default();
+        gs.characters[cn].used = used;
+        gs.characters[cn].player = player;
+        gs.characters[cn].x = 10;
+        gs.characters[cn].y = 10;
+        gs.characters[cn].tox = 10;
+        gs.characters[cn].toy = 10;
+        gs.characters[cn].frx = 10;
+        gs.characters[cn].fry = 10;
+        gs.characters[cn].tavern_x = 10;
+        gs.characters[cn].tavern_y = 10;
+        gs.characters[cn].temple_x = HOME_MERCENARY_X as u16;
+        gs.characters[cn].temple_y = HOME_MERCENARY_Y as u16;
+        write_ascii_into_fixed(&mut gs.characters[cn].name, name);
+        write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
+        gs.map[map_index(10, 10)].ch = cn as u32;
+    }
+
+    fn challenge_response_packet(response: u32, version: i32, race: i32) -> [u8; 13] {
+        let mut packet = [0u8; 13];
+        packet[1..5].copy_from_slice(&response.to_le_bytes());
+        packet[5..9].copy_from_slice(&version.to_le_bytes());
+        packet[9..13].copy_from_slice(&race.to_le_bytes());
+        packet
+    }
+
+    fn count_obuf_packets(gs: &GameState, nr: usize, packet_id: u8) -> usize {
+        gs.players[nr].obuf[..gs.players[nr].iptr]
+            .chunks(16)
+            .filter(|chunk| !chunk.is_empty() && chunk[0] == packet_id)
+            .count()
+    }
+
+    #[test]
+    fn plr_newlogin_rejects_old_clients() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].version = (core::constants::MINVERSION - 1) as i32;
+
+            plr_newlogin(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+    }
+
+    #[test]
+    fn plr_newlogin_creates_character_and_sets_player_state() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].version = core::constants::VERSION as i32;
+            gs.players[nr].race = 999;
+            gs.players[nr].addr = 0x12345678;
+            write_ascii_into_fixed(&mut gs.players[nr].passwd, "hunter2");
+            seed_character_template(gs, 2, traits::KIN_MALE as i32 | traits::KIN_WARRIOR as i32);
+
+            plr_newlogin(gs, nr);
+
+            let cn = gs.players[nr].usnr;
+            assert!(cn > 0);
+            assert_eq!(gs.players[nr].state, ST_NORMAL);
+            assert_eq!(gs.players[nr].ticker_started, 1);
+            assert_eq!(gs.characters[cn].temp, 2);
+            assert_eq!(gs.characters[cn].player, nr as i32);
+            assert_eq!(gs.characters[cn].mode, 1);
+            assert_eq!(gs.characters[cn].addr, 0x12345678);
+            assert_eq!(gs.characters[cn].temple_x, HOME_MERCENARY_X as u16);
+            assert_eq!(gs.characters[cn].tavern_y, HOME_MERCENARY_Y as u16);
+            assert_ne!(gs.characters[cn].flags & CharacterFlags::NewUser.bits(), 0);
+            assert_ne!(gs.characters[cn].flags & CharacterFlags::Player.bits(), 0);
+            assert_eq!(gs.characters[cn].data[80], 0x345678);
+            assert_eq!(
+                count_obuf_packets(gs, nr, ServerCommandType::NewPlayer as u8),
+                1
+            );
+            assert!(gs.players[nr].tptr >= 2);
+            assert_ne!(gs.characters[cn].pass1, 0);
+            assert_ne!(gs.characters[cn].pass2, 0);
+        });
+    }
+
+    #[test]
+    fn plr_login_rejects_invalid_character_and_password_mismatch() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].version = core::constants::VERSION as i32;
+
+            gs.players[nr].usnr = 0;
+            plr_login(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+
+            reset_buffers(gs, nr);
+            gs.players[nr].state = 0;
+            setup_existing_character(gs, 2, 0, USE_NONACTIVE, "LoginTarget");
+            gs.characters[2].pass1 = 111;
+            gs.characters[2].pass2 = 222;
+            gs.players[nr].usnr = 2;
+            gs.players[nr].pass1 = 1;
+            gs.players[nr].pass2 = 2;
+
+            plr_login(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+    }
+
+    #[test]
+    fn plr_login_activates_existing_character_and_clears_recall_spell() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].version = core::constants::VERSION as i32;
+            gs.players[nr].addr = 0x01020304;
+            write_ascii_into_fixed(&mut gs.players[nr].passwd, "newpass");
+
+            setup_existing_character(gs, 2, 0, USE_NONACTIVE, "LoginTarget");
+            gs.characters[2].pass1 = 111;
+            gs.characters[2].pass2 = 222;
+            gs.characters[2].flags = CharacterFlags::God.bits();
+            gs.characters[2].spell[0] = 10;
+            gs.items[10].used = USE_ACTIVE;
+            gs.items[10].temp = skills::SK_RECALL as u16;
+
+            gs.players[nr].usnr = 2;
+            gs.players[nr].pass1 = 111;
+            gs.players[nr].pass2 = 222;
+
+            plr_login(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_NORMAL);
+            assert_eq!(gs.characters[2].used, USE_ACTIVE);
+            assert_eq!(gs.characters[2].player, nr as i32);
+            assert_eq!(gs.players[nr].cpl.mode, -1);
+            assert_eq!(gs.characters[2].addr, 0x01020304);
+            assert_eq!(gs.characters[2].current_online_time, 0);
+            assert_eq!(gs.characters[2].spell[0], 0);
+            assert_eq!(gs.items[10].used, USE_EMPTY);
+            assert_ne!(gs.characters[2].flags & CharacterFlags::Player.bits(), 0);
+            assert_ne!(gs.characters[2].flags & CharacterFlags::Invisible.bits(), 0);
+            assert_eq!(
+                count_obuf_packets(gs, nr, ServerCommandType::LoginOk as u8),
+                1
+            );
+            assert_ne!(gs.characters[2].pass1, 0);
+            assert_ne!(gs.characters[2].pass2, 0);
+        });
+    }
+
+    #[test]
+    fn apply_api_login_character_record_covers_existing_and_new_slots() {
+        with_test_gs(|gs| {
+            setup_existing_character(gs, 5, 0, USE_NONACTIVE, "Stale Name");
+            let existing = CharacterSummary {
+                id: 44,
+                name: "Fresh Name".to_string(),
+                description: "Updated description".to_string(),
+                sex: Sex::Female,
+                class: Class::Mercenary,
+                selection_sprite_id: None,
+                server_id: Some(5),
+            };
+
+            let (cn, is_new) = apply_api_login_character_record(gs, &existing).unwrap();
+            assert_eq!(cn, 5);
+            assert!(!is_new);
+            assert_eq!(gs.characters[5].get_name(), "Fresh Name");
+            assert_eq!(
+                c_string_to_str(&gs.characters[5].description),
+                "Updated description"
+            );
+
+            let template_id = get_race_integer(true, Class::Mercenary) as usize;
+            seed_character_template(
+                gs,
+                template_id,
+                traits::KIN_MALE as i32 | traits::KIN_WARRIOR as i32,
+            );
+            let created = CharacterSummary {
+                id: 45,
+                name: "Api Hero".to_string(),
+                description: String::new(),
+                sex: Sex::Male,
+                class: Class::Mercenary,
+                selection_sprite_id: None,
+                server_id: None,
+            };
+
+            let (new_cn, is_new) = apply_api_login_character_record(gs, &created).unwrap();
+            assert!(new_cn > 0);
+            assert!(is_new);
+            assert_eq!(gs.characters[new_cn].used, USE_NONACTIVE);
+            assert_eq!(gs.characters[new_cn].player, 0);
+            assert_eq!(gs.characters[new_cn].get_name(), "Api Hero");
+            assert_eq!(gs.characters[new_cn].get_reference(), "Api Hero");
+            assert_eq!(gs.characters[new_cn].tavern_x, HOME_MERCENARY_X as u16);
+            assert_ne!(
+                gs.characters[new_cn].flags & CharacterFlags::NewUser.bits(),
+                0
+            );
+            assert_ne!(
+                gs.characters[new_cn].flags & CharacterFlags::Player.bits(),
+                0
+            );
+            let description = c_string_to_str(&gs.characters[new_cn].description);
+            assert!(description.contains("Api Hero"));
+            assert!(description.contains("looks somewhat nondescript"));
+        });
+    }
+
+    #[test]
+    fn resolve_api_login_character_with_ops_handles_error_and_success_paths() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            let called_load = Cell::new(false);
+            let result = resolve_api_login_character_with_ops(
+                gs,
+                nr,
+                123,
+                |_| Ok(None),
+                |_| {
+                    called_load.set(true);
+                    Ok(None)
+                },
+                |_, _| Ok(()),
+                |_, _| Ok(()),
+            );
+            assert_eq!(result, Err(LogoutReason::PasswordIncorrect));
+            assert!(!called_load.get());
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            let template_id = get_race_integer(true, Class::Mercenary) as usize;
+            seed_character_template(
+                gs,
+                template_id,
+                traits::KIN_MALE as i32 | traits::KIN_WARRIOR as i32,
+            );
+            let saved_server_id = Cell::new(0u32);
+            let synced = Cell::new(false);
+
+            let cn = resolve_api_login_character_with_ops(
+                gs,
+                nr,
+                999,
+                |_| Ok(Some(77)),
+                |_| {
+                    Ok(Some(CharacterSummary {
+                        id: 77,
+                        name: "Ticket Hero".to_string(),
+                        description: "Ticket description".to_string(),
+                        sex: Sex::Male,
+                        class: Class::Mercenary,
+                        selection_sprite_id: None,
+                        server_id: None,
+                    }))
+                },
+                |_, server_id| {
+                    saved_server_id.set(server_id);
+                    Ok(())
+                },
+                |character_id, character| {
+                    synced.set(character_id == 77 && character.get_name() == "Ticket Hero");
+                    Ok(())
+                },
+            )
+            .unwrap();
+
+            assert!(cn > 0);
+            assert_eq!(saved_server_id.get(), cn as u32);
+            assert!(synced.get());
+            assert_eq!(gs.players[nr].api_character_id, 77);
+        });
+    }
+
+    #[test]
+    fn plr_logout_handles_unknown_and_idle_timeout_paths() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = 77;
+
+            plr_logout(gs, cn, nr, LogoutReason::Unknown);
+
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+            assert_eq!(gs.players[nr].lasttick, 77);
+            assert_eq!(gs.characters[cn].player, 0);
+        });
+
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = 1234;
+            gs.item_templates[core::constants::IT_LAGSCROLL as usize].used = USE_ACTIVE;
+            setup_existing_character(gs, cn, nr as i32, USE_ACTIVE, "Laggy");
+            gs.characters[cn].flags = CharacterFlags::Player.bits();
+            gs.characters[cn].temple_x = 0;
+            gs.characters[cn].temple_y = 0;
+            gs.characters[cn].gold = 10;
+
+            plr_logout(gs, cn, nr, LogoutReason::IdleTooLong);
+
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+            assert_eq!(gs.characters[cn].used, USE_NONACTIVE);
+            assert!(gs.characters[cn].item.iter().any(|&item| item != 0
+                && gs.items[item as usize].temp == core::constants::IT_LAGSCROLL as u16));
+        });
+    }
+
+    #[test]
+    fn player_exit_sets_exit_state_and_clears_character_mapping() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.globals.ticker = 42;
+
+            player_exit(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+            assert_eq!(gs.players[nr].lasttick, 42);
+            assert_eq!(gs.players[nr].api_character_id, 0);
+            assert_eq!(gs.characters[cn].player, 0);
+        });
+    }
+
+    #[test]
+    fn plr_challenge_newlogin_sets_state_and_sends_challenge_and_mod_packets() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = 90;
+
+            plr_challenge_newlogin(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_NEW_CHALLENGE);
+            assert_eq!(gs.players[nr].lasttick, 90);
+            assert_ne!(gs.players[nr].challenge, 0);
+            assert_eq!(
+                count_obuf_packets(gs, nr, ServerCommandType::Challenge as u8),
+                1
+            );
+            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod1 as u8), 1);
+            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod8 as u8), 1);
+            assert_eq!(gs.players[nr].iptr, 16 * 9);
+        });
+    }
+
+    #[test]
+    fn plr_challenge_transitions_states_and_rejects_bad_responses() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].challenge = 77;
+            gs.players[nr].state = ST_NEW_CHALLENGE;
+            gs.globals.ticker = 10;
+            write_inbuf(gs, nr, &challenge_response_packet(xcrypt(77), 123, 4));
+            plr_challenge(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_NEWLOGIN);
+            assert_eq!(gs.players[nr].version, 123);
+            assert_eq!(gs.players[nr].race, 4);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].challenge = 88;
+            gs.players[nr].state = ST_LOGIN_CHALLENGE;
+            gs.globals.ticker = 11;
+            write_inbuf(gs, nr, &challenge_response_packet(xcrypt(88), 321, 2));
+            plr_challenge(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_LOGIN);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].challenge = 99;
+            gs.players[nr].state = ST_CHALLENGE;
+            gs.players[nr].ltick = 44;
+            gs.globals.ticker = 12;
+            write_inbuf(gs, nr, &challenge_response_packet(xcrypt(99), 222, 3));
+            plr_challenge(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_NORMAL);
+            assert_eq!(gs.players[nr].ltick, 0);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].challenge = 55;
+            gs.players[nr].state = ST_LOGIN_CHALLENGE;
+            write_inbuf(gs, nr, &challenge_response_packet(12345, 1, 2));
+            plr_challenge(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+    }
+
+    #[test]
+    fn plr_challenge_login_and_api_login_store_credentials_and_send_mods() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = 300;
+            let mut packet = [0u8; 13];
+            packet[1..5].copy_from_slice(&2u32.to_le_bytes());
+            packet[5..9].copy_from_slice(&123u32.to_le_bytes());
+            packet[9..13].copy_from_slice(&456u32.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            plr_challenge_login(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_LOGIN_CHALLENGE);
+            assert_eq!(gs.players[nr].usnr, 2);
+            assert_eq!(gs.players[nr].pass1, 123);
+            assert_eq!(gs.players[nr].pass2, 456);
+            assert_eq!(gs.players[nr].login_ticket, 0);
+            assert_eq!(
+                count_obuf_packets(gs, nr, ServerCommandType::Challenge as u8),
+                1
+            );
+            assert_eq!(gs.players[nr].iptr, 16 * 9);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let mut packet = [0u8; 13];
+            packet[1..5].copy_from_slice(&(core::constants::MAXCHARS as u32).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            plr_challenge_login(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = 301;
+            let mut packet = [0u8; 9];
+            packet[1..9].copy_from_slice(&0x1122334455667788u64.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            plr_challenge_api_login(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_LOGIN_CHALLENGE);
+            assert_eq!(gs.players[nr].login_ticket, 0x1122334455667788);
+            assert_eq!(gs.players[nr].usnr, 0);
+            assert_eq!(gs.players[nr].pass1, 0);
+            assert_eq!(gs.players[nr].pass2, 0);
+            assert_eq!(gs.players[nr].api_character_id, 0);
+            assert_eq!(gs.players[nr].iptr, 16 * 9);
+        });
+    }
+
+    #[test]
+    fn plr_unique_stores_client_unique_or_generates_one() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let mut packet = [0u8; 9];
+            packet[1..9].copy_from_slice(&0xAA55AA55AA55AA55u64.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            plr_unique(gs, nr);
+
+            assert_eq!(gs.players[nr].unique, 0xAA55AA55AA55AA55u64);
+            assert_eq!(gs.players[nr].tptr, 0);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.unique = 10;
+            write_inbuf(gs, nr, &[0; 9]);
+
+            plr_unique(gs, nr);
+
+            assert_eq!(gs.players[nr].unique, 11);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::Unique as u8);
+            assert_eq!(
+                u64::from_le_bytes(gs.players[nr].tbuf[1..9].try_into().unwrap()),
+                11
+            );
+        });
+    }
+
+    #[test]
+    fn plr_passwd_copies_password_fragment_and_terminates_buffer() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            let mut packet = [0u8; 16];
+            packet[1..11].copy_from_slice(b"secretpass");
+            write_inbuf(gs, nr, &packet);
+
+            plr_passwd(gs, nr);
+
+            assert_eq!(c_string_to_str(&gs.players[nr].passwd), "secretpass");
+            assert_eq!(gs.players[nr].passwd[15], 0);
+        });
+    }
+
+    #[test]
+    fn send_mod_queues_all_eight_packets() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            send_mod(gs, nr);
+
+            assert_eq!(gs.players[nr].iptr, 16 * 8);
+            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod1 as u8), 1);
+            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod8 as u8), 1);
+        });
+    }
+
+    #[test]
+    fn plr_perf_report_refreshes_lasttick() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            gs.globals.ticker = 909;
+            let mut packet = [0u8; 7];
+            packet[1..3].copy_from_slice(&10u16.to_le_bytes());
+            packet[3..5].copy_from_slice(&20u16.to_le_bytes());
+            packet[5..7].copy_from_slice(&30u16.to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+
+            plr_perf_report(gs, nr);
+
+            assert_eq!(gs.players[nr].lasttick, 909);
+        });
+    }
 }
