@@ -1,5 +1,6 @@
 use mag_core::client_commands::ClientCommand;
 use mag_core::constants::{IS_GRAVE, TILEX, TILEY};
+use mag_core::server_commands::{ServerCommand, ServerCommandData};
 use mag_core::skills;
 
 use crate::{
@@ -85,8 +86,6 @@ impl GameScene {
                     if bytes.is_empty() {
                         continue;
                     }
-
-                    use crate::network::server_commands::{ServerCommand, ServerCommandData};
 
                     if let Some(cmd) = ServerCommand::from_bytes(&bytes) {
                         match &cmd.structured_data {

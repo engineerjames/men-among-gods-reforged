@@ -1,5 +1,4 @@
 mod login;
-pub mod server_commands;
 pub mod tick_stream;
 
 use std::collections::HashMap;

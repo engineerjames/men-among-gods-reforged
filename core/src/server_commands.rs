@@ -1,4 +1,4 @@
-use mag_core::string_operations::c_string_to_str;
+use crate::string_operations::c_string_to_str;
 
 /// Opcode values for incoming server commands.
 #[derive(Copy, Clone, Debug)]

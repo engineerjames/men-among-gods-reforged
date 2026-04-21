@@ -6,11 +6,11 @@ use std::{
 };
 
 use flate2::Decompress;
-use mag_core::client_commands;
-use mag_core::encrypt::xcrypt;
 use mag_core::logout_reasons::{LogoutReason, get_exit_reason};
+use mag_core::{client_commands, server_commands::ServerCommand};
+use mag_core::{encrypt::xcrypt, server_commands::ServerCommandData};
 
-use super::{NetworkCommand, NetworkEvent, server_commands, tick_stream};
+use super::{NetworkCommand, NetworkEvent, tick_stream};
 
 /// A game connection backed by either a plain TCP stream or a TLS session.
 struct GameConnection {
@@ -150,9 +150,7 @@ pub(crate) fn run_network_task(
 }
 
 /// Reads one login-phase server command (16 bytes, or 2 bytes for tick/exit).
-fn get_server_response(
-    stream: &mut GameConnection,
-) -> Result<server_commands::ServerCommand, String> {
+fn get_server_response(stream: &mut GameConnection) -> Result<ServerCommand, String> {
     let mut header = [0u8; 1];
     stream.read_exact(&mut header).map_err(|e| {
         if e.kind() == std::io::ErrorKind::WouldBlock {
@@ -183,8 +181,7 @@ fn get_server_response(
         buf.extend_from_slice(&rest);
     }
 
-    server_commands::ServerCommand::from_bytes(&buf)
-        .ok_or_else(|| "Failed to parse server response".to_string())
+    ServerCommand::from_bytes(&buf).ok_or_else(|| "Failed to parse server response".to_string())
 }
 
 /// Performs the API-ticket login handshake.
@@ -211,7 +208,7 @@ fn login_handshake(
     ));
 
     match login_response.structured_data {
-        server_commands::ServerCommandData::Challenge { server_challenge } => {
+        ServerCommandData::Challenge { server_challenge } => {
             let encrypted_challenge = xcrypt(server_challenge);
             let challenge_response = client_commands::ClientCommand::new_challenge(
                 encrypted_challenge,
@@ -222,7 +219,7 @@ fn login_handshake(
                 .write_all(&challenge_response.to_bytes())
                 .map_err(|e| format!("Send failed: {e}"))?;
         }
-        server_commands::ServerCommandData::Exit { reason } => {
+        ServerCommandData::Exit { reason } => {
             return Err(get_exit_reason(LogoutReason::from(reason as u8)).to_string());
         }
         _ => {
@@ -244,23 +241,23 @@ fn login_handshake(
         let response = get_server_response(stream)?;
 
         match response.structured_data {
-            server_commands::ServerCommandData::LoginOk { server_version } => {
+            ServerCommandData::LoginOk { server_version } => {
                 let _ = event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
                 log::info!("Logged in with server version: {}", server_version);
                 let _ = event_tx.send(NetworkEvent::LoggedIn);
                 return Ok(());
             }
-            server_commands::ServerCommandData::Mod1 { .. }
-            | server_commands::ServerCommandData::Mod2 { .. }
-            | server_commands::ServerCommandData::Mod3 { .. }
-            | server_commands::ServerCommandData::Mod4 { .. }
-            | server_commands::ServerCommandData::Mod5 { .. }
-            | server_commands::ServerCommandData::Mod6 { .. }
-            | server_commands::ServerCommandData::Mod7 { .. }
-            | server_commands::ServerCommandData::Mod8 { .. } => {
+            ServerCommandData::Mod1 { .. }
+            | ServerCommandData::Mod2 { .. }
+            | ServerCommandData::Mod3 { .. }
+            | ServerCommandData::Mod4 { .. }
+            | ServerCommandData::Mod5 { .. }
+            | ServerCommandData::Mod6 { .. }
+            | ServerCommandData::Mod7 { .. }
+            | ServerCommandData::Mod8 { .. } => {
                 log::info!("Received mod data during login, ignoring");
             }
-            server_commands::ServerCommandData::Exit { reason } => {
+            ServerCommandData::Exit { reason } => {
                 log::warn!("Server demanded exit during login, reason={reason}");
                 return Err(get_exit_reason(LogoutReason::from(reason as u8)).to_string());
             }

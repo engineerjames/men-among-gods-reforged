@@ -2,12 +2,12 @@ use mag_core::{
     circular_buffer::CircularBuffer,
     constants::{MAX_SPEEDTAB_INDEX, TICKS},
     logout_reasons::get_exit_reason,
+    server_commands::{ServerCommand, ServerCommandData, ServerCommandType},
     types::ClientPlayer,
 };
 
 use crate::{
     game_map::GameMap,
-    network::server_commands::{ServerCommand, ServerCommandData, ServerCommandType},
     types::{log_message::LogMessage, look::Look},
 };
 
@@ -752,10 +752,9 @@ impl PlayerState {
 
 #[cfg(test)]
 mod tests {
+    use mag_core::server_commands::Look6Entry;
+
     use super::*;
-    use crate::network::server_commands::{
-        Look6Entry, ServerCommand, ServerCommandData, ServerCommandType,
-    };
 
     /// Builds a minimal look/shop packet sequence for the given target.
     ///
