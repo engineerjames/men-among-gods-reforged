@@ -1,6 +1,21 @@
+use core::{
+    constants::CharacterFlags,
+    encrypt::xcrypt,
+    logout_reasons::LogoutReason,
+    server_commands::ServerCommandType,
+    skills,
+    string_operations::{c_string_to_str, write_ascii_into_fixed},
+    traits::get_race_integer,
+    types::Sex,
+};
+
+use server::keydb;
+
+use crate::{game_state::GameState, god::God, helpers, network_manager};
+
 /// Port of `plr_newlogin` from `svr_tick.cpp`
 /// Handles new player login (stub - to be implemented)
-fn plr_newlogin(gs: &mut GameState, nr: usize) {
+pub fn plr_newlogin(gs: &mut GameState, nr: usize) {
     // Port of C++ `plr_newlogin` from `svr_tick.cpp`.
 
     // version check
@@ -178,7 +193,7 @@ fn plr_newlogin(gs: &mut GameState, nr: usize) {
 
 /// Port of `plr_login` from `svr_tick.cpp`
 /// Handles existing player login (stub - to be implemented)
-fn plr_login(gs: &mut GameState, nr: usize) {
+pub fn plr_login(gs: &mut GameState, nr: usize) {
     // version check
     let version = gs.players[nr].version as u32;
     if version < core::constants::MINVERSION {
@@ -901,7 +916,7 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index to challenge
-fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
+pub fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
     let mut tmp = helpers::random_mod(0x3fffffff_u32 - 1) + 1;
     if tmp == 0 {
@@ -939,7 +954,7 @@ fn plr_challenge_newlogin(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index handling the challenge response
-fn plr_challenge(gs: &mut GameState, nr: usize) {
+pub fn plr_challenge(gs: &mut GameState, nr: usize) {
     let (challenge, state) = (gs.players[nr].challenge, gs.players[nr].state);
 
     let response = u32::from_le_bytes([
@@ -1018,7 +1033,7 @@ fn plr_challenge(gs: &mut GameState, nr: usize) {
 /// `ST_LOGIN_CHALLENGE` state, validates the requested character index
 /// supplied by the client, stores `pass1`/`pass2` fragments and sends the
 /// challenge (and mod packets) back to the client.
-fn plr_challenge_login(gs: &mut GameState, nr: usize) {
+pub fn plr_challenge_login(gs: &mut GameState, nr: usize) {
     log::debug!("Player {} challenge_login", nr);
 
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
@@ -1088,7 +1103,7 @@ fn plr_challenge_login(gs: &mut GameState, nr: usize) {
 /// The client sends `CL_API_LOGIN` with a u64 one-time ticket in the payload.
 /// We store the ticket on the player slot and then proceed with the normal
 /// `SV_CHALLENGE` / `CL_CHALLENGE` handshake.
-fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
+pub fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
     log::debug!("Player {} challenge_api_login", nr);
 
     // Generate random challenge value (0x3fffffff max, ensure non-zero)
@@ -1136,7 +1151,7 @@ fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the unique
-fn plr_unique(gs: &mut GameState, nr: usize) {
+pub fn plr_unique(gs: &mut GameState, nr: usize) {
     // Read unique ID from inbuf (8 bytes as u64)
     let unique = u64::from_le_bytes([
         gs.players[nr].inbuf[1],
@@ -1179,7 +1194,7 @@ fn plr_unique(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the password fragment
-fn plr_passwd(gs: &mut GameState, nr: usize) {
+pub fn plr_passwd(gs: &mut GameState, nr: usize) {
     let src: [u8; 15] = gs.players[nr].inbuf[1..16].try_into().unwrap();
     gs.players[nr].passwd[..15].copy_from_slice(&src);
     gs.players[nr].passwd[15] = 0;
@@ -1221,7 +1236,7 @@ fn send_mod(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index reporting performance
-fn plr_perf_report(gs: &mut GameState, nr: usize) {
+pub fn plr_perf_report(gs: &mut GameState, nr: usize) {
     // Read performance metrics from inbuf (unused but parsed for completeness)
     let _ticksize = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
     let _skip = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]);

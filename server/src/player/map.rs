@@ -1,3 +1,19 @@
+use core::{
+    constants::{
+        CharacterFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, IS_GRAVE, ISCHAR, ISITEM,
+        ISUSABLE, ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC,
+        MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED,
+        UWATER,
+    },
+    logout_reasons::LogoutReason,
+    server_commands::ServerCommandType,
+};
+
+use crate::{
+    driver, game_state::GameState, god::God, helpers, network_manager,
+    player::connection::plr_logout, types::cmap::CMap,
+};
+
 /// Port of `plr_map_remove` from `svr_act.cpp`
 ///
 /// Removes a character from the world map tile and clears any transient
@@ -772,7 +788,7 @@ fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -
 }
 
 /// Send light updates for all changed tiles
-fn plr_change_light(gs: &mut GameState, nr: usize) {
+pub fn plr_change_light(gs: &mut GameState, nr: usize) {
     let total = core::constants::TILEX * core::constants::TILEY;
 
     for n in 0..total {
@@ -801,7 +817,7 @@ fn plr_change_light(gs: &mut GameState, nr: usize) {
 }
 
 /// Send map tile content updates for all changed tiles
-fn plr_change_map(gs: &mut GameState, nr: usize) {
+pub fn plr_change_map(gs: &mut GameState, nr: usize) {
     let total = core::constants::TILEX * core::constants::TILEY;
     let mut lastn: i32 = -1;
     let mut n = 0;
@@ -944,7 +960,7 @@ fn plr_change_map(gs: &mut GameState, nr: usize) {
 }
 
 /// Send position change to player with map scrolling
-fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
+pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
     let x = gs.characters[cn].x;
     let y = gs.characters[cn].y;
     let cpl_x = gs.players[nr].cpl.x;

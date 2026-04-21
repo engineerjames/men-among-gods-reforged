@@ -1,3 +1,22 @@
+use core::client_commands::ClientCommandType;
+
+use crate::{
+    game_state::GameState,
+    player::{
+        commands::{
+            plr_cmd_attack, plr_cmd_autoloot, plr_cmd_ctick, plr_cmd_drop, plr_cmd_exit,
+            plr_cmd_give, plr_cmd_input, plr_cmd_inv, plr_cmd_inv_look, plr_cmd_look,
+            plr_cmd_look_item, plr_cmd_mode, plr_cmd_move, plr_cmd_pickup, plr_cmd_ping,
+            plr_cmd_reset, plr_cmd_setuser, plr_cmd_shop, plr_cmd_skill, plr_cmd_stat,
+            plr_cmd_turn, plr_cmd_use,
+        },
+        connection::{
+            plr_challenge, plr_challenge_api_login, plr_challenge_login, plr_challenge_newlogin,
+            plr_passwd, plr_perf_report, plr_unique,
+        },
+    },
+};
+
 pub mod commands;
 pub mod connection;
 pub mod map;

@@ -1,3 +1,20 @@
+use core::{
+    constants::CharacterFlags, logout_reasons::LogoutReason, server_commands::ServerCommandType,
+    string_operations::c_string_to_str, traits,
+};
+
+use crate::{
+    driver,
+    game_state::GameState,
+    god::God,
+    network_manager,
+    player::{
+        connection::plr_logout,
+        map::{plr_map_remove, plr_map_set},
+        notify_character_tile,
+    },
+};
+
 /// Port of `plr_cmd_look` from `svr_tick.cpp`
 ///
 /// Handles the client's LOOK command. If the high bit of the supplied id
@@ -8,7 +25,7 @@
 /// # Arguments
 /// * `nr` - Player slot index issuing the look
 /// * `autoflag` - When true, treat the request as an automatic look
-fn plr_cmd_look(gs: &mut GameState, nr: usize, autoflag: bool) {
+pub fn plr_cmd_look(gs: &mut GameState, nr: usize, autoflag: bool) {
     let co = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
     let cn = gs.players[nr].usnr;
 
@@ -34,7 +51,7 @@ fn plr_cmd_look(gs: &mut GameState, nr: usize, autoflag: bool) {
 ///
 /// # Arguments
 /// * `_nr` - Player slot index sending the data
-fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
+pub fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
     // Implementation based on original svr_tick.cpp
     // Read subtype, position and 13 bytes of data from player's inbuf
     let nr = _nr;
@@ -317,7 +334,7 @@ fn plr_cmd_setuser(gs: &mut GameState, _nr: usize) {
 ///
 /// # Arguments
 /// * `_nr` - Player slot index issuing the stat change
-fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
+pub fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
     // Read stat index and value from inbuf and apply raises
     let cn = gs.players[_nr].usnr;
     let n = u16::from_le_bytes([gs.players[_nr].inbuf[1], gs.players[_nr].inbuf[2]]) as usize;
@@ -365,7 +382,7 @@ fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index sending the input
 /// * `part` - Which 1..8 chunk this call contains
-fn plr_cmd_input(gs: &mut GameState, nr: usize, part: u8) {
+pub fn plr_cmd_input(gs: &mut GameState, nr: usize, part: u8) {
     // Copy 15 bytes of input from inbuf to player input buffer
     let offset = ((part - 1) as usize) * 15;
     for n in 0..15 {
@@ -393,7 +410,7 @@ fn plr_cmd_input(gs: &mut GameState, nr: usize, part: u8) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the tick
-fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
     let ticker = gs.globals.ticker as u32;
     let rtick = u32::from_le_bytes([
         gs.players[nr].inbuf[1],
@@ -409,7 +426,7 @@ fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
 ///
 /// Reads `seq` and `client_time_ms` from the client's inbuf and replies with
 /// `SV_PONG`, echoing both values back to the client so it can compute RTT.
-fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
     let seq = u32::from_le_bytes([
         gs.players[nr].inbuf[1],
         gs.players[nr].inbuf[2],
@@ -439,7 +456,7 @@ fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the request
-fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
     let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
     let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
     let cn = gs.players[nr].usnr;
@@ -464,7 +481,7 @@ fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the give
-fn plr_cmd_give(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_give(gs: &mut GameState, nr: usize) {
     let co = u32::from_le_bytes([
         gs.players[nr].inbuf[1],
         gs.players[nr].inbuf[2],
@@ -495,7 +512,7 @@ fn plr_cmd_give(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the turn
-fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
     let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
     let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
     let cn = gs.players[nr].usnr;
@@ -528,7 +545,7 @@ fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `_nr` - Player slot index performing the drop
-fn plr_cmd_drop(gs: &mut GameState, _nr: usize) {
+pub fn plr_cmd_drop(gs: &mut GameState, _nr: usize) {
     let x = u16::from_le_bytes([gs.players[_nr].inbuf[1], gs.players[_nr].inbuf[2]]) as i32;
     let y = u16::from_le_bytes([gs.players[_nr].inbuf[3], gs.players[_nr].inbuf[4]]) as i32;
     let cn = gs.players[_nr].usnr;
@@ -595,7 +612,7 @@ fn plr_cmd_drop(gs: &mut GameState, _nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the pickup
-fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
     let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
     let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
     let cn = gs.players[nr].usnr;
@@ -627,7 +644,7 @@ fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the attack
-fn plr_cmd_attack(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_attack(gs: &mut GameState, nr: usize) {
     let co = u32::from_le_bytes([
         gs.players[nr].inbuf[1],
         gs.players[nr].inbuf[2],
@@ -667,7 +684,7 @@ fn plr_cmd_attack(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index setting the mode
-fn plr_cmd_mode(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_mode(gs: &mut GameState, nr: usize) {
     let mode = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
 
     if mode > 2 {
@@ -692,7 +709,7 @@ fn plr_cmd_mode(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index sending the movement target
-fn plr_cmd_move(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_move(gs: &mut GameState, nr: usize) {
     let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
     let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]);
     let cn = gs.players[nr].usnr;
@@ -720,7 +737,7 @@ fn plr_cmd_move(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index requesting the reset
-fn plr_cmd_reset(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_reset(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
     let ticker = gs.globals.ticker;
     gs.characters[cn].use_nr = 0;
@@ -741,7 +758,7 @@ fn plr_cmd_reset(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index invoking the skill
-fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
     let (n, co, cn) = {
         let n = u32::from_le_bytes([
             gs.players[nr].inbuf[1],
@@ -784,7 +801,7 @@ fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the command
-fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
     let n = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
     let cn = gs.players[nr].usnr;
 
@@ -815,7 +832,7 @@ fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the use
-fn plr_cmd_use(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_use(gs: &mut GameState, nr: usize) {
     let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
     let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
     let cn = gs.players[nr].usnr;
@@ -845,7 +862,7 @@ fn plr_cmd_use(gs: &mut GameState, nr: usize) {
 ///
 /// * `gs` - Mutable reference to the full game state.
 /// * `nr` - Player slot index issuing the command.
-fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
     let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
     let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
     let cn = gs.players[nr].usnr;
@@ -928,7 +945,7 @@ fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the inventory command
-fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
     let what = u32::from_le_bytes([
         gs.players[nr].inbuf[1],
         gs.players[nr].inbuf[2],
@@ -1101,7 +1118,7 @@ fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index pressing F12
-fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
     log::info!("Player {} pressed F12", nr);
     let cn = gs.players[nr].usnr;
     plr_logout(gs, cn, nr, LogoutReason::Exit);
@@ -1115,7 +1132,7 @@ fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
 ///
 /// # Arguments
 /// * `nr` - Player slot index issuing the shop command
-fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
+pub fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
     let co = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
     let n = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
     let cn = gs.players[nr].usnr;
