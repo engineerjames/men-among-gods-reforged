@@ -16,11 +16,13 @@ pub mod result {
 
 pub mod area;
 pub mod circular_buffer;
+pub mod client_commands;
 pub mod constants;
 pub mod encrypt;
 pub mod logout_reasons;
 pub mod names;
 pub mod ranks;
+pub mod server_commands;
 pub mod skills;
 pub mod stat_buffer;
 pub mod string_operations;

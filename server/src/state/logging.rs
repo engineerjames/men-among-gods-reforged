@@ -1,4 +1,5 @@
 use core::constants::{CT_LGUARD, CharacterFlags, MAXCHARS, MAXPLAYER};
+use core::server_commands::ServerCommandType;
 use std::cmp;
 use std::sync::OnceLock;
 
@@ -81,7 +82,7 @@ impl GameState {
 
         // Send at least one packet (matches original intent), copy up to 15 bytes per packet.
         loop {
-            buffer[0] = core::constants::SV_LOG + font as u8;
+            buffer[0] = ServerCommandType::Log0 as u8 + font as u8;
 
             let take = std::cmp::min(15, len.saturating_sub(pos));
             if take > 0 {
@@ -222,7 +223,7 @@ impl GameState {
         };
 
         let mut buf: [u8; 16] = [0; 16];
-        buf[0] = core::constants::SV_PLAYSOUND;
+        buf[0] = ServerCommandType::PlaySound as u8;
         buf[1..5].copy_from_slice(&sound.to_le_bytes());
         buf[5..9].copy_from_slice(&vol.to_le_bytes());
         buf[9..13].copy_from_slice(&pan.to_le_bytes());

@@ -23,7 +23,7 @@ bitflags = "2.4"
 log = "0.4.29"
 bincode = { version = "2.0", features = ["derive"] }
 rand = "0.8"
-ctrlc = "3.5.1"
+ctrlc = { version = "3.5.1", features = ["termination"] }
 redis = "1.0.3"
 dotenvy = "0.15"
 rustls = "0.23"

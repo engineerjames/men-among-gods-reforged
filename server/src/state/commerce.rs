@@ -51,7 +51,7 @@ impl GameState {
     ///   - 60: Take carried item from corpse
     ///   - 61: Take gold from corpse
     ///   - 62+: Examine item descriptions (nr-62 gives item slot)
-    pub(crate) fn do_shop_char(&mut self, cn: usize, co: usize, nr: i32) {
+    pub(crate) fn do_shop_char(&mut self, cn: usize, co: usize, nr: i32, autoloot: i32) {
         // Validate parameters
         if co == 0 || co >= core::constants::MAXCHARS || !(0..124).contains(&nr) {
             return;
@@ -504,7 +504,7 @@ impl GameState {
         }
 
         // Refresh the character/corpse display
-        self.do_look_char(cn, co, 0, 0, 1);
+        self.do_look_char(cn, co, 0, autoloot, 1);
     }
 
     /// Port of `do_depot_cost(int in)` from `svr_do.cpp`

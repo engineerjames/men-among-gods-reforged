@@ -1462,7 +1462,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     let m = loop {
         let m_try = (helpers::random_mod_usize(64) + 128)
             + (helpers::random_mod_usize(64) + 64) * core::constants::SERVER_MAPX as usize;
-        if player::plr_check_target(gs, m_try) {
+        if player::commands::plr_check_target(gs, m_try) {
             break m_try;
         }
     };
@@ -7621,7 +7621,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         )
     };
 
-    player::plr_map_remove(gs, cn);
+    player::map::plr_map_remove(gs, cn);
 
     // Update character position
     {

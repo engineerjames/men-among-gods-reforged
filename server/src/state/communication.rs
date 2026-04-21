@@ -3,6 +3,7 @@ use crate::god::God;
 use crate::network_manager;
 use crate::{driver, helpers};
 use core::constants::{CT_LGUARD, CharacterFlags};
+use core::server_commands::ServerCommandType;
 use core::string_operations::c_string_to_str;
 use core::traits;
 use core::types::FontColor;
@@ -407,7 +408,7 @@ impl GameState {
 
         // Send SV_LOOK1 packet (main equipment slots)
         let mut buf = [0u8; 16];
-        buf[0] = core::constants::SV_LOOK1;
+        buf[0] = ServerCommandType::Look1 as u8;
 
         if visibility <= 75 {
             let worn_sprites = {
@@ -440,7 +441,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK2 packet
-        buf[0] = core::constants::SV_LOOK2;
+        buf[0] = ServerCommandType::Look2 as u8;
 
         if visibility <= 75 {
             let worn9 = if self.characters[co].worn[9] != 0 {
@@ -494,7 +495,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK3 packet
-        buf[0] = core::constants::SV_LOOK3;
+        buf[0] = ServerCommandType::Look3 as u8;
 
         let end5 = self.characters[co].end[5];
         let a_hp = self.characters[co].a_hp;
@@ -536,7 +537,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK4 packet
-        buf[0] = core::constants::SV_LOOK4;
+        buf[0] = ServerCommandType::Look4 as u8;
 
         if visibility <= 75 {
             let worn1 = if self.characters[co].worn[1] != 0 {
@@ -614,7 +615,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK5 packet (character name)
-        buf[0] = core::constants::SV_LOOK5;
+        buf[0] = ServerCommandType::Look5 as u8;
 
         let co_name = {
             let mut name = [0u8; 15];
@@ -630,7 +631,7 @@ impl GameState {
         if (is_merchant || is_body) && autoflag == 0 {
             // Send inventory slots 0-39 in pairs
             for n in (0..40).step_by(2) {
-                buf[0] = core::constants::SV_LOOK6;
+                buf[0] = ServerCommandType::Look6 as u8;
                 buf[1] = n as u8;
 
                 for m in n..std::cmp::min(40, n + 2) {
@@ -661,7 +662,7 @@ impl GameState {
 
             // Send worn slots 0-19 (displayed as slots 40-59) if corpse
             for n in (0..20).step_by(2) {
-                buf[0] = core::constants::SV_LOOK6;
+                buf[0] = ServerCommandType::Look6 as u8;
                 buf[1] = (n + 40) as u8;
 
                 for m in n..std::cmp::min(20, n + 2) {
@@ -685,7 +686,7 @@ impl GameState {
             }
 
             // Send citem and gold (slots 60-61)
-            buf[0] = core::constants::SV_LOOK6;
+            buf[0] = ServerCommandType::Look6 as u8;
             buf[1] = 60;
 
             // Slot 60: citem

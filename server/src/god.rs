@@ -10,9 +10,10 @@ use core::{
     types::{Character, Map},
 };
 
+use server::keydb;
+
 use crate::{
-    area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, keydb, player,
-    populate,
+    area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,
 };
 
 pub struct God {}
@@ -739,7 +740,7 @@ impl God {
             companion_citem = companion.citem;
             companion.citem = 0;
         }
-        player::plr_map_remove(gs, companion_id);
+        player::map::plr_map_remove(gs, companion_id);
         gs.characters[companion_id].used = core::constants::USE_EMPTY;
         gs.characters[character_id].data[core::constants::CHD_COMPANION] = 0;
 
@@ -1190,12 +1191,12 @@ impl God {
         }
 
         // Remove from previous tile (if any), update coords and insert into map
-        player::plr_map_remove(gs, character_id);
+        player::map::plr_map_remove(gs, character_id);
         gs.characters[character_id].x = x as i16;
         gs.characters[character_id].y = y as i16;
         gs.characters[character_id].tox = x as i16;
         gs.characters[character_id].toy = y as i16;
-        player::plr_map_set(gs, character_id);
+        player::map::plr_map_set(gs, character_id);
 
         true
     }
@@ -3310,7 +3311,7 @@ impl God {
         let player_id = gs.characters[cn].player as usize;
 
         chlog!(cn, "Entered tavern and will be logged out.");
-        player::plr_logout(gs, cn, player_id, LogoutReason::Tavern);
+        player::connection::plr_logout(gs, cn, player_id, LogoutReason::Tavern);
     }
 
     /// Admin command used to adjust a character's experience. Only
@@ -3626,7 +3627,7 @@ impl God {
             let name_str = c_string_to_str(&character_name);
             let player_id = gs.characters[co].player as usize;
 
-            player::plr_logout(gs, co, player_id, LogoutReason::Shutdown);
+            player::connection::plr_logout(gs, co, player_id, LogoutReason::Shutdown);
 
             gs.characters[co].used = core::constants::USE_EMPTY;
 
@@ -3692,7 +3693,7 @@ impl God {
         let name_str = c_string_to_str(&character_name);
         let player_id = gs.characters[co].player as usize;
 
-        player::plr_logout(gs, co, player_id, LogoutReason::IdleTooLong);
+        player::connection::plr_logout(gs, co, player_id, LogoutReason::IdleTooLong);
 
         gs.do_character_log(
             cn,
@@ -4357,7 +4358,7 @@ impl God {
             }
         }
 
-        player::plr_logout(gs, cn, nr as usize, LogoutReason::Usurp);
+        player::connection::plr_logout(gs, cn, nr as usize, LogoutReason::Usurp);
         gs.characters[co].set_do_update_flags();
     }
 

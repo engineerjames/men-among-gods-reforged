@@ -5,9 +5,10 @@
 
 use sdl2::{keyboard::Keycode, mouse::MouseButton};
 
+use mag_core::client_commands::ClientCommand;
 use mag_core::constants::{ISCHAR, ISITEM, ISUSABLE};
 
-use crate::{network::client_commands::ClientCommand, scenes::scene::SceneType, state::AppState};
+use crate::{scenes::scene::SceneType, state::AppState};
 
 use super::GameScene;
 

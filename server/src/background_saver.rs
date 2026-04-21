@@ -18,25 +18,24 @@
 /// | 4     | Map first half (linear 0 .. total/2)                      |
 /// | 5     | Map second half (linear total/2 .. total)                 |
 ///
-/// At default settings (`SAVE_INTERVAL_TICKS = 360`, 36 TPS) each cycle
-/// fires every ~10 seconds, so a full rotation ≈ 60 seconds.
+/// At default settings (`SAVE_INTERVAL_TICKS = 4_320`, 36 TPS) each cycle
+/// fires every ~2 minutes, so a full rotation ≈ 12 minutes.
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
-use crate::keydb;
-use crate::keydb_store;
+use server::{keydb, keydb_store};
 
 /// Ticks between each background save job.
 ///
 /// At the server's target rate of 36 TPS this corresponds to
-/// approximately 10 seconds between save cycles.
-pub const SAVE_INTERVAL_TICKS: u32 = 360;
+/// approximately 2 minutes between save cycles.
+pub const SAVE_INTERVAL_TICKS: u32 = 4_320;
 
 /// Number of save cycles in a full rotation.
 ///
 /// A full rotation visits every data type once (characters, items
 /// first/second half, small data, map first/second half).  At default
-/// settings the full rotation takes approximately 60 seconds.
+/// settings the full rotation takes approximately 12 minutes.
 pub const SAVE_CYCLE_COUNT: u32 = 6;
 
 /// A unit of work sent to the background saver thread via
@@ -290,11 +289,11 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
 mod tests {
     use super::*;
 
-    /// Verify the save interval constant matches the 10-second design target
+    /// Verify the save interval constant matches the 2-minute design target
     /// at 36 TPS.
     #[test]
     fn save_interval_matches_design() {
-        assert_eq!(SAVE_INTERVAL_TICKS, 360);
+        assert_eq!(SAVE_INTERVAL_TICKS, 4_320);
     }
 
     /// Verify the rotation has exactly 6 cycles (characters, items×2,

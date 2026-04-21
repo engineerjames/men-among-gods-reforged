@@ -13,13 +13,14 @@ use sdl2::{
 };
 
 use crate::{
-    network::client_commands::ClientCommand,
     scenes::scene::SceneType,
     state::AppState,
     types::controller::ControllerButton,
     ui::widget::{KeyModifiers, MouseButton as UiMouseButton, UiEvent, Widget},
     ui::widgets::on_screen_keyboard::OnScreenKeyboardAction,
 };
+
+use mag_core::client_commands::ClientCommand;
 
 use super::{GameScene, net_events::UiHandleResult};
 

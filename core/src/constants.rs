@@ -370,6 +370,11 @@ pub const INJURED2: u32 = 1 << 2;
 pub const STONED: u32 = 1 << 3;
 pub const INFRARED: u32 = 1 << 4;
 pub const UWATER: u32 = 1 << 5;
+/// Set on a client smap tile when the item on that tile is a tombstone/grave
+/// (item template `IT_TOMBSTONE`). Used by the auto-loot system to identify
+/// grave tiles without exposing server-side item template data in the
+/// full smap bit.
+pub const IS_GRAVE: u32 = 1 << 6;
 pub const ISUSABLE: u32 = 1 << 7;
 pub const ISITEM: u32 = 1 << 8;
 pub const ISCHAR: u32 = 1 << 9;
@@ -568,133 +573,19 @@ pub const COMPANION_TIMEOUT: i32 = 5 * 60 * TICKS;
 pub const IT_TOMBSTONE: i32 = 170;
 pub const IT_LAGSCROLL: i32 = 500;
 
-// =============================================================================
-// Client Message Types (from client.h)
-// =============================================================================
-
-pub const CL_EMPTY: u8 = 0;
-pub const CL_NEWLOGIN: u8 = 1;
-pub const CL_LOGIN: u8 = 2;
-pub const CL_CHALLENGE: u8 = 3;
-pub const CL_PERF_REPORT: u8 = 4;
-pub const CL_CMD_MOVE: u8 = 5;
-pub const CL_CMD_PICKUP: u8 = 6;
-pub const CL_CMD_ATTACK: u8 = 7;
-pub const CL_CMD_MODE: u8 = 8;
-pub const CL_CMD_INV: u8 = 9;
-pub const CL_CMD_STAT: u8 = 10;
-pub const CL_CMD_DROP: u8 = 11;
-pub const CL_CMD_GIVE: u8 = 12;
-pub const CL_CMD_LOOK: u8 = 13;
-pub const CL_CMD_INPUT1: u8 = 14;
-pub const CL_CMD_INPUT2: u8 = 15;
-pub const CL_CMD_INV_LOOK: u8 = 16;
-pub const CL_CMD_LOOK_ITEM: u8 = 17;
-pub const CL_CMD_USE: u8 = 18;
-pub const CL_CMD_SETUSER: u8 = 19;
-pub const CL_CMD_TURN: u8 = 20;
-pub const CL_CMD_AUTOLOOK: u8 = 21;
-pub const CL_CMD_INPUT3: u8 = 22;
-pub const CL_CMD_INPUT4: u8 = 23;
-pub const CL_CMD_RESET: u8 = 24;
-pub const CL_CMD_SHOP: u8 = 25;
-pub const CL_CMD_SKILL: u8 = 26;
-pub const CL_CMD_INPUT5: u8 = 27;
-pub const CL_CMD_INPUT6: u8 = 28;
-pub const CL_CMD_INPUT7: u8 = 29;
-pub const CL_CMD_INPUT8: u8 = 30;
-pub const CL_CMD_EXIT: u8 = 31;
-pub const CL_CMD_UNIQUE: u8 = 32;
-pub const CL_PASSWD: u8 = 33;
-/// Client ping request (custom extension).
+/// Item template IDs that are automatically looted from graves when the
+/// auto-loot feature is enabled. Gold (grave slot 61) is always taken
+/// regardless of this list.
 ///
-/// Payload (little-endian):
-/// - u32 sequence @ +1
-/// - u32 client_time_ms @ +5
-pub const CL_PING: u8 = 34;
-/// Account-managed login using an API-issued one-time ticket (custom extension).
-///
-/// Payload (little-endian):
-/// - u64 ticket @ +1
-pub const CL_API_LOGIN: u8 = 35;
-pub const CL_CMD_CTICK: u8 = 255;
-
-// =============================================================================
-// Server Message Types (from client.h)
-// =============================================================================
-
-pub const SV_EMPTY: u8 = 0;
-pub const SV_CHALLENGE: u8 = 1;
-pub const SV_NEWPLAYER: u8 = 2;
-pub const SV_SETCHAR_NAME1: u8 = 3;
-pub const SV_SETCHAR_NAME2: u8 = 4;
-pub const SV_SETCHAR_NAME3: u8 = 5;
-pub const SV_SETCHAR_MODE: u8 = 6;
-pub const SV_SETCHAR_ATTRIB: u8 = 7;
-pub const SV_SETCHAR_SKILL: u8 = 8;
-pub const SV_SETCHAR_HP: u8 = 12;
-pub const SV_SETCHAR_ENDUR: u8 = 13;
-pub const SV_SETCHAR_MANA: u8 = 14;
-pub const SV_SETCHAR_AHP: u8 = 20;
-pub const SV_SETCHAR_PTS: u8 = 21;
-pub const SV_SETCHAR_GOLD: u8 = 22;
-pub const SV_SETCHAR_ITEM: u8 = 23;
-pub const SV_SETCHAR_WORN: u8 = 24;
-pub const SV_SETCHAR_OBJ: u8 = 25;
-pub const SV_TICK: u8 = 27;
-pub const SV_LOOK1: u8 = 29;
-pub const SV_SCROLL_RIGHT: u8 = 30;
-pub const SV_SCROLL_LEFT: u8 = 31;
-pub const SV_SCROLL_UP: u8 = 32;
-pub const SV_SCROLL_DOWN: u8 = 33;
-pub const SV_LOGIN_OK: u8 = 34;
-pub const SV_SCROLL_RIGHTUP: u8 = 35;
-pub const SV_SCROLL_RIGHTDOWN: u8 = 36;
-pub const SV_SCROLL_LEFTUP: u8 = 37;
-pub const SV_SCROLL_LEFTDOWN: u8 = 38;
-pub const SV_LOOK2: u8 = 39;
-pub const SV_LOOK3: u8 = 40;
-pub const SV_LOOK4: u8 = 41;
-pub const SV_SETTARGET: u8 = 42;
-pub const SV_SETMAP2: u8 = 43;
-pub const SV_SETORIGIN: u8 = 44;
-pub const SV_SETMAP3: u8 = 45;
-pub const SV_SETCHAR_SPELL: u8 = 46;
-pub const SV_PLAYSOUND: u8 = 47;
-pub const SV_EXIT: u8 = 48;
-pub const SV_MSG: u8 = 49;
-pub const SV_LOOK5: u8 = 50;
-pub const SV_LOOK6: u8 = 51;
-pub const SV_LOG: u8 = 52;
-pub const SV_LOG0: u8 = 52;
-pub const SV_LOG1: u8 = 53;
-pub const SV_LOG2: u8 = 54;
-pub const SV_LOG3: u8 = 55;
-pub const SV_LOAD: u8 = 56;
-pub const SV_CAP: u8 = 57;
-pub const SV_MOD1: u8 = 58;
-pub const SV_MOD2: u8 = 59;
-pub const SV_MOD3: u8 = 60;
-pub const SV_MOD4: u8 = 61;
-pub const SV_MOD5: u8 = 62;
-pub const SV_MOD6: u8 = 63;
-pub const SV_MOD7: u8 = 64;
-pub const SV_MOD8: u8 = 65;
-pub const SV_SETMAP4: u8 = 66;
-pub const SV_SETMAP5: u8 = 67;
-pub const SV_SETMAP6: u8 = 68;
-pub const SV_SETCHAR_AEND: u8 = 69;
-pub const SV_SETCHAR_AMANA: u8 = 70;
-pub const SV_SETCHAR_DIR: u8 = 71;
-pub const SV_UNIQUE: u8 = 72;
-pub const SV_IGNORE: u8 = 73;
-/// Server pong response to `CL_PING` (custom extension).
-///
-/// Echoes the `CL_PING` payload:
-/// - u32 sequence @ +1
-/// - u32 client_time_ms @ +5
-pub const SV_PONG: u8 = 74;
-pub const SV_SETMAP: u8 = 128; // 128-255 are used !!!
+/// TODO: verify these template IDs against the live world data.
+pub const AUTOLOOT_ITEM_IDS: &[u16] = &[
+    // Health potions
+    // TODO: insert health potion template IDs
+    // Endurance potions
+    // TODO: insert endurance potion template IDs
+    // Mana potions
+    // TODO: insert mana potion template IDs
+];
 
 // =============================================================================
 // Player States (from client.h)

@@ -1,8 +1,11 @@
+use mag_core::client_commands::ClientCommand;
+use mag_core::constants::{IS_GRAVE, TILEX, TILEY};
+use mag_core::server_commands::{ServerCommand, ServerCommandData};
 use mag_core::skills;
 
 use crate::{
     cert_trust,
-    network::{NetworkEvent, client_commands::ClientCommand},
+    network::NetworkEvent,
     scenes::scene::SceneType,
     state::AppState,
     ui::{
@@ -83,8 +86,6 @@ impl GameScene {
                     if bytes.is_empty() {
                         continue;
                     }
-
-                    use crate::network::server_commands::{ServerCommand, ServerCommandData};
 
                     if let Some(cmd) = ServerCommand::from_bytes(&bytes) {
                         match &cmd.structured_data {
@@ -171,18 +172,84 @@ impl GameScene {
         }
     }
 
-    /// Drain pending `WidgetAction`s from the chat box and act on them.
+    /// Sends a `CmdAutoloot` for each unvisited grave tile adjacent to the
+    /// player center, when the auto-loot feature is enabled.
     ///
-    /// Currently the only action is `SendChat`, which sends say-packets
-    /// through the network runtime.
+    /// Called once per server tick. Scans tiles within Chebyshev distance 1
+    /// of the player's position (the always-at-center tile `(TILEX/2, TILEY/2)`)
+    /// for any tile with [`IS_GRAVE`] set.  At most one command is issued per
+    /// tick; once a world coordinate is recorded in `autoloot_visited`, it is
+    /// never retried until the scene is re-entered.
     ///
     /// # Arguments
     ///
-    /// * `app_state` - Shared application state (network access).
-    pub(crate) fn process_chat_box_actions(&mut self, app_state: &AppState) {
+    /// * `app_state` - Shared application state (settings, network, player state).
+    pub(super) fn maybe_send_autoloot_graves(&mut self, app_state: &mut AppState<'_>) {
+        if !app_state.settings.character.auto_loot_graves {
+            return;
+        }
+        let (Some(net), Some(ps)) = (app_state.network.as_ref(), app_state.player_state.as_ref())
+        else {
+            return;
+        };
+
+        // TODO: Need some kind of cache invalidator for `autoloot_visited` in case the player moves or new graves spawn.
+        const CX: usize = TILEX / 2;
+        const CY: usize = TILEY / 2;
+
+        // Scan the 3×3 grid of tiles adjacent to (and including) the player tile.
+        'outer: for dy in -1i32..=1 {
+            for dx in -1i32..=1 {
+                let tx = (CX as i32 + dx) as usize;
+                let ty = (CY as i32 + dy) as usize;
+                let Some(tile) = ps.map().tile_at_xy(tx, ty) else {
+                    continue;
+                };
+                if (tile.flags & IS_GRAVE) == 0 {
+                    continue;
+                }
+                let key = (tile.x, tile.y);
+                if self.autoloot_visited.contains(&key) {
+                    continue;
+                }
+                net.send(ClientCommand::new_autoloot_graves(
+                    tile.x as i16,
+                    tile.y as i32,
+                ));
+                self.autoloot_visited.insert(key);
+                // One command per tick to avoid flooding the server.
+                break 'outer;
+            }
+        }
+    }
+
+    /// Drain pending `WidgetAction`s from the chat box and act on them.
+    ///
+    /// Intercepts the `/autoloot` command client-side: toggles per-character
+    /// auto-loot and prints a confirmation to the chat log without sending
+    /// anything to the server.  All other text is forwarded as say-packets.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network + settings access).
+    pub(crate) fn process_chat_box_actions(&mut self, app_state: &mut AppState) {
         for action in self.chat_box.take_actions() {
             match action {
                 WidgetAction::SendChat(text) => {
+                    if text.trim().eq_ignore_ascii_case("/autoloot") {
+                        app_state.settings.character.auto_loot_graves =
+                            !app_state.settings.character.auto_loot_graves;
+                        let status = if app_state.settings.character.auto_loot_graves {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        };
+                        if let Some(ps) = app_state.player_state.as_mut() {
+                            ps.tlog(1, &format!("Auto-loot graves: {status}."));
+                        }
+                        self.save_active_profile(app_state);
+                        continue;
+                    }
                     if let Some(net) = app_state.network.as_ref() {
                         for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
                             net.send(pkt);

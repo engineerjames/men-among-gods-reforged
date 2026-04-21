@@ -1257,7 +1257,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
         if do_die {
             gs.do_sayx(cn, "Free!");
             God::destroy_items(gs, cn);
-            player::plr_map_remove(gs, cn);
+            player::map::plr_map_remove(gs, cn);
             gs.characters[cn].used = USE_EMPTY;
             npc_remove_enemy(gs, cn, 0);
             return true;
@@ -1663,7 +1663,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                         let map_idx = x + 1 + y * SERVER_MAPX as usize;
                         let is_empty = gs.map[map_idx].it == 0;
 
-                        if is_empty && player::plr_check_target(gs, map_idx) {
+                        if is_empty && player::commands::plr_check_target(gs, map_idx) {
                             if let Some(in2) = God::create_item(gs, 18) {
                                 gs.items[in2].carried = cn as u16;
                                 gs.characters[cn].citem = in2 as u32;

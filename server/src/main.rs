@@ -4,9 +4,10 @@ mod driver;
 mod effect;
 mod game_state;
 mod god;
-mod keydb;
-mod keydb_store;
 mod types;
+
+#[cfg(test)]
+mod test_helpers;
 
 #[macro_use]
 pub mod helpers;
@@ -81,9 +82,9 @@ fn main() -> Result<(), String> {
 
     let handler_result = ctrlc::set_handler(move || {
         if !quit_flag_clone.load(Ordering::SeqCst) {
-            log::info!("Ctrl-C received. Shutdown initiated...");
+            log::info!("Shutdown signal received. Shutdown initiated...");
         } else {
-            log::info!("Alright, alright, I'm already terminating!");
+            log::info!("Shutdown already in progress.");
         }
         quit_flag_clone.store(true, Ordering::SeqCst);
     });
@@ -124,7 +125,7 @@ fn main() -> Result<(), String> {
         logout_entries.push((gs.players[player_idx].usnr, player_idx));
     }
     for (usnr, n) in &logout_entries {
-        player::plr_logout(&mut gs, *usnr, *n, LogoutReason::Shutdown);
+        player::connection::plr_logout(&mut gs, *usnr, *n, LogoutReason::Shutdown);
     }
 
     server.shutdown_background_saver();
