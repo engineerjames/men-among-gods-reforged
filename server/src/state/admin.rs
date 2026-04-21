@@ -1,4 +1,7 @@
-use core::{constants::CharacterFlags, string_operations::c_string_to_str, types::FontColor};
+use core::{
+    constants::CharacterFlags, server_commands::ServerCommandType,
+    string_operations::c_string_to_str, types::FontColor,
+};
 
 use crate::{game_state::GameState, god::God, helpers, network_manager};
 
@@ -55,7 +58,7 @@ impl GameState {
         let mut buf = [0u8; 16];
 
         // Send SV_LOOK1 packet - all equipment slots obscured (sprite 35)
-        buf[0] = core::constants::SV_LOOK1;
+        buf[0] = ServerCommandType::Look1 as u8;
         for i in 0..7 {
             let offset = 1 + i * 2;
             buf[offset] = 35;
@@ -66,7 +69,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK2 packet
-        buf[0] = core::constants::SV_LOOK2;
+        buf[0] = ServerCommandType::Look2 as u8;
 
         let sprite = self.characters[co].sprite;
         let points_tot = self.characters[co].points_tot;
@@ -89,7 +92,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK3 packet
-        buf[0] = core::constants::SV_LOOK3;
+        buf[0] = ServerCommandType::Look3 as u8;
 
         let end5 = self.characters[co].end[5];
         let a_hp = self.characters[co].a_hp;
@@ -128,7 +131,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK4 packet
-        buf[0] = core::constants::SV_LOOK4;
+        buf[0] = ServerCommandType::Look4 as u8;
 
         // All equipment slots obscured
         buf[1] = 35;
@@ -160,7 +163,7 @@ impl GameState {
         network_manager::xsend(self, player_id as usize, &buf, 16);
 
         // Send SV_LOOK5 packet (character name)
-        buf[0] = core::constants::SV_LOOK5;
+        buf[0] = ServerCommandType::Look5 as u8;
 
         let mut co_name = [0u8; 15];
         co_name.copy_from_slice(&mut self.characters[co].name[0..15]);
@@ -171,7 +174,7 @@ impl GameState {
 
         // Send SV_LOOK6 packets for all 62 depot slots in pairs
         for n in (0..62).step_by(2) {
-            buf[0] = core::constants::SV_LOOK6;
+            buf[0] = ServerCommandType::Look6 as u8;
             buf[1] = n as u8;
 
             for m in n..std::cmp::min(62, n + 2) {

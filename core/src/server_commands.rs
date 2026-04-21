@@ -1,7 +1,7 @@
 use crate::string_operations::c_string_to_str;
 
 /// Opcode values for incoming server commands.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
 pub enum ServerCommandType {
     Empty = 0,
@@ -70,6 +70,83 @@ pub enum ServerCommandType {
     Ignore = 73,
     Pong = 74,
     SetMap = 128,
+}
+
+impl From<u8> for ServerCommandType {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => ServerCommandType::Empty,
+            1 => ServerCommandType::Challenge,
+            2 => ServerCommandType::NewPlayer,
+            3 => ServerCommandType::SetCharName1,
+            4 => ServerCommandType::SetCharName2,
+            5 => ServerCommandType::SetCharName3,
+            6 => ServerCommandType::SetCharMode,
+            7 => ServerCommandType::SetCharAttrib,
+            8 => ServerCommandType::SetCharSkill,
+            12 => ServerCommandType::SetCharHp,
+            13 => ServerCommandType::SetCharEndur,
+            14 => ServerCommandType::SetCharMana,
+            20 => ServerCommandType::SetCharAHP,
+            21 => ServerCommandType::SetCharPts,
+            22 => ServerCommandType::SetCharGold,
+            23 => ServerCommandType::SetCharItem,
+            24 => ServerCommandType::SetCharWorn,
+            25 => ServerCommandType::SetCharObj,
+            27 => ServerCommandType::Tick,
+            29 => ServerCommandType::Look1,
+            30 => ServerCommandType::ScrollRight,
+            31 => ServerCommandType::ScrollLeft,
+            32 => ServerCommandType::ScrollUp,
+            33 => ServerCommandType::ScrollDown,
+            34 => ServerCommandType::LoginOk,
+            35 => ServerCommandType::ScrollRightUp,
+            36 => ServerCommandType::ScrollRightDown,
+            37 => ServerCommandType::ScrollLeftUp,
+            38 => ServerCommandType::ScrollLeftDown,
+            39 => ServerCommandType::Look2,
+            40 => ServerCommandType::Look3,
+            41 => ServerCommandType::Look4,
+            42 => ServerCommandType::SetTarget,
+            43 => ServerCommandType::SetMap2,
+            44 => ServerCommandType::SetOrigin,
+            45 => ServerCommandType::SetMap3,
+            46 => ServerCommandType::SetCharSpell,
+            47 => ServerCommandType::PlaySound,
+            48 => ServerCommandType::Exit,
+            49 => ServerCommandType::Msg,
+            50 => ServerCommandType::Look5,
+            51 => ServerCommandType::Look6,
+            52 => ServerCommandType::Log0,
+            53 => ServerCommandType::Log1,
+            54 => ServerCommandType::Log2,
+            55 => ServerCommandType::Log3,
+            56 => ServerCommandType::Load,
+            57 => ServerCommandType::Cap,
+            58 => ServerCommandType::Mod1,
+            59 => ServerCommandType::Mod2,
+            60 => ServerCommandType::Mod3,
+            61 => ServerCommandType::Mod4,
+            62 => ServerCommandType::Mod5,
+            63 => ServerCommandType::Mod6,
+            64 => ServerCommandType::Mod7,
+            65 => ServerCommandType::Mod8,
+            66 => ServerCommandType::SetMap4,
+            67 => ServerCommandType::SetMap5,
+            68 => ServerCommandType::SetMap6,
+            69 => ServerCommandType::SetCharAEnd,
+            70 => ServerCommandType::SetCharAMana,
+            71 => ServerCommandType::SetCharDir,
+            72 => ServerCommandType::Unique,
+            73 => ServerCommandType::Ignore,
+            74 => ServerCommandType::Pong,
+            128 => ServerCommandType::SetMap,
+            _ => {
+                log::error!("Unknown server command opcode: {value}");
+                ServerCommandType::Empty
+            }
+        }
+    }
 }
 
 /// Parsed payload variants for each [`ServerCommandType`].

@@ -1,13 +1,5 @@
 use flate2::{Decompress, FlushDecompress, Status};
-use mag_core::constants::{
-    SV_EXIT, SV_IGNORE, SV_LOAD, SV_PLAYSOUND, SV_SCROLL_DOWN, SV_SCROLL_LEFT, SV_SCROLL_LEFTDOWN,
-    SV_SCROLL_LEFTUP, SV_SCROLL_RIGHT, SV_SCROLL_RIGHTDOWN, SV_SCROLL_RIGHTUP, SV_SCROLL_UP,
-    SV_SETCHAR_AEND, SV_SETCHAR_AHP, SV_SETCHAR_AMANA, SV_SETCHAR_ATTRIB, SV_SETCHAR_DIR,
-    SV_SETCHAR_ENDUR, SV_SETCHAR_GOLD, SV_SETCHAR_HP, SV_SETCHAR_ITEM, SV_SETCHAR_MANA,
-    SV_SETCHAR_MODE, SV_SETCHAR_OBJ, SV_SETCHAR_PTS, SV_SETCHAR_SKILL, SV_SETCHAR_SPELL,
-    SV_SETCHAR_WORN, SV_SETMAP, SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6, SV_SETORIGIN,
-    SV_SETTARGET, SV_TICK, SV_UNIQUE,
-};
+use mag_core::server_commands::ServerCommandType;
 
 /// Decode one zlib-compressed chunk from a continuous zlib stream.
 pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String> {
@@ -151,54 +143,56 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
 
     let op = bytes[0];
 
-    if (op & SV_SETMAP) != 0 {
-        let off = op & !SV_SETMAP;
+    if (op & ServerCommandType::SetMap as u8) != 0 {
+        let off = op & !(ServerCommandType::SetMap as u8);
         return sv_setmap_len(bytes, off, last_setmap_n);
     }
 
-    let len = match op {
-        SV_SETCHAR_MODE => 2,
-        SV_SETCHAR_ATTRIB => 8,
-        SV_SETCHAR_SKILL => 8,
-        SV_SETCHAR_HP => 13,
-        SV_SETCHAR_ENDUR => 13,
-        SV_SETCHAR_MANA => 13,
-        SV_SETCHAR_AHP => 3,
-        SV_SETCHAR_AEND => 3,
-        SV_SETCHAR_AMANA => 3,
-        SV_SETCHAR_DIR => 2,
-        SV_SETCHAR_PTS => 13,
-        SV_SETCHAR_GOLD => 13,
-        SV_SETCHAR_ITEM => 9,
-        SV_SETCHAR_WORN => 9,
-        SV_SETCHAR_SPELL => 9,
-        SV_SETCHAR_OBJ => 5,
-        SV_SETMAP3 => sv_setmap3_len(26),
-        SV_SETMAP4 => sv_setmap3_len(0),
-        SV_SETMAP5 => sv_setmap3_len(2),
-        SV_SETMAP6 => sv_setmap3_len(6),
-        SV_SETORIGIN => 5,
-        SV_TICK => 2,
-        SV_SCROLL_RIGHT => 1,
-        SV_SCROLL_LEFT => 1,
-        SV_SCROLL_DOWN => 1,
-        SV_SCROLL_UP => 1,
-        SV_SCROLL_RIGHTDOWN => 1,
-        SV_SCROLL_RIGHTUP => 1,
-        SV_SCROLL_LEFTDOWN => 1,
-        SV_SCROLL_LEFTUP => 1,
-        SV_SETTARGET => 13,
-        SV_PLAYSOUND => 13,
-        SV_LOAD => 5,
-        SV_UNIQUE => 9,
-        SV_EXIT => {
+    let parsed_op = ServerCommandType::from(op);
+
+    let len = match parsed_op {
+        ServerCommandType::SetCharMode => 2,
+        ServerCommandType::SetCharAttrib => 8,
+        ServerCommandType::SetCharSkill => 8,
+        ServerCommandType::SetCharHp => 13,
+        ServerCommandType::SetCharEndur => 13,
+        ServerCommandType::SetCharMana => 13,
+        ServerCommandType::SetCharAHP => 3,
+        ServerCommandType::SetCharAEnd => 3,
+        ServerCommandType::SetCharAMana => 3,
+        ServerCommandType::SetCharDir => 2,
+        ServerCommandType::SetCharPts => 13,
+        ServerCommandType::SetCharGold => 13,
+        ServerCommandType::SetCharItem => 9,
+        ServerCommandType::SetCharWorn => 9,
+        ServerCommandType::SetCharSpell => 9,
+        ServerCommandType::SetCharObj => 5,
+        ServerCommandType::SetMap3 => sv_setmap3_len(26),
+        ServerCommandType::SetMap4 => sv_setmap3_len(0),
+        ServerCommandType::SetMap5 => sv_setmap3_len(2),
+        ServerCommandType::SetMap6 => sv_setmap3_len(6),
+        ServerCommandType::SetOrigin => 5,
+        ServerCommandType::Tick => 2,
+        ServerCommandType::ScrollRight => 1,
+        ServerCommandType::ScrollLeft => 1,
+        ServerCommandType::ScrollDown => 1,
+        ServerCommandType::ScrollUp => 1,
+        ServerCommandType::ScrollRightDown => 1,
+        ServerCommandType::ScrollRightUp => 1,
+        ServerCommandType::ScrollLeftDown => 1,
+        ServerCommandType::ScrollLeftUp => 1,
+        ServerCommandType::SetTarget => 13,
+        ServerCommandType::PlaySound => 13,
+        ServerCommandType::Load => 5,
+        ServerCommandType::Unique => 9,
+        ServerCommandType::Exit => {
             if bytes.len() >= 16 {
                 16
             } else {
                 5
             }
         }
-        SV_IGNORE => {
+        ServerCommandType::Ignore => {
             if bytes.len() < 5 {
                 return Err("SV_IGNORE truncated (need 5 bytes for size)".to_string());
             }
@@ -222,12 +216,12 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
             return Err("sv_cmd_len returned 0".to_string());
         }
         if idx + len > payload.len() {
-            let opcode = payload[idx];
+            let opcode = ServerCommandType::from(payload[idx]);
             let remaining = payload.len() - idx;
 
-            if opcode == SV_EXIT && remaining < 5 {
+            if opcode == ServerCommandType::Exit && remaining < 5 {
                 let mut cmd = vec![0u8; 5];
-                cmd[0] = SV_EXIT;
+                cmd[0] = ServerCommandType::Exit as u8;
                 cmd[1..1 + remaining.saturating_sub(1)]
                     .copy_from_slice(&payload[idx + 1..payload.len()]);
                 out.push(cmd);
@@ -235,7 +229,7 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
             }
 
             return Err(format!(
-                "Truncated server command opcode={opcode} at offset={idx}: need {len} bytes, have {remaining}"
+                "Truncated server command opcode={opcode:?} at offset={idx}: need {len} bytes, have {remaining}"
             ));
         }
         out.push(payload[idx..idx + len].to_vec());
@@ -248,7 +242,6 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mag_core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6, SV_TICK};
 
     /// Verify the new light-packet header lengths match what the server encodes.
     /// Server: [opcode, idx_lo, idx_hi, base_light, nibble_pairs...]
@@ -271,24 +264,24 @@ mod tests {
         let mut payload: Vec<u8> = Vec::new();
 
         // SV_TICK (2 bytes)
-        payload.push(SV_TICK);
+        payload.push(ServerCommandType::Tick as u8);
         payload.push(0x05);
 
         // SV_SETMAP4 / cl_light_one (4 bytes): [op, idx_lo, idx_hi, light]
-        payload.push(SV_SETMAP4);
+        payload.push(ServerCommandType::SetMap4 as u8);
         payload.push(0x01); // idx = 1
         payload.push(0x00);
         payload.push(0x07); // light = 7
 
         // SV_SETMAP5 / cl_light_three (5 bytes): [op, idx_lo, idx_hi, light, nibble]
-        payload.push(SV_SETMAP5);
+        payload.push(ServerCommandType::SetMap5 as u8);
         payload.push(0x04);
         payload.push(0x00);
         payload.push(0x05);
         payload.push(0x23); // nibble pair for tiles 5,6
 
         // SV_SETMAP6 / cl_light_seven (7 bytes): [op, idx_lo, idx_hi, light, 3 nibbles]
-        payload.push(SV_SETMAP6);
+        payload.push(ServerCommandType::SetMap6 as u8);
         payload.push(0x0A);
         payload.push(0x00);
         payload.push(0x03);
@@ -297,7 +290,7 @@ mod tests {
         payload.push(0x89);
 
         // SV_SETMAP3 / cl_light_26 (17 bytes): [op, idx_lo, idx_hi, light, 13 nibbles]
-        payload.push(SV_SETMAP3);
+        payload.push(ServerCommandType::SetMap3 as u8);
         payload.push(0x10);
         payload.push(0x00);
         payload.push(0x0F);
@@ -318,7 +311,7 @@ mod tests {
     /// a truncation error (guards against regression to the old length).
     #[test]
     fn split_tick_payload_rejects_old_3byte_light_packet() {
-        let payload = vec![SV_SETMAP4, 0x01, 0x00]; // only 3 bytes — old format
+        let payload = vec![ServerCommandType::SetMap4 as u8, 0x01, 0x00]; // only 3 bytes — old format
         let result = split_tick_payload(&payload);
         assert!(result.is_err(), "3-byte SV_SETMAP4 should be rejected");
     }

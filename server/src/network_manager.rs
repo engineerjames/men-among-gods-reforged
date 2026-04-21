@@ -1,5 +1,5 @@
-use core::constants::{SV_SETMAP3, SV_SETMAP4, SV_SETMAP5, SV_SETMAP6};
 use core::logout_reasons::LogoutReason;
+use core::server_commands::ServerCommandType;
 use std::net::Shutdown;
 use std::sync::{OnceLock, RwLock};
 
@@ -81,10 +81,10 @@ pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
                 stats.cnt[pnr] = stats.cnt[pnr].saturating_add(send_len);
                 if pnr > 128 {
                     stats.pkt_mapshort = stats.pkt_mapshort.saturating_add(send_len);
-                } else if pnr == SV_SETMAP3 as usize
-                    || pnr == SV_SETMAP4 as usize
-                    || pnr == SV_SETMAP5 as usize
-                    || pnr == SV_SETMAP6 as usize
+                } else if pnr == ServerCommandType::SetMap3 as usize
+                    || pnr == ServerCommandType::SetMap4 as usize
+                    || pnr == ServerCommandType::SetMap5 as usize
+                    || pnr == ServerCommandType::SetMap6 as usize
                 {
                     stats.pkt_light = stats.pkt_light.saturating_add(send_len);
                 }
