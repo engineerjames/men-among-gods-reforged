@@ -6,6 +6,7 @@ mod game_state;
 mod god;
 mod keydb;
 mod keydb_store;
+mod test_helpers;
 mod types;
 
 #[macro_use]
