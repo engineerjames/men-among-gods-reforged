@@ -19,6 +19,8 @@ mod populate;
 mod server;
 mod state;
 mod talk;
+#[cfg(test)]
+mod test_helpers;
 mod tls;
 
 use core::logout_reasons::LogoutReason;
