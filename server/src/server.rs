@@ -183,7 +183,7 @@ impl Server {
                 gs.characters[i].get_name(),
             );
 
-            player::plr_logout(gs, i, 0, LogoutReason::Shutdown);
+            player::connection::plr_logout(gs, i, 0, LogoutReason::Shutdown);
         }
 
         // Initialize subsystems
@@ -389,7 +389,7 @@ impl Server {
                 continue;
             }
 
-            player::plr_tick(gs, n);
+            player::tick::plr_tick(gs, n);
 
             if is_normal {
                 online += 1;
@@ -422,7 +422,7 @@ impl Server {
                 gs.players[n].inbuf.copy_within(16..256, 0);
             }
 
-            player::plr_idle(gs, n);
+            player::tick::plr_idle(gs, n);
         }
 
         // Do login stuff for players not in normal state
@@ -434,7 +434,7 @@ impl Server {
                 continue;
             }
 
-            player::plr_state(gs, n);
+            player::tick::plr_state(gs, n);
         }
 
         // Send changes to players in normal state
@@ -446,8 +446,8 @@ impl Server {
                 continue;
             }
 
-            player::plr_getmap(gs, n);
-            player::plr_change(gs, n);
+            player::map::plr_getmap(gs, n);
+            player::tick::plr_change(gs, n);
         }
 
         // Let characters act
@@ -554,7 +554,7 @@ impl Server {
                     }
                 }
 
-                player::plr_act(gs, n)
+                player::tick::plr_act(gs, n)
             }
 
             gs.do_regenerate(n);
@@ -1345,7 +1345,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
+                    player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
                 Ok(len) => {
                     gs.players[player_idx].in_len += len;
@@ -1361,7 +1361,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
+                    player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
             }
         }
@@ -1412,7 +1412,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
+                    player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
                 Ok(ret) => {
                     gs.globals.send += ret as i64;
@@ -1431,7 +1431,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
-                    player::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
+                    player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
             }
         }

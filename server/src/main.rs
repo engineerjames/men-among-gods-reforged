@@ -125,7 +125,7 @@ fn main() -> Result<(), String> {
         logout_entries.push((gs.players[player_idx].usnr, player_idx));
     }
     for (usnr, n) in &logout_entries {
-        player::plr_logout(&mut gs, *usnr, *n, LogoutReason::Shutdown);
+        player::connection::plr_logout(&mut gs, *usnr, *n, LogoutReason::Shutdown);
     }
 
     server.shutdown_background_saver();

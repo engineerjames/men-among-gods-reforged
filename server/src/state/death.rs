@@ -470,7 +470,7 @@ impl GameState {
             self.characters[co].enemy[m] = 0;
         }
 
-        player::plr_reset_status(self, co);
+        player::commands::plr_reset_status(self, co);
 
         // Apply permanent stat loss if not a god and no guardian angel
         let is_god = self.characters[co].flags & CharacterFlags::God.bits() != 0;
@@ -498,7 +498,7 @@ impl GameState {
 
         // Setup the grave (body) - but only if we didn't force the save
         if !force_save {
-            player::plr_reset_status(self, cc);
+            player::commands::plr_reset_status(self, cc);
 
             self.characters[cc].player = 0;
             self.characters[cc].flags = CharacterFlags::Body.bits();
@@ -522,7 +522,7 @@ impl GameState {
             // Update grave character
             self.characters[cc].set_do_update_flags();
 
-            player::plr_map_set(self, cc);
+            player::map::plr_map_set(self, cc);
 
             // After player death, `co` is reassigned to `cc` for corpse effects.
             cc
@@ -547,7 +547,7 @@ impl GameState {
         // Update NPC death statistics
         self.globals.npcs_died += 1;
 
-        player::plr_reset_status(self, co);
+        player::commands::plr_reset_status(self, co);
 
         // Check for USURP flag (player controlling NPC)
         let usurp_info = if self.characters[co].flags & CharacterFlags::Usurp.bits() != 0 {
@@ -565,7 +565,7 @@ impl GameState {
                 self.players[player_nr].usnr = c2;
                 self.characters[c2].flags &= !CharacterFlags::ComputerControlledPlayer.bits();
             } else {
-                player::player_exit(self, player_nr);
+                player::connection::player_exit(self, player_nr);
             }
         }
 
@@ -665,7 +665,7 @@ impl GameState {
     /// * `co` - Labkeeper character id who died
     /// * `cn` - Killer id
     pub(crate) fn handle_labkeeper_death(&mut self, co: usize, cn: usize) {
-        player::plr_map_remove(self, co);
+        player::map::plr_map_remove(self, co);
 
         // Destroy all items
         // TODO: Seems like we're getting rid of the items twice?
