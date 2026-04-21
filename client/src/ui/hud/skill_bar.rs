@@ -83,6 +83,12 @@ const UI_FONT: usize = 1;
 /// Maximum characters of a skill name to show in a cell.
 const MAX_ABBREV: usize = 4;
 
+/// Transparent border width to trim from the custom Protect icon.
+const PROTECT_ICON_TRIM_PX: u32 = 4;
+
+/// Protect icon render scale factor relative to the standard 20x20 slot.
+const PROTECT_ICON_SCALE: u32 = 2;
+
 /// Number of active spell snapshot slots (matches `ClientPlayer::spell`).
 const ACTIVE_SPELL_SLOTS: usize = 20;
 
@@ -133,6 +139,8 @@ pub struct SkillBar {
     actions: Vec<WidgetAction>,
     /// Lazily-loaded texture ID for the `skillbar.png` background image.
     bg_texture_id: Option<usize>,
+    /// Lazily-loaded texture ID for the custom Protect skill icon.
+    protect_texture_id: Option<usize>,
     /// Active-spell sprite layout configuration.
     config: SkillBarConfig,
     /// Controller-selected skill slot index (0..12), or `None` if no slot is highlighted.
@@ -160,6 +168,7 @@ impl SkillBar {
             mouse_y: 0,
             actions: Vec::new(),
             bg_texture_id: None,
+            protect_texture_id: None,
             config,
             controller_selected_slot: None,
         }
@@ -227,6 +236,93 @@ impl SkillBar {
         }
         // Take the first MAX_ABBREV characters.
         name.chars().take(MAX_ABBREV).collect()
+    }
+
+    /// Returns whether this skill should use a custom icon in the bar.
+    ///
+    /// # Arguments
+    ///
+    /// * `skill_nr` - Bound skill number for the slot.
+    ///
+    /// # Returns
+    ///
+    /// * `true` for Protect, `false` for every other skill.
+    fn uses_custom_icon(skill_nr: usize) -> bool {
+        skill_nr == skills::SK_PROTECT
+    }
+
+    /// Returns the source rectangle for the Protect icon after trimming its transparent border.
+    ///
+    /// # Arguments
+    ///
+    /// * `texture_width` - Full texture width in pixels.
+    /// * `texture_height` - Full texture height in pixels.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Rect)` when the texture is large enough to trim safely.
+    /// * `None` when trimming would consume the whole image.
+    fn protect_icon_src_rect(texture_width: u32, texture_height: u32) -> Option<Rect> {
+        let total_trim = PROTECT_ICON_TRIM_PX * 2;
+        if texture_width <= total_trim || texture_height <= total_trim {
+            return None;
+        }
+
+        Some(Rect::new(
+            PROTECT_ICON_TRIM_PX as i32,
+            PROTECT_ICON_TRIM_PX as i32,
+            texture_width - total_trim,
+            texture_height - total_trim,
+        ))
+    }
+
+    /// Returns the destination rectangle used to render the Protect icon.
+    ///
+    /// The icon is intentionally oversized for testing: it renders at 2x the
+    /// normal slot size while keeping its center aligned with the original
+    /// 20x20 cell.
+    ///
+    /// # Arguments
+    ///
+    /// * `slot_rect` - The original 20x20 slot rectangle.
+    ///
+    /// # Returns
+    ///
+    /// * A destination rectangle centered over `slot_rect`.
+    fn protect_icon_dst_rect(slot_rect: Rect) -> Rect {
+        let size = CELL as u32 * PROTECT_ICON_SCALE;
+        let width_delta = size as i32 - slot_rect.width() as i32;
+        let height_delta = size as i32 - slot_rect.height() as i32;
+
+        Rect::new(
+            slot_rect.x() - width_delta / 2,
+            slot_rect.y() - height_delta / 2,
+            size,
+            size,
+        )
+    }
+
+    /// Loads the custom Protect icon from disk on first use.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Render context holding the graphics cache.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(texture_id)` if the icon is available.
+    /// * `None` if the file could not be loaded.
+    fn ensure_protect_texture(&mut self, ctx: &mut RenderContext<'_, '_>) -> Option<usize> {
+        if self.protect_texture_id.is_none() {
+            let path = filepaths::get_asset_directory()
+                .join("gfx")
+                .join("Protect.png");
+            if let Ok(id) = ctx.gfx.load_texture_from_path(&path) {
+                self.protect_texture_id = Some(id);
+            }
+        }
+
+        self.protect_texture_id
     }
 
     /// Compute the X position of the `n`-th active spell sprite.
@@ -312,6 +408,19 @@ impl Widget for SkillBar {
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        let needs_protect_icon = self.data.as_ref().is_some_and(|data| {
+            data.keybinds
+                .iter()
+                .flatten()
+                .copied()
+                .any(Self::uses_custom_icon)
+        });
+        let protect_icon_id = if needs_protect_icon {
+            self.ensure_protect_texture(ctx)
+        } else {
+            None
+        };
+
         let data = match self.data.as_ref() {
             Some(d) => d,
             None => return Ok(()),
@@ -341,12 +450,26 @@ impl Widget for SkillBar {
             let x = self.bounds.x + cell_x;
             let y = self.bounds.y + cell_y;
             let rect = sdl2::rect::Rect::new(x, y, CELL as u32, CELL as u32);
+            let bound_skill = data.keybinds[i];
+            let custom_icon = match bound_skill {
+                Some(skill_nr) if Self::uses_custom_icon(skill_nr) => protect_icon_id.map(|id| {
+                    let (width, height) = ctx.gfx.query_texture_size(id);
+                    (id, Self::protect_icon_src_rect(width, height))
+                }),
+                _ => None,
+            };
 
-            // Cell background.
-            ctx.canvas.set_draw_color(CELL_BG);
-            ctx.canvas.fill_rect(rect)?;
-            ctx.canvas.set_draw_color(CELL_BORDER);
-            ctx.canvas.draw_rect(rect)?;
+            if let Some((icon_id, src_rect)) = custom_icon {
+                let tex = ctx.gfx.get_texture(icon_id);
+                let dst_rect = Self::protect_icon_dst_rect(rect);
+                ctx.canvas.copy(tex, src_rect, Some(dst_rect))?;
+            } else {
+                // Cell background.
+                ctx.canvas.set_draw_color(CELL_BG);
+                ctx.canvas.fill_rect(rect)?;
+                ctx.canvas.set_draw_color(CELL_BORDER);
+                ctx.canvas.draw_rect(rect)?;
+            }
 
             // Hover highlight.
             if self.hit_top_cell(self.mouse_x, self.mouse_y) == Some(i) {
@@ -368,42 +491,44 @@ impl Widget for SkillBar {
             // Content: slot number on top row, skill name / "+" hint on bottom row.
             let cx = x + CELL / 2;
             // Slot number (1-based) always shown near the top of the cell.
-            let slot_label = (i + 1).to_string();
-            font_cache::draw_text(
-                ctx.canvas,
-                ctx.gfx,
-                UI_FONT,
-                &slot_label,
-                cx,
-                y + 1,
-                font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
-            )?;
-            // Skill name or "+" hint in the lower half of the cell.
-            let cy = y + 10; // 10 = glyph height; sits directly below the number
-            if let Some(skill_nr) = data.keybinds[i] {
-                let name = skills::get_skill_name(skill_nr);
-                let abbr = Self::abbreviate(name);
+            if custom_icon.is_none() {
+                let slot_label = (i + 1).to_string();
                 font_cache::draw_text(
                     ctx.canvas,
                     ctx.gfx,
                     UI_FONT,
-                    &abbr,
+                    &slot_label,
                     cx,
-                    cy,
-                    font_cache::TextStyle::centered()
-                        .with_tint(SKILL_TEXT_COLOR)
-                        .with_drop_shadow(),
-                )?;
-            } else {
-                font_cache::draw_text(
-                    ctx.canvas,
-                    ctx.gfx,
-                    UI_FONT,
-                    "+",
-                    cx,
-                    cy,
+                    y + 1,
                     font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
                 )?;
+                // Skill name or "+" hint in the lower half of the cell.
+                let cy = y + 10; // 10 = glyph height; sits directly below the number
+                if let Some(skill_nr) = bound_skill {
+                    let name = skills::get_skill_name(skill_nr);
+                    let abbr = Self::abbreviate(name);
+                    font_cache::draw_text(
+                        ctx.canvas,
+                        ctx.gfx,
+                        UI_FONT,
+                        &abbr,
+                        cx,
+                        cy,
+                        font_cache::TextStyle::centered()
+                            .with_tint(SKILL_TEXT_COLOR)
+                            .with_drop_shadow(),
+                    )?;
+                } else {
+                    font_cache::draw_text(
+                        ctx.canvas,
+                        ctx.gfx,
+                        UI_FONT,
+                        "+",
+                        cx,
+                        cy,
+                        font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
+                    )?;
+                }
             }
         }
 
@@ -670,5 +795,39 @@ mod tests {
         assert_eq!(bar.spell_pos_x(0), 100);
         assert_eq!(bar.spell_pos_x(1), 116); // 100 + 1*(24-8)
         assert_eq!(bar.spell_pos_x(5), 100 + 5 * 16); // 100 + 5*(24-8)
+    }
+
+    #[test]
+    fn uses_custom_icon_only_for_protect() {
+        assert!(SkillBar::uses_custom_icon(skills::SK_PROTECT));
+        assert!(!SkillBar::uses_custom_icon(skills::SK_HEAL));
+    }
+
+    #[test]
+    fn protect_icon_src_rect_trims_four_pixels_per_edge() {
+        let rect = SkillBar::protect_icon_src_rect(1024, 1024)
+            .expect("protect icon should have a trimmed source rect");
+
+        assert_eq!(rect.x(), PROTECT_ICON_TRIM_PX as i32);
+        assert_eq!(rect.y(), PROTECT_ICON_TRIM_PX as i32);
+        assert_eq!(rect.width(), 1024 - PROTECT_ICON_TRIM_PX * 2);
+        assert_eq!(rect.height(), 1024 - PROTECT_ICON_TRIM_PX * 2);
+    }
+
+    #[test]
+    fn protect_icon_src_rect_rejects_too_small_textures() {
+        assert!(SkillBar::protect_icon_src_rect(8, 8).is_none());
+        assert!(SkillBar::protect_icon_src_rect(7, 32).is_none());
+    }
+
+    #[test]
+    fn protect_icon_dst_rect_is_centered_over_slot() {
+        let slot = Rect::new(100, 200, CELL as u32, CELL as u32);
+        let dst = SkillBar::protect_icon_dst_rect(slot);
+
+        assert_eq!(dst.x(), 90);
+        assert_eq!(dst.y(), 190);
+        assert_eq!(dst.width(), 40);
+        assert_eq!(dst.height(), 40);
     }
 }
