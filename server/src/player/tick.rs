@@ -1272,3 +1272,563 @@ pub fn plr_idle(gs: &mut GameState, nr: usize) {
         plr_logout(gs, usnr, nr, LogoutReason::IdleTooLong);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{TcpListener, TcpStream};
+
+    use crate::{
+        test_helpers::{add_test_player, with_test_gs},
+        tls::GameStream,
+    };
+    use core::{
+        constants::{
+            CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, ST_CAP, ST_CONNECT, ST_EXIT,
+            ST_LOGIN, ST_NEWCAP, ST_NEWLOGIN, ST_NORMAL, USE_ACTIVE, USE_NONACTIVE,
+        },
+        string_operations::write_ascii_into_fixed,
+        types::Map,
+    };
+
+    fn attach_test_socket(gs: &mut GameState, nr: usize) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let client = TcpStream::connect(addr).expect("connect client");
+        let (server, _) = listener.accept().expect("accept client");
+        drop(client);
+        gs.players[nr].sock = Some(GameStream::Plain(server));
+    }
+
+    fn reset_tbuf(gs: &mut GameState, nr: usize) {
+        gs.players[nr].tptr = 0;
+        gs.players[nr].tbuf.fill(0);
+    }
+
+    fn map_index(x: i16, y: i16) -> usize {
+        x as usize + y as usize * core::constants::SERVER_MAPX as usize
+    }
+
+    fn setup_existing_character(gs: &mut GameState, cn: usize, player: i32, used: u8, name: &str) {
+        gs.characters[cn] = core::types::Character::default();
+        gs.characters[cn].used = used;
+        gs.characters[cn].player = player;
+        gs.characters[cn].x = 10;
+        gs.characters[cn].y = 10;
+        gs.characters[cn].tox = 10;
+        gs.characters[cn].toy = 10;
+        gs.characters[cn].frx = 10;
+        gs.characters[cn].fry = 10;
+        gs.characters[cn].tavern_x = 10;
+        gs.characters[cn].tavern_y = 10;
+        write_ascii_into_fixed(&mut gs.characters[cn].name, name);
+        write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
+        gs.map[map_index(10, 10)].ch = cn as u32;
+    }
+
+    fn seed_character_template(gs: &mut GameState, template_id: usize) {
+        gs.character_templates[template_id] = core::types::Character::default();
+        gs.character_templates[template_id].used = USE_ACTIVE;
+        gs.character_templates[template_id].mode = 1;
+        gs.character_templates[template_id].x = 10;
+        gs.character_templates[template_id].y = 10;
+        gs.character_templates[template_id].tox = 10;
+        gs.character_templates[template_id].toy = 10;
+    }
+
+    fn active_tick_for_speed(speed: usize) -> usize {
+        SPEEDTAB[speed]
+            .iter()
+            .position(|value| *value != 0)
+            .expect("speed has active tick")
+    }
+
+    #[test]
+    fn speedo_clamps_speed_and_uses_cycle_index() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let ctick = 3usize;
+            gs.characters[cn].speed = (MAX_SPEEDTAB_SPEED_INDEX + 20) as i16;
+            gs.globals.ticker = (core::constants::CTICK_CYCLE_LEN + ctick) as i32;
+
+            assert_eq!(
+                speedo(gs, cn),
+                SPEEDTAB[MAX_SPEEDTAB_SPEED_INDEX][ctick] as i32
+            );
+        });
+    }
+
+    #[test]
+    fn player_driver_med_respects_cooldown_and_runs_follow_driver_when_due() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let leader = 2usize;
+            setup_existing_character(gs, leader, 0, USE_ACTIVE, "Leader");
+            gs.characters[leader].tox = 10;
+            gs.characters[leader].toy = 10;
+            gs.characters[leader].dir = core::constants::DX_UP;
+
+            gs.characters[cn].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[cn].data[63] = leader as i32;
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 12;
+            gs.characters[cn].tox = 10;
+            gs.characters[cn].toy = 12;
+            gs.characters[cn].dir = core::constants::DX_UP;
+            gs.characters[cn].data[10] = leader as i32;
+            gs.characters[cn].data[12] = 1;
+            gs.characters[cn].misc_action = 777;
+            gs.globals.ticker = TICKS * 15;
+
+            player_driver_med(gs, cn);
+            assert_eq!(gs.characters[cn].misc_action, 777);
+
+            gs.characters[cn].data[12] = 0;
+            player_driver_med(gs, cn);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_IDLE as u16
+            );
+        });
+    }
+
+    #[test]
+    fn plr_act_short_circuits_and_resets_unknown_status() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let active_tick = active_tick_for_speed(10);
+            gs.characters[cn].speed = 10;
+            gs.characters[cn].status = 23;
+            gs.characters[cn].stunned = 1;
+            gs.map[map_index(10, 10)].ch = cn as u32;
+            gs.globals.ticker = active_tick as i32;
+
+            plr_act(gs, cn);
+            assert_eq!(gs.characters[cn].status, 23);
+            assert_eq!(gs.characters[cn].y, 10);
+
+            gs.characters[cn].stunned = 0;
+            gs.characters[cn].flags |= CharacterFlags::Stoned.bits();
+            plr_act(gs, cn);
+            assert_eq!(gs.characters[cn].status, 23);
+            assert_eq!(gs.characters[cn].y, 10);
+
+            gs.characters[cn].flags &= !CharacterFlags::Stoned.bits();
+            gs.characters[cn].status = 255;
+            plr_act(gs, cn);
+            assert_eq!(gs.characters[cn].status, 0);
+        });
+    }
+
+    #[test]
+    fn plr_act_advances_and_executes_move_turn_and_misc_branches() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let active_tick = active_tick_for_speed(10);
+            gs.characters[cn].speed = 10;
+            gs.globals.ticker = active_tick as i32;
+
+            gs.characters[cn].status = 16;
+            plr_act(gs, cn);
+            assert_eq!(gs.characters[cn].status, 17);
+
+            gs.characters[cn].status = 23;
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 10;
+            gs.characters[cn].tox = 10;
+            gs.characters[cn].toy = 10;
+            gs.map[map_index(10, 10)].ch = cn as u32;
+            plr_act(gs, cn);
+            assert_eq!(gs.characters[cn].status, 16);
+            assert_eq!(gs.characters[cn].y, 9);
+
+            gs.characters[cn].status = 135;
+            gs.characters[cn].dir = core::constants::DX_DOWN;
+            plr_act(gs, cn);
+            assert_eq!(gs.characters[cn].status, 132);
+            assert_eq!(gs.characters[cn].dir, core::constants::DX_UP);
+
+            gs.characters[cn].status = 167;
+            gs.characters[cn].status2 = 255;
+            gs.characters[cn].cerrno = 0;
+            plr_act(gs, cn);
+            assert_eq!(gs.characters[cn].status, 160);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+        });
+    }
+
+    #[test]
+    fn plr_state_handles_timeouts_and_cap_transitions() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].state = ST_EXIT;
+            gs.players[nr].lasttick = 0;
+            gs.globals.ticker = TICKS * 16;
+
+            plr_state(gs, nr);
+            assert!(gs.players[nr].sock.is_none());
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            gs.players[nr].state = ST_NEWCAP;
+            gs.players[nr].lasttick = 0;
+            gs.globals.ticker = TICKS * 11;
+            plr_state(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_NEWLOGIN);
+
+            gs.players[nr].state = ST_CAP;
+            gs.players[nr].lasttick = 0;
+            plr_state(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_LOGIN);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].state = ST_CONNECT;
+            gs.players[nr].lasttick = 0;
+            gs.globals.ticker = TICKS * 61;
+
+            plr_state(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+    }
+
+    #[test]
+    fn plr_state_dispatches_newlogin_and_login_handlers() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            seed_character_template(gs, 2);
+            gs.players[nr].state = ST_NEWLOGIN;
+            gs.players[nr].version = core::constants::VERSION as i32;
+            gs.players[nr].race = 2;
+
+            plr_state(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_NORMAL);
+            assert!(gs.players[nr].usnr > 0);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            setup_existing_character(gs, 2, 0, USE_NONACTIVE, "LoginTarget");
+            gs.characters[2].pass1 = 111;
+            gs.characters[2].pass2 = 222;
+            gs.players[nr].state = ST_LOGIN;
+            gs.players[nr].version = core::constants::VERSION as i32;
+            gs.players[nr].usnr = 2;
+            gs.players[nr].pass1 = 111;
+            gs.players[nr].pass2 = 222;
+
+            plr_state(gs, nr);
+
+            assert_eq!(gs.players[nr].state, ST_NORMAL);
+            assert_eq!(gs.characters[2].player, nr as i32);
+        });
+    }
+
+    #[test]
+    fn plr_change_stats_updates_client_mirrors_and_clears_update_flags() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            write_ascii_into_fixed(&mut gs.characters[cn].name, "TickTester");
+            gs.characters[cn].temp = 42;
+            gs.characters[cn].mode = 2;
+            gs.characters[cn].attrib[0] = [1, 2, 3, 4, 5, 6];
+            gs.characters[cn].hp = [10, 11, 12, 13, 14, 15];
+            gs.characters[cn].end = [20, 21, 22, 23, 24, 25];
+            gs.characters[cn].mana = [30, 31, 32, 33, 34, 35];
+            gs.characters[cn].skill[3] = [7, 8, 9, 10, 11, 12];
+
+            gs.characters[cn].item[0] = 10;
+            gs.items[10].used = USE_ACTIVE;
+            gs.items[10].active = 0;
+            gs.items[10].sprite[0] = 77;
+            gs.items[10].placement = 5;
+            gs.items[10].flags = ItemFlags::IF_UPDATE.bits();
+
+            gs.characters[cn].worn[0] = 11;
+            gs.items[11].used = USE_ACTIVE;
+            gs.items[11].active = 1;
+            gs.items[11].sprite[1] = 88;
+            gs.items[11].placement = 6;
+            gs.items[11].flags = ItemFlags::IF_UPDATE.bits();
+
+            gs.characters[cn].spell[0] = 12;
+            gs.items[12].used = USE_ACTIVE;
+            gs.items[12].sprite[1] = 99;
+            gs.items[12].active = 8;
+            gs.items[12].duration = 16;
+            gs.items[12].flags = ItemFlags::IF_UPDATE.bits();
+
+            gs.characters[cn].citem = 13;
+            gs.items[13].used = USE_ACTIVE;
+            gs.items[13].active = 0;
+            gs.items[13].sprite[0] = 111;
+            gs.items[13].placement = 7;
+            gs.items[13].flags = ItemFlags::IF_UPDATE.bits();
+
+            plr_change_stats(gs, nr, cn, 0);
+
+            assert_eq!(
+                gs.players[nr].tbuf[0],
+                ServerCommandType::SetCharName1 as u8
+            );
+            assert!(gs.players[nr].tptr > 0);
+            assert_eq!(gs.players[nr].cpl.name, gs.characters[cn].name);
+            assert_eq!(gs.players[nr].cpl.mode, 2);
+            assert_eq!(gs.players[nr].cpl.attrib[0], [1, 2, 3, 4, 5, 6]);
+            assert_eq!(gs.players[nr].cpl.hp, gs.characters[cn].hp);
+            assert_eq!(gs.players[nr].cpl.end, gs.characters[cn].end);
+            assert_eq!(gs.players[nr].cpl.mana, gs.characters[cn].mana);
+            assert_eq!(gs.players[nr].cpl.skill[3], gs.characters[cn].skill[3]);
+            assert_eq!(gs.players[nr].cpl.item[0], 10);
+            assert_eq!(gs.players[nr].cpl.worn[0], 11);
+            assert_eq!(gs.players[nr].cpl.spell[0], 12);
+            assert_eq!(gs.players[nr].cpl.active[0], 8);
+            assert_eq!(gs.players[nr].cpl.citem, 13);
+            assert_eq!(gs.items[10].flags & ItemFlags::IF_UPDATE.bits(), 0);
+            assert_eq!(gs.items[11].flags & ItemFlags::IF_UPDATE.bits(), 0);
+            assert_eq!(gs.items[12].flags & ItemFlags::IF_UPDATE.bits(), 0);
+            assert_eq!(gs.items[13].flags & ItemFlags::IF_UPDATE.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn plr_change_stats_handles_building_item_and_gold_cursor_encodings() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
+            gs.characters[cn].item[0] = 0x40000000u32 | core::constants::MF_TAVERN as u32;
+            plr_change_stats(gs, nr, cn, 0);
+            assert_eq!(gs.players[nr].cpl.item[0], gs.characters[cn].item[0] as i32);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharItem as u8);
+            assert_eq!(gs.players[nr].tbuf[5], 53);
+
+            reset_tbuf(gs, nr);
+            gs.characters[cn].flags &= !CharacterFlags::BuildMode.bits();
+            gs.players[nr].cpl.citem = 0;
+            gs.characters[cn].citem = 0x80000064u32;
+            plr_change_stats(gs, nr, cn, 0);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharObj as u8);
+            assert_eq!(gs.players[nr].tbuf[1], 39);
+        });
+    }
+
+    #[test]
+    fn scalar_change_helpers_emit_expected_packets() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            gs.characters[cn].a_hp = 2500;
+            plr_change_hp(gs, nr, cn);
+            assert_eq!(
+                gs.players[nr].tbuf[..3],
+                [ServerCommandType::SetCharHp as u8, 3, 0]
+            );
+            assert_eq!(gs.players[nr].cpl.a_hp, 3);
+
+            reset_tbuf(gs, nr);
+            gs.characters[cn].a_end = 3500;
+            plr_change_end(gs, nr, cn);
+            assert_eq!(
+                gs.players[nr].tbuf[..3],
+                [ServerCommandType::SetCharEndur as u8, 4, 0]
+            );
+            assert_eq!(gs.players[nr].cpl.a_end, 4);
+
+            reset_tbuf(gs, nr);
+            gs.characters[cn].a_mana = 4500;
+            plr_change_mana(gs, nr, cn);
+            assert_eq!(
+                gs.players[nr].tbuf[..3],
+                [ServerCommandType::SetCharMana as u8, 5, 0]
+            );
+            assert_eq!(gs.players[nr].cpl.a_mana, 5);
+
+            reset_tbuf(gs, nr);
+            gs.characters[cn].dir = core::constants::DX_LEFT;
+            plr_change_dir(gs, nr, cn);
+            assert_eq!(
+                gs.players[nr].tbuf[..2],
+                [
+                    ServerCommandType::SetCharDir as u8,
+                    core::constants::DX_LEFT
+                ]
+            );
+            assert_eq!(gs.players[nr].cpl.dir, core::constants::DX_LEFT as i32);
+
+            reset_tbuf(gs, nr);
+            gs.characters[cn].points = 5;
+            gs.characters[cn].points_tot = 10;
+            gs.characters[cn].kindred = 15;
+            plr_change_points(gs, nr, cn);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharPts as u8);
+            assert_eq!(gs.players[nr].cpl.points, 5);
+            assert_eq!(gs.players[nr].cpl.points_tot, 10);
+            assert_eq!(gs.players[nr].cpl.kindred, 15);
+
+            reset_tbuf(gs, nr);
+            gs.characters[cn].gold = 1234;
+            gs.characters[cn].armor = 9;
+            gs.characters[cn].weapon = 11;
+            plr_change_gold(gs, nr, cn);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharGold as u8);
+            assert_eq!(gs.players[nr].cpl.gold, 1234);
+            assert_eq!(gs.players[nr].cpl.armor, 9);
+            assert_eq!(gs.players[nr].cpl.weapon, 11);
+        });
+    }
+
+    #[test]
+    fn plr_change_load_and_target_emit_expected_packets() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].flags |= CharacterFlags::God.bits();
+            gs.globals.load = 77;
+
+            plr_change_load(gs, nr, cn, 32);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::Load as u8);
+            assert_eq!(
+                u32::from_le_bytes(gs.players[nr].tbuf[1..5].try_into().unwrap()),
+                77
+            );
+
+            reset_tbuf(gs, nr);
+            gs.characters[cn].attack_cn = 2;
+            gs.characters[cn].goto_x = 11;
+            gs.characters[cn].goto_y = 12;
+            gs.characters[cn].misc_action = 13;
+            gs.characters[cn].misc_target1 = 14;
+            gs.characters[cn].misc_target2 = 15;
+            plr_change_target(gs, nr, cn);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetTarget as u8);
+            assert_eq!(gs.players[nr].cpl.attack_cn, 2);
+            assert_eq!(gs.players[nr].cpl.goto_x, 11);
+            assert_eq!(gs.players[nr].cpl.goto_y, 12);
+            assert_eq!(gs.players[nr].cpl.misc_action, 13);
+            assert_eq!(gs.players[nr].cpl.misc_target1, 14);
+            assert_eq!(gs.players[nr].cpl.misc_target2, 15);
+        });
+    }
+
+    #[test]
+    fn plr_change_validates_character_and_runs_update_cycle() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].usnr = core::constants::MAXCHARS;
+
+            plr_change(gs, nr);
+            assert_eq!(gs.players[nr].tptr, 0);
+        });
+
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            write_ascii_into_fixed(&mut gs.characters[cn].name, "CycleName");
+            gs.characters[cn].flags |= CharacterFlags::Update.bits();
+            gs.characters[cn].mode = 1;
+            gs.characters[cn].a_hp = 2500;
+            gs.characters[cn].dir = core::constants::DX_RIGHT;
+            gs.characters[cn].attack_cn = 3;
+            gs.characters[cn].goto_x = 14;
+            gs.characters[cn].goto_y = 15;
+            gs.players[nr].cpl.x = gs.characters[cn].x as i32;
+            gs.players[nr].cpl.y = gs.characters[cn].y as i32;
+            gs.players[nr].smap = gs.players[nr].cmap;
+            gs.players[nr].xmap.fill(Map::default());
+            let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
+            gs.map[tile] = gs.players[nr].xmap[0];
+
+            plr_change(gs, nr);
+
+            assert!(gs.players[nr].tptr > 0);
+            assert_eq!(gs.players[nr].cpl.name, gs.characters[cn].name);
+            assert_eq!(gs.players[nr].cpl.a_hp, 3);
+            assert_eq!(gs.players[nr].cpl.dir, core::constants::DX_RIGHT as i32);
+            assert_eq!(gs.players[nr].cpl.attack_cn, 3);
+            assert_eq!(gs.players[nr].cpl.goto_x, 14);
+            assert_eq!(gs.players[nr].cpl.goto_y, 15);
+        });
+    }
+
+    #[test]
+    fn plr_tick_and_stone_gc_stone_and_unstone_linked_characters() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let co = 2usize;
+            setup_existing_character(gs, co, 0, USE_ACTIVE, "Follower");
+            gs.characters[co].data[63] = cn as i32;
+            gs.characters[cn].data[64] = co as i32;
+            gs.players[nr].state = ST_NORMAL;
+            gs.players[nr].usnr = cn;
+            gs.players[nr].ltick = 20;
+            gs.players[nr].rtick = 0;
+            gs.characters[cn].data[19] = 5;
+
+            plr_tick(gs, nr);
+
+            assert_ne!(gs.characters[cn].flags & CharacterFlags::Stoned.bits(), 0);
+            assert_ne!(gs.characters[co].flags & CharacterFlags::Stoned.bits(), 0);
+
+            gs.characters[cn].flags |= CharacterFlags::Stoned.bits();
+            gs.characters[co].flags |= CharacterFlags::Stoned.bits();
+            gs.players[nr].ltick = 0;
+            gs.players[nr].rtick = 100;
+            gs.characters[cn].data[19] = 100;
+
+            plr_tick(gs, nr);
+
+            assert_eq!(gs.characters[cn].flags & CharacterFlags::Stoned.bits(), 0);
+            assert_eq!(gs.characters[co].flags & CharacterFlags::Stoned.bits(), 0);
+        });
+
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let co = 2usize;
+            setup_existing_character(gs, co, 0, USE_ACTIVE, "Follower");
+            gs.characters[co].data[63] = 999;
+            gs.characters[cn].data[64] = co as i32;
+
+            stone_gc(gs, cn, true);
+            assert_eq!(gs.characters[co].flags & CharacterFlags::Stoned.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn plr_idle_logs_out_for_protocol_and_player_level_timeouts() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = (TICKS * 61) as i32;
+            gs.players[nr].lasttick = 0;
+            gs.players[nr].lasttick2 = 0;
+
+            plr_idle(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+            assert_eq!(gs.characters[cn].player, 0);
+        });
+
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].state = ST_NORMAL;
+            gs.players[nr].lasttick = gs.globals.ticker as u32;
+            gs.players[nr].lasttick2 = 0;
+            gs.globals.ticker = (TICKS * 60 * 16) as i32;
+
+            plr_idle(gs, nr);
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+        });
+    }
+}
