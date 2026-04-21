@@ -1607,7 +1607,7 @@ mod tests {
             gs.players[nr].cpl.name = gs.characters[cn].name;
 
             gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
-            gs.characters[cn].item[0] = 0x40000000u32 | core::constants::MF_TAVERN as u32;
+            gs.characters[cn].item[0] = 0x40000000u32 | core::constants::MF_TAVERN;
             plr_change_stats(gs, nr, cn, 0);
             assert_eq!(gs.players[nr].cpl.item[0], gs.characters[cn].item[0] as i32);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharItem as u8);
@@ -1813,7 +1813,7 @@ mod tests {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
-            gs.globals.ticker = (TICKS * 61) as i32;
+            gs.globals.ticker = TICKS * 61;
             gs.players[nr].lasttick = 0;
             gs.players[nr].lasttick2 = 0;
 
@@ -1828,7 +1828,7 @@ mod tests {
             gs.players[nr].state = ST_NORMAL;
             gs.players[nr].lasttick = gs.globals.ticker as u32;
             gs.players[nr].lasttick2 = 0;
-            gs.globals.ticker = (TICKS * 60 * 16) as i32;
+            gs.globals.ticker = TICKS * 60 * 16;
 
             plr_idle(gs, nr);
             assert_eq!(gs.players[nr].state, ST_EXIT);

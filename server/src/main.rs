@@ -4,8 +4,10 @@ mod driver;
 mod effect;
 mod game_state;
 mod god;
-mod test_helpers;
 mod types;
+
+#[cfg(test)]
+mod test_helpers;
 
 #[macro_use]
 pub mod helpers;
