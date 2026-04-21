@@ -42,6 +42,16 @@ pub struct CharacterSettings {
     /// Controller button bindings for skill-bar slots 1–9.
     #[serde(default)]
     pub controller_bindings: ControllerBindings,
+    /// Whether graves adjacent to the player are automatically looted on
+    /// each server tick. Defaults to `true`. Toggle with `/autoloot`.
+    #[serde(default = "default_auto_loot_graves")]
+    pub auto_loot_graves: bool,
+}
+
+/// Returns the default value of `true` for
+/// [`CharacterSettings::auto_loot_graves`].
+fn default_auto_loot_graves() -> bool {
+    true
 }
 
 impl Default for CharacterSettings {
@@ -53,6 +63,7 @@ impl Default for CharacterSettings {
             settings_panel_pos: None,
             key_bindings: KeyBindings::default(),
             controller_bindings: ControllerBindings::default(),
+            auto_loot_graves: true,
         }
     }
 }

@@ -1,9 +1,9 @@
 use core::{
     constants::{
-        CharacterFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE,
-        ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED,
-        MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED, STUNNED, TICKS,
-        UWATER,
+        CharacterFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, IS_GRAVE, ISCHAR, ISITEM,
+        ISUSABLE, ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC,
+        MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, SPEEDTAB, STONED,
+        STUNNED, TICKS, UWATER,
     },
     encrypt::xcrypt,
     logout_reasons::LogoutReason,
@@ -2327,6 +2327,10 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     {
                         smap[n].flags |= ISUSABLE;
                     }
+
+                    if item.temp == core::constants::IT_TOMBSTONE as u16 {
+                        smap[n].flags |= IS_GRAVE;
+                    }
                 } else {
                     // Just clear item flags
                     smap[n].it_sprite = 0;
@@ -4321,6 +4325,11 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
             plr_cmd_use(gs, nr);
             return;
         }
+        ClientCommandType::CmdAutoloot => {
+            log::debug!("PLR_CMD_AUTOLOOT received for player {}", character_name);
+            plr_cmd_autoloot(gs, nr);
+            return;
+        }
         ClientCommandType::CmdInv => {
             log::debug!("PLR_CMD_INV received for player {}", character_name);
             plr_cmd_inv(gs, nr);
@@ -5525,6 +5534,95 @@ fn plr_cmd_use(gs: &mut GameState, nr: usize) {
     gs.characters[cn].misc_target2 = y as u16;
     gs.characters[cn].cerrno = 0;
     gs.characters[cn].data[12] = ticker;
+}
+
+/// Handle an auto-loot graves command.
+///
+/// Silently transfers all items whose template ID appears in
+/// [`core::constants::AUTOLOOT_ITEM_IDS`] — and unconditionally takes all
+/// gold — from the corpse whose tombstone is located at `(x, y)`.
+///
+/// Performs the same ownership checks as [`use_bag`]: if the grave belongs to
+/// another player who has not issued `#ALLOW`, the transfer is silently
+/// rejected.  No shop panel is opened on the client side; the player sees
+/// individual "You took a …" log lines for each transferred item.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable reference to the full game state.
+/// * `nr` - Player slot index issuing the command.
+fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
+    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
+    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let cn = gs.players[nr].usnr;
+
+    // Bounds-check the incoming world coordinates.
+    if x < 0 || y < 0 || x >= core::constants::SERVER_MAPX || y >= core::constants::SERVER_MAPY {
+        return;
+    }
+
+    let m = y as usize * core::constants::SERVER_MAPX as usize + x as usize;
+
+    // Verify there is a tombstone item on the tile.
+    let item_idx = gs.map[m].it as usize;
+    if item_idx == 0 {
+        return;
+    }
+    if gs.items[item_idx].temp != core::constants::IT_TOMBSTONE as u16 {
+        return;
+    }
+
+    // Verify the player is adjacent (Chebyshev distance ≤ 1).
+    let cn_x = gs.characters[cn].x as i32;
+    let cn_y = gs.characters[cn].y as i32;
+    if (cn_x - x).abs() > 1 || (cn_y - y).abs() > 1 {
+        return;
+    }
+
+    // Validate the corpse reference stored in the tombstone item.
+    let co = gs.items[item_idx].data[0] as usize;
+    if !core::types::Character::is_sane_character(co) {
+        return;
+    }
+
+    // Ownership check (mirrors use_bag).
+    let owner = gs.characters[co].data[core::constants::CHD_CORPSEOWNER] as usize;
+    if owner != 0 && owner != cn {
+        let may_attack = gs.may_attack_msg(cn, owner, false);
+        let allowed_cn = gs.characters[owner].data[core::constants::CHD_ALLOW] as usize;
+        if !may_attack && allowed_cn != cn {
+            return;
+        }
+    }
+
+    // --- Inventory slots 0..40 ---
+    for slot in 0..40usize {
+        let it = gs.characters[co].item[slot] as usize;
+        if it == 0 {
+            continue;
+        }
+        let temp = gs.items[it].temp;
+        if core::constants::AUTOLOOT_ITEM_IDS.contains(&temp) {
+            gs.do_shop_char(cn, co, slot as i32);
+        }
+    }
+
+    // --- Worn slots 0..20 (sent as nr 40..60 in do_shop_char) ---
+    for slot in 0..20usize {
+        let it = gs.characters[co].worn[slot] as usize;
+        if it == 0 {
+            continue;
+        }
+        let temp = gs.items[it].temp;
+        if core::constants::AUTOLOOT_ITEM_IDS.contains(&temp) {
+            gs.do_shop_char(cn, co, (40 + slot) as i32);
+        }
+    }
+
+    // --- Gold (slot 61) — always take ---
+    if gs.characters[co].gold > 0 {
+        gs.do_shop_char(cn, co, 61);
+    }
 }
 
 /// Handle inventory manipulation command

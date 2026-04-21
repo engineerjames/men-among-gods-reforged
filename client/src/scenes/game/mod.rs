@@ -20,6 +20,7 @@ mod world_render;
 
 use perf_profiler::{PerfLabel, PerfProfiler};
 
+use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video::Window};
@@ -262,6 +263,11 @@ pub struct GameScene {
     pub(super) minimap_last_xy: Option<(u16, u16)>,
     pub(super) look_step: u32,
     pub(super) last_look_tick: u32,
+    /// World-coordinate keys `(x, y)` of tombstone tiles for which a
+    /// `CmdAutoloot` has already been sent this session.  Prevents
+    /// re-sending the command every tick for the same grave.
+    /// Cleared on scene enter (new game session / re-login).
+    pub(super) autoloot_visited: HashSet<(u16, u16)>,
     /// When set, the player has right-clicked a skill and is choosing a spell-bar slot.
     /// Value is the skilltab index of the skill being assigned.
     pub(super) pending_skill_assignment: Option<usize>,
@@ -405,6 +411,7 @@ impl GameScene {
             minimap_last_xy: None,
             look_step: 0,
             last_look_tick: 0,
+            autoloot_visited: HashSet::new(),
             pending_skill_assignment: None,
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
@@ -1043,6 +1050,7 @@ impl Scene for GameScene {
         self.minimap_last_xy = None;
         self.look_step = 0;
         self.last_look_tick = 0;
+        self.autoloot_visited.clear();
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
         self.vcursor_x = TARGET_WIDTH_INT as f32 / 2.0;
@@ -1479,6 +1487,7 @@ impl Scene for GameScene {
             if tick_now != self.last_look_tick {
                 self.last_look_tick = tick_now;
                 self.maybe_send_autolook_and_shop_refresh(app_state);
+                self.maybe_send_autoloot_graves(app_state);
             }
         }
         scene

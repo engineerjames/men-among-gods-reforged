@@ -370,6 +370,11 @@ pub const INJURED2: u32 = 1 << 2;
 pub const STONED: u32 = 1 << 3;
 pub const INFRARED: u32 = 1 << 4;
 pub const UWATER: u32 = 1 << 5;
+/// Set on a client smap tile when the item on that tile is a tombstone/grave
+/// (item template `IT_TOMBSTONE`). Used by the auto-loot system to identify
+/// grave tiles without exposing server-side item template data in the
+/// full smap bit.
+pub const IS_GRAVE: u32 = 1 << 6;
 pub const ISUSABLE: u32 = 1 << 7;
 pub const ISITEM: u32 = 1 << 8;
 pub const ISCHAR: u32 = 1 << 9;
@@ -567,6 +572,20 @@ pub const COMPANION_TIMEOUT: i32 = 5 * 60 * TICKS;
 
 pub const IT_TOMBSTONE: i32 = 170;
 pub const IT_LAGSCROLL: i32 = 500;
+
+/// Item template IDs that are automatically looted from graves when the
+/// auto-loot feature is enabled. Gold (grave slot 61) is always taken
+/// regardless of this list.
+///
+/// TODO: verify these template IDs against the live world data.
+pub const AUTOLOOT_ITEM_IDS: &[u16] = &[
+    // Health potions
+    // TODO: insert health potion template IDs
+    // Endurance potions
+    // TODO: insert endurance potion template IDs
+    // Mana potions
+    // TODO: insert mana potion template IDs
+];
 
 // =============================================================================
 // Server Message Types (from client.h)

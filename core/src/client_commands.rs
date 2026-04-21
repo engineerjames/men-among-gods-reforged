@@ -43,6 +43,13 @@ pub enum ClientCommandType {
     Passwd = 33,
     Ping = 34,
     ApiLogin = 35,
+    /// Auto-loot a grave at the given tile coordinates.
+    ///
+    /// Encoded identically to `CmdUse` (i16 x + i32 y). The server silently
+    /// transfers all items whose template ID is in
+    /// [`AUTOLOOT_ITEM_IDS`](crate::constants::AUTOLOOT_ITEM_IDS) plus all
+    /// gold from the tombstone corpse at that position.
+    CmdAutoloot = 36,
     CmdCTick = 255,
 }
 
@@ -85,6 +92,7 @@ impl From<u8> for ClientCommandType {
             33 => ClientCommandType::Passwd,
             34 => ClientCommandType::Ping,
             35 => ClientCommandType::ApiLogin,
+            36 => ClientCommandType::CmdAutoloot,
             255 => ClientCommandType::CmdCTick,
             _ => {
                 log::error!("Unknown client command type: {}", value);
@@ -359,6 +367,23 @@ impl ClientCommand {
         cmd
     }
 
+    /// Creates an auto-loot graves command targeting the tombstone at `(x, y)`.
+    ///
+    /// The server will silently take all items matching
+    /// [`AUTOLOOT_ITEM_IDS`](crate::constants::AUTOLOOT_ITEM_IDS) and all
+    /// gold from the corpse whose tombstone is at the given world tile
+    /// coordinates.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - World tile X coordinate of the tombstone.
+    /// * `y` - World tile Y coordinate of the tombstone.
+    pub fn new_autoloot_graves(x: i16, y: i32) -> Self {
+        let mut cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdAutoloot, x, y);
+        cmd.context = Some(format!("x={x} y={y}"));
+        cmd
+    }
+
     /// Creates a skill-use command.
     pub fn new_skill(skill: u32, selected_char: u32, attrib0: u32) -> Self {
         let mut cmd =
@@ -379,6 +404,36 @@ mod tests {
     fn to_bytes_always_16() {
         let cmd = ClientCommand::new_exit();
         assert_eq!(cmd.to_bytes().len(), 16);
+    }
+
+    #[test]
+    fn autoloot_graves_opcode_and_coords() {
+        let cmd = ClientCommand::new_autoloot_graves(100, 200);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], ClientCommandType::CmdAutoloot as u8);
+        assert_eq!(bytes[0], 36u8, "CmdAutoloot must be opcode 36");
+        assert_eq!(
+            i16::from_le_bytes([bytes[1], bytes[2]]),
+            100i16,
+            "x coordinate mismatch"
+        );
+        assert_eq!(
+            i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
+            200i32,
+            "y coordinate mismatch"
+        );
+    }
+
+    #[test]
+    fn autoloot_graves_roundtrip_negative_x() {
+        let cmd = ClientCommand::new_autoloot_graves(-1, 999);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], 36u8);
+        assert_eq!(i16::from_le_bytes([bytes[1], bytes[2]]), -1i16);
+        assert_eq!(
+            i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
+            999i32
+        );
     }
 
     #[test]
