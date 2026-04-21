@@ -569,57 +569,6 @@ pub const IT_TOMBSTONE: i32 = 170;
 pub const IT_LAGSCROLL: i32 = 500;
 
 // =============================================================================
-// Client Message Types (from client.h)
-// =============================================================================
-
-pub const CL_EMPTY: u8 = 0;
-pub const CL_NEWLOGIN: u8 = 1;
-pub const CL_LOGIN: u8 = 2;
-pub const CL_CHALLENGE: u8 = 3;
-pub const CL_PERF_REPORT: u8 = 4;
-pub const CL_CMD_MOVE: u8 = 5;
-pub const CL_CMD_PICKUP: u8 = 6;
-pub const CL_CMD_ATTACK: u8 = 7;
-pub const CL_CMD_MODE: u8 = 8;
-pub const CL_CMD_INV: u8 = 9;
-pub const CL_CMD_STAT: u8 = 10;
-pub const CL_CMD_DROP: u8 = 11;
-pub const CL_CMD_GIVE: u8 = 12;
-pub const CL_CMD_LOOK: u8 = 13;
-pub const CL_CMD_INPUT1: u8 = 14;
-pub const CL_CMD_INPUT2: u8 = 15;
-pub const CL_CMD_INV_LOOK: u8 = 16;
-pub const CL_CMD_LOOK_ITEM: u8 = 17;
-pub const CL_CMD_USE: u8 = 18;
-pub const CL_CMD_SETUSER: u8 = 19;
-pub const CL_CMD_TURN: u8 = 20;
-pub const CL_CMD_AUTOLOOK: u8 = 21;
-pub const CL_CMD_INPUT3: u8 = 22;
-pub const CL_CMD_INPUT4: u8 = 23;
-pub const CL_CMD_RESET: u8 = 24;
-pub const CL_CMD_SHOP: u8 = 25;
-pub const CL_CMD_SKILL: u8 = 26;
-pub const CL_CMD_INPUT5: u8 = 27;
-pub const CL_CMD_INPUT6: u8 = 28;
-pub const CL_CMD_INPUT7: u8 = 29;
-pub const CL_CMD_INPUT8: u8 = 30;
-pub const CL_CMD_EXIT: u8 = 31;
-pub const CL_CMD_UNIQUE: u8 = 32;
-pub const CL_PASSWD: u8 = 33;
-/// Client ping request (custom extension).
-///
-/// Payload (little-endian):
-/// - u32 sequence @ +1
-/// - u32 client_time_ms @ +5
-pub const CL_PING: u8 = 34;
-/// Account-managed login using an API-issued one-time ticket (custom extension).
-///
-/// Payload (little-endian):
-/// - u64 ticket @ +1
-pub const CL_API_LOGIN: u8 = 35;
-pub const CL_CMD_CTICK: u8 = 255;
-
-// =============================================================================
 // Server Message Types (from client.h)
 // =============================================================================
 

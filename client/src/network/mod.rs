@@ -1,4 +1,3 @@
-pub mod client_commands;
 mod login;
 pub mod server_commands;
 pub mod tick_stream;
@@ -7,9 +6,7 @@ use std::collections::HashMap;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
-use client_commands::ClientCommand;
-
-use crate::network::client_commands::ClientCommandType;
+use mag_core::client_commands::{ClientCommand, ClientCommandType};
 
 /// Commands sent from the main thread to the background network thread.
 pub enum NetworkCommand {
@@ -179,7 +176,7 @@ impl NetworkRuntime {
         self.last_ping_sent_at = Some(now);
         self.pings_in_flight.insert(seq, now);
 
-        let cmd = client_commands::ClientCommand::new_ping(seq, client_time_ms);
+        let cmd = ClientCommand::new_ping(seq, client_time_ms);
         self.send(cmd);
     }
 
@@ -198,7 +195,7 @@ impl NetworkRuntime {
         if self.last_ctick_sent == t {
             return;
         }
-        let tick_cmd = client_commands::ClientCommand::new_tick(t);
+        let tick_cmd = ClientCommand::new_tick(t);
         self.send(tick_cmd);
         self.last_ctick_sent = t;
     }

@@ -6,10 +6,11 @@ use std::{
 };
 
 use flate2::Decompress;
+use mag_core::client_commands;
 use mag_core::encrypt::xcrypt;
 use mag_core::logout_reasons::{LogoutReason, get_exit_reason};
 
-use super::{NetworkCommand, NetworkEvent, client_commands, server_commands, tick_stream};
+use super::{NetworkCommand, NetworkEvent, server_commands, tick_stream};
 
 /// A game connection backed by either a plain TCP stream or a TLS session.
 struct GameConnection {

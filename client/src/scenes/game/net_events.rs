@@ -1,8 +1,9 @@
+use mag_core::client_commands::ClientCommand;
 use mag_core::skills;
 
 use crate::{
     cert_trust,
-    network::{NetworkEvent, client_commands::ClientCommand},
+    network::NetworkEvent,
     scenes::scene::SceneType,
     state::AppState,
     ui::{

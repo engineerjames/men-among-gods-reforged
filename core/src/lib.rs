@@ -16,6 +16,7 @@ pub mod result {
 
 pub mod area;
 pub mod circular_buffer;
+pub mod client_commands;
 pub mod constants;
 pub mod encrypt;
 pub mod logout_reasons;

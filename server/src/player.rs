@@ -12,6 +12,8 @@ use core::{
     traits::{self, Sex, get_race_integer},
 };
 
+use core::client_commands::ClientCommandType;
+
 use crate::{
     driver, game_state::GameState, god::God, helpers, keydb, network_manager, types::cmap::CMap,
 };
@@ -4127,27 +4129,29 @@ pub fn plr_idle(gs: &mut GameState, nr: usize) {
 pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     let cmd = gs.players[nr].inbuf[0];
 
+    let parsed_cmd = ClientCommandType::from(cmd);
+
     // Handle pre-login commands (mirrors the initial switch in the original C++).
     // These generally transition connection state; only `CL_CMD_UNIQUE` returns
     // immediately in the original code.
-    match cmd {
-        core::constants::CL_NEWLOGIN => {
+    match parsed_cmd {
+        ClientCommandType::NewLogin => {
             plr_challenge_newlogin(gs, nr);
         }
-        core::constants::CL_CHALLENGE => {
+        ClientCommandType::Challenge => {
             plr_challenge(gs, nr);
         }
-        core::constants::CL_LOGIN => {
+        ClientCommandType::Login => {
             plr_challenge_login(gs, nr);
         }
-        core::constants::CL_API_LOGIN => {
+        ClientCommandType::ApiLogin => {
             plr_challenge_api_login(gs, nr);
         }
-        core::constants::CL_CMD_UNIQUE => {
+        ClientCommandType::CmdUnique => {
             plr_unique(gs, nr);
             return;
         }
-        core::constants::CL_PASSWD => {
+        ClientCommandType::Passwd => {
             plr_passwd(gs, nr);
         }
         _ => {
@@ -4164,78 +4168,78 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     }
 
     // Update lasttick2 for non-automated commands
-    if cmd != core::constants::CL_CMD_AUTOLOOK
-        && cmd != core::constants::CL_PERF_REPORT
-        && cmd != core::constants::CL_CMD_CTICK
-        && cmd != core::constants::CL_PING
+    if parsed_cmd != ClientCommandType::CmdAutoLook
+        && parsed_cmd != ClientCommandType::PerfReport
+        && parsed_cmd != ClientCommandType::CmdCTick
+        && parsed_cmd != ClientCommandType::Ping
     {
         let ticker = gs.globals.ticker as u32;
         gs.players[nr].lasttick2 = ticker;
     }
 
     // Handle commands that don't require stun check
-    match cmd {
-        core::constants::CL_PERF_REPORT => {
+    match parsed_cmd {
+        ClientCommandType::PerfReport => {
             plr_perf_report(gs, nr);
             return;
         }
-        core::constants::CL_PING => {
+        ClientCommandType::Ping => {
             plr_cmd_ping(gs, nr);
             return;
         }
-        core::constants::CL_CMD_LOOK => {
+        ClientCommandType::CmdLook => {
             log::debug!("PLR_CMD_LOOK received for player {}", nr);
             plr_cmd_look(gs, nr, false);
             return;
         }
-        core::constants::CL_CMD_AUTOLOOK => {
+        ClientCommandType::CmdAutoLook => {
             // Don't log auto commands to reduce log spam
             plr_cmd_look(gs, nr, true);
             return;
         }
-        core::constants::CL_CMD_SETUSER => {
+        ClientCommandType::CmdSetUser => {
             log::debug!("PLR_CMD_SETUSER received for player {}", nr);
             plr_cmd_setuser(gs, nr);
             return;
         }
-        core::constants::CL_CMD_STAT => {
+        ClientCommandType::CmdStat => {
             log::debug!("PLR_CMD_STAT received for player {}", nr);
             plr_cmd_stat(gs, nr);
             return;
         }
-        core::constants::CL_CMD_INPUT1 => {
+        ClientCommandType::CmdInput1 => {
             plr_cmd_input(gs, nr, 1);
             return;
         }
-        core::constants::CL_CMD_INPUT2 => {
+        ClientCommandType::CmdInput2 => {
             plr_cmd_input(gs, nr, 2);
             return;
         }
-        core::constants::CL_CMD_INPUT3 => {
+        ClientCommandType::CmdInput3 => {
             plr_cmd_input(gs, nr, 3);
             return;
         }
-        core::constants::CL_CMD_INPUT4 => {
+        ClientCommandType::CmdInput4 => {
             plr_cmd_input(gs, nr, 4);
             return;
         }
-        core::constants::CL_CMD_INPUT5 => {
+        ClientCommandType::CmdInput5 => {
             plr_cmd_input(gs, nr, 5);
             return;
         }
-        core::constants::CL_CMD_INPUT6 => {
+        ClientCommandType::CmdInput6 => {
             plr_cmd_input(gs, nr, 6);
             return;
         }
-        core::constants::CL_CMD_INPUT7 => {
+        ClientCommandType::CmdInput7 => {
             plr_cmd_input(gs, nr, 7);
             return;
         }
-        core::constants::CL_CMD_INPUT8 => {
+        ClientCommandType::CmdInput8 => {
             plr_cmd_input(gs, nr, 8);
             return;
         }
-        core::constants::CL_CMD_CTICK => {
+        ClientCommandType::CmdCTick => {
             plr_cmd_ctick(gs, nr);
             return;
         }
@@ -4256,73 +4260,73 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     let character_name = gs.characters[cn].get_name().to_string();
 
     // Handle commands that show stun message but still execute
-    match cmd {
-        core::constants::CL_CMD_LOOK_ITEM => {
+    match parsed_cmd {
+        ClientCommandType::CmdLookItem => {
             log::debug!("PLR_CMD_LOOK_ITEM received for player {}", character_name);
             plr_cmd_look_item(gs, nr);
             return;
         }
-        core::constants::CL_CMD_GIVE => {
+        ClientCommandType::CmdGive => {
             log::debug!("PLR_CMD_GIVE received for player {}", character_name);
             plr_cmd_give(gs, nr);
             return;
         }
-        core::constants::CL_CMD_TURN => {
+        ClientCommandType::CmdTurn => {
             log::debug!("PLR_CMD_TURN received for player {}", character_name);
             plr_cmd_turn(gs, nr);
             return;
         }
-        core::constants::CL_CMD_DROP => {
+        ClientCommandType::CmdDrop => {
             log::debug!("PLR_CMD_DROP received for player {}", character_name);
             plr_cmd_drop(gs, nr);
             return;
         }
-        core::constants::CL_CMD_PICKUP => {
+        ClientCommandType::CmdPickup => {
             log::debug!("PLR_CMD_PICKUP received for player {}", character_name);
             plr_cmd_pickup(gs, nr);
             return;
         }
-        core::constants::CL_CMD_ATTACK => {
+        ClientCommandType::CmdAttack => {
             log::debug!("PLR_CMD_ATTACK received for player {}", character_name);
             plr_cmd_attack(gs, nr);
             return;
         }
-        core::constants::CL_CMD_MODE => {
+        ClientCommandType::CmdMode => {
             log::debug!("PLR_CMD_MODE received for player {}", character_name);
             plr_cmd_mode(gs, nr);
             return;
         }
-        core::constants::CL_CMD_MOVE => {
+        ClientCommandType::CmdMove => {
             log::debug!("PLR_CMD_MOVE received for player {}", character_name);
             plr_cmd_move(gs, nr);
             return;
         }
-        core::constants::CL_CMD_RESET => {
+        ClientCommandType::CmdReset => {
             log::debug!("PLR_CMD_RESET received for player {}", character_name);
             plr_cmd_reset(gs, nr);
             return;
         }
-        core::constants::CL_CMD_SKILL => {
+        ClientCommandType::CmdSkill => {
             log::debug!("PLR_CMD_SKILL received for player {}", character_name);
             plr_cmd_skill(gs, nr);
             return;
         }
-        core::constants::CL_CMD_INV_LOOK => {
+        ClientCommandType::CmdInvLook => {
             log::debug!("PLR_CMD_INV_LOOK received for player {}", character_name);
             plr_cmd_inv_look(gs, nr);
             return;
         }
-        core::constants::CL_CMD_USE => {
+        ClientCommandType::CmdUse => {
             log::debug!("PLR_CMD_USE received for player {}", character_name);
             plr_cmd_use(gs, nr);
             return;
         }
-        core::constants::CL_CMD_INV => {
+        ClientCommandType::CmdInv => {
             log::debug!("PLR_CMD_INV received for player {}", character_name);
             plr_cmd_inv(gs, nr);
             return;
         }
-        core::constants::CL_CMD_EXIT => {
+        ClientCommandType::CmdExit => {
             log::debug!("PLR_CMD_EXIT received for player {}", character_name);
             plr_cmd_exit(gs, nr);
             return;
@@ -4335,8 +4339,8 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    match cmd {
-        core::constants::CL_CMD_SHOP => {
+    match parsed_cmd {
+        ClientCommandType::CmdShop => {
             plr_cmd_shop(gs, nr);
         }
         _ => {

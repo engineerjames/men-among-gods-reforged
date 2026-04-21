@@ -38,14 +38,60 @@ pub enum ClientCommandType {
     CmdInput6 = 28,
     CmdInput7 = 29,
     CmdInput8 = 30,
-    #[allow(dead_code)]
     CmdExit = 31,
     CmdUnique = 32,
-    #[allow(dead_code)]
     Passwd = 33,
     Ping = 34,
     ApiLogin = 35,
     CmdCTick = 255,
+}
+
+impl From<u8> for ClientCommandType {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => ClientCommandType::_Empty,
+            1 => ClientCommandType::NewLogin,
+            2 => ClientCommandType::Login,
+            3 => ClientCommandType::Challenge,
+            4 => ClientCommandType::PerfReport,
+            5 => ClientCommandType::CmdMove,
+            6 => ClientCommandType::CmdPickup,
+            7 => ClientCommandType::CmdAttack,
+            8 => ClientCommandType::CmdMode,
+            9 => ClientCommandType::CmdInv,
+            10 => ClientCommandType::CmdStat,
+            11 => ClientCommandType::CmdDrop,
+            12 => ClientCommandType::CmdGive,
+            13 => ClientCommandType::CmdLook,
+            14 => ClientCommandType::CmdInput1,
+            15 => ClientCommandType::CmdInput2,
+            16 => ClientCommandType::CmdInvLook,
+            17 => ClientCommandType::CmdLookItem,
+            18 => ClientCommandType::CmdUse,
+            19 => ClientCommandType::CmdSetUser,
+            20 => ClientCommandType::CmdTurn,
+            21 => ClientCommandType::CmdAutoLook,
+            22 => ClientCommandType::CmdInput3,
+            23 => ClientCommandType::CmdInput4,
+            24 => ClientCommandType::CmdReset,
+            25 => ClientCommandType::CmdShop,
+            26 => ClientCommandType::CmdSkill,
+            27 => ClientCommandType::CmdInput5,
+            28 => ClientCommandType::CmdInput6,
+            29 => ClientCommandType::CmdInput7,
+            30 => ClientCommandType::CmdInput8,
+            31 => ClientCommandType::CmdExit,
+            32 => ClientCommandType::CmdUnique,
+            33 => ClientCommandType::Passwd,
+            34 => ClientCommandType::Ping,
+            35 => ClientCommandType::ApiLogin,
+            255 => ClientCommandType::CmdCTick,
+            _ => {
+                log::error!("Unknown client command type: {}", value);
+                ClientCommandType::_Empty
+            }
+        }
+    }
 }
 
 /// A single outgoing command to the game server.

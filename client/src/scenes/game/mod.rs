@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video::Window};
 
 use mag_core::{
+    client_commands::ClientCommand,
     constants::{TILEX, TILEY},
     ranks,
 };
@@ -33,7 +34,7 @@ use crate::{
     cert_trust,
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
-    network::{NetworkRuntime, client_commands::ClientCommand},
+    network::NetworkRuntime,
     player_state::PlayerState,
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
@@ -1435,11 +1436,7 @@ impl Scene for GameScene {
                                 if target_cn != 0 {
                                     if let Some(net) = app_state.network.as_ref() {
                                         self.play_click_sound(app_state);
-                                        net.send(
-                                            crate::network::client_commands::ClientCommand::new_look(
-                                                target_cn,
-                                            ),
-                                        );
+                                        net.send(ClientCommand::new_look(target_cn));
                                     }
                                 }
                             }
