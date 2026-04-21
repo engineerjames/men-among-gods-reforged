@@ -675,12 +675,21 @@ impl PlayerState {
                 }
 
                 if start.saturating_add(2) >= 62 {
-                    self.should_show_shop = true;
-                    self.shop_target = self.incoming_look;
-                    // Detect graves: merchant items always have a non-zero barter
-                    // price, while corpse (grave) items are always free (price == 0).
-                    self.shop_is_grave = !(0..62usize)
-                        .any(|i| self.shop_target.item(i) != 0 && self.shop_target.price(i) != 0);
+                    let is_same_open_shop = self.should_show_shop
+                        && self.shop_target.nr() == self.incoming_look.nr()
+                        && self.shop_target.id() == self.incoming_look.id();
+                    let should_commit_shop =
+                        self.incoming_look.autoflag() == 0 || is_same_open_shop;
+
+                    if should_commit_shop {
+                        self.should_show_shop = true;
+                        self.shop_target = self.incoming_look;
+                        // Detect graves: merchant items always have a non-zero barter
+                        // price, while corpse (grave) items are always free (price == 0).
+                        self.shop_is_grave = !(0..62usize).any(|i| {
+                            self.shop_target.item(i) != 0 && self.shop_target.price(i) != 0
+                        });
+                    }
                 }
             }
             ServerCommandData::SetMap {
@@ -744,6 +753,106 @@ impl PlayerState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::network::server_commands::{
+        Look6Entry, ServerCommand, ServerCommandData, ServerCommandType,
+    };
+
+    /// Builds a minimal look/shop packet sequence for the given target.
+    ///
+    /// # Arguments
+    ///
+    /// * `autoflag` - Look autoflag propagated from the server.
+    /// * `nr` - Target character slot number.
+    /// * `id` - Target character instance id.
+    /// * `entries` - Final shop entries carried by the Look6 packet.
+    ///
+    /// # Returns
+    ///
+    /// * A complete `Look1`..`Look6` sequence suitable for `update_from_server_command`.
+    fn shop_sequence(
+        autoflag: u8,
+        nr: u16,
+        id: u16,
+        entries: Vec<Look6Entry>,
+    ) -> [ServerCommand; 6] {
+        [
+            ServerCommand {
+                header: ServerCommandType::Look1,
+                structured_data: ServerCommandData::Look1 {
+                    worn0: 0,
+                    worn2: 0,
+                    worn3: 0,
+                    worn5: 0,
+                    worn6: 0,
+                    worn7: 0,
+                    worn8: 0,
+                    autoflag,
+                },
+                _payload: Vec::new(),
+            },
+            ServerCommand {
+                header: ServerCommandType::Look2,
+                structured_data: ServerCommandData::Look2 {
+                    worn9: 0,
+                    sprite: 0,
+                    points: 0,
+                    hp: 0,
+                    worn10: 0,
+                },
+                _payload: Vec::new(),
+            },
+            ServerCommand {
+                header: ServerCommandType::Look3,
+                structured_data: ServerCommandData::Look3 {
+                    end: 0,
+                    a_hp: 0,
+                    a_end: 0,
+                    nr,
+                    id,
+                    mana: 0,
+                    a_mana: 0,
+                },
+                _payload: Vec::new(),
+            },
+            ServerCommand {
+                header: ServerCommandType::Look4,
+                structured_data: ServerCommandData::Look4 {
+                    worn1: 0,
+                    worn4: 0,
+                    extended: 0,
+                    pl_price: 0,
+                    worn11: 0,
+                    worn12: 0,
+                    worn13: 0,
+                },
+                _payload: Vec::new(),
+            },
+            ServerCommand {
+                header: ServerCommandType::Look5,
+                structured_data: ServerCommandData::Look5 {
+                    name: "Corpse".to_string(),
+                },
+                _payload: Vec::new(),
+            },
+            ServerCommand {
+                header: ServerCommandType::Look6,
+                structured_data: ServerCommandData::Look6 { start: 60, entries },
+                _payload: Vec::new(),
+            },
+        ]
+    }
+
+    /// Applies every command in `commands` to `ps` in order.
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - Player state receiving the packets.
+    /// * `commands` - Parsed server commands to apply.
+    fn apply_commands(ps: &mut PlayerState, commands: &[ServerCommand]) {
+        for command in commands {
+            ps.update_from_server_command(command);
+        }
+    }
 
     #[test]
     fn wrap_log_text_breaks_on_space() {
@@ -818,5 +927,57 @@ mod tests {
         assert_eq!(ps.selected_char(), 5);
         ps.clear_selected_char();
         assert_eq!(ps.selected_char(), 0);
+    }
+
+    #[test]
+    fn auto_loot_shop_sequence_does_not_open_closed_shop_panel() {
+        let mut ps = PlayerState::default();
+        let commands = shop_sequence(
+            1,
+            17,
+            33,
+            vec![Look6Entry {
+                index: 0,
+                item: 170,
+                price: 0,
+            }],
+        );
+
+        apply_commands(&mut ps, &commands);
+
+        assert!(!ps.should_show_shop());
+        assert!(!ps.shop_is_grave());
+    }
+
+    #[test]
+    fn auto_loot_shop_sequence_refreshes_matching_open_shop_panel() {
+        let mut ps = PlayerState::default();
+        let manual_open = shop_sequence(
+            0,
+            17,
+            33,
+            vec![Look6Entry {
+                index: 0,
+                item: 170,
+                price: 0,
+            }],
+        );
+        apply_commands(&mut ps, &manual_open);
+
+        let auto_refresh = shop_sequence(
+            1,
+            17,
+            33,
+            vec![Look6Entry {
+                index: 0,
+                item: 0,
+                price: 0,
+            }],
+        );
+        apply_commands(&mut ps, &auto_refresh);
+
+        assert!(ps.should_show_shop());
+        assert_eq!(ps.shop_target().item(0), 0);
+        assert!(ps.shop_is_grave());
     }
 }

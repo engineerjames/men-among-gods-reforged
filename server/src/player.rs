@@ -5603,7 +5603,7 @@ fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
         }
         let temp = gs.items[it].temp;
         if core::constants::AUTOLOOT_ITEM_IDS.contains(&temp) {
-            gs.do_shop_char(cn, co, slot as i32);
+            gs.do_shop_char(cn, co, slot as i32, 1);
         }
     }
 
@@ -5615,13 +5615,13 @@ fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
         }
         let temp = gs.items[it].temp;
         if core::constants::AUTOLOOT_ITEM_IDS.contains(&temp) {
-            gs.do_shop_char(cn, co, (40 + slot) as i32);
+            gs.do_shop_char(cn, co, (40 + slot) as i32, 1);
         }
     }
 
     // --- Gold (slot 61) — always take ---
     if gs.characters[co].gold > 0 {
-        gs.do_shop_char(cn, co, 61);
+        gs.do_shop_char(cn, co, 61, 1);
     }
 }
 
@@ -5830,7 +5830,7 @@ fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
         let idx = co & 0x7fff;
         gs.do_depot_char(cn, idx, n);
     } else {
-        gs.do_shop_char(cn, co, n);
+        gs.do_shop_char(cn, co, n, 0);
     }
 }
 
