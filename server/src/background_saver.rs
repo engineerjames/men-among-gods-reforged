@@ -23,8 +23,7 @@
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
-use crate::keydb;
-use crate::keydb_store;
+use server::{keydb, keydb_store};
 
 /// Ticks between each background save job.
 ///

@@ -1,3 +1,5 @@
+use crate::path_finding::PathFinder;
+use crate::types::server_player::ServerPlayer;
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -18,10 +20,8 @@
 ///
 /// All persistence is backed by KeyDB.  Use the `world-snapshot` binary to
 /// export or import the complete world state as a portable `.wsnap` file.
-use crate::keydb;
-use crate::keydb_store;
-use crate::path_finding::PathFinder;
-use crate::types::server_player::ServerPlayer;
+use server::keydb;
+use server::keydb_store;
 
 /// The unified in-memory game state for the server.
 ///

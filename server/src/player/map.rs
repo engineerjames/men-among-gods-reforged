@@ -269,6 +269,8 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
 }
 
 /// Clear the saved small map for all players to force a full resend
+/// TODO: Do we need this for any reason?
+#[allow(dead_code)]
 pub fn plr_clear_map(gs: &mut GameState) {
     for n in 1..gs.players.len() {
         gs.players[n].smap = std::array::from_fn(|_| CMap::default());
