@@ -1030,3 +1030,326 @@ pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
         network_manager::xsend(gs, nr, &buf, 5);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{TcpListener, TcpStream};
+
+    use crate::{
+        test_helpers::{add_test_player, with_test_gs},
+        tls::GameStream,
+    };
+    use core::{
+        constants::{
+            CharacterFlags, ItemFlags, MF_DEATHTRAP, MF_NOMAGIC, MF_TAVERN, ST_EXIT, TILEX, TILEY,
+            USE_ACTIVE,
+        },
+        types::Map,
+    };
+
+    fn attach_test_socket(gs: &mut GameState, nr: usize) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let client = TcpStream::connect(addr).expect("connect client");
+        let (server, _) = listener.accept().expect("accept client");
+        drop(client);
+        gs.players[nr].sock = Some(GameStream::Plain(server));
+    }
+
+    fn reset_tbuf(gs: &mut GameState, nr: usize) {
+        gs.players[nr].tptr = 0;
+        gs.players[nr].tbuf.fill(0);
+    }
+
+    fn map_index(x: i16, y: i16) -> usize {
+        x as usize + y as usize * core::constants::SERVER_MAPX as usize
+    }
+
+    fn small_map_index(gs: &GameState, cn: usize, x: i32, y: i32) -> usize {
+        const YSCUT: i32 = 3;
+        const XSCUT: i32 = 2;
+
+        let ys = gs.characters[cn].y as i32 - (TILEY as i32 / 2) + YSCUT;
+        let xs = gs.characters[cn].x as i32 - (TILEX as i32 / 2) + XSCUT;
+        let base = (YSCUT * TILEX as i32 + XSCUT) as usize;
+        base + (y - ys) as usize * TILEX + (x - xs) as usize
+    }
+
+    fn make_tile(sprite: i16, light: u8) -> CMap {
+        CMap {
+            ba_sprite: sprite,
+            light,
+            ..CMap::default()
+        }
+    }
+
+    #[test]
+    fn plr_map_remove_clears_tile_links_and_light() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 10;
+            gs.characters[cn].tox = 11;
+            gs.characters[cn].toy = 10;
+            gs.characters[cn].light = 7;
+
+            let here = map_index(10, 10);
+            let there = map_index(11, 10);
+            gs.map[here].ch = cn as u32;
+            gs.map[here].light = 7;
+            gs.map[there].to_ch = cn as u32;
+
+            plr_map_remove(gs, cn);
+
+            assert_eq!(gs.map[here].ch, 0);
+            assert_eq!(gs.map[there].to_ch, 0);
+            assert_eq!(gs.map[here].light, 0);
+        });
+    }
+
+    #[test]
+    fn plr_map_set_updates_nomagic_state_and_map_occupancy() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
+            gs.characters[cn].flags &= !CharacterFlags::NoMagic.bits();
+            gs.characters[cn].light = 4;
+            gs.map[tile].flags = MF_NOMAGIC as u64;
+
+            plr_map_set(gs, cn);
+
+            assert_eq!(gs.map[tile].ch, cn as u32);
+            assert_eq!(gs.map[tile].to_ch, 0);
+            assert_ne!(gs.characters[cn].flags & CharacterFlags::NoMagic.bits(), 0);
+            assert!(gs.map[tile].light > 0);
+
+            gs.map[tile].ch = 0;
+            gs.map[tile].flags = 0;
+            plr_map_set(gs, cn);
+
+            assert_eq!(gs.map[tile].ch, cn as u32);
+            assert_eq!(gs.characters[cn].flags & CharacterFlags::NoMagic.bits(), 0);
+        });
+    }
+
+    #[test]
+    fn plr_map_set_logs_players_out_in_taverns() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
+            gs.map[tile].flags = MF_TAVERN as u64;
+
+            plr_map_set(gs, cn);
+
+            assert_eq!(gs.players[nr].state, ST_EXIT);
+            assert_eq!(gs.characters[cn].tavern_x, 10);
+            assert_eq!(gs.characters[cn].tavern_y, 10);
+        });
+    }
+
+    #[test]
+    fn plr_map_set_deathtrap_kills_character() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
+            gs.characters[cn].temple_x = 20;
+            gs.characters[cn].temple_y = 20;
+            gs.map[tile].flags = MF_DEATHTRAP as u64;
+
+            plr_map_set(gs, cn);
+
+            assert_eq!(gs.characters[cn].a_hp, 10000);
+            assert_eq!(gs.characters[cn].x, 20);
+            assert_eq!(gs.characters[cn].y, 20);
+        });
+    }
+
+    #[test]
+    fn plr_clear_map_resets_cached_tiles_and_view_origin() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            gs.players[nr].vx = 123;
+            gs.players[nr].smap[0] = make_tile(42, 3);
+
+            plr_clear_map(gs);
+
+            assert_eq!(gs.players[nr].vx, 0);
+            assert_eq!(gs.players[nr].smap[0], CMap::default());
+        });
+    }
+
+    #[test]
+    fn plr_getmap_and_complete_populate_visible_tiles() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let tile = map_index(10, 10);
+            gs.map[tile] = Map {
+                sprite: 321,
+                ch: cn as u32,
+                it: 1,
+                ..Map::default()
+            };
+            gs.items[1].used = USE_ACTIVE;
+            gs.items[1].sprite[0] = 77;
+            gs.items[1].status[0] = 9;
+            gs.items[1].flags = (ItemFlags::IF_LOOK | ItemFlags::IF_USE).bits();
+            gs.items[1].temp = core::constants::IT_TOMBSTONE as u16;
+
+            plr_getmap(gs, nr);
+
+            let sm_idx = small_map_index(gs, cn, 10, 10);
+            let tile = gs.players[nr].smap[sm_idx];
+            assert_eq!(tile.ba_sprite, 321);
+            assert_ne!(tile.flags & ISCHAR, 0);
+            assert_ne!(tile.flags & ISITEM, 0);
+            assert_ne!(tile.flags & IS_GRAVE, 0);
+            assert_eq!(tile.it_sprite, 77);
+            assert_eq!(gs.players[nr].vx, gs.see_map[cn].x);
+            assert_eq!(gs.players[nr].vy, gs.see_map[cn].y);
+        });
+    }
+
+    #[test]
+    fn light_packet_helpers_update_cmap_and_encode_expected_payloads() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+
+            gs.players[nr].smap[3].light = 5;
+            assert_eq!(cl_light_one(gs, 3, nr, false), 16);
+            reset_tbuf(gs, nr);
+            cl_light_one(gs, 3, nr, true);
+            assert_eq!(gs.players[nr].cmap[3].light, 5);
+            assert_eq!(gs.players[nr].tptr, 4);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap4 as u8);
+
+            reset_tbuf(gs, nr);
+            gs.players[nr].cmap[8] = CMap::default();
+            gs.players[nr].cmap[9] = CMap::default();
+            gs.players[nr].cmap[10] = CMap::default();
+            gs.players[nr].smap[8].light = 1;
+            gs.players[nr].smap[9].light = 2;
+            gs.players[nr].smap[10].light = 3;
+            assert_eq!(cl_light_three(gs, 8, nr, false), 37);
+            cl_light_three(gs, 8, nr, true);
+            assert_eq!(gs.players[nr].tptr, 5);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap5 as u8);
+            assert_eq!(gs.players[nr].tbuf[4], 3 | (2 << 4));
+
+            reset_tbuf(gs, nr);
+            for idx in 20..27 {
+                gs.players[nr].cmap[idx].light = 0;
+                gs.players[nr].smap[idx].light = (idx - 19) as u8;
+            }
+            assert_eq!(cl_light_seven(gs, 20, nr, false), 58);
+            cl_light_seven(gs, 20, nr, true);
+            assert_eq!(gs.players[nr].tptr, 7);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap6 as u8);
+
+            reset_tbuf(gs, nr);
+            for idx in 40..67 {
+                gs.players[nr].cmap[idx].light = 0;
+                gs.players[nr].smap[idx].light = (((idx - 39) % 15) + 1) as u8;
+            }
+            assert_eq!(cl_light_26(gs, 40, nr, false), 84);
+            cl_light_26(gs, 40, nr, true);
+            assert_eq!(gs.players[nr].tptr, 17);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap3 as u8);
+        });
+    }
+
+    #[test]
+    fn plr_change_light_picks_batch_update_and_syncs_cmap() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            for idx in 0..27 {
+                gs.players[nr].cmap[idx].light = 0;
+                gs.players[nr].smap[idx].light = ((idx % 15) + 1) as u8;
+            }
+
+            plr_change_light(gs, nr);
+
+            assert_eq!(gs.players[nr].tptr, 17);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap3 as u8);
+            for idx in 0..27 {
+                assert_eq!(
+                    gs.players[nr].cmap[idx].light,
+                    gs.players[nr].smap[idx].light
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn plr_change_map_sends_absolute_and_relative_updates() {
+        with_test_gs(|gs| {
+            let (_, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].cmap[3] = CMap::default();
+            gs.players[nr].smap[3] = CMap::default();
+            gs.players[nr].smap[3].ba_sprite = 55;
+            gs.players[nr].cmap[5] = CMap::default();
+            gs.players[nr].smap[5] = CMap::default();
+            gs.players[nr].smap[5].flags = ISITEM;
+
+            plr_change_map(gs, nr);
+
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetMap as u8);
+            assert_eq!(gs.players[nr].tbuf[1], 1);
+            assert_eq!(
+                u16::from_le_bytes([gs.players[nr].tbuf[2], gs.players[nr].tbuf[3]]),
+                3
+            );
+            assert_eq!(
+                i16::from_le_bytes([gs.players[nr].tbuf[4], gs.players[nr].tbuf[5]]),
+                55
+            );
+
+            let second_packet = 6;
+            assert_eq!(
+                gs.players[nr].tbuf[second_packet],
+                ServerCommandType::SetMap as u8 | 2
+            );
+            assert_ne!(gs.players[nr].tbuf[second_packet + 1] & 2, 0);
+            assert_eq!(
+                u32::from_le_bytes([
+                    gs.players[nr].tbuf[second_packet + 2],
+                    gs.players[nr].tbuf[second_packet + 3],
+                    gs.players[nr].tbuf[second_packet + 4],
+                    gs.players[nr].tbuf[second_packet + 5],
+                ]),
+                ISITEM
+            );
+            assert_eq!(gs.players[nr].cmap[3], gs.players[nr].smap[3]);
+            assert_eq!(gs.players[nr].cmap[5], gs.players[nr].smap[5]);
+        });
+    }
+
+    #[test]
+    fn plr_change_position_scrolls_and_sets_origin() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.players[nr].cpl.x = 9;
+            gs.players[nr].cpl.y = 10;
+            gs.players[nr].cmap[0] = make_tile(10, 1);
+            gs.players[nr].cmap[1] = make_tile(20, 2);
+
+            plr_change_position(gs, nr, cn);
+
+            assert_eq!(gs.players[nr].tptr, 6);
+            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::ScrollRight as u8);
+            assert_eq!(gs.players[nr].tbuf[1], ServerCommandType::SetOrigin as u8);
+            assert_eq!(gs.players[nr].cpl.x, 10);
+            assert_eq!(gs.players[nr].cpl.y, 10);
+            assert_eq!(gs.players[nr].cmap[0].ba_sprite, 20);
+
+            reset_tbuf(gs, nr);
+            plr_change_position(gs, nr, cn);
+            assert_eq!(gs.players[nr].tptr, 0);
+        });
+    }
+}
