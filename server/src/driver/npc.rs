@@ -3004,6 +3004,11 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     }
 
     // Auto turn-in: if this NPC wants a quest item and the player is carrying one, accept it now.
+    // Four conditions:
+    // 1. NPC can see player (checked above)
+    // 2. Player can see NPC (checked below)
+    // 3. NPC is close enough to the player (3.5 tiles or less)
+    // 4. NPC wants an item that the player is carrying
     if gs.do_char_can_see(co, cn) != 0
         && helpers::get_distance(gs, cn, co) < 3.5
         && npc_scan_player_items(gs, cn, co)
