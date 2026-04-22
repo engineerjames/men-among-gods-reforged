@@ -874,9 +874,6 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
 
                 character.flags |= CharacterFlags::SaveMe.bits();
             }
-            if gs.characters[character_id].is_building() {
-                God::build(gs, character_id, 0);
-            }
 
             gs.do_announce(character_id, 0, &format!("{} left the game.\n", name));
         }

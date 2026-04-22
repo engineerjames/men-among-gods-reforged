@@ -64,18 +64,6 @@ impl GameState {
     /// * `cn` - Character id whose inventory will be sorted
     /// * `order` - Sort order string composed of single-character keys
     pub(crate) fn do_sort(&mut self, cn: usize, order: &str) {
-        // Check if character is in building mode
-        let is_building = self.characters[cn].is_building();
-
-        if is_building {
-            self.do_character_log(
-                cn,
-                FontColor::Red,
-                "You cannot sort your inventory while in build mode.\n",
-            );
-            return;
-        }
-
         // Get a copy of the items array to sort
         let mut items = self.characters[cn].item;
 
@@ -564,69 +552,6 @@ impl GameState {
                     };
                     self.do_character_log(cn, color, condition_msg);
                 }
-            }
-
-            // Show detailed info for build mode
-            let is_building = self.characters[cn].flags & CharacterFlags::BuildMode.bits() != 0;
-
-            if is_building {
-                let temp = self.items[item_idx].temp;
-                let sprite_0 = self.items[item_idx].sprite[0];
-                let sprite_1 = self.items[item_idx].sprite[1];
-                let curr_age_0 = self.items[item_idx].current_age[0];
-                let max_age_0 = self.items[item_idx].max_age[0];
-                let curr_age_1 = self.items[item_idx].current_age[1];
-                let max_age_1 = self.items[item_idx].max_age[1];
-                let curr_damage = self.items[item_idx].current_damage;
-                let max_damage = self.items[item_idx].max_damage;
-                let active = self.items[item_idx].active;
-                let duration = self.items[item_idx].duration;
-                let driver = self.items[item_idx].driver;
-                let data = self.items[item_idx].data;
-
-                self.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Temp: {}, Sprite: {},{}.\n", temp, sprite_0, sprite_1),
-                );
-                self.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("In-Active Age {} of {}.\n", curr_age_0, max_age_0),
-                );
-                self.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Active Age {} of {}.\n", curr_age_1, max_age_1),
-                );
-                self.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Damage {} of {}.\n", curr_damage, max_damage),
-                );
-                self.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!("Active {} of {}.\n", active, duration),
-                );
-                self.do_character_log(
-                    cn,
-                    FontColor::Green,
-                    &format!(
-                        "Driver={} [{},{},{},{},{},{},{},{},{},{}].\n",
-                        driver,
-                        data[0],
-                        data[1],
-                        data[2],
-                        data[3],
-                        data[4],
-                        data[5],
-                        data[6],
-                        data[7],
-                        data[8],
-                        data[9]
-                    ),
-                );
             }
 
             // Show god-mode info

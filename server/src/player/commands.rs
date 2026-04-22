@@ -519,13 +519,6 @@ pub fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
 
     log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
 
-    // If building mode, ignore
-    let is_building = gs.characters[cn].is_building();
-    if is_building {
-        log::debug!("plr_cmd_turn: cn={} is building, ignoring turn", cn);
-        return;
-    }
-
     let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
     gs.characters[cn].goto_x = 0;
@@ -544,55 +537,11 @@ pub fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
 /// `misc_target1/2`. Supports special behavior when in building mode.
 ///
 /// # Arguments
-/// * `_nr` - Player slot index performing the drop
-pub fn plr_cmd_drop(gs: &mut GameState, _nr: usize) {
-    let x = u16::from_le_bytes([gs.players[_nr].inbuf[1], gs.players[_nr].inbuf[2]]) as i32;
-    let y = u16::from_le_bytes([gs.players[_nr].inbuf[3], gs.players[_nr].inbuf[4]]) as i32;
-    let cn = gs.players[_nr].usnr;
-
-    // Building-mode special handling
-    let is_building = gs.characters[cn].is_building();
-    if is_building {
-        let (action, tx, ty) = (
-            gs.characters[cn].misc_action,
-            gs.characters[cn].misc_target1,
-            gs.characters[cn].misc_target2,
-        );
-
-        if action == core::constants::DR_AREABUILD2 as u16 {
-            let xs = std::cmp::min(x, tx as i32);
-            let ys = std::cmp::min(y, ty as i32);
-            let xe = std::cmp::max(x, tx as i32);
-            let ye = std::cmp::max(y, ty as i32);
-
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Areaend: {},{}\n", x, y),
-            );
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Area: {},{} - {},{}\n", xs, ys, xe, ye),
-            );
-
-            // Note: actual build_drop per-tile processing not implemented yet.
-            gs.characters[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
-        } else if action == core::constants::DR_AREABUILD1 as u16 {
-            gs.characters[cn].misc_action = core::constants::DR_AREABUILD2 as u16;
-            gs.characters[cn].misc_target1 = x as u16;
-            gs.characters[cn].misc_target2 = y as u16;
-            gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Areastart: {},{}\n", x, y),
-            );
-        } else if action == core::constants::DR_SINGLEBUILD as u16 {
-            // Single build: would normally place immediately. Not implemented.
-        }
-
-        return;
-    }
+/// * `nr` - Player slot index performing the drop
+pub fn plr_cmd_drop(gs: &mut GameState, nr: usize) {
+    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
+    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
@@ -616,14 +565,6 @@ pub fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
     let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
     let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
     let cn = gs.players[nr].usnr;
-
-    // Building-mode: removal in build mode should remove the temporary build object
-    let is_building = gs.characters[cn].is_building();
-    if is_building {
-        // Call the build removal helper (port of C++ build_remove)
-        gs.do_build_remove(x, y);
-        return;
-    }
 
     let ticker = gs.globals.ticker;
     gs.characters[cn].attack_cn = 0;
@@ -806,15 +747,6 @@ pub fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
 
     if n > 39 {
-        return;
-    }
-
-    let is_building = gs.characters[cn].is_building();
-    if is_building {
-        // set carried item to the selected inventory slot and enter area-build
-        gs.characters[cn].citem = gs.characters[cn].item[n];
-        gs.characters[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
-        gs.do_character_log(cn, core::types::FontColor::Green, "Area mode\n");
         return;
     }
 
@@ -1005,11 +937,7 @@ pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
             }
             gs.characters[cn].citem = 0;
         } else {
-            if !gs.characters[cn].is_building() {
-                gs.characters[cn].item[n] = gs.characters[cn].citem;
-            } else {
-                gs.characters[cn].misc_action = core::constants::DR_SINGLEBUILD as u16;
-            }
+            gs.characters[cn].item[n] = gs.characters[cn].citem;
             gs.characters[cn].citem = tmp as u32;
         }
 
@@ -1053,10 +981,6 @@ pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
         if n > 19 {
             return;
         }
-        let is_building = gs.characters[cn].is_building();
-        if is_building {
-            return;
-        }
         gs.characters[cn].use_nr = n as u16;
         gs.characters[cn].skill_target1 = co as u16;
         return;
@@ -1067,10 +991,7 @@ pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
         if n > 39 {
             return;
         }
-        let is_building = gs.characters[cn].is_building();
-        if is_building {
-            return;
-        }
+
         gs.characters[cn].use_nr = (n as u16) + 20;
         gs.characters[cn].skill_target1 = co as u16;
         return;
@@ -1081,10 +1002,7 @@ pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
         if n > 19 {
             return;
         }
-        let is_building = gs.characters[cn].is_building();
-        if is_building {
-            return;
-        }
+
         let in_idx = gs.characters[cn].worn[n] as usize;
         if in_idx != 0 {
             gs.do_look_item(cn, in_idx);
@@ -1097,10 +1015,7 @@ pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
         if n > 39 {
             return;
         }
-        let is_building = gs.characters[cn].is_building();
-        if is_building {
-            return;
-        }
+
         let in_idx = gs.characters[cn].item[n] as usize;
         if in_idx != 0 {
             gs.do_look_item(cn, in_idx);

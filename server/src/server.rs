@@ -750,11 +750,6 @@ impl Server {
             }
         }
 
-        // If character is in build mode accept validity
-        if gs.characters[cn].is_building() {
-            return true;
-        }
-
         // Validate carried items (inventory)
         for slot in 0..40 {
             let in_id = gs.characters[cn].item[slot] as usize;

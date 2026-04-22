@@ -692,12 +692,11 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
 
     // items (40)
     for i in 0..40usize {
-        let is_building = gs.characters[cn].is_building();
         let in_idx = gs.characters[cn].item[i] as usize;
         let cpl_item = gs.players[nr].cpl.item[i];
 
         // Check if changed OR if IF_UPDATE is set (but not for building mode)
-        let needs_update = if in_idx != 0 && !is_building {
+        let needs_update = if in_idx != 0 {
             (cpl_item != in_idx as i32)
                 || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
         } else {
@@ -710,65 +709,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
 
-            if in_idx != 0 {
-                if is_building {
-                    // Building mode - handle special flags and templates
-                    if (in_idx & 0x40000000) != 0 {
-                        // Map flags
-                        let flag = in_idx & 0x0fffffff;
-                        let sprite = match flag as u32 {
-                            core::constants::MF_MOVEBLOCK => 47,
-                            core::constants::MF_SIGHTBLOCK => 83,
-                            core::constants::MF_INDOORS => 48,
-                            core::constants::MF_UWATER => 50,
-                            core::constants::MF_NOMONST => 51,
-                            core::constants::MF_BANK => 52,
-                            core::constants::MF_TAVERN => 53,
-                            core::constants::MF_NOMAGIC => 54,
-                            core::constants::MF_DEATHTRAP => 74,
-                            core::constants::MF_ARENA => 78,
-                            core::constants::MF_NOEXPIRE => 81,
-                            core::constants::MF_NOLAG => 49,
-                            _ => 0,
-                        };
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = 0;
-                        buf[8] = 0;
-                    } else if (in_idx & 0x20000000) != 0 {
-                        // Direct sprite reference
-                        let sprite = (in_idx & 0x0fffffff) as i16;
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = 0;
-                        buf[8] = 0;
-                    } else {
-                        // Template item
-                        let sprite = gs.item_templates[in_idx].sprite[0];
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = 0;
-                        buf[8] = 0;
-                    }
-                } else {
-                    // Normal mode - use item sprite and placement
-                    {
-                        let it = &gs.items[in_idx];
-                        let sprite = if it.active != 0 {
-                            it.sprite[1]
-                        } else {
-                            it.sprite[0]
-                        };
-                        let placement = it.placement as i16;
-                        buf[5] = (sprite & 0xff) as u8;
-                        buf[6] = ((sprite >> 8) & 0xff) as u8;
-                        buf[7] = (placement & 0xff) as u8;
-                        buf[8] = ((placement >> 8) & 0xff) as u8;
-                    }
-                    // Clear IF_UPDATE flag
-                    gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
-                }
-            } else {
+            if in_idx == 0 {
                 buf[5] = 0;
                 buf[6] = 0;
                 buf[7] = 0;
@@ -885,12 +826,11 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
     }
 
     // citem (cursor item)
-    let is_building = gs.characters[cn].is_building();
     let in_idx = gs.characters[cn].citem as usize;
     let cpl_citem = gs.players[nr].cpl.citem;
 
     // Check if changed OR if IF_UPDATE is set (but not for building mode or gold amounts)
-    let needs_update = if in_idx != 0 && !is_building && (in_idx & 0x80000000) == 0 {
+    let needs_update = if in_idx != 0 && (in_idx & 0x80000000) == 0 {
         (cpl_citem != in_idx as i32)
             || ((gs.items[in_idx].flags & core::constants::ItemFlags::IF_UPDATE.bits()) != 0)
     } else {
@@ -924,30 +864,22 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             buf[3] = 0;
             buf[4] = 0;
         } else if in_idx != 0 {
-            if is_building {
-                // Building mode - fixed sprite
-                buf[1] = 46;
-                buf[2] = 0;
-                buf[3] = 0;
-                buf[4] = 0;
-            } else {
-                // Normal item
-                {
-                    let it = &gs.items[in_idx];
-                    let sprite = if it.active != 0 {
-                        it.sprite[1]
-                    } else {
-                        it.sprite[0]
-                    };
-                    let placement = it.placement as i16;
-                    buf[1] = (sprite & 0xff) as u8;
-                    buf[2] = ((sprite >> 8) & 0xff) as u8;
-                    buf[3] = (placement & 0xff) as u8;
-                    buf[4] = ((placement >> 8) & 0xff) as u8;
-                }
-                // Clear IF_UPDATE flag
-                gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
+            // Normal item
+            {
+                let it = &gs.items[in_idx];
+                let sprite = if it.active != 0 {
+                    it.sprite[1]
+                } else {
+                    it.sprite[0]
+                };
+                let placement = it.placement as i16;
+                buf[1] = (sprite & 0xff) as u8;
+                buf[2] = ((sprite >> 8) & 0xff) as u8;
+                buf[3] = (placement & 0xff) as u8;
+                buf[4] = ((placement >> 8) & 0xff) as u8;
             }
+            // Clear IF_UPDATE flag
+            gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
         } else {
             // Empty cursor
             buf[1] = 0;
