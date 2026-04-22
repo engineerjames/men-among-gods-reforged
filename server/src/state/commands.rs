@@ -833,7 +833,7 @@ impl GameState {
         let cmd = arg[0].to_lowercase();
 
         // Read flags for this character
-        let (f_gg, f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_pol) = {
+        let (f_gg, _f_c, f_g, f_i, f_s, f_p, f_u, f_sh, f_pol) = {
             let flags = self.characters[cn].flags;
             (
                 (flags & CharacterFlags::GreaterGod.bits()) != 0,
@@ -899,11 +899,6 @@ impl GameState {
             Some("black") if f_g => {
                 log::debug!("Processing black command for {}", cn);
                 God::set_flag(self, cn, arg_get(1), CharacterFlags::Black.bits());
-                return;
-            }
-            Some("build") if f_c => {
-                log::debug!("Processing build command for {}", cn);
-                God::build(self, cn, parse_i32(arg_get(1)) as u32);
                 return;
             }
             Some("cap") if f_g => {

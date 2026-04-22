@@ -705,8 +705,6 @@ pub const DR_BOW: u32 = 5;
 pub const DR_WAVE: u32 = 6;
 pub const DR_TURN: u32 = 7;
 pub const DR_SINGLEBUILD: u32 = 8;
-pub const DR_AREABUILD1: u32 = 9;
-pub const DR_AREABUILD2: u32 = 10;
 
 // =============================================================================
 // Attribute Indices (from SkillTab.h)

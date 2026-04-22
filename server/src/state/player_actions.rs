@@ -302,54 +302,6 @@ impl GameState {
         ((pts.sqrt() as i32) / 7) + 7
     }
 
-    /// Port of `build_remove(x, y)` from `build.cpp`.
-    ///
-    /// Removes a build-mode object from the map at `(x, y)` if present and
-    /// updates lights and item tables accordingly.
-    pub(crate) fn do_build_remove(&mut self, x: i32, y: i32) {
-        // Bounds check
-        if !(0..core::constants::SERVER_MAPX).contains(&x)
-            || !(0..core::constants::SERVER_MAPY).contains(&y)
-        {
-            return;
-        }
-
-        let m = (x as usize) + (y as usize) * core::constants::SERVER_MAPX as usize;
-
-        // Clear sprite and movement/sight flags
-        self.map[m].fsprite = 0;
-        self.map[m].flags &=
-            !(core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_SIGHTBLOCK as u64);
-
-        // If there's no item on the tile, we're done
-        let in_id = self.map[m].it;
-        if in_id == 0 {
-            return;
-        }
-
-        // Adjust lighting based on item's active state
-        let active = self.items[in_id as usize].active;
-        let light_active = self.items[in_id as usize].light[1];
-        let light_inactive = self.items[in_id as usize].light[0];
-
-        if active != 0 {
-            if light_active != 0 {
-                self.do_add_light(x, y, -(light_active as i32));
-            }
-        } else if light_inactive != 0 {
-            self.do_add_light(x, y, -(light_inactive as i32));
-        }
-
-        // Mark the item slot free and clear the map reference
-        if (in_id as usize) < self.items.len() {
-            self.items[in_id as usize].used = core::constants::USE_EMPTY;
-        }
-
-        self.map[m].it = 0;
-
-        log::info!("build: remove item from {},{}", x, y);
-    }
-
     /// Port of `do_seen(cn, cco)` from `svr_do.cpp`.
     ///
     /// Lookup when a target character was last seen or logged in. For gods

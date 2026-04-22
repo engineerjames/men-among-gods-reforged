@@ -416,10 +416,6 @@ impl Character {
         (self.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits())) != 0
     }
 
-    pub fn is_building(&self) -> bool {
-        (self.flags & CharacterFlags::BuildMode.bits()) != 0
-    }
-
     pub fn get_kindred_as_string(&self) -> String {
         let kindred = self.kindred as u32;
         if kindred & traits::KIN_TEMPLAR != 0 {
@@ -791,16 +787,6 @@ mod tests {
 
         character.flags = CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits();
         assert!(character.is_usurp_or_thrall());
-    }
-
-    #[test]
-    fn test_is_building() {
-        let mut character = Character::default();
-        character.flags = 0;
-        assert!(!character.is_building());
-
-        character.flags = CharacterFlags::BuildMode.bits();
-        assert!(character.is_building());
     }
 
     #[test]
