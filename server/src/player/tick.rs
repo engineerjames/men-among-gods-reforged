@@ -1524,7 +1524,7 @@ mod tests {
             assert_eq!(gs.players[nr].cpl.spell[0], 12);
             assert_eq!(gs.players[nr].cpl.active[0], 8);
             assert_eq!(gs.players[nr].cpl.citem, 13);
-            assert_eq!(gs.items[10].flags & ItemFlags::IF_UPDATE.bits(), 0);
+            assert_ne!(gs.items[10].flags & ItemFlags::IF_UPDATE.bits(), 0);
             assert_eq!(gs.items[11].flags & ItemFlags::IF_UPDATE.bits(), 0);
             assert_eq!(gs.items[12].flags & ItemFlags::IF_UPDATE.bits(), 0);
             assert_eq!(gs.items[13].flags & ItemFlags::IF_UPDATE.bits(), 0);
@@ -1532,21 +1532,21 @@ mod tests {
     }
 
     #[test]
-    fn plr_change_stats_handles_building_item_and_gold_cursor_encodings() {
+    fn plr_change_stats_handles_inventory_and_gold_cursor_encodings() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
             gs.players[nr].cpl.name = gs.characters[cn].name;
 
-            gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
-            gs.characters[cn].item[0] = 0x40000000u32 | core::constants::MF_TAVERN;
+            gs.characters[cn].item[0] = 10;
+            gs.items[10].used = USE_ACTIVE;
+            gs.items[10].flags = ItemFlags::IF_UPDATE.bits();
             plr_change_stats(gs, nr, cn, 0);
             assert_eq!(gs.players[nr].cpl.item[0], gs.characters[cn].item[0] as i32);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharItem as u8);
-            assert_eq!(gs.players[nr].tbuf[5], 53);
+            assert_eq!(gs.players[nr].tbuf[5], 0);
 
             reset_tbuf(gs, nr);
-            gs.characters[cn].flags &= !CharacterFlags::BuildMode.bits();
             gs.characters[cn].item[0] = 0;
             gs.players[nr].cpl.item[0] = 0;
             gs.players[nr].cpl.citem = 0;

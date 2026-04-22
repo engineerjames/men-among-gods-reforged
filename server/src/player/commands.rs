@@ -2343,7 +2343,7 @@ mod tests {
     }
 
     #[test]
-    fn plr_cmd_turn_sets_turn_target_unless_building() {
+    fn plr_cmd_turn_sets_turn_target_even_when_build_flag_is_set() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             gs.globals.ticker = 42;
@@ -2361,16 +2361,19 @@ mod tests {
             assert_eq!(gs.characters[cn].data[12], 42);
 
             gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
-            gs.characters[cn].misc_target1 = 0;
-            gs.characters[cn].misc_target2 = 0;
+            gs.characters[cn].misc_action = 0;
             plr_cmd_turn(gs, nr);
-            assert_eq!(gs.characters[cn].misc_target1, 0);
-            assert_eq!(gs.characters[cn].misc_target2, 0);
+            assert_eq!(
+                gs.characters[cn].misc_action,
+                core::constants::DR_TURN as u16
+            );
+            assert_eq!(gs.characters[cn].misc_target1, 13);
+            assert_eq!(gs.characters[cn].misc_target2, 17);
         });
     }
 
     #[test]
-    fn plr_cmd_drop_handles_normal_and_build_mode_variants() {
+    fn plr_cmd_drop_sets_drop_action_in_all_modes() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             gs.globals.ticker = 123;
@@ -2389,28 +2392,28 @@ mod tests {
             assert_eq!(gs.characters[cn].data[12], 123);
 
             gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
-            gs.characters[cn].misc_action = core::constants::DR_AREABUILD1 as u16;
+            gs.characters[cn].misc_action = 0;
             plr_cmd_drop(gs, nr);
             assert_eq!(
                 gs.characters[cn].misc_action,
-                core::constants::DR_AREABUILD2 as u16
+                core::constants::DR_DROP as u16
             );
             assert_eq!(gs.characters[cn].misc_target1, 12);
             assert_eq!(gs.characters[cn].misc_target2, 14);
 
-            gs.characters[cn].misc_action = core::constants::DR_AREABUILD2 as u16;
-            gs.characters[cn].misc_target1 = 8;
-            gs.characters[cn].misc_target2 = 9;
+            gs.characters[cn].misc_action = 0;
             plr_cmd_drop(gs, nr);
             assert_eq!(
                 gs.characters[cn].misc_action,
-                core::constants::DR_AREABUILD1 as u16
+                core::constants::DR_DROP as u16
             );
+            assert_eq!(gs.characters[cn].misc_target1, 12);
+            assert_eq!(gs.characters[cn].misc_target2, 14);
         });
     }
 
     #[test]
-    fn plr_cmd_pickup_removes_build_objects_or_schedules_pickup() {
+    fn plr_cmd_pickup_schedules_pickup_in_all_modes() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             configure_item(
@@ -2433,13 +2436,14 @@ mod tests {
 
             gs.characters[cn].flags |= CharacterFlags::BuildMode.bits();
             plr_cmd_pickup(gs, nr);
-            assert_eq!(gs.map[map_index(12, 10)].it, 0);
-            assert_eq!(gs.items[10].used, USE_EMPTY);
-            assert_eq!(gs.map[map_index(12, 10)].fsprite, 0);
             assert_eq!(
-                gs.map[map_index(12, 10)].flags & ((MF_MOVEBLOCK | MF_SIGHTBLOCK) as u64),
-                0
+                gs.characters[cn].misc_action,
+                core::constants::DR_PICKUP as u16
             );
+            assert_eq!(gs.characters[cn].misc_target1, 12);
+            assert_eq!(gs.characters[cn].misc_target2, 10);
+            assert_eq!(gs.map[map_index(12, 10)].it, 10);
+            assert_eq!(gs.items[10].used, USE_ACTIVE);
 
             gs.characters[cn].flags &= !CharacterFlags::BuildMode.bits();
             gs.globals.ticker = 90;
@@ -2549,7 +2553,7 @@ mod tests {
     }
 
     #[test]
-    fn plr_cmd_inv_look_handles_build_mode_and_regular_item_lookups() {
+    fn plr_cmd_inv_look_handles_regular_item_lookups_in_all_modes() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
@@ -2565,11 +2569,8 @@ mod tests {
             reset_packets(gs, nr);
             write_inbuf(gs, nr, &build_u16_packet(5));
             plr_cmd_inv_look(gs, nr);
-            assert_eq!(gs.characters[cn].citem, 10);
-            assert_eq!(
-                gs.characters[cn].misc_action,
-                core::constants::DR_AREABUILD1 as u16
-            );
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert!(gs.players[nr].tptr > 0);
         });
     }
 
