@@ -3002,7 +3002,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     }
 
     // Auto turn-in: if this NPC wants a quest item and the player is carrying one, accept it now.
-    if npc_scan_player_items(gs, cn, co) {
+    if npc_scan_player_items(gs, cn, co) && helpers::get_distance(gs, cn, co) < 3.5 {
         return true;
     }
 
