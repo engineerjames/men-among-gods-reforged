@@ -862,17 +862,6 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
         return true;
     }
 
-    // "Thank you" message.
-    let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
-    gs.do_sayx(
-        cn,
-        &format!(
-            "Thank you {}. That's the {} I wanted.",
-            gs.characters[co].get_name(),
-            ref_name
-        ),
-    );
-
     // Teach-skill branch.
     let nr = gs.characters[cn].data[50];
     if nr != 0 {
@@ -921,21 +910,23 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
             );
         }
 
-        let skill_name = skills::get_skill_name(skill_nr);
-        gs.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
-
         if gs.characters[co].skill[skill_nr][0] != 0 {
-            // Already knows the skill — leave item untouched.
-            gs.do_sayx(
-                cn,
-                &format!(
-                    "But you already know {}, {}!",
-                    skill_name,
-                    gs.characters[co].get_name()
-                ),
-            );
+            // Already knows the skill — leave item untouched and avoid repeated sight spam.
             return false;
         }
+
+        let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
+        gs.do_sayx(
+            cn,
+            &format!(
+                "Thank you {}. That's the {} I wanted.",
+                gs.characters[co].get_name(),
+                ref_name
+            ),
+        );
+
+        let skill_name = skills::get_skill_name(skill_nr);
+        gs.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
 
         // Teach and consume.
         gs.characters[co].skill[skill_nr][0] = 1;
@@ -960,6 +951,17 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
         gs.items[in_item].used = core::constants::USE_EMPTY;
         return true;
     }
+
+    // "Thank you" message.
+    let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
+    gs.do_sayx(
+        cn,
+        &format!(
+            "Thank you {}. That's the {} I wanted.",
+            gs.characters[co].get_name(),
+            ref_name
+        ),
+    );
 
     // Return-gift branch.
     let give_temp = gs.characters[cn].data[66];
@@ -3002,7 +3004,10 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     }
 
     // Auto turn-in: if this NPC wants a quest item and the player is carrying one, accept it now.
-    if npc_scan_player_items(gs, cn, co) && helpers::get_distance(gs, cn, co) < 3.5 {
+    if gs.do_char_can_see(co, cn) != 0
+        && helpers::get_distance(gs, cn, co) < 3.5
+        && npc_scan_player_items(gs, cn, co)
+    {
         return true;
     }
 
