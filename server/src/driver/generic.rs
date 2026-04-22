@@ -2010,8 +2010,6 @@ pub fn driver(gs: &mut GameState, cn: usize) {
             drv_turnto(gs, cn, t1, t2);
         }
         x if x == core::constants::DR_SINGLEBUILD => {}
-        x if x == core::constants::DR_AREABUILD1 => {}
-        x if x == core::constants::DR_AREABUILD2 => {}
         _ => {
             log::error!("player_driver(): unknown misc_action {}", misc_action);
             gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;

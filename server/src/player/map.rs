@@ -10,8 +10,8 @@ use core::{
 };
 
 use crate::{
-    driver, game_state::GameState, god::God, helpers, network_manager,
-    player::connection::plr_logout, types::cmap::CMap,
+    driver, game_state::GameState, helpers, network_manager, player::connection::plr_logout,
+    types::cmap::CMap,
 };
 
 /// Port of `plr_map_remove` from `svr_act.cpp`
@@ -177,9 +177,6 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
         let is_tavern = (gs.map[m].flags & core::constants::MF_TAVERN as u64) != 0;
 
         if is_tavern && is_player {
-            if gs.characters[cn].is_building() {
-                God::build(gs, cn, 0);
-            }
             gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
             gs.characters[cn].tavern_y = gs.characters[cn].y as u16;
 
@@ -335,10 +332,6 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         do_all = true;
     }
 
-    if gs.characters[cn].is_building() {
-        do_all = true;
-    }
-
     let empty_cmap = {
         let mut tile = CMap::default();
         tile.ba_sprite = core::constants::SPR_EMPTY as i16;
@@ -472,11 +465,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].flags |= INFRARED;
                 }
 
-                if gs.characters[cn].is_building() {
-                    smap[n].flags2 = map_flags as u32;
-                } else {
-                    smap[n].flags2 = 0;
-                }
+                smap[n].flags2 = 0;
 
                 let rel_x = x - current_x + core::constants::VISI_CENTER;
                 let rel_y = y - current_y + core::constants::VISI_CENTER;
