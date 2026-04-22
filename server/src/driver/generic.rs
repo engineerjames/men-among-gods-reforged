@@ -2009,7 +2009,6 @@ pub fn driver(gs: &mut GameState, cn: usize) {
             let t2 = gs.characters[cn].misc_target2 as usize;
             drv_turnto(gs, cn, t1, t2);
         }
-        x if x == core::constants::DR_SINGLEBUILD => {}
         _ => {
             log::error!("player_driver(): unknown misc_action {}", misc_action);
             gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
