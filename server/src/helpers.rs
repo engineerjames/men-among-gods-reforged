@@ -1081,6 +1081,30 @@ pub fn skill_needed(v: i32, diff: i32) -> i32 {
     std::cmp::max(v, v * v * v * diff / 40)
 }
 
+/// Returns the Euclidean distance in map tiles between two characters.
+///
+/// Computes the straight-line distance using the `x` and `y` positions of
+/// both characters. Does not account for walls, elevation, or line of sight.
+///
+/// # Arguments
+///
+/// * `gs` - Shared game state containing character data.
+/// * `cn` - Index of the first character.
+/// * `co` - Index of the second character.
+///
+/// # Returns
+///
+/// * Euclidean distance as a `f32`
+pub fn get_distance(gs: &GameState, cn: usize, co: usize) -> f32 {
+    let ch = &gs.characters[cn];
+    let co = &gs.characters[co];
+
+    let dx = (ch.x - co.x) as f32;
+    let dy = (ch.y - co.y) as f32;
+
+    (dx * dx + dy * dy).sqrt()
+}
+
 #[cfg(test)]
 mod tests {
     use core::constants::TICKS;
@@ -1530,6 +1554,69 @@ mod tests {
         // Test edge cases
         assert_eq!(mana_needed(0, 5), 0);
         assert_eq!(mana_needed(10, 0), 0);
+    }
+
+    #[test]
+    fn get_distance_same_tile_is_zero() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.characters[1].x = 10;
+            gs.characters[1].y = 20;
+            gs.characters[2].x = 10;
+            gs.characters[2].y = 20;
+
+            assert_eq!(get_distance(gs, 1, 2), 0.0);
+        });
+    }
+
+    #[test]
+    fn get_distance_horizontal_returns_abs_dx() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.characters[1].x = 5;
+            gs.characters[1].y = 10;
+            gs.characters[2].x = 10;
+            gs.characters[2].y = 10;
+
+            assert!((get_distance(gs, 1, 2) - 5.0).abs() < 1e-5);
+        });
+    }
+
+    #[test]
+    fn get_distance_vertical_returns_abs_dy() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.characters[1].x = 10;
+            gs.characters[1].y = 3;
+            gs.characters[2].x = 10;
+            gs.characters[2].y = 10;
+
+            assert!((get_distance(gs, 1, 2) - 7.0).abs() < 1e-5);
+        });
+    }
+
+    #[test]
+    fn get_distance_diagonal_uses_euclidean() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.characters[1].x = 0;
+            gs.characters[1].y = 0;
+            gs.characters[2].x = 3;
+            gs.characters[2].y = 4;
+
+            // 3-4-5 right triangle
+            assert!((get_distance(gs, 1, 2) - 5.0).abs() < 1e-5);
+        });
+    }
+
+    #[test]
+    fn get_distance_is_symmetric() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.characters[1].x = 7;
+            gs.characters[1].y = 2;
+            gs.characters[2].x = 1;
+            gs.characters[2].y = 8;
+
+            let d12 = get_distance(gs, 1, 2);
+            let d21 = get_distance(gs, 2, 1);
+            assert!((d12 - d21).abs() < 1e-5);
+        });
     }
 
     #[test]

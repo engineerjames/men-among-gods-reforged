@@ -817,6 +817,241 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
     false
 }
 
+/// Attempts an auto turn-in of `in_item` (currently in `co`'s inventory) to NPC `cn`.
+/// Mirrors the acceptance branches of `npc_give` but operates on items still held by the player
+/// instead of items already transferred onto the NPC by `do_give`.
+///
+/// # Arguments
+///
+/// * `cn` - NPC character index.
+/// * `co` - Player/usurp character index carrying the item.
+/// * `in_item` - Item index to evaluate.
+///
+/// # Returns
+///
+/// * `true` when the item was accepted and consumed; `false` when the NPC would not take it.
+pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usize) -> bool {
+    // Item must match what this NPC wants.
+    if in_item == 0 || gs.items[in_item].temp as i32 != gs.characters[cn].data[49] {
+        return false;
+    }
+
+    // Black candle special-case (repeatable).
+    if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
+        gs.characters[co].data[43] += 1;
+        God::take_from_char(gs, in_item, co);
+        gs.items[in_item].used = core::constants::USE_EMPTY;
+        gs.do_sayx(
+            cn,
+            &format!(
+                "Ah, a black candle! Great work, {}! Now we will have peace for a while...",
+                gs.characters[co].get_name()
+            ),
+        );
+        gs.do_area_log(
+            cn,
+            0,
+            gs.characters[cn].x as i32,
+            gs.characters[cn].y as i32,
+            core::types::FontColor::Yellow,
+            &format!(
+                "The Cityguard is impressed by {}'s deed.\n",
+                gs.characters[co].get_name()
+            ),
+        );
+        return true;
+    }
+
+    // Teach-skill branch.
+    let nr = gs.characters[cn].data[50];
+    if nr != 0 {
+        let mut skill_nr = skills::canonicalize_weapon_skill(nr as usize);
+        let co_kindred = gs.characters[co].kindred as u32;
+
+        if skill_nr == skills::SK_STUN
+            && (co_kindred & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR)) != 0
+        {
+            skill_nr = skills::SK_IMMUN;
+        }
+        if skill_nr == skills::SK_CURSE
+            && (co_kindred & (traits::KIN_TEMPLAR | traits::KIN_ARCHTEMPLAR)) != 0
+        {
+            skill_nr = skills::SK_SURROUND;
+        }
+        if skill_nr == skills::SK_STUN
+            && (co_kindred & traits::KIN_SEYAN_DU) != 0
+            && gs.characters[co].skill[skills::SK_STUN][0] != 0
+        {
+            skill_nr = skills::SK_IMMUN;
+        }
+        if skill_nr == skills::SK_CURSE
+            && (co_kindred & traits::KIN_SEYAN_DU) != 0
+            && gs.characters[co].skill[skills::SK_CURSE][0] != 0
+        {
+            skill_nr = skills::SK_SURROUND;
+        }
+
+        if skill_nr == skills::SK_STUN && (co_kindred & traits::KIN_SEYAN_DU) != 0 {
+            gs.do_sayx(
+                cn,
+                &format!(
+                    "Bring me the item again to learn Immunity, {}!",
+                    gs.characters[co].get_name()
+                ),
+            );
+        }
+        if skill_nr == skills::SK_CURSE && (co_kindred & traits::KIN_SEYAN_DU) != 0 {
+            gs.do_sayx(
+                cn,
+                &format!(
+                    "Bring me the item again to learn Surround Hit, {}!",
+                    gs.characters[co].get_name()
+                ),
+            );
+        }
+
+        if gs.characters[co].skill[skill_nr][0] != 0 {
+            // Already knows the skill — leave item untouched and avoid repeated sight spam.
+            return false;
+        }
+
+        let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
+        gs.do_sayx(
+            cn,
+            &format!(
+                "Thank you {}. That's the {} I wanted.",
+                gs.characters[co].get_name(),
+                ref_name
+            ),
+        );
+
+        let skill_name = skills::get_skill_name(skill_nr);
+        gs.do_sayx(cn, &format!("Now I'll teach you {}.", skill_name));
+
+        // Teach and consume.
+        gs.characters[co].skill[skill_nr][0] = 1;
+        gs.do_character_log(
+            co,
+            core::types::FontColor::Green,
+            &format!("You learned {}!\n", skill_name),
+        );
+        gs.characters[co].set_do_update_flags();
+        let give_exp = gs.characters[cn].data[51];
+        if give_exp != 0 {
+            gs.do_sayx(
+                cn,
+                &format!(
+                    "Now I'll teach you a bit about life, the world and everything, {}.",
+                    gs.characters[co].get_name()
+                ),
+            );
+            gs.do_give_exp(co, give_exp, 0, -1);
+        }
+        God::take_from_char(gs, in_item, co);
+        gs.items[in_item].used = core::constants::USE_EMPTY;
+        return true;
+    }
+
+    // "Thank you" message.
+    let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
+    gs.do_sayx(
+        cn,
+        &format!(
+            "Thank you {}. That's the {} I wanted.",
+            gs.characters[co].get_name(),
+            ref_name
+        ),
+    );
+
+    // Return-gift branch.
+    let give_temp = gs.characters[cn].data[66];
+    if give_temp != 0 {
+        gs.do_sayx(
+            cn,
+            &format!(
+                "Here is your {} in exchange.",
+                c_string_to_str(&gs.item_templates[give_temp as usize].reference).to_string()
+            ),
+        );
+        God::take_from_char(gs, in_item, co);
+        gs.items[in_item].used = core::constants::USE_EMPTY;
+        if let Some(new_item) = God::create_item(gs, give_temp as usize) {
+            God::give_character_item(gs, co, new_item);
+        }
+        return true;
+    }
+
+    // Riddle-giver branch.
+    let ar = gs.characters[cn].data[72];
+    if gs.characters[co].is_player()
+        && (core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA).contains(&ar)
+    {
+        let idx = (ar - core::constants::RIDDLE_MIN_AREA) as usize;
+        let still = crate::lab9::lab9_get_guesser(gs, idx);
+        if still != 0 && still as usize != co {
+            gs.do_sayx(
+                cn,
+                &format!(
+                    "I'm still riddling {}; please come back later!\n",
+                    gs.characters[still as usize].get_name().to_string()
+                ),
+            );
+            return false;
+        }
+        // Item is already with the player — same semantics as the original `npc_give` riddle path.
+        God::take_from_char(gs, in_item, co);
+        gs.items[in_item].used = core::constants::USE_EMPTY;
+        crate::lab9::lab9_pose_riddle(gs, cn, co);
+        return true;
+    }
+
+    // Generic acceptance with no special reward: destroy rather than accumulate on the NPC.
+    God::take_from_char(gs, in_item, co);
+    gs.items[in_item].used = core::constants::USE_EMPTY;
+    true
+}
+
+/// Scans the visible player `co`'s citem and inventory slots for any quest item NPC `cn` would
+/// accept, and performs an auto sight-based turn-in for the first matching item found.
+///
+/// # Arguments
+///
+/// * `cn` - NPC character index.
+/// * `co` - Player/usurp character index to scan.
+///
+/// # Returns
+///
+/// * `true` if a quest item was accepted (caller should stop further sight processing).
+pub fn npc_scan_player_items(gs: &mut GameState, cn: usize, co: usize) -> bool {
+    // Only bother when this NPC has a quest-item requirement configured.
+    if gs.characters[cn].data[49] == 0 {
+        return false;
+    }
+    if (gs.characters[co].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+        == 0
+    {
+        return false;
+    }
+
+    // Check citem (cursor/hand slot) first.
+    let citem = gs.characters[co].citem;
+    if citem != 0 && (citem & 0x8000_0000) == 0 {
+        if npc_sight_turn_in(gs, cn, co, citem as usize) {
+            return true;
+        }
+    }
+
+    // Then check inventory slots 0..40.
+    for slot in 0..40usize {
+        let item_id = gs.characters[co].item[slot];
+        if item_id != 0 && npc_sight_turn_in(gs, cn, co, item_id as usize) {
+            return true;
+        }
+    }
+
+    false
+}
+
 pub fn npc_died(gs: &mut GameState, cn: usize, co: usize) -> bool {
     // Mirror C++ behavior: chance = characters[cn].data[48]
     let chance = gs.characters[cn].data[48];
@@ -2768,6 +3003,19 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
         return true;
     }
 
+    // Auto turn-in: if this NPC wants a quest item and the player is carrying one, accept it now.
+    // Four conditions:
+    // 1. NPC can see player (checked above)
+    // 2. Player can see NPC (checked below)
+    // 3. NPC is close enough to the player (3.5 tiles or less)
+    // 4. NPC wants an item that the player is carrying
+    if gs.do_char_can_see(co, cn) != 0
+        && helpers::get_distance(gs, cn, co) < 3.5
+        && npc_scan_player_items(gs, cn, co)
+    {
+        return true;
+    }
+
     let temp = gs.characters[cn].temp;
     let data_63 = gs.characters[cn].data[63];
 
@@ -3004,4 +3252,211 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     }
 
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::with_test_gs;
+    use core::constants::{CharacterFlags, USE_ACTIVE, USE_EMPTY};
+    use core::string_operations::write_ascii_into_fixed;
+
+    fn setup_npc(gs: &mut GameState, cn: usize, name: &str) {
+        gs.characters[cn] = Character::default();
+        gs.characters[cn].used = USE_ACTIVE;
+        gs.characters[cn].x = 10;
+        gs.characters[cn].y = 10;
+        write_ascii_into_fixed(&mut gs.characters[cn].name, name);
+        write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
+    }
+
+    fn setup_player(gs: &mut GameState, cn: usize, name: &str) {
+        gs.characters[cn] = Character::default();
+        gs.characters[cn].used = USE_ACTIVE;
+        gs.characters[cn].flags = CharacterFlags::Player.bits();
+        gs.characters[cn].x = 10;
+        gs.characters[cn].y = 10;
+        write_ascii_into_fixed(&mut gs.characters[cn].name, name);
+        write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
+    }
+
+    fn setup_item(gs: &mut GameState, item_id: usize, temp: u16, name: &str, owner: usize) {
+        gs.items[item_id] = core::types::Item::default();
+        gs.items[item_id].used = USE_ACTIVE;
+        gs.items[item_id].temp = temp;
+        gs.items[item_id].carried = owner as u16;
+        write_ascii_into_fixed(&mut gs.items[item_id].name, name);
+        write_ascii_into_fixed(&mut gs.items[item_id].reference, name);
+    }
+
+    // ---- npc_sight_turn_in tests ----
+
+    #[test]
+    fn sight_turn_in_teaches_skill_and_consumes_one_item() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Trainer");
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+
+            setup_item(gs, item_id, 500, "Quest Relic", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(npc_sight_turn_in(gs, npc, player, item_id));
+            assert_eq!(gs.characters[player].skill[skills::SK_BLESS][0], 1);
+            assert_eq!(gs.items[item_id].used, USE_EMPTY);
+            assert!(!gs.characters[player].item.contains(&(item_id as u32)));
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_already_known_skill_leaves_item_with_player() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Trainer");
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+            gs.characters[player].skill[skills::SK_BLESS][0] = 1;
+
+            setup_item(gs, item_id, 500, "Quest Relic", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(!npc_sight_turn_in(gs, npc, player, item_id));
+            assert_eq!(gs.items[item_id].used, USE_ACTIVE);
+            assert!(gs.characters[player].item.contains(&(item_id as u32)));
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_non_matching_item_is_untouched() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Trainer");
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+
+            setup_item(gs, item_id, 700, "Unrelated Item", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(!npc_sight_turn_in(gs, npc, player, item_id));
+            assert_eq!(gs.items[item_id].used, USE_ACTIVE);
+            assert!(gs.characters[player].item.contains(&(item_id as u32)));
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_black_candle_is_repeatable() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_a = 3;
+            let item_b = 4;
+
+            setup_npc(gs, npc, "Cityguard");
+            gs.characters[npc].temp = 518;
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 740;
+
+            setup_item(gs, item_a, 740, "Black Candle", player);
+            gs.characters[player].item[0] = item_a as u32;
+            assert!(npc_sight_turn_in(gs, npc, player, item_a));
+
+            setup_item(gs, item_b, 740, "Black Candle", player);
+            gs.characters[player].item[1] = item_b as u32;
+            assert!(npc_sight_turn_in(gs, npc, player, item_b));
+
+            assert_eq!(gs.characters[player].data[43], 2);
+            assert_eq!(gs.items[item_a].used, USE_EMPTY);
+            assert_eq!(gs.items[item_b].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_riddle_consumes_item_from_player() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Riddler");
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[72] = core::constants::RIDDLE_MIN_AREA;
+
+            setup_item(gs, item_id, 500, "Riddle Gift", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(npc_sight_turn_in(gs, npc, player, item_id));
+            assert_eq!(gs.items[item_id].used, USE_EMPTY);
+            assert_eq!(
+                gs.characters[player].data[core::constants::CHD_RIDDLER],
+                npc as i32
+            );
+        });
+    }
+
+    // ---- npc_scan_player_items tests ----
+
+    #[test]
+    fn scan_player_items_consumes_only_one_matching_copy() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_a = 3;
+            let item_b = 4;
+
+            setup_npc(gs, npc, "Trainer");
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+
+            setup_item(gs, item_a, 500, "Quest Relic", player);
+            setup_item(gs, item_b, 500, "Quest Relic", player);
+            gs.characters[player].item[0] = item_a as u32;
+            gs.characters[player].item[1] = item_b as u32;
+
+            assert!(npc_scan_player_items(gs, npc, player));
+            assert_eq!(gs.characters[player].skill[skills::SK_BLESS][0], 1);
+            // Only the first copy consumed.
+            assert_eq!(gs.items[item_a].used, USE_EMPTY);
+            assert_eq!(gs.items[item_b].used, USE_ACTIVE);
+            assert!(gs.characters[player].item.contains(&(item_b as u32)));
+        });
+    }
+
+    #[test]
+    fn scan_player_items_leaves_both_copies_when_npc_would_reject() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_a = 3;
+            let item_b = 4;
+
+            setup_npc(gs, npc, "Trainer");
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+            gs.characters[player].skill[skills::SK_BLESS][0] = 1;
+
+            setup_item(gs, item_a, 500, "Quest Relic", player);
+            setup_item(gs, item_b, 500, "Quest Relic", player);
+            gs.characters[player].item[0] = item_a as u32;
+            gs.characters[player].item[1] = item_b as u32;
+
+            assert!(!npc_scan_player_items(gs, npc, player));
+            assert_eq!(gs.items[item_a].used, USE_ACTIVE);
+            assert_eq!(gs.items[item_b].used, USE_ACTIVE);
+        });
+    }
 }
