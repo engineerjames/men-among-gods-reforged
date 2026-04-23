@@ -50,6 +50,12 @@ pub(crate) struct TemplateViewerApp {
     dirty_item_template_slots: HashSet<usize>,
     /// Slots in `character_templates` that have unsaved edits (LiveApi mode).
     dirty_character_template_slots: HashSet<usize>,
+    /// Item template slots whose full bincode payload has been fetched from
+    /// the API. Slots absent from this set show a placeholder in the detail
+    /// panel until they are lazily loaded on first selection.
+    fully_loaded_item_slots: HashSet<usize>,
+    /// Character template slots whose full bincode payload has been fetched.
+    fully_loaded_char_slots: HashSet<usize>,
     /// Cached admin API client for LiveApi mode.
     admin_client: Option<AdminClient>,
     /// Pending reload request id awaiting a status update.
@@ -108,6 +114,8 @@ impl Default for TemplateViewerApp {
             dirty: false,
             dirty_item_template_slots: HashSet::new(),
             dirty_character_template_slots: HashSet::new(),
+            fully_loaded_item_slots: HashSet::new(),
+            fully_loaded_char_slots: HashSet::new(),
             admin_client: None,
             pending_reload_request_id: None,
             connect_dialog_open: false,
@@ -158,6 +166,8 @@ impl TemplateViewerApp {
         self.dirty = false;
         self.dirty_item_template_slots.clear();
         self.dirty_character_template_slots.clear();
+        self.fully_loaded_item_slots.clear();
+        self.fully_loaded_char_slots.clear();
     }
 
     fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
@@ -171,6 +181,20 @@ impl TemplateViewerApp {
         self.dirty = false;
         self.dirty_item_template_slots.clear();
         self.dirty_character_template_slots.clear();
+        self.fully_loaded_item_slots.clear();
+        self.fully_loaded_char_slots.clear();
+
+        // For sources that supply full template data up-front (KeyDB / snapshot),
+        // mark every slot as loaded. For LiveApi the slot data arrives lazily on
+        // first selection, so we leave the sets empty.
+        if !self.data_source.is_live_api() {
+            for i in 0..self.item_templates.len() {
+                self.fully_loaded_item_slots.insert(i);
+            }
+            for i in 0..self.character_templates.len() {
+                self.fully_loaded_char_slots.insert(i);
+            }
+        }
 
         if matches!(
             self.view_mode,
@@ -753,6 +777,31 @@ impl TemplateViewerApp {
         source: ItemDetailsSource,
         idx: usize,
     ) {
+        // In LiveApi mode, item templates are populated with summary-only stubs
+        // on connect. Fetch the full bincode payload the first time a slot is
+        // selected (lazy load, 1 request per unique slot).
+        if source == ItemDetailsSource::ItemTemplates
+            && self.data_source.is_live_api()
+            && !self.fully_loaded_item_slots.contains(&idx)
+        {
+            if let Some(client) = self.admin_client.as_ref().cloned() {
+                match client.fetch_single_item_template(idx) {
+                    Ok(item) => {
+                        if idx < self.item_templates.len() {
+                            self.item_templates[idx] = item;
+                        }
+                        self.fully_loaded_item_slots.insert(idx);
+                    }
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            format!("Failed to load item template {idx}: {e}"),
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         let item_ptr: *mut mag_core::types::Item = match source {
             ItemDetailsSource::ItemTemplates => {
                 if idx >= self.item_templates.len() {
@@ -781,6 +830,29 @@ impl TemplateViewerApp {
         source: CharacterDetailsSource,
         idx: usize,
     ) {
+        // Same lazy-fetch as for item templates — only one request per slot.
+        if source == CharacterDetailsSource::CharacterTemplates
+            && self.data_source.is_live_api()
+            && !self.fully_loaded_char_slots.contains(&idx)
+        {
+            if let Some(client) = self.admin_client.as_ref().cloned() {
+                match client.fetch_single_character_template(idx) {
+                    Ok(ch) => {
+                        if idx < self.character_templates.len() {
+                            self.character_templates[idx] = ch;
+                        }
+                        self.fully_loaded_char_slots.insert(idx);
+                    }
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            format!("Failed to load character template {idx}: {e}"),
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         let character_ptr: *mut mag_core::types::Character = match source {
             CharacterDetailsSource::CharacterTemplates => {
                 if idx >= self.character_templates.len() {

@@ -19,6 +19,39 @@ use serde::Deserialize;
 const OCTET_STREAM: &str = "application/octet-stream";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Per-slot summary returned by the listing endpoints.
+///
+/// Only `id`, `used`, `name`, and `reference` are present — not the full
+/// binary template payload. Use this to populate list views cheaply, then
+/// call [`AdminClient::fetch_single_item_template`] or
+/// [`AdminClient::fetch_single_character_template`] to load an individual
+/// slot's full data on demand.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TemplateSummary {
+    /// Slot index.
+    pub id: usize,
+    /// `true` when the slot's `used` field is non-zero.
+    pub used: bool,
+    /// Template name, NUL-trimmed.
+    pub name: String,
+    /// Template reference string (empty for character templates).
+    #[serde(default)]
+    pub reference: String,
+}
+
+/// Response envelope from `GET /admin/templates/{kind}`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TemplateListResponse {
+    /// Total slot count for the kind.
+    pub total: usize,
+    /// Inclusive start index of this page.
+    pub from: usize,
+    /// Number of summaries in this response.
+    pub count: usize,
+    /// Per-slot summaries for slots that have stored data.
+    pub items: Vec<TemplateSummary>,
+}
+
 /// Status returned by `POST /admin/templates/reload`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReloadResponse {
@@ -73,6 +106,110 @@ impl AdminClient {
 
     fn url(&self, path: &str) -> String {
         format!("{}{}", self.base_url, path)
+    }
+
+    /// Fetch lightweight summaries for all item template slots.
+    ///
+    /// Issues **one** HTTP request regardless of how many slots exist.
+    /// Use these to populate list views, then call
+    /// [`fetch_single_item_template`](Self::fetch_single_item_template)
+    /// on demand for the selected slot's full data.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(list)` — the server response including `total` and per-slot summaries.
+    /// * `Err(message)` on HTTP or decode failure.
+    pub fn fetch_item_template_summaries(&self) -> Result<TemplateListResponse, String> {
+        self.fetch_template_summaries(TemplateKind::Item)
+    }
+
+    /// Fetch lightweight summaries for all character template slots.
+    ///
+    /// Issues **one** HTTP request regardless of how many slots exist.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(list)` — the server response including `total` and per-slot summaries.
+    /// * `Err(message)` on HTTP or decode failure.
+    pub fn fetch_character_template_summaries(&self) -> Result<TemplateListResponse, String> {
+        self.fetch_template_summaries(TemplateKind::Character)
+    }
+
+    fn fetch_template_summaries(&self, kind: TemplateKind) -> Result<TemplateListResponse, String> {
+        let path_root = match kind {
+            TemplateKind::Item => "/admin/templates/items",
+            TemplateKind::Character => "/admin/templates/characters",
+        };
+        // Request all slots in one shot (max allowed by the API is 4096).
+        let url = self.url(path_root);
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("limit", kind.slot_count().to_string())])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<TemplateListResponse>()
+            .map_err(|e| format!("GET {url}: decode JSON: {e}"))
+    }
+
+    /// Fetch the full bincode payload for a single item template slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Slot index in `[0, MAXTITEM)`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(item)` on success.
+    /// * `Err(message)` on HTTP or decode failure.
+    pub fn fetch_single_item_template(&self, index: usize) -> Result<Item, String> {
+        let url = self.url(&format!("/admin/templates/items/{index}"));
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .header(ACCEPT, OCTET_STREAM)
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        let bytes = resp
+            .bytes()
+            .map_err(|e| format!("GET {url}: read body: {e}"))?;
+        decode_item_template(&bytes).map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Fetch the full bincode payload for a single character template slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `index` - Slot index in `[0, MAXTCHARS)`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(character)` on success.
+    /// * `Err(message)` on HTTP or decode failure.
+    pub fn fetch_single_character_template(&self, index: usize) -> Result<Character, String> {
+        let url = self.url(&format!("/admin/templates/characters/{index}"));
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .header(ACCEPT, OCTET_STREAM)
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        let bytes = resp
+            .bytes()
+            .map_err(|e| format!("GET {url}: read body: {e}"))?;
+        decode_character_template(&bytes).map_err(|e| format!("GET {url}: decode: {e}"))
     }
 
     /// Fetch all item templates by performing per-slot GETs.

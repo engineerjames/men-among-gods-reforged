@@ -231,8 +231,16 @@ fn load_world_snapshot_from_keydb() -> Result<WorldSnapshot, String> {
     ))
 }
 
-/// Phase 1 LiveApi snapshot loader: fetches only item and character templates
-/// from the admin API. All other slices are populated with empty defaults.
+/// Phase 1 LiveApi snapshot loader: fetches only lightweight summaries for
+/// item and character templates (2 HTTP requests total). Full template data
+/// is **not** loaded here — call
+/// [`AdminClient::fetch_single_item_template`] /
+/// [`AdminClient::fetch_single_character_template`] on demand when a slot
+/// is selected to avoid hammering the 1 req/sec rate-limiter.
+///
+/// Each slot in the returned vecs has `used` and `name` populated from the
+/// summary. All other fields are zeroed/default and should be replaced with
+/// the result of a single-slot fetch before the slot is displayed in detail.
 ///
 /// # Arguments
 ///
@@ -241,9 +249,13 @@ fn load_world_snapshot_from_keydb() -> Result<WorldSnapshot, String> {
 ///
 /// # Returns
 ///
-/// * `Ok(WorldSnapshot)` with templates filled and other slices empty.
+/// * `Ok(WorldSnapshot)` with stub templates and all other slices empty.
 /// * `Err(message)` on HTTP or decode failure.
 fn load_world_snapshot_from_api(base_url: &str, token: &str) -> Result<WorldSnapshot, String> {
+    use mag_core::constants::{MAXTCHARS, MAXTITEM};
+    use mag_core::string_operations::write_ascii_into_fixed;
+    use mag_core::types::{Character, Item};
+
     if token.is_empty() {
         return Err(
             "Admin token is empty. Pass --admin-token <tok> or set MAG_ADMIN_API_TOKEN."
@@ -251,8 +263,32 @@ fn load_world_snapshot_from_api(base_url: &str, token: &str) -> Result<WorldSnap
         );
     }
     let client = crate::admin_client::AdminClient::new(base_url, token)?;
-    let item_templates = client.fetch_item_templates()?;
-    let character_templates = client.fetch_character_templates()?;
+
+    // Two requests total — one JSON list per template kind.
+    let item_list = client.fetch_item_template_summaries()?;
+    let char_list = client.fetch_character_template_summaries()?;
+
+    // Build placeholder vecs the same length as the full template arrays so
+    // the sidebar list renders correctly. Only name/used are populated; the
+    // rest stays zeroed until the slot is actually opened.
+    let mut item_templates: Vec<Item> = vec![Item::default(); MAXTITEM];
+    for summary in &item_list.items {
+        if summary.id < MAXTITEM {
+            let slot = &mut item_templates[summary.id];
+            slot.used = u8::from(summary.used);
+            write_ascii_into_fixed(&mut slot.name, &summary.name);
+        }
+    }
+
+    let mut character_templates: Vec<Character> = vec![Character::default(); MAXTCHARS];
+    for summary in &char_list.items {
+        if summary.id < MAXTCHARS {
+            let slot = &mut character_templates[summary.id];
+            slot.used = u8::from(summary.used);
+            write_ascii_into_fixed(&mut slot.name, &summary.name);
+        }
+    }
+
     Ok(WorldSnapshot::new(
         Vec::new(),
         Vec::new(),
