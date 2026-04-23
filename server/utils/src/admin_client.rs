@@ -24,21 +24,17 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 pub struct ReloadResponse {
     /// Opaque request id assigned by the API.
     pub request_id: String,
-    /// `pending` immediately after the call.
-    pub status: String,
-    /// Whether the request asked the server to reload item templates.
-    pub reload_items: bool,
-    /// Whether the request asked the server to reload character templates.
-    pub reload_characters: bool,
+    /// Echoes the validated kinds list (e.g. `["items", "characters"]`).
+    pub kinds: Vec<String>,
 }
 
-/// Status returned by `GET /admin/templates/reload/{request_id}`.
+/// Status returned by `GET /admin/templates/reload/status?request_id=...`.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReloadStatusResponse {
-    /// Lifecycle state: `pending`, `applied`, or `unknown`.
+    /// Lifecycle state: `pending`, `applied`, or `expired`.
     pub status: String,
-    /// Optional unix-epoch seconds when the server applied the request.
-    pub applied_at_secs: Option<u64>,
+    /// Opaque identifier echoed back by the API.
+    pub request_id: String,
 }
 
 /// Blocking client for the admin API.
@@ -208,10 +204,14 @@ impl AdminClient {
         reload_characters: bool,
     ) -> Result<ReloadResponse, String> {
         let url = self.url("/admin/templates/reload");
-        let body = serde_json::json!({
-            "reload_items": reload_items,
-            "reload_characters": reload_characters,
-        });
+        let mut kinds: Vec<&str> = Vec::new();
+        if reload_items {
+            kinds.push("items");
+        }
+        if reload_characters {
+            kinds.push("characters");
+        }
+        let body = serde_json::json!({ "kinds": kinds });
         let resp = self
             .client
             .post(&url)
@@ -237,10 +237,11 @@ impl AdminClient {
     /// * `Ok(status)` describing the current lifecycle state.
     /// * `Err(message)` on HTTP failure.
     pub fn reload_status(&self, request_id: &str) -> Result<ReloadStatusResponse, String> {
-        let url = self.url(&format!("/admin/templates/reload/{request_id}"));
+        let url = self.url("/admin/templates/reload/status");
         let resp = self
             .client
             .get(&url)
+            .query(&[("request_id", request_id)])
             .header(AUTHORIZATION, format!("Bearer {}", self.token))
             .send()
             .map_err(|e| format!("GET {url}: {e}"))?;

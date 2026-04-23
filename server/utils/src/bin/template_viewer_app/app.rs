@@ -54,6 +54,18 @@ pub(crate) struct TemplateViewerApp {
     admin_client: Option<AdminClient>,
     /// Pending reload request id awaiting a status update.
     pending_reload_request_id: Option<String>,
+    /// Whether the "Connect to admin API" modal dialog is open.
+    connect_dialog_open: bool,
+    /// Working draft of the API base URL inside the connect dialog.
+    connect_form_base_url: String,
+    /// Working draft of the admin token inside the connect dialog.
+    connect_form_token: String,
+    /// Whether the admin-token field is currently shown in plaintext.
+    connect_form_show_token: bool,
+    /// Last error reported by the connect dialog (e.g. failed fetch).
+    connect_dialog_error: Option<String>,
+    /// Whether the "confirm server reload" modal dialog is open.
+    reload_confirm_open: bool,
     save_status: Option<String>,
     initial_load_done: bool,
     frame_count: u32,
@@ -98,6 +110,12 @@ impl Default for TemplateViewerApp {
             dirty_character_template_slots: HashSet::new(),
             admin_client: None,
             pending_reload_request_id: None,
+            connect_dialog_open: false,
+            connect_form_base_url: String::new(),
+            connect_form_token: String::new(),
+            connect_form_show_token: false,
+            connect_dialog_error: None,
+            reload_confirm_open: false,
             save_status: None,
             initial_load_done: false,
             frame_count: 0,
@@ -334,6 +352,77 @@ impl TemplateViewerApp {
         }
     }
 
+    /// Open the modal dialog used to connect to the admin API.
+    ///
+    /// Pre-fills the form with the current LiveApi credentials when one is
+    /// active, otherwise falls back to `MAG_API_BASE_URL` /
+    /// `MAG_ADMIN_API_TOKEN` env vars, then to safe local-dev defaults.
+    fn open_connect_dialog(&mut self) {
+        match &self.data_source {
+            DataSource::LiveApi { base_url, token } => {
+                self.connect_form_base_url = base_url.clone();
+                self.connect_form_token = token.clone();
+            }
+            _ => {
+                if self.connect_form_base_url.is_empty() {
+                    self.connect_form_base_url = std::env::var("MAG_API_BASE_URL")
+                        .unwrap_or_else(|_| "https://127.0.0.1:5554".to_string());
+                }
+                if self.connect_form_token.is_empty() {
+                    self.connect_form_token =
+                        std::env::var("MAG_ADMIN_API_TOKEN").unwrap_or_default();
+                }
+            }
+        }
+        self.connect_dialog_error = None;
+        self.connect_dialog_open = true;
+    }
+
+    /// Switch the data source to LiveApi using the values currently in the
+    /// connect-dialog form, build the admin client, and reload the world.
+    ///
+    /// Closes the dialog only on success; on failure leaves it open with an
+    /// inline error message so the user can correct the URL/token.
+    fn connect_to_api_from_form(&mut self) {
+        let base_url = self.connect_form_base_url.trim().to_string();
+        let token = self.connect_form_token.trim().to_string();
+
+        if base_url.is_empty() {
+            self.connect_dialog_error = Some("Base URL is required".to_string());
+            return;
+        }
+        if token.is_empty() {
+            self.connect_dialog_error = Some("Admin token is required".to_string());
+            return;
+        }
+
+        let client = match AdminClient::new(base_url.clone(), token.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                self.connect_dialog_error = Some(format!("Build client failed: {e}"));
+                return;
+            }
+        };
+
+        self.admin_client = Some(client);
+        self.data_source = DataSource::LiveApi {
+            base_url: base_url.clone(),
+            token,
+        };
+        self.load_current_source();
+
+        if let Some(err) = self.load_error.clone() {
+            // Roll back so the user can re-edit the form without confusion.
+            self.connect_dialog_error = Some(format!("Connection test failed: {err}"));
+            self.admin_client = None;
+            return;
+        }
+
+        self.connect_dialog_open = false;
+        self.connect_dialog_error = None;
+        self.save_status = Some(format!("Connected to admin API: {base_url}"));
+    }
+
     /// Trigger a reload on the running server for both template kinds.
     fn request_server_reload(&mut self) {
         let Some(client) = self.admin_client.as_ref().cloned() else {
@@ -344,8 +433,9 @@ impl TemplateViewerApp {
             Ok(resp) => {
                 self.pending_reload_request_id = Some(resp.request_id.clone());
                 self.save_status = Some(format!(
-                    "Reload requested ({}): items={} chars={}",
-                    resp.request_id, resp.reload_items, resp.reload_characters
+                    "Reload requested ({}): kinds=[{}]",
+                    resp.request_id,
+                    resp.kinds.join(", ")
                 ));
             }
             Err(e) => {
@@ -366,11 +456,7 @@ impl TemplateViewerApp {
             Ok(status) => {
                 if status.status == "applied" {
                     self.pending_reload_request_id = None;
-                    self.save_status = Some(format!(
-                        "Reload applied ({} at unix={})",
-                        request_id,
-                        status.applied_at_secs.unwrap_or(0)
-                    ));
+                    self.save_status = Some(format!("Reload applied ({})", status.request_id));
                 } else {
                     self.save_status =
                         Some(format!("Reload status ({request_id}): {}", status.status));
@@ -385,6 +471,157 @@ impl TemplateViewerApp {
     fn load_from_snapshot(&mut self, path: PathBuf) {
         self.data_source = DataSource::SnapshotFile(path);
         self.load_current_source();
+    }
+
+    /// Render the modal dialog used to enter admin API connection details.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - egui context used to host the modal window.
+    fn render_connect_dialog(&mut self, ctx: &egui::Context) {
+        if !self.connect_dialog_open {
+            return;
+        }
+
+        let mut still_open = true;
+        let mut apply_clicked = false;
+        let mut cancel_clicked = false;
+
+        egui::Window::new("Connect to Admin API")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut still_open)
+            .show(ctx, |ui| {
+                ui.set_min_width(420.0);
+                ui.label(
+                    "Point the template viewer at a running API service. \
+                     Use a local URL when developing, or your production URL.",
+                );
+                ui.add_space(6.0);
+
+                egui::Grid::new("connect_dialog_grid")
+                    .num_columns(2)
+                    .spacing([8.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Base URL:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.connect_form_base_url)
+                                .hint_text("https://127.0.0.1:5554")
+                                .desired_width(280.0),
+                        );
+                        ui.end_row();
+
+                        ui.label("Admin token:");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.connect_form_token)
+                                    .password(!self.connect_form_show_token)
+                                    .hint_text("MAG_ADMIN_API_TOKEN")
+                                    .desired_width(220.0),
+                            );
+                            ui.checkbox(&mut self.connect_form_show_token, "Show");
+                        });
+                        ui.end_row();
+                    });
+
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(
+                        "Defaults are read from MAG_API_BASE_URL and MAG_ADMIN_API_TOKEN.",
+                    )
+                    .small()
+                    .weak(),
+                );
+
+                if let Some(err) = &self.connect_dialog_error {
+                    ui.add_space(6.0);
+                    ui.colored_label(egui::Color32::RED, err);
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Connect").clicked() {
+                        apply_clicked = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
+                    }
+                });
+            });
+
+        if cancel_clicked || !still_open {
+            self.connect_dialog_open = false;
+            self.connect_dialog_error = None;
+        } else if apply_clicked {
+            self.connect_to_api_from_form();
+        }
+    }
+
+    /// Render the confirmation modal for triggering a server-side template
+    /// reload. The reload only happens when the user explicitly confirms.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - egui context used to host the modal window.
+    fn render_reload_confirm_dialog(&mut self, ctx: &egui::Context) {
+        if !self.reload_confirm_open {
+            return;
+        }
+
+        let mut still_open = true;
+        let mut confirm_clicked = false;
+        let mut cancel_clicked = false;
+        let has_unsaved = self.dirty;
+
+        egui::Window::new("Reload Server Templates?")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut still_open)
+            .show(ctx, |ui| {
+                ui.set_min_width(440.0);
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "\u{26A0}  This will swap the running server's in-memory template tables.",
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    "Existing entities and ongoing player actions may be affected. \
+                     Run this only when you have just pushed template edits and \
+                     are ready to apply them live.",
+                );
+
+                if has_unsaved {
+                    ui.add_space(6.0);
+                    ui.colored_label(
+                        egui::Color32::RED,
+                        "You have unsaved local edits. Save to API first or they will not be reloaded.",
+                    );
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(egui::Button::new(
+                            egui::RichText::new("Reload now").color(egui::Color32::WHITE),
+                        ).fill(egui::Color32::from_rgb(160, 60, 60)))
+                        .clicked()
+                    {
+                        confirm_clicked = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
+                    }
+                });
+            });
+
+        if cancel_clicked || !still_open {
+            self.reload_confirm_open = false;
+        } else if confirm_clicked {
+            self.reload_confirm_open = false;
+            self.request_server_reload();
+        }
     }
 
     fn revert_unsaved_changes(&mut self) {
@@ -1917,11 +2154,11 @@ impl eframe::App for TemplateViewerApp {
                         if ui
                             .add_enabled(
                                 self.admin_client.is_some(),
-                                egui::Button::new("Reload server templates"),
+                                egui::Button::new("Reload server templates..."),
                             )
                             .clicked()
                         {
-                            self.request_server_reload();
+                            self.reload_confirm_open = true;
                             ui.close_menu();
                         }
                         if ui
@@ -1979,6 +2216,11 @@ impl eframe::App for TemplateViewerApp {
                             {
                                 self.load_from_snapshot(path);
                             }
+                            ui.close_menu();
+                        }
+                        let is_api = self.data_source.is_live_api();
+                        if ui.selectable_label(is_api, "Live Admin API...").clicked() {
+                            self.open_connect_dialog();
                             ui.close_menu();
                         }
                     });
@@ -2049,6 +2291,44 @@ impl eframe::App for TemplateViewerApp {
                 {
                     self.view_mode = ViewMode::Characters;
                 }
+
+                // Right-aligned action buttons for connection and reload.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let is_live_api = self.data_source.is_live_api();
+                    if is_live_api {
+                        let reload_btn = egui::Button::new(
+                            egui::RichText::new("Reload Server Templates")
+                                .color(egui::Color32::WHITE),
+                        )
+                        .fill(egui::Color32::from_rgb(160, 60, 60));
+                        if ui
+                            .add_enabled(self.admin_client.is_some(), reload_btn)
+                            .on_hover_text(
+                                "Ask the running server to swap its in-memory template tables. \
+                                 You will be asked to confirm.",
+                            )
+                            .clicked()
+                        {
+                            self.reload_confirm_open = true;
+                        }
+                    }
+
+                    let connect_label = if is_live_api {
+                        "API: Connected"
+                    } else {
+                        "Connect to API..."
+                    };
+                    if ui
+                        .button(connect_label)
+                        .on_hover_text(
+                            "Point this viewer at a running API service \
+                             (local dev or production).",
+                        )
+                        .clicked()
+                    {
+                        self.open_connect_dialog();
+                    }
+                });
             });
 
             ui.separator();
@@ -2258,5 +2538,7 @@ impl eframe::App for TemplateViewerApp {
         });
 
         self.render_item_popup(ctx);
+        self.render_connect_dialog(ctx);
+        self.render_reload_confirm_dialog(ctx);
     }
 }
