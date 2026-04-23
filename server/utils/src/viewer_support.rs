@@ -16,6 +16,17 @@ pub enum DataSource {
 
     /// Read and edit a portable `.wsnap` snapshot file.
     SnapshotFile(PathBuf),
+
+    /// Read and edit live templates via the admin API of a running server.
+    ///
+    /// Phase 1: only item and character templates are exposed in this mode.
+    /// Other slices (items, characters, map) are returned empty.
+    LiveApi {
+        /// Base URL of the API service (e.g. `https://127.0.0.1:5554`).
+        base_url: String,
+        /// Static admin bearer token sent in `Authorization`.
+        token: String,
+    },
 }
 
 impl DataSource {
@@ -26,7 +37,7 @@ impl DataSource {
     /// * `true` for snapshot-backed sessions.
     /// * `false` for live KeyDB sessions.
     pub fn can_edit(&self) -> bool {
-        matches!(self, Self::SnapshotFile(_))
+        matches!(self, Self::SnapshotFile(_) | Self::LiveApi { .. })
     }
 
     /// Return whether this source points at live KeyDB state.
@@ -39,6 +50,16 @@ impl DataSource {
         matches!(self, Self::LiveKeyDbReadOnly)
     }
 
+    /// Return whether this source points at a running admin API.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the viewer is connected to an admin API.
+    /// * `false` otherwise.
+    pub fn is_live_api(&self) -> bool {
+        matches!(self, Self::LiveApi { .. })
+    }
+
     /// Return the snapshot path when this source is file-backed.
     ///
     /// # Returns
@@ -48,7 +69,7 @@ impl DataSource {
     pub fn snapshot_path(&self) -> Option<&Path> {
         match self {
             Self::SnapshotFile(path) => Some(path.as_path()),
-            Self::LiveKeyDbReadOnly => None,
+            Self::LiveKeyDbReadOnly | Self::LiveApi { .. } => None,
         }
     }
 
@@ -61,6 +82,7 @@ impl DataSource {
         match self {
             Self::LiveKeyDbReadOnly => "Live KeyDB (read-only)".to_string(),
             Self::SnapshotFile(path) => format!("Snapshot: {}", path.display()),
+            Self::LiveApi { base_url, .. } => format!("Live API: {}", base_url),
         }
     }
 }
@@ -126,6 +148,7 @@ pub fn load_world_snapshot(source: &DataSource) -> Result<WorldSnapshot, String>
     match source {
         DataSource::LiveKeyDbReadOnly => load_world_snapshot_from_keydb(),
         DataSource::SnapshotFile(path) => WorldSnapshot::from_file(path),
+        DataSource::LiveApi { base_url, token } => load_world_snapshot_from_api(base_url, token),
     }
 }
 
@@ -148,9 +171,29 @@ fn data_source_from_iter<I>(args: I) -> DataSource
 where
     I: IntoIterator<Item = OsString>,
 {
-    path_arg_from_iter(args, &["--snapshot"])
+    let args: Vec<OsString> = args.into_iter().collect();
+
+    // --api <url> [--admin-token <tok>] takes precedence over --snapshot.
+    if let Some(base_url) = string_arg_from_slice(&args, &["--api", "--admin-api"]) {
+        let token = string_arg_from_slice(&args, &["--admin-token", "--api-token"])
+            .or_else(|| std::env::var("MAG_ADMIN_API_TOKEN").ok())
+            .unwrap_or_default();
+        return DataSource::LiveApi { base_url, token };
+    }
+
+    path_arg_from_iter(args.into_iter(), &["--snapshot"])
         .map(DataSource::SnapshotFile)
         .unwrap_or_default()
+}
+
+fn string_arg_from_slice(args: &[OsString], flag_names: &[&str]) -> Option<String> {
+    for window in args.windows(2) {
+        let flag = window[0].to_string_lossy();
+        if flag_names.iter().any(|candidate| *candidate == flag) {
+            return Some(window[1].to_string_lossy().into_owned());
+        }
+    }
+    None
 }
 
 fn path_arg_from_iter<I>(args: I, flag_names: &[&str]) -> Option<PathBuf>
@@ -185,6 +228,42 @@ fn load_world_snapshot_from_keydb() -> Result<WorldSnapshot, String> {
         data.bad_names,
         data.bad_words,
         data.message_of_the_day,
+    ))
+}
+
+/// Phase 1 LiveApi snapshot loader: fetches only item and character templates
+/// from the admin API. All other slices are populated with empty defaults.
+///
+/// # Arguments
+///
+/// * `base_url` - Base URL of the admin API.
+/// * `token` - Static admin bearer token.
+///
+/// # Returns
+///
+/// * `Ok(WorldSnapshot)` with templates filled and other slices empty.
+/// * `Err(message)` on HTTP or decode failure.
+fn load_world_snapshot_from_api(base_url: &str, token: &str) -> Result<WorldSnapshot, String> {
+    if token.is_empty() {
+        return Err(
+            "Admin token is empty. Pass --admin-token <tok> or set MAG_ADMIN_API_TOKEN."
+                .to_string(),
+        );
+    }
+    let client = crate::admin_client::AdminClient::new(base_url, token)?;
+    let item_templates = client.fetch_item_templates()?;
+    let character_templates = client.fetch_character_templates()?;
+    Ok(WorldSnapshot::new(
+        Vec::new(),
+        Vec::new(),
+        item_templates,
+        Vec::new(),
+        character_templates,
+        Vec::new(),
+        mag_core::types::Global::default(),
+        Vec::new(),
+        Vec::new(),
+        String::new(),
     ))
 }
 

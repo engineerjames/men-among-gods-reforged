@@ -4,6 +4,7 @@ mod driver;
 mod effect;
 mod game_state;
 mod god;
+mod template_reload;
 mod types;
 
 #[cfg(test)]
@@ -116,6 +117,7 @@ fn main() -> Result<(), String> {
     log::info!("Entering main game loop...");
 
     while !quit_flag.load(Ordering::SeqCst) {
+        server.drain_template_reloads(&mut gs);
         server.tick(&mut gs);
     }
 

@@ -83,6 +83,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
+      MAG_ADMIN_API_TOKEN: ${MAG_ADMIN_API_TOKEN:-}
     volumes:
       - tls-certs:/certs:ro
     ports:
@@ -105,6 +106,8 @@ services:
       MAG_KEYDB_URL: redis://:${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}@keydb:5556/
       SERVER_TLS_CERT: /certs/server.crt
       SERVER_TLS_KEY: /certs/server.key
+      MAG_ADMIN_API_TOKEN: ${MAG_ADMIN_API_TOKEN:-}
+      MAG_ADMIN_RELOAD_DISABLED: ${MAG_ADMIN_RELOAD_DISABLED:-}
     volumes:
       - tls-certs:/certs:ro
     ports:

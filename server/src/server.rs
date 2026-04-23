@@ -60,6 +60,10 @@ pub struct Server {
     /// Background saver handle (only present when using KeyDB backend).
     background_saver: Option<BackgroundSaver>,
 
+    /// Background watcher that surfaces admin-issued template reload
+    /// requests to the tick loop.
+    template_reload_watcher: Option<crate::template_reload::TemplateReloadWatcher>,
+
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
@@ -77,6 +81,7 @@ impl Server {
             net_io_perf_stats: StatisticsBuffer::new(100),
             measurement_interval: 20,
             background_saver: None,
+            template_reload_watcher: None,
             save_tick_counter: 0,
         }
     }
@@ -241,6 +246,9 @@ impl Server {
         // Always spawn the background KeyDB saver.
         log::info!("Starting background KeyDB saver thread...");
         self.background_saver = Some(background_saver::spawn());
+
+        // Spawn the admin template-reload watcher (no-op when disabled).
+        self.template_reload_watcher = crate::template_reload::TemplateReloadWatcher::spawn();
 
         Ok(())
     }
@@ -1026,6 +1034,94 @@ impl Server {
         }
     }
 
+    /// Drain pending admin reload requests and apply them to `gs`.
+    ///
+    /// Each drained request causes the watcher's KeyDB connection to be
+    /// reopened here on the tick thread (the watcher only signals; the swap
+    /// runs synchronously on the tick thread to keep `GameState` access
+    /// single-threaded). After applying, an `applied:{ts}` status entry is
+    /// written so the API can confirm completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose template slices will be replaced.
+    pub fn drain_template_reloads(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.template_reload_watcher.as_ref() else {
+            return;
+        };
+        while let Some(req) = watcher.try_recv() {
+            self.apply_template_reload(gs, req);
+        }
+    }
+
+    fn apply_template_reload(
+        &self,
+        gs: &mut GameState,
+        req: crate::template_reload::ReloadRequest,
+    ) {
+        let mut con = match server::keydb::connect() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!(
+                    "template reload {}: keydb connect failed: {}",
+                    req.request_id,
+                    e
+                );
+                return;
+            }
+        };
+
+        if req.reload_items {
+            match server::keydb_store::load_item_templates(&mut con) {
+                Ok(items) => {
+                    log::info!(
+                        "template reload {}: swapped {} item templates",
+                        req.request_id,
+                        items.len()
+                    );
+                    gs.item_templates = items;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "template reload {}: load item templates failed: {}",
+                        req.request_id,
+                        e
+                    );
+                    return;
+                }
+            }
+        }
+
+        if req.reload_characters {
+            match server::keydb_store::load_character_templates(&mut con) {
+                Ok(chars) => {
+                    log::info!(
+                        "template reload {}: swapped {} character templates",
+                        req.request_id,
+                        chars.len()
+                    );
+                    gs.character_templates = chars;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "template reload {}: load character templates failed: {}",
+                        req.request_id,
+                        e
+                    );
+                    return;
+                }
+            }
+        }
+
+        if let Err(e) = crate::template_reload::write_applied_status(&mut con, &req.request_id) {
+            log::warn!(
+                "template reload {}: status write failed: {}",
+                req.request_id,
+                e
+            );
+        }
+    }
+
     /// Flush all pending background save jobs and then shut down the saver thread.
     ///
     /// `flush()` provides an explicit, observable synchronization point: it
@@ -1039,6 +1135,10 @@ impl Server {
     ///
     /// Call this during server shutdown, after the game loop has exited.
     pub fn shutdown_background_saver(&mut self) {
+        if let Some(mut watcher) = self.template_reload_watcher.take() {
+            log::info!("Stopping template reload watcher...");
+            watcher.shutdown();
+        }
         if let Some(mut saver) = self.background_saver.take() {
             log::info!("Flushing pending background save jobs...");
             if let Err(e) = saver.flush() {

@@ -1,3 +1,4 @@
+pub mod admin;
 pub mod email;
 pub mod helpers;
 pub mod pipelines;
@@ -171,8 +172,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state = ApiState { con, email_sender };
 
+    let admin_router = admin::build_admin_router(state.clone());
+    if admin_router.is_some() {
+        info!(
+            "Admin routes enabled at /admin (token via {})",
+            admin::auth::ADMIN_TOKEN_ENV
+        );
+    } else {
+        warn!(
+            "Admin routes DISABLED ({} unset or token shorter than 32 bytes)",
+            admin::auth::ADMIN_TOKEN_ENV
+        );
+    }
+
     // build our application with a route
-    let app = Router::new()
+    let public_router = Router::new()
         // Public routes
         .route("/login", post(routes::login))
         .route("/accounts", post(routes::create_account))
@@ -191,8 +205,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/characters/{id}", put(routes::update_character))
         .route("/characters/{id}", delete(routes::delete_character))
         .layer(GovernorLayer::default())
-        .layer(RealIpLayer::default())
-        .with_state(state);
+        .with_state(state.clone());
+
+    let app = match admin_router {
+        Some(admin) => Router::new()
+            .merge(public_router)
+            .nest("/admin", admin)
+            .layer(RealIpLayer::default()),
+        None => Router::new()
+            .merge(public_router)
+            .layer(RealIpLayer::default()),
+    };
 
     let bind_address = format!("{}:{}", resolve_api_bind_addr(), resolve_api_port());
     info!("Listening on {}", bind_address);

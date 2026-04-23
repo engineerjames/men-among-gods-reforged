@@ -5,7 +5,8 @@ use mag_core::skills;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::{ranks, traits};
 use server::snapshot::WorldSnapshot;
-use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
+use server_utils::{AdminClient, DataSource, load_world_snapshot, save_world_snapshot};
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -45,6 +46,14 @@ pub(crate) struct TemplateViewerApp {
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
     dirty: bool,
+    /// Slots in `item_templates` that have unsaved edits (LiveApi mode).
+    dirty_item_template_slots: HashSet<usize>,
+    /// Slots in `character_templates` that have unsaved edits (LiveApi mode).
+    dirty_character_template_slots: HashSet<usize>,
+    /// Cached admin API client for LiveApi mode.
+    admin_client: Option<AdminClient>,
+    /// Pending reload request id awaiting a status update.
+    pending_reload_request_id: Option<String>,
     save_status: Option<String>,
     initial_load_done: bool,
     frame_count: u32,
@@ -85,6 +94,10 @@ impl Default for TemplateViewerApp {
             graphics_zip: None,
             graphics_zip_error: None,
             dirty: false,
+            dirty_item_template_slots: HashSet::new(),
+            dirty_character_template_slots: HashSet::new(),
+            admin_client: None,
+            pending_reload_request_id: None,
             save_status: None,
             initial_load_done: false,
             frame_count: 0,
@@ -95,8 +108,15 @@ impl Default for TemplateViewerApp {
 
 impl TemplateViewerApp {
     pub(crate) fn new(data_source: DataSource) -> Self {
+        let admin_client = match &data_source {
+            DataSource::LiveApi { base_url, token } => {
+                AdminClient::new(base_url.clone(), token.clone()).ok()
+            }
+            _ => None,
+        };
         Self {
             data_source: data_source.clone(),
+            admin_client,
             ..Self::default()
         }
     }
@@ -118,6 +138,8 @@ impl TemplateViewerApp {
         self.selected_character_instance_index = None;
         self.item_popup_id = None;
         self.dirty = false;
+        self.dirty_item_template_slots.clear();
+        self.dirty_character_template_slots.clear();
     }
 
     fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
@@ -129,6 +151,8 @@ impl TemplateViewerApp {
         self.loaded_world = Some(world);
         self.save_status = Some(status);
         self.dirty = false;
+        self.dirty_item_template_slots.clear();
+        self.dirty_character_template_slots.clear();
 
         if matches!(
             self.view_mode,
@@ -227,6 +251,8 @@ impl TemplateViewerApp {
         match self.save_snapshot_as(&path) {
             Ok(()) => {
                 self.dirty = false;
+                self.dirty_item_template_slots.clear();
+                self.dirty_character_template_slots.clear();
                 self.save_status = Some(format!("Saved snapshot: {}", path.display()));
             }
             Err(e) => {
@@ -238,6 +264,122 @@ impl TemplateViewerApp {
     fn load_from_keydb(&mut self) {
         self.data_source = DataSource::LiveKeyDbReadOnly;
         self.load_current_source();
+    }
+
+    /// Push every dirty template slot to the admin API and clear the dirty
+    /// sets. Called instead of snapshot save in LiveApi mode.
+    fn save_to_api(&mut self) {
+        self.save_status = None;
+        if let Err(e) = self.sync_loaded_world_from_views() {
+            self.save_status = Some(format!("Save failed: {e}"));
+            return;
+        }
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            self.save_status = Some("Admin client not initialized".to_string());
+            return;
+        };
+
+        let item_slots: Vec<usize> = self.dirty_item_template_slots.iter().copied().collect();
+        let char_slots: Vec<usize> = self
+            .dirty_character_template_slots
+            .iter()
+            .copied()
+            .collect();
+
+        let mut errors: Vec<String> = Vec::new();
+        let mut item_pushed = 0usize;
+        let mut char_pushed = 0usize;
+
+        for idx in &item_slots {
+            if let Some(item) = self.item_templates.get(*idx) {
+                match client.put_item_template(*idx, item) {
+                    Ok(()) => item_pushed += 1,
+                    Err(e) => errors.push(format!("item[{idx}]: {e}")),
+                }
+            }
+        }
+        for idx in &char_slots {
+            if let Some(ch) = self.character_templates.get(*idx) {
+                match client.put_character_template(*idx, ch) {
+                    Ok(()) => char_pushed += 1,
+                    Err(e) => errors.push(format!("char[{idx}]: {e}")),
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            self.dirty = false;
+            self.dirty_item_template_slots.clear();
+            self.dirty_character_template_slots.clear();
+            self.save_status = Some(format!(
+                "Saved to API: {item_pushed} item template(s), {char_pushed} character template(s). Use 'Reload server templates' to apply."
+            ));
+        } else {
+            // Drop the slots we pushed successfully so retry only sends failed ones.
+            for idx in &item_slots {
+                if !errors.iter().any(|e| e.contains(&format!("item[{idx}]"))) {
+                    self.dirty_item_template_slots.remove(idx);
+                }
+            }
+            for idx in &char_slots {
+                if !errors.iter().any(|e| e.contains(&format!("char[{idx}]"))) {
+                    self.dirty_character_template_slots.remove(idx);
+                }
+            }
+            self.save_status = Some(format!(
+                "Save partial: {item_pushed} items, {char_pushed} chars; {} error(s): {}",
+                errors.len(),
+                errors.join("; ")
+            ));
+        }
+    }
+
+    /// Trigger a reload on the running server for both template kinds.
+    fn request_server_reload(&mut self) {
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            self.save_status = Some("Admin client not initialized".to_string());
+            return;
+        };
+        match client.request_reload(true, true) {
+            Ok(resp) => {
+                self.pending_reload_request_id = Some(resp.request_id.clone());
+                self.save_status = Some(format!(
+                    "Reload requested ({}): items={} chars={}",
+                    resp.request_id, resp.reload_items, resp.reload_characters
+                ));
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Reload failed: {e}"));
+            }
+        }
+    }
+
+    /// Poll the most recent reload request once (best effort).
+    fn poll_reload_status(&mut self) {
+        let Some(request_id) = self.pending_reload_request_id.clone() else {
+            return;
+        };
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            return;
+        };
+        match client.reload_status(&request_id) {
+            Ok(status) => {
+                if status.status == "applied" {
+                    self.pending_reload_request_id = None;
+                    self.save_status = Some(format!(
+                        "Reload applied ({} at unix={})",
+                        request_id,
+                        status.applied_at_secs.unwrap_or(0)
+                    ));
+                } else {
+                    self.save_status =
+                        Some(format!("Reload status ({request_id}): {}", status.status));
+                }
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Reload status error: {e}"));
+            }
+        }
     }
 
     fn load_from_snapshot(&mut self, path: PathBuf) {
@@ -273,6 +415,8 @@ impl TemplateViewerApp {
             prev_selected_character_instance_index.filter(|&i| i < self.characters.len());
 
         self.dirty = false;
+        self.dirty_item_template_slots.clear();
+        self.dirty_character_template_slots.clear();
         if self.load_error.is_some() {
             self.save_status = Some("Reverted changes (with load errors)".to_string());
         } else {
@@ -283,6 +427,21 @@ impl TemplateViewerApp {
     fn mark_dirty_if(&mut self, changed: bool) {
         if changed {
             self.dirty = true;
+            // Track per-slot dirty bits so LiveApi save can PUT only the
+            // slots the user actually edited.
+            match self.view_mode {
+                ViewMode::ItemTemplates => {
+                    if let Some(idx) = self.selected_item_index {
+                        self.dirty_item_template_slots.insert(idx);
+                    }
+                }
+                ViewMode::CharacterTemplates => {
+                    if let Some(idx) = self.selected_character_index {
+                        self.dirty_character_template_slots.insert(idx);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -1713,7 +1872,11 @@ impl eframe::App for TemplateViewerApp {
             (mods.command || mods.ctrl) && i.key_pressed(egui::Key::S)
         });
         if save_shortcut && self.can_edit_world() && self.loaded_world.is_some() {
-            self.save_snapshot_as_dialog();
+            if self.data_source.is_live_api() {
+                self.save_to_api();
+            } else {
+                self.save_snapshot_as_dialog();
+            }
         }
 
         if !self.initial_load_done && self.frame_count > 2 {
@@ -1729,15 +1892,48 @@ impl eframe::App for TemplateViewerApp {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
+                    let is_live_api = self.data_source.is_live_api();
+                    let save_label = if is_live_api {
+                        "Save to API\tCtrl+S"
+                    } else {
+                        "Save Snapshot As...\tCtrl+S"
+                    };
                     if ui
                         .add_enabled(
                             self.can_edit_world() && self.loaded_world.is_some(),
-                            egui::Button::new("Save Snapshot As...\tCtrl+S"),
+                            egui::Button::new(save_label),
                         )
                         .clicked()
                     {
-                        self.save_snapshot_as_dialog();
+                        if is_live_api {
+                            self.save_to_api();
+                        } else {
+                            self.save_snapshot_as_dialog();
+                        }
                         ui.close_menu();
+                    }
+
+                    if is_live_api {
+                        if ui
+                            .add_enabled(
+                                self.admin_client.is_some(),
+                                egui::Button::new("Reload server templates"),
+                            )
+                            .clicked()
+                        {
+                            self.request_server_reload();
+                            ui.close_menu();
+                        }
+                        if ui
+                            .add_enabled(
+                                self.pending_reload_request_id.is_some(),
+                                egui::Button::new("Poll reload status"),
+                            )
+                            .clicked()
+                        {
+                            self.poll_reload_status();
+                            ui.close_menu();
+                        }
                     }
 
                     let can_revert = self.can_edit_world() && self.dirty;

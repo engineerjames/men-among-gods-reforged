@@ -379,6 +379,68 @@ sequenceDiagram
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 
+# Admin template-editing API
+
+The API service optionally exposes an authenticated `/admin/...` surface for
+editing live template data (item and character templates) on a running
+server. This is intended for trusted operators using the bundled
+`template_viewer` tool.
+
+## Enabling the surface
+
+Set `MAG_ADMIN_API_TOKEN` to a random secret of at least 32 bytes
+(`openssl rand -hex 32` is fine). When the variable is missing or shorter
+than 32 bytes, no `/admin` routes are mounted and the API logs a warning at
+startup. The matching server-side reload watcher reads the same token only to
+honour `MAG_ADMIN_RELOAD_DISABLED=1` as an emergency lockdown switch — it
+never validates tokens (the API is the only authoriser).
+
+## Authentication
+
+All admin requests require:
+
+```
+Authorization: Bearer <MAG_ADMIN_API_TOKEN>
+```
+
+The token is compared in constant time. Failed authentication attempts are
+tracked per IP: 5 failures within 60 seconds trigger a 10-minute lockout
+that returns `401` for every request from that IP, even with a valid token.
+
+## Rate limiting
+
+Admin routes are mounted on a sub-router that bypasses the public 1 req/s
+governor. Authenticated admin requests are limited to 8 req/s/IP with a
+small burst. Excess requests return `429`.
+
+## Endpoints
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/admin/templates/items` | List item template summaries (paginated). |
+| GET | `/admin/templates/items/{idx}` | Read a single item template (`application/octet-stream`, bincode). |
+| PUT | `/admin/templates/items/{idx}` | Replace a single item template (`application/octet-stream`, bincode). |
+| GET | `/admin/templates/characters` | List character template summaries. |
+| GET | `/admin/templates/characters/{idx}` | Read a single character template (bincode bytes). |
+| PUT | `/admin/templates/characters/{idx}` | Replace a single character template (bincode bytes). |
+| POST | `/admin/templates/reload` | Ask the running server to swap its in-memory template tables. |
+| GET | `/admin/templates/reload/{request_id}` | Poll the lifecycle of a previous reload request. |
+
+Full templates use bincode (`application/octet-stream`) instead of JSON to
+avoid serialising fixed-size byte arrays through quoted JSON. The
+`mag_core::template_store` module exposes the encode/decode helpers so the
+client and the server agree on the wire format.
+
+`POST /admin/templates/reload` accepts a JSON body
+`{"reload_items": bool, "reload_characters": bool}` and returns
+`{"request_id": "...", "status": "pending", "reload_items": ..., "reload_characters": ...}`.
+The API enqueues the request via a short-lived KeyDB key
+(`game:templates:reload_request`, TTL 30s) and the server's reload watcher
+consumes it on the tick thread, swaps the relevant template slices on
+`GameState`, and writes
+`game:templates:reload_status:{request_id} = applied:{unix_ts}` (TTL 5
+minutes) which the GET endpoint exposes.
+
 # Future Improvements
 ## Security Improvements
 
