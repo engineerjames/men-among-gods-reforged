@@ -6,13 +6,10 @@ use server::snapshot::WorldSnapshot;
 /// The world-data source backing a viewer session.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum DataSource {
-    /// Read the latest persisted world state from KeyDB.
-    ///
-    /// Viewers must treat this source as read-only because the running server
-    /// owns the authoritative in-memory state and periodically overwrites
-    /// KeyDB from its background saver.
+    /// No source is configured yet.  The viewers will not attempt to load
+    /// any world data until the user opens a snapshot or connects to the API.
     #[default]
-    LiveKeyDbReadOnly,
+    NotLoaded,
 
     /// Read and edit a portable `.wsnap` snapshot file.
     SnapshotFile(PathBuf),
@@ -30,26 +27,6 @@ pub enum DataSource {
 }
 
 impl DataSource {
-    /// Return whether this source should allow world-data edits.
-    ///
-    /// # Returns
-    ///
-    /// * `true` for snapshot-backed sessions.
-    /// * `false` for live KeyDB sessions.
-    pub fn can_edit(&self) -> bool {
-        matches!(self, Self::SnapshotFile(_) | Self::LiveApi { .. })
-    }
-
-    /// Return whether this source points at live KeyDB state.
-    ///
-    /// # Returns
-    ///
-    /// * `true` when the viewer is reading persisted KeyDB state.
-    /// * `false` otherwise.
-    pub fn is_live_keydb(&self) -> bool {
-        matches!(self, Self::LiveKeyDbReadOnly)
-    }
-
     /// Return whether this source points at a running admin API.
     ///
     /// # Returns
@@ -65,11 +42,11 @@ impl DataSource {
     /// # Returns
     ///
     /// * `Some(&Path)` for snapshot-backed sessions.
-    /// * `None` for live KeyDB sessions.
+    /// * `None` otherwise.
     pub fn snapshot_path(&self) -> Option<&Path> {
         match self {
             Self::SnapshotFile(path) => Some(path.as_path()),
-            Self::LiveKeyDbReadOnly | Self::LiveApi { .. } => None,
+            Self::NotLoaded | Self::LiveApi { .. } => None,
         }
     }
 
@@ -80,7 +57,7 @@ impl DataSource {
     /// * A label suitable for toolbars and status text.
     pub fn display_label(&self) -> String {
         match self {
-            Self::LiveKeyDbReadOnly => "Live KeyDB (read-only)".to_string(),
+            Self::NotLoaded => "None".to_string(),
             Self::SnapshotFile(path) => format!("Snapshot: {}", path.display()),
             Self::LiveApi { base_url, .. } => format!("Live API: {}", base_url),
         }
@@ -89,8 +66,9 @@ impl DataSource {
 
 /// Determine the data source from the current process arguments.
 ///
-/// Defaults to [`DataSource::LiveKeyDbReadOnly`]. Pass `--snapshot <path>` to
-/// load a `.wsnap` file for editable offline work instead.
+/// Defaults to [`DataSource::NotLoaded`] when no flags are supplied.
+/// Pass `--snapshot <path>` to load a `.wsnap` file, or `--api <url>`
+/// (with optional `--admin-token <tok>`) to connect to a running admin API.
 ///
 /// # Returns
 ///
@@ -146,7 +124,7 @@ pub fn graphics_zip_from_args() -> Option<PathBuf> {
 /// * `Err(String)` when the source cannot be read or decoded.
 pub fn load_world_snapshot(source: &DataSource) -> Result<WorldSnapshot, String> {
     match source {
-        DataSource::LiveKeyDbReadOnly => load_world_snapshot_from_keydb(),
+        DataSource::NotLoaded => Err("No source configured".to_string()),
         DataSource::SnapshotFile(path) => WorldSnapshot::from_file(path),
         DataSource::LiveApi { base_url, token } => load_world_snapshot_from_api(base_url, token),
     }
@@ -212,23 +190,6 @@ where
     }
 
     None
-}
-
-fn load_world_snapshot_from_keydb() -> Result<WorldSnapshot, String> {
-    let mut con = server::keydb::connect()?;
-    let data = server::keydb_store::load_all(&mut con)?;
-    Ok(WorldSnapshot::new(
-        data.map,
-        data.items,
-        data.item_templates,
-        data.characters,
-        data.character_templates,
-        data.effects,
-        data.globals,
-        data.bad_names,
-        data.bad_words,
-        data.message_of_the_day,
-    ))
 }
 
 /// Phase 1 LiveApi snapshot loader: fetches only lightweight summaries for
@@ -350,22 +311,15 @@ mod tests {
         std::fs::remove_file(&path).expect("remove test snapshot path");
     }
 
-    /// Default to live KeyDB mode when no valid snapshot path is supplied.
+    /// Default to `NotLoaded` when no valid snapshot path is supplied.
     #[test]
-    fn args_default_to_live_keydb() {
+    fn args_default_to_not_loaded() {
         let source = data_source_from_iter([
             OsString::from("--snapshot"),
             OsString::from("/missing/file.wsnap"),
         ]);
 
-        assert_eq!(source, DataSource::LiveKeyDbReadOnly);
-    }
-
-    /// Expose editing only for snapshot-backed sessions.
-    #[test]
-    fn snapshot_sources_are_editable() {
-        assert!(DataSource::SnapshotFile(PathBuf::from("world.wsnap")).can_edit());
-        assert!(!DataSource::LiveKeyDbReadOnly.can_edit());
+        assert_eq!(source, DataSource::NotLoaded);
     }
 
     /// Replace path-hostile characters so generated temp files work on Windows.

@@ -78,10 +78,6 @@ impl MapViewerApp {
         }
     }
 
-    fn can_edit_world(&self) -> bool {
-        self.data_source.can_edit()
-    }
-
     fn clear_loaded_world(&mut self) {
         self.loaded_world = None;
         self.map_tiles.clear();
@@ -107,6 +103,10 @@ impl MapViewerApp {
     }
 
     fn load_current_source(&mut self) {
+        if matches!(self.data_source, DataSource::NotLoaded) {
+            return;
+        }
+
         self.map_error = None;
         self.items_error = None;
         self.item_templates_error = None;
@@ -115,9 +115,7 @@ impl MapViewerApp {
 
         match load_world_snapshot(&self.data_source) {
             Ok(world) => {
-                let status = if self.data_source.is_live_keydb() {
-                    "Loaded persisted KeyDB state (read-only)".to_string()
-                } else if let Some(path) = self.data_source.snapshot_path() {
+                let status = if let Some(path) = self.data_source.snapshot_path() {
                     format!("Loaded snapshot: {}", path.display())
                 } else {
                     "Loaded world state".to_string()
@@ -150,10 +148,6 @@ impl MapViewerApp {
     }
 
     fn save_snapshot_as(&mut self, path: &Path) -> Result<(), String> {
-        if !self.can_edit_world() {
-            return Err("Live KeyDB mode is read-only".to_string());
-        }
-
         self.sync_loaded_world_from_views()?;
         let world = self
             .loaded_world
@@ -259,11 +253,6 @@ impl MapViewerApp {
     fn save_snapshot_as_dialog(&mut self) {
         self.save_status = None;
 
-        if !self.can_edit_world() {
-            self.save_status = Some("Live KeyDB mode is read-only".to_string());
-            return;
-        }
-
         let Some(path) = rfd::FileDialog::new()
             .add_filter("World Snapshot", &["wsnap"])
             .set_file_name("world_snapshot.wsnap")
@@ -283,17 +272,7 @@ impl MapViewerApp {
         }
     }
 
-    fn load_from_keydb(&mut self) {
-        self.data_source = DataSource::LiveKeyDbReadOnly;
-        self.load_current_source();
-    }
-
     fn revert_unsaved_changes(&mut self) {
-        if !self.can_edit_world() {
-            self.save_status = Some("Live KeyDB mode is read-only".to_string());
-            return;
-        }
-
         self.load_current_source();
         self.dirty = false;
         self.save_status = Some("Reverted (discarded unsaved changes)".to_string());
@@ -306,15 +285,11 @@ impl MapViewerApp {
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_min_width(260.0);
-                    let can_edit_world = self.can_edit_world();
                     ui.vertical(|ui| {
                         ui.strong("Palette");
-                        if !can_edit_world {
-                            ui.label("Disabled in live KeyDB mode");
-                        }
                         ui.separator();
 
-                        ui.add_enabled_ui(can_edit_world, |ui| {
+                        ui.add_enabled_ui(true, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label("sprite:");
                                 ui.add(egui::DragValue::new(&mut self.draft_sprite));
@@ -554,7 +529,7 @@ impl eframe::App for MapViewerApp {
 
         // Save shortcut (Cmd+S on macOS, Ctrl+S elsewhere).
         let save_shortcut = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S));
-        if save_shortcut && self.can_edit_world() {
+        if save_shortcut && self.loaded_world.is_some() {
             self.save_snapshot_as_dialog();
         }
 
@@ -613,11 +588,7 @@ impl eframe::App for MapViewerApp {
                         }
                     }
 
-                    let reload_label = if self.data_source.is_live_keydb() {
-                        "Refresh live data"
-                    } else {
-                        "Reload snapshot"
-                    };
+                    let reload_label = "Reload snapshot";
                     if ui.button(reload_label).clicked() {
                         self.load_current_source();
                         ui.close_menu();
@@ -635,7 +606,7 @@ impl eframe::App for MapViewerApp {
 
                     ui.separator();
 
-                    let save_enabled = self.can_edit_world() && self.loaded_world.is_some();
+                    let save_enabled = self.loaded_world.is_some();
                     if ui
                         .add_enabled(save_enabled, egui::Button::new("Save Snapshot As..."))
                         .clicked()
@@ -644,7 +615,7 @@ impl eframe::App for MapViewerApp {
                         self.save_snapshot_as_dialog();
                     }
 
-                    let revert_enabled = self.can_edit_world() && self.dirty;
+                    let revert_enabled = self.dirty;
                     if ui
                         .add_enabled(
                             revert_enabled,
@@ -659,14 +630,6 @@ impl eframe::App for MapViewerApp {
                     ui.separator();
 
                     ui.menu_button("Data Source", |ui| {
-                        let is_keydb = self.data_source.is_live_keydb();
-                        if ui
-                            .selectable_label(is_keydb, "Live KeyDB (read-only)")
-                            .clicked()
-                        {
-                            self.load_from_keydb();
-                            ui.close_menu();
-                        }
                         let is_snap = matches!(self.data_source, DataSource::SnapshotFile(_));
                         if ui.selectable_label(is_snap, ".wsnap Snapshot").clicked() {
                             if let Some(path) = rfd::FileDialog::new()
@@ -723,12 +686,6 @@ impl eframe::App for MapViewerApp {
 
                 ui.separator();
                 ui.label(format!("Source: {}", self.data_source.display_label()));
-                if self.data_source.is_live_keydb() {
-                    ui.colored_label(
-                        egui::Color32::LIGHT_YELLOW,
-                        "Viewing persisted KeyDB state only. The running server may be ahead.",
-                    );
-                }
 
                 if let Some(err) = &self.map_error {
                     ui.separator();
@@ -865,7 +822,7 @@ impl eframe::App for MapViewerApp {
                             let preview_size = Vec2::new(64.0, 64.0);
                             self.ui_tile_preview_row(ui, ctx, sprite, fsprite, it, preview_size);
 
-                            if sprite != 0 && fsprite != 0 && self.can_edit_world() {
+                            if sprite != 0 && fsprite != 0 {
                                 if ui.button("Clear fsprite").clicked() {
                                     let mut updated = self.map_tiles[idx];
                                     updated.fsprite = 0;
@@ -924,7 +881,7 @@ impl eframe::App for MapViewerApp {
                                 (mag_core::constants::MF_GFX_CMAGIC1, "MF_GFX_CMAGIC1"),
                             ];
 
-                            ui.add_enabled_ui(self.can_edit_world(), |ui| {
+                            ui.add_enabled_ui(true, |ui| {
                                 egui::ScrollArea::vertical()
                                     .max_height(220.0)
                                     .show(ui, |ui| {
@@ -952,7 +909,7 @@ impl eframe::App for MapViewerApp {
                                     });
                             });
 
-                            if self.can_edit_world() && flags != original_flags {
+                            if flags != original_flags {
                                 let mut updated = self.map_tiles[idx];
                                 updated.flags = flags;
                                 if updated != self.map_tiles[idx] {
@@ -995,13 +952,6 @@ impl eframe::App for MapViewerApp {
                         }
                         return;
                     };
-                    if !self.can_edit_world() {
-                        if let Some((x, y)) = self.hovered_tile {
-                            self.selected_tile = Some((x, y));
-                            ctx.request_repaint();
-                        }
-                        return;
-                    }
                     if sel_idx >= self.palette.len() {
                         self.selected_palette_index = None;
                         return;

@@ -155,10 +155,6 @@ impl TemplateViewerApp {
         }
     }
 
-    fn can_edit_world(&self) -> bool {
-        self.data_source.can_edit()
-    }
-
     fn clear_loaded_world(&mut self) {
         self.loaded_world = None;
         self.item_templates.clear();
@@ -217,14 +213,16 @@ impl TemplateViewerApp {
     }
 
     fn load_current_source(&mut self) {
+        if matches!(self.data_source, DataSource::NotLoaded) {
+            return;
+        }
+
         self.load_error = None;
         self.save_status = None;
 
         match load_world_snapshot(&self.data_source) {
             Ok(world) => {
-                let status = if self.data_source.is_live_keydb() {
-                    "Loaded persisted KeyDB state (read-only)".to_string()
-                } else if let Some(path) = self.data_source.snapshot_path() {
+                let status = if let Some(path) = self.data_source.snapshot_path() {
                     format!("Loaded snapshot: {}", path.display())
                 } else {
                     // LiveApi: status text is set by connect_to_api_from_form;
@@ -269,10 +267,6 @@ impl TemplateViewerApp {
     }
 
     fn save_snapshot_as(&mut self, path: &Path) -> Result<(), String> {
-        if !self.can_edit_world() {
-            return Err("Live KeyDB mode is read-only".to_string());
-        }
-
         self.sync_loaded_world_from_views()?;
         let world = self
             .loaded_world
@@ -286,11 +280,6 @@ impl TemplateViewerApp {
 
     fn save_snapshot_as_dialog(&mut self) {
         self.save_status = None;
-
-        if !self.can_edit_world() {
-            self.save_status = Some("Live KeyDB mode is read-only".to_string());
-            return;
-        }
 
         let Some(path) = rfd::FileDialog::new()
             .add_filter("World Snapshot", &["wsnap"])
@@ -311,11 +300,6 @@ impl TemplateViewerApp {
                 self.save_status = Some(format!("Save failed: {e}"));
             }
         }
-    }
-
-    fn load_from_keydb(&mut self) {
-        self.data_source = DataSource::LiveKeyDbReadOnly;
-        self.load_current_source();
     }
 
     /// Push every dirty template slot to the admin API and clear the dirty
@@ -663,11 +647,6 @@ impl TemplateViewerApp {
     }
 
     fn revert_unsaved_changes(&mut self) {
-        if !self.can_edit_world() {
-            self.save_status = Some("Live KeyDB mode is read-only".to_string());
-            return;
-        }
-
         self.save_status = None;
 
         let prev_view_mode = self.view_mode;
@@ -2194,7 +2173,7 @@ impl eframe::App for TemplateViewerApp {
             let mods = i.modifiers;
             (mods.command || mods.ctrl) && i.key_pressed(egui::Key::S)
         });
-        if save_shortcut && self.can_edit_world() && self.loaded_world.is_some() {
+        if save_shortcut && self.loaded_world.is_some() {
             if self.data_source.is_live_api() {
                 self.save_to_api();
             } else {
@@ -2255,10 +2234,7 @@ impl eframe::App for TemplateViewerApp {
                         "Save Snapshot As...\tCtrl+S"
                     };
                     if ui
-                        .add_enabled(
-                            self.can_edit_world() && self.loaded_world.is_some(),
-                            egui::Button::new(save_label),
-                        )
+                        .add_enabled(self.loaded_world.is_some(), egui::Button::new(save_label))
                         .clicked()
                     {
                         if is_live_api {
@@ -2292,7 +2268,7 @@ impl eframe::App for TemplateViewerApp {
                         }
                     }
 
-                    let can_revert = self.can_edit_world() && self.dirty;
+                    let can_revert = self.dirty;
                     if ui
                         .add_enabled(can_revert, egui::Button::new("Revert (discard changes)"))
                         .clicked()
@@ -2303,11 +2279,7 @@ impl eframe::App for TemplateViewerApp {
 
                     ui.separator();
 
-                    let reload_label = if self.data_source.is_live_keydb() {
-                        "Refresh live data"
-                    } else {
-                        "Reload snapshot"
-                    };
+                    let reload_label = "Reload snapshot";
                     if ui.button(reload_label).clicked() {
                         self.load_current_source();
                         ui.close_menu();
@@ -2316,14 +2288,6 @@ impl eframe::App for TemplateViewerApp {
                     ui.separator();
 
                     ui.menu_button("Data Source", |ui| {
-                        let is_keydb = self.data_source.is_live_keydb();
-                        if ui
-                            .selectable_label(is_keydb, "Live KeyDB (read-only)")
-                            .clicked()
-                        {
-                            self.load_from_keydb();
-                            ui.close_menu();
-                        }
                         let is_snapshot = matches!(self.data_source, DataSource::SnapshotFile(_));
                         if ui
                             .selectable_label(is_snapshot, ".wsnap Snapshot")
@@ -2452,12 +2416,6 @@ impl eframe::App for TemplateViewerApp {
 
             ui.separator();
             ui.label(format!("Source: {}", self.data_source.display_label()));
-            if self.data_source.is_live_keydb() {
-                ui.colored_label(
-                    egui::Color32::YELLOW,
-                    "Viewing persisted KeyDB state only. The running server may be ahead.",
-                );
-            }
 
             if let Some(ref error) = self.load_error {
                 ui.separator();
@@ -2487,7 +2445,6 @@ impl eframe::App for TemplateViewerApp {
 
         egui::CentralPanel::default().show(ctx, |ui| match self.view_mode {
             ViewMode::ItemTemplates => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("item_template_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2511,19 +2468,13 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_item_index {
                         if idx < self.item_templates.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_item_details_by_index(
-                                    ui,
-                                    ItemDetailsSource::ItemTemplates,
-                                    idx,
-                                );
-                            });
+                            self.render_item_details_by_index(
+                                ui,
+                                ItemDetailsSource::ItemTemplates,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2533,7 +2484,6 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::CharacterTemplates => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("character_template_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2557,19 +2507,13 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_character_index {
                         if idx < self.character_templates.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_character_details_by_index(
-                                    ui,
-                                    CharacterDetailsSource::CharacterTemplates,
-                                    idx,
-                                );
-                            });
+                            self.render_character_details_by_index(
+                                ui,
+                                CharacterDetailsSource::CharacterTemplates,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2579,7 +2523,6 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::Items => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("item_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2595,19 +2538,9 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_item_instance_index {
                         if idx < self.items.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_item_details_by_index(
-                                    ui,
-                                    ItemDetailsSource::Items,
-                                    idx,
-                                );
-                            });
+                            self.render_item_details_by_index(ui, ItemDetailsSource::Items, idx);
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2617,7 +2550,6 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::Characters => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("character_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2633,19 +2565,13 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_character_instance_index {
                         if idx < self.characters.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_character_details_by_index(
-                                    ui,
-                                    CharacterDetailsSource::Characters,
-                                    idx,
-                                );
-                            });
+                            self.render_character_details_by_index(
+                                ui,
+                                CharacterDetailsSource::Characters,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
