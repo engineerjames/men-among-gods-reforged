@@ -72,6 +72,12 @@ pub(crate) struct TemplateViewerApp {
     connect_dialog_error: Option<String>,
     /// Whether the "confirm server reload" modal dialog is open.
     reload_confirm_open: bool,
+    /// Wall-clock instant when the most recent reload request was fired.
+    /// Used to auto-poll the status endpoint every ~2 s until applied or
+    /// the 60-second TTL elapses.
+    pending_reload_since: Option<std::time::Instant>,
+    /// Wall-clock instant of the last automatic reload-status poll.
+    last_reload_poll: Option<std::time::Instant>,
     save_status: Option<String>,
     initial_load_done: bool,
     frame_count: u32,
@@ -124,6 +130,8 @@ impl Default for TemplateViewerApp {
             connect_form_show_token: false,
             connect_dialog_error: None,
             reload_confirm_open: false,
+            pending_reload_since: None,
+            last_reload_poll: None,
             save_status: None,
             initial_load_done: false,
             frame_count: 0,
@@ -219,7 +227,9 @@ impl TemplateViewerApp {
                 } else if let Some(path) = self.data_source.snapshot_path() {
                     format!("Loaded snapshot: {}", path.display())
                 } else {
-                    "Loaded world state".to_string()
+                    // LiveApi: status text is set by connect_to_api_from_form;
+                    // return an empty string so the toolbar shows nothing here.
+                    String::new()
                 };
 
                 log::info!(
@@ -444,7 +454,9 @@ impl TemplateViewerApp {
 
         self.connect_dialog_open = false;
         self.connect_dialog_error = None;
-        self.save_status = Some(format!("Connected to admin API: {base_url}"));
+        // The "Source:" label in the toolbar already shows the URL, so we
+        // only need a short confirmation without repeating it.
+        self.save_status = Some("Connected to admin API".to_string());
     }
 
     /// Trigger a reload on the running server for both template kinds.
@@ -456,6 +468,7 @@ impl TemplateViewerApp {
         match client.request_reload(true, true) {
             Ok(resp) => {
                 self.pending_reload_request_id = Some(resp.request_id.clone());
+                self.pending_reload_since = Some(std::time::Instant::now());
                 self.save_status = Some(format!(
                     "Reload requested ({}): kinds=[{}]",
                     resp.request_id,
@@ -480,6 +493,7 @@ impl TemplateViewerApp {
             Ok(status) => {
                 if status.status == "applied" {
                     self.pending_reload_request_id = None;
+                    self.pending_reload_since = None;
                     self.save_status = Some(format!("Reload applied ({})", status.request_id));
                 } else {
                     self.save_status =
@@ -2195,6 +2209,39 @@ impl eframe::App for TemplateViewerApp {
                 .or_else(server_utils::default_graphics_zip_path)
             {
                 self.load_graphics_zip(zip_path);
+            }
+        }
+
+        // Auto-poll reload status every ~2 s while a request is pending.
+        // We stop after 60 s to match the server-side STATUS_TTL and avoid
+        // hammering the API if the server never responds.
+        if self.pending_reload_request_id.is_some() {
+            const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+            const GIVE_UP: std::time::Duration = std::time::Duration::from_secs(60);
+
+            let since_start = self
+                .pending_reload_since
+                .map(|t| t.elapsed())
+                .unwrap_or(GIVE_UP);
+
+            if since_start >= GIVE_UP {
+                self.pending_reload_request_id = None;
+                self.pending_reload_since = None;
+                self.last_reload_poll = None;
+                self.save_status = Some("Reload status: timed out waiting for server".to_string());
+            } else {
+                let should_poll = self
+                    .last_reload_poll
+                    .map(|t| t.elapsed() >= POLL_INTERVAL)
+                    .unwrap_or(true); // poll immediately on first frame after request
+
+                if should_poll {
+                    self.last_reload_poll = Some(std::time::Instant::now());
+                    self.poll_reload_status();
+                }
+
+                // Schedule a repaint so egui wakes us up to poll again.
+                ctx.request_repaint_after(POLL_INTERVAL);
             }
         }
 
