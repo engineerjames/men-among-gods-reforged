@@ -315,6 +315,10 @@ file backend has been removed.
 | `game:badwords` | bincode `Vec<String>` | 1 |
 | `game:motd` | UTF-8 string | 1 |
 | `game:meta:version` | integer | 1 |
+| `admin:map:patch_queue` | bincode `MapPatch` list (RPUSH) | dynamic |
+| `admin:map:reload:request` | JSON `{request_id, requested_at_ms}` (TTL 30s) | 0–1 |
+| `admin:map:reload:status:{request_id}` | JSON `{status, request_id}` (TTL 300s) | 0..n |
+| `admin:map:version` | integer counter | 1 |
 
 ### Background Save Rotation
 

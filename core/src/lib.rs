@@ -20,6 +20,7 @@ pub mod client_commands;
 pub mod constants;
 pub mod encrypt;
 pub mod logout_reasons;
+pub mod map_store;
 pub mod names;
 pub mod ranks;
 pub mod server_commands;

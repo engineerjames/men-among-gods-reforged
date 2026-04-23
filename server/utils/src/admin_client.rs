@@ -7,11 +7,12 @@
 
 use std::time::Duration;
 
+use mag_core::map_store::MapPatch;
 use mag_core::template_store::{
     self, TemplateKind, decode_character_template, decode_item_template, encode_character_template,
     encode_item_template,
 };
-use mag_core::types::{Character, Item};
+use mag_core::types::{Character, Item, Map};
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::Deserialize;
@@ -68,6 +69,38 @@ pub struct ReloadStatusResponse {
     pub status: String,
     /// Opaque identifier echoed back by the API.
     pub request_id: String,
+}
+
+/// Response envelope from `PUT /admin/world/map/{x}/{y}`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PutMapTileResponse {
+    /// New value of the map version counter.
+    pub version: u64,
+    /// Queue depth after this patch was enqueued.
+    pub queued: u64,
+}
+
+/// Response envelope from `POST /admin/world/map/reload`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MapReloadResponse {
+    /// Opaque identifier assigned by the API.
+    pub request_id: String,
+}
+
+/// Response envelope from `GET /admin/world/map/reload/status?request_id=...`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MapReloadStatusResponse {
+    /// Lifecycle state: `pending`, `applied`, or `expired`.
+    pub status: String,
+    /// Opaque identifier echoed back by the API.
+    pub request_id: String,
+}
+
+/// Response envelope from `GET /admin/world/map/version`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct MapVersionResponse {
+    /// Current value of the map version counter.
+    pub version: u64,
 }
 
 /// Blocking client for the admin API.
@@ -387,6 +420,188 @@ impl AdminClient {
         }
         resp.json::<ReloadStatusResponse>()
             .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    // ------------------------------------------------------------------
+    //  Map editing
+    // ------------------------------------------------------------------
+
+    /// Fetch every map tile in a single HTTP request.
+    ///
+    /// The API returns a bincode `Vec<Map>` in row-major order.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(tiles)` — length equals `SERVER_MAPX * SERVER_MAPY`.
+    /// * `Err(message)` on HTTP or decode failure.
+    pub fn fetch_map_tiles(&self) -> Result<Vec<Map>, String> {
+        let url = self.url("/admin/world/map");
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .header(ACCEPT, OCTET_STREAM)
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        let bytes = resp
+            .bytes()
+            .map_err(|e| format!("GET {url}: read body: {e}"))?;
+        let (tiles, consumed): (Vec<Map>, usize) =
+            bincode::decode_from_slice(&bytes, bincode::config::standard())
+                .map_err(|e| format!("GET {url}: decode: {e}"))?;
+        if consumed != bytes.len() {
+            return Err(format!(
+                "GET {url}: trailing bytes after Vec<Map> (consumed {} of {})",
+                consumed,
+                bytes.len()
+            ));
+        }
+        Ok(tiles)
+    }
+
+    /// Fetch the raw bincode payload for a single map tile.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Tile X coordinate.
+    /// * `y` - Tile Y coordinate.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(tile)` on success.
+    /// * `Err(message)` on HTTP or decode failure.
+    pub fn fetch_single_map_tile(&self, x: usize, y: usize) -> Result<Map, String> {
+        let url = self.url(&format!("/admin/world/map/{x}/{y}"));
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .header(ACCEPT, OCTET_STREAM)
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        let bytes = resp
+            .bytes()
+            .map_err(|e| format!("GET {url}: read body: {e}"))?;
+        Map::from_bytes(&bytes).ok_or_else(|| format!("GET {url}: decode Map failed"))
+    }
+
+    /// Enqueue a patch for a single map tile on the server.
+    ///
+    /// The server applies patches between ticks, preserving dynamic fields
+    /// (`ch`, `to_ch`, `it`, `light`, `dlight`).
+    ///
+    /// # Arguments
+    ///
+    /// * `x`     - Tile X coordinate.
+    /// * `y`     - Tile Y coordinate.
+    /// * `patch` - Static-field overrides. `patch.x` / `patch.y` must match
+    ///             the URL coordinates; the API rejects mismatches.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` with new version counter and queue depth.
+    /// * `Err(message)` on encode, HTTP, or server-side validation failure.
+    pub fn put_map_tile_patch(
+        &self,
+        x: usize,
+        y: usize,
+        patch: &MapPatch,
+    ) -> Result<PutMapTileResponse, String> {
+        // Build the canonical byte form client-side so we get the same error
+        // paths regardless of the HTTP layer.
+        let bytes = patch.to_bytes().map_err(|e| format!("encode: {e}"))?;
+        let url = self.url(&format!("/admin/world/map/{x}/{y}"));
+        let resp = self
+            .client
+            .put(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .header(CONTENT_TYPE, OCTET_STREAM)
+            .body(bytes)
+            .send()
+            .map_err(|e| format!("PUT {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("PUT {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<PutMapTileResponse>()
+            .map_err(|e| format!("PUT {url}: decode: {e}"))
+    }
+
+    /// Request a flush of the server-side map-patch queue.
+    ///
+    /// Returns the request id to poll via [`map_reload_status`].
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` on success.
+    /// * `Err(message)` on HTTP failure.
+    pub fn request_map_reload(&self) -> Result<MapReloadResponse, String> {
+        let url = self.url("/admin/world/map/reload");
+        let resp = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .json(&serde_json::json!({}))
+            .send()
+            .map_err(|e| format!("POST {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("POST {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<MapReloadResponse>()
+            .map_err(|e| format!("POST {url}: decode: {e}"))
+    }
+
+    /// Poll the map-reload status endpoint for a previously enqueued request.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - Identifier returned by [`request_map_reload`].
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(status)` describing the current lifecycle state.
+    /// * `Err(message)` on HTTP failure.
+    pub fn map_reload_status(&self, request_id: &str) -> Result<MapReloadStatusResponse, String> {
+        let url = self.url("/admin/world/map/reload/status");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("request_id", request_id)])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<MapReloadStatusResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Fetch the current value of the admin map-version counter.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(version)` on success.
+    /// * `Err(message)` on HTTP failure.
+    pub fn fetch_map_version(&self) -> Result<u64, String> {
+        let url = self.url("/admin/world/map/version");
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        let body: MapVersionResponse =
+            resp.json().map_err(|e| format!("GET {url}: decode: {e}"))?;
+        Ok(body.version)
     }
 }
 

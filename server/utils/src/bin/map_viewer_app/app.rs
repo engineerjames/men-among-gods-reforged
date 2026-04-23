@@ -2,9 +2,12 @@ use super::graphics::GraphicsZipCache;
 use eframe::egui;
 use egui::{Pos2, Rect, Vec2};
 use mag_core::constants::{ItemFlags, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS};
+use mag_core::map_store::MapPatch;
 use mag_core::types::{Item, Map};
 use server::snapshot::WorldSnapshot;
+use server_utils::admin_client::AdminClient;
 use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -66,14 +69,44 @@ pub(crate) struct MapViewerApp {
 
     /// Active data backend (live KeyDB or snapshot file).
     data_source: DataSource,
+
+    /// Tiles with unsaved edits (LiveApi mode). Keyed by `(x, y)`.
+    dirty_tiles: BTreeSet<(usize, usize)>,
+    /// Cached admin API client for LiveApi mode.
+    admin_client: Option<AdminClient>,
+    /// Pending map-reload request id awaiting a status update.
+    pending_map_reload_request_id: Option<String>,
+    /// Wall-clock instant when the most recent reload request was fired.
+    pending_reload_since: Option<std::time::Instant>,
+    /// Wall-clock instant of the last automatic reload-status poll.
+    last_reload_poll: Option<std::time::Instant>,
+    /// Whether the "Connect to admin API" modal dialog is open.
+    connect_dialog_open: bool,
+    /// Working draft of the API base URL inside the connect dialog.
+    connect_form_base_url: String,
+    /// Working draft of the admin token inside the connect dialog.
+    connect_form_token: String,
+    /// Whether the admin-token field is currently shown in plaintext.
+    connect_form_show_token: bool,
+    /// Last error reported by the connect dialog (e.g. failed fetch).
+    connect_dialog_error: Option<String>,
+    /// Whether the "confirm server map reload" modal dialog is open.
+    reload_confirm_open: bool,
 }
 
 impl MapViewerApp {
     pub(crate) fn new(data_source: DataSource) -> Self {
         // Don't load map/graphics in constructor — it blocks window creation.
         // We load on first update instead, dispatching on data_source.
+        let admin_client = match &data_source {
+            DataSource::LiveApi { base_url, token } => {
+                AdminClient::new(base_url.clone(), token.clone()).ok()
+            }
+            _ => None,
+        };
         Self {
             data_source,
+            admin_client,
             ..Self::default()
         }
     }
@@ -87,6 +120,7 @@ impl MapViewerApp {
         self.selected_tile = None;
         self.selected_palette_index = None;
         self.dirty = false;
+        self.dirty_tiles.clear();
     }
 
     fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
@@ -100,6 +134,7 @@ impl MapViewerApp {
         self.selected_tile = None;
         self.selected_palette_index = None;
         self.dirty = false;
+        self.dirty_tiles.clear();
     }
 
     fn load_current_source(&mut self) {
@@ -275,7 +310,335 @@ impl MapViewerApp {
     fn revert_unsaved_changes(&mut self) {
         self.load_current_source();
         self.dirty = false;
+        self.dirty_tiles.clear();
         self.save_status = Some("Reverted (discarded unsaved changes)".to_string());
+    }
+
+    /// Mark tile `(x, y)` as having unsaved static-field changes.
+    ///
+    /// Used by the LiveApi "Save to API" flow to avoid pushing untouched
+    /// tiles back over the 1-req/sec admin rate limiter.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Tile X coordinate.
+    /// * `y` - Tile Y coordinate.
+    fn mark_tile_dirty(&mut self, x: usize, y: usize) {
+        self.dirty = true;
+        self.dirty_tiles.insert((x, y));
+    }
+
+    /// Push every dirty map tile to the admin API and clear the dirty set.
+    ///
+    /// Called instead of snapshot save in LiveApi mode. Each tile produces
+    /// one PUT request; successes are removed from the dirty set so retries
+    /// only resend failed tiles.
+    fn save_to_api(&mut self) {
+        self.save_status = None;
+        if let Err(e) = self.sync_loaded_world_from_views() {
+            self.save_status = Some(format!("Save failed: {e}"));
+            return;
+        }
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            self.save_status = Some("Admin client not initialized".to_string());
+            return;
+        };
+
+        let targets: Vec<(usize, usize)> = self.dirty_tiles.iter().copied().collect();
+        let mut pushed = 0usize;
+        let mut errors: Vec<String> = Vec::new();
+
+        for (x, y) in &targets {
+            let idx = tile_index(*x, *y);
+            let Some(tile) = self.map_tiles.get(idx) else {
+                errors.push(format!("({x},{y}): out of range"));
+                continue;
+            };
+            let patch = MapPatch {
+                x: *x as u32,
+                y: *y as u32,
+                sprite: tile.sprite,
+                fsprite: tile.fsprite,
+                flags: tile.flags,
+            };
+            match client.put_map_tile_patch(*x, *y, &patch) {
+                Ok(_) => {
+                    pushed += 1;
+                    self.dirty_tiles.remove(&(*x, *y));
+                }
+                Err(e) => errors.push(format!("({x},{y}): {e}")),
+            }
+        }
+
+        if errors.is_empty() {
+            self.dirty = !self.dirty_tiles.is_empty();
+            self.save_status = Some(format!(
+                "Saved to API: {pushed} tile(s). Use 'Reload server map' to apply."
+            ));
+        } else {
+            self.save_status = Some(format!(
+                "Save partial: {pushed} tile(s); {} error(s): {}",
+                errors.len(),
+                errors.join("; ")
+            ));
+        }
+    }
+
+    /// Open the modal dialog used to connect to the admin API.
+    ///
+    /// Pre-fills the form with the current LiveApi credentials when one is
+    /// active, otherwise falls back to `MAG_API_BASE_URL` /
+    /// `MAG_ADMIN_API_TOKEN` env vars, then to safe local-dev defaults.
+    fn open_connect_dialog(&mut self) {
+        match &self.data_source {
+            DataSource::LiveApi { base_url, token } => {
+                self.connect_form_base_url = base_url.clone();
+                self.connect_form_token = token.clone();
+            }
+            _ => {
+                if self.connect_form_base_url.is_empty() {
+                    self.connect_form_base_url = std::env::var("MAG_API_BASE_URL")
+                        .unwrap_or_else(|_| "https://127.0.0.1:5554".to_string());
+                }
+                if self.connect_form_token.is_empty() {
+                    self.connect_form_token =
+                        std::env::var("MAG_ADMIN_API_TOKEN").unwrap_or_default();
+                }
+            }
+        }
+        self.connect_dialog_error = None;
+        self.connect_dialog_open = true;
+    }
+
+    /// Switch the data source to LiveApi using the values in the connect
+    /// dialog form, build the admin client, and reload the world.
+    fn connect_to_api_from_form(&mut self) {
+        let base_url = self.connect_form_base_url.trim().to_string();
+        let token = self.connect_form_token.trim().to_string();
+
+        if base_url.is_empty() {
+            self.connect_dialog_error = Some("Base URL is required".to_string());
+            return;
+        }
+        if token.is_empty() {
+            self.connect_dialog_error = Some("Admin token is required".to_string());
+            return;
+        }
+
+        let client = match AdminClient::new(base_url.clone(), token.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                self.connect_dialog_error = Some(format!("Build client failed: {e}"));
+                return;
+            }
+        };
+
+        self.admin_client = Some(client);
+        self.data_source = DataSource::LiveApi {
+            base_url: base_url.clone(),
+            token,
+        };
+        self.load_current_source();
+
+        if let Some(err) = self.map_error.clone() {
+            self.connect_dialog_error = Some(format!("Connection test failed: {err}"));
+            self.admin_client = None;
+            return;
+        }
+
+        self.connect_dialog_open = false;
+        self.connect_dialog_error = None;
+        self.save_status = Some("Connected to admin API".to_string());
+    }
+
+    /// Fire a server-side map reload and remember the request id.
+    fn request_server_map_reload(&mut self) {
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            self.save_status = Some("Admin client not initialized".to_string());
+            return;
+        };
+        match client.request_map_reload() {
+            Ok(resp) => {
+                self.pending_map_reload_request_id = Some(resp.request_id.clone());
+                self.pending_reload_since = Some(std::time::Instant::now());
+                self.last_reload_poll = None;
+                self.save_status = Some(format!("Map reload requested ({})", resp.request_id));
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Map reload failed: {e}"));
+            }
+        }
+    }
+
+    /// Poll the most recent map-reload request once (best effort).
+    fn poll_map_reload_status(&mut self) {
+        let Some(request_id) = self.pending_map_reload_request_id.clone() else {
+            return;
+        };
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            return;
+        };
+        match client.map_reload_status(&request_id) {
+            Ok(status) => {
+                if status.status == "applied" {
+                    self.pending_map_reload_request_id = None;
+                    self.pending_reload_since = None;
+                    self.last_reload_poll = None;
+                    self.save_status = Some(format!("Map reload applied ({})", status.request_id));
+                } else {
+                    self.save_status = Some(format!(
+                        "Map reload status ({request_id}): {}",
+                        status.status
+                    ));
+                }
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Map reload status error: {e}"));
+            }
+        }
+    }
+
+    /// Render the modal dialog used to enter admin API connection details.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - egui context used to host the modal window.
+    fn render_connect_dialog(&mut self, ctx: &egui::Context) {
+        if !self.connect_dialog_open {
+            return;
+        }
+
+        let mut still_open = true;
+        let mut apply_clicked = false;
+        let mut cancel_clicked = false;
+
+        egui::Window::new("Connect to Admin API")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut still_open)
+            .show(ctx, |ui| {
+                ui.set_min_width(420.0);
+                ui.label(
+                    "Point the map viewer at a running API service. \
+                     Use a local URL when developing, or your production URL.",
+                );
+                ui.add_space(6.0);
+
+                egui::Grid::new("map_connect_dialog_grid")
+                    .num_columns(2)
+                    .spacing([8.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Base URL:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.connect_form_base_url)
+                                .hint_text("https://127.0.0.1:5554")
+                                .desired_width(280.0),
+                        );
+                        ui.end_row();
+
+                        ui.label("Admin token:");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.connect_form_token)
+                                    .password(!self.connect_form_show_token)
+                                    .hint_text("MAG_ADMIN_API_TOKEN")
+                                    .desired_width(220.0),
+                            );
+                            ui.checkbox(&mut self.connect_form_show_token, "Show");
+                        });
+                        ui.end_row();
+                    });
+
+                if let Some(err) = &self.connect_dialog_error {
+                    ui.add_space(6.0);
+                    ui.colored_label(egui::Color32::RED, err);
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Connect").clicked() {
+                        apply_clicked = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
+                    }
+                });
+            });
+
+        if cancel_clicked || !still_open {
+            self.connect_dialog_open = false;
+            self.connect_dialog_error = None;
+        } else if apply_clicked {
+            self.connect_to_api_from_form();
+        }
+    }
+
+    /// Render the confirmation modal for triggering a server-side map reload.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - egui context used to host the modal window.
+    fn render_reload_confirm_dialog(&mut self, ctx: &egui::Context) {
+        if !self.reload_confirm_open {
+            return;
+        }
+
+        let mut still_open = true;
+        let mut confirm_clicked = false;
+        let mut cancel_clicked = false;
+        let has_unsaved = !self.dirty_tiles.is_empty();
+
+        egui::Window::new("Reload Server Map?")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut still_open)
+            .show(ctx, |ui| {
+                ui.set_min_width(440.0);
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "\u{26A0}  This will drain pending map patches on the running server.",
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    "Existing players in the affected areas will see the new tiles on their \
+                     next tick. Run this only after 'Save to API' has succeeded.",
+                );
+
+                if has_unsaved {
+                    ui.add_space(6.0);
+                    ui.colored_label(
+                        egui::Color32::RED,
+                        "You have unsaved local edits. Save to API first or they will not be reloaded.",
+                    );
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new("Reload now").color(egui::Color32::WHITE),
+                            )
+                            .fill(egui::Color32::from_rgb(160, 60, 60)),
+                        )
+                        .clicked()
+                    {
+                        confirm_clicked = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
+                    }
+                });
+            });
+
+        if cancel_clicked || !still_open {
+            self.reload_confirm_open = false;
+        } else if confirm_clicked {
+            self.reload_confirm_open = false;
+            self.request_server_map_reload();
+        }
     }
 
     fn render_palette_overlay(&mut self, ctx: &egui::Context, anchor: Pos2) -> Rect {
@@ -530,8 +893,44 @@ impl eframe::App for MapViewerApp {
         // Save shortcut (Cmd+S on macOS, Ctrl+S elsewhere).
         let save_shortcut = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S));
         if save_shortcut && self.loaded_world.is_some() {
-            self.save_snapshot_as_dialog();
+            if self.data_source.is_live_api() {
+                self.save_to_api();
+            } else {
+                self.save_snapshot_as_dialog();
+            }
         }
+
+        // Auto-poll map-reload status every ~2 s while a request is pending.
+        if self.pending_map_reload_request_id.is_some() {
+            const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+            const GIVE_UP: std::time::Duration = std::time::Duration::from_secs(300);
+
+            let since_start = self
+                .pending_reload_since
+                .map(|t| t.elapsed())
+                .unwrap_or(GIVE_UP);
+
+            if since_start >= GIVE_UP {
+                self.pending_map_reload_request_id = None;
+                self.pending_reload_since = None;
+                self.last_reload_poll = None;
+                self.save_status =
+                    Some("Map reload status: timed out waiting for server".to_string());
+            } else {
+                let should_poll = self
+                    .last_reload_poll
+                    .map(|t| t.elapsed() >= POLL_INTERVAL)
+                    .unwrap_or(true);
+                if should_poll {
+                    self.last_reload_poll = Some(std::time::Instant::now());
+                    self.poll_map_reload_status();
+                }
+                ctx.request_repaint_after(POLL_INTERVAL);
+            }
+        }
+
+        self.render_connect_dialog(ctx);
+        self.render_reload_confirm_dialog(ctx);
 
         // Load map/graphics after a couple frames (window has appeared)
         if !self.initial_load_done && self.frame_count > 2 {
@@ -607,12 +1006,45 @@ impl eframe::App for MapViewerApp {
                     ui.separator();
 
                     let save_enabled = self.loaded_world.is_some();
+                    let is_live_api = self.data_source.is_live_api();
+                    let save_label = if is_live_api {
+                        "Save to API\tCtrl+S"
+                    } else {
+                        "Save Snapshot As..."
+                    };
                     if ui
-                        .add_enabled(save_enabled, egui::Button::new("Save Snapshot As..."))
+                        .add_enabled(save_enabled, egui::Button::new(save_label))
                         .clicked()
                     {
                         ui.close_menu();
-                        self.save_snapshot_as_dialog();
+                        if is_live_api {
+                            self.save_to_api();
+                        } else {
+                            self.save_snapshot_as_dialog();
+                        }
+                    }
+
+                    if is_live_api {
+                        if ui
+                            .add_enabled(
+                                self.admin_client.is_some(),
+                                egui::Button::new("Reload server map..."),
+                            )
+                            .clicked()
+                        {
+                            self.reload_confirm_open = true;
+                            ui.close_menu();
+                        }
+                        if ui
+                            .add_enabled(
+                                self.pending_map_reload_request_id.is_some(),
+                                egui::Button::new("Poll reload status"),
+                            )
+                            .clicked()
+                        {
+                            self.poll_map_reload_status();
+                            ui.close_menu();
+                        }
                     }
 
                     let revert_enabled = self.dirty;
@@ -640,6 +1072,11 @@ impl eframe::App for MapViewerApp {
                             }
                             ui.close_menu();
                         }
+                        let is_api = self.data_source.is_live_api();
+                        if ui.selectable_label(is_api, "Live Admin API...").clicked() {
+                            self.open_connect_dialog();
+                            ui.close_menu();
+                        }
                     });
                 });
 
@@ -664,18 +1101,61 @@ impl eframe::App for MapViewerApp {
 
                 if self.dirty {
                     ui.separator();
-                    ui.colored_label(egui::Color32::YELLOW, "Unsaved changes");
+                    ui.colored_label(
+                        egui::Color32::YELLOW,
+                        format!("Unsaved: {} tile(s)", self.dirty_tiles.len()),
+                    );
                 }
 
                 if let Some(status) = self.save_status.as_ref() {
                     ui.separator();
-                    let color = if status.starts_with("Save failed") {
+                    let color = if status.starts_with("Save failed")
+                        || status.starts_with("Map reload failed")
+                        || status.starts_with("Save partial")
+                    {
                         egui::Color32::LIGHT_RED
                     } else {
                         egui::Color32::LIGHT_GREEN
                     };
                     ui.colored_label(color, status);
                 }
+
+                // Right-aligned action buttons for connection and reload.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let is_live_api = self.data_source.is_live_api();
+                    if is_live_api {
+                        let reload_btn = egui::Button::new(
+                            egui::RichText::new("Reload Server Map").color(egui::Color32::WHITE),
+                        )
+                        .fill(egui::Color32::from_rgb(160, 60, 60));
+                        if ui
+                            .add_enabled(self.admin_client.is_some(), reload_btn)
+                            .on_hover_text(
+                                "Ask the running server to drain pending map patches. \
+                                 You will be asked to confirm.",
+                            )
+                            .clicked()
+                        {
+                            self.reload_confirm_open = true;
+                        }
+                    }
+
+                    let connect_label = if is_live_api {
+                        "API: Connected"
+                    } else {
+                        "Connect to API..."
+                    };
+                    if ui
+                        .button(connect_label)
+                        .on_hover_text(
+                            "Point this viewer at a running API service \
+                             (local dev or production).",
+                        )
+                        .clicked()
+                    {
+                        self.open_connect_dialog();
+                    }
+                });
             });
         });
 
@@ -828,7 +1308,7 @@ impl eframe::App for MapViewerApp {
                                     updated.fsprite = 0;
                                     if updated != self.map_tiles[idx] {
                                         self.map_tiles[idx] = updated;
-                                        self.dirty = true;
+                                        self.mark_tile_dirty(x, y);
                                         ctx.request_repaint();
                                     }
                                 }
@@ -914,7 +1394,7 @@ impl eframe::App for MapViewerApp {
                                 updated.flags = flags;
                                 if updated != self.map_tiles[idx] {
                                     self.map_tiles[idx] = updated;
-                                    self.dirty = true;
+                                    self.mark_tile_dirty(x, y);
                                     ctx.request_repaint();
                                 }
                             }
@@ -981,7 +1461,7 @@ impl eframe::App for MapViewerApp {
 
                     if tile != self.map_tiles[idx] {
                         self.map_tiles[idx] = tile;
-                        self.dirty = true;
+                        self.mark_tile_dirty(x, y);
                         ctx.request_repaint();
                     }
                 }

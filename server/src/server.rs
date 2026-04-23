@@ -64,6 +64,10 @@ pub struct Server {
     /// requests to the tick loop.
     template_reload_watcher: Option<crate::template_reload::TemplateReloadWatcher>,
 
+    /// Background watcher that surfaces admin-issued map-tile patches to
+    /// the tick loop.
+    map_patch_watcher: Option<crate::map_patch::MapPatchWatcher>,
+
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
@@ -82,6 +86,7 @@ impl Server {
             measurement_interval: 20,
             background_saver: None,
             template_reload_watcher: None,
+            map_patch_watcher: None,
             save_tick_counter: 0,
         }
     }
@@ -249,6 +254,9 @@ impl Server {
 
         // Spawn the admin template-reload watcher (no-op when disabled).
         self.template_reload_watcher = crate::template_reload::TemplateReloadWatcher::spawn();
+
+        // Spawn the admin map-patch watcher (no-op when disabled).
+        self.map_patch_watcher = crate::map_patch::MapPatchWatcher::spawn();
 
         Ok(())
     }
@@ -1122,6 +1130,102 @@ impl Server {
         }
     }
 
+    /// Drain any pending admin map-tile patches and apply them to `gs.map`.
+    ///
+    /// Called once per tick from the main loop (outside `tick`) so the swap
+    /// runs on the tick thread, keeping `GameState` single-threaded. Each
+    /// [`crate::map_patch::MapPatchEvent::Apply`] overwrites only the static
+    /// fields of the target tile, preserving the dynamic fields (`ch`,
+    /// `to_ch`, `it`, `light`, `dlight`). On
+    /// [`crate::map_patch::MapPatchEvent::ReloadCompleted`] we write the
+    /// `applied` status entry so the API can confirm completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose `map` slice will be patched.
+    pub fn drain_map_patches(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.map_patch_watcher.as_ref() else {
+            return;
+        };
+
+        let mut any_applied = false;
+        let mut completed_requests: Vec<String> = Vec::new();
+
+        while let Some(event) = watcher.try_recv() {
+            match event {
+                crate::map_patch::MapPatchEvent::Apply(patch) => {
+                    if Self::apply_map_patch(gs, &patch) {
+                        any_applied = true;
+                    }
+                }
+                crate::map_patch::MapPatchEvent::ReloadCompleted { request_id } => {
+                    completed_requests.push(request_id);
+                }
+            }
+        }
+
+        if any_applied {
+            gs.globals.set_dirty(true);
+        }
+
+        if completed_requests.is_empty() {
+            return;
+        }
+
+        let mut con = match server::keydb::connect() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("map patch reload: keydb connect failed: {}", e);
+                return;
+            }
+        };
+        for request_id in completed_requests {
+            if let Err(e) = crate::map_patch::write_applied_status(&mut con, &request_id) {
+                log::warn!(
+                    "map patch reload {}: status write failed: {}",
+                    request_id,
+                    e
+                );
+            } else {
+                log::info!("map patch reload {}: applied", request_id);
+            }
+        }
+    }
+
+    /// Merge a single patch into `gs.map`, preserving dynamic fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs`    - Mutable game state.
+    /// * `patch` - Static-field overrides from the admin API.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the tile was updated.
+    /// * `false` when the patch targets out-of-range coordinates.
+    fn apply_map_patch(gs: &mut GameState, patch: &core::map_store::MapPatch) -> bool {
+        let x = patch.x as usize;
+        let y = patch.y as usize;
+        let map_x = core::constants::SERVER_MAPX as usize;
+        let map_y = core::constants::SERVER_MAPY as usize;
+        if x >= map_x || y >= map_y {
+            log::warn!(
+                "map patch: dropping out-of-range coords ({}, {})",
+                patch.x,
+                patch.y
+            );
+            return false;
+        }
+        let idx = y * map_x + x;
+        let Some(tile) = gs.map.get_mut(idx) else {
+            return false;
+        };
+        tile.sprite = patch.sprite;
+        tile.fsprite = patch.fsprite;
+        tile.flags = patch.flags;
+        true
+    }
+
     /// Flush all pending background save jobs and then shut down the saver thread.
     ///
     /// `flush()` provides an explicit, observable synchronization point: it
@@ -1137,6 +1241,10 @@ impl Server {
     pub fn shutdown_background_saver(&mut self) {
         if let Some(mut watcher) = self.template_reload_watcher.take() {
             log::info!("Stopping template reload watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.map_patch_watcher.take() {
+            log::info!("Stopping map patch watcher...");
             watcher.shutdown();
         }
         if let Some(mut saver) = self.background_saver.take() {
@@ -1585,5 +1693,67 @@ mod tests {
         let server2 = Server::new();
         // Each server should have its own statistics buffers
         let _ = (&server.tick_perf_stats, &server2.tick_perf_stats);
+    }
+
+    /// `apply_map_patch` overwrites only the static tile fields and leaves
+    /// the dynamic fields (`ch`, `to_ch`, `it`, `light`, `dlight`)
+    /// untouched, so in-flight character and item state survives an admin
+    /// edit.
+    #[test]
+    fn apply_map_patch_preserves_dynamic_fields() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let map_x = core::constants::SERVER_MAPX as usize;
+            let x = 7usize;
+            let y = 11usize;
+            let idx = y * map_x + x;
+
+            // Seed dynamic fields on the target tile.
+            let tile = &mut gs.map[idx];
+            tile.sprite = 1;
+            tile.fsprite = 2;
+            tile.flags = 0x00FF;
+            tile.ch = 4242;
+            tile.to_ch = 9000;
+            tile.it = 333;
+            tile.light = 5;
+            tile.dlight = 6;
+
+            let patch = core::map_store::MapPatch {
+                x: x as u32,
+                y: y as u32,
+                sprite: 100,
+                fsprite: 200,
+                flags: 0xDEADBEEF,
+            };
+            assert!(Server::apply_map_patch(gs, &patch));
+
+            let tile = gs.map[idx];
+            assert_eq!(tile.sprite, 100);
+            assert_eq!(tile.fsprite, 200);
+            assert_eq!(tile.flags, 0xDEADBEEF);
+            assert_eq!(tile.ch, 4242, "ch must be preserved");
+            assert_eq!(tile.to_ch, 9000, "to_ch must be preserved");
+            assert_eq!(tile.it, 333, "it must be preserved");
+            assert_eq!(tile.light, 5, "light must be preserved");
+            assert_eq!(tile.dlight, 6, "dlight must be preserved");
+        });
+    }
+
+    /// Patches with coordinates outside the map are dropped without
+    /// clobbering neighboring tiles.
+    #[test]
+    fn apply_map_patch_rejects_out_of_range_coords() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let map_x = core::constants::SERVER_MAPX as usize;
+            let patch = core::map_store::MapPatch {
+                x: map_x as u32, // one past the last valid x
+                y: 0,
+                sprite: 9,
+                fsprite: 9,
+                flags: 9,
+            };
+            assert!(!Server::apply_map_patch(gs, &patch));
+            assert_eq!(gs.map[0].sprite, 0);
+        });
     }
 }

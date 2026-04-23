@@ -11,6 +11,7 @@
 
 pub mod auth;
 pub mod routes;
+pub mod routes_map;
 pub mod types;
 
 use crate::ApiState;
@@ -54,6 +55,17 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
         )
         .route("/templates/reload", post(routes::request_reload))
         .route("/templates/reload/status", get(routes::get_reload_status))
+        .route("/world/map", get(routes_map::get_map_bulk))
+        .route("/world/map/version", get(routes_map::get_map_version))
+        .route("/world/map/reload", post(routes_map::request_map_reload))
+        .route(
+            "/world/map/reload/status",
+            get(routes_map::get_map_reload_status),
+        )
+        .route(
+            "/world/map/{x}/{y}",
+            get(routes_map::get_map_tile).put(routes_map::put_map_tile),
+        )
         .layer(axum::middleware::from_fn_with_state(
             admin_state.clone(),
             auth::admin_guard,

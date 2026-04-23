@@ -105,3 +105,42 @@ impl ErrorResponse {
         }
     }
 }
+
+/// Response shape for `PUT /admin/world/map/{x}/{y}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PutMapTileResponse {
+    /// New value of the map version counter (post-increment).
+    pub version: u64,
+    /// Number of patches now waiting in the server-side patch queue.
+    pub queued: u64,
+}
+
+/// Body for `POST /admin/world/map/reload`.
+///
+/// Currently empty — the server flushes the entire patch queue on every
+/// request. Reserved for future selective reload semantics.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MapReloadRequest {}
+
+/// Response for `POST /admin/world/map/reload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MapReloadResponse {
+    /// Opaque identifier the caller polls via the status endpoint.
+    pub request_id: String,
+}
+
+/// Status snapshot for `GET /admin/world/map/reload/status`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MapReloadStatusResponse {
+    /// One of `"pending"`, `"applied"`, or `"expired"`.
+    pub status: String,
+    /// Opaque identifier the caller passed in.
+    pub request_id: String,
+}
+
+/// Response for `GET /admin/world/map/version`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MapVersionResponse {
+    /// Current value of the map version counter.
+    pub version: u64,
+}

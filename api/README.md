@@ -425,6 +425,12 @@ small burst. Excess requests return `429`.
 | PUT | `/admin/templates/characters/{idx}` | Replace a single character template (bincode bytes). |
 | POST | `/admin/templates/reload` | Ask the running server to swap its in-memory template tables. |
 | GET | `/admin/templates/reload/{request_id}` | Poll the lifecycle of a previous reload request. |
+| GET | `/admin/world/map` | Bulk-read every map tile (`application/octet-stream`, bincode `Vec<Map>`). |
+| GET | `/admin/world/map/version` | Read the admin map-version counter (increments on each accepted patch). |
+| GET | `/admin/world/map/{x}/{y}` | Read a single map tile (bincode `Map` bytes). |
+| PUT | `/admin/world/map/{x}/{y}` | Enqueue a patch for a single map tile (bincode `MapPatch` bytes). |
+| POST | `/admin/world/map/reload` | Ask the running server to drain pending map patches. |
+| GET | `/admin/world/map/reload/status` | Poll the lifecycle of a previous map-reload request (query `request_id`). |
 
 Full templates use bincode (`application/octet-stream`) instead of JSON to
 avoid serialising fixed-size byte arrays through quoted JSON. The
@@ -440,6 +446,20 @@ consumes it on the tick thread, swaps the relevant template slices on
 `GameState`, and writes
 `game:templates:reload_status:{request_id} = applied:{unix_ts}` (TTL 5
 minutes) which the GET endpoint exposes.
+
+### Map editing
+
+The admin map surface mirrors the template flow but uses a producer/consumer
+queue instead of in-place writes so the running server can apply patches on
+its tick thread. `PUT /admin/world/map/{x}/{y}` accepts a bincode `MapPatch`
+(coords + static `sprite` / `fsprite` / `flags`); the URL coordinates must
+match the body. Patches are appended to `admin:map:patch_queue` and the
+version counter `admin:map:version` increments. `POST /admin/world/map/reload`
+stamps `admin:map:reload:request` (TTL 30s) and publishes on
+`admin:map:reload:channel`; the server drains the queue, applies every patch
+(preserving each tile's dynamic fields — `ch`, `to_ch`, `it`, `light`,
+`dlight`), then writes
+`admin:map:reload:status:{request_id} = applied:{unix_ts}` (TTL 5 minutes).
 
 # Future Improvements
 ## Security Improvements
