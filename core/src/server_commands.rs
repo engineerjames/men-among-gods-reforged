@@ -72,8 +72,7 @@ pub enum ServerCommandType {
     /// Full snapshot of the character's 25-byte packed talent state.
     ///
     /// Wire format: opcode (1 byte) + 25 bytes copied directly from
-    /// the server's `Character::future1` (re-interpreted as `u8` via
-    /// `core::talent_trees::talents_from_future1`).
+    /// the server's packed `Character::future1` talent state.
     ///
     /// Total length: 26 bytes.  See `client::network::tick_stream::sv_cmd_len`.
     SetCharTalents = 75,

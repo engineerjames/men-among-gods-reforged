@@ -3,7 +3,7 @@
 Internal notes about the engine that don't fit cleanly into the other design
 documents. Add new sections as we untangle more of the legacy data model.
 
-## `Character` "scratch" fields: `future1` / `future2` / `future3` / `data` / `text`
+## `Character` talent and scratch fields: `future1` / `future2` / `future3` / `data` / `text`
 
 The `Character` struct (see [core/src/types/character.rs](core/src/types/character.rs))
 is a direct port of the legacy C `struct character` from
@@ -12,7 +12,19 @@ arrays whose meaning depends entirely on whether the character is a player or
 an NPC, and on which driver is running. This section documents what each one
 is currently used for.
 
-### `future1: [i8; 25]`, `future2: [i16; 49]`, `future3: [i32; 12]`
+### `future1: [u8; 25]`
+
+**Status: active packed talent-tree state.**
+
+`future1` now stores player talent progression. Byte `0` is the unspent
+talent-point pool, and bytes `1..24` are per-layer bit fields where each bit
+represents one talent slot. See [core/src/talent_trees/mod.rs](core/src/talent_trees/mod.rs)
+for the shared layout helpers and class metadata.
+
+The field still occupies the original 25-byte legacy expansion area, but the
+Rust representation is unsigned because talent storage is byte-oriented.
+
+### `future2: [i16; 49]`, `future3: [i32; 12]`
 
 **Status: unused. Pure padding.**
 
@@ -23,7 +35,6 @@ preserves them for binary-layout / save-file compatibility only.
 
 | Field     | Type        | Origin (`server/orig/data.h`) |
 |-----------|-------------|-------------------------------|
-| `future1` | `[i8; 25]`  | `char future1[25];  // space for future expansion` |
 | `future2` | `[i16; 49]` | `short future2[49];` |
 | `future3` | `[i32; 12]` | `int future3[12];` |
 

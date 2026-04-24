@@ -1,7 +1,7 @@
 use crate::path_finding::PathFinder;
 use crate::types::server_player::ServerPlayer;
 use core::constants::{CharacterFlags, USE_EMPTY};
-use core::talent_trees::{talents_from_future1, total_points_spent};
+use core::talent_trees::total_points_spent;
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -276,7 +276,7 @@ impl GameState {
             if character.used == USE_EMPTY {
                 continue;
             }
-            if total_points_spent(talents_from_future1(&character.future1)) > 0 {
+            if total_points_spent(&character.future1) > 0 {
                 character.flags |= CharacterFlags::Update.bits();
             }
         }

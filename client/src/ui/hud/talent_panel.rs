@@ -273,10 +273,10 @@ impl TalentPanel {
     ///
     /// The node's [`NodeStatus`].
     fn node_status(node: &TalentNodeMeta, talents: &[u8; 25]) -> NodeStatus {
-        if is_talent_spent(talents, node.mask, node.layer as usize) {
+        if is_talent_spent(talents, node.slot.mask, node.slot.layer as usize) {
             return NodeStatus::Learned;
         }
-        if is_talent_layer_spent(talents, node.layer as usize) {
+        if is_talent_layer_spent(talents, node.slot.layer as usize) {
             return NodeStatus::Locked;
         }
         if !talent_prereqs_met(talents, node) {
@@ -371,7 +371,7 @@ impl Widget for TalentPanel {
                 if let Some(t) = snapshot.as_ref() {
                     if Self::node_status(row.meta, t) == NodeStatus::Available {
                         self.pending_actions.push(WidgetAction::LearnTalent {
-                            node_id: row.meta.id.0,
+                            slot: row.meta.slot,
                         });
                     }
                 }
@@ -466,7 +466,7 @@ impl Widget for TalentPanel {
             };
             let line = format!(
                 "{} L{} {} (cost {})",
-                status_tag, row.meta.layer, row.meta.name, row.meta.cost
+                status_tag, row.meta.slot.layer, row.meta.name, row.meta.cost
             );
             let label_width = row.button.bounds().x - label_x - 4;
             let line = Self::fit_text(&line, label_width);
@@ -633,8 +633,8 @@ mod tests {
         talents[1] = 0b01; // mark layer 1 mask 1 (DISTRACT) as spent
         let tree = tree_for(Class::Mercenary).unwrap();
         let distract = tree.nodes.first().unwrap();
-        assert_eq!(distract.layer, 1);
-        assert_eq!(distract.mask, 0x01);
+        assert_eq!(distract.slot.layer, 1);
+        assert_eq!(distract.slot.mask, 0x01);
         assert_eq!(
             TalentPanel::node_status(distract, &talents),
             NodeStatus::Learned
@@ -693,7 +693,7 @@ mod tests {
         let dodge = tree
             .nodes
             .iter()
-            .find(|n| n.id == mag_core::talent_trees::mercenary::ids::DODGE_BOOST_1)
+            .find(|n| n.name == "Dodge Boost I")
             .unwrap();
         assert_eq!(
             TalentPanel::node_status(dodge, &talents),
@@ -709,11 +709,7 @@ mod tests {
         talents[0] = 1;
         talents[1] = 0b01;
         let tree = tree_for(Class::Mercenary).unwrap();
-        let parasite = tree
-            .nodes
-            .iter()
-            .find(|n| n.id == mag_core::talent_trees::mercenary::ids::PARASITE)
-            .unwrap();
+        let parasite = tree.nodes.iter().find(|n| n.name == "Parasite").unwrap();
         assert_eq!(
             TalentPanel::node_status(parasite, &talents),
             NodeStatus::Locked

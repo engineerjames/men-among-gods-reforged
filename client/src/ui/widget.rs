@@ -356,12 +356,12 @@ pub enum WidgetAction {
         /// The controller button to bind, or `None` to clear.
         button: Option<ControllerButton>,
     },
-    /// Spend one talent point on the node identified by `node_id`.
+    /// Spend one talent point on the node identified by a packed slot.
     ///
-    /// Mapped to `ClientCommand::new_learn_talent(node_id)` by the scene.
+    /// Mapped to `ClientCommand::new_learn_talent(slot)` by the scene.
     LearnTalent {
-        /// Stable id of the node to learn (see `core::talent_trees::*::ids`).
-        node_id: u16,
+        /// Packed slot of the node to learn.
+        slot: mag_core::talent_trees::TalentRef,
     },
     /// Refund all spent talent points back into the unspent pool.
     ///

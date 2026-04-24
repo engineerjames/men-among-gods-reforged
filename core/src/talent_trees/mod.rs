@@ -6,11 +6,13 @@
 //! layers on top of these definitions an effect table that is invoked
 //! whenever a node is learned.
 //!
-//! Persistence layout (`future1: [i8; 25]`, reinterpreted as `[u8; 25]`):
+//! Persistence layout (`future1: [u8; 25]`):
 //!
 //! * `future1[0]` — unspent talent points (0..=255).
 //! * `future1[1..24]` — one byte per talent layer; each of the 8 bits
 //!   in a byte represents a single node in that layer.
+
+use crate::skills::{self, Attribute, Skill, SkillIndex};
 
 use crate::traits::{
     Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_SEYAN_DU,
@@ -35,25 +37,78 @@ pub const TALENT_LAYER_END: usize = 24;
 /// (`TALENT_LAYER_END - TALENT_LAYER_START`).
 pub const TALENT_LAYER_COUNT: usize = TALENT_LAYER_END - TALENT_LAYER_START;
 
-/// Stable, class-scoped node identifier used by the wire protocol.
-///
-/// Independent of position in the tree so the UI/balance team can move
-/// a node between layers without invalidating existing save data.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct TalentId(pub u16);
-
 /// A reference to a node by its packed `(layer, mask)` slot.
 ///
 /// Used in the `prereqs` slice on [`TalentNodeMeta`] to identify the
 /// prerequisite layer for a node. Talent progression allows one pick per
 /// layer, so any learned talent in the highest prerequisite layer satisfies
 /// the gate for the next layer.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TalentRef {
     /// Layer index in `future1`, in `TALENT_LAYER_START..TALENT_LAYER_END`.
     pub layer: u8,
     /// Single-bit mask within the layer byte.
     pub mask: u8,
+}
+
+impl TalentRef {
+    /// Creates a talent slot reference from wire payload bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `layer` - Talent layer byte index.
+    /// * `mask` - Single-bit node mask within the layer.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(slot)` when `layer` is in range and `mask` has one bit set.
+    /// * `Err(reason)` when either byte is invalid.
+    pub fn from_wire(layer: u8, mask: u8) -> Result<Self, String> {
+        let slot = Self { layer, mask };
+        if !slot.has_valid_layer() {
+            return Err("Invalid talent layer".to_string());
+        }
+        if !slot.has_valid_mask() {
+            return Err("Talent mask must have exactly one bit set".to_string());
+        }
+        Ok(slot)
+    }
+
+    /// Returns whether this slot's layer is valid for talent storage.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if `layer` is in `TALENT_LAYER_START..TALENT_LAYER_END`.
+    /// * `false` otherwise.
+    pub fn has_valid_layer(self) -> bool {
+        (TALENT_LAYER_START..TALENT_LAYER_END).contains(&(self.layer as usize))
+    }
+
+    /// Returns whether this slot's mask identifies exactly one bit.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if `mask` has exactly one bit set.
+    /// * `false` otherwise.
+    pub fn has_valid_mask(self) -> bool {
+        self.mask.count_ones() == 1
+    }
+}
+
+/// The set of mutations a learned talent can apply.
+#[allow(dead_code)]
+#[derive(Copy, Clone, Debug)]
+pub enum TalentEffect {
+    /// Add `amount` to a skill's base value.
+    SkillFlat { skill: Skill, amount: u8 },
+    /// Add `percent`% of the current base to a skill's base value.
+    SkillPercent { skill: Skill, percent: i32 },
+    /// Add `amount` to an attribute's base value.
+    AttributeFlat { attr: Attribute, amount: u8 },
+    /// Add `percent`% of the current base to an attribute's base value.
+    AttributePercent { attr: Attribute, percent: i32 },
+    /// Grant a previously-unknown skill (set base value to 1).
+    GrantSkill { skill: Skill },
 }
 
 /// Class-agnostic, effect-agnostic description of one talent node.
@@ -62,13 +117,8 @@ pub struct TalentRef {
 /// values stored in read-only memory.
 #[derive(Copy, Clone, Debug)]
 pub struct TalentNodeMeta {
-    /// Stable wire-protocol identifier.
-    pub id: TalentId,
-    /// Layer this node lives in, in
-    /// `TALENT_LAYER_START..TALENT_LAYER_END`.
-    pub layer: u8,
-    /// Single-bit mask within `future1[layer]` (1, 2, 4, ..., 128).
-    pub mask: u8,
+    /// Packed talent slot used for persistence and wire identity.
+    pub slot: TalentRef,
     /// Display name shown on the talent button.
     pub name: &'static str,
     /// Tooltip / long-form description.
@@ -80,6 +130,26 @@ pub struct TalentNodeMeta {
     /// picks in the same prerequisite layer, not a requirement to learn all of
     /// them.
     pub prereqs: &'static [TalentRef],
+    /// Runtime effect applied by this node.
+    pub effect: TalentEffect,
+}
+
+/// Accumulated talent stat bonuses for one character recompute.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TalentStatBonuses {
+    /// Attribute bonuses indexed by [`Attribute`] discriminant.
+    pub attrib: [i32; 5],
+    /// Skill bonuses indexed by canonical [`Skill`] discriminant.
+    pub skill: [i32; 50],
+}
+
+impl Default for TalentStatBonuses {
+    fn default() -> Self {
+        Self {
+            attrib: [0; 5],
+            skill: [0; 50],
+        }
+    }
 }
 
 /// A complete per-class talent tree.
@@ -113,21 +183,24 @@ pub fn tree_for(class: Class) -> Option<&'static TalentTreeMeta> {
     }
 }
 
-/// Find a node within a tree by its stable id.
+/// Find a node within a tree by its packed slot.
 ///
 /// Linear search; trees are tiny (≤ 184 nodes by storage limit).
 ///
 /// # Arguments
 ///
 /// * `tree` - Tree to search.
-/// * `id` - Node identifier to match.
+/// * `slot` - Node slot to match.
 ///
 /// # Returns
 ///
-/// * `Some(&node)` if a node with `id` is present in `tree`.
+/// * `Some(&node)` if a node with `slot` is present in `tree`.
 /// * `None` otherwise.
-pub fn find_node(tree: &'static TalentTreeMeta, id: TalentId) -> Option<&'static TalentNodeMeta> {
-    tree.nodes.iter().find(|n| n.id == id)
+pub fn find_node(
+    tree: &'static TalentTreeMeta,
+    slot: TalentRef,
+) -> Option<&'static TalentNodeMeta> {
+    tree.nodes.iter().find(|n| n.slot == slot)
 }
 
 /// Resolve the `Class` represented by the kindred bitfield on a
@@ -217,6 +290,21 @@ pub fn is_talent_spent(talents: &[u8; 25], talent_mask: u8, talent_layer: usize)
     talent_mask != 0 && talents[talent_layer] & talent_mask == talent_mask
 }
 
+/// Check whether a specific talent slot is currently unlocked.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state.
+/// * `slot` - Talent slot being queried.
+///
+/// # Returns
+///
+/// * `true` if the slot is valid and learned.
+/// * `false` otherwise.
+pub fn is_talent_slot_spent(talents: &[u8; 25], slot: TalentRef) -> bool {
+    is_talent_spent(talents, slot.mask, slot.layer as usize)
+}
+
 /// Check whether any talent is already learned in a layer.
 ///
 /// # Arguments
@@ -256,37 +344,163 @@ pub fn talent_prereqs_met(talents: &[u8; 25], node: &TalentNodeMeta) -> bool {
     is_talent_layer_spent(talents, required_layer)
 }
 
-/// Reinterpret a `&mut [i8; 25]` (the raw `Character::future1`
-/// representation) as `&mut [u8; 25]` for bit-packed talent storage.
-///
-/// `i8` and `u8` have identical layout, so the cast is safe.
+/// Spend a single talent point on one node in a specific slot.
 ///
 /// # Arguments
 ///
-/// * `future1` - The character's raw 25-byte scratch slot.
+/// * `talents` - Packed talent-tree state.
+/// * `slot` - Slot of the node being unlocked.
 ///
 /// # Returns
 ///
-/// * The same memory viewed as an unsigned byte array.
-pub fn talents_mut_from_future1(future1: &mut [i8; 25]) -> &mut [u8; 25] {
-    // SAFETY: `i8` and `u8` have identical size/alignment; this
-    // transmute is a well-defined view cast.
-    unsafe { &mut *(future1.as_mut_ptr() as *mut [u8; 25]) }
+/// * `Ok(())` if the point was spent.
+/// * `Err` describing the rejection reason.
+pub fn apply_talent_point(talents: &mut [u8; 25], slot: TalentRef) -> Result<(), String> {
+    if !slot.has_valid_layer() {
+        return Err("Invalid talent layer".to_string());
+    }
+
+    if !slot.has_valid_mask() {
+        return Err("Talent mask must have exactly one bit set".to_string());
+    }
+
+    let talent_layer = slot.layer as usize;
+    if talents[talent_layer] & slot.mask != 0 {
+        return Err("Talent already learned".to_string());
+    }
+
+    if is_talent_layer_spent(talents, talent_layer) {
+        return Err("A talent is already learned in this layer".to_string());
+    }
+
+    if talents[TALENT_POINTS_INDEX] < 1 {
+        return Err("Not enough points to spend".to_string());
+    }
+
+    talents[TALENT_POINTS_INDEX] -= 1;
+    talents[talent_layer] |= slot.mask;
+
+    Ok(())
 }
 
-/// Const counterpart of [`talents_mut_from_future1`].
+/// Refund every spent talent point back into the unspent-points pool.
+///
+/// All layer bytes are cleared and the count of previously-set bits is
+/// added back into `talents[0]`, saturating at `u8::MAX`.
 ///
 /// # Arguments
 ///
-/// * `future1` - The character's raw 25-byte scratch slot.
+/// * `talents` - Packed talent-tree state to reset in place.
+pub fn reset_talent_points(talents: &mut [u8; 25]) {
+    let mut refunded_points: u32 = 0;
+    for byte in talents
+        .iter_mut()
+        .take(TALENT_LAYER_END)
+        .skip(TALENT_LAYER_START)
+    {
+        refunded_points += byte.count_ones();
+        *byte = 0;
+    }
+    let refund = u8::try_from(refunded_points).unwrap_or(u8::MAX);
+    talents[TALENT_POINTS_INDEX] = talents[TALENT_POINTS_INDEX].saturating_add(refund);
+}
+
+/// Grant additional unspent talent points to the player's pool.
+///
+/// Saturates at `u8::MAX`.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state to update in place.
+/// * `amount` - Number of points to add to `talents[0]`.
+pub fn grant_talent_points(talents: &mut [u8; 25], amount: u8) {
+    talents[TALENT_POINTS_INDEX] = talents[TALENT_POINTS_INDEX].saturating_add(amount);
+}
+
+/// Calculate all stat bonuses granted by currently learned talents.
+///
+/// # Arguments
+///
+/// * `kindred` - Character kindred bits used to resolve the class tree.
+/// * `talents` - Packed talent-tree state from the character record.
+/// * `attrib` - Current attribute rows for base-value lookup.
+/// * `skill` - Current skill rows for base-value lookup.
 ///
 /// # Returns
 ///
-/// * The same memory viewed as an unsigned byte array.
-pub fn talents_from_future1(future1: &[i8; 25]) -> &[u8; 25] {
-    // SAFETY: `i8` and `u8` have identical size/alignment; this
-    // transmute is a well-defined view cast.
-    unsafe { &*(future1.as_ptr() as *const [u8; 25]) }
+/// * Accumulated attribute and skill bonuses from learned stat talents.
+pub fn talent_stat_bonuses(
+    kindred: i32,
+    talents: &[u8; 25],
+    attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
+    skill: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+) -> TalentStatBonuses {
+    let Some(class) = class_for_kindred(kindred) else {
+        return TalentStatBonuses::default();
+    };
+    let Some(tree) = tree_for(class) else {
+        return TalentStatBonuses::default();
+    };
+
+    let mut bonuses = TalentStatBonuses::default();
+
+    for node in tree.nodes {
+        if !is_talent_slot_spent(talents, node.slot) {
+            continue;
+        }
+        accumulate_stat_bonus(node.effect, attrib, skill, &mut bonuses);
+    }
+
+    bonuses
+}
+
+/// Add one effect's derived stat contribution into `bonuses`.
+///
+/// # Arguments
+///
+/// * `effect` - Effect to translate into derived bonuses.
+/// * `attrib` - Attribute rows for base-value lookup.
+/// * `skill_rows` - Skill rows for base-value lookup.
+/// * `bonuses` - Accumulator to mutate.
+fn accumulate_stat_bonus(
+    effect: TalentEffect,
+    attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
+    skill_rows: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+    bonuses: &mut TalentStatBonuses,
+) {
+    match effect {
+        TalentEffect::SkillFlat { skill, amount } => {
+            let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
+            bonuses.skill[skill_idx] += amount as i32;
+        }
+        TalentEffect::SkillPercent { skill, percent } => {
+            let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
+            let base = skill_rows[skill_idx][SkillIndex::BaseValue as usize];
+            bonuses.skill[skill_idx] += percent_bonus(base, percent);
+        }
+        TalentEffect::AttributeFlat { attr, amount } => {
+            bonuses.attrib[attr as usize] += amount as i32;
+        }
+        TalentEffect::AttributePercent { attr, percent } => {
+            let base = attrib[attr as usize][SkillIndex::BaseValue as usize];
+            bonuses.attrib[attr as usize] += percent_bonus(base, percent);
+        }
+        TalentEffect::GrantSkill { .. } => {}
+    }
+}
+
+/// Calculate a rounded non-negative percent bonus from `base`.
+///
+/// # Arguments
+///
+/// * `base` - Base stat value.
+/// * `percent` - Percentage bonus to apply.
+///
+/// # Returns
+///
+/// * Rounded bonus amount, clamped into `0..=u8::MAX`.
+fn percent_bonus(base: u8, percent: i32) -> i32 {
+    ((base as f32 * (percent as f32 / 100.0)).round() as i32).clamp(0, u8::MAX as i32)
 }
 
 #[cfg(test)]
@@ -304,6 +518,13 @@ mod tests {
         ]
     }
 
+    fn named_node(tree: &'static TalentTreeMeta, name: &str) -> &'static TalentNodeMeta {
+        tree.nodes
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("missing talent node '{name}'"))
+    }
+
     // ---- structural validation (runs over every registered tree) ------
 
     #[test]
@@ -311,12 +532,12 @@ mod tests {
         for tree in all_trees() {
             for node in tree.nodes {
                 assert_eq!(
-                    node.mask.count_ones(),
+                    node.slot.mask.count_ones(),
                     1,
                     "tree {:?} node '{}' has non-single-bit mask 0x{:02x}",
                     tree.class,
                     node.name,
-                    node.mask
+                    node.slot.mask
                 );
             }
         }
@@ -326,7 +547,7 @@ mod tests {
     fn every_node_layer_in_range() {
         for tree in all_trees() {
             for node in tree.nodes {
-                let layer = node.layer as usize;
+                let layer = node.slot.layer as usize;
                 assert!(
                     (TALENT_LAYER_START..TALENT_LAYER_END).contains(&layer),
                     "tree {:?} node '{}' has out-of-range layer {}",
@@ -343,11 +564,11 @@ mod tests {
         for tree in all_trees() {
             let mut seen = HashSet::new();
             for node in tree.nodes {
-                let key = (node.layer, node.mask);
+                let key = node.slot;
                 if let Some(prev) = tree
                     .nodes
                     .iter()
-                    .find(|n| !std::ptr::eq(*n, node) && (n.layer, n.mask) == key)
+                    .find(|n| !std::ptr::eq(*n, node) && n.slot == key)
                 {
                     if seen.contains(&key) {
                         // already reported once
@@ -355,26 +576,10 @@ mod tests {
                     }
                     panic!(
                         "tree {:?} has duplicate (layer={}, mask=0x{:02x}) at nodes '{}' and '{}'",
-                        tree.class, node.layer, node.mask, node.name, prev.name
+                        tree.class, node.slot.layer, node.slot.mask, node.name, prev.name
                     );
                 }
                 seen.insert(key);
-            }
-        }
-    }
-
-    #[test]
-    fn no_duplicate_talent_ids() {
-        for tree in all_trees() {
-            let mut seen = HashSet::new();
-            for node in tree.nodes {
-                assert!(
-                    seen.insert(node.id),
-                    "tree {:?} has duplicate TalentId({}) at node '{}'",
-                    tree.class,
-                    node.id.0,
-                    node.name,
-                );
             }
         }
     }
@@ -399,10 +604,7 @@ mod tests {
         for tree in all_trees() {
             for node in tree.nodes {
                 for prereq in node.prereqs {
-                    let resolved = tree
-                        .nodes
-                        .iter()
-                        .any(|n| n.layer == prereq.layer && n.mask == prereq.mask);
+                    let resolved = tree.nodes.iter().any(|n| n.slot == *prereq);
                     assert!(
                         resolved,
                         "tree {:?} node '{}' has dangling prereq (layer={}, mask=0x{:02x})",
@@ -419,11 +621,11 @@ mod tests {
             for node in tree.nodes {
                 for prereq in node.prereqs {
                     assert!(
-                        prereq.layer < node.layer,
+                        prereq.layer < node.slot.layer,
                         "tree {:?} node '{}' (layer {}) has non-strictly-lower prereq layer {}",
                         tree.class,
                         node.name,
-                        node.layer,
+                        node.slot.layer,
                         prereq.layer
                     );
                 }
@@ -437,7 +639,7 @@ mod tests {
             for node in tree.nodes {
                 for prereq in node.prereqs {
                     assert!(
-                        !(prereq.layer == node.layer && prereq.mask == node.mask),
+                        *prereq != node.slot,
                         "tree {:?} node '{}' lists itself as prereq",
                         tree.class,
                         node.name,
@@ -584,7 +786,7 @@ mod tests {
     #[test]
     fn talent_prereqs_met_allows_one_pick_from_previous_layer() {
         let tree = tree_for(Class::Mercenary).unwrap();
-        let dodge = find_node(tree, mercenary::ids::DODGE_BOOST_1).unwrap();
+        let dodge = named_node(tree, "Dodge Boost I");
         let mut t = [0u8; 25];
         t[1] = 0b0000_0010;
         assert!(talent_prereqs_met(&t, dodge));
@@ -593,7 +795,7 @@ mod tests {
     #[test]
     fn talent_prereqs_met_rejects_empty_prereq_layer() {
         let tree = tree_for(Class::Mercenary).unwrap();
-        let dodge = find_node(tree, mercenary::ids::DODGE_BOOST_1).unwrap();
+        let dodge = named_node(tree, "Dodge Boost I");
         let t = [0u8; 25];
         assert!(!talent_prereqs_met(&t, dodge));
     }
@@ -648,33 +850,34 @@ mod tests {
     }
 
     #[test]
-    fn find_node_locates_existing_id_and_misses_unknown() {
+    fn find_node_locates_existing_slot_and_misses_unknown() {
         let tree = tree_for(Class::Mercenary).unwrap();
         let first = tree.nodes.first().expect("mercenary tree non-empty");
-        assert!(find_node(tree, first.id).is_some());
-        assert!(find_node(tree, TalentId(0xFFFF)).is_none());
+        assert!(find_node(tree, first.slot).is_some());
+        assert!(
+            find_node(
+                tree,
+                TalentRef {
+                    layer: 23,
+                    mask: 0b1000_0000,
+                }
+            )
+            .is_none()
+        );
     }
 
     #[test]
-    fn talents_view_casts_are_byte_identical() {
-        let mut buf: [i8; 25] = [0; 25];
-        for (i, b) in buf.iter_mut().enumerate() {
-            *b = (i as i8).wrapping_mul(17);
-        }
-        let original = buf;
-
-        // mut view: write through u8, observe through i8
-        {
-            let view = talents_mut_from_future1(&mut buf);
-            view[5] = 0xAB;
-        }
-        assert_eq!(buf[5] as u8, 0xAB);
-
-        // const view: read through u8, compare against original i8 reps
-        let view = talents_from_future1(&buf);
-        for (i, b) in view.iter().enumerate() {
-            let expected = if i == 5 { 0xAB } else { original[i] as u8 };
-            assert_eq!(*b, expected, "byte {i} mismatch");
-        }
+    fn talent_ref_from_wire_validates_layer_and_mask() {
+        assert_eq!(
+            TalentRef::from_wire(1, 0b0000_0010).unwrap(),
+            TalentRef {
+                layer: 1,
+                mask: 0b0000_0010,
+            }
+        );
+        assert!(TalentRef::from_wire(0, 1).is_err());
+        assert!(TalentRef::from_wire(TALENT_LAYER_END as u8, 1).is_err());
+        assert!(TalentRef::from_wire(1, 0).is_err());
+        assert!(TalentRef::from_wire(1, 0b0000_0011).is_err());
     }
 }

@@ -480,10 +480,10 @@ impl GameScene {
     pub(crate) fn process_talent_panel_actions(&mut self, app_state: &mut AppState<'_>) {
         for action in self.talent_panel.take_actions() {
             match action {
-                WidgetAction::LearnTalent { node_id } => {
+                WidgetAction::LearnTalent { slot } => {
                     if let Some(net) = app_state.network.as_ref() {
                         self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_learn_talent(node_id));
+                        net.send(ClientCommand::new_learn_talent(slot));
                     }
                 }
                 WidgetAction::ResetTalents => {

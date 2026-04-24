@@ -1,9 +1,7 @@
-//! Mercenary class talent tree (metadata only — no effects).
-//!
-//! Effects are dispatched by the server via a parallel id→effect table
-//! in `server/src/player/talent_trees/mercenary.rs`.
+//! Mercenary class talent tree metadata and effects.
 
-use super::{TalentId, TalentNodeMeta, TalentRef, TalentTreeMeta};
+use super::{TalentEffect, TalentNodeMeta, TalentRef, TalentTreeMeta};
+use crate::skills::Attribute;
 use crate::traits::Class;
 
 // ---- TalentRefs (used both as "this node's slot" and as prereqs) ----
@@ -135,247 +133,191 @@ const ALL_SKILLS_BOOST_1: TalentRef = TalentRef {
     mask: 0b0000_0001,
 };
 
-/// Stable ids for every mercenary node.  Re-exported so the server's
-/// effect table and (later) the client UI can refer to nodes without
-/// hard-coding the `(layer, mask)` pair.
-pub mod ids {
-    use super::TalentId;
+const fn node(
+    slot: TalentRef,
+    name: &'static str,
+    description: &'static str,
+    prereqs: &'static [TalentRef],
+    effect: TalentEffect,
+) -> TalentNodeMeta {
+    TalentNodeMeta {
+        slot,
+        name,
+        description,
+        cost: 1,
+        prereqs,
+        effect,
+    }
+}
 
-    pub const DISTRACT: TalentId = TalentId(0x0101);
-    pub const PARASITE: TalentId = TalentId(0x0102);
-    pub const DODGE_BOOST_1: TalentId = TalentId(0x0201);
-    pub const SPELL_BOOST_1: TalentId = TalentId(0x0202);
-    pub const DODGE_BOOST_2: TalentId = TalentId(0x0301);
-    pub const SPELL_BOOST_2: TalentId = TalentId(0x0302);
-    pub const ATTACK_SPEED_BOOST_1: TalentId = TalentId(0x0401);
-    pub const DAMAGE_BOOST_1: TalentId = TalentId(0x0402);
-    pub const DISARM: TalentId = TalentId(0x0501);
-    pub const DELIVER_DEATH: TalentId = TalentId(0x0502);
-    pub const ATTACK_SPEED_BOOST_2: TalentId = TalentId(0x0601);
-    pub const DAMAGE_BOOST_2: TalentId = TalentId(0x0602);
-    pub const PROTECTIVE_SPELLS_BOOST_1: TalentId = TalentId(0x0701);
-    pub const IMMUN_RESIST_BOOST_1: TalentId = TalentId(0x0702);
-    pub const PROTECTIVE_SPELLS_BOOST_2: TalentId = TalentId(0x0801);
-    pub const IMMUN_RESIST_BOOST_2: TalentId = TalentId(0x0802);
-    pub const BLADE_DANCE: TalentId = TalentId(0x0901);
-    pub const CONTAGION: TalentId = TalentId(0x0902);
-    pub const STRENGTH_BOOST_1: TalentId = TalentId(0x0A01);
-    pub const INTELLIGENCE_BOOST_1: TalentId = TalentId(0x0A02);
-    pub const STRENGTH_BOOST_2: TalentId = TalentId(0x0B01);
-    pub const INTELLIGENCE_BOOST_2: TalentId = TalentId(0x0B02);
-    pub const ALL_SKILLS_BOOST_1: TalentId = TalentId(0x0C01);
+const fn attribute(attr: Attribute, percent: i32) -> TalentEffect {
+    TalentEffect::AttributePercent { attr, percent }
 }
 
 /// The full mercenary talent tree.
 pub static MERCENARY_TREE: TalentTreeMeta = TalentTreeMeta {
     class: Class::Mercenary,
     nodes: &[
-        TalentNodeMeta {
-            id: ids::DISTRACT,
-            layer: DISTRACT.layer,
-            mask: DISTRACT.mask,
-            name: "Distract",
-            description: "Distract the enemy, reducing their accuracy.",
-            cost: 1,
-            prereqs: &[],
-        },
-        TalentNodeMeta {
-            id: ids::PARASITE,
-            layer: PARASITE.layer,
-            mask: PARASITE.mask,
-            name: "Parasite",
-            description: "Infest the enemy with parasites, dealing damage over time.",
-            cost: 1,
-            prereqs: &[],
-        },
-        TalentNodeMeta {
-            id: ids::DODGE_BOOST_1,
-            layer: DODGE_BOOST_1.layer,
-            mask: DODGE_BOOST_1.mask,
-            name: "Dodge Boost I",
-            description: "Increase your dodge chance by 5%.",
-            cost: 1,
-            prereqs: &[DISTRACT, PARASITE],
-        },
-        TalentNodeMeta {
-            id: ids::SPELL_BOOST_1,
-            layer: SPELL_BOOST_1.layer,
-            mask: SPELL_BOOST_1.mask,
-            name: "Spell Boost I",
-            description: "Increase the potency of your offensive spells by 5%.",
-            cost: 1,
-            prereqs: &[DISTRACT, PARASITE],
-        },
-        TalentNodeMeta {
-            id: ids::DODGE_BOOST_2,
-            layer: DODGE_BOOST_2.layer,
-            mask: DODGE_BOOST_2.mask,
-            name: "Dodge Boost II",
-            description: "Increase your dodge chance by an additional 5%.",
-            cost: 1,
-            prereqs: &[DODGE_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::SPELL_BOOST_2,
-            layer: SPELL_BOOST_2.layer,
-            mask: SPELL_BOOST_2.mask,
-            name: "Spell Boost II",
-            description: "Further increase the potency of your offensive spells by 5%.",
-            cost: 1,
-            prereqs: &[SPELL_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::ATTACK_SPEED_BOOST_1,
-            layer: ATTACK_SPEED_BOOST_1.layer,
-            mask: ATTACK_SPEED_BOOST_1.mask,
-            name: "Attack Speed Boost I",
-            description: "Increase your attack speed by 5%.",
-            cost: 1,
-            prereqs: &[DODGE_BOOST_2],
-        },
-        TalentNodeMeta {
-            id: ids::DAMAGE_BOOST_1,
-            layer: DAMAGE_BOOST_1.layer,
-            mask: DAMAGE_BOOST_1.mask,
-            name: "Damage Boost I",
-            description: "Increase your melee damage by 5%.",
-            cost: 1,
-            prereqs: &[SPELL_BOOST_2],
-        },
-        TalentNodeMeta {
-            id: ids::DISARM,
-            layer: DISARM.layer,
-            mask: DISARM.mask,
-            name: "Disarm",
-            description: "Chance on hit to disarm your opponent.",
-            cost: 1,
-            prereqs: &[ATTACK_SPEED_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::DELIVER_DEATH,
-            layer: DELIVER_DEATH.layer,
-            mask: DELIVER_DEATH.mask,
-            name: "Deliver Death",
-            description: "A devastating finishing blow against low-health enemies.",
-            cost: 1,
-            prereqs: &[DAMAGE_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::ATTACK_SPEED_BOOST_2,
-            layer: ATTACK_SPEED_BOOST_2.layer,
-            mask: ATTACK_SPEED_BOOST_2.mask,
-            name: "Attack Speed Boost II",
-            description: "Further increase your attack speed by 5%.",
-            cost: 1,
-            prereqs: &[DISARM],
-        },
-        TalentNodeMeta {
-            id: ids::DAMAGE_BOOST_2,
-            layer: DAMAGE_BOOST_2.layer,
-            mask: DAMAGE_BOOST_2.mask,
-            name: "Damage Boost II",
-            description: "Further increase your melee damage by 5%.",
-            cost: 1,
-            prereqs: &[DELIVER_DEATH],
-        },
-        TalentNodeMeta {
-            id: ids::PROTECTIVE_SPELLS_BOOST_1,
-            layer: PROTECTIVE_SPELLS_BOOST_1.layer,
-            mask: PROTECTIVE_SPELLS_BOOST_1.mask,
-            name: "Protective Spells Boost I",
-            description: "Increase the potency of your protective spells by 5%.",
-            cost: 1,
-            prereqs: &[ATTACK_SPEED_BOOST_2],
-        },
-        TalentNodeMeta {
-            id: ids::IMMUN_RESIST_BOOST_1,
-            layer: IMMUN_RESIST_BOOST_1.layer,
-            mask: IMMUN_RESIST_BOOST_1.mask,
-            name: "Immunity & Resistance Boost I",
-            description: "Increase your immunity and resistance by 5%.",
-            cost: 1,
-            prereqs: &[DAMAGE_BOOST_2],
-        },
-        TalentNodeMeta {
-            id: ids::PROTECTIVE_SPELLS_BOOST_2,
-            layer: PROTECTIVE_SPELLS_BOOST_2.layer,
-            mask: PROTECTIVE_SPELLS_BOOST_2.mask,
-            name: "Protective Spells Boost II",
-            description: "Further increase the potency of your protective spells by 5%.",
-            cost: 1,
-            prereqs: &[PROTECTIVE_SPELLS_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::IMMUN_RESIST_BOOST_2,
-            layer: IMMUN_RESIST_BOOST_2.layer,
-            mask: IMMUN_RESIST_BOOST_2.mask,
-            name: "Immunity & Resistance Boost II",
-            description: "Further increase your immunity and resistance by 5%.",
-            cost: 1,
-            prereqs: &[IMMUN_RESIST_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::BLADE_DANCE,
-            layer: BLADE_DANCE.layer,
-            mask: BLADE_DANCE.mask,
-            name: "Blade Dance",
-            description: "A flurry of strikes against all adjacent enemies.",
-            cost: 1,
-            prereqs: &[PROTECTIVE_SPELLS_BOOST_2],
-        },
-        TalentNodeMeta {
-            id: ids::CONTAGION,
-            layer: CONTAGION.layer,
-            mask: CONTAGION.mask,
-            name: "Contagion",
-            description: "Spreads parasitic damage to nearby enemies.",
-            cost: 1,
-            prereqs: &[IMMUN_RESIST_BOOST_2],
-        },
-        TalentNodeMeta {
-            id: ids::STRENGTH_BOOST_1,
-            layer: STRENGTH_BOOST_1.layer,
-            mask: STRENGTH_BOOST_1.mask,
-            name: "Strength Boost I",
-            description: "Increase your Strength attribute by 10%.",
-            cost: 1,
-            prereqs: &[BLADE_DANCE],
-        },
-        TalentNodeMeta {
-            id: ids::INTELLIGENCE_BOOST_1,
-            layer: INTELLIGENCE_BOOST_1.layer,
-            mask: INTELLIGENCE_BOOST_1.mask,
-            name: "Intelligence Boost I",
-            description: "Increase your Intuition attribute by 10%.",
-            cost: 1,
-            prereqs: &[CONTAGION],
-        },
-        TalentNodeMeta {
-            id: ids::STRENGTH_BOOST_2,
-            layer: STRENGTH_BOOST_2.layer,
-            mask: STRENGTH_BOOST_2.mask,
-            name: "Strength Boost II",
-            description: "Further increase your Strength attribute by 10%.",
-            cost: 1,
-            prereqs: &[STRENGTH_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::INTELLIGENCE_BOOST_2,
-            layer: INTELLIGENCE_BOOST_2.layer,
-            mask: INTELLIGENCE_BOOST_2.mask,
-            name: "Intelligence Boost II",
-            description: "Further increase your Intuition attribute by 10%.",
-            cost: 1,
-            prereqs: &[INTELLIGENCE_BOOST_1],
-        },
-        TalentNodeMeta {
-            id: ids::ALL_SKILLS_BOOST_1,
-            layer: ALL_SKILLS_BOOST_1.layer,
-            mask: ALL_SKILLS_BOOST_1.mask,
-            name: "All Skills Boost I",
-            description: "Capstone: increase all of your attributes by 5%.",
-            cost: 1,
-            prereqs: &[STRENGTH_BOOST_2, INTELLIGENCE_BOOST_2],
-        },
+        node(
+            DISTRACT,
+            "Distract",
+            "Distract the enemy, reducing their accuracy.",
+            &[],
+            attribute(Attribute::Strength, 10),
+        ),
+        node(
+            PARASITE,
+            "Parasite",
+            "Infest the enemy with parasites, dealing damage over time.",
+            &[],
+            attribute(Attribute::Willpower, 10),
+        ),
+        node(
+            DODGE_BOOST_1,
+            "Dodge Boost I",
+            "Increase your dodge chance by 5%.",
+            &[DISTRACT, PARASITE],
+            attribute(Attribute::Agility, 10),
+        ),
+        node(
+            SPELL_BOOST_1,
+            "Spell Boost I",
+            "Increase the potency of your offensive spells by 5%.",
+            &[DISTRACT, PARASITE],
+            attribute(Attribute::Willpower, 10),
+        ),
+        node(
+            DODGE_BOOST_2,
+            "Dodge Boost II",
+            "Increase your dodge chance by an additional 5%.",
+            &[DODGE_BOOST_1],
+            attribute(Attribute::Agility, 15),
+        ),
+        node(
+            SPELL_BOOST_2,
+            "Spell Boost II",
+            "Further increase the potency of your offensive spells by 5%.",
+            &[SPELL_BOOST_1],
+            attribute(Attribute::Willpower, 15),
+        ),
+        node(
+            ATTACK_SPEED_BOOST_1,
+            "Attack Speed Boost I",
+            "Increase your attack speed by 5%.",
+            &[DODGE_BOOST_2],
+            attribute(Attribute::Agility, 10),
+        ),
+        node(
+            DAMAGE_BOOST_1,
+            "Damage Boost I",
+            "Increase your melee damage by 5%.",
+            &[SPELL_BOOST_2],
+            attribute(Attribute::Strength, 10),
+        ),
+        node(
+            DISARM,
+            "Disarm",
+            "Chance on hit to disarm your opponent.",
+            &[ATTACK_SPEED_BOOST_1],
+            attribute(Attribute::Intuition, 10),
+        ),
+        node(
+            DELIVER_DEATH,
+            "Deliver Death",
+            "A devastating finishing blow against low-health enemies.",
+            &[DAMAGE_BOOST_1],
+            attribute(Attribute::Strength, 15),
+        ),
+        node(
+            ATTACK_SPEED_BOOST_2,
+            "Attack Speed Boost II",
+            "Further increase your attack speed by 5%.",
+            &[DISARM],
+            attribute(Attribute::Agility, 15),
+        ),
+        node(
+            DAMAGE_BOOST_2,
+            "Damage Boost II",
+            "Further increase your melee damage by 5%.",
+            &[DELIVER_DEATH],
+            attribute(Attribute::Strength, 15),
+        ),
+        node(
+            PROTECTIVE_SPELLS_BOOST_1,
+            "Protective Spells Boost I",
+            "Increase the potency of your protective spells by 5%.",
+            &[ATTACK_SPEED_BOOST_2],
+            attribute(Attribute::Willpower, 10),
+        ),
+        node(
+            IMMUN_RESIST_BOOST_1,
+            "Immunity & Resistance Boost I",
+            "Increase your immunity and resistance by 5%.",
+            &[DAMAGE_BOOST_2],
+            attribute(Attribute::Braveness, 10),
+        ),
+        node(
+            PROTECTIVE_SPELLS_BOOST_2,
+            "Protective Spells Boost II",
+            "Further increase the potency of your protective spells by 5%.",
+            &[PROTECTIVE_SPELLS_BOOST_1],
+            attribute(Attribute::Willpower, 15),
+        ),
+        node(
+            IMMUN_RESIST_BOOST_2,
+            "Immunity & Resistance Boost II",
+            "Further increase your immunity and resistance by 5%.",
+            &[IMMUN_RESIST_BOOST_1],
+            attribute(Attribute::Braveness, 15),
+        ),
+        node(
+            BLADE_DANCE,
+            "Blade Dance",
+            "A flurry of strikes against all adjacent enemies.",
+            &[PROTECTIVE_SPELLS_BOOST_2],
+            attribute(Attribute::Agility, 20),
+        ),
+        node(
+            CONTAGION,
+            "Contagion",
+            "Spreads parasitic damage to nearby enemies.",
+            &[IMMUN_RESIST_BOOST_2],
+            attribute(Attribute::Willpower, 20),
+        ),
+        node(
+            STRENGTH_BOOST_1,
+            "Strength Boost I",
+            "Increase your Strength attribute by 10%.",
+            &[BLADE_DANCE],
+            attribute(Attribute::Strength, 10),
+        ),
+        node(
+            INTELLIGENCE_BOOST_1,
+            "Intelligence Boost I",
+            "Increase your Intuition attribute by 10%.",
+            &[CONTAGION],
+            attribute(Attribute::Intuition, 10),
+        ),
+        node(
+            STRENGTH_BOOST_2,
+            "Strength Boost II",
+            "Further increase your Strength attribute by 10%.",
+            &[STRENGTH_BOOST_1],
+            attribute(Attribute::Strength, 10),
+        ),
+        node(
+            INTELLIGENCE_BOOST_2,
+            "Intelligence Boost II",
+            "Further increase your Intuition attribute by 10%.",
+            &[INTELLIGENCE_BOOST_1],
+            attribute(Attribute::Intuition, 10),
+        ),
+        node(
+            ALL_SKILLS_BOOST_1,
+            "All Skills Boost I",
+            "Capstone: increase all of your attributes by 5%.",
+            &[STRENGTH_BOOST_2, INTELLIGENCE_BOOST_2],
+            attribute(Attribute::Braveness, 25),
+        ),
     ],
 };

@@ -2,7 +2,7 @@ use core::constants::{
     CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, MAXCHARS, MIN_SPEEDTAB_INDEX,
 };
 use core::ranks;
-use core::talent_trees::talents_mut_from_future1;
+use core::talent_trees::{grant_talent_points, talent_stat_bonuses};
 use core::types::FontColor;
 use core::{skills, traits};
 
@@ -257,7 +257,7 @@ impl GameState {
             }
         }
 
-        let talent_bonuses = crate::player::talent_trees::talent_stat_bonuses(
+        let talent_bonuses = talent_stat_bonuses(
             self.characters[cn].kindred,
             &self.characters[cn].future1,
             &self.characters[cn].attrib,
@@ -1191,10 +1191,7 @@ impl GameState {
 
             let diff = rank - self.characters[cn].data[45] as usize;
             self.characters[cn].data[45] = rank as i32;
-            {
-                let talents = talents_mut_from_future1(&mut self.characters[cn].future1);
-                crate::player::talent_trees::grant_talent_points(talents, diff as u8);
-            }
+            grant_talent_points(&mut self.characters[cn].future1, diff as u8);
 
             // Log level up message
             if diff == 1 {
@@ -1694,7 +1691,7 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use core::{constants::USE_ACTIVE, talent_trees::talents_from_future1, traits};
+    use core::{constants::USE_ACTIVE, traits};
 
     use crate::test_helpers::{add_test_player, with_test_gs};
 
@@ -1709,8 +1706,7 @@ mod tests {
 
             gs.do_check_new_level(cn);
 
-            let talents = talents_from_future1(&gs.characters[cn].future1);
-            assert_eq!(talents[0], 3);
+            assert_eq!(gs.characters[cn].future1[0], 3);
             assert_eq!(gs.characters[cn].data[45], 3);
         });
     }
@@ -1726,8 +1722,7 @@ mod tests {
 
             gs.do_check_new_level(cn);
 
-            let talents = talents_from_future1(&gs.characters[cn].future1);
-            assert_eq!(talents[0], 0);
+            assert_eq!(gs.characters[cn].future1[0], 0);
         });
     }
 }

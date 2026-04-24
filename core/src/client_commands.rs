@@ -50,11 +50,12 @@ pub enum ClientCommandType {
     /// [`AUTOLOOT_ITEM_IDS`](crate::constants::AUTOLOOT_ITEM_IDS) plus all
     /// gold from the tombstone corpse at that position.
     CmdAutoloot = 36,
-    /// Spend one talent point on the node identified by `node_id` (u16).
+    /// Spend one talent point on the node identified by `(layer, mask)`.
     ///
     /// Wire format:
     /// * byte 0: opcode `37`
-    /// * bytes 1..3: `node_id: u16` (little-endian)
+    /// * byte 1: `layer: u8`
+    /// * byte 2: `mask: u8`
     /// * bytes 3..16: zero-padding
     CmdLearnTalent = 37,
     /// Refund all spent talent points.  No payload (all-zero past the opcode).
@@ -406,16 +407,15 @@ impl ClientCommand {
         cmd
     }
 
-    /// Creates a learn-talent command for the given node id.
+    /// Creates a learn-talent command for the given packed slot.
     ///
     /// # Arguments
     ///
-    /// * `node_id` - Stable id of the talent node, as defined in
-    ///   `core::talent_trees::*::ids`.
-    pub fn new_learn_talent(node_id: u16) -> Self {
-        let payload = node_id.to_le_bytes().to_vec();
+    /// * `slot` - Packed talent-tree slot of the node to learn.
+    pub fn new_learn_talent(slot: crate::talent_trees::TalentRef) -> Self {
+        let payload = vec![slot.layer, slot.mask];
         let mut cmd = Self::new(ClientCommandType::CmdLearnTalent, payload);
-        cmd.context = Some(format!("node_id={node_id}"));
+        cmd.context = Some(format!("layer={} mask=0x{:02x}", slot.layer, slot.mask));
         cmd
     }
 
@@ -598,24 +598,32 @@ mod tests {
     }
 
     #[test]
-    fn learn_talent_opcode_and_node_id() {
-        let cmd = ClientCommand::new_learn_talent(0x0102);
+    fn learn_talent_opcode_and_slot() {
+        let cmd = ClientCommand::new_learn_talent(crate::talent_trees::TalentRef {
+            layer: 1,
+            mask: 0x02,
+        });
         let bytes = cmd.to_bytes();
         assert_eq!(bytes.len(), 16);
         assert_eq!(bytes[0], 37u8, "CmdLearnTalent must be opcode 37");
         assert_eq!(bytes[0], ClientCommandType::CmdLearnTalent as u8);
-        assert_eq!(u16::from_le_bytes([bytes[1], bytes[2]]), 0x0102);
+        assert_eq!(bytes[1], 1);
+        assert_eq!(bytes[2], 0x02);
         for b in &bytes[3..] {
             assert_eq!(*b, 0, "trailing bytes must be zero-padded");
         }
     }
 
     #[test]
-    fn learn_talent_roundtrip_max_node_id() {
-        let cmd = ClientCommand::new_learn_talent(u16::MAX);
+    fn learn_talent_roundtrip_max_slot_bytes() {
+        let cmd = ClientCommand::new_learn_talent(crate::talent_trees::TalentRef {
+            layer: u8::MAX,
+            mask: u8::MAX,
+        });
         let bytes = cmd.to_bytes();
         assert_eq!(bytes[0], 37u8);
-        assert_eq!(u16::from_le_bytes([bytes[1], bytes[2]]), u16::MAX);
+        assert_eq!(bytes[1], u8::MAX);
+        assert_eq!(bytes[2], u8::MAX);
     }
 
     #[test]
