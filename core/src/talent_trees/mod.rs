@@ -116,7 +116,7 @@ pub enum TalentEffect {
 /// All fields are `'static` so per-class tables can be `const`/`static`
 /// values stored in read-only memory.
 #[derive(Copy, Clone, Debug)]
-pub struct TalentNodeMeta {
+pub struct TalentNode {
     /// Packed talent slot used for persistence and wire identity.
     pub slot: TalentRef,
     /// Display name shown on the talent button.
@@ -154,11 +154,11 @@ impl Default for TalentStatBonuses {
 
 /// A complete per-class talent tree.
 #[derive(Copy, Clone, Debug)]
-pub struct TalentTreeMeta {
+pub struct TalentTree {
     /// The class this tree belongs to.
     pub class: Class,
     /// Flat list of every node in the tree.
-    pub nodes: &'static [TalentNodeMeta],
+    pub nodes: &'static [TalentNode],
 }
 
 /// Look up the talent tree for a given class.
@@ -173,7 +173,7 @@ pub struct TalentTreeMeta {
 ///
 /// * `Some(tree)` if the class has a registered tree.
 /// * `None` otherwise.
-pub fn tree_for(class: Class) -> Option<&'static TalentTreeMeta> {
+pub fn tree_for(class: Class) -> Option<&'static TalentTree> {
     match class {
         Class::Harakim => Some(&harakim::HARAKIM_TREE),
         Class::Mercenary => Some(&mercenary::MERCENARY_TREE),
@@ -196,10 +196,7 @@ pub fn tree_for(class: Class) -> Option<&'static TalentTreeMeta> {
 ///
 /// * `Some(&node)` if a node with `slot` is present in `tree`.
 /// * `None` otherwise.
-pub fn find_node(
-    tree: &'static TalentTreeMeta,
-    slot: TalentRef,
-) -> Option<&'static TalentNodeMeta> {
+pub fn find_node(tree: &'static TalentTree, slot: TalentRef) -> Option<&'static TalentNode> {
     tree.nodes.iter().find(|n| n.slot == slot)
 }
 
@@ -337,7 +334,7 @@ pub fn is_talent_layer_spent(talents: &[u8; 25], talent_layer: usize) -> bool {
 /// * `true` if the node is a root or its prerequisite layer contains a learned
 ///   talent.
 /// * `false` otherwise.
-pub fn talent_prereqs_met(talents: &[u8; 25], node: &TalentNodeMeta) -> bool {
+pub fn talent_prereqs_met(talents: &[u8; 25], node: &TalentNode) -> bool {
     let Some(required_layer) = node.prereqs.iter().map(|p| p.layer as usize).max() else {
         return true;
     };
@@ -509,7 +506,7 @@ mod tests {
     use std::collections::HashSet;
 
     /// Returns every tree currently registered with [`tree_for`].
-    fn all_trees() -> Vec<&'static TalentTreeMeta> {
+    fn all_trees() -> Vec<&'static TalentTree> {
         vec![
             &harakim::HARAKIM_TREE,
             &mercenary::MERCENARY_TREE,
@@ -518,7 +515,7 @@ mod tests {
         ]
     }
 
-    fn named_node(tree: &'static TalentTreeMeta, name: &str) -> &'static TalentNodeMeta {
+    fn named_node(tree: &'static TalentTree, name: &str) -> &'static TalentNode {
         tree.nodes
             .iter()
             .find(|node| node.name == name)

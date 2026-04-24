@@ -14,7 +14,7 @@ use core::{
     skills::{Skill, SkillIndex},
     string_operations::c_string_to_str,
     talent_trees::{
-        TalentEffect, TalentNodeMeta, TalentRef, apply_talent_point, available_talent_points,
+        TalentEffect, TalentNode, TalentRef, apply_talent_point, available_talent_points,
         class_for_kindred, find_node, talent_prereqs_met, tree_for,
     },
 };
@@ -41,7 +41,7 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, slot: TalentRef) -> Result<()
     let class = class_for_kindred(gs.characters[cn].kindred)
         .ok_or_else(|| "Character has no class set".to_string())?;
     let tree = tree_for(class).ok_or_else(|| format!("No talent tree for class {:?}", class))?;
-    let node: &TalentNodeMeta =
+    let node: &TalentNode =
         find_node(tree, slot).ok_or_else(|| format!("Unknown talent slot {:?}", slot))?;
 
     // MVP: only cost-1 nodes are supported.

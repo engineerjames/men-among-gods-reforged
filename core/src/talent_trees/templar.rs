@@ -1,6 +1,6 @@
 //! Templar class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNodeMeta, TalentRef, TalentTreeMeta};
+use super::{TalentEffect, TalentNode, TalentRef, TalentTree};
 use crate::skills::Attribute;
 use crate::traits::Class;
 
@@ -98,10 +98,10 @@ const OATHBOUND_PARAGON: TalentRef = TalentRef {
 };
 
 /// The full Templar placeholder talent tree.
-pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
+pub static TEMPLAR_TREE: TalentTree = TalentTree {
     class: Class::Templar,
     nodes: &[
-        TalentNodeMeta {
+        TalentNode {
             slot: SHIELD_OATH,
             name: "Shield Oath",
             description: "Root defensive vow for the Templar path.",
@@ -112,7 +112,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SACRED_FOCUS,
             name: "Sacred Focus",
             description: "Root spell discipline for the Templar path.",
@@ -123,7 +123,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: BULWARK_1,
             name: "Bulwark I",
             description: "Placeholder defensive training.",
@@ -134,7 +134,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 6,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: RADIANT_STRIKE_1,
             name: "Radiant Strike I",
             description: "Placeholder offensive zeal training.",
@@ -145,7 +145,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: BULWARK_2,
             name: "Bulwark II",
             description: "Further defensive training.",
@@ -156,7 +156,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: RADIANT_STRIKE_2,
             name: "Radiant Strike II",
             description: "Further offensive zeal training.",
@@ -167,7 +167,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: GUARDING_STEP_1,
             name: "Guarding Step I",
             description: "Placeholder control of battlefield positioning.",
@@ -178,7 +178,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: WRATH_1,
             name: "Wrath I",
             description: "Placeholder righteous damage improvement.",
@@ -189,7 +189,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: AEGIS,
             name: "Aegis",
             description: "Placeholder protective active talent.",
@@ -200,7 +200,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: JUDGMENT,
             name: "Judgment",
             description: "Placeholder finishing talent.",
@@ -211,7 +211,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: GUARDING_STEP_2,
             name: "Guarding Step II",
             description: "Advanced positioning discipline.",
@@ -222,7 +222,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: WRATH_2,
             name: "Wrath II",
             description: "Advanced righteous damage improvement.",
@@ -233,7 +233,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SANCTUARY_1,
             name: "Sanctuary I",
             description: "Placeholder party protection improvement.",
@@ -244,7 +244,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: RESOLVE_1,
             name: "Resolve I",
             description: "Placeholder resistance improvement.",
@@ -255,7 +255,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SANCTUARY_2,
             name: "Sanctuary II",
             description: "Further party protection improvement.",
@@ -266,7 +266,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: RESOLVE_2,
             name: "Resolve II",
             description: "Further resistance improvement.",
@@ -277,7 +277,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: BASTION,
             name: "Bastion",
             description: "Placeholder defensive capstone branch.",
@@ -288,7 +288,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: CONSECRATION,
             name: "Consecration",
             description: "Placeholder sacred ground branch.",
@@ -299,7 +299,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STRENGTH_OF_FAITH_1,
             name: "Strength of Faith I",
             description: "Increase strength through discipline.",
@@ -310,7 +310,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: WISDOM_OF_FAITH_1,
             name: "Wisdom of Faith I",
             description: "Increase intuition through discipline.",
@@ -321,7 +321,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STRENGTH_OF_FAITH_2,
             name: "Strength of Faith II",
             description: "Further increase strength through discipline.",
@@ -332,7 +332,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: WISDOM_OF_FAITH_2,
             name: "Wisdom of Faith II",
             description: "Further increase intuition through discipline.",
@@ -343,7 +343,7 @@ pub static TEMPLAR_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: OATHBOUND_PARAGON,
             name: "Oathbound Paragon",
             description: "Capstone: unite Templar defense and zeal.",

@@ -1,6 +1,6 @@
 //! Seyan-Du class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNodeMeta, TalentRef, TalentTreeMeta};
+use super::{TalentEffect, TalentNode, TalentRef, TalentTree};
 use crate::skills::Attribute;
 use crate::traits::Class;
 
@@ -98,10 +98,10 @@ const MASTER_OF_FORMS: TalentRef = TalentRef {
 };
 
 /// The full Seyan-Du placeholder talent tree.
-pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
+pub static SEYAN_DU_TREE: TalentTree = TalentTree {
     class: Class::SeyanDu,
     nodes: &[
-        TalentNodeMeta {
+        TalentNode {
             slot: VETERANS_POISE,
             name: "Veteran's Poise",
             description: "Root composure talent for the Seyan-Du path.",
@@ -112,7 +112,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: DRAGON_PULSE,
             name: "Dragon Pulse",
             description: "Root inner-force talent for the Seyan-Du path.",
@@ -123,7 +123,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: EVASION_DRILL_1,
             name: "Evasion Drill I",
             description: "Placeholder mobility drill.",
@@ -134,7 +134,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: BATTLE_CHANNEL_1,
             name: "Battle Channel I",
             description: "Placeholder combat focus drill.",
@@ -145,7 +145,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: EVASION_DRILL_2,
             name: "Evasion Drill II",
             description: "Further mobility drill.",
@@ -156,7 +156,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: BATTLE_CHANNEL_2,
             name: "Battle Channel II",
             description: "Further combat focus drill.",
@@ -167,7 +167,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: FLOWING_STRIKE_1,
             name: "Flowing Strike I",
             description: "Placeholder fast-strike technique.",
@@ -178,7 +178,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: HEAVY_STRIKE_1,
             name: "Heavy Strike I",
             description: "Placeholder heavy-strike technique.",
@@ -189,7 +189,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: COUNTER,
             name: "Counter",
             description: "Placeholder counterattack talent.",
@@ -200,7 +200,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: FINAL_LESSON,
             name: "Final Lesson",
             description: "Placeholder finishing technique.",
@@ -211,7 +211,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: FLOWING_STRIKE_2,
             name: "Flowing Strike II",
             description: "Advanced fast-strike technique.",
@@ -222,7 +222,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: HEAVY_STRIKE_2,
             name: "Heavy Strike II",
             description: "Advanced heavy-strike technique.",
@@ -233,7 +233,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: GUARDED_FOCUS_1,
             name: "Guarded Focus I",
             description: "Placeholder guarded stance improvement.",
@@ -244,7 +244,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: IRON_BREATH_1,
             name: "Iron Breath I",
             description: "Placeholder endurance discipline.",
@@ -255,7 +255,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: GUARDED_FOCUS_2,
             name: "Guarded Focus II",
             description: "Further guarded stance improvement.",
@@ -266,7 +266,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: IRON_BREATH_2,
             name: "Iron Breath II",
             description: "Further endurance discipline.",
@@ -277,7 +277,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STORM_FORM,
             name: "Storm Form",
             description: "Placeholder form capstone branch.",
@@ -288,7 +288,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 18,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: BLOOD_ECHO,
             name: "Blood Echo",
             description: "Placeholder veteran pressure branch.",
@@ -299,7 +299,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 18,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STRENGTH_DISCIPLINE_1,
             name: "Strength Discipline I",
             description: "Increase strength through form practice.",
@@ -310,7 +310,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: MIND_DISCIPLINE_1,
             name: "Mind Discipline I",
             description: "Increase intuition through form practice.",
@@ -321,7 +321,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STRENGTH_DISCIPLINE_2,
             name: "Strength Discipline II",
             description: "Further increase strength through form practice.",
@@ -332,7 +332,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: MIND_DISCIPLINE_2,
             name: "Mind Discipline II",
             description: "Further increase intuition through form practice.",
@@ -343,7 +343,7 @@ pub static SEYAN_DU_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: MASTER_OF_FORMS,
             name: "Master of Forms",
             description: "Capstone: unite Seyan-Du speed and force.",

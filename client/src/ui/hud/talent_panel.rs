@@ -13,8 +13,8 @@ use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
 use mag_core::talent_trees::{
-    TalentNodeMeta, TalentTreeMeta, available_talent_points, is_talent_layer_spent,
-    is_talent_spent, talent_prereqs_met, total_points_spent, tree_for,
+    TalentNode, TalentTree, available_talent_points, is_talent_layer_spent, is_talent_spent,
+    talent_prereqs_met, total_points_spent, tree_for,
 };
 use mag_core::traits::Class;
 
@@ -73,7 +73,7 @@ enum NodeStatus {
 
 /// One row in the talent panel: button + cached metadata.
 struct TalentRow {
-    meta: &'static TalentNodeMeta,
+    meta: &'static TalentNode,
     button: RectButton,
 }
 
@@ -272,7 +272,7 @@ impl TalentPanel {
     /// # Returns
     ///
     /// The node's [`NodeStatus`].
-    fn node_status(node: &TalentNodeMeta, talents: &[u8; 25]) -> NodeStatus {
+    fn node_status(node: &TalentNode, talents: &[u8; 25]) -> NodeStatus {
         if is_talent_spent(talents, node.slot.mask, node.slot.layer as usize) {
             return NodeStatus::Learned;
         }
@@ -536,7 +536,7 @@ impl TalentPanel {
 /// # Returns
 ///
 /// A `'static` string label such as `"Mercenary"`.
-fn class_label(tree: &'static TalentTreeMeta) -> &'static str {
+fn class_label(tree: &'static TalentTree) -> &'static str {
     match tree.class {
         Class::Mercenary => "Mercenary",
         Class::Templar => "Templar",

@@ -1,6 +1,6 @@
 //! Harakim class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNodeMeta, TalentRef, TalentTreeMeta};
+use super::{TalentEffect, TalentNode, TalentRef, TalentTree};
 use crate::skills::Attribute;
 use crate::traits::Class;
 
@@ -98,10 +98,10 @@ const EYE_OF_THE_STORM: TalentRef = TalentRef {
 };
 
 /// The full Harakim placeholder talent tree.
-pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
+pub static HARAKIM_TREE: TalentTree = TalentTree {
     class: Class::Harakim,
     nodes: &[
-        TalentNodeMeta {
+        TalentNode {
             slot: DESERT_SENSE,
             name: "Desert Sense",
             description: "Root awareness talent for the Harakim path.",
@@ -112,7 +112,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: MIND_SPIKE,
             name: "Mind Spike",
             description: "Root will-focused talent for the Harakim path.",
@@ -123,7 +123,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: MIRAGE_STEP_1,
             name: "Mirage Step I",
             description: "Placeholder movement through misdirection.",
@@ -134,7 +134,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 10,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SAND_CHANNELING_1,
             name: "Sand Channeling I",
             description: "Placeholder spell channeling discipline.",
@@ -145,7 +145,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: MIRAGE_STEP_2,
             name: "Mirage Step II",
             description: "Further movement through misdirection.",
@@ -156,7 +156,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SAND_CHANNELING_2,
             name: "Sand Channeling II",
             description: "Further spell channeling discipline.",
@@ -167,7 +167,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SWIFT_READING_1,
             name: "Swift Reading I",
             description: "Placeholder tactical reading improvement.",
@@ -178,7 +178,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SPIRIT_CUT_1,
             name: "Spirit Cut I",
             description: "Placeholder focused strike improvement.",
@@ -189,7 +189,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 6,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: UNMASK,
             name: "Unmask",
             description: "Placeholder detection talent.",
@@ -200,7 +200,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SOUL_BURN,
             name: "Soul Burn",
             description: "Placeholder willpower attack talent.",
@@ -211,7 +211,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SWIFT_READING_2,
             name: "Swift Reading II",
             description: "Advanced tactical reading improvement.",
@@ -222,7 +222,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: SPIRIT_CUT_2,
             name: "Spirit Cut II",
             description: "Advanced focused strike improvement.",
@@ -233,7 +233,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: VEIL_1,
             name: "Veil I",
             description: "Placeholder defensive illusion improvement.",
@@ -244,7 +244,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STILLNESS_1,
             name: "Stillness I",
             description: "Placeholder focus improvement.",
@@ -255,7 +255,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: VEIL_2,
             name: "Veil II",
             description: "Further defensive illusion improvement.",
@@ -266,7 +266,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STILLNESS_2,
             name: "Stillness II",
             description: "Further focus improvement.",
@@ -277,7 +277,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 12,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: DUST_DANCE,
             name: "Dust Dance",
             description: "Placeholder evasive capstone branch.",
@@ -288,7 +288,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: FEVER_DREAM,
             name: "Fever Dream",
             description: "Placeholder mental pressure branch.",
@@ -299,7 +299,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 22,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STRENGTH_OF_SAND_1,
             name: "Strength of Sand I",
             description: "Increase strength through desert discipline.",
@@ -310,7 +310,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 6,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: INSIGHT_OF_SAND_1,
             name: "Insight of Sand I",
             description: "Increase intuition through desert discipline.",
@@ -321,7 +321,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 14,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: STRENGTH_OF_SAND_2,
             name: "Strength of Sand II",
             description: "Further increase strength through desert discipline.",
@@ -332,7 +332,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 8,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: INSIGHT_OF_SAND_2,
             name: "Insight of Sand II",
             description: "Further increase intuition through desert discipline.",
@@ -343,7 +343,7 @@ pub static HARAKIM_TREE: TalentTreeMeta = TalentTreeMeta {
                 percent: 16,
             },
         },
-        TalentNodeMeta {
+        TalentNode {
             slot: EYE_OF_THE_STORM,
             name: "Eye of the Storm",
             description: "Capstone: unite Harakim perception and will.",
