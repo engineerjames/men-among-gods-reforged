@@ -431,6 +431,20 @@ small burst. Excess requests return `429`.
 | PUT | `/admin/world/map/{x}/{y}` | Enqueue a patch for a single map tile (bincode `MapPatch` bytes). |
 | POST | `/admin/world/map/reload` | Ask the running server to drain pending map patches. |
 | GET | `/admin/world/map/reload/status` | Poll the lifecycle of a previous map-reload request (query `request_id`). |
+| GET | `/admin/world/items` | Bulk-read every item slot (`application/octet-stream`, bincode `Vec<Item>`). |
+| GET | `/admin/world/items/list` | Paginated JSON summaries (`from`, `limit` query params; default limit 256, max 4096). |
+| GET | `/admin/world/items/version` | Read the admin item-version counter. |
+| GET | `/admin/world/items/{id}` | Read a single item (bincode `Item` bytes). |
+| PUT | `/admin/world/items/{id}` | Enqueue a patch for a single item (bincode `ItemPatch`). |
+| POST | `/admin/world/items/reload` | Ask the running server to drain pending item patches. |
+| GET | `/admin/world/items/reload/status` | Poll the lifecycle of a previous item-reload request. |
+| GET | `/admin/world/characters` | Bulk-read every character slot (`application/octet-stream`, bincode `Vec<Character>`). |
+| GET | `/admin/world/characters/list` | Paginated JSON summaries. |
+| GET | `/admin/world/characters/version` | Read the admin character-version counter. |
+| GET | `/admin/world/characters/{id}` | Read a single character (bincode `Character` bytes). |
+| PUT | `/admin/world/characters/{id}` | Enqueue a patch for a single character (bincode `CharacterPatch`). |
+| POST | `/admin/world/characters/reload` | Ask the running server to drain pending character patches. |
+| GET | `/admin/world/characters/reload/status` | Poll the lifecycle of a previous character-reload request. |
 
 Full templates use bincode (`application/octet-stream`) instead of JSON to
 avoid serialising fixed-size byte arrays through quoted JSON. The
@@ -460,6 +474,25 @@ stamps `admin:map:reload:request` (TTL 30s) and publishes on
 (preserving each tile's dynamic fields — `ch`, `to_ch`, `it`, `light`,
 `dlight`), then writes
 `admin:map:reload:status:{request_id} = applied:{unix_ts}` (TTL 5 minutes).
+
+### Item / character editing
+
+Items and characters use the same producer/consumer pattern as map tiles. A
+`PUT /admin/world/items/{id}` body is a bincode
+[`ItemPatch`](../core/src/item_store.rs) carrying only the **static authoring
+fields** of an [`Item`](../core/src/types/item.rs); the running tick loop
+preserves dynamic runtime fields (position, damage state, current age/damage,
+runtime sprite override). Characters work the same way — `CharacterPatch`
+covers static fields only and the server preserves dynamic state (position,
+combat AI, current resources, inventory, networking).
+
+Patches are appended to `game:item:patch_queue` / `game:char:patch_queue`
+and the version counters `game:meta:item:version` / `game:meta:char:version`
+increment. `POST /admin/world/items/reload` (and the characters equivalent)
+stamp `game:item:patch_request` / `game:char:patch_request` (TTL 30s); the
+server's watcher consumes them, drains the queue, and writes
+`game:item:patch_status:{request_id} = applied:{unix_ts}` (TTL 5 minutes)
+for the GET status endpoint.
 
 # Future Improvements
 ## Security Improvements

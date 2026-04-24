@@ -319,6 +319,14 @@ file backend has been removed.
 | `admin:map:reload:request` | JSON `{request_id, requested_at_ms}` (TTL 30s) | 0–1 |
 | `admin:map:reload:status:{request_id}` | JSON `{status, request_id}` (TTL 300s) | 0..n |
 | `admin:map:version` | integer counter | 1 |
+| `game:item:patch_queue` | bincode `ItemPatch` list (RPUSH) | dynamic |
+| `game:item:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
+| `game:item:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
+| `game:meta:item:version` | integer counter | 1 |
+| `game:char:patch_queue` | bincode `CharacterPatch` list (RPUSH) | dynamic |
+| `game:char:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
+| `game:char:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
+| `game:meta:char:version` | integer counter | 1 |
 
 ### Background Save Rotation
 
