@@ -361,6 +361,10 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     tbuf[1] = (gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN) as u8;
     network_manager::xsend(gs, nr, &tbuf, 2);
 
+    // send initial talent-tree snapshot so the client can render the
+    // talent panel immediately after login.
+    crate::player::commands::send_set_char_talents(gs, nr);
+
     // mark active and set login date, addr, add net history
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

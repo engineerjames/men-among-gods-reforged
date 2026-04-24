@@ -49,6 +49,12 @@ pub struct PlayerState {
     local_ctick: u8,
 
     exit_requested_reason: Option<u32>,
+
+    /// Latest server snapshot of the 25-byte packed talent state.
+    ///
+    /// `talents[0]` is the unspent points pool; `talents[1..24]` are the
+    /// per-layer bit fields (8 nodes per byte). See `core::talent_trees`.
+    talents: [u8; 25],
 }
 
 /// A cached (nr --> name) entry used by the auto-look name overlay.
@@ -90,6 +96,8 @@ impl Default for PlayerState {
             local_ctick: 0,
 
             exit_requested_reason: None,
+
+            talents: [0; 25],
         }
     }
 }
@@ -129,6 +137,14 @@ impl PlayerState {
     /// Returns a shared reference to the player's own character stats.
     pub fn character_info(&self) -> &ClientPlayer {
         &self.character_info
+    }
+
+    /// Returns the latest server snapshot of the 25-byte packed talent state.
+    ///
+    /// `[0]` is the unspent points pool; `[1..24]` are the per-layer bit
+    /// fields (8 nodes per byte). See `core::talent_trees`.
+    pub fn talents(&self) -> &[u8; 25] {
+        &self.talents
     }
 
     /// Returns `true` when the shop overlay should be displayed.
@@ -460,6 +476,9 @@ impl PlayerState {
                 if idx < self.character_info.skill.len() {
                     self.character_info.skill[idx] = *values;
                 }
+            }
+            ServerCommandData::SetCharTalents { values } => {
+                self.talents = *values;
             }
             ServerCommandData::SetCharHp { values } => {
                 self.character_info.hp = *values;

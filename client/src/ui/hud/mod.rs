@@ -11,3 +11,4 @@ pub mod skill_bar;
 pub mod skill_picker_popup;
 pub mod skills_panel;
 pub mod status_panel;
+pub mod talent_panel;

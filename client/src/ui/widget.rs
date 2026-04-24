@@ -236,6 +236,8 @@ pub enum HudPanel {
     Minimap,
     /// Keyboard bindings editor.
     KeyBindings,
+    /// Class talent tree.
+    Talents,
 }
 
 /// A side-effect that a widget wants the owning scene to perform.
@@ -354,6 +356,17 @@ pub enum WidgetAction {
         /// The controller button to bind, or `None` to clear.
         button: Option<ControllerButton>,
     },
+    /// Spend one talent point on the node identified by `node_id`.
+    ///
+    /// Mapped to `ClientCommand::new_learn_talent(node_id)` by the scene.
+    LearnTalent {
+        /// Stable id of the node to learn (see `core::talent_trees::*::ids`).
+        node_id: u16,
+    },
+    /// Refund all spent talent points back into the unspent pool.
+    ///
+    /// Mapped to `ClientCommand::new_reset_talents()` by the scene.
+    ResetTalents,
 }
 
 // ---------------------------------------------------------------------------

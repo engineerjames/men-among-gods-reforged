@@ -29,6 +29,7 @@ pub mod server_commands;
 pub mod skills;
 pub mod stat_buffer;
 pub mod string_operations;
+pub mod talent_trees;
 pub mod template_store;
 pub mod traits;
 pub mod types;

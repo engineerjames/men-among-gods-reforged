@@ -77,7 +77,7 @@ const HUD_ARC_CENTER_X: i32 = TARGET_WIDTH_INT as i32 / 2;
 const HUD_ARC_CENTER_Y: i32 = TARGET_HEIGHT_INT as i32;
 const HUD_ARC_RADIUS: u32 = 60;
 const HUD_BUTTON_RADIUS: u32 = 16;
-const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
+const HUD_SPRITE_IDS: [usize; 4] = [267, 267, 128, 35];
 /// X center of the HUD button column (lower-right).
 const HUD_BTN_CX: i32 = TARGET_WIDTH_INT as i32 - 30;
 /// Center Y of the bottom-most HUD button.
@@ -510,6 +510,7 @@ fn main() -> Result<(), String> {
                     HudPanel::Settings => settings_panel.toggle(),
                     HudPanel::Minimap => minimap_widget.toggle(),
                     HudPanel::KeyBindings => {}
+                    HudPanel::Talents => {}
                 }
             }
         }

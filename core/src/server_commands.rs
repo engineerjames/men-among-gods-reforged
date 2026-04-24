@@ -69,6 +69,14 @@ pub enum ServerCommandType {
     Unique = 72,
     Ignore = 73,
     Pong = 74,
+    /// Full snapshot of the character's 25-byte packed talent state.
+    ///
+    /// Wire format: opcode (1 byte) + 25 bytes copied directly from
+    /// the server's `Character::future1` (re-interpreted as `u8` via
+    /// `core::talent_trees::talents_from_future1`).
+    ///
+    /// Total length: 26 bytes.  See `client::network::tick_stream::sv_cmd_len`.
+    SetCharTalents = 75,
     SetMap = 128,
 }
 
@@ -140,6 +148,7 @@ impl From<u8> for ServerCommandType {
             72 => ServerCommandType::Unique,
             73 => ServerCommandType::Ignore,
             74 => ServerCommandType::Pong,
+            75 => ServerCommandType::SetCharTalents,
             128 => ServerCommandType::SetMap,
             _ => {
                 log::error!("Unknown server command opcode: {value}");
@@ -231,6 +240,13 @@ pub enum ServerCommandData {
     },
     SetCharDir {
         dir: u8,
+    },
+    /// Full snapshot of the character's 25-byte packed talent state.
+    ///
+    /// `values[0]` is the unspent points pool; `values[1..24]` are the
+    /// per-layer bit fields (8 nodes per byte).
+    SetCharTalents {
+        values: [u8; 25],
     },
     SetCharPts {
         points: u32,
@@ -940,6 +956,12 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             ServerCommandData::Pong {
                 seq: read_u32(bytes, 1)?,
                 client_time_ms: read_u32(bytes, 5)?,
+            },
+        )),
+        75 => Some((
+            ServerCommandType::SetCharTalents,
+            ServerCommandData::SetCharTalents {
+                values: bytes.get(1..26)?.try_into().ok()?,
             },
         )),
         _ => None,

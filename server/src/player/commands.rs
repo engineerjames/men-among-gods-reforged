@@ -1986,6 +1986,85 @@ pub fn plr_doact(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Send the full 25-byte talent snapshot for `nr`'s character.
+///
+/// Wire format: 1-byte opcode (`SetCharTalents = 75`) followed by the
+/// raw `future1` bytes re-interpreted as `u8`.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `nr` - Player slot index.
+pub fn send_set_char_talents(gs: &mut GameState, nr: usize) {
+    let cn = gs.players[nr].usnr;
+    let mut buf: [u8; 26] = [0; 26];
+    buf[0] = ServerCommandType::SetCharTalents as u8;
+    let view = core::talent_trees::talents_from_future1(&gs.characters[cn].future1);
+    buf[1..26].copy_from_slice(view);
+    network_manager::xsend(gs, nr, &buf, 26);
+}
+
+/// Handle the `CmdLearnTalent` packet.
+///
+/// Parses the 16-bit node id from `inbuf[1..3]`, calls
+/// [`crate::player::talent_trees::learn_talent`], and broadcasts a
+/// fresh snapshot.  All validation errors (missing prereq, no points,
+/// already learned, unknown id, no class) are logged but not surfaced
+/// to the client; the snapshot tells the client the authoritative
+/// state.
+///
+/// # Arguments
+///
+/// * `nr` - Player slot index issuing the command.
+pub fn plr_cmd_learn_talent(gs: &mut GameState, nr: usize) {
+    let node_id = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
+    let cn = gs.players[nr].usnr;
+    match crate::player::talent_trees::learn_talent(gs, cn, core::talent_trees::TalentId(node_id)) {
+        Ok(()) => {
+            log::info!(
+                "Player {} (cn={}) learned talent 0x{:04x}",
+                c_string_to_str(&gs.characters[cn].name),
+                cn,
+                node_id
+            );
+        }
+        Err(reason) => {
+            log::warn!(
+                "Player {} (cn={}) failed to learn talent 0x{:04x}: {}",
+                c_string_to_str(&gs.characters[cn].name),
+                cn,
+                node_id,
+                reason
+            );
+        }
+    }
+    send_set_char_talents(gs, nr);
+}
+
+/// Handle the `CmdResetTalents` packet.
+///
+/// Refunds every spent talent point back into the unspent pool and
+/// broadcasts a fresh snapshot.  Note that bonuses applied by previously
+/// learned talents are NOT reversed (see
+/// [`crate::player::talent_trees::reset_talent_points`]).
+///
+/// # Arguments
+///
+/// * `nr` - Player slot index issuing the command.
+pub fn plr_cmd_reset_talents(gs: &mut GameState, nr: usize) {
+    let cn = gs.players[nr].usnr;
+    {
+        let talents = core::talent_trees::talents_mut_from_future1(&mut gs.characters[cn].future1);
+        crate::player::talent_trees::reset_talent_points(talents);
+    }
+    log::info!(
+        "Player {} (cn={}) reset all talent points",
+        c_string_to_str(&gs.characters[cn].name),
+        cn
+    );
+    send_set_char_talents(gs, nr);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
