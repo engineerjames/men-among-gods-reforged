@@ -221,12 +221,9 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
             }
             SaveJob::Items(data, start_idx) => {
                 let t = std::time::Instant::now();
-                if let Err(e) = store::save_indexed_entities_range(
-                    &mut con,
-                    "game:item:",
-                    &data,
-                    start_idx,
-                ) {
+                if let Err(e) =
+                    store::save_indexed_entities_range(&mut con, "game:item:", &data, start_idx)
+                {
                     log::error!("Background save items failed: {e}");
                     con = connect_with_retry();
                 } else {

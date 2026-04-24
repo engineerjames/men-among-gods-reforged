@@ -27,8 +27,8 @@ use std::time::Instant;
 use redis::Commands;
 
 use server::keydb::connection as keydb;
-use server::keydb::store;
 use server::keydb::snapshot::{SNAPSHOT_SCHEMA_VERSION, WorldSnapshot};
+use server::keydb::store;
 
 // ---------------------------------------------------------------------------
 //  CLI arg parsing
@@ -248,12 +248,10 @@ fn cmd_import(input: &PathBuf, skip_if_seeded: bool, force: bool) {
         process::exit(1);
     });
 
-    store::save_character_templates(&mut con, &snapshot.character_templates).unwrap_or_else(
-        |e| {
-            eprintln!("Failed to save character templates: {e}");
-            process::exit(1);
-        },
-    );
+    store::save_character_templates(&mut con, &snapshot.character_templates).unwrap_or_else(|e| {
+        eprintln!("Failed to save character templates: {e}");
+        process::exit(1);
+    });
 
     store::save_effects(&mut con, &snapshot.effects).unwrap_or_else(|e| {
         eprintln!("Failed to save effects: {e}");

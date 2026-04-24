@@ -9,7 +9,6 @@ use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use server::keydb::background_saver::{self, BackgroundSaver, SaveJob};
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
@@ -19,6 +18,7 @@ use crate::types::server_player::ServerPlayer;
 use crate::{driver, player, populate};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
+use server::keydb::background_saver::{self, BackgroundSaver, SaveJob};
 
 /// Per-character scheduling hints used by `game_tick`.
 ///
@@ -263,7 +263,8 @@ impl Server {
         self.background_saver = Some(background_saver::spawn());
 
         // Spawn the admin template-reload watcher (no-op when disabled).
-        self.template_reload_watcher = server::keydb::template_reload::TemplateReloadWatcher::spawn();
+        self.template_reload_watcher =
+            server::keydb::template_reload::TemplateReloadWatcher::spawn();
 
         // Spawn the admin map-patch watcher (no-op when disabled).
         self.map_patch_watcher = server::keydb::map_patch::MapPatchWatcher::spawn();
@@ -272,7 +273,8 @@ impl Server {
         self.item_patch_watcher = server::keydb::item_patch::ItemPatchWatcher::spawn();
 
         // Spawn the admin character-patch watcher (no-op when disabled).
-        self.character_patch_watcher = server::keydb::character_patch::CharacterPatchWatcher::spawn();
+        self.character_patch_watcher =
+            server::keydb::character_patch::CharacterPatchWatcher::spawn();
 
         Ok(())
     }
@@ -1137,7 +1139,9 @@ impl Server {
             }
         }
 
-        if let Err(e) = server::keydb::template_reload::write_applied_status(&mut con, &req.request_id) {
+        if let Err(e) =
+            server::keydb::template_reload::write_applied_status(&mut con, &req.request_id)
+        {
             log::warn!(
                 "template reload {}: status write failed: {}",
                 req.request_id,
@@ -1352,7 +1356,9 @@ impl Server {
                         any_applied = true;
                     }
                 }
-                server::keydb::character_patch::CharacterPatchEvent::ReloadCompleted { request_id } => {
+                server::keydb::character_patch::CharacterPatchEvent::ReloadCompleted {
+                    request_id,
+                } => {
                     completed_requests.push(request_id);
                 }
             }
@@ -1374,7 +1380,9 @@ impl Server {
             }
         };
         for request_id in completed_requests {
-            if let Err(e) = server::keydb::character_patch::write_applied_status(&mut con, &request_id) {
+            if let Err(e) =
+                server::keydb::character_patch::write_applied_status(&mut con, &request_id)
+            {
                 log::warn!(
                     "character patch reload {}: status write failed: {}",
                     request_id,

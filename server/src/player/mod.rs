@@ -20,6 +20,7 @@ use crate::{
 pub mod commands;
 pub mod connection;
 pub mod map;
+pub mod talent_tree;
 pub mod tick;
 
 /// Port of `plr_cmd` from `svr_tick.cpp`
