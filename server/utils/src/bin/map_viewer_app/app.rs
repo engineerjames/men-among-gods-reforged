@@ -550,6 +550,15 @@ impl MapViewerApp {
                         ui.end_row();
                     });
 
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(
+                        "Defaults are read from MAG_API_BASE_URL and MAG_ADMIN_API_TOKEN.",
+                    )
+                    .small()
+                    .weak(),
+                );
+
                 if let Some(err) = &self.connect_dialog_error {
                     ui.add_space(6.0);
                     ui.colored_label(egui::Color32::RED, err);
