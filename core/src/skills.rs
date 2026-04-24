@@ -491,7 +491,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         28,
-        SkillCategory::General,
+        SkillCategory::Body,
         "Regenerate",
         "Regenerate Hitpoints faster.",
         4,
@@ -500,7 +500,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         29,
-        SkillCategory::General,
+        SkillCategory::Body,
         "Rest",
         "Regenerate Endurance faster.",
         3,
@@ -509,7 +509,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         30,
-        SkillCategory::General,
+        SkillCategory::Body,
         "Meditate",
         "Regenerate Mana faster.",
         2,
