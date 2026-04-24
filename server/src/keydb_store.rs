@@ -323,8 +323,11 @@ pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     log::info!("  Loaded {} items.", items.len());
 
     log::info!("  Loading item templates...");
-    let item_templates =
-        load_indexed_entities::<core::types::Item>(con, "game:titem:", core::constants::MAXTITEM)?;
+    let item_templates = load_indexed_entities::<core::types::Item>(
+        con,
+        core::template_store::ITEM_TEMPLATE_KEY_PREFIX,
+        core::template_store::ITEM_TEMPLATE_SLOT_COUNT,
+    )?;
     log::info!("  Loaded {} item templates.", item_templates.len());
 
     log::info!("  Loading characters...");
@@ -338,8 +341,8 @@ pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     log::info!("  Loading character templates...");
     let character_templates = load_indexed_entities::<core::types::Character>(
         con,
-        "game:tchar:",
-        core::constants::MAXTCHARS,
+        core::template_store::CHARACTER_TEMPLATE_KEY_PREFIX,
+        core::template_store::CHARACTER_TEMPLATE_SLOT_COUNT,
     )?;
     log::info!(
         "  Loaded {} character templates.",
@@ -636,7 +639,11 @@ pub fn save_character_templates(
         "  Saving {} character templates...",
         character_templates.len()
     );
-    save_indexed_entities(con, "game:tchar:", character_templates)?;
+    save_indexed_entities(
+        con,
+        core::template_store::CHARACTER_TEMPLATE_KEY_PREFIX,
+        character_templates,
+    )?;
     log::info!("  Character templates saved.");
     Ok(())
 }
@@ -657,9 +664,56 @@ pub fn save_item_templates(
     item_templates: &[core::types::Item],
 ) -> Result<(), String> {
     log::info!("  Saving {} item templates...", item_templates.len());
-    save_indexed_entities(con, "game:titem:", item_templates)?;
+    save_indexed_entities(
+        con,
+        core::template_store::ITEM_TEMPLATE_KEY_PREFIX,
+        item_templates,
+    )?;
     log::info!("  Item templates saved.");
     Ok(())
+}
+
+/// Load all item templates from KeyDB without touching the rest of the
+/// world snapshot.
+///
+/// Intended for the reload watcher path that swaps templates into a running
+/// `GameState` without re-reading map/items/characters.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+///
+/// # Returns
+///
+/// * `Ok(Vec<Item>)` of length [`core::template_store::ITEM_TEMPLATE_SLOT_COUNT`].
+/// * `Err(String)` on KeyDB or decode failure.
+pub fn load_item_templates(con: &mut Connection) -> Result<Vec<core::types::Item>, String> {
+    load_indexed_entities::<core::types::Item>(
+        con,
+        core::template_store::ITEM_TEMPLATE_KEY_PREFIX,
+        core::template_store::ITEM_TEMPLATE_SLOT_COUNT,
+    )
+}
+
+/// Load all character templates from KeyDB without touching the rest of the
+/// world snapshot.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+///
+/// # Returns
+///
+/// * `Ok(Vec<Character>)` of length [`core::template_store::CHARACTER_TEMPLATE_SLOT_COUNT`].
+/// * `Err(String)` on KeyDB or decode failure.
+pub fn load_character_templates(
+    con: &mut Connection,
+) -> Result<Vec<core::types::Character>, String> {
+    load_indexed_entities::<core::types::Character>(
+        con,
+        core::template_store::CHARACTER_TEMPLATE_KEY_PREFIX,
+        core::template_store::CHARACTER_TEMPLATE_SLOT_COUNT,
+    )
 }
 
 // ---------------------------------------------------------------------------

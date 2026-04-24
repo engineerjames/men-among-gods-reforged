@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Stage 1: builder — use the official Rust image so cargo is pre-installed.
 FROM rust:slim-bookworm AS builder
 
@@ -12,9 +13,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxcb-xfixes0-dev \
     && rm -rf /var/lib/apt/lists/*
 
+ENV CARGO_HOME=/usr/local/cargo
+ENV CARGO_TARGET_DIR=/build/target
+
 WORKDIR /build
 COPY . .
-RUN cargo build --release -p server-utils
+
+# Persistent cache mounts for incremental cargo builds across `docker compose
+# build` invocations. Binaries are copied out before the cache mount is
+# detached so they end up in the runtime image.
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/build/target,sharing=locked \
+    cargo build --release -p server-utils \
+    && mkdir -p /out \
+    && cp target/release/map_viewer target/release/template_viewer /out/
 
 # Stage 2: runtime
 FROM ubuntu:24.04
@@ -37,5 +50,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Use software rendering so the container works without a GPU.
 ENV LIBGL_ALWAYS_SOFTWARE=1
 
-COPY --from=builder /build/target/release/map_viewer /usr/local/bin/
-COPY --from=builder /build/target/release/template_viewer /usr/local/bin/
+COPY --from=builder /out/map_viewer /usr/local/bin/
+COPY --from=builder /out/template_viewer /usr/local/bin/

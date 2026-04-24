@@ -379,6 +379,121 @@ sequenceDiagram
     GS-->>C: SV_LOGIN_OK + SV_TICK
 ```
 
+# Admin template-editing API
+
+The API service optionally exposes an authenticated `/admin/...` surface for
+editing live template data (item and character templates) on a running
+server. This is intended for trusted operators using the bundled
+`template_viewer` tool.
+
+## Enabling the surface
+
+Set `MAG_ADMIN_API_TOKEN` to a random secret of at least 32 bytes
+(`openssl rand -hex 32` is fine). When the variable is missing or shorter
+than 32 bytes, no `/admin` routes are mounted and the API logs a warning at
+startup. The matching server-side reload watcher reads the same token only to
+honour `MAG_ADMIN_RELOAD_DISABLED=1` as an emergency lockdown switch — it
+never validates tokens (the API is the only authoriser).
+
+## Authentication
+
+All admin requests require:
+
+```
+Authorization: Bearer <MAG_ADMIN_API_TOKEN>
+```
+
+The token is compared in constant time. Failed authentication attempts are
+tracked per IP: 5 failures within 60 seconds trigger a 10-minute lockout
+that returns `401` for every request from that IP, even with a valid token.
+
+## Rate limiting
+
+Admin routes are mounted on a sub-router that bypasses the public 1 req/s
+governor. Authenticated admin requests are limited to 8 req/s/IP with a
+small burst. Excess requests return `429`.
+
+## Endpoints
+
+| Method | Path | Description |
+| --- | --- | --- |
+| GET | `/admin/templates/items` | List item template summaries (paginated). |
+| GET | `/admin/templates/items/{idx}` | Read a single item template (`application/octet-stream`, bincode). |
+| PUT | `/admin/templates/items/{idx}` | Replace a single item template (`application/octet-stream`, bincode). |
+| GET | `/admin/templates/characters` | List character template summaries. |
+| GET | `/admin/templates/characters/{idx}` | Read a single character template (bincode bytes). |
+| PUT | `/admin/templates/characters/{idx}` | Replace a single character template (bincode bytes). |
+| POST | `/admin/templates/reload` | Ask the running server to swap its in-memory template tables. |
+| GET | `/admin/templates/reload/{request_id}` | Poll the lifecycle of a previous reload request. |
+| GET | `/admin/world/map` | Bulk-read every map tile (`application/octet-stream`, bincode `Vec<Map>`). |
+| GET | `/admin/world/map/version` | Read the admin map-version counter (increments on each accepted patch). |
+| GET | `/admin/world/map/{x}/{y}` | Read a single map tile (bincode `Map` bytes). |
+| PUT | `/admin/world/map/{x}/{y}` | Enqueue a patch for a single map tile (bincode `MapPatch` bytes). |
+| POST | `/admin/world/map/reload` | Ask the running server to drain pending map patches. |
+| GET | `/admin/world/map/reload/status` | Poll the lifecycle of a previous map-reload request (query `request_id`). |
+| GET | `/admin/world/items` | Bulk-read every item slot (`application/octet-stream`, bincode `Vec<Item>`). |
+| GET | `/admin/world/items/list` | Paginated JSON summaries (`from`, `limit` query params; default limit 256, max 4096). |
+| GET | `/admin/world/items/version` | Read the admin item-version counter. |
+| GET | `/admin/world/items/{id}` | Read a single item (bincode `Item` bytes). |
+| PUT | `/admin/world/items/{id}` | Enqueue a patch for a single item (bincode `ItemPatch`). |
+| POST | `/admin/world/items/reload` | Ask the running server to drain pending item patches. |
+| GET | `/admin/world/items/reload/status` | Poll the lifecycle of a previous item-reload request. |
+| GET | `/admin/world/characters` | Bulk-read every character slot (`application/octet-stream`, bincode `Vec<Character>`). |
+| GET | `/admin/world/characters/list` | Paginated JSON summaries. |
+| GET | `/admin/world/characters/version` | Read the admin character-version counter. |
+| GET | `/admin/world/characters/{id}` | Read a single character (bincode `Character` bytes). |
+| PUT | `/admin/world/characters/{id}` | Enqueue a patch for a single character (bincode `CharacterPatch`). |
+| POST | `/admin/world/characters/reload` | Ask the running server to drain pending character patches. |
+| GET | `/admin/world/characters/reload/status` | Poll the lifecycle of a previous character-reload request. |
+
+Full templates use bincode (`application/octet-stream`) instead of JSON to
+avoid serialising fixed-size byte arrays through quoted JSON. The
+`mag_core::template_store` module exposes the encode/decode helpers so the
+client and the server agree on the wire format.
+
+`POST /admin/templates/reload` accepts a JSON body
+`{"reload_items": bool, "reload_characters": bool}` and returns
+`{"request_id": "...", "status": "pending", "reload_items": ..., "reload_characters": ...}`.
+The API enqueues the request via a short-lived KeyDB key
+(`game:templates:reload_request`, TTL 30s) and the server's reload watcher
+consumes it on the tick thread, swaps the relevant template slices on
+`GameState`, and writes
+`game:templates:reload_status:{request_id} = applied:{unix_ts}` (TTL 5
+minutes) which the GET endpoint exposes.
+
+### Map editing
+
+The admin map surface mirrors the template flow but uses a producer/consumer
+queue instead of in-place writes so the running server can apply patches on
+its tick thread. `PUT /admin/world/map/{x}/{y}` accepts a bincode `MapPatch`
+(coords + static `sprite` / `fsprite` / `flags`); the URL coordinates must
+match the body. Patches are appended to `admin:map:patch_queue` and the
+version counter `admin:map:version` increments. `POST /admin/world/map/reload`
+stamps `admin:map:reload:request` (TTL 30s) and publishes on
+`admin:map:reload:channel`; the server drains the queue, applies every patch
+(preserving each tile's dynamic fields — `ch`, `to_ch`, `it`, `light`,
+`dlight`), then writes
+`admin:map:reload:status:{request_id} = applied:{unix_ts}` (TTL 5 minutes).
+
+### Item / character editing
+
+Items and characters use the same producer/consumer pattern as map tiles. A
+`PUT /admin/world/items/{id}` body is a bincode
+[`ItemPatch`](../core/src/item_store.rs) carrying only the **static authoring
+fields** of an [`Item`](../core/src/types/item.rs); the running tick loop
+preserves dynamic runtime fields (position, damage state, current age/damage,
+runtime sprite override). Characters work the same way — `CharacterPatch`
+covers static fields only and the server preserves dynamic state (position,
+combat AI, current resources, inventory, networking).
+
+Patches are appended to `game:item:patch_queue` / `game:char:patch_queue`
+and the version counters `game:meta:item:version` / `game:meta:char:version`
+increment. `POST /admin/world/items/reload` (and the characters equivalent)
+stamp `game:item:patch_request` / `game:char:patch_request` (TTL 30s); the
+server's watcher consumes them, drains the queue, and writes
+`game:item:patch_status:{request_id} = applied:{unix_ts}` (TTL 5 minutes)
+for the GET status endpoint.
+
 # Future Improvements
 ## Security Improvements
 

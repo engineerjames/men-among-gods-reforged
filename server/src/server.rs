@@ -60,6 +60,22 @@ pub struct Server {
     /// Background saver handle (only present when using KeyDB backend).
     background_saver: Option<BackgroundSaver>,
 
+    /// Background watcher that surfaces admin-issued template reload
+    /// requests to the tick loop.
+    template_reload_watcher: Option<crate::template_reload::TemplateReloadWatcher>,
+
+    /// Background watcher that surfaces admin-issued map-tile patches to
+    /// the tick loop.
+    map_patch_watcher: Option<crate::map_patch::MapPatchWatcher>,
+
+    /// Background watcher that surfaces admin-issued item patches to the
+    /// tick loop.
+    item_patch_watcher: Option<crate::item_patch::ItemPatchWatcher>,
+
+    /// Background watcher that surfaces admin-issued character patches to
+    /// the tick loop.
+    character_patch_watcher: Option<crate::character_patch::CharacterPatchWatcher>,
+
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
@@ -77,6 +93,10 @@ impl Server {
             net_io_perf_stats: StatisticsBuffer::new(100),
             measurement_interval: 20,
             background_saver: None,
+            template_reload_watcher: None,
+            map_patch_watcher: None,
+            item_patch_watcher: None,
+            character_patch_watcher: None,
             save_tick_counter: 0,
         }
     }
@@ -241,6 +261,18 @@ impl Server {
         // Always spawn the background KeyDB saver.
         log::info!("Starting background KeyDB saver thread...");
         self.background_saver = Some(background_saver::spawn());
+
+        // Spawn the admin template-reload watcher (no-op when disabled).
+        self.template_reload_watcher = crate::template_reload::TemplateReloadWatcher::spawn();
+
+        // Spawn the admin map-patch watcher (no-op when disabled).
+        self.map_patch_watcher = crate::map_patch::MapPatchWatcher::spawn();
+
+        // Spawn the admin item-patch watcher (no-op when disabled).
+        self.item_patch_watcher = crate::item_patch::ItemPatchWatcher::spawn();
+
+        // Spawn the admin character-patch watcher (no-op when disabled).
+        self.character_patch_watcher = crate::character_patch::CharacterPatchWatcher::spawn();
 
         Ok(())
     }
@@ -1026,6 +1058,358 @@ impl Server {
         }
     }
 
+    /// Drain pending admin reload requests and apply them to `gs`.
+    ///
+    /// Each drained request causes the watcher's KeyDB connection to be
+    /// reopened here on the tick thread (the watcher only signals; the swap
+    /// runs synchronously on the tick thread to keep `GameState` access
+    /// single-threaded). After applying, an `applied:{ts}` status entry is
+    /// written so the API can confirm completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose template slices will be replaced.
+    pub fn drain_template_reloads(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.template_reload_watcher.as_ref() else {
+            return;
+        };
+        while let Some(req) = watcher.try_recv() {
+            self.apply_template_reload(gs, req);
+        }
+    }
+
+    fn apply_template_reload(
+        &self,
+        gs: &mut GameState,
+        req: crate::template_reload::ReloadRequest,
+    ) {
+        let mut con = match server::keydb::connect() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!(
+                    "template reload {}: keydb connect failed: {}",
+                    req.request_id,
+                    e
+                );
+                return;
+            }
+        };
+
+        if req.reload_items {
+            match server::keydb_store::load_item_templates(&mut con) {
+                Ok(items) => {
+                    log::info!(
+                        "template reload {}: swapped {} item templates",
+                        req.request_id,
+                        items.len()
+                    );
+                    gs.item_templates = items;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "template reload {}: load item templates failed: {}",
+                        req.request_id,
+                        e
+                    );
+                    return;
+                }
+            }
+        }
+
+        if req.reload_characters {
+            match server::keydb_store::load_character_templates(&mut con) {
+                Ok(chars) => {
+                    log::info!(
+                        "template reload {}: swapped {} character templates",
+                        req.request_id,
+                        chars.len()
+                    );
+                    gs.character_templates = chars;
+                }
+                Err(e) => {
+                    log::warn!(
+                        "template reload {}: load character templates failed: {}",
+                        req.request_id,
+                        e
+                    );
+                    return;
+                }
+            }
+        }
+
+        if let Err(e) = crate::template_reload::write_applied_status(&mut con, &req.request_id) {
+            log::warn!(
+                "template reload {}: status write failed: {}",
+                req.request_id,
+                e
+            );
+        }
+    }
+
+    /// Drain any pending admin map-tile patches and apply them to `gs.map`.
+    ///
+    /// Called once per tick from the main loop (outside `tick`) so the swap
+    /// runs on the tick thread, keeping `GameState` single-threaded. Each
+    /// [`crate::map_patch::MapPatchEvent::Apply`] overwrites only the static
+    /// fields of the target tile, preserving the dynamic fields (`ch`,
+    /// `to_ch`, `it`, `light`, `dlight`). On
+    /// [`crate::map_patch::MapPatchEvent::ReloadCompleted`] we write the
+    /// `applied` status entry so the API can confirm completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose `map` slice will be patched.
+    pub fn drain_map_patches(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.map_patch_watcher.as_ref() else {
+            return;
+        };
+
+        let mut any_applied = false;
+        let mut completed_requests: Vec<String> = Vec::new();
+
+        while let Some(event) = watcher.try_recv() {
+            match event {
+                crate::map_patch::MapPatchEvent::Apply(patch) => {
+                    if Self::apply_map_patch(gs, &patch) {
+                        any_applied = true;
+                    }
+                }
+                crate::map_patch::MapPatchEvent::ReloadCompleted { request_id } => {
+                    completed_requests.push(request_id);
+                }
+            }
+        }
+
+        if any_applied {
+            gs.globals.set_dirty(true);
+        }
+
+        if completed_requests.is_empty() {
+            return;
+        }
+
+        let mut con = match server::keydb::connect() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("map patch reload: keydb connect failed: {}", e);
+                return;
+            }
+        };
+        for request_id in completed_requests {
+            if let Err(e) = crate::map_patch::write_applied_status(&mut con, &request_id) {
+                log::warn!(
+                    "map patch reload {}: status write failed: {}",
+                    request_id,
+                    e
+                );
+            } else {
+                log::info!("map patch reload {}: applied", request_id);
+            }
+        }
+    }
+
+    /// Merge a single patch into `gs.map`, preserving dynamic fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs`    - Mutable game state.
+    /// * `patch` - Static-field overrides from the admin API.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the tile was updated.
+    /// * `false` when the patch targets out-of-range coordinates.
+    fn apply_map_patch(gs: &mut GameState, patch: &core::map_store::MapPatch) -> bool {
+        let x = patch.x as usize;
+        let y = patch.y as usize;
+        let map_x = core::constants::SERVER_MAPX as usize;
+        let map_y = core::constants::SERVER_MAPY as usize;
+        if x >= map_x || y >= map_y {
+            log::warn!(
+                "map patch: dropping out-of-range coords ({}, {})",
+                patch.x,
+                patch.y
+            );
+            return false;
+        }
+        let idx = y * map_x + x;
+        let Some(tile) = gs.map.get_mut(idx) else {
+            return false;
+        };
+        tile.sprite = patch.sprite;
+        tile.fsprite = patch.fsprite;
+        tile.flags = patch.flags;
+        true
+    }
+
+    /// Drain any pending admin item patches and apply them to `gs.items`.
+    ///
+    /// Called once per tick from the main loop. Each
+    /// [`crate::item_patch::ItemPatchEvent::Apply`] overwrites only the
+    /// static authoring fields of the target item, preserving dynamic
+    /// runtime fields (position, damage state, current age/damage,
+    /// runtime sprite override). On
+    /// [`crate::item_patch::ItemPatchEvent::ReloadCompleted`] we write
+    /// the `applied` status entry so the API can confirm completion.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose `items` slice will be patched.
+    pub fn drain_item_patches(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.item_patch_watcher.as_ref() else {
+            return;
+        };
+
+        let mut any_applied = false;
+        let mut completed_requests: Vec<String> = Vec::new();
+
+        while let Some(event) = watcher.try_recv() {
+            match event {
+                crate::item_patch::ItemPatchEvent::Apply(patch) => {
+                    if Self::apply_item_patch(gs, &patch) {
+                        any_applied = true;
+                    }
+                }
+                crate::item_patch::ItemPatchEvent::ReloadCompleted { request_id } => {
+                    completed_requests.push(request_id);
+                }
+            }
+        }
+
+        if any_applied {
+            gs.globals.set_dirty(true);
+        }
+
+        if completed_requests.is_empty() {
+            return;
+        }
+
+        let mut con = match server::keydb::connect() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("item patch reload: keydb connect failed: {}", e);
+                return;
+            }
+        };
+        for request_id in completed_requests {
+            if let Err(e) = crate::item_patch::write_applied_status(&mut con, &request_id) {
+                log::warn!(
+                    "item patch reload {}: status write failed: {}",
+                    request_id,
+                    e
+                );
+            } else {
+                log::info!("item patch reload {}: applied", request_id);
+            }
+        }
+    }
+
+    /// Merge a single patch into `gs.items`, preserving dynamic fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs`    - Mutable game state.
+    /// * `patch` - Static-field overrides from the admin API.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the slot was updated.
+    /// * `false` when the patch targets an out-of-range slot.
+    fn apply_item_patch(gs: &mut GameState, patch: &core::item_store::ItemPatch) -> bool {
+        let idx = patch.id as usize;
+        let Some(slot) = gs.items.get_mut(idx) else {
+            log::warn!("item patch: dropping out-of-range slot {}", patch.id);
+            return false;
+        };
+        patch.apply_to(slot);
+        true
+    }
+
+    /// Drain any pending admin character patches and apply them to
+    /// `gs.characters`.
+    ///
+    /// Called once per tick from the main loop. Each
+    /// [`crate::character_patch::CharacterPatchEvent::Apply`] overwrites
+    /// only the static authoring fields of the target character,
+    /// preserving dynamic runtime fields (position, combat AI, current
+    /// resources, inventory, networking).
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose `characters` slice will be patched.
+    pub fn drain_character_patches(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.character_patch_watcher.as_ref() else {
+            return;
+        };
+
+        let mut any_applied = false;
+        let mut completed_requests: Vec<String> = Vec::new();
+
+        while let Some(event) = watcher.try_recv() {
+            match event {
+                crate::character_patch::CharacterPatchEvent::Apply(patch) => {
+                    if Self::apply_character_patch(gs, &patch) {
+                        any_applied = true;
+                    }
+                }
+                crate::character_patch::CharacterPatchEvent::ReloadCompleted { request_id } => {
+                    completed_requests.push(request_id);
+                }
+            }
+        }
+
+        if any_applied {
+            gs.globals.set_dirty(true);
+        }
+
+        if completed_requests.is_empty() {
+            return;
+        }
+
+        let mut con = match server::keydb::connect() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("character patch reload: keydb connect failed: {}", e);
+                return;
+            }
+        };
+        for request_id in completed_requests {
+            if let Err(e) = crate::character_patch::write_applied_status(&mut con, &request_id) {
+                log::warn!(
+                    "character patch reload {}: status write failed: {}",
+                    request_id,
+                    e
+                );
+            } else {
+                log::info!("character patch reload {}: applied", request_id);
+            }
+        }
+    }
+
+    /// Merge a single patch into `gs.characters`, preserving dynamic fields.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs`    - Mutable game state.
+    /// * `patch` - Static-field overrides from the admin API.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the slot was updated.
+    /// * `false` when the patch targets an out-of-range slot.
+    fn apply_character_patch(
+        gs: &mut GameState,
+        patch: &core::character_store::CharacterPatch,
+    ) -> bool {
+        let idx = patch.id as usize;
+        let Some(slot) = gs.characters.get_mut(idx) else {
+            log::warn!("character patch: dropping out-of-range slot {}", patch.id);
+            return false;
+        };
+        patch.apply_to(slot);
+        true
+    }
+
     /// Flush all pending background save jobs and then shut down the saver thread.
     ///
     /// `flush()` provides an explicit, observable synchronization point: it
@@ -1039,6 +1423,22 @@ impl Server {
     ///
     /// Call this during server shutdown, after the game loop has exited.
     pub fn shutdown_background_saver(&mut self) {
+        if let Some(mut watcher) = self.template_reload_watcher.take() {
+            log::info!("Stopping template reload watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.map_patch_watcher.take() {
+            log::info!("Stopping map patch watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.item_patch_watcher.take() {
+            log::info!("Stopping item patch watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.character_patch_watcher.take() {
+            log::info!("Stopping character patch watcher...");
+            watcher.shutdown();
+        }
         if let Some(mut saver) = self.background_saver.take() {
             log::info!("Flushing pending background save jobs...");
             if let Err(e) = saver.flush() {
@@ -1485,5 +1885,200 @@ mod tests {
         let server2 = Server::new();
         // Each server should have its own statistics buffers
         let _ = (&server.tick_perf_stats, &server2.tick_perf_stats);
+    }
+
+    /// `apply_map_patch` overwrites only the static tile fields and leaves
+    /// the dynamic fields (`ch`, `to_ch`, `it`, `light`, `dlight`)
+    /// untouched, so in-flight character and item state survives an admin
+    /// edit.
+    #[test]
+    fn apply_map_patch_preserves_dynamic_fields() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let map_x = core::constants::SERVER_MAPX as usize;
+            let x = 7usize;
+            let y = 11usize;
+            let idx = y * map_x + x;
+
+            // Seed dynamic fields on the target tile.
+            let tile = &mut gs.map[idx];
+            tile.sprite = 1;
+            tile.fsprite = 2;
+            tile.flags = 0x00FF;
+            tile.ch = 4242;
+            tile.to_ch = 9000;
+            tile.it = 333;
+            tile.light = 5;
+            tile.dlight = 6;
+
+            let patch = core::map_store::MapPatch {
+                x: x as u32,
+                y: y as u32,
+                sprite: 100,
+                fsprite: 200,
+                flags: 0xDEADBEEF,
+            };
+            assert!(Server::apply_map_patch(gs, &patch));
+
+            let tile = gs.map[idx];
+            assert_eq!(tile.sprite, 100);
+            assert_eq!(tile.fsprite, 200);
+            assert_eq!(tile.flags, 0xDEADBEEF);
+            assert_eq!(tile.ch, 4242, "ch must be preserved");
+            assert_eq!(tile.to_ch, 9000, "to_ch must be preserved");
+            assert_eq!(tile.it, 333, "it must be preserved");
+            assert_eq!(tile.light, 5, "light must be preserved");
+            assert_eq!(tile.dlight, 6, "dlight must be preserved");
+        });
+    }
+
+    /// Patches with coordinates outside the map are dropped without
+    /// clobbering neighboring tiles.
+    #[test]
+    fn apply_map_patch_rejects_out_of_range_coords() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let map_x = core::constants::SERVER_MAPX as usize;
+            let patch = core::map_store::MapPatch {
+                x: map_x as u32, // one past the last valid x
+                y: 0,
+                sprite: 9,
+                fsprite: 9,
+                flags: 9,
+            };
+            assert!(!Server::apply_map_patch(gs, &patch));
+            assert_eq!(gs.map[0].sprite, 0);
+        });
+    }
+
+    /// `apply_item_patch` overwrites the static authoring fields and leaves
+    /// dynamic runtime fields (position, damage state, current age/damage,
+    /// runtime sprite override) untouched.
+    #[test]
+    fn apply_item_patch_preserves_dynamic_fields() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let idx = 12usize;
+            let slot = &mut gs.items[idx];
+            slot.x = 50;
+            slot.y = 60;
+            slot.carried = 7;
+            slot.damage_state = 3;
+            slot.current_age = [11, 22];
+            slot.current_damage = 9;
+            slot.sprite_override = 555;
+            slot.value = 1;
+
+            let mut new_item = core::types::Item::default();
+            new_item.value = 9_999;
+            new_item.flags = 0xAA;
+            let patch = core::item_store::ItemPatch::from_item(idx, &new_item);
+            assert!(Server::apply_item_patch(gs, &patch));
+
+            let slot = gs.items[idx];
+            assert_eq!(slot.value, 9_999);
+            assert_eq!(slot.flags, 0xAA);
+            assert_eq!(slot.x, 50, "x must be preserved");
+            assert_eq!(slot.y, 60, "y must be preserved");
+            assert_eq!(slot.carried, 7, "carried must be preserved");
+            assert_eq!(slot.damage_state, 3, "damage_state must be preserved");
+            assert_eq!(slot.current_age, [11, 22], "current_age must be preserved");
+            assert_eq!(slot.current_damage, 9, "current_damage must be preserved");
+            assert_eq!(
+                slot.sprite_override, 555,
+                "sprite_override must be preserved"
+            );
+        });
+    }
+
+    /// Patches addressing slots outside `MAXITEM` are dropped.
+    #[test]
+    fn apply_item_patch_rejects_out_of_range_slot() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let mut new_item = core::types::Item::default();
+            new_item.value = 1;
+            let patch = core::item_store::ItemPatch::from_item(core::constants::MAXITEM, &new_item);
+            assert!(!Server::apply_item_patch(gs, &patch));
+        });
+    }
+
+    /// `apply_character_patch` overwrites only the static authoring fields
+    /// and leaves dynamic runtime state (position, combat AI, current
+    /// resources, inventory, networking) untouched.
+    #[test]
+    fn apply_character_patch_preserves_dynamic_fields() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let idx = 5usize;
+            let slot = &mut gs.characters[idx];
+            slot.x = 100;
+            slot.y = 200;
+            slot.tox = 101;
+            slot.toy = 201;
+            slot.dir = 3;
+            slot.status = 9;
+            slot.a_hp = 555;
+            slot.a_end = 444;
+            slot.a_mana = 333;
+            slot.gold = 12_345;
+            slot.item[0] = 99;
+            slot.worn[1] = 88;
+            slot.spell[2] = 77;
+            slot.citem = 66;
+            slot.attack_cn = 4;
+            slot.skill_nr = 5;
+            slot.goto_x = 110;
+            slot.goto_y = 210;
+            slot.idle = 222;
+            slot.addr = 0xDEADBEEF;
+            slot.depot[0] = 17;
+            slot.depot_cost = 4;
+            slot.luck = 50;
+            slot.kindred = 1;
+
+            let mut new_char = core::types::Character::default();
+            new_char.kindred = 9;
+            new_char.flags = 0xBEEF;
+            new_char.alignment = -7;
+            let patch = core::character_store::CharacterPatch::from_character(idx, &new_char);
+            assert!(Server::apply_character_patch(gs, &patch));
+
+            let slot = gs.characters[idx];
+            assert_eq!(slot.kindred, 9);
+            assert_eq!(slot.flags, 0xBEEF);
+            assert_eq!(slot.alignment, -7);
+            assert_eq!(slot.x, 100, "x must be preserved");
+            assert_eq!(slot.y, 200, "y must be preserved");
+            assert_eq!(slot.tox, 101, "tox must be preserved");
+            assert_eq!(slot.toy, 201, "toy must be preserved");
+            assert_eq!(slot.dir, 3, "dir must be preserved");
+            assert_eq!(slot.status, 9, "status must be preserved");
+            assert_eq!(slot.a_hp, 555, "a_hp must be preserved");
+            assert_eq!(slot.a_end, 444, "a_end must be preserved");
+            assert_eq!(slot.a_mana, 333, "a_mana must be preserved");
+            assert_eq!(slot.gold, 12_345, "gold must be preserved");
+            assert_eq!(slot.item[0], 99, "item[0] must be preserved");
+            assert_eq!(slot.worn[1], 88, "worn[1] must be preserved");
+            assert_eq!(slot.spell[2], 77, "spell[2] must be preserved");
+            assert_eq!(slot.citem, 66, "citem must be preserved");
+            assert_eq!(slot.attack_cn, 4, "attack_cn must be preserved");
+            assert_eq!(slot.skill_nr, 5, "skill_nr must be preserved");
+            assert_eq!(slot.goto_x, 110, "goto_x must be preserved");
+            assert_eq!(slot.goto_y, 210, "goto_y must be preserved");
+            assert_eq!(slot.idle, 222, "idle must be preserved");
+            assert_eq!(slot.addr, 0xDEADBEEF, "addr must be preserved");
+            assert_eq!(slot.depot[0], 17, "depot[0] must be preserved");
+            assert_eq!(slot.depot_cost, 4, "depot_cost must be preserved");
+            assert_eq!(slot.luck, 50, "luck must be preserved");
+        });
+    }
+
+    /// Patches addressing slots outside `MAXCHARS` are dropped.
+    #[test]
+    fn apply_character_patch_rejects_out_of_range_slot() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let new_char = core::types::Character::default();
+            let patch = core::character_store::CharacterPatch::from_character(
+                core::constants::MAXCHARS,
+                &new_char,
+            );
+            assert!(!Server::apply_character_patch(gs, &patch));
+        });
     }
 }

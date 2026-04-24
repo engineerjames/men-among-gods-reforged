@@ -15,17 +15,21 @@ pub mod result {
 }
 
 pub mod area;
+pub mod character_store;
 pub mod circular_buffer;
 pub mod client_commands;
 pub mod constants;
 pub mod encrypt;
+pub mod item_store;
 pub mod logout_reasons;
+pub mod map_store;
 pub mod names;
 pub mod ranks;
 pub mod server_commands;
 pub mod skills;
 pub mod stat_buffer;
 pub mod string_operations;
+pub mod template_store;
 pub mod traits;
 pub mod types;
 

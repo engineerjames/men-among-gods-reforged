@@ -252,6 +252,7 @@ dependencies = [
  "axum",
  "axum-governor",
  "axum-server",
+ "bincode",
  "core",
  "jsonwebtoken",
  "lazy-limit",
@@ -4329,7 +4330,10 @@ dependencies = [
  "image 0.25.10",
  "log",
  "redis",
+ "reqwest",
  "rfd",
+ "serde",
+ "serde_json",
  "server",
  "zip",
 ]

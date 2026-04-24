@@ -6,37 +6,35 @@ use server::snapshot::WorldSnapshot;
 /// The world-data source backing a viewer session.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum DataSource {
-    /// Read the latest persisted world state from KeyDB.
-    ///
-    /// Viewers must treat this source as read-only because the running server
-    /// owns the authoritative in-memory state and periodically overwrites
-    /// KeyDB from its background saver.
+    /// No source is configured yet.  The viewers will not attempt to load
+    /// any world data until the user opens a snapshot or connects to the API.
     #[default]
-    LiveKeyDbReadOnly,
+    NotLoaded,
 
     /// Read and edit a portable `.wsnap` snapshot file.
     SnapshotFile(PathBuf),
+
+    /// Read and edit live templates via the admin API of a running server.
+    ///
+    /// Phase 1: only item and character templates are exposed in this mode.
+    /// Other slices (items, characters, map) are returned empty.
+    LiveApi {
+        /// Base URL of the API service (e.g. `https://127.0.0.1:5554`).
+        base_url: String,
+        /// Static admin bearer token sent in `Authorization`.
+        token: String,
+    },
 }
 
 impl DataSource {
-    /// Return whether this source should allow world-data edits.
+    /// Return whether this source points at a running admin API.
     ///
     /// # Returns
     ///
-    /// * `true` for snapshot-backed sessions.
-    /// * `false` for live KeyDB sessions.
-    pub fn can_edit(&self) -> bool {
-        matches!(self, Self::SnapshotFile(_))
-    }
-
-    /// Return whether this source points at live KeyDB state.
-    ///
-    /// # Returns
-    ///
-    /// * `true` when the viewer is reading persisted KeyDB state.
+    /// * `true` when the viewer is connected to an admin API.
     /// * `false` otherwise.
-    pub fn is_live_keydb(&self) -> bool {
-        matches!(self, Self::LiveKeyDbReadOnly)
+    pub fn is_live_api(&self) -> bool {
+        matches!(self, Self::LiveApi { .. })
     }
 
     /// Return the snapshot path when this source is file-backed.
@@ -44,11 +42,11 @@ impl DataSource {
     /// # Returns
     ///
     /// * `Some(&Path)` for snapshot-backed sessions.
-    /// * `None` for live KeyDB sessions.
+    /// * `None` otherwise.
     pub fn snapshot_path(&self) -> Option<&Path> {
         match self {
             Self::SnapshotFile(path) => Some(path.as_path()),
-            Self::LiveKeyDbReadOnly => None,
+            Self::NotLoaded | Self::LiveApi { .. } => None,
         }
     }
 
@@ -59,16 +57,18 @@ impl DataSource {
     /// * A label suitable for toolbars and status text.
     pub fn display_label(&self) -> String {
         match self {
-            Self::LiveKeyDbReadOnly => "Live KeyDB (read-only)".to_string(),
+            Self::NotLoaded => "None".to_string(),
             Self::SnapshotFile(path) => format!("Snapshot: {}", path.display()),
+            Self::LiveApi { base_url, .. } => format!("Live API: {}", base_url),
         }
     }
 }
 
 /// Determine the data source from the current process arguments.
 ///
-/// Defaults to [`DataSource::LiveKeyDbReadOnly`]. Pass `--snapshot <path>` to
-/// load a `.wsnap` file for editable offline work instead.
+/// Defaults to [`DataSource::NotLoaded`] when no flags are supplied.
+/// Pass `--snapshot <path>` to load a `.wsnap` file, or `--api <url>`
+/// (with optional `--admin-token <tok>`) to connect to a running admin API.
 ///
 /// # Returns
 ///
@@ -124,8 +124,9 @@ pub fn graphics_zip_from_args() -> Option<PathBuf> {
 /// * `Err(String)` when the source cannot be read or decoded.
 pub fn load_world_snapshot(source: &DataSource) -> Result<WorldSnapshot, String> {
     match source {
-        DataSource::LiveKeyDbReadOnly => load_world_snapshot_from_keydb(),
+        DataSource::NotLoaded => Err("No source configured".to_string()),
         DataSource::SnapshotFile(path) => WorldSnapshot::from_file(path),
+        DataSource::LiveApi { base_url, token } => load_world_snapshot_from_api(base_url, token),
     }
 }
 
@@ -148,9 +149,29 @@ fn data_source_from_iter<I>(args: I) -> DataSource
 where
     I: IntoIterator<Item = OsString>,
 {
-    path_arg_from_iter(args, &["--snapshot"])
+    let args: Vec<OsString> = args.into_iter().collect();
+
+    // --api <url> [--admin-token <tok>] takes precedence over --snapshot.
+    if let Some(base_url) = string_arg_from_slice(&args, &["--api", "--admin-api"]) {
+        let token = string_arg_from_slice(&args, &["--admin-token", "--api-token"])
+            .or_else(|| std::env::var("MAG_ADMIN_API_TOKEN").ok())
+            .unwrap_or_default();
+        return DataSource::LiveApi { base_url, token };
+    }
+
+    path_arg_from_iter(args.into_iter(), &["--snapshot"])
         .map(DataSource::SnapshotFile)
         .unwrap_or_default()
+}
+
+fn string_arg_from_slice(args: &[OsString], flag_names: &[&str]) -> Option<String> {
+    for window in args.windows(2) {
+        let flag = window[0].to_string_lossy();
+        if flag_names.iter().any(|candidate| *candidate == flag) {
+            return Some(window[1].to_string_lossy().into_owned());
+        }
+    }
+    None
 }
 
 fn path_arg_from_iter<I>(args: I, flag_names: &[&str]) -> Option<PathBuf>
@@ -171,20 +192,79 @@ where
     None
 }
 
-fn load_world_snapshot_from_keydb() -> Result<WorldSnapshot, String> {
-    let mut con = server::keydb::connect()?;
-    let data = server::keydb_store::load_all(&mut con)?;
+/// Phase 1 LiveApi snapshot loader: fetches only lightweight summaries for
+/// item and character templates (2 HTTP requests total). Full template data
+/// is **not** loaded here — call
+/// [`AdminClient::fetch_single_item_template`] /
+/// [`AdminClient::fetch_single_character_template`] on demand when a slot
+/// is selected to avoid hammering the 1 req/sec rate-limiter.
+///
+/// Each slot in the returned vecs has `used` and `name` populated from the
+/// summary. All other fields are zeroed/default and should be replaced with
+/// the result of a single-slot fetch before the slot is displayed in detail.
+///
+/// # Arguments
+///
+/// * `base_url` - Base URL of the admin API.
+/// * `token` - Static admin bearer token.
+///
+/// # Returns
+///
+/// * `Ok(WorldSnapshot)` with stub templates and all other slices empty.
+/// * `Err(message)` on HTTP or decode failure.
+fn load_world_snapshot_from_api(base_url: &str, token: &str) -> Result<WorldSnapshot, String> {
+    use mag_core::constants::{MAXTCHARS, MAXTITEM};
+    use mag_core::string_operations::write_ascii_into_fixed;
+    use mag_core::types::{Character, Item};
+
+    if token.is_empty() {
+        return Err(
+            "Admin token is empty. Pass --admin-token <tok> or set MAG_ADMIN_API_TOKEN."
+                .to_string(),
+        );
+    }
+    let client = crate::admin_client::AdminClient::new(base_url, token)?;
+
+    // Two requests for the template summaries, plus three bulk requests for
+    // the live world state (map, items, characters).
+    let item_list = client.fetch_item_template_summaries()?;
+    let char_list = client.fetch_character_template_summaries()?;
+    let map_tiles = client.fetch_map_tiles()?;
+    let items = client.fetch_items()?;
+    let characters = client.fetch_characters()?;
+
+    // Build placeholder vecs the same length as the full template arrays so
+    // the sidebar list renders correctly. Only name/used are populated; the
+    // rest stays zeroed until the slot is actually opened.
+    let mut item_templates: Vec<Item> = vec![Item::default(); MAXTITEM];
+    for summary in &item_list.items {
+        if summary.id < MAXTITEM {
+            let slot = &mut item_templates[summary.id];
+            slot.used = u8::from(summary.used);
+            write_ascii_into_fixed(&mut slot.name, &summary.name);
+        }
+    }
+
+    let mut character_templates: Vec<Character> = vec![Character::default(); MAXTCHARS];
+    for summary in &char_list.items {
+        if summary.id < MAXTCHARS {
+            let slot = &mut character_templates[summary.id];
+            slot.used = u8::from(summary.used);
+            write_ascii_into_fixed(&mut slot.name, &summary.name);
+        }
+    }
+
     Ok(WorldSnapshot::new(
-        data.map,
-        data.items,
-        data.item_templates,
-        data.characters,
-        data.character_templates,
-        data.effects,
-        data.globals,
-        data.bad_names,
-        data.bad_words,
-        data.message_of_the_day,
+        map_tiles,
+        items,
+        item_templates,
+        characters,
+        character_templates,
+        Vec::new(),
+        mag_core::types::Global::default(),
+        Vec::new(),
+        Vec::new(),
+        String::new(),
     ))
 }
 
@@ -235,22 +315,15 @@ mod tests {
         std::fs::remove_file(&path).expect("remove test snapshot path");
     }
 
-    /// Default to live KeyDB mode when no valid snapshot path is supplied.
+    /// Default to `NotLoaded` when no valid snapshot path is supplied.
     #[test]
-    fn args_default_to_live_keydb() {
+    fn args_default_to_not_loaded() {
         let source = data_source_from_iter([
             OsString::from("--snapshot"),
             OsString::from("/missing/file.wsnap"),
         ]);
 
-        assert_eq!(source, DataSource::LiveKeyDbReadOnly);
-    }
-
-    /// Expose editing only for snapshot-backed sessions.
-    #[test]
-    fn snapshot_sources_are_editable() {
-        assert!(DataSource::SnapshotFile(PathBuf::from("world.wsnap")).can_edit());
-        assert!(!DataSource::LiveKeyDbReadOnly.can_edit());
+        assert_eq!(source, DataSource::NotLoaded);
     }
 
     /// Replace path-hostile characters so generated temp files work on Windows.

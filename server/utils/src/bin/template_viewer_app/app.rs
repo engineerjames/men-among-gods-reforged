@@ -5,7 +5,8 @@ use mag_core::skills;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::{ranks, traits};
 use server::snapshot::WorldSnapshot;
-use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
+use server_utils::{AdminClient, DataSource, load_world_snapshot, save_world_snapshot};
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -45,6 +46,42 @@ pub(crate) struct TemplateViewerApp {
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
     dirty: bool,
+    /// Slots in `item_templates` that have unsaved edits (LiveApi mode).
+    dirty_item_template_slots: HashSet<usize>,
+    /// Slots in `character_templates` that have unsaved edits (LiveApi mode).
+    dirty_character_template_slots: HashSet<usize>,
+    /// Slots in `items` (live world state) that have unsaved edits.
+    dirty_item_slots: HashSet<usize>,
+    /// Slots in `characters` (live world state) that have unsaved edits.
+    dirty_character_slots: HashSet<usize>,
+    /// Item template slots whose full bincode payload has been fetched from
+    /// the API. Slots absent from this set show a placeholder in the detail
+    /// panel until they are lazily loaded on first selection.
+    fully_loaded_item_slots: HashSet<usize>,
+    /// Character template slots whose full bincode payload has been fetched.
+    fully_loaded_char_slots: HashSet<usize>,
+    /// Cached admin API client for LiveApi mode.
+    admin_client: Option<AdminClient>,
+    /// Pending reload request id awaiting a status update.
+    pending_reload_request_id: Option<String>,
+    /// Whether the "Connect to admin API" modal dialog is open.
+    connect_dialog_open: bool,
+    /// Working draft of the API base URL inside the connect dialog.
+    connect_form_base_url: String,
+    /// Working draft of the admin token inside the connect dialog.
+    connect_form_token: String,
+    /// Whether the admin-token field is currently shown in plaintext.
+    connect_form_show_token: bool,
+    /// Last error reported by the connect dialog (e.g. failed fetch).
+    connect_dialog_error: Option<String>,
+    /// Whether the "confirm server reload" modal dialog is open.
+    reload_confirm_open: bool,
+    /// Wall-clock instant when the most recent reload request was fired.
+    /// Used to auto-poll the status endpoint every ~2 s until applied or
+    /// the 60-second TTL elapses.
+    pending_reload_since: Option<std::time::Instant>,
+    /// Wall-clock instant of the last automatic reload-status poll.
+    last_reload_poll: Option<std::time::Instant>,
     save_status: Option<String>,
     initial_load_done: bool,
     frame_count: u32,
@@ -85,6 +122,22 @@ impl Default for TemplateViewerApp {
             graphics_zip: None,
             graphics_zip_error: None,
             dirty: false,
+            dirty_item_template_slots: HashSet::new(),
+            dirty_character_template_slots: HashSet::new(),
+            dirty_item_slots: HashSet::new(),
+            dirty_character_slots: HashSet::new(),
+            fully_loaded_item_slots: HashSet::new(),
+            fully_loaded_char_slots: HashSet::new(),
+            admin_client: None,
+            pending_reload_request_id: None,
+            connect_dialog_open: false,
+            connect_form_base_url: String::new(),
+            connect_form_token: String::new(),
+            connect_form_show_token: false,
+            connect_dialog_error: None,
+            reload_confirm_open: false,
+            pending_reload_since: None,
+            last_reload_poll: None,
             save_status: None,
             initial_load_done: false,
             frame_count: 0,
@@ -95,14 +148,17 @@ impl Default for TemplateViewerApp {
 
 impl TemplateViewerApp {
     pub(crate) fn new(data_source: DataSource) -> Self {
+        let admin_client = match &data_source {
+            DataSource::LiveApi { base_url, token } => {
+                AdminClient::new(base_url.clone(), token.clone()).ok()
+            }
+            _ => None,
+        };
         Self {
             data_source: data_source.clone(),
+            admin_client,
             ..Self::default()
         }
-    }
-
-    fn can_edit_world(&self) -> bool {
-        self.data_source.can_edit()
     }
 
     fn clear_loaded_world(&mut self) {
@@ -118,6 +174,12 @@ impl TemplateViewerApp {
         self.selected_character_instance_index = None;
         self.item_popup_id = None;
         self.dirty = false;
+        self.dirty_item_template_slots.clear();
+        self.dirty_character_template_slots.clear();
+        self.dirty_item_slots.clear();
+        self.dirty_character_slots.clear();
+        self.fully_loaded_item_slots.clear();
+        self.fully_loaded_char_slots.clear();
     }
 
     fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
@@ -129,6 +191,24 @@ impl TemplateViewerApp {
         self.loaded_world = Some(world);
         self.save_status = Some(status);
         self.dirty = false;
+        self.dirty_item_template_slots.clear();
+        self.dirty_character_template_slots.clear();
+        self.dirty_item_slots.clear();
+        self.dirty_character_slots.clear();
+        self.fully_loaded_item_slots.clear();
+        self.fully_loaded_char_slots.clear();
+
+        // For sources that supply full template data up-front (KeyDB / snapshot),
+        // mark every slot as loaded. For LiveApi the slot data arrives lazily on
+        // first selection, so we leave the sets empty.
+        if !self.data_source.is_live_api() {
+            for i in 0..self.item_templates.len() {
+                self.fully_loaded_item_slots.insert(i);
+            }
+            for i in 0..self.character_templates.len() {
+                self.fully_loaded_char_slots.insert(i);
+            }
+        }
 
         if matches!(
             self.view_mode,
@@ -143,17 +223,21 @@ impl TemplateViewerApp {
     }
 
     fn load_current_source(&mut self) {
+        if matches!(self.data_source, DataSource::NotLoaded) {
+            return;
+        }
+
         self.load_error = None;
         self.save_status = None;
 
         match load_world_snapshot(&self.data_source) {
             Ok(world) => {
-                let status = if self.data_source.is_live_keydb() {
-                    "Loaded persisted KeyDB state (read-only)".to_string()
-                } else if let Some(path) = self.data_source.snapshot_path() {
+                let status = if let Some(path) = self.data_source.snapshot_path() {
                     format!("Loaded snapshot: {}", path.display())
                 } else {
-                    "Loaded world state".to_string()
+                    // LiveApi: status text is set by connect_to_api_from_form;
+                    // return an empty string so the toolbar shows nothing here.
+                    String::new()
                 };
 
                 log::info!(
@@ -193,10 +277,6 @@ impl TemplateViewerApp {
     }
 
     fn save_snapshot_as(&mut self, path: &Path) -> Result<(), String> {
-        if !self.can_edit_world() {
-            return Err("Live KeyDB mode is read-only".to_string());
-        }
-
         self.sync_loaded_world_from_views()?;
         let world = self
             .loaded_world
@@ -211,11 +291,6 @@ impl TemplateViewerApp {
     fn save_snapshot_as_dialog(&mut self) {
         self.save_status = None;
 
-        if !self.can_edit_world() {
-            self.save_status = Some("Live KeyDB mode is read-only".to_string());
-            return;
-        }
-
         let Some(path) = rfd::FileDialog::new()
             .add_filter("World Snapshot", &["wsnap"])
             .set_file_name("world_snapshot.wsnap")
@@ -227,6 +302,10 @@ impl TemplateViewerApp {
         match self.save_snapshot_as(&path) {
             Ok(()) => {
                 self.dirty = false;
+                self.dirty_item_template_slots.clear();
+                self.dirty_character_template_slots.clear();
+                self.dirty_item_slots.clear();
+                self.dirty_character_slots.clear();
                 self.save_status = Some(format!("Saved snapshot: {}", path.display()));
             }
             Err(e) => {
@@ -235,9 +314,247 @@ impl TemplateViewerApp {
         }
     }
 
-    fn load_from_keydb(&mut self) {
-        self.data_source = DataSource::LiveKeyDbReadOnly;
+    /// Push every dirty template slot to the admin API and clear the dirty
+    /// sets. Called instead of snapshot save in LiveApi mode.
+    fn save_to_api(&mut self) {
+        self.save_status = None;
+        if let Err(e) = self.sync_loaded_world_from_views() {
+            self.save_status = Some(format!("Save failed: {e}"));
+            return;
+        }
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            self.save_status = Some("Admin client not initialized".to_string());
+            return;
+        };
+
+        let item_slots: Vec<usize> = self.dirty_item_template_slots.iter().copied().collect();
+        let char_slots: Vec<usize> = self
+            .dirty_character_template_slots
+            .iter()
+            .copied()
+            .collect();
+        let item_inst_slots: Vec<usize> = self.dirty_item_slots.iter().copied().collect();
+        let char_inst_slots: Vec<usize> = self.dirty_character_slots.iter().copied().collect();
+
+        let mut errors: Vec<String> = Vec::new();
+        let mut item_pushed = 0usize;
+        let mut char_pushed = 0usize;
+        let mut item_inst_pushed = 0usize;
+        let mut char_inst_pushed = 0usize;
+
+        for idx in &item_slots {
+            if let Some(item) = self.item_templates.get(*idx) {
+                match client.put_item_template(*idx, item) {
+                    Ok(()) => item_pushed += 1,
+                    Err(e) => errors.push(format!("item[{idx}]: {e}")),
+                }
+            }
+        }
+        for idx in &char_slots {
+            if let Some(ch) = self.character_templates.get(*idx) {
+                match client.put_character_template(*idx, ch) {
+                    Ok(()) => char_pushed += 1,
+                    Err(e) => errors.push(format!("char[{idx}]: {e}")),
+                }
+            }
+        }
+        for idx in &item_inst_slots {
+            if let Some(item) = self.items.get(*idx) {
+                let patch = mag_core::item_store::ItemPatch::from_item(*idx, item);
+                match client.put_item_patch(*idx, &patch) {
+                    Ok(_) => item_inst_pushed += 1,
+                    Err(e) => errors.push(format!("item_inst[{idx}]: {e}")),
+                }
+            }
+        }
+        for idx in &char_inst_slots {
+            if let Some(ch) = self.characters.get(*idx) {
+                let patch = mag_core::character_store::CharacterPatch::from_character(*idx, ch);
+                match client.put_character_patch(*idx, &patch) {
+                    Ok(_) => char_inst_pushed += 1,
+                    Err(e) => errors.push(format!("char_inst[{idx}]: {e}")),
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            self.dirty = false;
+            self.dirty_item_template_slots.clear();
+            self.dirty_character_template_slots.clear();
+            self.dirty_item_slots.clear();
+            self.dirty_character_slots.clear();
+            self.save_status = Some(format!(
+                "Saved to API: {item_pushed} item template(s), {char_pushed} character template(s), {item_inst_pushed} item(s), {char_inst_pushed} character(s). Use 'Reload server templates' to apply."
+            ));
+        } else {
+            // Drop the slots we pushed successfully so retry only sends failed ones.
+            for idx in &item_slots {
+                if !errors.iter().any(|e| e.contains(&format!("item[{idx}]"))) {
+                    self.dirty_item_template_slots.remove(idx);
+                }
+            }
+            for idx in &char_slots {
+                if !errors.iter().any(|e| e.contains(&format!("char[{idx}]"))) {
+                    self.dirty_character_template_slots.remove(idx);
+                }
+            }
+            for idx in &item_inst_slots {
+                if !errors
+                    .iter()
+                    .any(|e| e.contains(&format!("item_inst[{idx}]")))
+                {
+                    self.dirty_item_slots.remove(idx);
+                }
+            }
+            for idx in &char_inst_slots {
+                if !errors
+                    .iter()
+                    .any(|e| e.contains(&format!("char_inst[{idx}]")))
+                {
+                    self.dirty_character_slots.remove(idx);
+                }
+            }
+            self.save_status = Some(format!(
+                "Save partial: {item_pushed} item tpl, {char_pushed} char tpl, {item_inst_pushed} items, {char_inst_pushed} chars; {} error(s): {}",
+                errors.len(),
+                errors.join("; ")
+            ));
+        }
+    }
+
+    /// Open the modal dialog used to connect to the admin API.
+    ///
+    /// Pre-fills the form with the current LiveApi credentials when one is
+    /// active, otherwise falls back to `MAG_API_BASE_URL` /
+    /// `MAG_ADMIN_API_TOKEN` env vars, then to safe local-dev defaults.
+    fn open_connect_dialog(&mut self) {
+        match &self.data_source {
+            DataSource::LiveApi { base_url, token } => {
+                self.connect_form_base_url = base_url.clone();
+                self.connect_form_token = token.clone();
+            }
+            _ => {
+                if self.connect_form_base_url.is_empty() {
+                    self.connect_form_base_url = std::env::var("MAG_API_BASE_URL")
+                        .unwrap_or_else(|_| "https://127.0.0.1:5554".to_string());
+                }
+                if self.connect_form_token.is_empty() {
+                    self.connect_form_token =
+                        std::env::var("MAG_ADMIN_API_TOKEN").unwrap_or_default();
+                }
+            }
+        }
+        self.connect_dialog_error = None;
+        self.connect_dialog_open = true;
+    }
+
+    /// Switch the data source to LiveApi using the values currently in the
+    /// connect-dialog form, build the admin client, and reload the world.
+    ///
+    /// Closes the dialog only on success; on failure leaves it open with an
+    /// inline error message so the user can correct the URL/token.
+    fn connect_to_api_from_form(&mut self) {
+        let base_url = self.connect_form_base_url.trim().to_string();
+        let token = self.connect_form_token.trim().to_string();
+
+        if base_url.is_empty() {
+            self.connect_dialog_error = Some("Base URL is required".to_string());
+            return;
+        }
+        if token.is_empty() {
+            self.connect_dialog_error = Some("Admin token is required".to_string());
+            return;
+        }
+
+        let client = match AdminClient::new(base_url.clone(), token.clone()) {
+            Ok(c) => c,
+            Err(e) => {
+                self.connect_dialog_error = Some(format!("Build client failed: {e}"));
+                return;
+            }
+        };
+
+        self.admin_client = Some(client);
+        self.data_source = DataSource::LiveApi {
+            base_url: base_url.clone(),
+            token,
+        };
         self.load_current_source();
+
+        if let Some(err) = self.load_error.clone() {
+            // Roll back so the user can re-edit the form without confusion.
+            self.connect_dialog_error = Some(format!("Connection test failed: {err}"));
+            self.admin_client = None;
+            return;
+        }
+
+        self.connect_dialog_open = false;
+        self.connect_dialog_error = None;
+        // The "Source:" label in the toolbar already shows the URL, so we
+        // only need a short confirmation without repeating it.
+        self.save_status = Some("Connected to admin API".to_string());
+    }
+
+    /// Trigger a reload on the running server for both template kinds, plus
+    /// items and characters. Status display tracks the templates request id.
+    fn request_server_reload(&mut self) {
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            self.save_status = Some("Admin client not initialized".to_string());
+            return;
+        };
+
+        let mut extra: Vec<String> = Vec::new();
+        if let Err(e) = client.request_items_reload() {
+            extra.push(format!("items reload failed: {e}"));
+        } else {
+            extra.push("items".to_string());
+        }
+        if let Err(e) = client.request_characters_reload() {
+            extra.push(format!("characters reload failed: {e}"));
+        } else {
+            extra.push("characters".to_string());
+        }
+
+        match client.request_reload(true, true) {
+            Ok(resp) => {
+                self.pending_reload_request_id = Some(resp.request_id.clone());
+                self.pending_reload_since = Some(std::time::Instant::now());
+                self.save_status = Some(format!(
+                    "Reload requested ({}): kinds=[{}] + [{}]",
+                    resp.request_id,
+                    resp.kinds.join(", "),
+                    extra.join(", ")
+                ));
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Reload failed: {e}"));
+            }
+        }
+    }
+
+    /// Poll the most recent reload request once (best effort).
+    fn poll_reload_status(&mut self) {
+        let Some(request_id) = self.pending_reload_request_id.clone() else {
+            return;
+        };
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            return;
+        };
+        match client.reload_status(&request_id) {
+            Ok(status) => {
+                if status.status == "applied" {
+                    self.pending_reload_request_id = None;
+                    self.pending_reload_since = None;
+                    self.save_status = Some(format!("Reload applied ({})", status.request_id));
+                } else {
+                    self.save_status =
+                        Some(format!("Reload status ({request_id}): {}", status.status));
+                }
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Reload status error: {e}"));
+            }
+        }
     }
 
     fn load_from_snapshot(&mut self, path: PathBuf) {
@@ -245,12 +562,158 @@ impl TemplateViewerApp {
         self.load_current_source();
     }
 
-    fn revert_unsaved_changes(&mut self) {
-        if !self.can_edit_world() {
-            self.save_status = Some("Live KeyDB mode is read-only".to_string());
+    /// Render the modal dialog used to enter admin API connection details.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - egui context used to host the modal window.
+    fn render_connect_dialog(&mut self, ctx: &egui::Context) {
+        if !self.connect_dialog_open {
             return;
         }
 
+        let mut still_open = true;
+        let mut apply_clicked = false;
+        let mut cancel_clicked = false;
+
+        egui::Window::new("Connect to Admin API")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut still_open)
+            .show(ctx, |ui| {
+                ui.set_min_width(420.0);
+                ui.label(
+                    "Point the template viewer at a running API service. \
+                     Use a local URL when developing, or your production URL.",
+                );
+                ui.add_space(6.0);
+
+                egui::Grid::new("connect_dialog_grid")
+                    .num_columns(2)
+                    .spacing([8.0, 6.0])
+                    .show(ui, |ui| {
+                        ui.label("Base URL:");
+                        ui.add(
+                            egui::TextEdit::singleline(&mut self.connect_form_base_url)
+                                .hint_text("https://127.0.0.1:5554")
+                                .desired_width(280.0),
+                        );
+                        ui.end_row();
+
+                        ui.label("Admin token:");
+                        ui.horizontal(|ui| {
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.connect_form_token)
+                                    .password(!self.connect_form_show_token)
+                                    .hint_text("MAG_ADMIN_API_TOKEN")
+                                    .desired_width(220.0),
+                            );
+                            ui.checkbox(&mut self.connect_form_show_token, "Show");
+                        });
+                        ui.end_row();
+                    });
+
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(
+                        "Defaults are read from MAG_API_BASE_URL and MAG_ADMIN_API_TOKEN.",
+                    )
+                    .small()
+                    .weak(),
+                );
+
+                if let Some(err) = &self.connect_dialog_error {
+                    ui.add_space(6.0);
+                    ui.colored_label(egui::Color32::RED, err);
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Connect").clicked() {
+                        apply_clicked = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
+                    }
+                });
+            });
+
+        if cancel_clicked || !still_open {
+            self.connect_dialog_open = false;
+            self.connect_dialog_error = None;
+        } else if apply_clicked {
+            self.connect_to_api_from_form();
+        }
+    }
+
+    /// Render the confirmation modal for triggering a server-side template
+    /// reload. The reload only happens when the user explicitly confirms.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - egui context used to host the modal window.
+    fn render_reload_confirm_dialog(&mut self, ctx: &egui::Context) {
+        if !self.reload_confirm_open {
+            return;
+        }
+
+        let mut still_open = true;
+        let mut confirm_clicked = false;
+        let mut cancel_clicked = false;
+        let has_unsaved = self.dirty;
+
+        egui::Window::new("Reload Server Templates?")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .open(&mut still_open)
+            .show(ctx, |ui| {
+                ui.set_min_width(440.0);
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "\u{26A0}  This will swap the running server's in-memory template tables.",
+                );
+                ui.add_space(6.0);
+                ui.label(
+                    "Existing entities and ongoing player actions may be affected. \
+                     Run this only when you have just pushed template edits and \
+                     are ready to apply them live.",
+                );
+
+                if has_unsaved {
+                    ui.add_space(6.0);
+                    ui.colored_label(
+                        egui::Color32::RED,
+                        "You have unsaved local edits. Save to API first or they will not be reloaded.",
+                    );
+                }
+
+                ui.add_space(10.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(egui::Button::new(
+                            egui::RichText::new("Reload now").color(egui::Color32::WHITE),
+                        ).fill(egui::Color32::from_rgb(160, 60, 60)))
+                        .clicked()
+                    {
+                        confirm_clicked = true;
+                    }
+                    if ui.button("Cancel").clicked() {
+                        cancel_clicked = true;
+                    }
+                });
+            });
+
+        if cancel_clicked || !still_open {
+            self.reload_confirm_open = false;
+        } else if confirm_clicked {
+            self.reload_confirm_open = false;
+            self.request_server_reload();
+        }
+    }
+
+    fn revert_unsaved_changes(&mut self) {
         self.save_status = None;
 
         let prev_view_mode = self.view_mode;
@@ -273,6 +736,10 @@ impl TemplateViewerApp {
             prev_selected_character_instance_index.filter(|&i| i < self.characters.len());
 
         self.dirty = false;
+        self.dirty_item_template_slots.clear();
+        self.dirty_character_template_slots.clear();
+        self.dirty_item_slots.clear();
+        self.dirty_character_slots.clear();
         if self.load_error.is_some() {
             self.save_status = Some("Reverted changes (with load errors)".to_string());
         } else {
@@ -283,6 +750,30 @@ impl TemplateViewerApp {
     fn mark_dirty_if(&mut self, changed: bool) {
         if changed {
             self.dirty = true;
+            // Track per-slot dirty bits so LiveApi save can PUT only the
+            // slots the user actually edited.
+            match self.view_mode {
+                ViewMode::ItemTemplates => {
+                    if let Some(idx) = self.selected_item_index {
+                        self.dirty_item_template_slots.insert(idx);
+                    }
+                }
+                ViewMode::CharacterTemplates => {
+                    if let Some(idx) = self.selected_character_index {
+                        self.dirty_character_template_slots.insert(idx);
+                    }
+                }
+                ViewMode::Items => {
+                    if let Some(idx) = self.selected_item_instance_index {
+                        self.dirty_item_slots.insert(idx);
+                    }
+                }
+                ViewMode::Characters => {
+                    if let Some(idx) = self.selected_character_instance_index {
+                        self.dirty_character_slots.insert(idx);
+                    }
+                }
+            }
         }
     }
 
@@ -357,6 +848,31 @@ impl TemplateViewerApp {
         source: ItemDetailsSource,
         idx: usize,
     ) {
+        // In LiveApi mode, item templates are populated with summary-only stubs
+        // on connect. Fetch the full bincode payload the first time a slot is
+        // selected (lazy load, 1 request per unique slot).
+        if source == ItemDetailsSource::ItemTemplates
+            && self.data_source.is_live_api()
+            && !self.fully_loaded_item_slots.contains(&idx)
+        {
+            if let Some(client) = self.admin_client.as_ref().cloned() {
+                match client.fetch_single_item_template(idx) {
+                    Ok(item) => {
+                        if idx < self.item_templates.len() {
+                            self.item_templates[idx] = item;
+                        }
+                        self.fully_loaded_item_slots.insert(idx);
+                    }
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            format!("Failed to load item template {idx}: {e}"),
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         let item_ptr: *mut mag_core::types::Item = match source {
             ItemDetailsSource::ItemTemplates => {
                 if idx >= self.item_templates.len() {
@@ -385,6 +901,29 @@ impl TemplateViewerApp {
         source: CharacterDetailsSource,
         idx: usize,
     ) {
+        // Same lazy-fetch as for item templates — only one request per slot.
+        if source == CharacterDetailsSource::CharacterTemplates
+            && self.data_source.is_live_api()
+            && !self.fully_loaded_char_slots.contains(&idx)
+        {
+            if let Some(client) = self.admin_client.as_ref().cloned() {
+                match client.fetch_single_character_template(idx) {
+                    Ok(ch) => {
+                        if idx < self.character_templates.len() {
+                            self.character_templates[idx] = ch;
+                        }
+                        self.fully_loaded_char_slots.insert(idx);
+                    }
+                    Err(e) => {
+                        ui.colored_label(
+                            egui::Color32::RED,
+                            format!("Failed to load character template {idx}: {e}"),
+                        );
+                        return;
+                    }
+                }
+            }
+        }
         let character_ptr: *mut mag_core::types::Character = match source {
             CharacterDetailsSource::CharacterTemplates => {
                 if idx >= self.character_templates.len() {
@@ -1712,8 +2251,12 @@ impl eframe::App for TemplateViewerApp {
             let mods = i.modifiers;
             (mods.command || mods.ctrl) && i.key_pressed(egui::Key::S)
         });
-        if save_shortcut && self.can_edit_world() && self.loaded_world.is_some() {
-            self.save_snapshot_as_dialog();
+        if save_shortcut && self.loaded_world.is_some() {
+            if self.data_source.is_live_api() {
+                self.save_to_api();
+            } else {
+                self.save_snapshot_as_dialog();
+            }
         }
 
         if !self.initial_load_done && self.frame_count > 2 {
@@ -1726,21 +2269,84 @@ impl eframe::App for TemplateViewerApp {
             }
         }
 
+        // Auto-poll reload status every ~2 s while a request is pending.
+        // We stop after 60 s to match the server-side STATUS_TTL and avoid
+        // hammering the API if the server never responds.
+        if self.pending_reload_request_id.is_some() {
+            const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+            const GIVE_UP: std::time::Duration = std::time::Duration::from_secs(60);
+
+            let since_start = self
+                .pending_reload_since
+                .map(|t| t.elapsed())
+                .unwrap_or(GIVE_UP);
+
+            if since_start >= GIVE_UP {
+                self.pending_reload_request_id = None;
+                self.pending_reload_since = None;
+                self.last_reload_poll = None;
+                self.save_status = Some("Reload status: timed out waiting for server".to_string());
+            } else {
+                let should_poll = self
+                    .last_reload_poll
+                    .map(|t| t.elapsed() >= POLL_INTERVAL)
+                    .unwrap_or(true); // poll immediately on first frame after request
+
+                if should_poll {
+                    self.last_reload_poll = Some(std::time::Instant::now());
+                    self.poll_reload_status();
+                }
+
+                // Schedule a repaint so egui wakes us up to poll again.
+                ctx.request_repaint_after(POLL_INTERVAL);
+            }
+        }
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
+                    let is_live_api = self.data_source.is_live_api();
+                    let save_label = if is_live_api {
+                        "Save to API\tCtrl+S"
+                    } else {
+                        "Save Snapshot As...\tCtrl+S"
+                    };
                     if ui
-                        .add_enabled(
-                            self.can_edit_world() && self.loaded_world.is_some(),
-                            egui::Button::new("Save Snapshot As...\tCtrl+S"),
-                        )
+                        .add_enabled(self.loaded_world.is_some(), egui::Button::new(save_label))
                         .clicked()
                     {
-                        self.save_snapshot_as_dialog();
+                        if is_live_api {
+                            self.save_to_api();
+                        } else {
+                            self.save_snapshot_as_dialog();
+                        }
                         ui.close_menu();
                     }
 
-                    let can_revert = self.can_edit_world() && self.dirty;
+                    if is_live_api {
+                        if ui
+                            .add_enabled(
+                                self.admin_client.is_some(),
+                                egui::Button::new("Reload server templates..."),
+                            )
+                            .clicked()
+                        {
+                            self.reload_confirm_open = true;
+                            ui.close_menu();
+                        }
+                        if ui
+                            .add_enabled(
+                                self.pending_reload_request_id.is_some(),
+                                egui::Button::new("Poll reload status"),
+                            )
+                            .clicked()
+                        {
+                            self.poll_reload_status();
+                            ui.close_menu();
+                        }
+                    }
+
+                    let can_revert = self.dirty;
                     if ui
                         .add_enabled(can_revert, egui::Button::new("Revert (discard changes)"))
                         .clicked()
@@ -1751,11 +2357,7 @@ impl eframe::App for TemplateViewerApp {
 
                     ui.separator();
 
-                    let reload_label = if self.data_source.is_live_keydb() {
-                        "Refresh live data"
-                    } else {
-                        "Reload snapshot"
-                    };
+                    let reload_label = "Reload snapshot";
                     if ui.button(reload_label).clicked() {
                         self.load_current_source();
                         ui.close_menu();
@@ -1764,14 +2366,6 @@ impl eframe::App for TemplateViewerApp {
                     ui.separator();
 
                     ui.menu_button("Data Source", |ui| {
-                        let is_keydb = self.data_source.is_live_keydb();
-                        if ui
-                            .selectable_label(is_keydb, "Live KeyDB (read-only)")
-                            .clicked()
-                        {
-                            self.load_from_keydb();
-                            ui.close_menu();
-                        }
                         let is_snapshot = matches!(self.data_source, DataSource::SnapshotFile(_));
                         if ui
                             .selectable_label(is_snapshot, ".wsnap Snapshot")
@@ -1783,6 +2377,11 @@ impl eframe::App for TemplateViewerApp {
                             {
                                 self.load_from_snapshot(path);
                             }
+                            ui.close_menu();
+                        }
+                        let is_api = self.data_source.is_live_api();
+                        if ui.selectable_label(is_api, "Live Admin API...").clicked() {
+                            self.open_connect_dialog();
                             ui.close_menu();
                         }
                     });
@@ -1853,16 +2452,48 @@ impl eframe::App for TemplateViewerApp {
                 {
                     self.view_mode = ViewMode::Characters;
                 }
+
+                // Right-aligned action buttons for connection and reload.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let is_live_api = self.data_source.is_live_api();
+                    if is_live_api {
+                        let reload_btn = egui::Button::new(
+                            egui::RichText::new("Reload Server Templates")
+                                .color(egui::Color32::WHITE),
+                        )
+                        .fill(egui::Color32::from_rgb(160, 60, 60));
+                        if ui
+                            .add_enabled(self.admin_client.is_some(), reload_btn)
+                            .on_hover_text(
+                                "Ask the running server to swap its in-memory template tables. \
+                                 You will be asked to confirm.",
+                            )
+                            .clicked()
+                        {
+                            self.reload_confirm_open = true;
+                        }
+                    }
+
+                    let connect_label = if is_live_api {
+                        "API: Connected"
+                    } else {
+                        "Connect to API..."
+                    };
+                    if ui
+                        .button(connect_label)
+                        .on_hover_text(
+                            "Point this viewer at a running API service \
+                             (local dev or production).",
+                        )
+                        .clicked()
+                    {
+                        self.open_connect_dialog();
+                    }
+                });
             });
 
             ui.separator();
             ui.label(format!("Source: {}", self.data_source.display_label()));
-            if self.data_source.is_live_keydb() {
-                ui.colored_label(
-                    egui::Color32::YELLOW,
-                    "Viewing persisted KeyDB state only. The running server may be ahead.",
-                );
-            }
 
             if let Some(ref error) = self.load_error {
                 ui.separator();
@@ -1892,7 +2523,6 @@ impl eframe::App for TemplateViewerApp {
 
         egui::CentralPanel::default().show(ctx, |ui| match self.view_mode {
             ViewMode::ItemTemplates => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("item_template_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -1916,19 +2546,13 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_item_index {
                         if idx < self.item_templates.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_item_details_by_index(
-                                    ui,
-                                    ItemDetailsSource::ItemTemplates,
-                                    idx,
-                                );
-                            });
+                            self.render_item_details_by_index(
+                                ui,
+                                ItemDetailsSource::ItemTemplates,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -1938,7 +2562,6 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::CharacterTemplates => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("character_template_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -1962,19 +2585,13 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_character_index {
                         if idx < self.character_templates.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_character_details_by_index(
-                                    ui,
-                                    CharacterDetailsSource::CharacterTemplates,
-                                    idx,
-                                );
-                            });
+                            self.render_character_details_by_index(
+                                ui,
+                                CharacterDetailsSource::CharacterTemplates,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -1984,7 +2601,6 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::Items => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("item_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2000,19 +2616,9 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_item_instance_index {
                         if idx < self.items.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_item_details_by_index(
-                                    ui,
-                                    ItemDetailsSource::Items,
-                                    idx,
-                                );
-                            });
+                            self.render_item_details_by_index(ui, ItemDetailsSource::Items, idx);
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2022,7 +2628,6 @@ impl eframe::App for TemplateViewerApp {
                 });
             }
             ViewMode::Characters => {
-                let can_edit_world = self.can_edit_world();
                 egui::SidePanel::left("character_list")
                     .resizable(true)
                     .default_width(300.0)
@@ -2038,19 +2643,13 @@ impl eframe::App for TemplateViewerApp {
                     });
 
                 egui::CentralPanel::default().show_inside(ui, |ui| {
-                    if !can_edit_world {
-                        ui.colored_label(egui::Color32::YELLOW, "Live KeyDB mode is read-only.");
-                        ui.separator();
-                    }
                     if let Some(idx) = self.selected_character_instance_index {
                         if idx < self.characters.len() {
-                            ui.add_enabled_ui(can_edit_world, |ui| {
-                                self.render_character_details_by_index(
-                                    ui,
-                                    CharacterDetailsSource::Characters,
-                                    idx,
-                                );
-                            });
+                            self.render_character_details_by_index(
+                                ui,
+                                CharacterDetailsSource::Characters,
+                                idx,
+                            );
                         }
                     } else {
                         ui.centered_and_justified(|ui| {
@@ -2062,5 +2661,7 @@ impl eframe::App for TemplateViewerApp {
         });
 
         self.render_item_popup(ctx);
+        self.render_connect_dialog(ctx);
+        self.render_reload_confirm_dialog(ctx);
     }
 }
