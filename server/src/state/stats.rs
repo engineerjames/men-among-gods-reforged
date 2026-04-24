@@ -1209,6 +1209,16 @@ impl GameState {
                 );
             }
 
+            let talent_message = if diff == 1 {
+                "You gained 1 talent point. Open the Talents panel to spend it.\n".to_string()
+            } else {
+                format!(
+                    "You gained {} talent points. Open the Talents panel to spend them.\n",
+                    diff
+                )
+            };
+            self.do_character_log(cn, core::types::FontColor::Yellow, &talent_message);
+
             // Find an NPC to announce the rank
             let temp = if (self.characters[cn].kindred & (traits::KIN_PURPLE as i32)) != 0 {
                 core::constants::CT_PRIEST

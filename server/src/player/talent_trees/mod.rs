@@ -62,7 +62,7 @@ pub enum TalentEffect {
 /// * `None` if the class has no effects table or the id is unknown.
 fn effect_for(tree: &'static TalentTreeMeta, id: TalentId) -> Option<TalentEffect> {
     let table: &[(TalentId, TalentEffect)] = match tree.class {
-        core::traits::Class::Mercenary => mercenary::EFFECTS,
+        core::traits::Class::Mercenary => mercenary::MERCENARY_TALENT_EFFECTS,
         _ => return None,
     };
     table
@@ -213,6 +213,8 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, node_id: TalentId) -> Result<
             node.name
         );
     }
+
+    gs.do_update_char(cn);
 
     Ok(())
 }
@@ -426,6 +428,7 @@ fn grant_skill(cn: usize, game_state: &mut GameState, skill: Skill) -> Result<()
 mod tests {
     use super::*;
     use crate::test_helpers::with_test_gs;
+    use core::constants::CharacterFlags;
     use core::talent_trees::mercenary::ids;
     use core::traits::{Class, KIN_MERCENARY, KIN_TEMPLAR};
 
@@ -734,6 +737,19 @@ mod tests {
                 55,
                 "expected +10% of 50 (+5 -> 55) after learning Distract"
             );
+        });
+    }
+
+    #[test]
+    fn learn_talent_marks_character_for_stat_recompute() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 1);
+            gs.characters[cn].flags &= !CharacterFlags::Update.bits();
+
+            learn_talent(gs, cn, ids::DISTRACT).unwrap();
+
+            assert_ne!(gs.characters[cn].flags & CharacterFlags::Update.bits(), 0);
         });
     }
 

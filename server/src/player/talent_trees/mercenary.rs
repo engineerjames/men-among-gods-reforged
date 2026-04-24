@@ -19,7 +19,7 @@ use super::TalentEffect;
 /// `AttributePercent` bonus.  These are intentional placeholders until
 /// the proper per-node behaviour (Distract, Parasite, Disarm, etc.) is
 /// implemented.
-pub static EFFECTS: &[(TalentId, TalentEffect)] = &[
+pub static MERCENARY_TALENT_EFFECTS: &[(TalentId, TalentEffect)] = &[
     (
         ids::DISTRACT,
         TalentEffect::AttributePercent {
