@@ -135,7 +135,7 @@ fn watcher_loop(tx: Sender<ReloadRequest>, shutdown: Arc<AtomicBool>) {
         }
 
         if con.is_none() {
-            match server::keydb::connect() {
+            match super::connection::connect() {
                 Ok(c) => con = Some(c),
                 Err(e) => {
                     log::warn!("template reload watcher: keydb connect failed: {}", e);

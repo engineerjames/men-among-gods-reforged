@@ -161,6 +161,7 @@ fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
         ServerCommandType::SetCharAEnd => 3,
         ServerCommandType::SetCharAMana => 3,
         ServerCommandType::SetCharDir => 2,
+        ServerCommandType::SetCharTalents => 26,
         ServerCommandType::SetCharPts => 13,
         ServerCommandType::SetCharGold => 13,
         ServerCommandType::SetCharItem => 9,

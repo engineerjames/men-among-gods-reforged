@@ -55,6 +55,7 @@ use crate::{
         hud::skill_picker_popup::SkillPickerPopup,
         hud::skills_panel::SkillsPanel,
         hud::status_panel::StatusPanel,
+        hud::talent_panel::TalentPanel,
         style::Padding,
         visuals::rank_progress_line::RankProgressLine,
         visuals::rank_sigil::RankSigil,
@@ -122,7 +123,7 @@ const HUD_ARC_RADIUS: u32 = 60;
 /// Radius of each individual HUD button.
 const HUD_BUTTON_RADIUS: u32 = 16;
 /// Sprite IDs for [Skills, Inventory, Settings] buttons.
-const HUD_SPRITE_IDS: [usize; 3] = [267, 128, 35];
+const HUD_SPRITE_IDS: [usize; 4] = [267, 267, 128, 35];
 /// X center of the HUD button column (lower-right, aligned with minimap).
 const HUD_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
 /// Center Y of the bottom-most HUD button (above the mode button).
@@ -220,6 +221,7 @@ pub struct GameScene {
     pub(super) hud_buttons: HudButtonBar,
     pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
+    pub(super) talent_panel: TalentPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
@@ -369,6 +371,10 @@ impl GameScene {
                     HUD_PANEL_W,
                     SETTINGS_PANEL_H,
                 ),
+                HUD_PANEL_BG,
+            ),
+            talent_panel: TalentPanel::new(
+                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
                 HUD_PANEL_BG,
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
@@ -1580,6 +1586,10 @@ impl Scene for GameScene {
                     points: ci.points,
                     sorted_skills: sorted,
                 });
+                {
+                    let class = mag_core::talent_trees::class_for_kindred(ci.kindred);
+                    self.talent_panel.sync_state(*ps.talents(), class);
+                }
                 use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
                     items: ci.item,
@@ -1635,6 +1645,7 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
+            self.talent_panel.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;

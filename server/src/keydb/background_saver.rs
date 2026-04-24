@@ -23,7 +23,7 @@
 use std::sync::mpsc;
 use std::thread::{self, JoinHandle};
 
-use server::{keydb, keydb_store};
+use super::{connection, store};
 
 /// Ticks between each background save job.
 ///
@@ -173,7 +173,7 @@ pub fn spawn() -> BackgroundSaver {
 ///   it loops until a connection succeeds.
 fn connect_with_retry() -> redis::Connection {
     loop {
-        match keydb::connect() {
+        match connection::connect() {
             Ok(con) => return con,
             Err(e) => {
                 log::error!("Background saver: KeyDB connect failed ({e}), retrying in 5s...");
@@ -208,7 +208,7 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
         match job {
             SaveJob::Characters(data) => {
                 let t = std::time::Instant::now();
-                if let Err(e) = keydb_store::save_characters(&mut con, &data) {
+                if let Err(e) = store::save_characters(&mut con, &data) {
                     log::error!("Background save characters failed: {e}");
                     con = connect_with_retry();
                 } else {
@@ -221,12 +221,9 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
             }
             SaveJob::Items(data, start_idx) => {
                 let t = std::time::Instant::now();
-                if let Err(e) = keydb_store::save_indexed_entities_range(
-                    &mut con,
-                    "game:item:",
-                    &data,
-                    start_idx,
-                ) {
+                if let Err(e) =
+                    store::save_indexed_entities_range(&mut con, "game:item:", &data, start_idx)
+                {
                     log::error!("Background save items failed: {e}");
                     con = connect_with_retry();
                 } else {
@@ -239,7 +236,7 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
             }
             SaveJob::MapTiles(data, start_linear) => {
                 let t = std::time::Instant::now();
-                if let Err(e) = keydb_store::save_map_range(&mut con, &data, start_linear) {
+                if let Err(e) = store::save_map_range(&mut con, &data, start_linear) {
                     log::error!("Background save map tiles failed: {e}");
                     con = connect_with_retry();
                 } else {
@@ -253,11 +250,11 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
             SaveJob::SmallData { effects, globals } => {
                 let t = std::time::Instant::now();
                 let mut ok = true;
-                if let Err(e) = keydb_store::save_effects(&mut con, &effects) {
+                if let Err(e) = store::save_effects(&mut con, &effects) {
                     log::error!("Background save effects failed: {e}");
                     ok = false;
                 }
-                if let Err(e) = keydb_store::save_globals(&mut con, &globals) {
+                if let Err(e) = store::save_globals(&mut con, &globals) {
                     log::error!("Background save globals failed: {e}");
                     ok = false;
                 }

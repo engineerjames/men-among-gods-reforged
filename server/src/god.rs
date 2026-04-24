@@ -10,7 +10,7 @@ use core::{
     types::{Character, Map},
 };
 
-use server::keydb;
+use server::keydb::connection as keydb;
 
 use crate::{
     area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,

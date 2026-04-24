@@ -50,6 +50,16 @@ pub enum ClientCommandType {
     /// [`AUTOLOOT_ITEM_IDS`](crate::constants::AUTOLOOT_ITEM_IDS) plus all
     /// gold from the tombstone corpse at that position.
     CmdAutoloot = 36,
+    /// Spend one talent point on the node identified by `(layer, mask)`.
+    ///
+    /// Wire format:
+    /// * byte 0: opcode `37`
+    /// * byte 1: `layer: u8`
+    /// * byte 2: `mask: u8`
+    /// * bytes 3..16: zero-padding
+    CmdLearnTalent = 37,
+    /// Refund all spent talent points.  No payload (all-zero past the opcode).
+    CmdResetTalents = 38,
     CmdCTick = 255,
 }
 
@@ -93,6 +103,8 @@ impl From<u8> for ClientCommandType {
             34 => ClientCommandType::Ping,
             35 => ClientCommandType::ApiLogin,
             36 => ClientCommandType::CmdAutoloot,
+            37 => ClientCommandType::CmdLearnTalent,
+            38 => ClientCommandType::CmdResetTalents,
             255 => ClientCommandType::CmdCTick,
             _ => {
                 log::error!("Unknown client command type: {}", value);
@@ -394,6 +406,23 @@ impl ClientCommand {
         ));
         cmd
     }
+
+    /// Creates a learn-talent command for the given packed slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `slot` - Packed talent-tree slot of the node to learn.
+    pub fn new_learn_talent(slot: crate::talent_trees::TalentRef) -> Self {
+        let payload = vec![slot.layer, slot.mask];
+        let mut cmd = Self::new(ClientCommandType::CmdLearnTalent, payload);
+        cmd.context = Some(format!("layer={} mask=0x{:02x}", slot.layer, slot.mask));
+        cmd
+    }
+
+    /// Creates a reset-all-talents command.  Has no payload.
+    pub fn new_reset_talents() -> Self {
+        Self::new(ClientCommandType::CmdResetTalents, Vec::new())
+    }
 }
 
 #[cfg(test)]
@@ -566,5 +595,58 @@ mod tests {
         let cmd = ClientCommand::new_exit();
         let desc = cmd.get_description();
         assert!(desc.contains("CmdExit"));
+    }
+
+    #[test]
+    fn learn_talent_opcode_and_slot() {
+        let cmd = ClientCommand::new_learn_talent(crate::talent_trees::TalentRef {
+            layer: 1,
+            mask: 0x02,
+        });
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes.len(), 16);
+        assert_eq!(bytes[0], 37u8, "CmdLearnTalent must be opcode 37");
+        assert_eq!(bytes[0], ClientCommandType::CmdLearnTalent as u8);
+        assert_eq!(bytes[1], 1);
+        assert_eq!(bytes[2], 0x02);
+        for b in &bytes[3..] {
+            assert_eq!(*b, 0, "trailing bytes must be zero-padded");
+        }
+    }
+
+    #[test]
+    fn learn_talent_roundtrip_max_slot_bytes() {
+        let cmd = ClientCommand::new_learn_talent(crate::talent_trees::TalentRef {
+            layer: u8::MAX,
+            mask: u8::MAX,
+        });
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes[0], 37u8);
+        assert_eq!(bytes[1], u8::MAX);
+        assert_eq!(bytes[2], u8::MAX);
+    }
+
+    #[test]
+    fn reset_talents_opcode_no_payload() {
+        let cmd = ClientCommand::new_reset_talents();
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes.len(), 16);
+        assert_eq!(bytes[0], 38u8, "CmdResetTalents must be opcode 38");
+        assert_eq!(bytes[0], ClientCommandType::CmdResetTalents as u8);
+        for b in &bytes[1..] {
+            assert_eq!(*b, 0, "reset talents must have empty payload");
+        }
+    }
+
+    #[test]
+    fn learn_and_reset_talents_from_u8_roundtrip() {
+        assert_eq!(
+            ClientCommandType::from(37u8),
+            ClientCommandType::CmdLearnTalent
+        );
+        assert_eq!(
+            ClientCommandType::from(38u8),
+            ClientCommandType::CmdResetTalents
+        );
     }
 }

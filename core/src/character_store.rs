@@ -33,7 +33,8 @@
 //! * Inventory and economy: `gold`, `item`, `worn`, `spell`, `citem`,
 //!   `depot`, `depot_cost`, `depot_sold`, `luck`
 //! * Identity timestamps managed by the server: `creation_date`
-//! * Reserved padding: `unused`, `future1`, `future2`, `future3`
+//! * Talent progression: `future1`
+//! * Reserved padding: `unused`, `future2`, `future3`
 //!
 //! The watcher overwrites only the patch fields when applying, so the
 //! tick thread keeps full ownership of placement, combat, and per-character

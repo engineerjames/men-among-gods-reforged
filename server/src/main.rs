@@ -1,13 +1,8 @@
 mod area;
-mod background_saver;
-mod character_patch;
 mod driver;
 mod effect;
 mod game_state;
 mod god;
-mod item_patch;
-mod map_patch;
-mod template_reload;
 mod types;
 
 #[cfg(test)]

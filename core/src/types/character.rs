@@ -144,7 +144,7 @@ pub struct Character {
     pub passwd: [u8; 16],
 
     pub lastattack: i8,    // neater display: remembers the last attack animation
-    pub future1: [i8; 25], // space for future expansion
+    pub future1: [u8; 25], // packed talent-tree state
 
     pub sprite_override: i16,
 

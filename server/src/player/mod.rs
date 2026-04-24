@@ -5,10 +5,10 @@ use crate::{
     player::{
         commands::{
             plr_cmd_attack, plr_cmd_autoloot, plr_cmd_ctick, plr_cmd_drop, plr_cmd_exit,
-            plr_cmd_give, plr_cmd_input, plr_cmd_inv, plr_cmd_inv_look, plr_cmd_look,
-            plr_cmd_look_item, plr_cmd_mode, plr_cmd_move, plr_cmd_pickup, plr_cmd_ping,
-            plr_cmd_reset, plr_cmd_setuser, plr_cmd_shop, plr_cmd_skill, plr_cmd_stat,
-            plr_cmd_turn, plr_cmd_use,
+            plr_cmd_give, plr_cmd_input, plr_cmd_inv, plr_cmd_inv_look, plr_cmd_learn_talent,
+            plr_cmd_look, plr_cmd_look_item, plr_cmd_mode, plr_cmd_move, plr_cmd_pickup,
+            plr_cmd_ping, plr_cmd_reset, plr_cmd_reset_talents, plr_cmd_setuser, plr_cmd_shop,
+            plr_cmd_skill, plr_cmd_stat, plr_cmd_turn, plr_cmd_use,
         },
         connection::{
             plr_challenge, plr_challenge_api_login, plr_challenge_login, plr_challenge_newlogin,
@@ -20,6 +20,7 @@ use crate::{
 pub mod commands;
 pub mod connection;
 pub mod map;
+pub mod talent_trees;
 pub mod tick;
 
 /// Port of `plr_cmd` from `svr_tick.cpp`
@@ -139,6 +140,16 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         }
         ClientCommandType::CmdCTick => {
             plr_cmd_ctick(gs, nr);
+            return;
+        }
+        ClientCommandType::CmdLearnTalent => {
+            log::debug!("PLR_CMD_LEARN_TALENT received for player {}", nr);
+            plr_cmd_learn_talent(gs, nr);
+            return;
+        }
+        ClientCommandType::CmdResetTalents => {
+            log::debug!("PLR_CMD_RESET_TALENTS received for player {}", nr);
+            plr_cmd_reset_talents(gs, nr);
             return;
         }
         _ => {}

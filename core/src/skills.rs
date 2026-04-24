@@ -99,6 +99,81 @@ pub enum SkillIndex {
     MaxIndex = 6,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum Attribute {
+    Braveness = 0,
+    Willpower = 1,
+    Intuition = 2,
+    Agility = 3,
+    Strength = 4,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
+pub enum SkillCategory {
+    Combat = b'C',
+    General = b'G',
+    Magic = b'R',
+    Body = b'B',
+    Misc = b'M',
+    Unknown = b'Z',
+}
+
+impl From<SkillCategory> for char {
+    fn from(cat: SkillCategory) -> char {
+        match cat {
+            SkillCategory::Combat => 'C',
+            SkillCategory::General => 'G',
+            SkillCategory::Magic => 'R',
+            SkillCategory::Body => 'B',
+            SkillCategory::Misc => 'M',
+            SkillCategory::Unknown => 'Z',
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(usize)]
+pub enum Skill {
+    Hand = SK_HAND,
+    Karate = SK_KARATE,
+    Dagger = SK_DAGGER, // TODO: Clean this up before merging.
+    Sword = SK_SWORD,
+    Axe = SK_AXE,
+    Staff = SK_STAFF,
+    TwoHanded = SK_TWOHAND,
+    LockPicking = SK_LOCK,
+    Stealth = SK_STEALTH,
+    Perception = SK_PERCEPT,
+    Swimming = SK_SWIM,
+    MagicShield = SK_MSHIELD,
+    Bartering = SK_BARTER,
+    Repair = SK_REPAIR,
+    Light = SK_LIGHT,
+    Recall = SK_RECALL,
+    GuardianAngel = SK_WIMPY,
+    Protection = SK_PROTECT,
+    EnhanceWeapon = SK_ENHANCE,
+    Stun = SK_STUN,
+    Curse = SK_CURSE,
+    Bless = SK_BLESS,
+    Identify = SK_IDENT,
+    Resistance = SK_RESIST,
+    Blast = SK_BLAST,
+    DispelMagic = SK_DISPEL,
+    Heal = SK_HEAL,
+    GhostCompanion = SK_GHOST,
+    Regenerate = SK_REGEN,
+    Rest = SK_REST,
+    Meditate = SK_MEDIT,
+    SenseMagic = SK_SENSE,
+    Immunity = SK_IMMUN,
+    SurroundHit = SK_SURROUND,
+    Concentrate = SK_CONCEN,
+    Warcry = SK_WARCRY,
+}
+
 /// A skill definition entry describing one learnable ability.
 ///
 /// Each entry records the skill's index, category code, name,
@@ -106,8 +181,9 @@ pub enum SkillIndex {
 #[derive(Copy, Clone)]
 pub struct SkillTab {
     nr: usize,
-    cat: char,
-    _name: &'static str,
+    cat: SkillCategory,
+    #[allow(dead_code)]
+    name: &'static str,
     desc: &'static str,
     attrib: [usize; 3],
 }
@@ -118,7 +194,7 @@ impl SkillTab {
     /// # Arguments
     ///
     /// * `nr` - Skill index.
-    /// * `cat` - Category code (`'C'`ombat, `'G'`eneral, `'R'`(magic), `'B'`ody, `'M'`isc, `'Z'`(empty)).
+    /// * `cat` - Category of the skill.
     /// * `_name` - Display name.
     /// * `desc` - In-game description text.
     /// * `a0` - First governing attribute index.
@@ -130,8 +206,8 @@ impl SkillTab {
     /// * A new `SkillTab` entry.
     pub const fn new(
         nr: usize,
-        cat: char,
-        _name: &'static str,
+        cat: SkillCategory,
+        name: &'static str,
         desc: &'static str,
         a0: usize,
         a1: usize,
@@ -140,7 +216,7 @@ impl SkillTab {
         SkillTab {
             nr,
             cat,
-            _name,
+            name: name,
             desc,
             attrib: [a0, a1, a2],
         }
@@ -151,8 +227,8 @@ impl Default for SkillTab {
     fn default() -> Self {
         Self {
             nr: 0,
-            cat: '\0',
-            _name: "",
+            cat: SkillCategory::Unknown,
+            name: "",
             desc: "",
             attrib: [0; 3],
         }
@@ -161,10 +237,18 @@ impl Default for SkillTab {
 
 /// Static lookup table of all 50 skill definitions.
 pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
-    SkillTab::new(0, 'C', "Hand to Hand", "Fighting without weapons.", 0, 3, 4),
+    SkillTab::new(
+        0,
+        SkillCategory::Combat,
+        "Hand to Hand",
+        "Fighting without weapons.",
+        0,
+        3,
+        4,
+    ),
     SkillTab::new(
         1,
-        'C',
+        SkillCategory::Combat,
         "Karate",
         "Fighting without weapons and doing damage.",
         0,
@@ -173,7 +257,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         2,
-        'C',
+        SkillCategory::Combat,
         "Dagger",
         "Fighting with daggers or similiar weapons.",
         0,
@@ -182,7 +266,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         3,
-        'C',
+        SkillCategory::Combat,
         "Sword",
         "Fighting with swords or similiar weapons.",
         0,
@@ -191,7 +275,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         4,
-        'C',
+        SkillCategory::Combat,
         "Axe",
         "Fighting with axes or similiar weapons.",
         0,
@@ -200,7 +284,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         5,
-        'C',
+        SkillCategory::Combat,
         "Staff",
         "Fighting with staffs or similiar weapons.",
         3,
@@ -209,7 +293,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         6,
-        'C',
+        SkillCategory::Combat,
         "Two-Handed",
         "Fighting with two-handed weapons.",
         3,
@@ -218,7 +302,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         7,
-        'G',
+        SkillCategory::General,
         "Lock-Picking",
         "Opening doors without keys.",
         2,
@@ -227,17 +311,25 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         8,
-        'G',
+        SkillCategory::General,
         "Stealth",
         "Moving without being seen or heard.",
         2,
         1,
         3,
     ),
-    SkillTab::new(9, 'G', "Perception", "Seeing and hearing.", 2, 1, 3),
+    SkillTab::new(
+        9,
+        SkillCategory::General,
+        "Perception",
+        "Seeing and hearing.",
+        2,
+        1,
+        3,
+    ),
     SkillTab::new(
         10,
-        'M',
+        SkillCategory::Misc,
         "Swimming",
         "Moving through water without drowning.",
         2,
@@ -246,7 +338,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         11,
-        'R',
+        SkillCategory::Magic,
         "Magic Shield",
         "Spell: Create a magic shield (Cost: 25 Mana).",
         0,
@@ -255,17 +347,25 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         12,
-        'G',
+        SkillCategory::General,
         "Bartering",
         "Getting good prices from merchants.",
         0,
         2,
         1,
     ),
-    SkillTab::new(13, 'G', "Repair", "Repairing items.", 2, 1, 3),
+    SkillTab::new(
+        13,
+        SkillCategory::General,
+        "Repair",
+        "Repairing items.",
+        2,
+        1,
+        3,
+    ),
     SkillTab::new(
         14,
-        'R',
+        SkillCategory::Magic,
         "Light",
         "Spell: Create light (Cost: 5 Mana).",
         0,
@@ -274,7 +374,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         15,
-        'R',
+        SkillCategory::Magic,
         "Recall",
         "Spell: Teleport to temple (Cost: 15 Mana).",
         0,
@@ -283,7 +383,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         16,
-        'R',
+        SkillCategory::Magic,
         "Guardian Angel",
         "Spell: Avoid loss of HPs and items on death.",
         0,
@@ -292,7 +392,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         17,
-        'R',
+        SkillCategory::Magic,
         "Protection",
         "Spell: Enhance Armor of target (Cost: 15 Mana).",
         0,
@@ -301,7 +401,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         18,
-        'R',
+        SkillCategory::Magic,
         "Enhance Weapon",
         "Spell: Enhance Weapon of target (Cost: 15 Mana).",
         0,
@@ -310,7 +410,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         19,
-        'R',
+        SkillCategory::Magic,
         "Stun",
         "Spell: Make target motionless (Cost: 20 Mana).",
         0,
@@ -319,7 +419,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         20,
-        'R',
+        SkillCategory::Magic,
         "Curse",
         "Spell: Decrease attributes of target (Cost: 35 Mana).",
         0,
@@ -328,7 +428,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         21,
-        'R',
+        SkillCategory::Magic,
         "Bless",
         "Spell: Increase attributes of target (Cost: 35 Mana).",
         0,
@@ -337,17 +437,25 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         22,
-        'R',
+        SkillCategory::Magic,
         "Identify",
         "Spell: Read stats of item/character. (Cost: 25 Mana)",
         0,
         2,
         1,
     ),
-    SkillTab::new(23, 'G', "Resistance", "Resist against magic.", 2, 1, 4),
+    SkillTab::new(
+        23,
+        SkillCategory::General,
+        "Resistance",
+        "Resist against magic.",
+        2,
+        1,
+        4,
+    ),
     SkillTab::new(
         24,
-        'R',
+        SkillCategory::Magic,
         "Blast",
         "Spell: Inflict injuries to target (Cost: varies).",
         2,
@@ -356,7 +464,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         25,
-        'R',
+        SkillCategory::Magic,
         "Dispel Magic",
         "Spell: Removes curse magic from target (Cost: 25 Mana).",
         0,
@@ -365,7 +473,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         26,
-        'R',
+        SkillCategory::Magic,
         "Heal",
         "Spell: Heal injuries (Cost: 25 Mana).",
         0,
@@ -374,7 +482,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         27,
-        'R',
+        SkillCategory::Magic,
         "Ghost Companion",
         "Spell: Create a ghost to attack an enemy.",
         0,
@@ -383,18 +491,34 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         28,
-        'B',
+        SkillCategory::Body,
         "Regenerate",
         "Regenerate Hitpoints faster.",
         4,
         4,
         4,
     ),
-    SkillTab::new(29, 'B', "Rest", "Regenerate Endurance faster.", 3, 3, 3),
-    SkillTab::new(30, 'B', "Meditate", "Regenerate Mana faster.", 2, 1, 1),
+    SkillTab::new(
+        29,
+        SkillCategory::Body,
+        "Rest",
+        "Regenerate Endurance faster.",
+        3,
+        3,
+        3,
+    ),
+    SkillTab::new(
+        30,
+        SkillCategory::Body,
+        "Meditate",
+        "Regenerate Mana faster.",
+        2,
+        1,
+        1,
+    ),
     SkillTab::new(
         31,
-        'G',
+        SkillCategory::General,
         "Sense Magic",
         "Find out who casts what at you.",
         0,
@@ -403,7 +527,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         32,
-        'G',
+        SkillCategory::General,
         "Immunity",
         "Partial immunity against negative magic.",
         0,
@@ -412,7 +536,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         33,
-        'G',
+        SkillCategory::General,
         "Surround Hit",
         "Hit all your enemies at once.",
         0,
@@ -421,7 +545,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         34,
-        'G',
+        SkillCategory::General,
         "Concentrate",
         "Reduces mana cost for all spells.",
         1,
@@ -430,7 +554,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         35,
-        'G',
+        SkillCategory::General,
         "Warcry",
         "Frighten all enemies in hearing distance.",
         0,
@@ -439,7 +563,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
     ),
     SkillTab::new(
         36,
-        'C',
+        SkillCategory::Combat,
         "Weapon Skill",
         "Fighting with weapons or in close combat.",
         0,
@@ -447,19 +571,19 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         4,
     ),
     // 37..49 reserved empty
-    SkillTab::new(37, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(38, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(39, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(40, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(41, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(42, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(43, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(44, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(45, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(46, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(47, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(48, 'Z', "", "", 0, 0, 0),
-    SkillTab::new(49, 'Z', "", "", 0, 0, 0),
+    SkillTab::new(37, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(38, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(39, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(40, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(41, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(42, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(43, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(44, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(45, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(46, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(47, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(48, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(49, SkillCategory::Unknown, "", "", 0, 0, 0),
 ];
 
 /// Returns the canonical skill number for a given slot index.
@@ -537,7 +661,7 @@ pub fn get_skill_desc(skill: usize) -> &'static str {
 /// * The category char, or `'Z'` on invalid index.
 pub fn get_skill_sortkey(skill: usize) -> char {
     if skill < MAX_SKILLS {
-        SKILLTAB[skill].cat
+        char::from(SKILLTAB[skill].cat)
     } else {
         'Z'
     }
@@ -687,11 +811,19 @@ mod tests {
 
     #[test]
     fn test_skilltab_new() {
-        let skill = SkillTab::new(1, 'C', "Test Skill", "Test Description", 0, 1, 2);
+        let skill = SkillTab::new(
+            1,
+            SkillCategory::Combat,
+            "Test Skill",
+            "Test Description",
+            0,
+            1,
+            2,
+        );
 
         assert_eq!(skill.nr, 1);
-        assert_eq!(skill.cat, 'C');
-        assert_eq!(skill._name, "Test Skill");
+        assert_eq!(skill.cat, SkillCategory::Combat);
+        assert_eq!(skill.name, "Test Skill");
         assert_eq!(skill.desc, "Test Description");
         assert_eq!(skill.attrib, [0, 1, 2]);
     }
@@ -782,10 +914,10 @@ mod tests {
         let valid_categories = ['C', 'G', 'M', 'R', 'B', 'Z'];
         for skill in SKILLTAB.iter() {
             assert!(
-                valid_categories.contains(&skill.cat),
+                valid_categories.contains(&char::from(skill.cat)),
                 "Invalid category '{}' for skill '{}'",
-                skill.cat,
-                skill._name
+                char::from(skill.cat),
+                skill.name
             );
         }
     }
@@ -793,39 +925,39 @@ mod tests {
     #[test]
     fn test_skill_categories() {
         // Test Combat skills (category 'C')
-        assert_eq!(SKILLTAB[0].cat, 'C'); // Hand to Hand
-        assert_eq!(SKILLTAB[1].cat, 'C'); // Karate
-        assert_eq!(SKILLTAB[2].cat, 'C'); // Dagger
-        assert_eq!(SKILLTAB[3].cat, 'C'); // Sword
-        assert_eq!(SKILLTAB[4].cat, 'C'); // Axe
-        assert_eq!(SKILLTAB[5].cat, 'C'); // Staff
-        assert_eq!(SKILLTAB[6].cat, 'C'); // Two-Handed
-        assert_eq!(SKILLTAB[SK_WEAPON].cat, 'C'); // Weapon Skill
+        assert_eq!(SKILLTAB[0].cat, SkillCategory::Combat); // Hand to Hand
+        assert_eq!(SKILLTAB[1].cat, SkillCategory::Combat); // Karate
+        assert_eq!(SKILLTAB[2].cat, SkillCategory::Combat); // Dagger
+        assert_eq!(SKILLTAB[3].cat, SkillCategory::Combat); // Sword
+        assert_eq!(SKILLTAB[4].cat, SkillCategory::Combat); // Axe
+        assert_eq!(SKILLTAB[5].cat, SkillCategory::Combat); // Staff
+        assert_eq!(SKILLTAB[6].cat, SkillCategory::Combat); // Two-Handed
+        assert_eq!(SKILLTAB[SK_WEAPON].cat, SkillCategory::Combat); // Weapon Skill
 
         // Test General skills (category 'G')
-        assert_eq!(SKILLTAB[7].cat, 'G'); // Lock-Picking
-        assert_eq!(SKILLTAB[8].cat, 'G'); // Stealth
-        assert_eq!(SKILLTAB[9].cat, 'G'); // Perception
-        assert_eq!(SKILLTAB[12].cat, 'G'); // Bartering
-        assert_eq!(SKILLTAB[13].cat, 'G'); // Repair
+        assert_eq!(SKILLTAB[7].cat, SkillCategory::General); // Lock-Picking
+        assert_eq!(SKILLTAB[8].cat, SkillCategory::General); // Stealth
+        assert_eq!(SKILLTAB[9].cat, SkillCategory::General); // Perception
+        assert_eq!(SKILLTAB[12].cat, SkillCategory::General); // Bartering
+        assert_eq!(SKILLTAB[13].cat, SkillCategory::General); // Repair
 
         // Test Magic skills (category 'R')
-        assert_eq!(SKILLTAB[11].cat, 'R'); // Magic Shield
-        assert_eq!(SKILLTAB[14].cat, 'R'); // Light
-        assert_eq!(SKILLTAB[15].cat, 'R'); // Recall
-        assert_eq!(SKILLTAB[16].cat, 'R'); // Guardian Angel
+        assert_eq!(SKILLTAB[11].cat, SkillCategory::Magic); // Magic Shield
+        assert_eq!(SKILLTAB[14].cat, SkillCategory::Magic); // Light
+        assert_eq!(SKILLTAB[15].cat, SkillCategory::Magic); // Recall
+        assert_eq!(SKILLTAB[16].cat, SkillCategory::Magic); // Guardian Angel
 
         // Test Body skills (category 'B')
-        assert_eq!(SKILLTAB[28].cat, 'B'); // Regenerate
-        assert_eq!(SKILLTAB[29].cat, 'B'); // Rest
-        assert_eq!(SKILLTAB[30].cat, 'B'); // Meditate
+        assert_eq!(SKILLTAB[28].cat, SkillCategory::Body); // Regenerate
+        assert_eq!(SKILLTAB[29].cat, SkillCategory::Body); // Rest
+        assert_eq!(SKILLTAB[30].cat, SkillCategory::Body); // Meditate
 
         // Test Misc skills (category 'M')
-        assert_eq!(SKILLTAB[10].cat, 'M'); // Swimming
+        assert_eq!(SKILLTAB[10].cat, SkillCategory::Misc); // Swimming
 
         // Test empty skills (category 'Z')
-        assert_eq!(SKILLTAB[37].cat, 'Z');
-        assert_eq!(SKILLTAB[49].cat, 'Z');
+        assert_eq!(SKILLTAB[37].cat, SkillCategory::Unknown);
+        assert_eq!(SKILLTAB[49].cat, SkillCategory::Unknown);
     }
 
     #[test]
@@ -837,7 +969,7 @@ mod tests {
                 !SKILLTAB[i].desc.is_empty(),
                 "Skill {} '{}' should have a description",
                 i,
-                SKILLTAB[i]._name
+                SKILLTAB[i].name
             );
         }
 
@@ -858,7 +990,7 @@ mod tests {
                     attr <= 4,
                     "Attribute index {} is out of expected range for skill '{}'",
                     attr,
-                    skill._name
+                    skill.name
                 );
             }
         }
@@ -902,11 +1034,11 @@ mod tests {
         // Test that non-empty skill names are unique
         let mut names = std::collections::HashSet::new();
         for skill in SKILLTAB.iter() {
-            if !skill._name.is_empty() {
+            if !skill.name.is_empty() {
                 assert!(
-                    names.insert(skill._name),
+                    names.insert(skill.name),
                     "Duplicate skill name found: '{}'",
-                    skill._name
+                    skill.name
                 );
             }
         }

@@ -471,6 +471,35 @@ impl GameScene {
         }
     }
 
+    /// Drain pending `WidgetAction`s from the talent panel and forward
+    /// `LearnTalent` / `ResetTalents` commands to the server.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network access).
+    pub(crate) fn process_talent_panel_actions(&mut self, app_state: &mut AppState<'_>) {
+        for action in self.talent_panel.take_actions() {
+            match action {
+                WidgetAction::LearnTalent { slot } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_learn_talent(slot));
+                    }
+                }
+                WidgetAction::ResetTalents => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_reset_talents());
+                    }
+                }
+                WidgetAction::TogglePanel(_) => {
+                    // Panel was closed via its title bar X button.
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Drain pending `WidgetAction`s from the shop panel and send the
     /// corresponding network commands, or close the shop.
     ///
@@ -602,6 +631,10 @@ impl GameScene {
             }
             return UiHandleResult::Consumed;
         }
+        if self.talent_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_talent_panel_actions(app_state);
+            return UiHandleResult::Consumed;
+        }
 
         // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
         if self.shop_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
@@ -648,6 +681,7 @@ impl GameScene {
                         }
                         HudPanel::Minimap => self.minimap_widget.toggle(),
                         HudPanel::KeyBindings => {}
+                        HudPanel::Talents => self.talent_panel.toggle(),
                     }
                 }
             }

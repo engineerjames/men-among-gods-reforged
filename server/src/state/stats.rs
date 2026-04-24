@@ -2,6 +2,7 @@ use core::constants::{
     CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, MAXCHARS, MIN_SPEEDTAB_INDEX,
 };
 use core::ranks;
+use core::talent_trees::{grant_talent_points, talent_stat_bonuses};
 use core::types::FontColor;
 use core::{skills, traits};
 
@@ -254,6 +255,19 @@ impl GameState {
                     infra |= 8;
                 }
             }
+        }
+
+        let talent_bonuses = talent_stat_bonuses(
+            self.characters[cn].kindred,
+            &self.characters[cn].future1,
+            &self.characters[cn].attrib,
+            &self.characters[cn].skill,
+        );
+        for z in 0..5 {
+            attrib_bonus[z] += talent_bonuses.attrib[z];
+        }
+        for z in 0..50 {
+            skill_bonus[z] += talent_bonuses.skill[z];
         }
 
         // Calculate final attributes
@@ -1177,6 +1191,7 @@ impl GameState {
 
             let diff = rank - self.characters[cn].data[45] as usize;
             self.characters[cn].data[45] = rank as i32;
+            grant_talent_points(&mut self.characters[cn].future1, diff as u8);
 
             // Log level up message
             if diff == 1 {
@@ -1203,6 +1218,16 @@ impl GameState {
                     ),
                 );
             }
+
+            let talent_message = if diff == 1 {
+                "You gained 1 talent point. Open the Talents panel to spend it.\n".to_string()
+            } else {
+                format!(
+                    "You gained {} talent points. Open the Talents panel to spend them.\n",
+                    diff
+                )
+            };
+            self.do_character_log(cn, core::types::FontColor::Yellow, &talent_message);
 
             // Find an NPC to announce the rank
             let temp = if (self.characters[cn].kindred & (traits::KIN_PURPLE as i32)) != 0 {
@@ -1244,6 +1269,12 @@ impl GameState {
             self.characters[cn].mana[1] = (mana * rank) as u16;
 
             self.do_update_char(cn);
+
+            let player_id = self.characters[cn].player as usize;
+            if player_id > 0 && player_id < self.players.len() && self.players[player_id].usnr == cn
+            {
+                crate::player::commands::send_set_char_talents(self, player_id);
+            }
         }
     }
 
@@ -1655,5 +1686,43 @@ impl GameState {
         }
 
         dam / 1000
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use core::{constants::USE_ACTIVE, traits};
+
+    use crate::test_helpers::{add_test_player, with_test_gs};
+
+    #[test]
+    fn rank_up_grants_one_talent_point_per_rank() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].data[45] = 0;
+            gs.characters[cn].points_tot = core::ranks::RANK_THRESHOLDS[3] as i32;
+
+            gs.do_check_new_level(cn);
+
+            assert_eq!(gs.characters[cn].future1[0], 3);
+            assert_eq!(gs.characters[cn].data[45], 3);
+        });
+    }
+
+    #[test]
+    fn rank_check_without_new_rank_does_not_grant_talent_points() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].data[45] = 3;
+            gs.characters[cn].points_tot = core::ranks::RANK_THRESHOLDS[3] as i32;
+
+            gs.do_check_new_level(cn);
+
+            assert_eq!(gs.characters[cn].future1[0], 0);
+        });
     }
 }

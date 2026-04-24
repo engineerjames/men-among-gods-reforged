@@ -1,6 +1,34 @@
 /// Total number of distinct ranks in the game.
 pub const TOTAL_RANKS: usize = 24;
 
+// TODO: Replace all rank references with this enum.
+pub enum Rank {
+    Private = 0,
+    PrivateFirstClass = 1,
+    LanceCorporal = 2,
+    Corporal = 3,
+    Sergeant = 4,
+    StaffSergeant = 5,
+    MasterSergeant = 6,
+    FirstSergeant = 7,
+    SergeantMajor = 8,
+    SecondLieutenant = 9,
+    FirstLieutenant = 10,
+    Captain = 11,
+    Major = 12,
+    LieutenantColonel = 13,
+    Colonel = 14,
+    BrigadierGeneral = 15,
+    MajorGeneral = 16,
+    LieutenantGeneral = 17,
+    General = 18,
+    FieldMarshal = 19,
+    Knight = 20,
+    Baron = 21,
+    Earl = 22,
+    Warlord = 23,
+}
+
 /// Full rank names matching `WHO_RANK_NAME` indices.
 const RANK_NAMES: [&str; TOTAL_RANKS] = [
     "Private",

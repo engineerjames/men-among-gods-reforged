@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use server::snapshot::WorldSnapshot;
+use server::keydb::snapshot::WorldSnapshot;
 
 /// The world-data source backing a viewer session.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

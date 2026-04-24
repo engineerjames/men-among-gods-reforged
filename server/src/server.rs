@@ -9,7 +9,6 @@ use std::net::TcpListener;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::background_saver::{self, BackgroundSaver, SaveJob};
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
@@ -19,6 +18,7 @@ use crate::types::server_player::ServerPlayer;
 use crate::{driver, player, populate};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
+use server::keydb::background_saver::{self, BackgroundSaver, SaveJob};
 
 /// Per-character scheduling hints used by `game_tick`.
 ///
@@ -62,19 +62,19 @@ pub struct Server {
 
     /// Background watcher that surfaces admin-issued template reload
     /// requests to the tick loop.
-    template_reload_watcher: Option<crate::template_reload::TemplateReloadWatcher>,
+    template_reload_watcher: Option<server::keydb::template_reload::TemplateReloadWatcher>,
 
     /// Background watcher that surfaces admin-issued map-tile patches to
     /// the tick loop.
-    map_patch_watcher: Option<crate::map_patch::MapPatchWatcher>,
+    map_patch_watcher: Option<server::keydb::map_patch::MapPatchWatcher>,
 
     /// Background watcher that surfaces admin-issued item patches to the
     /// tick loop.
-    item_patch_watcher: Option<crate::item_patch::ItemPatchWatcher>,
+    item_patch_watcher: Option<server::keydb::item_patch::ItemPatchWatcher>,
 
     /// Background watcher that surfaces admin-issued character patches to
     /// the tick loop.
-    character_patch_watcher: Option<crate::character_patch::CharacterPatchWatcher>,
+    character_patch_watcher: Option<server::keydb::character_patch::CharacterPatchWatcher>,
 
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
@@ -263,16 +263,18 @@ impl Server {
         self.background_saver = Some(background_saver::spawn());
 
         // Spawn the admin template-reload watcher (no-op when disabled).
-        self.template_reload_watcher = crate::template_reload::TemplateReloadWatcher::spawn();
+        self.template_reload_watcher =
+            server::keydb::template_reload::TemplateReloadWatcher::spawn();
 
         // Spawn the admin map-patch watcher (no-op when disabled).
-        self.map_patch_watcher = crate::map_patch::MapPatchWatcher::spawn();
+        self.map_patch_watcher = server::keydb::map_patch::MapPatchWatcher::spawn();
 
         // Spawn the admin item-patch watcher (no-op when disabled).
-        self.item_patch_watcher = crate::item_patch::ItemPatchWatcher::spawn();
+        self.item_patch_watcher = server::keydb::item_patch::ItemPatchWatcher::spawn();
 
         // Spawn the admin character-patch watcher (no-op when disabled).
-        self.character_patch_watcher = crate::character_patch::CharacterPatchWatcher::spawn();
+        self.character_patch_watcher =
+            server::keydb::character_patch::CharacterPatchWatcher::spawn();
 
         Ok(())
     }
@@ -1081,9 +1083,9 @@ impl Server {
     fn apply_template_reload(
         &self,
         gs: &mut GameState,
-        req: crate::template_reload::ReloadRequest,
+        req: server::keydb::template_reload::ReloadRequest,
     ) {
-        let mut con = match server::keydb::connect() {
+        let mut con = match server::keydb::connection::connect() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!(
@@ -1096,7 +1098,7 @@ impl Server {
         };
 
         if req.reload_items {
-            match server::keydb_store::load_item_templates(&mut con) {
+            match server::keydb::store::load_item_templates(&mut con) {
                 Ok(items) => {
                     log::info!(
                         "template reload {}: swapped {} item templates",
@@ -1117,7 +1119,7 @@ impl Server {
         }
 
         if req.reload_characters {
-            match server::keydb_store::load_character_templates(&mut con) {
+            match server::keydb::store::load_character_templates(&mut con) {
                 Ok(chars) => {
                     log::info!(
                         "template reload {}: swapped {} character templates",
@@ -1137,7 +1139,9 @@ impl Server {
             }
         }
 
-        if let Err(e) = crate::template_reload::write_applied_status(&mut con, &req.request_id) {
+        if let Err(e) =
+            server::keydb::template_reload::write_applied_status(&mut con, &req.request_id)
+        {
             log::warn!(
                 "template reload {}: status write failed: {}",
                 req.request_id,
@@ -1150,10 +1154,10 @@ impl Server {
     ///
     /// Called once per tick from the main loop (outside `tick`) so the swap
     /// runs on the tick thread, keeping `GameState` single-threaded. Each
-    /// [`crate::map_patch::MapPatchEvent::Apply`] overwrites only the static
+    /// [`server::keydb::map_patch::MapPatchEvent::Apply`] overwrites only the static
     /// fields of the target tile, preserving the dynamic fields (`ch`,
     /// `to_ch`, `it`, `light`, `dlight`). On
-    /// [`crate::map_patch::MapPatchEvent::ReloadCompleted`] we write the
+    /// [`server::keydb::map_patch::MapPatchEvent::ReloadCompleted`] we write the
     /// `applied` status entry so the API can confirm completion.
     ///
     /// # Arguments
@@ -1169,12 +1173,12 @@ impl Server {
 
         while let Some(event) = watcher.try_recv() {
             match event {
-                crate::map_patch::MapPatchEvent::Apply(patch) => {
+                server::keydb::map_patch::MapPatchEvent::Apply(patch) => {
                     if Self::apply_map_patch(gs, &patch) {
                         any_applied = true;
                     }
                 }
-                crate::map_patch::MapPatchEvent::ReloadCompleted { request_id } => {
+                server::keydb::map_patch::MapPatchEvent::ReloadCompleted { request_id } => {
                     completed_requests.push(request_id);
                 }
             }
@@ -1188,7 +1192,7 @@ impl Server {
             return;
         }
 
-        let mut con = match server::keydb::connect() {
+        let mut con = match server::keydb::connection::connect() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("map patch reload: keydb connect failed: {}", e);
@@ -1196,7 +1200,7 @@ impl Server {
             }
         };
         for request_id in completed_requests {
-            if let Err(e) = crate::map_patch::write_applied_status(&mut con, &request_id) {
+            if let Err(e) = server::keydb::map_patch::write_applied_status(&mut con, &request_id) {
                 log::warn!(
                     "map patch reload {}: status write failed: {}",
                     request_id,
@@ -1245,11 +1249,11 @@ impl Server {
     /// Drain any pending admin item patches and apply them to `gs.items`.
     ///
     /// Called once per tick from the main loop. Each
-    /// [`crate::item_patch::ItemPatchEvent::Apply`] overwrites only the
+    /// [`server::keydb::item_patch::ItemPatchEvent::Apply`] overwrites only the
     /// static authoring fields of the target item, preserving dynamic
     /// runtime fields (position, damage state, current age/damage,
     /// runtime sprite override). On
-    /// [`crate::item_patch::ItemPatchEvent::ReloadCompleted`] we write
+    /// [`server::keydb::item_patch::ItemPatchEvent::ReloadCompleted`] we write
     /// the `applied` status entry so the API can confirm completion.
     ///
     /// # Arguments
@@ -1265,12 +1269,12 @@ impl Server {
 
         while let Some(event) = watcher.try_recv() {
             match event {
-                crate::item_patch::ItemPatchEvent::Apply(patch) => {
+                server::keydb::item_patch::ItemPatchEvent::Apply(patch) => {
                     if Self::apply_item_patch(gs, &patch) {
                         any_applied = true;
                     }
                 }
-                crate::item_patch::ItemPatchEvent::ReloadCompleted { request_id } => {
+                server::keydb::item_patch::ItemPatchEvent::ReloadCompleted { request_id } => {
                     completed_requests.push(request_id);
                 }
             }
@@ -1284,7 +1288,7 @@ impl Server {
             return;
         }
 
-        let mut con = match server::keydb::connect() {
+        let mut con = match server::keydb::connection::connect() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("item patch reload: keydb connect failed: {}", e);
@@ -1292,7 +1296,7 @@ impl Server {
             }
         };
         for request_id in completed_requests {
-            if let Err(e) = crate::item_patch::write_applied_status(&mut con, &request_id) {
+            if let Err(e) = server::keydb::item_patch::write_applied_status(&mut con, &request_id) {
                 log::warn!(
                     "item patch reload {}: status write failed: {}",
                     request_id,
@@ -1329,7 +1333,7 @@ impl Server {
     /// `gs.characters`.
     ///
     /// Called once per tick from the main loop. Each
-    /// [`crate::character_patch::CharacterPatchEvent::Apply`] overwrites
+    /// [`server::keydb::character_patch::CharacterPatchEvent::Apply`] overwrites
     /// only the static authoring fields of the target character,
     /// preserving dynamic runtime fields (position, combat AI, current
     /// resources, inventory, networking).
@@ -1347,12 +1351,14 @@ impl Server {
 
         while let Some(event) = watcher.try_recv() {
             match event {
-                crate::character_patch::CharacterPatchEvent::Apply(patch) => {
+                server::keydb::character_patch::CharacterPatchEvent::Apply(patch) => {
                     if Self::apply_character_patch(gs, &patch) {
                         any_applied = true;
                     }
                 }
-                crate::character_patch::CharacterPatchEvent::ReloadCompleted { request_id } => {
+                server::keydb::character_patch::CharacterPatchEvent::ReloadCompleted {
+                    request_id,
+                } => {
                     completed_requests.push(request_id);
                 }
             }
@@ -1366,7 +1372,7 @@ impl Server {
             return;
         }
 
-        let mut con = match server::keydb::connect() {
+        let mut con = match server::keydb::connection::connect() {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("character patch reload: keydb connect failed: {}", e);
@@ -1374,7 +1380,9 @@ impl Server {
             }
         };
         for request_id in completed_requests {
-            if let Err(e) = crate::character_patch::write_applied_status(&mut con, &request_id) {
+            if let Err(e) =
+                server::keydb::character_patch::write_applied_status(&mut con, &request_id)
+            {
                 log::warn!(
                     "character patch reload {}: status write failed: {}",
                     request_id,

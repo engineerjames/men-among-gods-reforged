@@ -133,7 +133,7 @@ fn watcher_loop(tx: Sender<ItemPatchEvent>, shutdown: Arc<AtomicBool>) {
         }
 
         if con.is_none() {
-            match server::keydb::connect() {
+            match super::connection::connect() {
                 Ok(c) => con = Some(c),
                 Err(e) => {
                     log::warn!("item patch watcher: keydb connect failed: {}", e);

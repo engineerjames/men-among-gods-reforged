@@ -4,7 +4,7 @@ use egui::Vec2;
 use mag_core::skills;
 use mag_core::string_operations::c_string_to_str;
 use mag_core::{ranks, traits};
-use server::snapshot::WorldSnapshot;
+use server::keydb::snapshot::WorldSnapshot;
 use server_utils::{AdminClient, DataSource, load_world_snapshot, save_world_snapshot};
 use std::collections::HashSet;
 use std::path::Path;
