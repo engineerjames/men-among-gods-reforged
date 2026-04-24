@@ -49,6 +49,15 @@ const RESET_BTN_W: u32 = 80;
 /// Height of the "Reset" button at the bottom of the panel.
 const RESET_BTN_H: u32 = 16;
 
+/// Vertical gap above the bottom reset-button row.
+const RESET_AREA_H: i32 = 28;
+
+/// Width of the vertical scrollbar track.
+const SCROLLBAR_W: u32 = 6;
+
+/// Minimum scrollbar thumb height.
+const SCROLLBAR_THUMB_MIN_H: u32 = 10;
+
 /// Status of a single talent node from the player's perspective.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum NodeStatus {
@@ -81,6 +90,8 @@ pub struct TalentPanel {
     rows_for_class: Option<Class>,
     /// One row per node in the active tree, in tree order.
     rows: Vec<TalentRow>,
+    /// First visible row index in `rows`.
+    scroll_offset: usize,
     /// "Reset" button at the bottom of the panel.
     reset_button: RectButton,
 
@@ -128,6 +139,7 @@ impl TalentPanel {
             title_bar: TitleBar::new("Talents", bounds.x, bounds.y, bounds.width),
             rows_for_class: None,
             rows: Vec::new(),
+            scroll_offset: 0,
             reset_button,
             talents: None,
             class: None,
@@ -156,6 +168,7 @@ impl TalentPanel {
             self.class = class;
             self.rebuild_rows();
         }
+        self.clamp_scroll();
     }
 
     /// Rebuilds the per-node row buttons for the current `self.class`.
@@ -184,6 +197,67 @@ impl TalentPanel {
                 .with_label("Learn", FONT)
                 .with_border(btn_border);
             self.rows.push(TalentRow { meta: node, button });
+        }
+        self.scroll_offset = 0;
+        self.update_visible_button_positions();
+    }
+
+    /// Returns the first row's render Y coordinate.
+    fn row_start_y(&self) -> i32 {
+        self.bounds.y + Y_FIRST_ROW + 2
+    }
+
+    /// Returns the Y coordinate at which row rendering must stop.
+    fn row_end_y(&self) -> i32 {
+        self.bounds.y + self.bounds.height as i32 - RESET_AREA_H
+    }
+
+    /// Returns how many complete rows fit in the visible content area.
+    fn visible_row_count(&self) -> usize {
+        ((self.row_end_y() - self.row_start_y()) / ROW_H).max(1) as usize
+    }
+
+    /// Returns the maximum valid scroll offset for the current row count.
+    fn max_scroll_offset(&self) -> usize {
+        self.rows.len().saturating_sub(self.visible_row_count())
+    }
+
+    /// Clamps `scroll_offset` and keeps visible button bounds in sync.
+    fn clamp_scroll(&mut self) {
+        self.scroll_offset = self.scroll_offset.min(self.max_scroll_offset());
+        self.update_visible_button_positions();
+    }
+
+    /// Scrolls by `delta_rows` rows and updates row button positions.
+    ///
+    /// Positive values scroll down; negative values scroll up.
+    fn scroll_by(&mut self, delta_rows: i32) {
+        let next = if delta_rows >= 0 {
+            self.scroll_offset.saturating_add(delta_rows as usize)
+        } else {
+            self.scroll_offset
+                .saturating_sub(delta_rows.unsigned_abs() as usize)
+        };
+        self.scroll_offset = next.min(self.max_scroll_offset());
+        self.update_visible_button_positions();
+    }
+
+    /// Returns the currently visible row range as absolute row indices.
+    fn visible_range(&self) -> std::ops::Range<usize> {
+        let start = self.scroll_offset.min(self.rows.len());
+        let end = (start + self.visible_row_count()).min(self.rows.len());
+        start..end
+    }
+
+    /// Repositions each visible row's Learn button to its on-panel slot.
+    fn update_visible_button_positions(&mut self) {
+        let btn_x = self.bounds.x + self.bounds.width as i32 - H_INSET - LEARN_BTN_W as i32;
+        let row_start_y = self.row_start_y();
+        let scroll_offset = self.scroll_offset;
+        for (i, row) in self.rows.iter_mut().enumerate() {
+            let visible_index = i as i32 - scroll_offset as i32;
+            row.button
+                .set_position(btn_x, row_start_y + visible_index * ROW_H);
         }
     }
 
@@ -214,6 +288,30 @@ impl TalentPanel {
         }
         NodeStatus::Available
     }
+
+    /// Truncates ASCII UI text to fit within `max_width` pixels.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Text to fit.
+    /// * `max_width` - Maximum pixel width available.
+    ///
+    /// # Returns
+    ///
+    /// The original text when it fits, or a `...`-terminated copy.
+    fn fit_text(text: &str, max_width: i32) -> String {
+        let max_chars = (max_width.max(0) as u32 / font_cache::BITMAP_GLYPH_ADVANCE) as usize;
+        if text.len() <= max_chars {
+            return text.to_string();
+        }
+        if max_chars == 0 {
+            return String::new();
+        }
+        if max_chars <= 3 {
+            return ".".repeat(max_chars);
+        }
+        format!("{}...", &text[..max_chars - 3])
+    }
 }
 
 impl Widget for TalentPanel {
@@ -233,6 +331,7 @@ impl Widget for TalentPanel {
         }
         let rb = self.reset_button.bounds();
         self.reset_button.set_position(rb.x + dx, rb.y + dy);
+        self.update_visible_button_positions();
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
@@ -257,10 +356,18 @@ impl Widget for TalentPanel {
             return EventResponse::Consumed;
         }
 
-        // Per-row Learn buttons. Only emit if the row is currently
+        if let UiEvent::MouseWheel { x, y, delta } = event {
+            if self.bounds.contains_point(*x, *y) {
+                self.scroll_by(-*delta);
+                return EventResponse::Consumed;
+            }
+        }
+
+        // Per-row Learn buttons. Only emit if the visible row is currently
         // Available (the server still validates, but this avoids spam).
         let snapshot = self.talents;
-        for row in self.rows.iter_mut() {
+        let visible = self.visible_range();
+        for row in self.rows[visible].iter_mut() {
             if row.button.handle_event(event) == EventResponse::Consumed {
                 if let Some(t) = snapshot.as_ref() {
                     if Self::node_status(row.meta, t) == NodeStatus::Available {
@@ -329,6 +436,7 @@ impl Widget for TalentPanel {
             _ => (0, 0, "(no class)"),
         };
         let header = format!("{}   Unspent: {}   Spent: {}", class_label, avail, spent);
+        let header = Self::fit_text(&header, self.bounds.width as i32 - H_INSET * 2);
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
@@ -344,7 +452,9 @@ impl Widget for TalentPanel {
             return Ok(());
         }
         let talents = self.talents.unwrap();
-        for row in self.rows.iter_mut() {
+        self.update_visible_button_positions();
+        let visible = self.visible_range();
+        for row in self.rows[visible].iter_mut() {
             let status = Self::node_status(row.meta, &talents);
             let row_y = row.button.bounds().y;
             let label_x = self.bounds.x + H_INSET;
@@ -359,6 +469,8 @@ impl Widget for TalentPanel {
                 "{} L{} {} (cost {})",
                 status_tag, row.meta.layer, row.meta.name, row.meta.cost
             );
+            let label_width = row.button.bounds().x - label_x - 4;
+            let line = Self::fit_text(&line, label_width);
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
@@ -377,12 +489,42 @@ impl Widget for TalentPanel {
 
         // Reset button.
         self.reset_button.render(ctx)?;
+        self.render_scrollbar(ctx)?;
 
         Ok(())
     }
 
     fn take_actions(&mut self) -> Vec<WidgetAction> {
         std::mem::take(&mut self.pending_actions)
+    }
+}
+
+impl TalentPanel {
+    /// Renders the vertical scrollbar when the tree has more rows than fit.
+    fn render_scrollbar(&self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        let visible_rows = self.visible_row_count();
+        if self.rows.len() <= visible_rows {
+            return Ok(());
+        }
+
+        let track_h = (self.row_end_y() - self.row_start_y()).max(1) as u32;
+        let track_x = self.bounds.x + self.bounds.width as i32 - SCROLLBAR_W as i32 - 2;
+        let track_y = self.row_start_y();
+        let track = sdl2::rect::Rect::new(track_x, track_y, SCROLLBAR_W, track_h);
+        ctx.canvas.set_draw_color(Color::RGBA(40, 40, 55, 180));
+        ctx.canvas.fill_rect(track)?;
+
+        let thumb_h = ((track_h as usize * visible_rows) / self.rows.len())
+            .max(SCROLLBAR_THUMB_MIN_H as usize)
+            .min(track_h as usize) as u32;
+        let max_offset = self.max_scroll_offset().max(1);
+        let free_h = track_h.saturating_sub(thumb_h) as usize;
+        let thumb_y = track_y + ((free_h * self.scroll_offset) / max_offset) as i32;
+        let thumb = sdl2::rect::Rect::new(track_x, thumb_y, SCROLLBAR_W, thumb_h);
+        ctx.canvas.set_draw_color(Color::RGBA(150, 150, 170, 220));
+        ctx.canvas.fill_rect(thumb)?;
+
+        Ok(())
     }
 }
 
@@ -441,6 +583,48 @@ mod tests {
         p.sync_state([0u8; 25], Some(Class::Mercenary));
         let tree = tree_for(Class::Mercenary).unwrap();
         assert_eq!(p.rows.len(), tree.nodes.len());
+    }
+
+    /// The row list scrolls when more nodes exist than fit in the panel.
+    #[test]
+    fn scroll_by_clamps_to_valid_range() {
+        let mut p = TalentPanel::new(Bounds::new(0, 0, 300, 120), Color::RGBA(0, 0, 0, 200));
+        p.sync_state([0u8; 25], Some(Class::Mercenary));
+        assert!(p.max_scroll_offset() > 0);
+
+        p.scroll_by(999);
+        assert_eq!(p.scroll_offset, p.max_scroll_offset());
+
+        p.scroll_by(-999);
+        assert_eq!(p.scroll_offset, 0);
+    }
+
+    /// Visible range excludes rows above and below the scrolled viewport.
+    #[test]
+    fn visible_range_tracks_scroll_offset() {
+        let mut p = TalentPanel::new(Bounds::new(0, 0, 300, 120), Color::RGBA(0, 0, 0, 200));
+        p.sync_state([0u8; 25], Some(Class::Mercenary));
+        p.scroll_by(2);
+
+        let range = p.visible_range();
+        assert_eq!(range.start, 2);
+        assert!(range.end <= p.rows.len());
+    }
+
+    /// Long row labels are shortened to fit the available pixel width.
+    #[test]
+    fn fit_text_truncates_long_text() {
+        let max_width = font_cache::BITMAP_GLYPH_ADVANCE as i32 * 10;
+        let fitted = TalentPanel::fit_text("Protective Spells Boost 1", max_width);
+        assert_eq!(fitted, "Protect...");
+    }
+
+    /// Short labels are kept unchanged.
+    #[test]
+    fn fit_text_preserves_short_text() {
+        let max_width = font_cache::BITMAP_GLYPH_ADVANCE as i32 * 20;
+        let fitted = TalentPanel::fit_text("Distract", max_width);
+        assert_eq!(fitted, "Distract");
     }
 
     /// Status: a learned node reports `Learned`.

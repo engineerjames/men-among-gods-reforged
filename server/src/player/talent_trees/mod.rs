@@ -139,14 +139,13 @@ pub fn reset_talent_points(talents: &mut [u8; 25]) {
 
 /// Grant additional unspent talent points to the player's pool.
 ///
-/// Saturates at `u8::MAX`. Reserved for the future progression hook that
-/// awards a talent point on rank-up.
+/// Saturates at `u8::MAX`. Used by the rank-up path to award one point per
+/// gained rank.
 ///
 /// # Arguments
 ///
 /// * `talents` - Packed talent-tree state to update in place.
 /// * `amount` - Number of points to add to `talents[0]`.
-#[allow(dead_code)]
 pub fn grant_talent_points(talents: &mut [u8; 25], amount: u8) {
     talents[TALENT_POINTS_INDEX] = talents[TALENT_POINTS_INDEX].saturating_add(amount);
 }
