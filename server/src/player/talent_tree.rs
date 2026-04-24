@@ -6,7 +6,7 @@
 //!
 //! * `future1[0]` — unspent talent points available to the player
 //!   (0–255).
-//! * `future1[1..25]` — one byte per talent rank/layer.  Each of the 8
+//! * `future1[1..24]` — one byte per talent rank/layer.  Each of the 8
 //!   bits in a byte represents a single talent node in that layer; a
 //!   `1` bit means "point spent", `0` means "not spent".
 //!
@@ -47,7 +47,7 @@ pub const TALENT_POINTS_INDEX: usize = 0;
 pub const TALENT_LAYER_START: usize = 1;
 
 /// One past the last valid talent-layer byte index (exclusive).
-pub const TALENT_LAYER_END: usize = 25;
+pub const TALENT_LAYER_END: usize = 24;
 
 /// Spend a single talent point on one node in a specific layer.
 ///
