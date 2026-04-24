@@ -15,8 +15,7 @@ use core::{
     string_operations::c_string_to_str,
     talent_trees::{
         TalentEffect, TalentNodeMeta, TalentRef, apply_talent_point, available_talent_points,
-        class_for_kindred, find_node, grant_talent_points, is_talent_spent, reset_talent_points,
-        talent_prereqs_met, talent_stat_bonuses, tree_for,
+        class_for_kindred, find_node, talent_prereqs_met, tree_for,
     },
 };
 
@@ -155,7 +154,10 @@ mod tests {
     use crate::test_helpers::with_test_gs;
     use core::constants::CharacterFlags;
     use core::skills::Attribute;
-    use core::talent_trees::{TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX};
+    use core::talent_trees::{
+        TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
+        is_talent_spent, reset_talent_points, talent_stat_bonuses,
+    };
     use core::traits::{Class, KIN_MERCENARY, KIN_WARRIOR};
 
     fn empty_talents() -> [u8; 25] {

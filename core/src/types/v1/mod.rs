@@ -17,7 +17,7 @@
 //! 2. Implement `From<v1::Foo> for v2::Foo` for every changed type.
 //! 3. Change the top-level re-export in `core/src/types/mod.rs` to point at
 //!    `v2::Foo` instead of `v1::Foo`.
-//! 4. Bump `SNAPSHOT_SCHEMA_VERSION` in `server/src/snapshot.rs`.
+//! 4. Bump `SNAPSHOT_SCHEMA_VERSION` in `server/src/keydb/snapshot.rs`.
 //! 5. Add a migration arm to `WorldSnapshot::from_file` that converts v1
 //!    data to v2 types before returning.
 

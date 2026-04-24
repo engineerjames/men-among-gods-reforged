@@ -42,7 +42,7 @@ Rules of thumb:
 
 - Do **not** repurpose these without first understanding the snapshot /
   bincode layout in [core/src/character_store.rs](core/src/character_store.rs)
-  and [server/src/snapshot.rs](server/src/snapshot.rs). They are part of the
+  and [server/src/keydb/snapshot.rs](server/src/keydb/snapshot.rs). They are part of the
   serialized form.
 - If you need scratch state for a new system, prefer adding a properly named
   field at the end of `Character` (and bumping the snapshot version) rather
