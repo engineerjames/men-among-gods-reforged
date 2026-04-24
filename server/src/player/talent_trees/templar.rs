@@ -1,0 +1,1 @@
+/// Empty talent tree for Templar.  This is a placeholder.

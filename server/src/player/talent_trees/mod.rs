@@ -33,9 +33,15 @@
 // layers start calling these.
 #![allow(dead_code)]
 
+// mod harakim;
+mod mercenary;
+// mod seyan_du;
+// mod templar;
+
 use core::{
     skills::{Attribute, Skill, SkillIndex},
     string_operations::c_string_to_str,
+    types::Class,
 };
 
 use crate::game_state::GameState;
@@ -48,6 +54,82 @@ pub const TALENT_LAYER_START: usize = 1;
 
 /// One past the last valid talent-layer byte index (exclusive).
 pub const TALENT_LAYER_END: usize = 24;
+
+pub struct TalentNode {
+    /// Stable identifier used by the client/server protocol when the
+    /// player clicks a node. Independent of position so the UI can
+    /// re-skin the tree without breaking save data.
+    pub id: TalentId,
+
+    /// Layer this node lives in (1..24). Matches `future1[layer]`.
+    pub layer: u8,
+
+    /// Single-bit mask within `future1[layer]` (1, 2, 4, ... 128).
+    pub mask: u8,
+
+    /// Human-readable name of the talent
+    pub name: &'static str,
+
+    /// Human-readable description of the talent's effects
+    pub description: &'static str,
+
+    /// Prerequisites that must already be unlocked in `future1` before
+    /// this node becomes available. Empty slice = no prerequisites
+    /// (root node).
+    pub prereqs: &'static [TalentRef],
+
+    /// What spending the point does. Pre-baked enum keeps dispatch
+    /// allocation-free and pattern-matchable in tests.
+    pub effect: TalentEffect,
+}
+
+/// Closed set of effects a talent can have. Add variants as new kinds
+/// of bonuses are introduced; matching is exhaustive so the compiler
+/// flags every dispatcher that needs updating.
+#[derive(Copy, Clone)]
+pub enum TalentEffect {
+    SkillFlat {
+        skill: Skill,
+        amount: u8,
+    },
+    SkillPercent {
+        skill: Skill,
+        percent: i32,
+    },
+    AttributeFlat {
+        attr: Attribute,
+        amount: u8,
+    },
+    AttributePercent {
+        attr: Attribute,
+        percent: i32,
+    },
+    GrantSkill {
+        skill: Skill,
+    },
+    /// Escape hatch for one-off effects that need custom logic
+    /// (e.g. unlock a quest, set a character flag). Function pointer
+    /// keeps the table `const` and avoids dyn dispatch.
+    Custom(fn(cn: usize, gs: &mut GameState) -> Result<(), String>),
+}
+
+/// A reference to another node by (layer, mask). Used in `prereqs`.
+/// Keeping prereqs positional (not by `TalentId`) avoids a runtime
+/// lookup when validating; the bitmask test is `talents[L] & M == M`.
+#[derive(Copy, Clone)]
+pub struct TalentRef {
+    pub layer: u8,
+    pub mask: u8,
+}
+
+/// Stable, class-scoped node identifier.
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct TalentId(pub u16);
+
+pub struct TalentTree {
+    pub class: Class,
+    pub nodes: &'static [TalentNode],
+}
 
 /// Spend a single talent point on one node in a specific layer.
 ///
