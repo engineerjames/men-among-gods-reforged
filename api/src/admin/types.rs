@@ -144,3 +144,80 @@ pub struct MapVersionResponse {
     /// Current value of the map version counter.
     pub version: u64,
 }
+
+// ---------------------------------------------------------------------------
+//  Items / characters (live world state)
+// ---------------------------------------------------------------------------
+
+/// Per-slot summary for `GET /admin/world/{items|characters}/list`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldEntitySummary {
+    /// Slot index.
+    pub id: usize,
+    /// `true` when the slot's `used` field is non-zero.
+    pub used: bool,
+    /// UTF-8 representation of the entity's `name` field, NUL-trimmed.
+    pub name: String,
+    /// UTF-8 representation of the entity's `reference` field, NUL-trimmed.
+    pub reference: String,
+}
+
+/// Listing response for `GET /admin/world/{items|characters}/list`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldEntityListResponse {
+    /// Total slot count for the addressed kind.
+    pub total: usize,
+    /// Inclusive start index of the returned page.
+    pub from: usize,
+    /// Number of summaries returned in this page.
+    pub count: usize,
+    /// Per-slot summaries.
+    pub items: Vec<WorldEntitySummary>,
+}
+
+/// Optional pagination query for world listing endpoints.
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorldEntityListQuery {
+    /// Inclusive start index. Defaults to `0`.
+    pub from: Option<usize>,
+    /// Maximum entries to return. Defaults to `256`, capped at `4096`.
+    pub limit: Option<usize>,
+}
+
+/// Response shape for `PUT /admin/world/items/{id}` and
+/// `PUT /admin/world/characters/{id}`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PutWorldEntityResponse {
+    /// New value of the kind's version counter (post-increment).
+    pub version: u64,
+    /// Number of patches now waiting in the server-side patch queue.
+    pub queued: u64,
+}
+
+/// Body for `POST /admin/world/{items|characters}/reload`. Reserved for
+/// future selective reload semantics; currently unused.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct WorldEntityReloadRequest {}
+
+/// Response for `POST /admin/world/{items|characters}/reload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldEntityReloadResponse {
+    /// Opaque identifier the caller polls via the status endpoint.
+    pub request_id: String,
+}
+
+/// Status snapshot for `GET /admin/world/{items|characters}/reload/status`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldEntityReloadStatusResponse {
+    /// One of `"pending"`, `"applied"`, or `"expired"`.
+    pub status: String,
+    /// Opaque identifier the caller passed in.
+    pub request_id: String,
+}
+
+/// Response for `GET /admin/world/{items|characters}/version`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorldEntityVersionResponse {
+    /// Current value of the kind's version counter.
+    pub version: u64,
+}

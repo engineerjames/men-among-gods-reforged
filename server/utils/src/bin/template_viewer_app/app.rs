@@ -50,6 +50,10 @@ pub(crate) struct TemplateViewerApp {
     dirty_item_template_slots: HashSet<usize>,
     /// Slots in `character_templates` that have unsaved edits (LiveApi mode).
     dirty_character_template_slots: HashSet<usize>,
+    /// Slots in `items` (live world state) that have unsaved edits.
+    dirty_item_slots: HashSet<usize>,
+    /// Slots in `characters` (live world state) that have unsaved edits.
+    dirty_character_slots: HashSet<usize>,
     /// Item template slots whose full bincode payload has been fetched from
     /// the API. Slots absent from this set show a placeholder in the detail
     /// panel until they are lazily loaded on first selection.
@@ -120,6 +124,8 @@ impl Default for TemplateViewerApp {
             dirty: false,
             dirty_item_template_slots: HashSet::new(),
             dirty_character_template_slots: HashSet::new(),
+            dirty_item_slots: HashSet::new(),
+            dirty_character_slots: HashSet::new(),
             fully_loaded_item_slots: HashSet::new(),
             fully_loaded_char_slots: HashSet::new(),
             admin_client: None,
@@ -170,6 +176,8 @@ impl TemplateViewerApp {
         self.dirty = false;
         self.dirty_item_template_slots.clear();
         self.dirty_character_template_slots.clear();
+        self.dirty_item_slots.clear();
+        self.dirty_character_slots.clear();
         self.fully_loaded_item_slots.clear();
         self.fully_loaded_char_slots.clear();
     }
@@ -185,6 +193,8 @@ impl TemplateViewerApp {
         self.dirty = false;
         self.dirty_item_template_slots.clear();
         self.dirty_character_template_slots.clear();
+        self.dirty_item_slots.clear();
+        self.dirty_character_slots.clear();
         self.fully_loaded_item_slots.clear();
         self.fully_loaded_char_slots.clear();
 
@@ -294,6 +304,8 @@ impl TemplateViewerApp {
                 self.dirty = false;
                 self.dirty_item_template_slots.clear();
                 self.dirty_character_template_slots.clear();
+                self.dirty_item_slots.clear();
+                self.dirty_character_slots.clear();
                 self.save_status = Some(format!("Saved snapshot: {}", path.display()));
             }
             Err(e) => {
@@ -321,10 +333,14 @@ impl TemplateViewerApp {
             .iter()
             .copied()
             .collect();
+        let item_inst_slots: Vec<usize> = self.dirty_item_slots.iter().copied().collect();
+        let char_inst_slots: Vec<usize> = self.dirty_character_slots.iter().copied().collect();
 
         let mut errors: Vec<String> = Vec::new();
         let mut item_pushed = 0usize;
         let mut char_pushed = 0usize;
+        let mut item_inst_pushed = 0usize;
+        let mut char_inst_pushed = 0usize;
 
         for idx in &item_slots {
             if let Some(item) = self.item_templates.get(*idx) {
@@ -342,13 +358,33 @@ impl TemplateViewerApp {
                 }
             }
         }
+        for idx in &item_inst_slots {
+            if let Some(item) = self.items.get(*idx) {
+                let patch = mag_core::item_store::ItemPatch::from_item(*idx, item);
+                match client.put_item_patch(*idx, &patch) {
+                    Ok(_) => item_inst_pushed += 1,
+                    Err(e) => errors.push(format!("item_inst[{idx}]: {e}")),
+                }
+            }
+        }
+        for idx in &char_inst_slots {
+            if let Some(ch) = self.characters.get(*idx) {
+                let patch = mag_core::character_store::CharacterPatch::from_character(*idx, ch);
+                match client.put_character_patch(*idx, &patch) {
+                    Ok(_) => char_inst_pushed += 1,
+                    Err(e) => errors.push(format!("char_inst[{idx}]: {e}")),
+                }
+            }
+        }
 
         if errors.is_empty() {
             self.dirty = false;
             self.dirty_item_template_slots.clear();
             self.dirty_character_template_slots.clear();
+            self.dirty_item_slots.clear();
+            self.dirty_character_slots.clear();
             self.save_status = Some(format!(
-                "Saved to API: {item_pushed} item template(s), {char_pushed} character template(s). Use 'Reload server templates' to apply."
+                "Saved to API: {item_pushed} item template(s), {char_pushed} character template(s), {item_inst_pushed} item(s), {char_inst_pushed} character(s). Use 'Reload server templates' to apply."
             ));
         } else {
             // Drop the slots we pushed successfully so retry only sends failed ones.
@@ -362,8 +398,24 @@ impl TemplateViewerApp {
                     self.dirty_character_template_slots.remove(idx);
                 }
             }
+            for idx in &item_inst_slots {
+                if !errors
+                    .iter()
+                    .any(|e| e.contains(&format!("item_inst[{idx}]")))
+                {
+                    self.dirty_item_slots.remove(idx);
+                }
+            }
+            for idx in &char_inst_slots {
+                if !errors
+                    .iter()
+                    .any(|e| e.contains(&format!("char_inst[{idx}]")))
+                {
+                    self.dirty_character_slots.remove(idx);
+                }
+            }
             self.save_status = Some(format!(
-                "Save partial: {item_pushed} items, {char_pushed} chars; {} error(s): {}",
+                "Save partial: {item_pushed} item tpl, {char_pushed} char tpl, {item_inst_pushed} items, {char_inst_pushed} chars; {} error(s): {}",
                 errors.len(),
                 errors.join("; ")
             ));
@@ -443,20 +495,35 @@ impl TemplateViewerApp {
         self.save_status = Some("Connected to admin API".to_string());
     }
 
-    /// Trigger a reload on the running server for both template kinds.
+    /// Trigger a reload on the running server for both template kinds, plus
+    /// items and characters. Status display tracks the templates request id.
     fn request_server_reload(&mut self) {
         let Some(client) = self.admin_client.as_ref().cloned() else {
             self.save_status = Some("Admin client not initialized".to_string());
             return;
         };
+
+        let mut extra: Vec<String> = Vec::new();
+        if let Err(e) = client.request_items_reload() {
+            extra.push(format!("items reload failed: {e}"));
+        } else {
+            extra.push("items".to_string());
+        }
+        if let Err(e) = client.request_characters_reload() {
+            extra.push(format!("characters reload failed: {e}"));
+        } else {
+            extra.push("characters".to_string());
+        }
+
         match client.request_reload(true, true) {
             Ok(resp) => {
                 self.pending_reload_request_id = Some(resp.request_id.clone());
                 self.pending_reload_since = Some(std::time::Instant::now());
                 self.save_status = Some(format!(
-                    "Reload requested ({}): kinds=[{}]",
+                    "Reload requested ({}): kinds=[{}] + [{}]",
                     resp.request_id,
-                    resp.kinds.join(", ")
+                    resp.kinds.join(", "),
+                    extra.join(", ")
                 ));
             }
             Err(e) => {
@@ -671,6 +738,8 @@ impl TemplateViewerApp {
         self.dirty = false;
         self.dirty_item_template_slots.clear();
         self.dirty_character_template_slots.clear();
+        self.dirty_item_slots.clear();
+        self.dirty_character_slots.clear();
         if self.load_error.is_some() {
             self.save_status = Some("Reverted changes (with load errors)".to_string());
         } else {
@@ -694,7 +763,16 @@ impl TemplateViewerApp {
                         self.dirty_character_template_slots.insert(idx);
                     }
                 }
-                _ => {}
+                ViewMode::Items => {
+                    if let Some(idx) = self.selected_item_instance_index {
+                        self.dirty_item_slots.insert(idx);
+                    }
+                }
+                ViewMode::Characters => {
+                    if let Some(idx) = self.selected_character_instance_index {
+                        self.dirty_character_slots.insert(idx);
+                    }
+                }
             }
         }
     }

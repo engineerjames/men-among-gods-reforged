@@ -1,9 +1,11 @@
 mod area;
 mod background_saver;
+mod character_patch;
 mod driver;
 mod effect;
 mod game_state;
 mod god;
+mod item_patch;
 mod map_patch;
 mod template_reload;
 mod types;
@@ -120,6 +122,8 @@ fn main() -> Result<(), String> {
     while !quit_flag.load(Ordering::SeqCst) {
         server.drain_template_reloads(&mut gs);
         server.drain_map_patches(&mut gs);
+        server.drain_item_patches(&mut gs);
+        server.drain_character_patches(&mut gs);
         server.tick(&mut gs);
     }
 

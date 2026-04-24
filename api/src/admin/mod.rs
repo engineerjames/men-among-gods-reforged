@@ -11,6 +11,8 @@
 
 pub mod auth;
 pub mod routes;
+pub mod routes_characters;
+pub mod routes_items;
 pub mod routes_map;
 pub mod types;
 
@@ -65,6 +67,45 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
         .route(
             "/world/map/{x}/{y}",
             get(routes_map::get_map_tile).put(routes_map::put_map_tile),
+        )
+        .route("/world/items", get(routes_items::get_items_bulk))
+        .route("/world/items/list", get(routes_items::list_items))
+        .route("/world/items/version", get(routes_items::get_items_version))
+        .route(
+            "/world/items/reload",
+            post(routes_items::request_items_reload),
+        )
+        .route(
+            "/world/items/reload/status",
+            get(routes_items::get_items_reload_status),
+        )
+        .route(
+            "/world/items/{id}",
+            get(routes_items::get_item).put(routes_items::put_item),
+        )
+        .route(
+            "/world/characters",
+            get(routes_characters::get_characters_bulk),
+        )
+        .route(
+            "/world/characters/list",
+            get(routes_characters::list_characters),
+        )
+        .route(
+            "/world/characters/version",
+            get(routes_characters::get_characters_version),
+        )
+        .route(
+            "/world/characters/reload",
+            post(routes_characters::request_characters_reload),
+        )
+        .route(
+            "/world/characters/reload/status",
+            get(routes_characters::get_characters_reload_status),
+        )
+        .route(
+            "/world/characters/{id}",
+            get(routes_characters::get_character).put(routes_characters::put_character),
         )
         .layer(axum::middleware::from_fn_with_state(
             admin_state.clone(),

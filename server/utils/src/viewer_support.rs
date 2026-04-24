@@ -225,11 +225,13 @@ fn load_world_snapshot_from_api(base_url: &str, token: &str) -> Result<WorldSnap
     }
     let client = crate::admin_client::AdminClient::new(base_url, token)?;
 
-    // Two requests for the template summaries, plus one bulk request for
-    // the entire map (~1M tiles) from the admin map endpoint.
+    // Two requests for the template summaries, plus three bulk requests for
+    // the live world state (map, items, characters).
     let item_list = client.fetch_item_template_summaries()?;
     let char_list = client.fetch_character_template_summaries()?;
     let map_tiles = client.fetch_map_tiles()?;
+    let items = client.fetch_items()?;
+    let characters = client.fetch_characters()?;
 
     // Build placeholder vecs the same length as the full template arrays so
     // the sidebar list renders correctly. Only name/used are populated; the
@@ -254,9 +256,9 @@ fn load_world_snapshot_from_api(base_url: &str, token: &str) -> Result<WorldSnap
 
     Ok(WorldSnapshot::new(
         map_tiles,
-        Vec::new(),
+        items,
         item_templates,
-        Vec::new(),
+        characters,
         character_templates,
         Vec::new(),
         mag_core::types::Global::default(),
