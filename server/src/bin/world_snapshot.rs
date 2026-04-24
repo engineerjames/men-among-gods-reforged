@@ -15,7 +15,7 @@
 //! ```
 //!
 //! The resulting `.wsnap` file is a single `bincode`-encoded
-//! [`WorldSnapshot`](server::snapshot::WorldSnapshot) that can be committed
+//! [`WorldSnapshot`](server::keydb::snapshot::WorldSnapshot) that can be committed
 //! to version control, copied between environments, or edited by external
 //! tooling.
 
@@ -26,9 +26,9 @@ use std::time::Instant;
 
 use redis::Commands;
 
-use server::keydb;
-use server::keydb_store;
-use server::snapshot::{SNAPSHOT_SCHEMA_VERSION, WorldSnapshot};
+use server::keydb::connection as keydb;
+use server::keydb::store;
+use server::keydb::snapshot::{SNAPSHOT_SCHEMA_VERSION, WorldSnapshot};
 
 // ---------------------------------------------------------------------------
 //  CLI arg parsing
@@ -135,7 +135,7 @@ fn flag_value<'a>(args: &'a [String], flag: &str) -> Option<&'a str> {
 
 /// Export all game data from KeyDB to a snapshot file.
 ///
-/// Connects to KeyDB, calls [`keydb_store::load_all`] to read all entities,
+/// Connects to KeyDB, calls [`store::load_all`] to read all entities,
 /// wraps them in a [`WorldSnapshot`], and writes the result to `output`.
 ///
 /// # Arguments
@@ -150,7 +150,7 @@ fn cmd_export(output: &PathBuf) {
 
     println!("Loading game data from KeyDB...");
     let start = Instant::now();
-    let data = keydb_store::load_all(&mut con).unwrap_or_else(|e| {
+    let data = store::load_all(&mut con).unwrap_or_else(|e| {
         eprintln!("Failed to load game data: {e}");
         process::exit(1);
     });
@@ -213,7 +213,7 @@ fn cmd_import(input: &PathBuf, skip_if_seeded: bool, force: bool) {
     });
 
     // Seeded-data guard.
-    let exists = keydb_store::has_game_data(&mut con).unwrap_or(false);
+    let exists = store::has_game_data(&mut con).unwrap_or(false);
     if exists && !force {
         if skip_if_seeded {
             println!("Game data already exists in KeyDB. Skipping import (--skip-if-seeded).");
@@ -228,44 +228,44 @@ fn cmd_import(input: &PathBuf, skip_if_seeded: bool, force: bool) {
 
     println!("\nWriting game data to KeyDB...");
 
-    keydb_store::save_map(&mut con, &snapshot.map).unwrap_or_else(|e| {
+    store::save_map(&mut con, &snapshot.map).unwrap_or_else(|e| {
         eprintln!("Failed to save map: {e}");
         process::exit(1);
     });
 
-    keydb_store::save_items(&mut con, &snapshot.items).unwrap_or_else(|e| {
+    store::save_items(&mut con, &snapshot.items).unwrap_or_else(|e| {
         eprintln!("Failed to save items: {e}");
         process::exit(1);
     });
 
-    keydb_store::save_item_templates(&mut con, &snapshot.item_templates).unwrap_or_else(|e| {
+    store::save_item_templates(&mut con, &snapshot.item_templates).unwrap_or_else(|e| {
         eprintln!("Failed to save item templates: {e}");
         process::exit(1);
     });
 
-    keydb_store::save_characters(&mut con, &snapshot.characters).unwrap_or_else(|e| {
+    store::save_characters(&mut con, &snapshot.characters).unwrap_or_else(|e| {
         eprintln!("Failed to save characters: {e}");
         process::exit(1);
     });
 
-    keydb_store::save_character_templates(&mut con, &snapshot.character_templates).unwrap_or_else(
+    store::save_character_templates(&mut con, &snapshot.character_templates).unwrap_or_else(
         |e| {
             eprintln!("Failed to save character templates: {e}");
             process::exit(1);
         },
     );
 
-    keydb_store::save_effects(&mut con, &snapshot.effects).unwrap_or_else(|e| {
+    store::save_effects(&mut con, &snapshot.effects).unwrap_or_else(|e| {
         eprintln!("Failed to save effects: {e}");
         process::exit(1);
     });
 
-    keydb_store::save_globals(&mut con, &snapshot.globals).unwrap_or_else(|e| {
+    store::save_globals(&mut con, &snapshot.globals).unwrap_or_else(|e| {
         eprintln!("Failed to save globals: {e}");
         process::exit(1);
     });
 
-    keydb_store::save_text_data(
+    store::save_text_data(
         &mut con,
         &snapshot.bad_names,
         &snapshot.bad_words,
@@ -276,7 +276,7 @@ fn cmd_import(input: &PathBuf, skip_if_seeded: bool, force: bool) {
         process::exit(1);
     });
 
-    // Schema version marker (must match keydb_store::SCHEMA_VERSION).
+    // Schema version marker (must match store::SCHEMA_VERSION).
     // We write it last so the server startup check only succeeds after all
     // data is committed.
     con.set::<_, _, ()>("game:meta:version", SNAPSHOT_SCHEMA_VERSION)

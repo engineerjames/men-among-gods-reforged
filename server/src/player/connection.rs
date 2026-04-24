@@ -9,7 +9,7 @@ use core::{
     types::{CharacterSummary, Sex},
 };
 
-use server::keydb;
+use server::keydb::connection as keydb;
 
 use crate::{game_state::GameState, god::God, helpers, network_manager};
 

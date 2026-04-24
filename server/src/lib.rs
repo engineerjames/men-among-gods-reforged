@@ -5,18 +5,13 @@
 /// (template viewer, map viewer) can reuse KeyDB connectivity and the
 /// points-calculation logic without duplicating code.
 
-/// KeyDB/Redis connection helpers.
+/// KeyDB integration: connection helper, persistence layer, snapshot I/O,
+/// background saver, and pub/sub patch watchers.
 ///
-/// Provides [`keydb::connect`] for establishing a synchronous Redis connection
-/// to the game-data KeyDB instance.
+/// See [`keydb`] for the full submodule layout. Common entry points:
+/// [`keydb::connection::connect`], [`keydb::store::load_all`],
+/// [`keydb::snapshot::WorldSnapshot`].
 pub mod keydb;
-
-/// KeyDB-backed persistence layer for game data.
-///
-/// Contains [`keydb_store::load_all`], individual entity loaders, and
-/// save functions for all game data types (map, items, characters, effects,
-/// globals, templates, text data).
-pub mod keydb_store;
 
 /// Pure functions for calculating character experience points.
 ///
@@ -24,10 +19,3 @@ pub mod keydb_store;
 /// experience a character template is worth, based on its attributes, HP,
 /// endurance, mana, and skills.
 pub mod points;
-
-/// World snapshot format for portable, versioned game-world backups.
-///
-/// Provides [`snapshot::WorldSnapshot`] for reading and writing `.wsnap`
-/// files that capture the complete server game state in a single binary
-/// file suitable for backup, transfer, or manual editing.
-pub mod snapshot;

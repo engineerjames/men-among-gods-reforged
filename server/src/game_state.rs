@@ -20,8 +20,8 @@ use crate::types::server_player::ServerPlayer;
 ///
 /// All persistence is backed by KeyDB.  Use the `world-snapshot` binary to
 /// export or import the complete world state as a portable `.wsnap` file.
-use server::keydb;
-use server::keydb_store;
+use server::keydb::connection as keydb;
+use server::keydb::store;
 
 /// The unified in-memory game state for the server.
 ///
@@ -233,7 +233,7 @@ impl GameState {
     /// * `Err(String)` if the KeyDB connection or load fails.
     fn load_from_keydb(&mut self) -> Result<(), String> {
         let mut con = keydb::connect()?;
-        let data = keydb_store::load_all(&mut con)?;
+        let data = store::load_all(&mut con)?;
 
         self.map = data.map;
         self.items = data.items;
@@ -282,7 +282,7 @@ impl GameState {
     /// * `Err(String)` if the KeyDB connection or save fails.
     fn save_to_keydb(&self) -> Result<(), String> {
         let mut con = keydb::connect()?;
-        keydb_store::save_runtime_data(
+        store::save_runtime_data(
             &mut con,
             &self.map,
             &self.items,

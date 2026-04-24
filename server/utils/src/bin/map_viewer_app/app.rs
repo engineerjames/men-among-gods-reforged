@@ -4,7 +4,7 @@ use egui::{Pos2, Rect, Vec2};
 use mag_core::constants::{ItemFlags, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS};
 use mag_core::map_store::MapPatch;
 use mag_core::types::{Item, Map};
-use server::snapshot::WorldSnapshot;
+use server::keydb::snapshot::WorldSnapshot;
 use server_utils::admin_client::AdminClient;
 use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
 use std::collections::BTreeSet;

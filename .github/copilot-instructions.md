@@ -12,7 +12,7 @@
 - API (`:5554`) stores account/character metadata in KeyDB via keys like `account:*`, `character:*`.
 - Server (`:5555`) loads gameplay state into memory from KeyDB. A background saver thread writes data back on a rotating ~12 minute schedule for crash resilience.
 - Integration bridge is login tickets: API writes one-time `game_login_ticket:{ticket}` keys; server consumes them atomically (`server/src/keydb.rs`).
-- Character ownership/management is enforced in API routes; game world state persistence is via `server/src/keydb_store.rs`.
+- Character ownership/management is enforced in API routes; game world state persistence is via `server/src/keydb/store.rs`.
 
 ## Required runtime assumptions
 - Server always uses KeyDB for persistence. No `MAG_STORAGE_BACKEND` env var is needed.
@@ -77,8 +77,8 @@ Every public function, struct, enum, trait, and constant **must** have a `///` d
 ## High-value files by area
 - Tick loop and network batching: `server/src/server.rs`, `docs/server/DESIGN.md`
 - Persistence and dirty-flag lifecycle: `server/src/repository.rs`, `server/src/main.rs`
-- KeyDB game-data persistence: `server/src/keydb_store.rs`, `server/src/background_saver.rs`
+- KeyDB game-data persistence: `server/src/keydb/store.rs`, `server/src/keydb/background_saver.rs`
 - Auth/account routes and key schema assumptions: `api/src/routes.rs`, `api/src/pipelines.rs`, `api/README.md`
 - Client state machine and scene management: `client/src/main.rs`, `client/src/network/mod.rs`
 - Release packaging/CI: `.github/workflows/rust.yml`, `.github/workflows/release.yml`, `pipelines/README.md`
-- World snapshot tool: `server/src/bin/world_snapshot.rs`, `server/src/snapshot.rs`
+- World snapshot tool: `server/src/bin/world_snapshot.rs`, `server/src/keydb/snapshot.rs`
