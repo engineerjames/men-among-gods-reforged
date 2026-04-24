@@ -39,6 +39,7 @@ mod mercenary;
 // mod templar;
 
 use core::{
+    ranks::Rank,
     skills::{Attribute, Skill, SkillIndex},
     string_operations::c_string_to_str,
     types::Class,
@@ -54,6 +55,21 @@ pub const TALENT_LAYER_START: usize = 1;
 
 /// One past the last valid talent-layer byte index (exclusive).
 pub const TALENT_LAYER_END: usize = 24;
+
+pub const RANKS_THAT_GRANT_TALENT_POINTS: &'static [Rank] = &[
+    Rank::PrivateFirstClass,
+    Rank::Corporal,
+    Rank::StaffSergeant,
+    Rank::FirstSergeant,
+    Rank::SecondLieutenant,
+    Rank::Captain,
+    Rank::LieutenantColonel,
+    Rank::BrigadierGeneral,
+    Rank::LieutenantGeneral,
+    Rank::FieldMarshal,
+    Rank::Baron,
+    Rank::Warlord,
+];
 
 pub struct TalentNode {
     /// Stable identifier used by the client/server protocol when the
