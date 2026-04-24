@@ -99,8 +99,9 @@ pub enum SkillIndex {
     MaxIndex = 6,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
-pub enum AttributeIndex {
+pub enum Attribute {
     Braveness = 0,
     Willpower = 1,
     Intuition = 2,
@@ -134,7 +135,7 @@ impl From<SkillCategory> for char {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(usize)]
-pub enum SkillIndex {
+pub enum Skill {
     Hand = SK_HAND,
     Karate = SK_KARATE,
     Dagger = SK_DAGGER, // TODO: Clean this up before merging.
@@ -181,6 +182,7 @@ pub enum SkillIndex {
 pub struct SkillTab {
     nr: usize,
     cat: SkillCategory,
+    #[allow(dead_code)]
     name: &'static str,
     desc: &'static str,
     attrib: [usize; 3],

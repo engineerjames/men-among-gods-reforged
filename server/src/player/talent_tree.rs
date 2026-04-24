@@ -25,9 +25,12 @@
 // bridge when we come to it. For now we'll just focus on implementing the basic
 // structure and point spending logic.
 
-use core::{skills::AttributeIndex, string_operations::c_string_to_str};
+use core::{
+    skills::{Attribute, Skill, SkillIndex},
+    string_operations::c_string_to_str,
+};
 
-use crate::{game_state::GameState, helpers::skill_aoe_uses_legacy_cross};
+use crate::game_state::GameState;
 
 pub fn apply_talent_point(
     cn: usize,
@@ -68,7 +71,7 @@ pub fn reset_talent_points(talents: &mut [u8; 25]) {
 fn modify_base_skill_by_percentage(
     cn: usize,
     game_state: &mut GameState,
-    skill: SkillIndex,
+    skill: Skill,
     percentage_bonus: i32,
 ) -> Result<(), String> {
     let skill_base =
@@ -91,7 +94,7 @@ fn modify_base_skill_by_percentage(
 fn modify_attribute_by_percentage(
     cn: usize,
     game_state: &mut GameState,
-    attribute_index: AttributeIndex,
+    attribute_index: Attribute,
     percentage_bonus: i32,
 ) -> Result<(), String> {
     let attribute_base =
@@ -115,7 +118,7 @@ fn modify_attribute_by_percentage(
 fn modify_skill_by_flat_amount(
     cn: usize,
     game_state: &mut GameState,
-    skill: SkillIndex,
+    skill: Skill,
     flat_bonus: u8,
 ) -> Result<(), String> {
     game_state.characters[cn].skill[skill as usize][SkillIndex::BaseValue as usize] += flat_bonus;
@@ -133,7 +136,7 @@ fn modify_skill_by_flat_amount(
 fn modify_attribute_by_flat_amount(
     cn: usize,
     game_state: &mut GameState,
-    attribute_index: AttributeIndex,
+    attribute_index: Attribute,
     flat_bonus: u8,
 ) -> Result<(), String> {
     game_state.characters[cn].attrib[attribute_index as usize][SkillIndex::BaseValue as usize] +=
@@ -149,7 +152,7 @@ fn modify_attribute_by_flat_amount(
     Ok(())
 }
 
-fn grant_skill(cn: usize, game_state: &mut GameState, skill: SkillIndex) -> Result<(), String> {
+fn grant_skill(cn: usize, game_state: &mut GameState, skill: Skill) -> Result<(), String> {
     let skill_base =
         game_state.characters[cn].skill[skill as usize][SkillIndex::BaseValue as usize];
 
@@ -173,7 +176,7 @@ fn grant_skill(cn: usize, game_state: &mut GameState, skill: SkillIndex) -> Resu
     Ok(())
 }
 
-fn remove_skill(cn: usize, game_state: &mut GameState, skill: SkillIndex) -> Result<(), String> {
+fn remove_skill(cn: usize, game_state: &mut GameState, skill: Skill) -> Result<(), String> {
     let skill_base =
         game_state.characters[cn].skill[skill as usize][SkillIndex::BaseValue as usize];
 
