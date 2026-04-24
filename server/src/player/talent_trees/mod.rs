@@ -15,7 +15,10 @@
 //!   prerequisites and cost, debits a point, and dispatches the
 //!   node's effect.
 
+mod harakim;
 mod mercenary;
+mod seyan_du;
+mod templar;
 
 use core::{
     skills::{Attribute, Skill, SkillIndex},
@@ -62,7 +65,10 @@ pub enum TalentEffect {
 /// * `None` if the class has no effects table or the id is unknown.
 fn effect_for(tree: &'static TalentTreeMeta, id: TalentId) -> Option<TalentEffect> {
     let table: &[(TalentId, TalentEffect)] = match tree.class {
+        core::traits::Class::Templar => templar::TEMPLAR_TALENT_EFFECTS,
         core::traits::Class::Mercenary => mercenary::MERCENARY_TALENT_EFFECTS,
+        core::traits::Class::Harakim => harakim::HARAKIM_TALENT_EFFECTS,
+        core::traits::Class::SeyanDu => seyan_du::SEYAN_DU_TALENT_EFFECTS,
         _ => return None,
     };
     table
@@ -430,7 +436,7 @@ mod tests {
     use crate::test_helpers::with_test_gs;
     use core::constants::CharacterFlags;
     use core::talent_trees::mercenary::ids;
-    use core::traits::{Class, KIN_MERCENARY, KIN_TEMPLAR};
+    use core::traits::{Class, KIN_MERCENARY, KIN_WARRIOR};
 
     fn empty_talents() -> [u8; 25] {
         [0; 25]
@@ -704,7 +710,7 @@ mod tests {
     fn learn_talent_rejects_when_class_has_no_tree() {
         with_test_gs(|gs| {
             let cn = 1;
-            give_class_and_points(gs, cn, KIN_TEMPLAR, 5);
+            give_class_and_points(gs, cn, KIN_WARRIOR, 5);
             let err = learn_talent(gs, cn, ids::DISTRACT).unwrap_err();
             assert!(err.to_lowercase().contains("no talent tree"), "got: {err}");
         });
@@ -785,14 +791,72 @@ mod tests {
     // ---- effect_for -----------------------------------------------------
 
     #[test]
-    fn effect_for_returns_some_for_every_mercenary_node() {
-        let tree = tree_for(Class::Mercenary).unwrap();
-        for node in tree.nodes {
-            assert!(
-                effect_for(tree, node.id).is_some(),
-                "missing effect for mercenary node '{}'",
-                node.name,
-            );
+    fn effect_for_returns_some_for_every_registered_server_node() {
+        for class in [
+            Class::Harakim,
+            Class::Mercenary,
+            Class::SeyanDu,
+            Class::Templar,
+        ] {
+            let tree = tree_for(class).unwrap();
+            for node in tree.nodes {
+                assert!(
+                    effect_for(tree, node.id).is_some(),
+                    "missing effect for {:?} node '{}'",
+                    class,
+                    node.name,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn placeholder_effect_tables_cover_their_class_tree_ids() {
+        for (class, table) in [
+            (Class::Harakim, harakim::HARAKIM_TALENT_EFFECTS),
+            (Class::Mercenary, mercenary::MERCENARY_TALENT_EFFECTS),
+            (Class::SeyanDu, seyan_du::SEYAN_DU_TALENT_EFFECTS),
+            (Class::Templar, templar::TEMPLAR_TALENT_EFFECTS),
+        ] {
+            let tree = tree_for(class).unwrap();
+            assert_eq!(table.len(), tree.nodes.len());
+            for node in tree.nodes {
+                assert!(
+                    table.iter().any(|(id, _)| *id == node.id),
+                    "missing effect table entry for {:?} node '{}'",
+                    class,
+                    node.name,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn placeholder_effect_tables_have_distinct_class_flavors() {
+        assert_effect(
+            templar::TEMPLAR_TALENT_EFFECTS[0].1,
+            Attribute::Braveness,
+            10,
+        );
+        assert_effect(
+            harakim::HARAKIM_TALENT_EFFECTS[0].1,
+            Attribute::Intuition,
+            10,
+        );
+        assert_effect(
+            seyan_du::SEYAN_DU_TALENT_EFFECTS[17].1,
+            Attribute::Intuition,
+            18,
+        );
+    }
+
+    fn assert_effect(effect: TalentEffect, expected_attr: Attribute, expected_percent: i32) {
+        match effect {
+            TalentEffect::AttributePercent { attr, percent } => {
+                assert_eq!(attr, expected_attr);
+                assert_eq!(percent, expected_percent);
+            }
+            other => panic!("expected AttributePercent, got {other:?}"),
         }
     }
 }

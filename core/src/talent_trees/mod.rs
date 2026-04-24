@@ -17,7 +17,10 @@ use crate::traits::{
     KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
 };
 
+pub mod harakim;
 pub mod mercenary;
+pub mod seyan_du;
+pub mod templar;
 
 /// Index of the unspent-points byte in the packed talent-tree array.
 pub const TALENT_POINTS_INDEX: usize = 0;
@@ -99,9 +102,10 @@ pub struct TalentTreeMeta {
 /// * `None` otherwise.
 pub fn tree_for(class: Class) -> Option<&'static TalentTreeMeta> {
     match class {
+        Class::Harakim => Some(&harakim::HARAKIM_TREE),
         Class::Mercenary => Some(&mercenary::MERCENARY_TREE),
-        // Templar, Harakim, SeyanDu, Sorcerer, Warrior, ArchTemplar,
-        // ArchHarakim — no trees defined yet for the MVP.
+        Class::SeyanDu => Some(&seyan_du::SEYAN_DU_TREE),
+        Class::Templar => Some(&templar::TEMPLAR_TREE),
         _ => None,
     }
 }
@@ -250,7 +254,12 @@ mod tests {
 
     /// Returns every tree currently registered with [`tree_for`].
     fn all_trees() -> Vec<&'static TalentTreeMeta> {
-        vec![&mercenary::MERCENARY_TREE]
+        vec![
+            &harakim::HARAKIM_TREE,
+            &mercenary::MERCENARY_TREE,
+            &seyan_du::SEYAN_DU_TREE,
+            &templar::TEMPLAR_TREE,
+        ]
     }
 
     // ---- structural validation (runs over every registered tree) ------
@@ -432,7 +441,10 @@ mod tests {
 
     #[test]
     fn tree_class_matches_module() {
+        assert_eq!(harakim::HARAKIM_TREE.class, Class::Harakim);
         assert_eq!(mercenary::MERCENARY_TREE.class, Class::Mercenary);
+        assert_eq!(seyan_du::SEYAN_DU_TREE.class, Class::SeyanDu);
+        assert_eq!(templar::TEMPLAR_TREE.class, Class::Templar);
     }
 
     #[test]
@@ -548,11 +560,11 @@ mod tests {
     }
 
     #[test]
-    fn tree_for_returns_mercenary_only() {
+    fn tree_for_returns_registered_base_class_trees() {
         assert!(tree_for(Class::Mercenary).is_some());
-        assert!(tree_for(Class::Templar).is_none());
-        assert!(tree_for(Class::Harakim).is_none());
-        assert!(tree_for(Class::SeyanDu).is_none());
+        assert!(tree_for(Class::Templar).is_some());
+        assert!(tree_for(Class::Harakim).is_some());
+        assert!(tree_for(Class::SeyanDu).is_some());
         assert!(tree_for(Class::Sorcerer).is_none());
         assert!(tree_for(Class::Warrior).is_none());
         assert!(tree_for(Class::ArchTemplar).is_none());
