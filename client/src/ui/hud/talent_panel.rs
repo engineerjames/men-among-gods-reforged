@@ -13,8 +13,8 @@ use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
 use mag_core::talent_trees::{
-    TalentNodeMeta, TalentTreeMeta, available_talent_points, is_talent_spent, total_points_spent,
-    tree_for,
+    TalentNodeMeta, TalentTreeMeta, available_talent_points, is_talent_layer_spent,
+    is_talent_spent, talent_prereqs_met, total_points_spent, tree_for,
 };
 use mag_core::traits::Class;
 
@@ -276,11 +276,10 @@ impl TalentPanel {
         if is_talent_spent(talents, node.mask, node.layer as usize) {
             return NodeStatus::Learned;
         }
-        let prereqs_ok = node
-            .prereqs
-            .iter()
-            .all(|r| is_talent_spent(talents, r.mask, r.layer as usize));
-        if !prereqs_ok {
+        if is_talent_layer_spent(talents, node.layer as usize) {
+            return NodeStatus::Locked;
+        }
+        if !talent_prereqs_met(talents, node) {
             return NodeStatus::Locked;
         }
         if available_talent_points(talents) < node.cost {
@@ -679,6 +678,44 @@ mod tests {
         let prereq_node = tree.nodes.iter().find(|n| !n.prereqs.is_empty()).unwrap();
         assert_eq!(
             TalentPanel::node_status(prereq_node, &talents),
+            NodeStatus::Locked
+        );
+    }
+
+    /// Status: learning one root talent unlocks the next layer without
+    /// requiring both root options.
+    #[test]
+    fn node_status_next_layer_available_after_one_prior_pick() {
+        let mut talents = [0u8; 25];
+        talents[0] = 1;
+        talents[1] = 0b01;
+        let tree = tree_for(Class::Mercenary).unwrap();
+        let dodge = tree
+            .nodes
+            .iter()
+            .find(|n| n.id == mag_core::talent_trees::mercenary::ids::DODGE_BOOST_1)
+            .unwrap();
+        assert_eq!(
+            TalentPanel::node_status(dodge, &talents),
+            NodeStatus::Available
+        );
+    }
+
+    /// Status: once a layer has a learned talent, its sibling choices are
+    /// locked.
+    #[test]
+    fn node_status_sibling_locked_after_layer_pick() {
+        let mut talents = [0u8; 25];
+        talents[0] = 1;
+        talents[1] = 0b01;
+        let tree = tree_for(Class::Mercenary).unwrap();
+        let parasite = tree
+            .nodes
+            .iter()
+            .find(|n| n.id == mag_core::talent_trees::mercenary::ids::PARASITE)
+            .unwrap();
+        assert_eq!(
+            TalentPanel::node_status(parasite, &talents),
             NodeStatus::Locked
         );
     }

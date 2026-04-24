@@ -1,5 +1,7 @@
 use crate::path_finding::PathFinder;
 use crate::types::server_player::ServerPlayer;
+use core::constants::{CharacterFlags, USE_EMPTY};
+use core::talent_trees::{talents_from_future1, total_points_spent};
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -246,6 +248,8 @@ impl GameState {
         self.bad_words = data.bad_words;
         self.message_of_the_day = data.message_of_the_day;
 
+        self.mark_talent_characters_for_stat_recompute();
+
         log::info!(
             "Globals data: dirty={}, character_cnt={}, ticker={}, fullmoon={}, newmoon={}, unique={}, cap={}",
             self.globals.is_dirty(),
@@ -258,6 +262,24 @@ impl GameState {
         );
 
         Ok(())
+    }
+
+    /// Mark loaded characters with learned talents for one stat recompute.
+    ///
+    /// Talent effects are derived from the persisted talent bitset. Setting the
+    /// update flag after loading ensures a clean server restart recalculates
+    /// those bonuses from current base stats even if the saved total fields are
+    /// stale. This intentionally does not set `SaveMe`; the recompute itself
+    /// will decide whether normal runtime state needs persistence later.
+    fn mark_talent_characters_for_stat_recompute(&mut self) {
+        for character in &mut self.characters {
+            if character.used == USE_EMPTY {
+                continue;
+            }
+            if total_points_spent(talents_from_future1(&character.future1)) > 0 {
+                character.flags |= CharacterFlags::Update.bits();
+            }
+        }
     }
 
     /// Save mutable runtime game data to KeyDB.

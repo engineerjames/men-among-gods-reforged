@@ -257,6 +257,19 @@ impl GameState {
             }
         }
 
+        let talent_bonuses = crate::player::talent_trees::talent_stat_bonuses(
+            self.characters[cn].kindred,
+            &self.characters[cn].future1,
+            &self.characters[cn].attrib,
+            &self.characters[cn].skill,
+        );
+        for z in 0..5 {
+            attrib_bonus[z] += talent_bonuses.attrib[z];
+        }
+        for z in 0..50 {
+            skill_bonus[z] += talent_bonuses.skill[z];
+        }
+
         // Calculate final attributes
         for z in 0..5 {
             let mut final_attrib = self.characters[cn].attrib[z][0] as i32

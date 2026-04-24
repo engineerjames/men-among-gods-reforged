@@ -44,9 +44,10 @@ pub struct TalentId(pub u16);
 
 /// A reference to a node by its packed `(layer, mask)` slot.
 ///
-/// Used in the `prereqs` slice on [`TalentNodeMeta`] so prerequisite
-/// validation is a branch-free `talents[layer] & mask == mask` test
-/// rather than an `id`-based table lookup.
+/// Used in the `prereqs` slice on [`TalentNodeMeta`] to identify the
+/// prerequisite layer for a node. Talent progression allows one pick per
+/// layer, so any learned talent in the highest prerequisite layer satisfies
+/// the gate for the next layer.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TalentRef {
     /// Layer index in `future1`, in `TALENT_LAYER_START..TALENT_LAYER_END`.
@@ -74,8 +75,10 @@ pub struct TalentNodeMeta {
     pub description: &'static str,
     /// Cost in talent points to learn this node.  Currently always `1`.
     pub cost: u8,
-    /// Other nodes that must already be unlocked before this one is
-    /// available.  An empty slice means the node is a root.
+    /// Prior-layer nodes that gate this node. An empty slice means the node
+    /// is a root. When multiple entries are present, they represent alternate
+    /// picks in the same prerequisite layer, not a requirement to learn all of
+    /// them.
     pub prereqs: &'static [TalentRef],
 }
 
@@ -212,6 +215,45 @@ pub fn is_talent_spent(talents: &[u8; 25], talent_mask: u8, talent_layer: usize)
         return false;
     }
     talent_mask != 0 && talents[talent_layer] & talent_mask == talent_mask
+}
+
+/// Check whether any talent is already learned in a layer.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state.
+/// * `talent_layer` - Layer/rank index in
+///   `TALENT_LAYER_START..TALENT_LAYER_END`.
+///
+/// # Returns
+///
+/// * `true` if `talent_layer` is valid and any bit is set in that layer.
+/// * `false` otherwise.
+pub fn is_talent_layer_spent(talents: &[u8; 25], talent_layer: usize) -> bool {
+    (TALENT_LAYER_START..TALENT_LAYER_END).contains(&talent_layer) && talents[talent_layer] != 0
+}
+
+/// Check whether a node's prerequisite layer is satisfied.
+///
+/// The talent tree grants one pick per layer. A node with no prereqs is a
+/// root. A non-root node is available once any talent has been learned in the
+/// highest prerequisite layer listed on the node.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state.
+/// * `node` - Node whose prerequisite gate should be evaluated.
+///
+/// # Returns
+///
+/// * `true` if the node is a root or its prerequisite layer contains a learned
+///   talent.
+/// * `false` otherwise.
+pub fn talent_prereqs_met(talents: &[u8; 25], node: &TalentNodeMeta) -> bool {
+    let Some(required_layer) = node.prereqs.iter().map(|p| p.layer as usize).max() else {
+        return true;
+    };
+    is_talent_layer_spent(talents, required_layer)
 }
 
 /// Reinterpret a `&mut [i8; 25]` (the raw `Character::future1`
@@ -520,6 +562,40 @@ mod tests {
         let mut t = [0u8; 25];
         t[1] = 0xFF;
         assert!(!is_talent_spent(&t, 0, 1));
+    }
+
+    #[test]
+    fn is_talent_layer_spent_reports_any_bit_in_valid_layer() {
+        let mut t = [0u8; 25];
+        assert!(!is_talent_layer_spent(&t, 1));
+        t[1] = 0b0000_0010;
+        assert!(is_talent_layer_spent(&t, 1));
+    }
+
+    #[test]
+    fn is_talent_layer_spent_returns_false_for_invalid_layer() {
+        let mut t = [0u8; 25];
+        t[0] = 0xFF;
+        t[TALENT_LAYER_END] = 0xFF;
+        assert!(!is_talent_layer_spent(&t, 0));
+        assert!(!is_talent_layer_spent(&t, TALENT_LAYER_END));
+    }
+
+    #[test]
+    fn talent_prereqs_met_allows_one_pick_from_previous_layer() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+        let dodge = find_node(tree, mercenary::ids::DODGE_BOOST_1).unwrap();
+        let mut t = [0u8; 25];
+        t[1] = 0b0000_0010;
+        assert!(talent_prereqs_met(&t, dodge));
+    }
+
+    #[test]
+    fn talent_prereqs_met_rejects_empty_prereq_layer() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+        let dodge = find_node(tree, mercenary::ids::DODGE_BOOST_1).unwrap();
+        let t = [0u8; 25];
+        assert!(!talent_prereqs_met(&t, dodge));
     }
 
     #[test]

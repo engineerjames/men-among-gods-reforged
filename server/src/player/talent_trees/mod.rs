@@ -6,14 +6,15 @@
 //!
 //! * `TalentEffect` — the set of mutations a learned talent can apply
 //!   to a `Character`.
-//! * Effect helpers (`modify_*`, `grant_skill`, `remove_skill`).
+//! * Derived stat bonus calculation for learned talent bits.
+//! * Immediate effect helpers for effects that must permanently alter
+//!   character data when learned.
 //! * Mutators that update the packed `future1` byte array
 //!   (`apply_talent_point`, `reset_talent_points`,
 //!   `grant_talent_points`).
 //! * A high-level [`learn_talent`] orchestrator that resolves the
 //!   player's class, looks up the requested node, validates
-//!   prerequisites and cost, debits a point, and dispatches the
-//!   node's effect.
+//!   prerequisites and cost, and debits a point.
 
 mod harakim;
 mod mercenary;
@@ -21,11 +22,12 @@ mod seyan_du;
 mod templar;
 
 use core::{
-    skills::{Attribute, Skill, SkillIndex},
+    skills::{self, Attribute, Skill, SkillIndex},
     string_operations::c_string_to_str,
     talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, TalentId, TalentNodeMeta,
-        TalentTreeMeta, available_talent_points, class_for_kindred, find_node, is_talent_spent,
+        TalentTreeMeta, available_talent_points, class_for_kindred, find_node,
+        is_talent_layer_spent, is_talent_spent, talent_prereqs_met, talents_from_future1,
         talents_mut_from_future1, tree_for,
     },
 };
@@ -50,6 +52,24 @@ pub enum TalentEffect {
     AttributePercent { attr: Attribute, percent: i32 },
     /// Grant a previously-unknown skill (set base value to 1).
     GrantSkill { skill: Skill },
+}
+
+/// Accumulated talent stat bonuses for one character recompute.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TalentStatBonuses {
+    /// Attribute bonuses indexed by [`Attribute`] discriminant.
+    pub attrib: [i32; 5],
+    /// Skill bonuses indexed by canonical [`Skill`] discriminant.
+    pub skill: [i32; 50],
+}
+
+impl Default for TalentStatBonuses {
+    fn default() -> Self {
+        Self {
+            attrib: [0; 5],
+            skill: [0; 50],
+        }
+    }
 }
 
 /// Look up the [`TalentEffect`] associated with `id` for `tree`.
@@ -108,6 +128,10 @@ pub fn apply_talent_point(
         return Err("Talent already learned".to_string());
     }
 
+    if is_talent_layer_spent(talents, talent_layer) {
+        return Err("A talent is already learned in this layer".to_string());
+    }
+
     if talents[TALENT_POINTS_INDEX] < 1 {
         return Err("Not enough points to spend".to_string());
     }
@@ -123,8 +147,9 @@ pub fn apply_talent_point(
 /// All layer bytes are cleared and the count of previously-set bits is
 /// added back into `talents[0]`, saturating at `u8::MAX`.
 ///
-/// **Limitation:** does NOT reverse the stat / skill bonuses that the
-/// learned talents previously applied.
+/// Stat / skill bonuses are derived from the layer bits during character
+/// recompute, so clearing the bits removes those bonuses on the next update.
+/// Immediate learn-time effects such as `GrantSkill` are not reversed here.
 ///
 /// # Arguments
 ///
@@ -154,6 +179,51 @@ pub fn reset_talent_points(talents: &mut [u8; 25]) {
 /// * `amount` - Number of points to add to `talents[0]`.
 pub fn grant_talent_points(talents: &mut [u8; 25], amount: u8) {
     talents[TALENT_POINTS_INDEX] = talents[TALENT_POINTS_INDEX].saturating_add(amount);
+}
+
+/// Calculate all stat bonuses granted by currently learned talents.
+///
+/// Talent bits are the durable source of truth. Percentage effects are
+/// computed from the character's current base stat every time derived stats
+/// are recomputed, so a later attribute or skill raise naturally increases the
+/// talent bonus without mutating the saved base value.
+///
+/// # Arguments
+///
+/// * `kindred` - Character kindred bits used to resolve the class tree.
+/// * `future1` - Packed talent-tree state from the character record.
+/// * `attrib` - Current attribute rows for base-value lookup.
+/// * `skill` - Current skill rows for base-value lookup.
+///
+/// # Returns
+///
+/// * Accumulated attribute and skill bonuses from learned stat talents.
+pub(crate) fn talent_stat_bonuses(
+    kindred: i32,
+    future1: &[i8; 25],
+    attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
+    skill: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+) -> TalentStatBonuses {
+    let Some(class) = class_for_kindred(kindred) else {
+        return TalentStatBonuses::default();
+    };
+    let Some(tree) = tree_for(class) else {
+        return TalentStatBonuses::default();
+    };
+
+    let talents = talents_from_future1(future1);
+    let mut bonuses = TalentStatBonuses::default();
+
+    for node in tree.nodes {
+        if !is_talent_spent(talents, node.mask, node.layer as usize) {
+            continue;
+        }
+        if let Some(effect) = effect_for(tree, node.id) {
+            accumulate_stat_bonus(effect, attrib, skill, &mut bonuses);
+        }
+    }
+
+    bonuses
 }
 
 /// Top-level "spend a point on a talent" entry point.
@@ -190,13 +260,11 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, node_id: TalentId) -> Result<
     {
         let talents = talents_mut_from_future1(&mut gs.characters[cn].future1);
 
-        for prereq in node.prereqs {
-            if !is_talent_spent(talents, prereq.mask, prereq.layer as usize) {
-                return Err(format!(
-                    "Talent '{}' requires prerequisite (layer={}, mask=0x{:02x})",
-                    node.name, prereq.layer, prereq.mask
-                ));
-            }
+        if !talent_prereqs_met(talents, node) {
+            return Err(format!(
+                "Talent '{}' requires a learned talent in a prerequisite layer",
+                node.name
+            ));
         }
 
         if available_talent_points(talents) < node.cost {
@@ -212,7 +280,7 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, node_id: TalentId) -> Result<
     }
 
     if let Some(effect) = effect_for(tree, node_id) {
-        dispatch_effect(cn, gs, effect)?;
+        dispatch_immediate_effect(cn, gs, effect)?;
     } else {
         log::warn!(
             "Talent '{}' has no registered effect; bit set but nothing applied",
@@ -225,7 +293,12 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, node_id: TalentId) -> Result<
     Ok(())
 }
 
-/// Apply a single [`TalentEffect`] to the named character.
+/// Apply the learning-time portion of a [`TalentEffect`] to the named character.
+///
+/// Stat effects are intentionally not written into base attributes or skills;
+/// they are recalculated from learned talent bits in [`talent_stat_bonuses`]
+/// during `really_update_char`. Only effects that must permanently alter the
+/// character record at learn time are dispatched here.
 ///
 /// # Arguments
 ///
@@ -237,162 +310,70 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, node_id: TalentId) -> Result<
 ///
 /// * `Ok(())` on success.
 /// * `Err` if the underlying mutation rejects the request.
-fn dispatch_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) -> Result<(), String> {
+fn dispatch_immediate_effect(
+    cn: usize,
+    gs: &mut GameState,
+    effect: TalentEffect,
+) -> Result<(), String> {
     match effect {
-        TalentEffect::SkillFlat { skill, amount } => {
-            modify_skill_by_flat_amount(cn, gs, skill, amount)
-        }
-        TalentEffect::SkillPercent { skill, percent } => {
-            modify_base_skill_by_percentage(cn, gs, skill, percent)
-        }
-        TalentEffect::AttributeFlat { attr, amount } => {
-            modify_attribute_by_flat_amount(cn, gs, attr, amount)
-        }
-        TalentEffect::AttributePercent { attr, percent } => {
-            modify_attribute_by_percentage(cn, gs, attr, percent)
-        }
         TalentEffect::GrantSkill { skill } => grant_skill(cn, gs, skill),
+        TalentEffect::SkillFlat { .. }
+        | TalentEffect::SkillPercent { .. }
+        | TalentEffect::AttributeFlat { .. }
+        | TalentEffect::AttributePercent { .. } => Ok(()),
     }
 }
 
-/// Add a percentage-based bonus to a skill's base value.
+/// Add one effect's derived stat contribution into `bonuses`.
 ///
-/// `bonus = round(base * percent / 100)`; the write saturates at `u8::MAX`.
+/// `GrantSkill` has no derived stat contribution because it is an immediate
+/// learn-time effect.
 ///
 /// # Arguments
 ///
-/// * `cn` - Character slot index.
-/// * `game_state` - Mutable game state.
-/// * `skill` - Skill to modify.
-/// * `percentage_bonus` - Percent bonus (e.g. `10` = +10%).
-///
-/// # Returns
-///
-/// * `Ok(())` always.
-fn modify_base_skill_by_percentage(
-    cn: usize,
-    game_state: &mut GameState,
-    skill: Skill,
-    percentage_bonus: i32,
-) -> Result<(), String> {
-    let skill_base =
-        game_state.characters[cn].skill[skill as usize][SkillIndex::BaseValue as usize];
-
-    let bonus_amount = (skill_base as f32 * (percentage_bonus as f32 / 100.0)).round() as i32;
-    let bonus_u8 = bonus_amount.clamp(0, u8::MAX as i32) as u8;
-    let slot = &mut game_state.characters[cn].skill[skill as usize][SkillIndex::BaseValue as usize];
-    *slot = slot.saturating_add(bonus_u8);
-
-    log::info!(
-        "Applied talent bonus: +{}% to {:?} ({} points) for character {}",
-        percentage_bonus,
-        skill,
-        bonus_u8,
-        c_string_to_str(&game_state.characters[cn].name)
-    );
-
-    Ok(())
+/// * `effect` - Effect to translate into derived bonuses.
+/// * `attrib` - Attribute rows for base-value lookup.
+/// * `skill` - Skill rows for base-value lookup.
+/// * `bonuses` - Accumulator to mutate.
+fn accumulate_stat_bonus(
+    effect: TalentEffect,
+    attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
+    skill_rows: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+    bonuses: &mut TalentStatBonuses,
+) {
+    match effect {
+        TalentEffect::SkillFlat { skill, amount } => {
+            let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
+            bonuses.skill[skill_idx] += amount as i32;
+        }
+        TalentEffect::SkillPercent { skill, percent } => {
+            let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
+            let base = skill_rows[skill_idx][SkillIndex::BaseValue as usize];
+            bonuses.skill[skill_idx] += percent_bonus(base, percent);
+        }
+        TalentEffect::AttributeFlat { attr, amount } => {
+            bonuses.attrib[attr as usize] += amount as i32;
+        }
+        TalentEffect::AttributePercent { attr, percent } => {
+            let base = attrib[attr as usize][SkillIndex::BaseValue as usize];
+            bonuses.attrib[attr as usize] += percent_bonus(base, percent);
+        }
+        TalentEffect::GrantSkill { .. } => {}
+    }
 }
 
-/// Add a percentage-based bonus to an attribute's base value.
+/// Calculate a rounded non-negative percent bonus from `base`.
 ///
 /// # Arguments
 ///
-/// * `cn` - Character slot index.
-/// * `game_state` - Mutable game state.
-/// * `attribute_index` - Attribute to modify.
-/// * `percentage_bonus` - Percent bonus (e.g. `10` = +10%).
+/// * `base` - Base stat value.
+/// * `percent` - Percentage bonus to apply.
 ///
 /// # Returns
 ///
-/// * `Ok(())` always.
-fn modify_attribute_by_percentage(
-    cn: usize,
-    game_state: &mut GameState,
-    attribute_index: Attribute,
-    percentage_bonus: i32,
-) -> Result<(), String> {
-    let attribute_base =
-        game_state.characters[cn].attrib[attribute_index as usize][SkillIndex::BaseValue as usize];
-
-    let bonus_amount = (attribute_base as f32 * (percentage_bonus as f32 / 100.0)).round() as i32;
-    let bonus_u8 = bonus_amount.clamp(0, u8::MAX as i32) as u8;
-    let slot = &mut game_state.characters[cn].attrib[attribute_index as usize]
-        [SkillIndex::BaseValue as usize];
-    *slot = slot.saturating_add(bonus_u8);
-
-    log::info!(
-        "Applied talent bonus: +{}% to attribute {} ({} points) for character {}",
-        percentage_bonus,
-        attribute_index as usize,
-        bonus_u8,
-        c_string_to_str(&game_state.characters[cn].name)
-    );
-
-    Ok(())
-}
-
-/// Add a flat bonus to a skill's base value (saturating).
-///
-/// # Arguments
-///
-/// * `cn` - Character slot index.
-/// * `game_state` - Mutable game state.
-/// * `skill` - Skill to modify.
-/// * `flat_bonus` - Amount to add to the base value.
-///
-/// # Returns
-///
-/// * `Ok(())` always.
-fn modify_skill_by_flat_amount(
-    cn: usize,
-    game_state: &mut GameState,
-    skill: Skill,
-    flat_bonus: u8,
-) -> Result<(), String> {
-    let slot = &mut game_state.characters[cn].skill[skill as usize][SkillIndex::BaseValue as usize];
-    *slot = slot.saturating_add(flat_bonus);
-
-    log::info!(
-        "Applied talent bonus: +{} to {:?} for character {}",
-        flat_bonus,
-        skill,
-        c_string_to_str(&game_state.characters[cn].name)
-    );
-
-    Ok(())
-}
-
-/// Add a flat bonus to an attribute's base value (saturating).
-///
-/// # Arguments
-///
-/// * `cn` - Character slot index.
-/// * `game_state` - Mutable game state.
-/// * `attribute_index` - Attribute to modify.
-/// * `flat_bonus` - Amount to add to the base value.
-///
-/// # Returns
-///
-/// * `Ok(())` always.
-fn modify_attribute_by_flat_amount(
-    cn: usize,
-    game_state: &mut GameState,
-    attribute_index: Attribute,
-    flat_bonus: u8,
-) -> Result<(), String> {
-    let slot = &mut game_state.characters[cn].attrib[attribute_index as usize]
-        [SkillIndex::BaseValue as usize];
-    *slot = slot.saturating_add(flat_bonus);
-
-    log::info!(
-        "Applied talent bonus: +{} to attribute {} for character {}",
-        flat_bonus,
-        attribute_index as usize,
-        c_string_to_str(&game_state.characters[cn].name)
-    );
-
-    Ok(())
+/// * Rounded bonus amount, clamped into `0..=u8::MAX`.
+fn percent_bonus(base: u8, percent: i32) -> i32 {
+    ((base as f32 * (percent as f32 / 100.0)).round() as i32).clamp(0, u8::MAX as i32)
 }
 
 /// Mark a skill as granted (base value = 1).
@@ -508,6 +489,16 @@ mod tests {
     }
 
     #[test]
+    fn apply_talent_point_rejects_second_pick_in_same_layer() {
+        let mut talents = empty_talents();
+        talents[0] = 2;
+        apply_talent_point(0, &mut talents, 0b0000_0001, 1).expect("first");
+        let err = apply_talent_point(0, &mut talents, 0b0000_0010, 1).unwrap_err();
+        assert!(err.contains("already learned in this layer"));
+        assert_eq!(talents[0], 1, "rejected spend must not consume a point");
+    }
+
+    #[test]
     fn apply_talent_point_rejects_when_no_points_available() {
         let mut talents = empty_talents();
         let err = apply_talent_point(0, &mut talents, 1, 1).unwrap_err();
@@ -575,34 +566,65 @@ mod tests {
         assert_eq!(talents[0], u8::MAX);
     }
 
-    // ---- effect helpers (skill / attribute mutations) -------------------
+    // ---- effect helpers (skill / attribute bonuses) ---------------------
 
     #[test]
-    fn modify_base_skill_by_percentage_rounds_and_adds() {
+    fn talent_stat_bonuses_reads_learned_bits_without_mutating_base() {
         with_test_gs(|gs| {
             let cn = 1;
-            gs.characters[cn].skill[Skill::Sword as usize][SkillIndex::BaseValue as usize] = 50;
-            modify_base_skill_by_percentage(cn, gs, Skill::Sword, 10).unwrap();
+            gs.characters[cn].kindred = KIN_MERCENARY as i32;
+            gs.characters[cn].attrib[Attribute::Strength as usize]
+                [SkillIndex::BaseValue as usize] = 50;
+            let t = talents_mut_from_future1(&mut gs.characters[cn].future1);
+            t[1] |= 0b0000_0001;
+
+            let bonuses = talent_stat_bonuses(
+                gs.characters[cn].kindred,
+                &gs.characters[cn].future1,
+                &gs.characters[cn].attrib,
+                &gs.characters[cn].skill,
+            );
+
+            assert_eq!(bonuses.attrib[Attribute::Strength as usize], 5);
             assert_eq!(
-                gs.characters[cn].skill[Skill::Sword as usize][SkillIndex::BaseValue as usize],
-                55
+                gs.characters[cn].attrib[Attribute::Strength as usize]
+                    [SkillIndex::BaseValue as usize],
+                50,
+                "derived talent bonuses must not rewrite saved base stats"
             );
         });
     }
 
     #[test]
-    fn modify_attribute_by_percentage_rounds_and_adds() {
-        with_test_gs(|gs| {
-            let cn = 1;
-            gs.characters[cn].attrib[Attribute::Strength as usize]
-                [SkillIndex::BaseValue as usize] = 40;
-            modify_attribute_by_percentage(cn, gs, Attribute::Strength, 25).unwrap();
-            assert_eq!(
-                gs.characters[cn].attrib[Attribute::Strength as usize]
-                    [SkillIndex::BaseValue as usize],
-                50
-            );
-        });
+    fn skill_percent_bonus_recalculates_from_current_base() {
+        let attrib = [[0; SkillIndex::MaxIndex as usize]; 5];
+        let mut skill = [[0; SkillIndex::MaxIndex as usize]; 50];
+
+        skill[Skill::Stealth as usize][SkillIndex::BaseValue as usize] = 50;
+        let mut bonuses = TalentStatBonuses::default();
+        accumulate_stat_bonus(
+            TalentEffect::SkillPercent {
+                skill: Skill::Stealth,
+                percent: 10,
+            },
+            &attrib,
+            &skill,
+            &mut bonuses,
+        );
+        assert_eq!(bonuses.skill[Skill::Stealth as usize], 5);
+
+        skill[Skill::Stealth as usize][SkillIndex::BaseValue as usize] = 55;
+        let mut bonuses = TalentStatBonuses::default();
+        accumulate_stat_bonus(
+            TalentEffect::SkillPercent {
+                skill: Skill::Stealth,
+                percent: 10,
+            },
+            &attrib,
+            &skill,
+            &mut bonuses,
+        );
+        assert_eq!(bonuses.skill[Skill::Stealth as usize], 6);
     }
 
     #[test]
@@ -663,13 +685,25 @@ mod tests {
     fn learn_talent_succeeds_when_prereqs_met() {
         with_test_gs(|gs| {
             let cn = 1;
-            give_class_and_points(gs, cn, KIN_MERCENARY, 3);
+            give_class_and_points(gs, cn, KIN_MERCENARY, 2);
             learn_talent(gs, cn, ids::DISTRACT).unwrap();
-            learn_talent(gs, cn, ids::PARASITE).unwrap();
             learn_talent(gs, cn, ids::DODGE_BOOST_1).unwrap();
             let t = talents_mut_from_future1(&mut gs.characters[cn].future1);
             assert_eq!(t[TALENT_POINTS_INDEX], 0);
             assert!(is_talent_spent(t, 0b0000_0001, 2));
+        });
+    }
+
+    #[test]
+    fn learn_talent_rejects_second_pick_in_same_layer() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 2);
+            learn_talent(gs, cn, ids::DISTRACT).unwrap();
+            let err = learn_talent(gs, cn, ids::PARASITE).unwrap_err();
+            assert!(err.contains("already learned in this layer"), "got: {err}");
+            let t = talents_mut_from_future1(&mut gs.characters[cn].future1);
+            assert_eq!(t[TALENT_POINTS_INDEX], 1);
         });
     }
 
@@ -729,7 +763,7 @@ mod tests {
     }
 
     #[test]
-    fn learn_talent_dispatches_effect() {
+    fn learn_talent_recomputes_effect_without_mutating_base() {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 1);
@@ -740,8 +774,65 @@ mod tests {
             assert_eq!(
                 gs.characters[cn].attrib[Attribute::Strength as usize]
                     [SkillIndex::BaseValue as usize],
+                50,
+                "learning a stat talent must leave saved base value unchanged"
+            );
+
+            gs.really_update_char(cn);
+            assert_eq!(
+                gs.characters[cn].attrib[Attribute::Strength as usize]
+                    [SkillIndex::TotalValue as usize],
                 55,
-                "expected +10% of 50 (+5 -> 55) after learning Distract"
+                "expected +10% of 50 (+5 -> 55) after recompute"
+            );
+        });
+    }
+
+    #[test]
+    fn learned_talent_bonus_survives_restart_style_recompute() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn].kindred = KIN_MERCENARY as i32;
+            gs.characters[cn].attrib[Attribute::Strength as usize]
+                [SkillIndex::BaseValue as usize] = 50;
+            let t = talents_mut_from_future1(&mut gs.characters[cn].future1);
+            t[1] |= 0b0000_0001;
+
+            gs.really_update_char(cn);
+
+            assert_eq!(
+                gs.characters[cn].attrib[Attribute::Strength as usize]
+                    [SkillIndex::TotalValue as usize],
+                55,
+                "persisted talent bits must be enough to restore derived bonuses"
+            );
+        });
+    }
+
+    #[test]
+    fn attribute_percent_bonus_recalculates_after_base_raise() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn].kindred = KIN_MERCENARY as i32;
+            let t = talents_mut_from_future1(&mut gs.characters[cn].future1);
+            t[1] |= 0b0000_0001;
+
+            gs.characters[cn].attrib[Attribute::Strength as usize]
+                [SkillIndex::BaseValue as usize] = 55;
+            gs.really_update_char(cn);
+            assert_eq!(
+                gs.characters[cn].attrib[Attribute::Strength as usize]
+                    [SkillIndex::TotalValue as usize],
+                61
+            );
+
+            gs.characters[cn].attrib[Attribute::Strength as usize]
+                [SkillIndex::BaseValue as usize] = 56;
+            gs.really_update_char(cn);
+            assert_eq!(
+                gs.characters[cn].attrib[Attribute::Strength as usize]
+                    [SkillIndex::TotalValue as usize],
+                62
             );
         });
     }
@@ -765,12 +856,13 @@ mod tests {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 2);
             learn_talent(gs, cn, ids::DISTRACT).unwrap();
-            learn_talent(gs, cn, ids::PARASITE).unwrap();
+            learn_talent(gs, cn, ids::DODGE_BOOST_1).unwrap();
             let t = talents_mut_from_future1(&mut gs.characters[cn].future1);
             assert_eq!(t[TALENT_POINTS_INDEX], 0);
             reset_talent_points(t);
             assert_eq!(t[TALENT_POINTS_INDEX], 2);
             assert_eq!(t[1], 0);
+            assert_eq!(t[2], 0);
         });
     }
 
