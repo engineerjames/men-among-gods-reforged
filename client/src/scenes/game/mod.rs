@@ -122,8 +122,8 @@ const HUD_ARC_CENTER_Y: i32 = crate::constants::TARGET_HEIGHT_INT as i32;
 const HUD_ARC_RADIUS: u32 = 60;
 /// Radius of each individual HUD button.
 const HUD_BUTTON_RADIUS: u32 = 16;
-/// Sprite IDs for [Skills, Inventory, Settings] buttons.
-const HUD_SPRITE_IDS: [usize; 4] = [267, 267, 128, 35];
+/// Sprite IDs for [Skills, Talents, Inventory, Settings] buttons.
+const HUD_SPRITE_IDS: [usize; 4] = [267, 1004, 128, 35];
 /// X center of the HUD button column (lower-right, aligned with minimap).
 const HUD_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
 /// Center Y of the bottom-most HUD button (above the mode button).

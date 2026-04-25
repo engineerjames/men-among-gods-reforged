@@ -709,7 +709,19 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
 
-            if in_idx == 0 {
+            if in_idx != 0 {
+                let it = &gs.items[in_idx];
+                let sprite = if it.active != 0 {
+                    it.sprite[1]
+                } else {
+                    it.sprite[0]
+                };
+                let placement = it.placement as i16;
+                buf[5] = (sprite & 0xff) as u8;
+                buf[6] = ((sprite >> 8) & 0xff) as u8;
+                buf[7] = (placement & 0xff) as u8;
+                buf[8] = ((placement >> 8) & 0xff) as u8;
+            } else {
                 buf[5] = 0;
                 buf[6] = 0;
                 buf[7] = 0;
@@ -1540,11 +1552,20 @@ mod tests {
 
             gs.characters[cn].item[0] = 10;
             gs.items[10].used = USE_ACTIVE;
+            gs.items[10].sprite[0] = 77;
+            gs.items[10].placement = 5;
             gs.items[10].flags = ItemFlags::IF_UPDATE.bits();
             plr_change_stats(gs, nr, cn, 0);
             assert_eq!(gs.players[nr].cpl.item[0], gs.characters[cn].item[0] as i32);
             assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::SetCharItem as u8);
-            assert_eq!(gs.players[nr].tbuf[5], 0);
+            assert_eq!(
+                i16::from_le_bytes([gs.players[nr].tbuf[5], gs.players[nr].tbuf[6]]),
+                77
+            );
+            assert_eq!(
+                i16::from_le_bytes([gs.players[nr].tbuf[7], gs.players[nr].tbuf[8]]),
+                5
+            );
 
             reset_tbuf(gs, nr);
             gs.characters[cn].item[0] = 0;
