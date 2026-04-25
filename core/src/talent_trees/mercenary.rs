@@ -18,7 +18,8 @@ const PARASITE: TalentRef = TalentRef {
 };
 
 // Layer 2
-const DODGE_BOOST_1: TalentRef = TalentRef {
+/// Packed talent slot for the first mercenary dodge chance bonus.
+pub const DODGE_BOOST_1: TalentRef = TalentRef {
     layer: 2,
     mask: 0b0000_0001,
 };
@@ -29,7 +30,8 @@ const SPELL_BOOST_1: TalentRef = TalentRef {
 };
 
 // Layer 3
-const DODGE_BOOST_2: TalentRef = TalentRef {
+/// Packed talent slot for the second mercenary dodge chance bonus.
+pub const DODGE_BOOST_2: TalentRef = TalentRef {
     layer: 3,
     mask: 0b0000_0001,
 };
