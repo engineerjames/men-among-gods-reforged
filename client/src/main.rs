@@ -123,6 +123,19 @@ fn main() -> Result<(), String> {
             None
         }
     };
+    let mut upscale_texture = match texture_creator.create_texture_target(
+        Some(PixelFormatEnum::RGBA8888),
+        constants::TARGET_WIDTH_INT * 2,
+        constants::TARGET_HEIGHT_INT * 2,
+    ) {
+        Ok(texture) => Some(texture),
+        Err(err) => {
+            log::warn!(
+                "Failed to create render-target upscale texture ({err}); Scale2x will be disabled"
+            );
+            None
+        }
+    };
     let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
     let sfx_cache = if audio_available {
         SoundCache::new(
@@ -353,6 +366,7 @@ fn main() -> Result<(), String> {
             match render_scene_texture_to_window(
                 &mut canvas,
                 texture,
+                upscale_texture.as_mut(),
                 &mut scene_manager,
                 &mut app_state,
             ) {
@@ -419,6 +433,7 @@ fn create_window_canvas(
 fn render_scene_texture_to_window(
     canvas: &mut Canvas<Window>,
     scene_texture: &mut Texture<'_>,
+    upscale_texture: Option<&mut Texture<'_>>,
     scene_manager: &mut SceneManager,
     app_state: &mut AppState<'_>,
 ) -> Result<(), String> {
@@ -439,17 +454,61 @@ fn render_scene_texture_to_window(
 
     let _ = canvas.set_integer_scale(false);
     let _ = canvas.set_logical_size(0, 0);
-    scene_texture.set_scale_mode(scene_texture_scale_mode(
-        app_state.settings.upscale_mode,
-        app_state.settings.pixel_scaler_mode,
-    ));
     let dst = scene_destination_rect(canvas.window(), app_state.settings.upscale_mode);
-    let copy_result = canvas
-        .copy(scene_texture, None, Some(dst))
+
+    let use_scale2x = app_state.settings.pixel_scaler_mode == PixelScalerMode::Scale2x;
+    let copy_result = match (use_scale2x, upscale_texture) {
+        (true, Some(upscale)) => composite_via_upscale(
+            canvas,
+            scene_texture,
+            upscale,
+            dst,
+            app_state.settings.upscale_mode,
+        ),
+        _ => {
+            scene_texture.set_scale_mode(scene_texture_scale_mode(
+                app_state.settings.upscale_mode,
+                app_state.settings.pixel_scaler_mode,
+            ));
+            canvas.copy(scene_texture, None, Some(dst))
+        }
+    };
+    let copy_result = copy_result
         .and_then(|_| apply_post_processes(canvas, scene_texture, dst, &app_state.settings));
     reset_window_scaling(canvas);
 
     copy_result
+}
+
+/// Pre-doubles the scene texture into a 2x intermediate using nearest sampling,
+/// then copies that intermediate to the window using linear sampling.
+///
+/// This is the "sharp bilinear" pixel-scaler path. It produces results that
+/// are visibly distinct from both pure nearest and pure linear sampling: the
+/// pixel-art block boundaries stay crisp, and only the sub-pixel residual is
+/// smoothed at the final destination scale.
+fn composite_via_upscale(
+    canvas: &mut Canvas<Window>,
+    scene_texture: &mut Texture<'_>,
+    upscale_texture: &mut Texture<'_>,
+    dst: Rect,
+    upscale_mode: UpscaleMode,
+) -> Result<(), String> {
+    scene_texture.set_scale_mode(ScaleMode::Nearest);
+    canvas
+        .with_texture_canvas(upscale_texture, |target_canvas| {
+            target_canvas.set_draw_color(Color::RGB(0, 0, 0));
+            target_canvas.clear();
+            let _ = target_canvas.copy(scene_texture, None, None);
+        })
+        .map_err(|err| err.to_string())?;
+
+    let final_scale_mode = match upscale_mode {
+        UpscaleMode::PixelPerfect => ScaleMode::Nearest,
+        UpscaleMode::Crisp | UpscaleMode::Smooth => ScaleMode::Linear,
+    };
+    upscale_texture.set_scale_mode(final_scale_mode);
+    canvas.copy(upscale_texture, None, Some(dst))
 }
 
 /// Renders one frame directly to the window using the legacy path.
