@@ -894,10 +894,10 @@ mod tests {
         assert!(tree_for(Class::Templar).is_some());
         assert!(tree_for(Class::Harakim).is_some());
         assert!(tree_for(Class::SeyanDu).is_some());
-        assert!(tree_for(Class::Sorcerer).is_none());
-        assert!(tree_for(Class::Warrior).is_none());
-        assert!(tree_for(Class::ArchTemplar).is_none());
-        assert!(tree_for(Class::ArchHarakim).is_none());
+        assert!(tree_for(Class::Sorcerer).is_some());
+        assert!(tree_for(Class::Warrior).is_some());
+        assert!(tree_for(Class::ArchTemplar).is_some());
+        assert!(tree_for(Class::ArchHarakim).is_some());
     }
 
     #[test]

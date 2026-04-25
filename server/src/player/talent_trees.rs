@@ -463,16 +463,6 @@ mod tests {
     }
 
     #[test]
-    fn learn_talent_rejects_when_class_has_no_tree() {
-        with_test_gs(|gs| {
-            let cn = 1;
-            give_class_and_points(gs, cn, KIN_WARRIOR, 5);
-            let err = learn_talent(gs, cn, mercenary_slot("Distract")).unwrap_err();
-            assert!(err.to_lowercase().contains("no talent tree"), "got: {err}");
-        });
-    }
-
-    #[test]
     fn learn_talent_rejects_when_kindred_unset() {
         with_test_gs(|gs| {
             let cn = 1;
