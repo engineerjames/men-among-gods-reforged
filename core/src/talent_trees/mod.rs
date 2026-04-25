@@ -107,6 +107,8 @@ pub enum TalentEffect {
     AttributeFlat { attr: Attribute, amount: u8 },
     /// Add `percent`% of the current base to an attribute's base value.
     AttributePercent { attr: Attribute, percent: i32 },
+    /// Add `percent`% dodge chance to the character's total.
+    DodgeChancePercent { percent: i32 },
     /// Grant a previously-unknown skill (set base value to 1).
     GrantSkill { skill: Skill },
 }
@@ -141,6 +143,8 @@ pub struct TalentStatBonuses {
     pub attrib: [i32; 5],
     /// Skill bonuses indexed by canonical [`Skill`] discriminant.
     pub skill: [i32; 50],
+    /// Dodge chance bonuses from talents, in percent.
+    pub dodge: i32,
 }
 
 impl Default for TalentStatBonuses {
@@ -148,6 +152,7 @@ impl Default for TalentStatBonuses {
         Self {
             attrib: [0; 5],
             skill: [0; 50],
+            dodge: 0,
         }
     }
 }
@@ -451,6 +456,35 @@ pub fn talent_stat_bonuses(
     bonuses
 }
 
+pub fn talent_dodge_bonuses(kindred: i32, talents: &[u8; 25]) -> i32 {
+    let Some(class) = class_for_kindred(kindred) else {
+        log::warn!(
+            "Unknown class for kindred bits {kindred:#010x}; no talent bonuses will be applied"
+        );
+        return 0;
+    };
+    let Some(tree) = tree_for(class) else {
+        log::warn!(
+            "No talent tree registered for class {:?}; no talent bonuses will be applied",
+            class
+        );
+        return 0;
+    };
+
+    let mut bonus_percent = 0;
+
+    for node in tree.nodes {
+        if !is_talent_slot_spent(talents, node.slot) {
+            continue;
+        }
+        if let TalentEffect::DodgeChancePercent { percent } = node.effect {
+            bonus_percent += percent;
+        }
+    }
+
+    bonus_percent
+}
+
 /// Add one effect's derived stat contribution into `bonuses`.
 ///
 /// # Arguments
@@ -481,6 +515,9 @@ fn accumulate_stat_bonus(
         TalentEffect::AttributePercent { attr, percent } => {
             let base = attrib[attr as usize][SkillIndex::BaseValue as usize];
             bonuses.attrib[attr as usize] += percent_bonus(base, percent);
+        }
+        TalentEffect::DodgeChancePercent { percent } => {
+            bonuses.dodge += percent;
         }
         TalentEffect::GrantSkill { .. } => {}
     }

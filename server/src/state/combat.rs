@@ -1,6 +1,6 @@
 use core::constants::{CharacterFlags, ItemFlags};
 use core::string_operations::c_string_to_str;
-use core::talent_trees::{is_talent_slot_spent, mercenary};
+use core::talent_trees::talent_dodge_bonuses;
 use core::types::FontColor;
 use core::{skills, traits};
 
@@ -48,13 +48,8 @@ impl GameState {
         }
 
         let mut percent = MERCENARY_BASE_DODGE_PERCENT;
-        if is_talent_slot_spent(&character.future1, mercenary::DODGE_BOOST_1) {
-            percent += MERCENARY_DODGE_TALENT_PERCENT;
-        }
-        if is_talent_slot_spent(&character.future1, mercenary::DODGE_BOOST_2) {
-            percent += MERCENARY_DODGE_TALENT_PERCENT;
-        }
-
+        let additional_dodge = talent_dodge_bonuses(character.kindred, &character.future1);
+        percent += additional_dodge;
         percent.clamp(0, MERCENARY_MAX_DODGE_CHANCE)
     }
 
