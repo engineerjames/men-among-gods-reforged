@@ -494,7 +494,11 @@ impl GameScene {
             show_positions: app_state.settings.show_positions,
             master_volume: app_state.settings.master_volume,
             display_mode: app_state.settings.display_mode,
-            pixel_perfect_scaling: app_state.settings.pixel_perfect_scaling,
+            upscale_mode: app_state.settings.upscale_mode,
+            sharpen_mode: app_state.settings.sharpen_mode,
+            scanline_mode: app_state.settings.scanline_mode,
+            color_grade_mode: app_state.settings.color_grade_mode,
+            pixel_scaler_mode: app_state.settings.pixel_scaler_mode,
             vsync_enabled: app_state.settings.vsync_enabled,
             last_rtt_ms: last_rtt,
             profiler_active: self.perf_profiler.is_active(),
@@ -562,8 +566,24 @@ impl GameScene {
                 WidgetAction::SetDisplayMode(m) => {
                     app_state.display_command = Some(DisplayCommand::SetDisplayMode(m));
                 }
-                WidgetAction::SetPixelPerfectScaling(v) => {
-                    app_state.display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
+                WidgetAction::SetUpscaleMode(mode) => {
+                    app_state.display_command = Some(DisplayCommand::SetUpscaleMode(mode));
+                }
+                WidgetAction::SetSharpenMode(mode) => {
+                    app_state.settings.sharpen_mode = mode;
+                    profile_changed = true;
+                }
+                WidgetAction::SetScanlineMode(mode) => {
+                    app_state.settings.scanline_mode = mode;
+                    profile_changed = true;
+                }
+                WidgetAction::SetColorGradeMode(mode) => {
+                    app_state.settings.color_grade_mode = mode;
+                    profile_changed = true;
+                }
+                WidgetAction::SetPixelScalerMode(mode) => {
+                    app_state.settings.pixel_scaler_mode = mode;
+                    profile_changed = true;
                 }
                 WidgetAction::SetVSync(v) => {
                     app_state.display_command = Some(DisplayCommand::SetVSync(v));

@@ -10,7 +10,9 @@ use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
 use crate::font_cache;
-use crate::preferences::DisplayMode;
+use crate::preferences::{
+    ColorGradeMode, DisplayMode, PixelScalerMode, ScanlineMode, SharpenMode, UpscaleMode,
+};
 use crate::types::controller::{CONTROLLER_BIND_SLOTS, ControllerBindings, ControllerButton};
 use crate::ui::RenderContext;
 use crate::ui::forms::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
@@ -65,8 +67,12 @@ const DS_Y_HELPER_TEXT: i32 = DS_Y_HEALTH + DS_ROW_H;
 const DS_Y_WALLS: i32 = DS_Y_HELPER_TEXT + DS_ROW_H;
 const DS_Y_SEP: i32 = DS_Y_WALLS + DS_ROW_H + 4;
 const DS_Y_DISPLAY_MODE: i32 = DS_Y_SEP + 8;
-const DS_Y_PIXEL_PERFECT: i32 = DS_Y_DISPLAY_MODE + 20;
-const DS_Y_VSYNC: i32 = DS_Y_PIXEL_PERFECT + DS_ROW_H;
+const DS_Y_UPSCALE_MODE: i32 = DS_Y_DISPLAY_MODE + 20;
+const DS_Y_SHARPEN_MODE: i32 = DS_Y_UPSCALE_MODE + 20;
+const DS_Y_SCANLINE_MODE: i32 = DS_Y_SHARPEN_MODE + 20;
+const DS_Y_COLOR_GRADE_MODE: i32 = DS_Y_SCANLINE_MODE + 20;
+const DS_Y_PIXEL_SCALER_MODE: i32 = DS_Y_COLOR_GRADE_MODE + 20;
+const DS_Y_VSYNC: i32 = DS_Y_PIXEL_SCALER_MODE + 20;
 const DS_PANEL_H: u32 = (DS_Y_VSYNC + DS_ROW_H + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
@@ -221,8 +227,7 @@ fn draw_sub_panel_frame(
 /// Sub-panel for display/visual settings.
 ///
 /// Contains visual toggles (shadows, spell effects, names, health, helper
-/// text, hide walls) and display controls (mode, pixel-perfect scaling,
-/// VSync).
+/// text, hide walls) and display controls (mode, scaling mode, VSync).
 struct DisplaySettingsSubPanel {
     bounds: Bounds,
     visible: bool,
@@ -234,13 +239,18 @@ struct DisplaySettingsSubPanel {
     chk_helper_text: Checkbox,
     chk_hide_walls: Checkbox,
     drp_display_mode: Dropdown,
-    chk_pixel_perfect: Checkbox,
+    drp_upscale_mode: Dropdown,
+    drp_sharpen_mode: Dropdown,
+    drp_scanline_mode: Dropdown,
+    drp_color_grade_mode: Dropdown,
+    drp_pixel_scaler_mode: Dropdown,
     chk_vsync: Checkbox,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
     /// Controller focus index. 0=Shadows, 1=SpellEffects, 2=ShowNames,
     /// 3=ShowHealth, 4=HelperText, 5=HideWalls, 6=DisplayMode,
-    /// 7=PixelPerfect, 8=VSync, 9=Close.
+    /// 7=UpscaleMode, 8=Sharpen, 9=Scanlines, 10=ColorGrade,
+    /// 11=PixelScaler, 12=VSync, 13=Close.
     controller_focused: Option<usize>,
 }
 
@@ -300,9 +310,49 @@ impl DisplaySettingsSubPanel {
                 0,
                 0,
             ),
-            chk_pixel_perfect: Checkbox::new(
-                Bounds::new(x, origin_y + DS_Y_PIXEL_PERFECT, w, DS_ROW_H as u32),
-                "Pixel-Perfect Scaling",
+            drp_upscale_mode: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_UPSCALE_MODE, w, 16),
+                UpscaleMode::ALL
+                    .iter()
+                    .map(|m| format!("Scaling: {m}"))
+                    .collect(),
+                0,
+                0,
+            ),
+            drp_sharpen_mode: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_SHARPEN_MODE, w, 16),
+                SharpenMode::ALL
+                    .iter()
+                    .map(|m| format!("Sharpness: {m}"))
+                    .collect(),
+                0,
+                0,
+            ),
+            drp_scanline_mode: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_SCANLINE_MODE, w, 16),
+                ScanlineMode::ALL
+                    .iter()
+                    .map(|m| format!("Scanlines: {m}"))
+                    .collect(),
+                0,
+                0,
+            ),
+            drp_color_grade_mode: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_COLOR_GRADE_MODE, w, 16),
+                ColorGradeMode::ALL
+                    .iter()
+                    .map(|m| format!("Color: {m}"))
+                    .collect(),
+                0,
+                0,
+            ),
+            drp_pixel_scaler_mode: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_PIXEL_SCALER_MODE, w, 16),
+                PixelScalerMode::ALL
+                    .iter()
+                    .map(|m| format!("Scaler: {m}"))
+                    .collect(),
+                0,
                 0,
             ),
             chk_vsync: Checkbox::new(
@@ -319,7 +369,7 @@ impl DisplaySettingsSubPanel {
     }
 
     /// Number of focusable elements in the display sub-panel.
-    const FOCUSABLE_COUNT: usize = 10;
+    const FOCUSABLE_COUNT: usize = 14;
 
     /// Applies controller focus highlighting.
     fn apply_controller_focus(&mut self) {
@@ -331,9 +381,13 @@ impl DisplaySettingsSubPanel {
         self.chk_helper_text.set_hovered(f == Some(4));
         self.chk_hide_walls.set_hovered(f == Some(5));
         self.drp_display_mode.set_hovered(f == Some(6));
-        self.chk_pixel_perfect.set_hovered(f == Some(7));
-        self.chk_vsync.set_hovered(f == Some(8));
-        self.btn_close.set_hovered(f == Some(9));
+        self.drp_upscale_mode.set_hovered(f == Some(7));
+        self.drp_sharpen_mode.set_hovered(f == Some(8));
+        self.drp_scanline_mode.set_hovered(f == Some(9));
+        self.drp_color_grade_mode.set_hovered(f == Some(10));
+        self.drp_pixel_scaler_mode.set_hovered(f == Some(11));
+        self.chk_vsync.set_hovered(f == Some(12));
+        self.btn_close.set_hovered(f == Some(13));
     }
 
     /// Loads widget values from the data snapshot.
@@ -349,8 +403,6 @@ impl DisplaySettingsSubPanel {
         self.chk_show_health.set_checked(data.show_health_pct);
         self.chk_helper_text.set_checked(data.show_helper_text);
         self.chk_hide_walls.set_checked(data.hide_walls);
-        self.chk_pixel_perfect
-            .set_checked(data.pixel_perfect_scaling);
         self.chk_vsync.set_checked(data.vsync_enabled);
 
         let mode_idx = DisplayMode::ALL
@@ -358,6 +410,36 @@ impl DisplaySettingsSubPanel {
             .position(|m| *m == data.display_mode)
             .unwrap_or(0);
         self.drp_display_mode.set_selected(mode_idx);
+
+        let upscale_idx = UpscaleMode::ALL
+            .iter()
+            .position(|m| *m == data.upscale_mode)
+            .unwrap_or(1);
+        self.drp_upscale_mode.set_selected(upscale_idx);
+
+        let sharpen_idx = SharpenMode::ALL
+            .iter()
+            .position(|m| *m == data.sharpen_mode)
+            .unwrap_or(0);
+        self.drp_sharpen_mode.set_selected(sharpen_idx);
+
+        let scanline_idx = ScanlineMode::ALL
+            .iter()
+            .position(|m| *m == data.scanline_mode)
+            .unwrap_or(0);
+        self.drp_scanline_mode.set_selected(scanline_idx);
+
+        let color_grade_idx = ColorGradeMode::ALL
+            .iter()
+            .position(|m| *m == data.color_grade_mode)
+            .unwrap_or(0);
+        self.drp_color_grade_mode.set_selected(color_grade_idx);
+
+        let pixel_scaler_idx = PixelScalerMode::ALL
+            .iter()
+            .position(|m| *m == data.pixel_scaler_mode)
+            .unwrap_or(0);
+        self.drp_pixel_scaler_mode.set_selected(pixel_scaler_idx);
     }
 
     /// Collects `WidgetAction`s from toggled/changed children.
@@ -394,11 +476,30 @@ impl DisplaySettingsSubPanel {
             self.pending_actions
                 .push(WidgetAction::SetDisplayMode(mode));
         }
-        if self.chk_pixel_perfect.was_toggled() {
+        if self.drp_upscale_mode.was_changed() {
+            let mode = UpscaleMode::ALL[self.drp_upscale_mode.selected_index()];
             self.pending_actions
-                .push(WidgetAction::SetPixelPerfectScaling(
-                    self.chk_pixel_perfect.is_checked(),
-                ));
+                .push(WidgetAction::SetUpscaleMode(mode));
+        }
+        if self.drp_sharpen_mode.was_changed() {
+            let mode = SharpenMode::ALL[self.drp_sharpen_mode.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetSharpenMode(mode));
+        }
+        if self.drp_scanline_mode.was_changed() {
+            let mode = ScanlineMode::ALL[self.drp_scanline_mode.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetScanlineMode(mode));
+        }
+        if self.drp_color_grade_mode.was_changed() {
+            let mode = ColorGradeMode::ALL[self.drp_color_grade_mode.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetColorGradeMode(mode));
+        }
+        if self.drp_pixel_scaler_mode.was_changed() {
+            let mode = PixelScalerMode::ALL[self.drp_pixel_scaler_mode.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetPixelScalerMode(mode));
         }
         if self.chk_vsync.was_toggled() {
             self.pending_actions
@@ -419,7 +520,11 @@ impl DisplaySettingsSubPanel {
         shift(&mut self.chk_helper_text, dx, dy);
         shift(&mut self.chk_hide_walls, dx, dy);
         shift(&mut self.drp_display_mode, dx, dy);
-        shift(&mut self.chk_pixel_perfect, dx, dy);
+        shift(&mut self.drp_upscale_mode, dx, dy);
+        shift(&mut self.drp_sharpen_mode, dx, dy);
+        shift(&mut self.drp_scanline_mode, dx, dy);
+        shift(&mut self.drp_color_grade_mode, dx, dy);
+        shift(&mut self.drp_pixel_scaler_mode, dx, dy);
         shift(&mut self.chk_vsync, dx, dy);
         shift(&mut self.btn_close, dx, dy);
     }
@@ -506,17 +611,46 @@ impl DisplaySettingsSubPanel {
                             .push(WidgetAction::SetDisplayMode(DisplayMode::ALL[next]));
                     }
                     Some(7) => {
-                        let v = !self.chk_pixel_perfect.is_checked();
-                        self.chk_pixel_perfect.set_checked(v);
+                        let next =
+                            (self.drp_upscale_mode.selected_index() + 1) % UpscaleMode::ALL.len();
+                        self.drp_upscale_mode.set_selected(next);
                         self.pending_actions
-                            .push(WidgetAction::SetPixelPerfectScaling(v));
+                            .push(WidgetAction::SetUpscaleMode(UpscaleMode::ALL[next]));
                     }
                     Some(8) => {
+                        let next =
+                            (self.drp_sharpen_mode.selected_index() + 1) % SharpenMode::ALL.len();
+                        self.drp_sharpen_mode.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetSharpenMode(SharpenMode::ALL[next]));
+                    }
+                    Some(9) => {
+                        let next =
+                            (self.drp_scanline_mode.selected_index() + 1) % ScanlineMode::ALL.len();
+                        self.drp_scanline_mode.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetScanlineMode(ScanlineMode::ALL[next]));
+                    }
+                    Some(10) => {
+                        let next = (self.drp_color_grade_mode.selected_index() + 1)
+                            % ColorGradeMode::ALL.len();
+                        self.drp_color_grade_mode.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetColorGradeMode(ColorGradeMode::ALL[next]));
+                    }
+                    Some(11) => {
+                        let next = (self.drp_pixel_scaler_mode.selected_index() + 1)
+                            % PixelScalerMode::ALL.len();
+                        self.drp_pixel_scaler_mode.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetPixelScalerMode(PixelScalerMode::ALL[next]));
+                    }
+                    Some(12) => {
                         let v = !self.chk_vsync.is_checked();
                         self.chk_vsync.set_checked(v);
                         self.pending_actions.push(WidgetAction::SetVSync(v));
                     }
-                    Some(9) => {
+                    Some(13) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
@@ -543,9 +677,49 @@ impl DisplaySettingsSubPanel {
             return EventResponse::Consumed;
         }
 
-        // Expanded dropdown gets priority.
+        // Expanded dropdowns get priority.
         if self.drp_display_mode.is_expanded() {
             let resp = self.drp_display_mode.handle_event(event);
+            self.collect_child_actions();
+            if resp == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
+        if self.drp_upscale_mode.is_expanded() {
+            let resp = self.drp_upscale_mode.handle_event(event);
+            self.collect_child_actions();
+            if resp == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
+        if self.drp_sharpen_mode.is_expanded() {
+            let resp = self.drp_sharpen_mode.handle_event(event);
+            self.collect_child_actions();
+            if resp == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
+        if self.drp_scanline_mode.is_expanded() {
+            let resp = self.drp_scanline_mode.handle_event(event);
+            self.collect_child_actions();
+            if resp == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
+        if self.drp_color_grade_mode.is_expanded() {
+            let resp = self.drp_color_grade_mode.handle_event(event);
+            self.collect_child_actions();
+            if resp == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
+        if self.drp_pixel_scaler_mode.is_expanded() {
+            let resp = self.drp_pixel_scaler_mode.handle_event(event);
             self.collect_child_actions();
             if resp == EventResponse::Consumed {
                 return EventResponse::Consumed;
@@ -564,7 +738,31 @@ impl DisplaySettingsSubPanel {
             } else {
                 EventResponse::Ignored
             },
-            self.chk_pixel_perfect.handle_event(event),
+            if !self.drp_upscale_mode.is_expanded() {
+                self.drp_upscale_mode.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
+            if !self.drp_sharpen_mode.is_expanded() {
+                self.drp_sharpen_mode.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
+            if !self.drp_scanline_mode.is_expanded() {
+                self.drp_scanline_mode.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
+            if !self.drp_color_grade_mode.is_expanded() {
+                self.drp_color_grade_mode.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
+            if !self.drp_pixel_scaler_mode.is_expanded() {
+                self.drp_pixel_scaler_mode.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
             self.chk_vsync.handle_event(event),
         ];
 
@@ -603,11 +801,15 @@ impl DisplaySettingsSubPanel {
         self.chk_show_health.render(ctx)?;
         self.chk_helper_text.render(ctx)?;
         self.chk_hide_walls.render(ctx)?;
-        self.chk_pixel_perfect.render(ctx)?;
         self.chk_vsync.render(ctx)?;
         self.btn_close.render(ctx)?;
         // Dropdown last so expanded list overlays.
         self.drp_display_mode.render(ctx)?;
+        self.drp_upscale_mode.render(ctx)?;
+        self.drp_sharpen_mode.render(ctx)?;
+        self.drp_scanline_mode.render(ctx)?;
+        self.drp_color_grade_mode.render(ctx)?;
+        self.drp_pixel_scaler_mode.render(ctx)?;
 
         Ok(())
     }
@@ -1577,8 +1779,16 @@ pub struct SettingsPanelData {
     pub master_volume: f32,
     /// Current display mode.
     pub display_mode: DisplayMode,
-    /// Whether pixel-perfect (integer) scaling is active.
-    pub pixel_perfect_scaling: bool,
+    /// Current final-scene upscaling strategy.
+    pub upscale_mode: UpscaleMode,
+    /// Current final-scene sharpness pass.
+    pub sharpen_mode: SharpenMode,
+    /// Current scanline overlay.
+    pub scanline_mode: ScanlineMode,
+    /// Current color-grade overlay.
+    pub color_grade_mode: ColorGradeMode,
+    /// Current pixel-scaler style.
+    pub pixel_scaler_mode: PixelScalerMode,
     /// Whether VSync is enabled.
     pub vsync_enabled: bool,
     /// Latest network round-trip time, if available.
@@ -2269,7 +2479,11 @@ mod tests {
             show_positions: true,
             master_volume: 0.75,
             display_mode: DisplayMode::Fullscreen,
-            pixel_perfect_scaling: true,
+            upscale_mode: UpscaleMode::Smooth,
+            sharpen_mode: SharpenMode::Subtle,
+            scanline_mode: ScanlineMode::Strong,
+            color_grade_mode: ColorGradeMode::Cool,
+            pixel_scaler_mode: PixelScalerMode::Scale2x,
             vsync_enabled: false,
             last_rtt_ms: Some(42),
             profiler_active: false,
@@ -2351,7 +2565,11 @@ mod tests {
         assert!(!panel.sub_display.chk_hide_walls.is_checked());
         assert!(panel.sub_display.chk_helper_text.is_checked());
         assert_eq!(panel.sub_display.drp_display_mode.selected_index(), 1);
-        assert!(panel.sub_display.chk_pixel_perfect.is_checked());
+        assert_eq!(panel.sub_display.drp_upscale_mode.selected_index(), 2);
+        assert_eq!(panel.sub_display.drp_sharpen_mode.selected_index(), 1);
+        assert_eq!(panel.sub_display.drp_scanline_mode.selected_index(), 2);
+        assert_eq!(panel.sub_display.drp_color_grade_mode.selected_index(), 2);
+        assert_eq!(panel.sub_display.drp_pixel_scaler_mode.selected_index(), 1);
         assert!(!panel.sub_display.chk_vsync.is_checked());
         // Diagnostics sub-panel.
         assert!(panel.sub_diagnostics.chk_show_positions.is_checked());

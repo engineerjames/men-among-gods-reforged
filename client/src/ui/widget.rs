@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 
 use super::RenderContext;
 use super::style::Padding;
-use crate::preferences::DisplayMode;
+use crate::preferences::{
+    ColorGradeMode, DisplayMode, PixelScalerMode, ScanlineMode, SharpenMode, UpscaleMode,
+};
 use crate::types::controller::ControllerButton;
 
 // ---------------------------------------------------------------------------
@@ -334,8 +336,16 @@ pub enum WidgetAction {
     SetMasterVolume(f32),
     /// Change the display mode (windowed, fullscreen, borderless).
     SetDisplayMode(DisplayMode),
-    /// Toggle pixel-perfect (integer-only) scaling.
-    SetPixelPerfectScaling(bool),
+    /// Change the final-scene upscaling strategy.
+    SetUpscaleMode(UpscaleMode),
+    /// Change the final-scene sharpness pass.
+    SetSharpenMode(SharpenMode),
+    /// Change the final-scene scanline overlay.
+    SetScanlineMode(ScanlineMode),
+    /// Change the final-scene color grade.
+    SetColorGradeMode(ColorGradeMode),
+    /// Change the final-scene pixel scaler style.
+    SetPixelScalerMode(PixelScalerMode),
     /// Toggle vertical sync.
     SetVSync(bool),
     /// Toggle context-sensitive helper text near the cursor.

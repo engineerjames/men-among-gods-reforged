@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::preferences::{DisplayMode, Settings};
+use crate::preferences::{DisplayMode, Settings, UpscaleMode};
 
 // ---------------------------------------------------------------------------
 // Platform detection
@@ -109,11 +109,12 @@ impl PlatformProfile {
         match self.platform {
             Platform::SteamDeck => {
                 // The Steam Deck has a 1280×800 display.  Fullscreen with
-                // continuous letterboxing (pixel_perfect_scaling = false) is
-                // the correct fit — integer 2× would produce 1920×1080 which
+                // continuous letterboxing via Crisp scaling is the correct
+                // fit — integer 2× would produce 1920×1080 which
                 // exceeds the panel resolution.
                 settings.display_mode = DisplayMode::Fullscreen;
                 settings.vsync_enabled = true;
+                settings.upscale_mode = UpscaleMode::Crisp;
                 settings.pixel_perfect_scaling = false;
                 // A sensible non-zero starting volume.
                 settings.master_volume = 0.5;
@@ -139,6 +140,7 @@ mod tests {
 
         assert_eq!(settings.display_mode, DisplayMode::Fullscreen);
         assert!(settings.vsync_enabled);
+        assert_eq!(settings.upscale_mode, UpscaleMode::Crisp);
         assert!(!settings.pixel_perfect_scaling);
         assert!((settings.master_volume - 0.5).abs() < f32::EPSILON);
     }
@@ -154,6 +156,7 @@ mod tests {
 
         assert_eq!(before.display_mode, after.display_mode);
         assert_eq!(before.vsync_enabled, after.vsync_enabled);
+        assert_eq!(before.upscale_mode, after.upscale_mode);
         assert_eq!(before.pixel_perfect_scaling, after.pixel_perfect_scaling);
         assert!((before.master_volume - after.master_volume).abs() < f32::EPSILON);
     }

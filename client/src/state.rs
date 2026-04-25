@@ -3,7 +3,7 @@ use crate::{
     network::NetworkRuntime,
     platform::PlatformProfile,
     player_state::PlayerState,
-    preferences::{DisplayMode, Settings},
+    preferences::{DisplayMode, Settings, UpscaleMode},
     sfx_cache::SoundCache,
     ui::visuals::panning_background::PanningBackground,
 };
@@ -13,7 +13,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub enum DisplayCommand {
     SetDisplayMode(DisplayMode),
-    SetPixelPerfectScaling(bool),
+    SetUpscaleMode(UpscaleMode),
     SetVSync(bool),
 }
 

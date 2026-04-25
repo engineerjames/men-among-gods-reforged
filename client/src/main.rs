@@ -4,17 +4,22 @@ use std::time::Instant;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
-use sdl2::video::FullscreenType;
+use sdl2::pixels::{Color, PixelFormatEnum};
+use sdl2::rect::Rect;
+use sdl2::render::{BlendMode, Canvas, ScaleMode, Texture};
+use sdl2::video::{FullscreenType, Window};
 
 use client::gfx_cache::GraphicsCache;
 use client::platform::PlatformProfile;
-use client::preferences::DisplayMode;
-use client::scenes::scene::SceneType;
+use client::preferences::{
+    ColorGradeMode, DisplayMode, PixelScalerMode, ScanlineMode, Settings, SharpenMode, UpscaleMode,
+};
+use client::scenes::scene::{SceneManager, SceneType};
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
 use client::ui::visuals::panning_background::PanningBackground;
 use client::ui::widget::Bounds;
-use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
+use client::{constants, dpi_scaling, filepaths, hosts, preferences};
 
 /// Application entry point.
 ///
@@ -91,26 +96,33 @@ fn main() -> Result<(), String> {
 
     log::info!("Creating window and event pump...");
     let video = sdl_context.video()?;
-    let mut window = video
-        .window(
-            "Men Among Gods - Reforged v1.3.0",
-            constants::TARGET_WIDTH_INT,
-            constants::TARGET_HEIGHT_INT,
-        )
-        .position_centered()
-        .allow_highdpi()
-        .resizable()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let _ = window.set_minimum_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
-
-    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+    let mut canvas = match create_window_canvas(&video, true) {
+        Ok(canvas) => canvas,
+        Err(err) => {
+            log::warn!(
+                "Failed to create render-target canvas ({err}); falling back to direct rendering"
+            );
+            create_window_canvas(&video, false)?
+        }
+    };
 
     let mut event_pump = sdl_context.event_pump()?;
 
     log::info!("Initializing graphics and sound caches (audio_available={audio_available})...");
     let texture_creator = canvas.texture_creator();
+    let mut scene_texture = match texture_creator.create_texture_target(
+        Some(PixelFormatEnum::RGBA8888),
+        constants::TARGET_WIDTH_INT,
+        constants::TARGET_HEIGHT_INT,
+    ) {
+        Ok(texture) => Some(texture),
+        Err(err) => {
+            log::warn!(
+                "Failed to create render-target scene texture ({err}); falling back to direct rendering"
+            );
+            None
+        }
+    };
     let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
     let sfx_cache = if audio_available {
         SoundCache::new(
@@ -180,7 +192,7 @@ fn main() -> Result<(), String> {
     apply_vsync(&canvas, app_state.settings.vsync_enabled);
     // ----------------------------------------------------------------------
 
-    let mut scene_manager = scenes::scene::SceneManager::new();
+    let mut scene_manager = SceneManager::new();
     let mut last_frame = Instant::now();
 
     // Log info about the monitor, graphics card, etc.
@@ -288,7 +300,7 @@ fn main() -> Result<(), String> {
                 canvas.window(),
                 constants::TARGET_WIDTH,
                 constants::TARGET_HEIGHT,
-                app_state.settings.pixel_perfect_scaling,
+                app_state.settings.upscale_mode,
             );
 
             scene_manager.handle_event(&mut app_state, &event);
@@ -323,8 +335,9 @@ fn main() -> Result<(), String> {
                     app_state.settings.display_mode = applied_mode;
                     save_global_display_settings(&app_state);
                 }
-                DisplayCommand::SetPixelPerfectScaling(enabled) => {
-                    app_state.settings.pixel_perfect_scaling = enabled;
+                DisplayCommand::SetUpscaleMode(mode) => {
+                    app_state.settings.upscale_mode = mode;
+                    app_state.settings.pixel_perfect_scaling = mode.uses_integer_scale();
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetVSync(enabled) => {
@@ -335,13 +348,27 @@ fn main() -> Result<(), String> {
             }
         }
         // ------------------------------------------------------------------
-        let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
-        // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
-        let _ = canvas.set_integer_scale(app_state.settings.pixel_perfect_scaling);
-        scene_manager.render_world(&mut app_state, &mut canvas);
-        // Logical size off --> raw physical pixels.
-        let _ = canvas.set_integer_scale(false);
-        let _ = canvas.set_logical_size(0, 0);
+        let mut rendered_with_scene_texture = false;
+        if let Some(texture) = scene_texture.as_mut() {
+            match render_scene_texture_to_window(
+                &mut canvas,
+                texture,
+                &mut scene_manager,
+                &mut app_state,
+            ) {
+                Ok(()) => rendered_with_scene_texture = true,
+                Err(err) => {
+                    log::warn!(
+                        "Render-target scene path failed ({err}); falling back to direct rendering"
+                    );
+                    scene_texture = None;
+                }
+            }
+        }
+
+        if !rendered_with_scene_texture {
+            render_direct_to_window(&mut canvas, &mut scene_manager, &mut app_state);
+        }
 
         if scene_manager.get_scene() == SceneType::Exit {
             break 'running;
@@ -355,11 +382,223 @@ fn main() -> Result<(), String> {
     Ok(())
 }
 
+/// Creates a client window with the expected size and platform flags.
+fn create_window(video: &sdl2::VideoSubsystem) -> Result<Window, String> {
+    let mut window = video
+        .window(
+            "Men Among Gods - Reforged v1.3.0",
+            constants::TARGET_WIDTH_INT,
+            constants::TARGET_HEIGHT_INT,
+        )
+        .position_centered()
+        .allow_highdpi()
+        .resizable()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let _ = window.set_minimum_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
+    Ok(window)
+}
+
+/// Creates the SDL window canvas, optionally requesting render-target support.
+fn create_window_canvas(
+    video: &sdl2::VideoSubsystem,
+    render_target: bool,
+) -> Result<Canvas<Window>, String> {
+    let builder = create_window(video)?.into_canvas();
+    let builder = if render_target {
+        builder.target_texture()
+    } else {
+        builder
+    };
+
+    builder.build().map_err(|e| e.to_string())
+}
+
+/// Renders one frame through the persistent scene texture and copies it to the window.
+fn render_scene_texture_to_window(
+    canvas: &mut Canvas<Window>,
+    scene_texture: &mut Texture<'_>,
+    scene_manager: &mut SceneManager,
+    app_state: &mut AppState<'_>,
+) -> Result<(), String> {
+    canvas
+        .with_texture_canvas(scene_texture, |target_canvas| {
+            target_canvas.set_draw_color(Color::RGB(0, 0, 0));
+            target_canvas.clear();
+
+            let _ = target_canvas.set_integer_scale(false);
+            let _ = target_canvas.set_logical_size(0, 0);
+
+            scene_manager.render_world(app_state, target_canvas);
+        })
+        .map_err(|err| err.to_string())?;
+
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
+    canvas.clear();
+
+    let _ = canvas.set_integer_scale(false);
+    let _ = canvas.set_logical_size(0, 0);
+    scene_texture.set_scale_mode(scene_texture_scale_mode(
+        app_state.settings.upscale_mode,
+        app_state.settings.pixel_scaler_mode,
+    ));
+    let dst = scene_destination_rect(canvas.window(), app_state.settings.upscale_mode);
+    let copy_result = canvas
+        .copy(scene_texture, None, Some(dst))
+        .and_then(|_| apply_post_processes(canvas, scene_texture, dst, &app_state.settings));
+    reset_window_scaling(canvas);
+
+    copy_result
+}
+
+/// Renders one frame directly to the window using the legacy path.
+fn render_direct_to_window(
+    canvas: &mut Canvas<Window>,
+    scene_manager: &mut SceneManager,
+    app_state: &mut AppState<'_>,
+) {
+    let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
+    let _ = canvas.set_integer_scale(app_state.settings.upscale_mode.uses_integer_scale());
+    scene_manager.render_world(app_state, canvas);
+    reset_window_scaling(canvas);
+}
+
+/// Returns the destination rectangle for copying the final scene texture.
+fn scene_destination_rect(window: &Window, upscale_mode: UpscaleMode) -> Rect {
+    let (x, y, width, height) = dpi_scaling::logical_viewport(
+        window,
+        constants::TARGET_WIDTH,
+        constants::TARGET_HEIGHT,
+        upscale_mode,
+    );
+    Rect::new(
+        x.round() as i32,
+        y.round() as i32,
+        width.round().max(1.0) as u32,
+        height.round().max(1.0) as u32,
+    )
+}
+
+/// Returns the SDL sampling mode for the composited scene texture.
+fn scene_texture_scale_mode(
+    upscale_mode: UpscaleMode,
+    pixel_scaler_mode: PixelScalerMode,
+) -> ScaleMode {
+    if pixel_scaler_mode == PixelScalerMode::Scale2x {
+        return ScaleMode::Nearest;
+    }
+
+    match upscale_mode {
+        UpscaleMode::PixelPerfect | UpscaleMode::Crisp => ScaleMode::Nearest,
+        UpscaleMode::Smooth => ScaleMode::Linear,
+    }
+}
+
+/// Applies final-scene post-process passes after the scene texture is copied.
+fn apply_post_processes(
+    canvas: &mut Canvas<Window>,
+    scene_texture: &mut Texture<'_>,
+    dst: Rect,
+    settings: &Settings,
+) -> Result<(), String> {
+    apply_sharpen_pass(canvas, scene_texture, dst, settings.sharpen_mode)?;
+    apply_color_grade_pass(canvas, dst, settings.color_grade_mode)?;
+    apply_scanline_pass(canvas, dst, settings.scanline_mode)
+}
+
+/// Applies a lightweight sharpness/contrast boost using the final scene texture.
+fn apply_sharpen_pass(
+    canvas: &mut Canvas<Window>,
+    scene_texture: &mut Texture<'_>,
+    dst: Rect,
+    sharpen_mode: SharpenMode,
+) -> Result<(), String> {
+    let alpha = match sharpen_mode {
+        SharpenMode::Off => return Ok(()),
+        SharpenMode::Subtle => 18,
+        SharpenMode::Strong => 34,
+    };
+
+    let old_blend = scene_texture.blend_mode();
+    let old_alpha = scene_texture.alpha_mod();
+    let old_color = scene_texture.color_mod();
+
+    scene_texture.set_blend_mode(BlendMode::Add);
+    scene_texture.set_alpha_mod(alpha);
+    scene_texture.set_color_mod(255, 255, 255);
+    let result = canvas.copy(scene_texture, None, Some(dst));
+
+    scene_texture.set_blend_mode(old_blend);
+    scene_texture.set_alpha_mod(old_alpha);
+    scene_texture.set_color_mod(old_color.0, old_color.1, old_color.2);
+
+    result
+}
+
+/// Applies a color-grade overlay inside the final scene rectangle.
+fn apply_color_grade_pass(
+    canvas: &mut Canvas<Window>,
+    dst: Rect,
+    color_grade_mode: ColorGradeMode,
+) -> Result<(), String> {
+    let Some((blend_mode, color)) = color_grade_overlay(color_grade_mode) else {
+        return Ok(());
+    };
+
+    canvas.set_blend_mode(blend_mode);
+    canvas.set_draw_color(color);
+    canvas.fill_rect(dst)?;
+    canvas.set_blend_mode(BlendMode::Blend);
+    Ok(())
+}
+
+/// Returns the overlay used for the selected color-grade mode.
+fn color_grade_overlay(color_grade_mode: ColorGradeMode) -> Option<(BlendMode, Color)> {
+    match color_grade_mode {
+        ColorGradeMode::Off => None,
+        ColorGradeMode::Warm => Some((BlendMode::Blend, Color::RGBA(255, 136, 48, 24))),
+        ColorGradeMode::Cool => Some((BlendMode::Blend, Color::RGBA(64, 148, 255, 24))),
+        ColorGradeMode::HighContrast => Some((BlendMode::Mod, Color::RGB(232, 232, 232))),
+    }
+}
+
+/// Applies a scanline overlay inside the final scene rectangle.
+fn apply_scanline_pass(
+    canvas: &mut Canvas<Window>,
+    dst: Rect,
+    scanline_mode: ScanlineMode,
+) -> Result<(), String> {
+    let (step, alpha) = match scanline_mode {
+        ScanlineMode::Off => return Ok(()),
+        ScanlineMode::Subtle => (3, 36),
+        ScanlineMode::Strong => (2, 54),
+    };
+
+    let left = dst.x();
+    let right = dst.x() + dst.width() as i32 - 1;
+    let top = dst.y();
+    let bottom = dst.y() + dst.height() as i32;
+
+    canvas.set_blend_mode(BlendMode::Blend);
+    canvas.set_draw_color(Color::RGBA(0, 0, 0, alpha));
+    for y in (top..bottom).step_by(step) {
+        canvas.draw_line(
+            sdl2::rect::Point::new(left, y),
+            sdl2::rect::Point::new(right, y),
+        )?;
+    }
+    Ok(())
+}
+
+/// Restores the renderer to raw physical-pixel coordinates after presentation setup.
+fn reset_window_scaling(canvas: &mut Canvas<Window>) {
+    let _ = canvas.set_integer_scale(false);
+    let _ = canvas.set_logical_size(0, 0);
+}
+
 /// Maps [`DisplayMode`] to the SDL2 fullscreen type and applies it.
-fn apply_display_mode(
-    canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
-    mode: DisplayMode,
-) -> DisplayMode {
+fn apply_display_mode(canvas: &mut Canvas<Window>, mode: DisplayMode) -> DisplayMode {
     let mut applied_mode = mode;
     let ft = match mode {
         DisplayMode::Windowed => FullscreenType::Off,
@@ -397,7 +636,7 @@ fn apply_display_mode(
 }
 
 /// Toggles VSync on the renderer at runtime via raw SDL2 FFI.
-fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool) {
+fn apply_vsync(canvas: &Canvas<Window>, enabled: bool) {
     let raw = canvas.raw();
     let flag: std::os::raw::c_int = if enabled { 1 } else { 0 };
     let result = unsafe { sdl2::sys::SDL_RenderSetVSync(raw, flag) };

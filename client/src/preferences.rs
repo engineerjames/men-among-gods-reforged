@@ -101,6 +101,184 @@ impl DisplayMode {
     ];
 }
 
+/// Final-scene upscaling strategy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum UpscaleMode {
+    /// Integer scale with nearest-neighbor sampling and centered letterboxing.
+    PixelPerfect,
+    /// Aspect-preserving non-integer scale with nearest-neighbor sampling.
+    Crisp,
+    /// Aspect-preserving non-integer scale with linear sampling on the final scene texture.
+    Smooth,
+}
+
+impl Default for UpscaleMode {
+    fn default() -> Self {
+        Self::Crisp
+    }
+}
+
+impl fmt::Display for UpscaleMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PixelPerfect => write!(f, "Pixel Perfect"),
+            Self::Crisp => write!(f, "Crisp"),
+            Self::Smooth => write!(f, "Smooth"),
+        }
+    }
+}
+
+impl UpscaleMode {
+    /// All variants in UI display order.
+    pub const ALL: [UpscaleMode; 3] = [
+        UpscaleMode::PixelPerfect,
+        UpscaleMode::Crisp,
+        UpscaleMode::Smooth,
+    ];
+
+    /// Returns `true` when this mode uses an integer destination scale.
+    pub fn uses_integer_scale(self) -> bool {
+        matches!(self, Self::PixelPerfect)
+    }
+}
+
+/// Lightweight sharpness pass applied to the composited final scene.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SharpenMode {
+    /// No sharpness pass.
+    Off,
+    /// Low-intensity final-scene boost.
+    Subtle,
+    /// Higher-intensity final-scene boost.
+    Strong,
+}
+
+impl Default for SharpenMode {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl fmt::Display for SharpenMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Off => write!(f, "Off"),
+            Self::Subtle => write!(f, "Subtle"),
+            Self::Strong => write!(f, "Strong"),
+        }
+    }
+}
+
+impl SharpenMode {
+    /// All variants in UI display order.
+    pub const ALL: [SharpenMode; 3] = [SharpenMode::Off, SharpenMode::Subtle, SharpenMode::Strong];
+}
+
+/// Scanline overlay applied over the final scene rectangle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ScanlineMode {
+    /// No scanline overlay.
+    Off,
+    /// Light scanlines.
+    Subtle,
+    /// Stronger scanlines.
+    Strong,
+}
+
+impl Default for ScanlineMode {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl fmt::Display for ScanlineMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Off => write!(f, "Off"),
+            Self::Subtle => write!(f, "Subtle"),
+            Self::Strong => write!(f, "Strong"),
+        }
+    }
+}
+
+impl ScanlineMode {
+    /// All variants in UI display order.
+    pub const ALL: [ScanlineMode; 3] = [
+        ScanlineMode::Off,
+        ScanlineMode::Subtle,
+        ScanlineMode::Strong,
+    ];
+}
+
+/// Color-grade overlay applied over the final scene rectangle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ColorGradeMode {
+    /// No color-grade overlay.
+    Off,
+    /// Warm amber tint.
+    Warm,
+    /// Cool blue tint.
+    Cool,
+    /// Slightly darker high-contrast tint.
+    HighContrast,
+}
+
+impl Default for ColorGradeMode {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl fmt::Display for ColorGradeMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Off => write!(f, "Off"),
+            Self::Warm => write!(f, "Warm"),
+            Self::Cool => write!(f, "Cool"),
+            Self::HighContrast => write!(f, "High Contrast"),
+        }
+    }
+}
+
+impl ColorGradeMode {
+    /// All variants in UI display order.
+    pub const ALL: [ColorGradeMode; 4] = [
+        ColorGradeMode::Off,
+        ColorGradeMode::Warm,
+        ColorGradeMode::Cool,
+        ColorGradeMode::HighContrast,
+    ];
+}
+
+/// Pixel-scaler style applied to the final scene copy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PixelScalerMode {
+    /// Use the current upscaling mode's normal sampler.
+    Off,
+    /// Force nearest-neighbor final sampling for a Scale2x-style crisp pass.
+    Scale2x,
+}
+
+impl Default for PixelScalerMode {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+impl fmt::Display for PixelScalerMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Off => write!(f, "Off"),
+            Self::Scale2x => write!(f, "Scale2x"),
+        }
+    }
+}
+
+impl PixelScalerMode {
+    /// All variants in UI display order.
+    pub const ALL: [PixelScalerMode; 2] = [PixelScalerMode::Off, PixelScalerMode::Scale2x];
+}
+
 const LOG_FILE_NAME: &str = "mag_client.log";
 const PROFILE_FILE_NAME: &str = "mag_profile.json";
 const KNOWN_HOSTS_FILE: &str = "mag_known_hosts.json";
@@ -131,12 +309,30 @@ pub struct Settings {
     /// Window display mode.
     #[serde(default)]
     pub display_mode: DisplayMode,
+    /// Final-scene upscaling strategy.
+    #[serde(default)]
+    pub upscale_mode: UpscaleMode,
     /// Whether pixel-perfect (integer) scaling is active.
+    ///
+    /// Kept only so older profile files deserialize cleanly. New code uses
+    /// [`Settings::upscale_mode`].
     #[serde(default)]
     pub pixel_perfect_scaling: bool,
     /// Whether VSync is enabled.
     #[serde(default = "default_true")]
     pub vsync_enabled: bool,
+    /// Sharpness pass applied to the final scene.
+    #[serde(default)]
+    pub sharpen_mode: SharpenMode,
+    /// Scanline overlay applied to the final scene.
+    #[serde(default)]
+    pub scanline_mode: ScanlineMode,
+    /// Color-grade overlay applied to the final scene.
+    #[serde(default)]
+    pub color_grade_mode: ColorGradeMode,
+    /// Final-scene pixel-scaler style.
+    #[serde(default)]
+    pub pixel_scaler_mode: PixelScalerMode,
     /// Whether shadow rendering is enabled.
     #[serde(default = "default_true")]
     pub shadows_enabled: bool,
@@ -171,8 +367,13 @@ impl Default for Settings {
         Self {
             music_enabled: true,
             display_mode: DisplayMode::default(),
+            upscale_mode: UpscaleMode::default(),
             pixel_perfect_scaling: false,
             vsync_enabled: true,
+            sharpen_mode: SharpenMode::default(),
+            scanline_mode: ScanlineMode::default(),
+            color_grade_mode: ColorGradeMode::default(),
+            pixel_scaler_mode: PixelScalerMode::default(),
             shadows_enabled: true,
             spell_effects_enabled: true,
             master_volume: 0.0,
@@ -233,8 +434,13 @@ fn global_settings_only(settings: &Settings) -> Settings {
     Settings {
         music_enabled: settings.music_enabled,
         display_mode: settings.display_mode,
+        upscale_mode: settings.upscale_mode,
         pixel_perfect_scaling: settings.pixel_perfect_scaling,
         vsync_enabled: settings.vsync_enabled,
+        sharpen_mode: settings.sharpen_mode,
+        scanline_mode: settings.scanline_mode,
+        color_grade_mode: settings.color_grade_mode,
+        pixel_scaler_mode: settings.pixel_scaler_mode,
         shadows_enabled: settings.shadows_enabled,
         spell_effects_enabled: settings.spell_effects_enabled,
         master_volume: settings.master_volume.clamp(0.0, 1.0),
@@ -341,7 +547,10 @@ fn read_storage(path: &Path) -> ProfileStorage {
     };
 
     match serde_json::from_str::<ProfileStorage>(&raw) {
-        Ok(storage) => storage,
+        Ok(mut storage) => {
+            migrate_legacy_upscale_mode(&raw, &mut storage);
+            storage
+        }
         Err(err) => {
             log::warn!(
                 "Failed to parse persisted SDL client profile at {}: {}",
@@ -350,6 +559,26 @@ fn read_storage(path: &Path) -> ProfileStorage {
             );
             ProfileStorage::default()
         }
+    }
+}
+
+/// Migrates the old `pixel_perfect_scaling` boolean into [`UpscaleMode`].
+fn migrate_legacy_upscale_mode(raw: &str, storage: &mut ProfileStorage) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return;
+    };
+
+    let Some(global) = value.get("global") else {
+        return;
+    };
+
+    if global.get("upscale_mode").is_none()
+        && global
+            .get("pixel_perfect_scaling")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false)
+    {
+        storage.global.upscale_mode = UpscaleMode::PixelPerfect;
     }
 }
 
@@ -481,6 +710,11 @@ mod tests {
         let mut s = Settings::default();
         s.music_enabled = false;
         s.display_mode = DisplayMode::BorderlessFullscreen;
+        s.upscale_mode = UpscaleMode::Smooth;
+        s.sharpen_mode = SharpenMode::Subtle;
+        s.scanline_mode = ScanlineMode::Strong;
+        s.color_grade_mode = ColorGradeMode::Warm;
+        s.pixel_scaler_mode = PixelScalerMode::Scale2x;
         s.shadows_enabled = true;
         s.master_volume = 0.75;
         s.show_helper_text = false;
@@ -506,6 +740,11 @@ mod tests {
 
         assert_eq!(deserialized.music_enabled, s.music_enabled);
         assert_eq!(deserialized.display_mode, s.display_mode);
+        assert_eq!(deserialized.upscale_mode, s.upscale_mode);
+        assert_eq!(deserialized.sharpen_mode, s.sharpen_mode);
+        assert_eq!(deserialized.scanline_mode, s.scanline_mode);
+        assert_eq!(deserialized.color_grade_mode, s.color_grade_mode);
+        assert_eq!(deserialized.pixel_scaler_mode, s.pixel_scaler_mode);
         assert_eq!(deserialized.shadows_enabled, s.shadows_enabled);
         assert!((deserialized.master_volume - s.master_volume).abs() < f32::EPSILON);
         assert_eq!(
@@ -523,6 +762,11 @@ mod tests {
 
         assert_eq!(deserialized.music_enabled, defaults.music_enabled);
         assert_eq!(deserialized.display_mode, defaults.display_mode);
+        assert_eq!(deserialized.upscale_mode, defaults.upscale_mode);
+        assert_eq!(deserialized.sharpen_mode, defaults.sharpen_mode);
+        assert_eq!(deserialized.scanline_mode, defaults.scanline_mode);
+        assert_eq!(deserialized.color_grade_mode, defaults.color_grade_mode);
+        assert_eq!(deserialized.pixel_scaler_mode, defaults.pixel_scaler_mode);
         assert_eq!(deserialized.shadows_enabled, defaults.shadows_enabled);
         assert!((deserialized.master_volume - defaults.master_volume).abs() < f32::EPSILON);
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
@@ -539,6 +783,38 @@ mod tests {
 
         assert!(deserialized.show_helper_text);
         assert!(!deserialized.show_positions);
+    }
+
+    #[test]
+    fn legacy_pixel_perfect_profile_migrates_to_upscale_mode() {
+        let raw = r#"{
+            "version": 1,
+            "global": {
+                "display_mode": "Windowed",
+                "pixel_perfect_scaling": true
+            },
+            "characters": {}
+        }"#;
+        let mut storage: ProfileStorage = serde_json::from_str(raw).unwrap();
+
+        migrate_legacy_upscale_mode(raw, &mut storage);
+
+        assert_eq!(storage.global.upscale_mode, UpscaleMode::PixelPerfect);
+    }
+
+    #[test]
+    fn upscale_mode_display_labels_are_stable() {
+        assert_eq!(UpscaleMode::PixelPerfect.to_string(), "Pixel Perfect");
+        assert_eq!(UpscaleMode::Crisp.to_string(), "Crisp");
+        assert_eq!(UpscaleMode::Smooth.to_string(), "Smooth");
+    }
+
+    #[test]
+    fn post_process_mode_display_labels_are_stable() {
+        assert_eq!(SharpenMode::Subtle.to_string(), "Subtle");
+        assert_eq!(ScanlineMode::Strong.to_string(), "Strong");
+        assert_eq!(ColorGradeMode::HighContrast.to_string(), "High Contrast");
+        assert_eq!(PixelScalerMode::Scale2x.to_string(), "Scale2x");
     }
 
     #[test]
@@ -667,6 +943,11 @@ mod tests {
 
         assert_eq!(global.music_enabled, settings.music_enabled);
         assert_eq!(global.display_mode, settings.display_mode);
+        assert_eq!(global.upscale_mode, settings.upscale_mode);
+        assert_eq!(global.sharpen_mode, settings.sharpen_mode);
+        assert_eq!(global.scanline_mode, settings.scanline_mode);
+        assert_eq!(global.color_grade_mode, settings.color_grade_mode);
+        assert_eq!(global.pixel_scaler_mode, settings.pixel_scaler_mode);
         assert!(
             global
                 .character
