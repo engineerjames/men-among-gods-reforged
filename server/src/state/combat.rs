@@ -10,12 +10,20 @@ use crate::helpers;
 
 const MERCENARY_BASE_DODGE_PERCENT: i32 = 10;
 const MERCENARY_DODGE_TALENT_PERCENT: i32 = 5;
-const DODGE_PERCENT_DENOMINATOR: i32 = 100;
+const MERCENARY_MAX_DODGE_CHANCE: i32 = 100;
 
 impl GameState {
     /// Port of `get_fight_skill(int cn)` from `svr_do.cpp`
     ///
     /// Calculate effective fighting skill based on character's skills and attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index whose fight skill should be read.
+    ///
+    /// # Returns
+    ///
+    /// * Effective weapon/fight skill value used by melee combat resolution.
     pub(crate) fn get_fight_skill(&mut self, cn: usize) -> i32 {
         self.characters[cn].skill[skills::SK_WEAPON][5] as i32
     }
@@ -47,7 +55,7 @@ impl GameState {
             percent += MERCENARY_DODGE_TALENT_PERCENT;
         }
 
-        percent.clamp(0, DODGE_PERCENT_DENOMINATOR)
+        percent.clamp(0, MERCENARY_MAX_DODGE_CHANCE)
     }
 
     /// Returns whether a percent roll succeeds.
@@ -61,7 +69,7 @@ impl GameState {
     ///
     /// * `true` when `roll` lands inside the percent chance.
     fn percent_roll_succeeds(percent: i32, roll: i32) -> bool {
-        roll < percent.clamp(0, DODGE_PERCENT_DENOMINATOR)
+        roll < percent.clamp(0, MERCENARY_MAX_DODGE_CHANCE)
     }
 
     /// Rolls whether a defender dodges a physical attack.
@@ -75,7 +83,7 @@ impl GameState {
     /// * `true` when the defender's physical dodge chance succeeds.
     fn dodges_physical_attack(&self, co: usize) -> bool {
         let percent = self.physical_dodge_percent(co);
-        Self::percent_roll_succeeds(percent, helpers::random_mod_i32(DODGE_PERCENT_DENOMINATOR))
+        Self::percent_roll_succeeds(percent, helpers::random_mod_i32(MERCENARY_MAX_DODGE_CHANCE))
     }
 
     /// Emits the existing miss feedback for a physical attack.
@@ -126,8 +134,17 @@ impl GameState {
         );
     }
 
+    /// Port of `do_enemy(int cn, char* npc, char* victim)` from `svr_do.cpp`.
+    ///
+    /// Adds or removes an NPC enemy relationship from the god command flow.
+    /// When `victim` is empty, the NPC's current enemy list is shown instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the caller issuing the command.
+    /// * `npc` - Textual character index for the NPC whose enemy list is being changed.
+    /// * `victim` - Textual character index for the target to add or remove.
     pub(crate) fn do_enemy(&mut self, cn: usize, npc: &str, victim: &str) {
-        // Port of do_enemy(int cn, char* npc, char* victim)
         if npc.is_empty() {
             self.do_character_log(cn, FontColor::Red, "Make whom the enemy of whom?\n");
             return;
@@ -264,10 +281,18 @@ impl GameState {
         );
     }
 
+    /// Resolves a physical melee attack between two characters.
+    ///
+    /// Handles attack permission checks, enemy bookkeeping, hit and dodge
+    /// rolls, damage calculation, weapon wear, miss notifications, and
+    /// optional Surround Hit secondary strikes.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Attacker character index.
+    /// * `co` - Primary defender character index.
+    /// * `is_surround` - Whether learned Surround Hit should be evaluated after the primary strike.
     pub(crate) fn do_attack(&mut self, cn: usize, co: usize, is_surround: bool) {
-        // Basic attack handling: permission checks, enemy bookkeeping,
-        // hit/miss roll, damage calculation, item damage and surround hits.
-
         if !self.may_attack_msg(cn, co, true) {
             self.characters[cn].attack_cn = 0;
             self.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
@@ -511,6 +536,15 @@ impl GameState {
     /// Port of `do_char_can_flee(int cn)` from `svr_do.cpp`
     ///
     /// Check if a character can flee from combat.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index attempting to flee.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the character can flee and enemies were cleared.
+    /// * `false` if combat pressure or the escape timer prevents fleeing.
     pub(crate) fn do_char_can_flee(&mut self, cn: usize) -> bool {
         // First, remove stale enemy entries where the relation is not mutual
         for m in 0..4 {
@@ -580,6 +614,12 @@ impl GameState {
     /// Port of `do_ransack_corpse(int cn, int co, char *msg)` from `svr_do.cpp`
     ///
     /// Handle looting a corpse.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index inspecting the corpse.
+    /// * `co` - Corpse owner character index whose inventory is being inspected.
+    /// * `msg` - Message template used when reporting discovered loot hints.
     pub(crate) fn do_ransack_corpse(&mut self, cn: usize, co: usize, msg: &str) {
         let sense_skill = self.characters[cn].skill[skills::SK_SENSE][5] as i32;
 
@@ -657,6 +697,11 @@ impl GameState {
     ///
     /// Simple function to add `co` to `cn`'s enemy array (NOT the same as npc_add_enemy).
     /// This does NOT set attack_cn or any other state - just tracks who is fighting whom.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index receiving the enemy entry.
+    /// * `co` - Character index to add as an enemy.
     pub(crate) fn add_enemy(&mut self, cn: usize, co: usize) {
         // Check if co is already in the enemy list
         if self.characters[cn].enemy[0] as usize != co
@@ -677,6 +722,11 @@ impl GameState {
         }
     }
 
+    /// Removes a character from every enemy list in the world.
+    ///
+    /// # Arguments
+    ///
+    /// * `co` - Character index to remove from all enemy arrays.
     pub(crate) fn remove_enemy(&mut self, co: usize) {
         for n in 1..core::constants::MAXCHARS {
             for m in 0..4 {
@@ -693,13 +743,15 @@ impl GameState {
     /// If msg is true, tell cn why they can't attack (if applicable).
     ///
     /// # Arguments
+    ///
     /// * `cn` - Attacker character index
     /// * `co` - Target character index  
     /// * `msg` - Whether to display messages explaining why attack is not allowed
     ///
     /// # Returns
-    /// * 1 if attack is allowed
-    /// * 0 if attack is not allowed
+    ///
+    /// * `true` if the attack is allowed.
+    /// * `false` if PvP, safety, map, or rank rules block the attack.
     pub(crate) fn may_attack_msg(&mut self, cn: usize, co: usize, msg: bool) -> bool {
         use core::constants::*;
 
@@ -843,6 +895,7 @@ impl GameState {
     /// Arena attacks don't count.
     ///
     /// # Arguments
+    ///
     /// * `cn` - Attacker character index
     /// * `co` - Victim character index
     pub fn remember_pvp(&mut self, cn: usize, co: usize) {
@@ -914,6 +967,7 @@ impl GameState {
     /// When set, the character will not fight back if spelled.
     ///
     /// # Arguments
+    ///
     /// * `cn` - Character index
     pub(crate) fn do_spellignore(&mut self, cn: usize) {
         if (self.characters[cn].flags & CharacterFlags::SpellIgnore.bits()) != 0 {
