@@ -1189,9 +1189,13 @@ impl GameState {
                 return; // Unknown kindred, don't proceed
             };
 
-            let diff = rank - self.characters[cn].data[45] as usize;
+            let old_rank = self.characters[cn].data[45] as usize;
+            let diff = rank - old_rank;
+            let talent_points = ranks::talent_points_awarded_between(old_rank, rank);
             self.characters[cn].data[45] = rank as i32;
-            grant_talent_points(&mut self.characters[cn].future1, diff as u8);
+            if talent_points > 0 {
+                grant_talent_points(&mut self.characters[cn].future1, talent_points);
+            }
 
             // Log level up message
             if diff == 1 {
@@ -1219,15 +1223,22 @@ impl GameState {
                 );
             }
 
-            let talent_message = if diff == 1 {
-                "You gained 1 talent point. Open the Talents panel to spend it.\n".to_string()
-            } else {
-                format!(
-                    "You gained {} talent points. Open the Talents panel to spend them.\n",
-                    diff
-                )
-            };
-            self.do_character_log(cn, core::types::FontColor::Yellow, &talent_message);
+            if talent_points == 1 {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    "You gained 1 talent point. Open the Talents panel to spend it.\n",
+                );
+            } else if talent_points > 1 {
+                self.do_character_log(
+                    cn,
+                    core::types::FontColor::Yellow,
+                    &format!(
+                        "You gained {} talent points. Open the Talents panel to spend them.\n",
+                        talent_points
+                    ),
+                );
+            }
 
             // Find an NPC to announce the rank
             let temp = if (self.characters[cn].kindred & (traits::KIN_PURPLE as i32)) != 0 {
@@ -1696,7 +1707,7 @@ mod tests {
     use crate::test_helpers::{add_test_player, with_test_gs};
 
     #[test]
-    fn rank_up_grants_one_talent_point_per_rank() {
+    fn rank_up_grants_talent_points_only_for_milestone_ranks() {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);
             gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
@@ -1706,8 +1717,24 @@ mod tests {
 
             gs.do_check_new_level(cn);
 
-            assert_eq!(gs.characters[cn].future1[0], 3);
+            assert_eq!(gs.characters[cn].future1[0], 2);
             assert_eq!(gs.characters[cn].data[45], 3);
+        });
+    }
+
+    #[test]
+    fn rank_up_to_non_milestone_does_not_grant_talent_point() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].data[45] = 1;
+            gs.characters[cn].points_tot = core::ranks::RANK_THRESHOLDS[2] as i32;
+
+            gs.do_check_new_level(cn);
+
+            assert_eq!(gs.characters[cn].future1[0], 0);
+            assert_eq!(gs.characters[cn].data[45], 2);
         });
     }
 

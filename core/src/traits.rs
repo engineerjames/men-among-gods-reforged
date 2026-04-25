@@ -233,6 +233,25 @@ pub fn class_from_kindred(kindred: i32) -> Option<Class> {
     }
 }
 
+/// Returns whether a kindred bitfield belongs to the mercenary class lineage.
+///
+/// The mercenary lineage includes base Mercenaries and their advanced forms,
+/// Warriors and Sorcerers. Sex, monster, and Purple flags may coexist with the
+/// class bit and are ignored.
+///
+/// # Arguments
+///
+/// * `kindred` - Raw kindred bitmask from a character.
+///
+/// # Returns
+///
+/// * `true` when the Mercenary, Warrior, or Sorcerer class bit is present.
+/// * `false` otherwise.
+pub fn is_mercenary_line(kindred: i32) -> bool {
+    let kindred = kindred as u32;
+    kindred & (KIN_MERCENARY | KIN_WARRIOR | KIN_SORCERER) != 0
+}
+
 /// Resolves the player sex encoded in a `kindred` bitfield.
 ///
 /// # Arguments
@@ -302,8 +321,8 @@ pub fn kindred_can_use_weapon(kindred: i32, weapon_flags: ItemFlags) -> bool {
 mod tests {
     use super::{
         Class, Sex, allowed_weapon_flags_for_class, class_from_kindred, get_race_integer,
-        get_sex_and_class, get_sprite_id_for_class_and_sex, kindred_can_use_weapon,
-        sex_from_kindred,
+        get_sex_and_class, get_sprite_id_for_class_and_sex, is_mercenary_line,
+        kindred_can_use_weapon, sex_from_kindred,
     };
     use crate::constants::ItemFlags;
     use crate::traits;
@@ -420,6 +439,26 @@ mod tests {
             Some(Class::ArchHarakim)
         );
         assert_eq!(class_from_kindred(0), None);
+    }
+
+    #[test]
+    fn is_mercenary_line_accepts_base_and_advanced_mercenary_classes() {
+        assert!(is_mercenary_line(traits::KIN_MERCENARY as i32));
+        assert!(is_mercenary_line(traits::KIN_WARRIOR as i32));
+        assert!(is_mercenary_line(traits::KIN_SORCERER as i32));
+        assert!(is_mercenary_line(
+            (traits::KIN_SORCERER | traits::KIN_FEMALE | traits::KIN_PURPLE) as i32
+        ));
+    }
+
+    #[test]
+    fn is_mercenary_line_rejects_other_classes_and_non_class_flags() {
+        assert!(!is_mercenary_line(traits::KIN_TEMPLAR as i32));
+        assert!(!is_mercenary_line(traits::KIN_HARAKIM as i32));
+        assert!(!is_mercenary_line(traits::KIN_MONSTER as i32));
+        assert!(!is_mercenary_line(
+            (traits::KIN_MONSTER | traits::KIN_MALE | traits::KIN_PURPLE) as i32
+        ));
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use core::constants::{CharacterFlags, ItemFlags};
 use core::string_operations::c_string_to_str;
+use core::talent_trees::talent_dodge_bonuses;
 use core::types::FontColor;
 use core::{skills, traits};
 
@@ -7,16 +8,137 @@ use crate::driver;
 use crate::game_state::GameState;
 use crate::helpers;
 
+const MERCENARY_BASE_DODGE_PERCENT: i32 = 10;
+const MERCENARY_MAX_DODGE_CHANCE: i32 = 100;
+
 impl GameState {
     /// Port of `get_fight_skill(int cn)` from `svr_do.cpp`
     ///
     /// Calculate effective fighting skill based on character's skills and attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index whose fight skill should be read.
+    ///
+    /// # Returns
+    ///
+    /// * Effective weapon/fight skill value used by melee combat resolution.
     pub(crate) fn get_fight_skill(&mut self, cn: usize) -> i32 {
         self.characters[cn].skill[skills::SK_WEAPON][5] as i32
     }
 
+    /// Calculates the physical dodge chance for a defender.
+    ///
+    /// Only player characters in the Mercenary, Warrior, or Sorcerer lineage
+    /// receive this short-term dodge chance.
+    ///
+    /// # Arguments
+    ///
+    /// * `co` - Defender character index.
+    ///
+    /// # Returns
+    ///
+    /// * Dodge chance as a percent in `0..=100`.
+    fn physical_dodge_percent(&self, co: usize) -> i32 {
+        let character = &self.characters[co];
+        let is_player = (character.flags & CharacterFlags::Player.bits()) != 0;
+        if !is_player || !traits::is_mercenary_line(character.kindred) {
+            return 0;
+        }
+
+        let mut percent = MERCENARY_BASE_DODGE_PERCENT;
+        let additional_dodge = talent_dodge_bonuses(character.kindred, &character.future1);
+        percent += additional_dodge;
+        percent.clamp(0, MERCENARY_MAX_DODGE_CHANCE)
+    }
+
+    /// Returns whether a percent roll succeeds.
+    ///
+    /// # Arguments
+    ///
+    /// * `percent` - Chance in percent.
+    /// * `roll` - Roll value in `0..100`.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `roll` lands inside the percent chance.
+    fn percent_roll_succeeds(percent: i32, roll: i32) -> bool {
+        roll < percent.clamp(0, MERCENARY_MAX_DODGE_CHANCE)
+    }
+
+    /// Rolls whether a defender dodges a physical attack.
+    ///
+    /// # Arguments
+    ///
+    /// * `co` - Defender character index.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the defender's physical dodge chance succeeds.
+    fn dodges_physical_attack(&self, co: usize) -> bool {
+        let percent = self.physical_dodge_percent(co);
+        Self::percent_roll_succeeds(percent, helpers::random_mod_i32(MERCENARY_MAX_DODGE_CHANCE))
+    }
+
+    /// Emits the existing miss feedback for a physical attack.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Attacker character index.
+    /// * `co` - Defender character index.
+    fn emit_attack_miss(&mut self, cn: usize, co: usize) {
+        let base_sound = self.characters[cn].sound as i32;
+        self.do_area_sound(
+            co,
+            0,
+            self.characters[co].x as i32,
+            self.characters[co].y as i32,
+            base_sound + 5,
+        );
+        Self::char_play_sound(self, co, base_sound + 5, -150, 0);
+
+        let ax = self.characters[cn].x as i32;
+        let ay = self.characters[cn].y as i32;
+        self.do_area_notify(
+            cn as i32,
+            co as i32,
+            ax,
+            ay,
+            core::constants::NT_SEEMISS as i32,
+            cn as i32,
+            co as i32,
+            0,
+            0,
+        );
+        self.do_notify_character(
+            co as u32,
+            core::constants::NT_GOTMISS as i32,
+            cn as i32,
+            0,
+            0,
+            0,
+        );
+        self.do_notify_character(
+            cn as u32,
+            core::constants::NT_DIDMISS as i32,
+            co as i32,
+            0,
+            0,
+            0,
+        );
+    }
+
+    /// Port of `do_enemy(int cn, char* npc, char* victim)` from `svr_do.cpp`.
+    ///
+    /// Adds or removes an NPC enemy relationship from the god command flow.
+    /// When `victim` is empty, the NPC's current enemy list is shown instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the caller issuing the command.
+    /// * `npc` - Textual character index for the NPC whose enemy list is being changed.
+    /// * `victim` - Textual character index for the target to add or remove.
     pub(crate) fn do_enemy(&mut self, cn: usize, npc: &str, victim: &str) {
-        // Port of do_enemy(int cn, char* npc, char* victim)
         if npc.is_empty() {
             self.do_character_log(cn, FontColor::Red, "Make whom the enemy of whom?\n");
             return;
@@ -153,10 +275,18 @@ impl GameState {
         );
     }
 
+    /// Resolves a physical melee attack between two characters.
+    ///
+    /// Handles attack permission checks, enemy bookkeeping, hit and dodge
+    /// rolls, damage calculation, weapon wear, miss notifications, and
+    /// optional Surround Hit secondary strikes.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Attacker character index.
+    /// * `co` - Primary defender character index.
+    /// * `is_surround` - Whether learned Surround Hit should be evaluated after the primary strike.
     pub(crate) fn do_attack(&mut self, cn: usize, co: usize, is_surround: bool) {
-        // Basic attack handling: permission checks, enemy bookkeeping,
-        // hit/miss roll, damage calculation, item damage and surround hits.
-
         if !self.may_attack_msg(cn, co, true) {
             self.characters[cn].attack_cn = 0;
             self.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
@@ -301,6 +431,17 @@ impl GameState {
         let hit = die <= chance;
 
         if hit {
+            if self.dodges_physical_attack(co) {
+                self.emit_attack_miss(cn, co);
+
+                log::info!(
+                    "Character {} dodged the attack from {}!",
+                    self.characters[co].get_name(),
+                    self.characters[cn].get_name()
+                );
+                return;
+            }
+
             // Damage calculation follows original pattern
             let strn = self.characters[cn].attrib[core::constants::AT_STREN as usize][5] as i32;
 
@@ -378,60 +519,32 @@ impl GameState {
                         if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
                             let sdam = odam - odam / 4;
                             self.remember_pvp(cn, co2);
-                            self.do_hurt(cn, co2, sdam, 0);
+                            if self.dodges_physical_attack(co2) {
+                                self.emit_attack_miss(cn, co2);
+                            } else {
+                                self.do_hurt(cn, co2, sdam, 0);
+                            }
                         }
                     }
                 }
             }
         } else {
-            // Miss: play miss sound and notify
-            // Miss: play miss sound and notify observers and participants
-            let base_sound = self.characters[cn].sound as i32;
-            self.do_area_sound(
-                co,
-                0,
-                self.characters[co].x as i32,
-                self.characters[co].y as i32,
-                base_sound + 5,
-            );
-            Self::char_play_sound(self, co, base_sound + 5, -150, 0);
-
-            // Notify area that attacker missed
-            let ax = self.characters[cn].x as i32;
-            let ay = self.characters[cn].y as i32;
-            self.do_area_notify(
-                cn as i32,
-                co as i32,
-                ax,
-                ay,
-                core::constants::NT_SEEMISS as i32,
-                cn as i32,
-                co as i32,
-                0,
-                0,
-            );
-            self.do_notify_character(
-                co as u32,
-                core::constants::NT_GOTMISS as i32,
-                cn as i32,
-                0,
-                0,
-                0,
-            );
-            self.do_notify_character(
-                cn as u32,
-                core::constants::NT_DIDMISS as i32,
-                co as i32,
-                0,
-                0,
-                0,
-            );
+            self.emit_attack_miss(cn, co);
         }
     }
 
     /// Port of `do_char_can_flee(int cn)` from `svr_do.cpp`
     ///
     /// Check if a character can flee from combat.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index attempting to flee.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the character can flee and enemies were cleared.
+    /// * `false` if combat pressure or the escape timer prevents fleeing.
     pub(crate) fn do_char_can_flee(&mut self, cn: usize) -> bool {
         // First, remove stale enemy entries where the relation is not mutual
         for m in 0..4 {
@@ -501,6 +614,12 @@ impl GameState {
     /// Port of `do_ransack_corpse(int cn, int co, char *msg)` from `svr_do.cpp`
     ///
     /// Handle looting a corpse.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index inspecting the corpse.
+    /// * `co` - Corpse owner character index whose inventory is being inspected.
+    /// * `msg` - Message template used when reporting discovered loot hints.
     pub(crate) fn do_ransack_corpse(&mut self, cn: usize, co: usize, msg: &str) {
         let sense_skill = self.characters[cn].skill[skills::SK_SENSE][5] as i32;
 
@@ -578,6 +697,11 @@ impl GameState {
     ///
     /// Simple function to add `co` to `cn`'s enemy array (NOT the same as npc_add_enemy).
     /// This does NOT set attack_cn or any other state - just tracks who is fighting whom.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index receiving the enemy entry.
+    /// * `co` - Character index to add as an enemy.
     pub(crate) fn add_enemy(&mut self, cn: usize, co: usize) {
         // Check if co is already in the enemy list
         if self.characters[cn].enemy[0] as usize != co
@@ -598,6 +722,11 @@ impl GameState {
         }
     }
 
+    /// Removes a character from every enemy list in the world.
+    ///
+    /// # Arguments
+    ///
+    /// * `co` - Character index to remove from all enemy arrays.
     pub(crate) fn remove_enemy(&mut self, co: usize) {
         for n in 1..core::constants::MAXCHARS {
             for m in 0..4 {
@@ -614,13 +743,15 @@ impl GameState {
     /// If msg is true, tell cn why they can't attack (if applicable).
     ///
     /// # Arguments
+    ///
     /// * `cn` - Attacker character index
     /// * `co` - Target character index  
     /// * `msg` - Whether to display messages explaining why attack is not allowed
     ///
     /// # Returns
-    /// * 1 if attack is allowed
-    /// * 0 if attack is not allowed
+    ///
+    /// * `true` if the attack is allowed.
+    /// * `false` if PvP, safety, map, or rank rules block the attack.
     pub(crate) fn may_attack_msg(&mut self, cn: usize, co: usize, msg: bool) -> bool {
         use core::constants::*;
 
@@ -764,6 +895,7 @@ impl GameState {
     /// Arena attacks don't count.
     ///
     /// # Arguments
+    ///
     /// * `cn` - Attacker character index
     /// * `co` - Victim character index
     pub fn remember_pvp(&mut self, cn: usize, co: usize) {
@@ -835,6 +967,7 @@ impl GameState {
     /// When set, the character will not fight back if spelled.
     ///
     /// # Arguments
+    ///
     /// * `cn` - Character index
     pub(crate) fn do_spellignore(&mut self, cn: usize) {
         if (self.characters[cn].flags & CharacterFlags::SpellIgnore.bits()) != 0 {
@@ -852,5 +985,101 @@ impl GameState {
                 "You will no longer fight back if someone attacks you with a spell.\n",
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::with_test_gs;
+    use core::constants::{CharacterFlags, USE_ACTIVE};
+    use core::talent_trees::mercenary;
+
+    fn seed_character(gs: &mut GameState, cn: usize, flags: u64, kindred: i32) {
+        gs.characters[cn] = core::types::Character::default();
+        gs.characters[cn].used = USE_ACTIVE;
+        gs.characters[cn].flags = flags;
+        gs.characters[cn].kindred = kindred;
+    }
+
+    fn spend_talent(gs: &mut GameState, cn: usize, slot: core::talent_trees::TalentRef) {
+        gs.characters[cn].future1[slot.layer as usize] |= slot.mask;
+    }
+
+    #[test]
+    fn physical_dodge_percent_applies_to_player_mercenary_line_only() {
+        with_test_gs(|gs| {
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_MERCENARY as i32,
+            );
+            seed_character(
+                gs,
+                2,
+                CharacterFlags::Player.bits(),
+                traits::KIN_WARRIOR as i32,
+            );
+            seed_character(
+                gs,
+                3,
+                CharacterFlags::Player.bits(),
+                traits::KIN_SORCERER as i32,
+            );
+            seed_character(
+                gs,
+                4,
+                CharacterFlags::Player.bits(),
+                traits::KIN_TEMPLAR as i32,
+            );
+            seed_character(gs, 5, 0, traits::KIN_MERCENARY as i32);
+
+            assert_eq!(gs.physical_dodge_percent(1), 10);
+            assert_eq!(gs.physical_dodge_percent(2), 10);
+            assert_eq!(gs.physical_dodge_percent(3), 10);
+            assert_eq!(gs.physical_dodge_percent(4), 0);
+            assert_eq!(gs.physical_dodge_percent(5), 0);
+        });
+    }
+
+    #[test]
+    fn physical_dodge_percent_includes_dodge_boost_talents() {
+        with_test_gs(|gs| {
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_MERCENARY as i32,
+            );
+
+            assert_eq!(gs.physical_dodge_percent(1), 10);
+
+            spend_talent(gs, 1, mercenary::DODGE_BOOST_1);
+            assert_eq!(gs.physical_dodge_percent(1), 15);
+
+            spend_talent(gs, 1, mercenary::DODGE_BOOST_2);
+            assert_eq!(gs.physical_dodge_percent(1), 20);
+        });
+    }
+
+    #[test]
+    fn physical_dodge_percent_ignores_npc_talent_bits() {
+        with_test_gs(|gs| {
+            seed_character(gs, 1, 0, traits::KIN_SORCERER as i32);
+            spend_talent(gs, 1, mercenary::DODGE_BOOST_1);
+            spend_talent(gs, 1, mercenary::DODGE_BOOST_2);
+
+            assert_eq!(gs.physical_dodge_percent(1), 0);
+        });
+    }
+
+    #[test]
+    fn percent_roll_succeeds_inside_percent_boundary() {
+        assert!(GameState::percent_roll_succeeds(10, 0));
+        assert!(GameState::percent_roll_succeeds(10, 9));
+        assert!(!GameState::percent_roll_succeeds(10, 10));
+        assert!(!GameState::percent_roll_succeeds(0, 0));
+        assert!(GameState::percent_roll_succeeds(100, 99));
     }
 }

@@ -109,7 +109,8 @@ fn dispatch_immediate_effect(
         TalentEffect::SkillFlat { .. }
         | TalentEffect::SkillPercent { .. }
         | TalentEffect::AttributeFlat { .. }
-        | TalentEffect::AttributePercent { .. } => Ok(()),
+        | TalentEffect::AttributePercent { .. }
+        | TalentEffect::DodgeChancePercent { .. } => Ok(()),
     }
 }
 
@@ -158,7 +159,7 @@ mod tests {
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
     };
-    use core::traits::{Class, KIN_MERCENARY, KIN_WARRIOR};
+    use core::traits::{Class, KIN_MERCENARY};
 
     fn empty_talents() -> [u8; 25] {
         [0; 25]
@@ -458,16 +459,6 @@ mod tests {
             give_class_and_points(gs, cn, KIN_MERCENARY, 1);
             let err = learn_talent(gs, cn, slot(23, 0b1000_0000)).unwrap_err();
             assert!(err.to_lowercase().contains("unknown talent"), "got: {err}");
-        });
-    }
-
-    #[test]
-    fn learn_talent_rejects_when_class_has_no_tree() {
-        with_test_gs(|gs| {
-            let cn = 1;
-            give_class_and_points(gs, cn, KIN_WARRIOR, 5);
-            let err = learn_talent(gs, cn, mercenary_slot("Distract")).unwrap_err();
-            assert!(err.to_lowercase().contains("no talent tree"), "got: {err}");
         });
     }
 

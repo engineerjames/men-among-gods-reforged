@@ -107,6 +107,8 @@ pub enum TalentEffect {
     AttributeFlat { attr: Attribute, amount: u8 },
     /// Add `percent`% of the current base to an attribute's base value.
     AttributePercent { attr: Attribute, percent: i32 },
+    /// Add `percent`% dodge chance to the character's total.
+    DodgeChancePercent { percent: i32 },
     /// Grant a previously-unknown skill (set base value to 1).
     GrantSkill { skill: Skill },
 }
@@ -141,6 +143,8 @@ pub struct TalentStatBonuses {
     pub attrib: [i32; 5],
     /// Skill bonuses indexed by canonical [`Skill`] discriminant.
     pub skill: [i32; 50],
+    /// Dodge chance bonuses from talents, in percent.
+    pub dodge: i32,
 }
 
 impl Default for TalentStatBonuses {
@@ -148,6 +152,7 @@ impl Default for TalentStatBonuses {
         Self {
             attrib: [0; 5],
             skill: [0; 50],
+            dodge: 0,
         }
     }
 }
@@ -176,10 +181,13 @@ pub struct TalentTree {
 pub fn tree_for(class: Class) -> Option<&'static TalentTree> {
     match class {
         Class::Harakim => Some(&harakim::HARAKIM_TREE),
+        Class::ArchHarakim => Some(&harakim::HARAKIM_TREE),
         Class::Mercenary => Some(&mercenary::MERCENARY_TREE),
+        Class::Warrior => Some(&mercenary::MERCENARY_TREE),
+        Class::Sorcerer => Some(&mercenary::MERCENARY_TREE),
         Class::SeyanDu => Some(&seyan_du::SEYAN_DU_TREE),
         Class::Templar => Some(&templar::TEMPLAR_TREE),
-        _ => None,
+        Class::ArchTemplar => Some(&templar::TEMPLAR_TREE),
     }
 }
 
@@ -451,6 +459,49 @@ pub fn talent_stat_bonuses(
     bonuses
 }
 
+/// Calculate dodge chance bonuses granted by currently learned talents.
+///
+/// Only learned talent nodes whose effect is [`TalentEffect::DodgeChancePercent`]
+/// contribute to the returned value. Characters without a registered talent
+/// tree, or without any learned dodge talents, receive no bonus.
+///
+/// # Arguments
+///
+/// * `kindred` - Character kindred bits used to resolve the class tree.
+/// * `talents` - Packed talent-tree state from the character record.
+///
+/// # Returns
+///
+/// * Accumulated dodge chance bonus from learned talents, in percent.
+pub fn talent_dodge_bonuses(kindred: i32, talents: &[u8; 25]) -> i32 {
+    let Some(class) = class_for_kindred(kindred) else {
+        log::warn!(
+            "Unknown class for kindred bits {kindred:#010x}; no talent bonuses will be applied"
+        );
+        return 0;
+    };
+    let Some(tree) = tree_for(class) else {
+        log::warn!(
+            "No talent tree registered for class {:?}; no talent bonuses will be applied",
+            class
+        );
+        return 0;
+    };
+
+    let mut bonus_percent = 0;
+
+    for node in tree.nodes {
+        if !is_talent_slot_spent(talents, node.slot) {
+            continue;
+        }
+        if let TalentEffect::DodgeChancePercent { percent } = node.effect {
+            bonus_percent += percent;
+        }
+    }
+
+    bonus_percent
+}
+
 /// Add one effect's derived stat contribution into `bonuses`.
 ///
 /// # Arguments
@@ -481,6 +532,9 @@ fn accumulate_stat_bonus(
         TalentEffect::AttributePercent { attr, percent } => {
             let base = attrib[attr as usize][SkillIndex::BaseValue as usize];
             bonuses.attrib[attr as usize] += percent_bonus(base, percent);
+        }
+        TalentEffect::DodgeChancePercent { percent } => {
+            bonuses.dodge += percent;
         }
         TalentEffect::GrantSkill { .. } => {}
     }
@@ -840,10 +894,10 @@ mod tests {
         assert!(tree_for(Class::Templar).is_some());
         assert!(tree_for(Class::Harakim).is_some());
         assert!(tree_for(Class::SeyanDu).is_some());
-        assert!(tree_for(Class::Sorcerer).is_none());
-        assert!(tree_for(Class::Warrior).is_none());
-        assert!(tree_for(Class::ArchTemplar).is_none());
-        assert!(tree_for(Class::ArchHarakim).is_none());
+        assert!(tree_for(Class::Sorcerer).is_some());
+        assert!(tree_for(Class::Warrior).is_some());
+        assert!(tree_for(Class::ArchTemplar).is_some());
+        assert!(tree_for(Class::ArchHarakim).is_some());
     }
 
     #[test]
@@ -876,5 +930,56 @@ mod tests {
         assert!(TalentRef::from_wire(TALENT_LAYER_END as u8, 1).is_err());
         assert!(TalentRef::from_wire(1, 0).is_err());
         assert!(TalentRef::from_wire(1, 0b0000_0011).is_err());
+    }
+
+    #[test]
+    fn talent_dodge_bonuses_returns_zero_for_unknown_class() {
+        let talents = [0u8; 25];
+
+        assert_eq!(talent_dodge_bonuses(0, &talents), 0);
+        assert_eq!(
+            talent_dodge_bonuses(crate::traits::KIN_MALE as i32, &talents),
+            0
+        );
+    }
+
+    #[test]
+    fn talent_dodge_bonuses_returns_zero_for_class_without_registered_tree() {
+        let talents = [0u8; 25];
+
+        assert_eq!(talent_dodge_bonuses(KIN_WARRIOR as i32, &talents), 0);
+        assert_eq!(talent_dodge_bonuses(KIN_SORCERER as i32, &talents), 0);
+    }
+
+    #[test]
+    fn talent_dodge_bonuses_returns_zero_when_no_dodge_talent_is_learned() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+        let distract = named_node(tree, "Distract").slot;
+        let mut talents = [0u8; 25];
+        talents[distract.layer as usize] |= distract.mask;
+
+        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 0);
+    }
+
+    #[test]
+    fn talent_dodge_bonuses_returns_first_dodge_boost_bonus() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+        let dodge_boost_1 = named_node(tree, "Dodge Boost I").slot;
+        let mut talents = [0u8; 25];
+        talents[dodge_boost_1.layer as usize] |= dodge_boost_1.mask;
+
+        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 5);
+    }
+
+    #[test]
+    fn talent_dodge_bonuses_accumulates_multiple_dodge_boosts() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+        let dodge_boost_1 = named_node(tree, "Dodge Boost I").slot;
+        let dodge_boost_2 = named_node(tree, "Dodge Boost II").slot;
+        let mut talents = [0u8; 25];
+        talents[dodge_boost_1.layer as usize] |= dodge_boost_1.mask;
+        talents[dodge_boost_2.layer as usize] |= dodge_boost_2.mask;
+
+        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 10);
     }
 }
