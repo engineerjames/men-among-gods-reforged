@@ -1031,6 +1031,11 @@ impl GameState {
         self.do_character_log(
             cn,
             core::types::FontColor::Green,
+            "#talents               show active talent bonuses.\n",
+        );
+        self.do_character_log(
+            cn,
+            core::types::FontColor::Green,
             "#wave                  you'll wave.\n",
         );
         self.do_character_log(

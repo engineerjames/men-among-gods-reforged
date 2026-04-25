@@ -109,7 +109,8 @@ fn dispatch_immediate_effect(
         TalentEffect::SkillFlat { .. }
         | TalentEffect::SkillPercent { .. }
         | TalentEffect::AttributeFlat { .. }
-        | TalentEffect::AttributePercent { .. } => Ok(()),
+        | TalentEffect::AttributePercent { .. }
+        | TalentEffect::DodgeChancePercent { .. } => Ok(()),
     }
 }
 

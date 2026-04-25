@@ -9,7 +9,6 @@ use crate::game_state::GameState;
 use crate::helpers;
 
 const MERCENARY_BASE_DODGE_PERCENT: i32 = 10;
-const MERCENARY_DODGE_TALENT_PERCENT: i32 = 5;
 const MERCENARY_MAX_DODGE_CHANCE: i32 = 100;
 
 impl GameState {

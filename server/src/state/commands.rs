@@ -1,5 +1,6 @@
 use core::constants::{CharacterFlags, GF_CLOSEENEMY, GF_LOOTING, GF_MAYHEM, GF_SPEEDY};
 use core::string_operations::c_string_to_str;
+use core::talent_trees::{TalentStatBonuses, talent_stat_bonuses};
 use core::types::FontColor;
 use core::{skills, traits};
 
@@ -94,7 +95,7 @@ fn atoi_usize(s: &str) -> usize {
     acc.min(usize::MAX as u128) as usize
 }
 
-const ALL_COMMANDS: &'static [&str; 126] = &[
+const ALL_COMMANDS: &[&str] = &[
     "addban",
     "afk",
     "allow",
@@ -208,6 +209,7 @@ const ALL_COMMANDS: &'static [&str; 126] = &[
     "steal",
     "stell",
     "summon",
+    "talents",
     "tavern",
     "tell",
     "temple",
@@ -275,6 +277,44 @@ fn match_command(input: &str) -> Option<&'static str> {
     }
 
     best.map(|(cmd, _)| cmd)
+}
+
+/// Builds user-visible lines for non-zero talent bonuses.
+///
+/// # Arguments
+///
+/// * `bonuses` - Accumulated talent bonuses to format.
+///
+/// # Returns
+///
+/// * A list of display lines without trailing newlines.
+fn format_talent_bonus_lines(bonuses: &TalentStatBonuses) -> Vec<String> {
+    let mut lines = Vec::new();
+
+    for (idx, bonus) in bonuses.attrib.iter().enumerate() {
+        if *bonus == 0 {
+            continue;
+        }
+        lines.push(format!("  {}: {:+}", skills::attribute_name(idx), bonus));
+    }
+
+    for (idx, bonus) in bonuses.skill.iter().enumerate() {
+        if *bonus == 0 {
+            continue;
+        }
+        let name = skills::get_skill_name(idx);
+        if name.is_empty() {
+            lines.push(format!("  Skill {}: {:+}", idx, bonus));
+        } else {
+            lines.push(format!("  {}: {:+}", name, bonus));
+        }
+    }
+
+    if bonuses.dodge != 0 {
+        lines.push(format!("  Dodge chance: {:+}%", bonuses.dodge));
+    }
+
+    lines
 }
 
 impl GameState {
@@ -508,6 +548,32 @@ impl GameState {
                 core::types::FontColor::Yellow,
                 &format!("{}.{}.{}.{}\n", a, b, c, d),
             );
+        }
+    }
+
+    /// Shows the caller's currently active talent-derived bonuses.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character number requesting the talent bonus report.
+    pub(crate) fn do_talents(&mut self, cn: usize) {
+        let character = &self.characters[cn];
+        let bonuses = talent_stat_bonuses(
+            character.kindred,
+            &character.future1,
+            &character.attrib,
+            &character.skill,
+        );
+        let lines = format_talent_bonus_lines(&bonuses);
+
+        if lines.is_empty() {
+            self.do_character_log(cn, FontColor::Green, "You have no active talent bonuses.\n");
+            return;
+        }
+
+        self.do_character_log(cn, FontColor::Green, "Active talent bonuses:\n");
+        for line in lines {
+            self.do_character_log(cn, FontColor::Green, &format!("{}\n", line));
         }
     }
 
@@ -1455,6 +1521,11 @@ impl GameState {
                 God::summon(self, cn, arg_get(1), arg_get(2), arg_get(3));
                 return;
             }
+            Some("talents") => {
+                log::debug!("Processing talents command for {}", cn);
+                self.do_talents(cn);
+                return;
+            }
             Some("tell") => {
                 log::debug!("Processing tell command for {}", cn);
                 self.do_tell(cn, arg_get(1), args_get(1));
@@ -1535,7 +1606,42 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use super::{ALL_COMMANDS, match_command};
+    use super::{ALL_COMMANDS, format_talent_bonus_lines, match_command};
+    use crate::{
+        game_state::GameState,
+        test_helpers::{add_test_player, with_test_gs},
+        tls::GameStream,
+    };
+    use core::server_commands::ServerCommandType;
+    use core::{
+        skills::{Attribute, SK_WEAPON, SkillIndex},
+        talent_trees::{TalentStatBonuses, mercenary},
+        traits,
+    };
+    use std::net::{TcpListener, TcpStream};
+
+    fn attach_test_socket(gs: &mut GameState, nr: usize) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test listener");
+        let addr = listener.local_addr().expect("listener addr");
+        let client = TcpStream::connect(addr).expect("connect client");
+        let (server, _) = listener.accept().expect("accept client");
+        drop(client);
+        gs.players[nr].sock = Some(GameStream::Plain(server));
+    }
+
+    fn logged_text(gs: &GameState, nr: usize) -> String {
+        let mut bytes = Vec::new();
+        for packet in gs.players[nr].tbuf[..gs.players[nr].tptr].chunks(16) {
+            if packet.is_empty() {
+                continue;
+            }
+            let log_start = ServerCommandType::Log0 as u8;
+            if (log_start..=log_start + 3).contains(&packet[0]) {
+                bytes.extend(packet[1..].iter().copied().filter(|b| *b != 0));
+            }
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
 
     #[test]
     fn match_command_empty_is_none() {
@@ -1553,6 +1659,7 @@ mod tests {
     #[test]
     fn match_command_exact_match() {
         assert_eq!(match_command("afk"), Some("afk"));
+        assert_eq!(match_command("talents"), Some("talents"));
         assert_eq!(match_command("withdraw"), Some("withdraw"));
     }
 
@@ -1597,5 +1704,56 @@ mod tests {
         let longest = ALL_COMMANDS.iter().map(|c| c.len()).max().unwrap_or(0);
         let input = "x".repeat(longest + 1);
         assert_eq!(match_command(&input), None);
+    }
+
+    #[test]
+    fn format_talent_bonus_lines_includes_all_bonus_types() {
+        let mut bonuses = TalentStatBonuses::default();
+        bonuses.attrib[Attribute::Strength as usize] = 5;
+        bonuses.skill[SK_WEAPON] = 3;
+        bonuses.dodge = 10;
+
+        assert_eq!(
+            format_talent_bonus_lines(&bonuses),
+            vec![
+                "  Strength: +5".to_string(),
+                "  Weapon Skill: +3".to_string(),
+                "  Dodge chance: +10%".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn do_talents_reports_no_active_bonuses() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+
+            gs.do_command(cn, "talents");
+
+            assert!(logged_text(gs, nr).contains("You have no active talent bonuses."));
+        });
+    }
+
+    #[test]
+    fn do_talents_reports_active_attribute_and_dodge_bonuses() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.characters[cn].attrib[Attribute::Strength as usize]
+                [SkillIndex::BaseValue as usize] = 50;
+            gs.characters[cn].future1[1] |= 0b0000_0001;
+            gs.characters[cn].future1[mercenary::DODGE_BOOST_1.layer as usize] |=
+                mercenary::DODGE_BOOST_1.mask;
+
+            gs.do_command(cn, "talents");
+
+            let text = logged_text(gs, nr);
+            assert!(text.contains("Active talent bonuses:"));
+            assert!(text.contains("Strength: +5"));
+            assert!(text.contains("Dodge chance: +5%"));
+        });
     }
 }
