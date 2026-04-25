@@ -167,10 +167,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your dodge chance by 5%.",
             cost: 1,
             prereqs: &[DISTRACT, PARASITE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 10,
-            },
+            effect: TalentEffect::DodgeChancePercent { percent: 5 },
         },
         TalentNode {
             slot: SPELL_BOOST_1,
@@ -189,10 +186,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your dodge chance by an additional 5%.",
             cost: 1,
             prereqs: &[DODGE_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 15,
-            },
+            effect: TalentEffect::DodgeChancePercent { percent: 5 },
         },
         TalentNode {
             slot: SPELL_BOOST_2,
