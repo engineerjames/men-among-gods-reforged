@@ -1,32 +1,131 @@
 /// Total number of distinct ranks in the game.
 pub const TOTAL_RANKS: usize = 24;
 
-// TODO: Replace all rank references with this enum.
+/// Rank indices used for progression, display, and talent-point milestones.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(usize)]
 pub enum Rank {
+    /// Private, rank 0.
     Private = 0,
+    /// Private First Class, rank 1.
     PrivateFirstClass = 1,
+    /// Lance Corporal, rank 2.
     LanceCorporal = 2,
+    /// Corporal, rank 3.
     Corporal = 3,
+    /// Sergeant, rank 4.
     Sergeant = 4,
+    /// Staff Sergeant, rank 5.
     StaffSergeant = 5,
+    /// Master Sergeant, rank 6.
     MasterSergeant = 6,
+    /// First Sergeant, rank 7.
     FirstSergeant = 7,
+    /// Sergeant Major, rank 8.
     SergeantMajor = 8,
+    /// Second Lieutenant, rank 9.
     SecondLieutenant = 9,
+    /// First Lieutenant, rank 10.
     FirstLieutenant = 10,
+    /// Captain, rank 11.
     Captain = 11,
+    /// Major, rank 12.
     Major = 12,
+    /// Lieutenant Colonel, rank 13.
     LieutenantColonel = 13,
+    /// Colonel, rank 14.
     Colonel = 14,
+    /// Brigadier General, rank 15.
     BrigadierGeneral = 15,
+    /// Major General, rank 16.
     MajorGeneral = 16,
+    /// Lieutenant General, rank 17.
     LieutenantGeneral = 17,
+    /// General, rank 18.
     General = 18,
+    /// Field Marshal, rank 19.
     FieldMarshal = 19,
+    /// Knight, rank 20.
     Knight = 20,
+    /// Baron, rank 21.
     Baron = 21,
+    /// Earl, rank 22.
     Earl = 22,
+    /// Warlord, rank 23.
     Warlord = 23,
+}
+
+impl Rank {
+    /// Returns the rank represented by an index, clamped to the nearest valid rank.
+    ///
+    /// # Arguments
+    ///
+    /// * `rank_idx` - Zero-based rank index.
+    ///
+    /// # Returns
+    ///
+    /// * The matching rank, or [`Rank::Warlord`] for out-of-range values.
+    pub const fn from_index(rank_idx: usize) -> Self {
+        match rank_idx {
+            0 => Self::Private,
+            1 => Self::PrivateFirstClass,
+            2 => Self::LanceCorporal,
+            3 => Self::Corporal,
+            4 => Self::Sergeant,
+            5 => Self::StaffSergeant,
+            6 => Self::MasterSergeant,
+            7 => Self::FirstSergeant,
+            8 => Self::SergeantMajor,
+            9 => Self::SecondLieutenant,
+            10 => Self::FirstLieutenant,
+            11 => Self::Captain,
+            12 => Self::Major,
+            13 => Self::LieutenantColonel,
+            14 => Self::Colonel,
+            15 => Self::BrigadierGeneral,
+            16 => Self::MajorGeneral,
+            17 => Self::LieutenantGeneral,
+            18 => Self::General,
+            19 => Self::FieldMarshal,
+            20 => Self::Knight,
+            21 => Self::Baron,
+            22 => Self::Earl,
+            _ => Self::Warlord,
+        }
+    }
+
+    /// Returns this rank's zero-based index.
+    ///
+    /// # Returns
+    ///
+    /// * Rank index in `0..TOTAL_RANKS`.
+    pub const fn index(self) -> usize {
+        self as usize
+    }
+
+    /// Returns whether reaching this rank awards a talent point.
+    ///
+    /// # Returns
+    ///
+    /// * `true` for talent-point milestone ranks.
+    /// * `false` otherwise.
+    pub const fn awards_talent_point(self) -> bool {
+        matches!(
+            self,
+            Self::PrivateFirstClass
+                | Self::Corporal
+                | Self::StaffSergeant
+                | Self::FirstSergeant
+                | Self::SecondLieutenant
+                | Self::Captain
+                | Self::LieutenantColonel
+                | Self::BrigadierGeneral
+                | Self::LieutenantGeneral
+                | Self::FieldMarshal
+                | Self::Baron
+                | Self::Warlord
+        )
+    }
 }
 
 /// Full rank names matching `WHO_RANK_NAME` indices.
@@ -119,6 +218,31 @@ pub fn rank_name_by_index(rank_idx: usize) -> &'static str {
     RANK_NAMES[idx]
 }
 
+/// Counts talent points awarded when advancing between rank indices.
+///
+/// The old rank is exclusive and the new rank is inclusive, so advancing from
+/// rank 0 to rank 3 counts ranks 1, 2, and 3.
+///
+/// # Arguments
+///
+/// * `old_rank_idx` - Previous zero-based rank index.
+/// * `new_rank_idx` - New zero-based rank index.
+///
+/// # Returns
+///
+/// * Number of talent-point milestones crossed.
+pub fn talent_points_awarded_between(old_rank_idx: usize, new_rank_idx: usize) -> u8 {
+    if new_rank_idx <= old_rank_idx {
+        return 0;
+    }
+
+    let start = old_rank_idx.saturating_add(1);
+    let end = new_rank_idx.min(TOTAL_RANKS - 1);
+    (start..=end)
+        .filter(|&idx| Rank::from_index(idx).awards_talent_point())
+        .count() as u8
+}
+
 /// Maps total points to a rank index.
 ///
 /// Implements the server's `points2rank` thresholds to convert experience
@@ -198,8 +322,8 @@ pub fn rank_progress(points: u32) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        RANK_NAMES, RANK_THRESHOLDS, TOTAL_RANKS, points2rank, rank_name, rank_name_by_index,
-        rank_name_shortened, rank_progress, ranks,
+        RANK_NAMES, RANK_THRESHOLDS, Rank, TOTAL_RANKS, points2rank, rank_name, rank_name_by_index,
+        rank_name_shortened, rank_progress, ranks, talent_points_awarded_between,
     };
 
     #[test]
@@ -281,5 +405,49 @@ mod tests {
         assert_eq!(rank_name_by_index(0), "Private");
         assert_eq!(rank_name_by_index(23), "Warlord");
         assert_eq!(rank_name_by_index(999), "Warlord");
+    }
+
+    #[test]
+    fn rank_from_index_clamps_to_warlord() {
+        assert_eq!(Rank::from_index(0), Rank::Private);
+        assert_eq!(Rank::from_index(1), Rank::PrivateFirstClass);
+        assert_eq!(Rank::from_index(23), Rank::Warlord);
+        assert_eq!(Rank::from_index(999), Rank::Warlord);
+    }
+
+    #[test]
+    fn talent_point_award_ranks_match_design() {
+        let awarded: Vec<usize> = (0..TOTAL_RANKS)
+            .filter(|&idx| Rank::from_index(idx).awards_talent_point())
+            .collect();
+
+        assert_eq!(
+            awarded,
+            vec![
+                Rank::PrivateFirstClass.index(),
+                Rank::Corporal.index(),
+                Rank::StaffSergeant.index(),
+                Rank::FirstSergeant.index(),
+                Rank::SecondLieutenant.index(),
+                Rank::Captain.index(),
+                Rank::LieutenantColonel.index(),
+                Rank::BrigadierGeneral.index(),
+                Rank::LieutenantGeneral.index(),
+                Rank::FieldMarshal.index(),
+                Rank::Baron.index(),
+                Rank::Warlord.index(),
+            ]
+        );
+    }
+
+    #[test]
+    fn talent_points_awarded_between_counts_only_crossed_milestones() {
+        assert_eq!(talent_points_awarded_between(0, 0), 0);
+        assert_eq!(talent_points_awarded_between(0, 1), 1);
+        assert_eq!(talent_points_awarded_between(1, 2), 0);
+        assert_eq!(talent_points_awarded_between(2, 3), 1);
+        assert_eq!(talent_points_awarded_between(0, 3), 2);
+        assert_eq!(talent_points_awarded_between(0, 23), 12);
+        assert_eq!(talent_points_awarded_between(23, 999), 0);
     }
 }
