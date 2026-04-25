@@ -181,9 +181,13 @@ pub struct TalentTree {
 pub fn tree_for(class: Class) -> Option<&'static TalentTree> {
     match class {
         Class::Harakim => Some(&harakim::HARAKIM_TREE),
+        Class::ArchHarakim => Some(&harakim::HARAKIM_TREE),
         Class::Mercenary => Some(&mercenary::MERCENARY_TREE),
+        Class::Warrior => Some(&mercenary::MERCENARY_TREE),
+        Class::Sorcerer => Some(&mercenary::MERCENARY_TREE),
         Class::SeyanDu => Some(&seyan_du::SEYAN_DU_TREE),
         Class::Templar => Some(&templar::TEMPLAR_TREE),
+        Class::ArchTemplar => Some(&templar::TEMPLAR_TREE),
         _ => None,
     }
 }
