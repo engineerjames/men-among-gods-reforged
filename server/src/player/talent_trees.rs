@@ -159,7 +159,7 @@ mod tests {
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
     };
-    use core::traits::{Class, KIN_MERCENARY, KIN_WARRIOR};
+    use core::traits::{Class, KIN_MERCENARY};
 
     fn empty_talents() -> [u8; 25] {
         [0; 25]
