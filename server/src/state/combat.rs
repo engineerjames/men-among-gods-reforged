@@ -439,6 +439,12 @@ impl GameState {
         if hit {
             if self.dodges_physical_attack(co) {
                 self.emit_attack_miss(cn, co);
+
+                log::info!(
+                    "Character {} dodged the attack from {}!",
+                    self.characters[co].get_name(),
+                    self.characters[cn].get_name()
+                );
                 return;
             }
 
