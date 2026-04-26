@@ -38,8 +38,7 @@ use crate::game_state::GameState;
 /// * `Ok(())` on a successful learn.
 /// * `Err(reason)` on any validation failure.
 pub fn learn_talent(gs: &mut GameState, cn: usize, slot: TalentRef) -> Result<(), String> {
-    let class = class_for_kindred(gs.characters[cn].kindred)
-        .ok_or_else(|| "Character has no class set".to_string())?;
+    let class = Class::from(gs.characters[cn].kindred);
     let tree = tree_for(class).ok_or_else(|| format!("No talent tree for class {:?}", class))?;
     let node: &TalentNode =
         find_node(tree, slot).ok_or_else(|| format!("Unknown talent slot {:?}", slot))?;

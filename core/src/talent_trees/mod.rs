@@ -14,10 +14,7 @@
 
 use crate::skills::{self, Attribute, Skill, SkillIndex};
 
-use crate::traits::{
-    Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_SEYAN_DU,
-    KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
-};
+use crate::traits::Class;
 
 pub mod harakim;
 pub mod mercenary;
@@ -206,43 +203,6 @@ pub fn tree_for(class: Class) -> Option<&'static TalentTree> {
 /// * `None` otherwise.
 pub fn find_node(tree: &'static TalentTree, slot: TalentRef) -> Option<&'static TalentNode> {
     tree.nodes.iter().find(|n| n.slot == slot)
-}
-
-/// Resolve the `Class` represented by the kindred bitfield on a
-/// `Character`.
-///
-/// The bitfield can carry several flags (sex, monster, etc.); only the
-/// class bits are inspected, in priority order.
-///
-/// # Arguments
-///
-/// * `kindred` - Raw `Character::kindred` value (`i32`).
-///
-/// # Returns
-///
-/// * `Some(class)` for the first matching class bit.
-/// * `None` if no class bit is set.
-pub fn class_for_kindred(kindred: i32) -> Option<Class> {
-    let k = kindred as u32;
-    if k & KIN_MERCENARY != 0 {
-        Some(Class::Mercenary)
-    } else if k & KIN_TEMPLAR != 0 {
-        Some(Class::Templar)
-    } else if k & KIN_HARAKIM != 0 {
-        Some(Class::Harakim)
-    } else if k & KIN_SEYAN_DU != 0 {
-        Some(Class::SeyanDu)
-    } else if k & KIN_ARCHTEMPLAR != 0 {
-        Some(Class::ArchTemplar)
-    } else if k & KIN_ARCHHARAKIM != 0 {
-        Some(Class::ArchHarakim)
-    } else if k & KIN_SORCERER != 0 {
-        Some(Class::Sorcerer)
-    } else if k & KIN_WARRIOR != 0 {
-        Some(Class::Warrior)
-    } else {
-        None
-    }
 }
 
 /// Read the number of unspent talent points from the packed array.
@@ -440,9 +400,7 @@ pub fn talent_stat_bonuses(
     attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
     skill: &[[u8; SkillIndex::MaxIndex as usize]; 50],
 ) -> TalentStatBonuses {
-    let Some(class) = class_for_kindred(kindred) else {
-        return TalentStatBonuses::default();
-    };
+    let class = Class::from(kindred);
     let Some(tree) = tree_for(class) else {
         return TalentStatBonuses::default();
     };
@@ -467,19 +425,13 @@ pub fn talent_stat_bonuses(
 ///
 /// # Arguments
 ///
-/// * `kindred` - Character kindred bits used to resolve the class tree.
+/// * `class` - Character class used to resolve the talent tree.
 /// * `talents` - Packed talent-tree state from the character record.
 ///
 /// # Returns
 ///
 /// * Accumulated dodge chance bonus from learned talents, in percent.
-pub fn talent_dodge_bonuses(kindred: i32, talents: &[u8; 25]) -> i32 {
-    let Some(class) = class_for_kindred(kindred) else {
-        log::warn!(
-            "Unknown class for kindred bits {kindred:#010x}; no talent bonuses will be applied"
-        );
-        return 0;
-    };
+pub fn talent_dodge_bonuses(class: Class, talents: &[u8; 25]) -> i32 {
     let Some(tree) = tree_for(class) else {
         log::warn!(
             "No talent tree registered for class {:?}; no talent bonuses will be applied",
@@ -852,43 +804,6 @@ mod tests {
     }
 
     #[test]
-    fn class_for_kindred_resolves_each_class_bit() {
-        assert_eq!(
-            class_for_kindred(KIN_MERCENARY as i32),
-            Some(Class::Mercenary)
-        );
-        assert_eq!(class_for_kindred(KIN_TEMPLAR as i32), Some(Class::Templar));
-        assert_eq!(class_for_kindred(KIN_HARAKIM as i32), Some(Class::Harakim));
-        assert_eq!(class_for_kindred(KIN_SEYAN_DU as i32), Some(Class::SeyanDu));
-        assert_eq!(
-            class_for_kindred(KIN_ARCHTEMPLAR as i32),
-            Some(Class::ArchTemplar)
-        );
-        assert_eq!(
-            class_for_kindred(KIN_ARCHHARAKIM as i32),
-            Some(Class::ArchHarakim)
-        );
-        assert_eq!(
-            class_for_kindred(KIN_SORCERER as i32),
-            Some(Class::Sorcerer)
-        );
-        assert_eq!(class_for_kindred(KIN_WARRIOR as i32), Some(Class::Warrior));
-    }
-
-    #[test]
-    fn class_for_kindred_returns_none_when_no_class_bit_set() {
-        assert_eq!(class_for_kindred(0), None);
-        // Sex flag alone is not a class.
-        assert_eq!(class_for_kindred(crate::traits::KIN_MALE as i32), None);
-    }
-
-    #[test]
-    fn class_for_kindred_picks_first_matching_bit_when_multiple() {
-        let combined = (KIN_MERCENARY | KIN_TEMPLAR) as i32;
-        assert_eq!(class_for_kindred(combined), Some(Class::Mercenary));
-    }
-
-    #[test]
     fn tree_for_returns_registered_base_class_trees() {
         assert!(tree_for(Class::Mercenary).is_some());
         assert!(tree_for(Class::Templar).is_some());
@@ -933,22 +848,11 @@ mod tests {
     }
 
     #[test]
-    fn talent_dodge_bonuses_returns_zero_for_unknown_class() {
-        let talents = [0u8; 25];
-
-        assert_eq!(talent_dodge_bonuses(0, &talents), 0);
-        assert_eq!(
-            talent_dodge_bonuses(crate::traits::KIN_MALE as i32, &talents),
-            0
-        );
-    }
-
-    #[test]
     fn talent_dodge_bonuses_returns_zero_for_class_without_registered_tree() {
         let talents = [0u8; 25];
 
-        assert_eq!(talent_dodge_bonuses(KIN_WARRIOR as i32, &talents), 0);
-        assert_eq!(talent_dodge_bonuses(KIN_SORCERER as i32, &talents), 0);
+        assert_eq!(talent_dodge_bonuses(Class::Warrior, &talents), 0);
+        assert_eq!(talent_dodge_bonuses(Class::Sorcerer, &talents), 0);
     }
 
     #[test]
@@ -958,7 +862,7 @@ mod tests {
         let mut talents = [0u8; 25];
         talents[distract.layer as usize] |= distract.mask;
 
-        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 0);
+        assert_eq!(talent_dodge_bonuses(Class::Mercenary, &talents), 0);
     }
 
     #[test]
@@ -968,7 +872,7 @@ mod tests {
         let mut talents = [0u8; 25];
         talents[dodge_boost_1.layer as usize] |= dodge_boost_1.mask;
 
-        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 5);
+        assert_eq!(talent_dodge_bonuses(Class::Mercenary, &talents), 5);
     }
 
     #[test]
@@ -980,6 +884,6 @@ mod tests {
         talents[dodge_boost_1.layer as usize] |= dodge_boost_1.mask;
         talents[dodge_boost_2.layer as usize] |= dodge_boost_2.mask;
 
-        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 10);
+        assert_eq!(talent_dodge_bonuses(Class::Mercenary, &talents), 10);
     }
 }

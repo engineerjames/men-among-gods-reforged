@@ -38,6 +38,32 @@ pub enum Class {
     SeyanDu = KIN_SEYAN_DU,
 }
 
+impl From<i32> for Class {
+    fn from(kindred: i32) -> Self {
+        let k = kindred as u32;
+        if k & KIN_MERCENARY != 0 {
+            Class::Mercenary
+        } else if k & KIN_TEMPLAR != 0 {
+            Class::Templar
+        } else if k & KIN_HARAKIM != 0 {
+            Class::Harakim
+        } else if k & KIN_SEYAN_DU != 0 {
+            Class::SeyanDu
+        } else if k & KIN_ARCHTEMPLAR != 0 {
+            Class::ArchTemplar
+        } else if k & KIN_ARCHHARAKIM != 0 {
+            Class::ArchHarakim
+        } else if k & KIN_SORCERER != 0 {
+            Class::Sorcerer
+        } else if k & KIN_WARRIOR != 0 {
+            Class::Warrior
+        } else {
+            log::error!("invalid kindred value: {kindred}");
+            Class::Mercenary
+        }
+    }
+}
+
 /// Maps a character class/sex pair to the sprite ID used in the character selection list.
 ///
 /// This is a UI-only mapping (it does not affect server-side appearance). For any unsupported
