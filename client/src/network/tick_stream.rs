@@ -47,164 +47,6 @@ pub fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String
     Ok(out)
 }
 
-/// Computes the total byte length of a variable-length `SV_SETMAP` command
-/// given its flags byte and delta offset.
-///
-/// # Arguments
-/// * `bytes` - The raw command bytes (starting at the opcode).
-/// * `off` - The delta offset from the opcode (0 = absolute index follows).
-/// * `lastn` - Mutable tracker for the last absolute tile index.
-///
-/// # Returns
-/// * `Ok(length)` — the number of bytes this command occupies.
-/// * `Err(msg)` on truncated input.
-fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String> {
-    if bytes.len() < 2 {
-        return Err("SV_SETMAP truncated (need at least 2 bytes)".to_string());
-    }
-
-    let mut p: usize;
-    let n: i32;
-    if off != 0 {
-        n = *lastn + off as i32;
-        p = 2;
-    } else {
-        if bytes.len() < 4 {
-            return Err("SV_SETMAP truncated (need 4 bytes for index)".to_string());
-        }
-        n = u16::from_le_bytes([bytes[2], bytes[3]]) as i32;
-        p = 4;
-    }
-
-    *lastn = n;
-
-    let flags = bytes[1];
-    if flags == 0 {
-        return Err("SV_SETMAP has zero flags".to_string());
-    }
-
-    if flags & 1 != 0 {
-        p += 2;
-    }
-    if flags & 2 != 0 {
-        p += 4;
-    }
-    if flags & 4 != 0 {
-        p += 4;
-    }
-    if flags & 8 != 0 {
-        p += 2;
-    }
-    if flags & 16 != 0 {
-        p += 1;
-    }
-    if flags & 32 != 0 {
-        p += 4;
-    }
-    if flags & 64 != 0 {
-        p += 5;
-    }
-    if flags & 128 != 0 {
-        p += 1;
-    }
-
-    Ok(p)
-}
-
-/// Returns the byte length of a `SV_SETMAP3`-style lighting command with the
-/// given tile count.
-///
-/// The new light packet format is: `[opcode, idx_lo, idx_hi, base_light, nibble_pairs...]`
-/// — a 4-byte header followed by `cnt / 2` nibble-pair bytes.
-///
-/// Opcode-->cnt mapping (matching server-side `cl_light_*` functions):
-/// * `SV_SETMAP4` (`cl_light_one`, 1 tile)  --> `sv_setmap3_len(0)` = 4
-/// * `SV_SETMAP5` (`cl_light_three`, 3 tiles) --> `sv_setmap3_len(2)` = 5
-/// * `SV_SETMAP6` (`cl_light_seven`, 7 tiles) --> `sv_setmap3_len(6)` = 7
-/// * `SV_SETMAP3` (`cl_light_26`, 26 tiles) --> `sv_setmap3_len(26)` = 17
-fn sv_setmap3_len(cnt: usize) -> usize {
-    4 + (cnt / 2)
-}
-
-/// Returns the total byte length of the server command starting at
-/// `bytes[0]`, advancing `last_setmap_n` for SV_SETMAP delta tracking.
-///
-/// # Arguments
-/// * `bytes` - Slice starting at the command opcode.
-/// * `last_setmap_n` - Running delta index for SV_SETMAP commands.
-///
-/// # Returns
-/// * `Ok(length)` on success.
-/// * `Err(msg)` on truncated or malformed input.
-fn sv_cmd_len(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
-    if bytes.is_empty() {
-        return Err("sv_cmd_len called with empty buffer".to_string());
-    }
-
-    let op = bytes[0];
-
-    if (op & ServerCommandType::SetMap as u8) != 0 {
-        let off = op & !(ServerCommandType::SetMap as u8);
-        return sv_setmap_len(bytes, off, last_setmap_n);
-    }
-
-    let parsed_op = ServerCommandType::from(op);
-
-    let len = match parsed_op {
-        ServerCommandType::SetCharMode => 2,
-        ServerCommandType::SetCharAttrib => 8,
-        ServerCommandType::SetCharSkill => 8,
-        ServerCommandType::SetCharHp => 13,
-        ServerCommandType::SetCharEndur => 13,
-        ServerCommandType::SetCharMana => 13,
-        ServerCommandType::SetCharAHP => 3,
-        ServerCommandType::SetCharAEnd => 3,
-        ServerCommandType::SetCharAMana => 3,
-        ServerCommandType::SetCharDir => 2,
-        ServerCommandType::SetCharTalents => 26,
-        ServerCommandType::SetCharPts => 13,
-        ServerCommandType::SetCharGold => 13,
-        ServerCommandType::SetCharItem => 9,
-        ServerCommandType::SetCharWorn => 9,
-        ServerCommandType::SetCharSpell => 9,
-        ServerCommandType::SetCharObj => 5,
-        ServerCommandType::SetMap3 => sv_setmap3_len(26),
-        ServerCommandType::SetMap4 => sv_setmap3_len(0),
-        ServerCommandType::SetMap5 => sv_setmap3_len(2),
-        ServerCommandType::SetMap6 => sv_setmap3_len(6),
-        ServerCommandType::SetOrigin => 5,
-        ServerCommandType::Tick => 2,
-        ServerCommandType::ScrollRight => 1,
-        ServerCommandType::ScrollLeft => 1,
-        ServerCommandType::ScrollDown => 1,
-        ServerCommandType::ScrollUp => 1,
-        ServerCommandType::ScrollRightDown => 1,
-        ServerCommandType::ScrollRightUp => 1,
-        ServerCommandType::ScrollLeftDown => 1,
-        ServerCommandType::ScrollLeftUp => 1,
-        ServerCommandType::SetTarget => 13,
-        ServerCommandType::PlaySound => 13,
-        ServerCommandType::Load => 5,
-        ServerCommandType::Unique => 9,
-        ServerCommandType::Exit => {
-            if bytes.len() >= 16 {
-                16
-            } else {
-                5
-            }
-        }
-        ServerCommandType::Ignore => {
-            if bytes.len() < 5 {
-                return Err("SV_IGNORE truncated (need 5 bytes for size)".to_string());
-            }
-            u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as usize
-        }
-        _ => 16,
-    };
-
-    Ok(len)
-}
-
 /// Splits a server tick payload into individual raw server command byte slices.
 pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     let mut out = Vec::<Vec<u8>>::new();
@@ -212,7 +54,7 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
     let mut last_setmap_n: i32 = -1;
 
     while idx < payload.len() {
-        let len = sv_cmd_len(&payload[idx..], &mut last_setmap_n)?;
+        let len = ServerCommandType::get_expected_length(&payload[idx..], &mut last_setmap_n)?;
         if len == 0 {
             return Err("sv_cmd_len returned 0".to_string());
         }
@@ -243,20 +85,6 @@ pub(super) fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String>
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Verify the new light-packet header lengths match what the server encodes.
-    /// Server: [opcode, idx_lo, idx_hi, base_light, nibble_pairs...]
-    #[test]
-    fn sv_setmap3_len_matches_server_buffers() {
-        // SV_SETMAP4 = cl_light_one (1 tile): 4-byte packet, no nibble pairs
-        assert_eq!(sv_setmap3_len(0), 4);
-        // SV_SETMAP5 = cl_light_three (3 tiles): 4 header + 1 nibble byte = 5
-        assert_eq!(sv_setmap3_len(2), 5);
-        // SV_SETMAP6 = cl_light_seven (7 tiles): 4 header + 3 nibble bytes = 7
-        assert_eq!(sv_setmap3_len(6), 7);
-        // SV_SETMAP3 = cl_light_26 (26 tiles): 4 header + 13 nibble bytes = 17
-        assert_eq!(sv_setmap3_len(26), 17);
-    }
 
     /// `split_tick_payload` correctly splits a payload that mixes a SV_TICK (2
     /// bytes) with one of each light command, all using the new 4-byte header.
