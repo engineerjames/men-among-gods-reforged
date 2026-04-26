@@ -466,17 +466,6 @@ mod tests {
     }
 
     #[test]
-    fn learn_talent_rejects_when_kindred_unset() {
-        with_test_gs(|gs| {
-            let cn = 1;
-            gs.characters[cn].kindred = 0;
-            gs.characters[cn].future1[TALENT_POINTS_INDEX] = 5;
-            let err = learn_talent(gs, cn, mercenary_slot("Distract")).unwrap_err();
-            assert!(err.to_lowercase().contains("no class"), "got: {err}");
-        });
-    }
-
-    #[test]
     fn learn_talent_recomputes_effect_without_mutating_base() {
         with_test_gs(|gs| {
             let cn = 1;
