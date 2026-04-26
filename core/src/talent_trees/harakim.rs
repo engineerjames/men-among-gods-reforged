@@ -107,9 +107,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Root awareness talent for the Harakim path.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -118,9 +118,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Root will-focused talent for the Harakim path.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -129,9 +129,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder movement through misdirection.",
             cost: 1,
             prereqs: &[DESERT_SENSE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -140,9 +140,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder spell channeling discipline.",
             cost: 1,
             prereqs: &[MIND_SPIKE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -151,9 +151,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Further movement through misdirection.",
             cost: 1,
             prereqs: &[MIRAGE_STEP_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -162,9 +162,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Further spell channeling discipline.",
             cost: 1,
             prereqs: &[SAND_CHANNELING_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -173,9 +173,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder tactical reading improvement.",
             cost: 1,
             prereqs: &[MIRAGE_STEP_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -184,9 +184,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder focused strike improvement.",
             cost: 1,
             prereqs: &[SAND_CHANNELING_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 6,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[6],
             },
         },
         TalentNode {
@@ -195,9 +195,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder detection talent.",
             cost: 1,
             prereqs: &[SWIFT_READING_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -206,9 +206,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder willpower attack talent.",
             cost: 1,
             prereqs: &[SPIRIT_CUT_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -217,9 +217,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Advanced tactical reading improvement.",
             cost: 1,
             prereqs: &[UNMASK],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -228,9 +228,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Advanced focused strike improvement.",
             cost: 1,
             prereqs: &[SOUL_BURN],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -239,9 +239,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder defensive illusion improvement.",
             cost: 1,
             prereqs: &[SWIFT_READING_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -250,9 +250,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder focus improvement.",
             cost: 1,
             prereqs: &[SPIRIT_CUT_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -261,9 +261,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Further defensive illusion improvement.",
             cost: 1,
             prereqs: &[VEIL_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -272,9 +272,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Further focus improvement.",
             cost: 1,
             prereqs: &[STILLNESS_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -283,9 +283,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder evasive capstone branch.",
             cost: 1,
             prereqs: &[VEIL_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -294,9 +294,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Placeholder mental pressure branch.",
             cost: 1,
             prereqs: &[STILLNESS_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 22,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[22],
             },
         },
         TalentNode {
@@ -305,9 +305,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Increase strength through desert discipline.",
             cost: 1,
             prereqs: &[DUST_DANCE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 6,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[6],
             },
         },
         TalentNode {
@@ -316,9 +316,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Increase intuition through desert discipline.",
             cost: 1,
             prereqs: &[FEVER_DREAM],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -327,9 +327,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Further increase strength through desert discipline.",
             cost: 1,
             prereqs: &[STRENGTH_OF_SAND_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -338,9 +338,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Further increase intuition through desert discipline.",
             cost: 1,
             prereqs: &[INSIGHT_OF_SAND_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -349,9 +349,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Capstone: unite Harakim perception and will.",
             cost: 1,
             prereqs: &[STRENGTH_OF_SAND_2, INSIGHT_OF_SAND_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 24,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[24],
             },
         },
     ],

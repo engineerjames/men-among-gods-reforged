@@ -107,9 +107,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Root defensive vow for the Templar path.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -118,9 +118,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Root spell discipline for the Templar path.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -129,9 +129,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder defensive training.",
             cost: 1,
             prereqs: &[SHIELD_OATH],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 6,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[6],
             },
         },
         TalentNode {
@@ -140,9 +140,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder offensive zeal training.",
             cost: 1,
             prereqs: &[SACRED_FOCUS],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -151,9 +151,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Further defensive training.",
             cost: 1,
             prereqs: &[BULWARK_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -162,9 +162,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Further offensive zeal training.",
             cost: 1,
             prereqs: &[RADIANT_STRIKE_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -173,9 +173,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder control of battlefield positioning.",
             cost: 1,
             prereqs: &[BULWARK_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -184,9 +184,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder righteous damage improvement.",
             cost: 1,
             prereqs: &[RADIANT_STRIKE_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -195,9 +195,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder protective active talent.",
             cost: 1,
             prereqs: &[GUARDING_STEP_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -206,9 +206,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder finishing talent.",
             cost: 1,
             prereqs: &[WRATH_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -217,9 +217,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Advanced positioning discipline.",
             cost: 1,
             prereqs: &[AEGIS],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -228,9 +228,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Advanced righteous damage improvement.",
             cost: 1,
             prereqs: &[JUDGMENT],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -239,9 +239,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder party protection improvement.",
             cost: 1,
             prereqs: &[GUARDING_STEP_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -250,9 +250,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder resistance improvement.",
             cost: 1,
             prereqs: &[WRATH_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -261,9 +261,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Further party protection improvement.",
             cost: 1,
             prereqs: &[SANCTUARY_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -272,9 +272,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Further resistance improvement.",
             cost: 1,
             prereqs: &[RESOLVE_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 16,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[16],
             },
         },
         TalentNode {
@@ -283,9 +283,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder defensive capstone branch.",
             cost: 1,
             prereqs: &[SANCTUARY_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -294,9 +294,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Placeholder sacred ground branch.",
             cost: 1,
             prereqs: &[RESOLVE_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -305,9 +305,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Increase strength through discipline.",
             cost: 1,
             prereqs: &[BASTION],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -316,9 +316,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Increase intuition through discipline.",
             cost: 1,
             prereqs: &[CONSECRATION],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 8,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[8],
             },
         },
         TalentNode {
@@ -327,9 +327,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Further increase strength through discipline.",
             cost: 1,
             prereqs: &[STRENGTH_OF_FAITH_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -338,9 +338,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Further increase intuition through discipline.",
             cost: 1,
             prereqs: &[WISDOM_OF_FAITH_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -349,9 +349,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Capstone: unite Templar defense and zeal.",
             cost: 1,
             prereqs: &[STRENGTH_OF_FAITH_2, WISDOM_OF_FAITH_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 25,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[25],
             },
         },
     ],

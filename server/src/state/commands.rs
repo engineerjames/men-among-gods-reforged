@@ -314,6 +314,26 @@ fn format_talent_bonus_lines(bonuses: &TalentStatBonuses) -> Vec<String> {
         lines.push(format!("  Dodge chance: {:+}%", bonuses.dodge));
     }
 
+    if bonuses.armor_percent != 0 {
+        lines.push(format!("  Armor: {:+}%", bonuses.armor_percent));
+    }
+
+    if bonuses.weapon_percent != 0 {
+        lines.push(format!("  Weapon: {:+}%", bonuses.weapon_percent));
+    }
+
+    if bonuses.hp_flat != 0 {
+        lines.push(format!("  HP: {:+}", bonuses.hp_flat));
+    }
+
+    if bonuses.mana_flat != 0 {
+        lines.push(format!("  Mana: {:+}", bonuses.mana_flat));
+    }
+
+    if bonuses.end_flat != 0 {
+        lines.push(format!("  Endurance: {:+}", bonuses.end_flat));
+    }
+
     lines
 }
 
@@ -1712,6 +1732,11 @@ mod tests {
         bonuses.attrib[Attribute::Strength as usize] = 5;
         bonuses.skill[SK_WEAPON] = 3;
         bonuses.dodge = 10;
+        bonuses.armor_percent = 7;
+        bonuses.weapon_percent = -4;
+        bonuses.hp_flat = 12;
+        bonuses.mana_flat = -3;
+        bonuses.end_flat = 8;
 
         assert_eq!(
             format_talent_bonus_lines(&bonuses),
@@ -1719,6 +1744,11 @@ mod tests {
                 "  Strength: +5".to_string(),
                 "  Weapon Skill: +3".to_string(),
                 "  Dodge chance: +10%".to_string(),
+                "  Armor: +7%".to_string(),
+                "  Weapon: -4%".to_string(),
+                "  HP: +12".to_string(),
+                "  Mana: -3".to_string(),
+                "  Endurance: +8".to_string(),
             ]
         );
     }

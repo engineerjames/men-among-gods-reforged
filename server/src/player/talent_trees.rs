@@ -106,11 +106,14 @@ fn dispatch_immediate_effect(
 ) -> Result<(), String> {
     match effect {
         TalentEffect::GrantSkill { skill } => grant_skill(cn, gs, skill),
-        TalentEffect::SkillFlat { .. }
-        | TalentEffect::SkillPercent { .. }
-        | TalentEffect::AttributeFlat { .. }
-        | TalentEffect::AttributePercent { .. }
-        | TalentEffect::DodgeChancePercent { .. } => Ok(()),
+        TalentEffect::SkillsFlat { .. }
+        | TalentEffect::SkillsPercent { .. }
+        | TalentEffect::AttributesFlat { .. }
+        | TalentEffect::AttributesPercent { .. }
+        | TalentEffect::DodgeChancePercent { .. }
+        | TalentEffect::ArmorPercent { .. }
+        | TalentEffect::WeaponPercent { .. }
+        | TalentEffect::HpManaEndFlat { .. } => Ok(()),
     }
 }
 
@@ -478,7 +481,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 1);
-            // DISTRACT's effect is `AttributePercent { Strength, +10% }`.
+            // DISTRACT's effect is `AttributesPercent { [Strength], [+10%] }`.
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
             learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
@@ -596,11 +599,13 @@ mod tests {
 
     fn assert_effect(effect: TalentEffect, expected_attr: Attribute, expected_percent: i32) {
         match effect {
-            TalentEffect::AttributePercent { attr, percent } => {
-                assert_eq!(attr, expected_attr);
-                assert_eq!(percent, expected_percent);
+            TalentEffect::AttributesPercent { attrs, percents } => {
+                assert_eq!(attrs.len(), 1, "expected single-attribute talent");
+                assert_eq!(percents.len(), 1, "expected single-percent talent");
+                assert_eq!(attrs[0], expected_attr);
+                assert_eq!(percents[0], expected_percent);
             }
-            other => panic!("expected AttributePercent, got {other:?}"),
+            other => panic!("expected AttributesPercent, got {other:?}"),
         }
     }
 }

@@ -269,6 +269,9 @@ impl GameState {
         for z in 0..50 {
             skill_bonus[z] += talent_bonuses.skill[z];
         }
+        hp_bonus += talent_bonuses.hp_flat;
+        mana_bonus += talent_bonuses.mana_flat;
+        end_bonus += talent_bonuses.end_flat;
 
         // Calculate final attributes
         for z in 0..5 {
@@ -336,6 +339,16 @@ impl GameState {
             final_skill += attrib_contribution;
             final_skill = final_skill.clamp(1, 250);
             self.characters[cn].skill[z][5] = final_skill as u8;
+        }
+
+        // Apply talent-derived armor/weapon percent bonuses to the aggregated
+        // (items + permanent + spells) totals before clamping.
+        if talent_bonuses.armor_percent != 0 {
+            armor += (armor as f32 * (talent_bonuses.armor_percent as f32 / 100.0)).round() as i32;
+        }
+        if talent_bonuses.weapon_percent != 0 {
+            weapon +=
+                (weapon as f32 * (talent_bonuses.weapon_percent as f32 / 100.0)).round() as i32;
         }
 
         // Set final armor

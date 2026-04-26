@@ -107,9 +107,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Root composure talent for the Seyan-Du path.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -118,9 +118,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Root inner-force talent for the Seyan-Du path.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -129,9 +129,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder mobility drill.",
             cost: 1,
             prereqs: &[VETERANS_POISE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -140,9 +140,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder combat focus drill.",
             cost: 1,
             prereqs: &[DRAGON_PULSE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -151,9 +151,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Further mobility drill.",
             cost: 1,
             prereqs: &[EVASION_DRILL_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -162,9 +162,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Further combat focus drill.",
             cost: 1,
             prereqs: &[BATTLE_CHANNEL_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -173,9 +173,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder fast-strike technique.",
             cost: 1,
             prereqs: &[EVASION_DRILL_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -184,9 +184,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder heavy-strike technique.",
             cost: 1,
             prereqs: &[BATTLE_CHANNEL_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -195,9 +195,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder counterattack talent.",
             cost: 1,
             prereqs: &[FLOWING_STRIKE_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -206,9 +206,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder finishing technique.",
             cost: 1,
             prereqs: &[HEAVY_STRIKE_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -217,9 +217,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Advanced fast-strike technique.",
             cost: 1,
             prereqs: &[COUNTER],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -228,9 +228,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Advanced heavy-strike technique.",
             cost: 1,
             prereqs: &[FINAL_LESSON],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -239,9 +239,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder guarded stance improvement.",
             cost: 1,
             prereqs: &[FLOWING_STRIKE_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -250,9 +250,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder endurance discipline.",
             cost: 1,
             prereqs: &[HEAVY_STRIKE_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -261,9 +261,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Further guarded stance improvement.",
             cost: 1,
             prereqs: &[GUARDED_FOCUS_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -272,9 +272,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Further endurance discipline.",
             cost: 1,
             prereqs: &[IRON_BREATH_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 14,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[14],
             },
         },
         TalentNode {
@@ -283,9 +283,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder form capstone branch.",
             cost: 1,
             prereqs: &[GUARDED_FOCUS_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 18,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[18],
             },
         },
         TalentNode {
@@ -294,9 +294,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Placeholder veteran pressure branch.",
             cost: 1,
             prereqs: &[IRON_BREATH_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 18,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[18],
             },
         },
         TalentNode {
@@ -305,9 +305,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Increase strength through form practice.",
             cost: 1,
             prereqs: &[STORM_FORM],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -316,9 +316,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Increase intuition through form practice.",
             cost: 1,
             prereqs: &[BLOOD_ECHO],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -327,9 +327,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Further increase strength through form practice.",
             cost: 1,
             prereqs: &[STRENGTH_DISCIPLINE_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -338,9 +338,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Further increase intuition through form practice.",
             cost: 1,
             prereqs: &[MIND_DISCIPLINE_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 12,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[12],
             },
         },
         TalentNode {
@@ -349,9 +349,9 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Capstone: unite Seyan-Du speed and force.",
             cost: 1,
             prereqs: &[STRENGTH_DISCIPLINE_2, MIND_DISCIPLINE_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 22,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[22],
             },
         },
     ],
