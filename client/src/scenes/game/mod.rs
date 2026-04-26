@@ -18,6 +18,7 @@ mod profile;
 mod world_input;
 mod world_render;
 
+use mag_core::types::Class;
 use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::collections::HashSet;
@@ -1587,8 +1588,8 @@ impl Scene for GameScene {
                     sorted_skills: sorted,
                 });
                 {
-                    let class = mag_core::talent_trees::class_for_kindred(ci.kindred);
-                    self.talent_panel.sync_state(*ps.talents(), class);
+                    let class = Class::from(ci.kindred);
+                    self.talent_panel.sync_state(*ps.talents(), Some(class));
                 }
                 use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {

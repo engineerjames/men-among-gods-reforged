@@ -15,8 +15,9 @@ use core::{
     string_operations::c_string_to_str,
     talent_trees::{
         TalentEffect, TalentNode, TalentRef, apply_talent_point, available_talent_points,
-        class_for_kindred, find_node, talent_prereqs_met, tree_for,
+        find_node, talent_prereqs_met, tree_for,
     },
+    types::Class,
 };
 
 use crate::game_state::GameState;
