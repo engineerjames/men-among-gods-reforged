@@ -546,6 +546,7 @@ fn class_label(tree: &'static TalentTree) -> &'static str {
         Class::ArchTemplar => "ArchTemplar",
         Class::ArchHarakim => "ArchHarakim",
         Class::SeyanDu => "Seyan Du",
+        Class::Monster => "Monster",
     }
 }
 

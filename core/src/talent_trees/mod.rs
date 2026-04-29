@@ -244,6 +244,7 @@ pub fn tree_for(class: Class) -> Option<&'static TalentTree> {
         Class::SeyanDu => Some(&seyan_du::SEYAN_DU_TREE),
         Class::Templar => Some(&templar::TEMPLAR_TREE),
         Class::ArchTemplar => Some(&templar::TEMPLAR_TREE),
+        _ => None,
     }
 }
 

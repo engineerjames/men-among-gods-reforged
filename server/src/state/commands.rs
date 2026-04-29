@@ -578,6 +578,12 @@ impl GameState {
     /// * `cn` - Character number requesting the talent bonus report.
     pub(crate) fn do_talents(&mut self, cn: usize) {
         let character = &self.characters[cn];
+
+        if (character.flags & CharacterFlags::Player.bits()) == 0 {
+            self.do_character_log(cn, FontColor::Red, "Only players have talents, dude.\n");
+            return;
+        }
+
         let bonuses = talent_stat_bonuses(
             character.kindred,
             &character.future1,
