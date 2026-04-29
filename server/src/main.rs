@@ -100,6 +100,11 @@ fn main() -> Result<(), String> {
 
     handle_command_line_args(&args, &mut gs);
 
+    if env::var("MAG_PLAYTEST").map(|v| !v.is_empty()).unwrap_or(false) {
+        gs.playtest_mode = true;
+        log::info!("Playtest mode enabled (MAG_PLAYTEST is set).");
+    }
+
     if gs.globals.is_dirty() {
         log::error!("Data files were not closed cleanly last time. Exiting.");
         process::exit(1);

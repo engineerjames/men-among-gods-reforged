@@ -117,6 +117,7 @@ const ALL_COMMANDS: &[&str] = &[
     "emote",
     "enemy",
     "enter",
+    "equip",
     "eras",
     "erase",
     "exit",
@@ -1066,6 +1067,11 @@ impl GameState {
                 self.do_enter(cn);
                 return;
             }
+            Some("equip") if f_p && self.playtest_mode => {
+                log::debug!("Processing equip command for {}", cn);
+                self.do_playtest_equip(cn);
+                return;
+            }
             Some("exit") if f_u => {
                 log::debug!("Processing exit command for {}", cn);
                 God::exit_usurp(self, cn);
@@ -1628,6 +1634,53 @@ impl GameState {
         // Unknown command
         self.do_character_log(cn, FontColor::Red, &format!("Unknown command #{}\n", cmd));
     }
+
+    /// Give the player the hard-coded playtest loadout when `/equip` is typed.
+    ///
+    /// Only reachable when `playtest_mode` is `true`.  Iterates
+    /// [`PLAYTEST_EQUIP_TEMPLATES`], creates a live item from each template, and
+    /// places it in the player's inventory.  If the global item pool is
+    /// exhausted, or if the player has no free inventory slots, an error
+    /// message is displayed and the remaining items are skipped.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the player receiving the items.
+    fn do_playtest_equip(&mut self, cn: usize) {
+        /// Template IDs handed to the player when `/equip` is typed in playtest mode.
+        const PLAYTEST_EQUIP_TEMPLATES: &[usize] = &[
+            125, // Titanium two-handed
+            492, // Golden ring with huge sapphires
+            492, // Golden ring with huge sapphires
+            523, // Titanium dagger
+            524, // Titanium sword
+            768, // Ankh amulet
+            781, // Golden belt with silver buckle
+            782, // Golden belt with red buckle
+        ];
+
+        for &template_id in PLAYTEST_EQUIP_TEMPLATES {
+            let Some(item_id) = God::create_item(self, template_id) else {
+                log::warn!(
+                    "do_playtest_equip: could not create item from template {} for character {}",
+                    template_id,
+                    cn
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "Could not create item (server item pool full).\n",
+                );
+                continue;
+            };
+
+            if !God::give_character_item(self, cn, item_id) {
+                // Destroy the orphaned item so it doesn't leak.
+                self.items[item_id].used = core::constants::USE_EMPTY;
+                self.do_character_log(cn, FontColor::Red, "Not enough inventory space.\n");
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1791,5 +1844,12 @@ mod tests {
             assert!(text.contains("Strength: +5"));
             assert!(text.contains("Dodge chance: +5%"));
         });
+    }
+
+    #[test]
+    fn match_command_equip_recognized() {
+        assert_eq!(match_command("equip"), Some("equip"));
+        assert_eq!(match_command("EQUIP"), Some("equip"));
+        assert_eq!(match_command("eq"), Some("equip"));
     }
 }

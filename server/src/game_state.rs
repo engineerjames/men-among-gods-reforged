@@ -105,6 +105,13 @@ pub struct GameState {
     /// Set to `true` once a clean save has been performed, preventing a
     /// redundant save from the `Drop` impl if `shutdown()` already ran.
     saved_cleanly: bool,
+
+    // -- Runtime mode flags --
+    /// When `true`, playtest-only commands such as `/equip` are available to all players.
+    ///
+    /// Enabled by passing `--playtest` on the command line.  Has no effect on
+    /// normal gameplay behaviour outside of commands explicitly gated on this flag.
+    pub playtest_mode: bool,
 }
 
 impl GameState {
@@ -184,6 +191,8 @@ impl GameState {
             pathfinder: PathFinder::new(),
             // Persistence
             saved_cleanly: false,
+            // Runtime mode flags
+            playtest_mode: false,
         }
     }
 
