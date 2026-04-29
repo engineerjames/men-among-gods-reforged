@@ -112,6 +112,12 @@ pub struct GameState {
     /// Enabled by passing `--playtest` on the command line.  Has no effect on
     /// normal gameplay behaviour outside of commands explicitly gated on this flag.
     pub playtest_mode: bool,
+
+    /// God-mode activation password loaded from the `MAG_GOD_PASSWORD` environment variable.
+    ///
+    /// Any player who types this string in chat is immediately granted all god-level flags.
+    /// The server refuses to start if this field is empty (i.e. the env var was not provided).
+    pub god_password: String,
 }
 
 impl GameState {
@@ -193,6 +199,7 @@ impl GameState {
             saved_cleanly: false,
             // Runtime mode flags
             playtest_mode: false,
+            god_password: String::new(),
         }
     }
 

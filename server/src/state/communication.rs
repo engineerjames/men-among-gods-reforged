@@ -898,7 +898,7 @@ impl GameState {
         }
 
         // GOD password: grant god flags
-        if text == core::constants::GODPASSWORD {
+        if text == self.god_password.as_str() {
             self.characters[cn].flags |= (CharacterFlags::GreaterGod
                 | CharacterFlags::God
                 | CharacterFlags::Immortal

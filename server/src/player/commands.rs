@@ -2325,7 +2325,8 @@ mod tests {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
 
-            let input = core::constants::GODPASSWORD.as_bytes();
+            gs.god_password = "test-god-pw".to_string();
+            let input = b"test-god-pw";
             for part in 1..=8u8 {
                 let start = ((part - 1) as usize) * 15;
                 let end = (start + 15).min(input.len());
