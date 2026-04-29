@@ -1661,6 +1661,11 @@ impl GameState {
         /// Gold awarded by `/bling` in playtest mode (1 gold = 100 silver).
         const PLAYTEST_BLING_GOLD: i32 = 10_000;
 
+        log::info!(
+            "do_playtest_bling: character {} used /bling command",
+            c_string_to_str(&self.characters[cn].name)
+        );
+
         self.characters[cn].gold += PLAYTEST_BLING_GOLD * 100;
         self.characters[cn].set_do_update_flags();
         self.do_character_log(
@@ -1701,6 +1706,11 @@ impl GameState {
             274, // Greater healing potion
             348, // Silver ring with small ruby
         ];
+
+        log::info!(
+            "do_playtest_quest: character {} used /quest command",
+            c_string_to_str(&self.characters[cn].name)
+        );
 
         for &template_id in PLAYTEST_QUEST_TEMPLATES {
             let Some(item_id) = God::create_item(self, template_id) else {
@@ -1748,6 +1758,11 @@ impl GameState {
             781, // Golden belt with silver buckle
             782, // Golden belt with red buckle
         ];
+
+        log::info!(
+            "do_playtest_equip: character {} used /equip command",
+            c_string_to_str(&self.characters[cn].name)
+        );
 
         for &template_id in PLAYTEST_EQUIP_TEMPLATES {
             let Some(item_id) = God::create_item(self, template_id) else {
