@@ -188,6 +188,7 @@ const ALL_COMMANDS: &[&str] = &[
     "pol",
     "prof",
     "purple",
+    "quest",
     "raise",
     "rank",
     "recall",
@@ -1078,6 +1079,11 @@ impl GameState {
                 self.do_playtest_bling(cn);
                 return;
             }
+            Some("quest") if f_p && self.playtest_mode => {
+                log::debug!("Processing quest command for {}", cn);
+                self.do_playtest_quest(cn);
+                return;
+            }
             Some("exit") if f_u => {
                 log::debug!("Processing exit command for {}", cn);
                 God::exit_usurp(self, cn);
@@ -1664,6 +1670,44 @@ impl GameState {
         );
     }
 
+    /// Give the player a set of quest items when `/quest` is typed in playtest mode.
+    ///
+    /// Only reachable when `playtest_mode` is `true`.  Iterates
+    /// [`PLAYTEST_QUEST_TEMPLATES`], creates a live item from each template, and
+    /// places it in the player's inventory.  If the global item pool is
+    /// exhausted, or if the player has no free inventory slots, an error
+    /// message is displayed and the remaining items are skipped.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the player receiving the items.
+    fn do_playtest_quest(&mut self, cn: usize) {
+        /// Quest item template IDs handed to the player when `/quest` is typed in playtest mode.
+        const PLAYTEST_QUEST_TEMPLATES: &[usize] = &[];
+
+        for &template_id in PLAYTEST_QUEST_TEMPLATES {
+            let Some(item_id) = God::create_item(self, template_id) else {
+                log::warn!(
+                    "do_playtest_quest: could not create item from template {} for character {}",
+                    template_id,
+                    cn
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "Could not create item (server item pool full).\n",
+                );
+                continue;
+            };
+
+            if !God::give_character_item(self, cn, item_id) {
+                // Destroy the orphaned item so it doesn't leak.
+                self.items[item_id].used = core::constants::USE_EMPTY;
+                self.do_character_log(cn, FontColor::Red, "Not enough inventory space.\n");
+            }
+        }
+    }
+
     /// Give the player the hard-coded playtest loadout when `/equip` is typed.
     ///
     /// Only reachable when `playtest_mode` is `true`.  Iterates
@@ -1886,6 +1930,12 @@ mod tests {
     fn match_command_bling_recognized() {
         assert_eq!(match_command("bling"), Some("bling"));
         assert_eq!(match_command("BLING"), Some("bling"));
-        assert_eq!(match_command("bl"), Some("bling"));
+        assert_eq!(match_command("bli"), Some("bling"));
+    }
+
+    #[test]
+    fn match_command_quest_recognized() {
+        assert_eq!(match_command("quest"), Some("quest"));
+        assert_eq!(match_command("QUEST"), Some("quest"));
     }
 }
