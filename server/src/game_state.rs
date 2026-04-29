@@ -105,6 +105,19 @@ pub struct GameState {
     /// Set to `true` once a clean save has been performed, preventing a
     /// redundant save from the `Drop` impl if `shutdown()` already ran.
     saved_cleanly: bool,
+
+    // -- Runtime mode flags --
+    /// When `true`, playtest-only commands such as `/equip` are available to all players.
+    ///
+    /// Enabled by passing `--playtest` on the command line.  Has no effect on
+    /// normal gameplay behaviour outside of commands explicitly gated on this flag.
+    pub playtest_mode: bool,
+
+    /// God-mode activation password loaded from the `MAG_GOD_PASSWORD` environment variable.
+    ///
+    /// Any player who types this string in chat is immediately granted all god-level flags.
+    /// The server refuses to start if this field is empty (i.e. the env var was not provided).
+    pub god_password: String,
 }
 
 impl GameState {
@@ -184,6 +197,9 @@ impl GameState {
             pathfinder: PathFinder::new(),
             // Persistence
             saved_cleanly: false,
+            // Runtime mode flags
+            playtest_mode: false,
+            god_password: String::new(),
         }
     }
 

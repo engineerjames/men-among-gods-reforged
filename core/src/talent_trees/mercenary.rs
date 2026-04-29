@@ -145,9 +145,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Distract the enemy, reducing their accuracy.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -156,9 +156,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Infest the enemy with parasites, dealing damage over time.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -175,9 +175,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase the potency of your offensive spells by 5%.",
             cost: 1,
             prereqs: &[DISTRACT, PARASITE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -194,9 +194,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase the potency of your offensive spells by 5%.",
             cost: 1,
             prereqs: &[SPELL_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 15,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[15],
             },
         },
         TalentNode {
@@ -205,9 +205,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your attack speed by 5%.",
             cost: 1,
             prereqs: &[DODGE_BOOST_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -216,9 +216,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your melee damage by 5%.",
             cost: 1,
             prereqs: &[SPELL_BOOST_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -227,9 +227,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Chance on hit to disarm your opponent.",
             cost: 1,
             prereqs: &[ATTACK_SPEED_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -238,9 +238,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "A devastating finishing blow against low-health enemies.",
             cost: 1,
             prereqs: &[DAMAGE_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 15,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[15],
             },
         },
         TalentNode {
@@ -249,9 +249,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase your attack speed by 5%.",
             cost: 1,
             prereqs: &[DISARM],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 15,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[15],
             },
         },
         TalentNode {
@@ -260,9 +260,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase your melee damage by 5%.",
             cost: 1,
             prereqs: &[DELIVER_DEATH],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 15,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[15],
             },
         },
         TalentNode {
@@ -271,9 +271,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase the potency of your protective spells by 5%.",
             cost: 1,
             prereqs: &[ATTACK_SPEED_BOOST_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -282,9 +282,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your immunity and resistance by 5%.",
             cost: 1,
             prereqs: &[DAMAGE_BOOST_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -293,9 +293,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase the potency of your protective spells by 5%.",
             cost: 1,
             prereqs: &[PROTECTIVE_SPELLS_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 15,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[15],
             },
         },
         TalentNode {
@@ -304,9 +304,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase your immunity and resistance by 5%.",
             cost: 1,
             prereqs: &[IMMUN_RESIST_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 15,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[15],
             },
         },
         TalentNode {
@@ -315,9 +315,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "A flurry of strikes against all adjacent enemies.",
             cost: 1,
             prereqs: &[PROTECTIVE_SPELLS_BOOST_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Agility,
-                percent: 20,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Agility],
+                percents: &[20],
             },
         },
         TalentNode {
@@ -326,9 +326,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Spreads parasitic damage to nearby enemies.",
             cost: 1,
             prereqs: &[IMMUN_RESIST_BOOST_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Willpower,
-                percent: 20,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[20],
             },
         },
         TalentNode {
@@ -337,9 +337,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your Strength attribute by 10%.",
             cost: 1,
             prereqs: &[BLADE_DANCE],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -348,9 +348,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your Intuition attribute by 10%.",
             cost: 1,
             prereqs: &[CONTAGION],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -359,9 +359,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase your Strength attribute by 10%.",
             cost: 1,
             prereqs: &[STRENGTH_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Strength,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -370,9 +370,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase your Intuition attribute by 10%.",
             cost: 1,
             prereqs: &[INTELLIGENCE_BOOST_1],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Intuition,
-                percent: 10,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Intuition],
+                percents: &[10],
             },
         },
         TalentNode {
@@ -381,9 +381,9 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Capstone: increase all of your attributes by 5%.",
             cost: 1,
             prereqs: &[STRENGTH_BOOST_2, INTELLIGENCE_BOOST_2],
-            effect: TalentEffect::AttributePercent {
-                attr: Attribute::Braveness,
-                percent: 25,
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Braveness],
+                percents: &[25],
             },
         },
     ],

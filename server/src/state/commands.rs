@@ -102,6 +102,7 @@ const ALL_COMMANDS: &[&str] = &[
     "announce",
     "balance",
     "black",
+    "bling",
     "bow",
     "build",
     "cap",
@@ -117,6 +118,7 @@ const ALL_COMMANDS: &[&str] = &[
     "emote",
     "enemy",
     "enter",
+    "equip",
     "eras",
     "erase",
     "exit",
@@ -186,6 +188,7 @@ const ALL_COMMANDS: &[&str] = &[
     "pol",
     "prof",
     "purple",
+    "quest",
     "raise",
     "rank",
     "recall",
@@ -312,6 +315,26 @@ fn format_talent_bonus_lines(bonuses: &TalentStatBonuses) -> Vec<String> {
 
     if bonuses.dodge != 0 {
         lines.push(format!("  Dodge chance: {:+}%", bonuses.dodge));
+    }
+
+    if bonuses.armor_percent != 0 {
+        lines.push(format!("  Armor: {:+}%", bonuses.armor_percent));
+    }
+
+    if bonuses.weapon_percent != 0 {
+        lines.push(format!("  Weapon: {:+}%", bonuses.weapon_percent));
+    }
+
+    if bonuses.hp_flat != 0 {
+        lines.push(format!("  HP: {:+}", bonuses.hp_flat));
+    }
+
+    if bonuses.mana_flat != 0 {
+        lines.push(format!("  Mana: {:+}", bonuses.mana_flat));
+    }
+
+    if bonuses.end_flat != 0 {
+        lines.push(format!("  Endurance: {:+}", bonuses.end_flat));
     }
 
     lines
@@ -558,6 +581,12 @@ impl GameState {
     /// * `cn` - Character number requesting the talent bonus report.
     pub(crate) fn do_talents(&mut self, cn: usize) {
         let character = &self.characters[cn];
+
+        if (character.flags & CharacterFlags::Player.bits()) == 0 {
+            self.do_character_log(cn, FontColor::Red, "Only players have talents, dude.\n");
+            return;
+        }
+
         let bonuses = talent_stat_bonuses(
             character.kindred,
             &character.future1,
@@ -1038,6 +1067,21 @@ impl GameState {
             Some("enter") if f_gi => {
                 log::debug!("Processing enter command for {}", cn);
                 self.do_enter(cn);
+                return;
+            }
+            Some("equip") if f_p && self.playtest_mode => {
+                log::debug!("Processing equip command for {}", cn);
+                self.do_playtest_equip(cn);
+                return;
+            }
+            Some("bling") if f_p && self.playtest_mode => {
+                log::debug!("Processing bling command for {}", cn);
+                self.do_playtest_bling(cn);
+                return;
+            }
+            Some("quest") if f_p && self.playtest_mode => {
+                log::debug!("Processing quest command for {}", cn);
+                self.do_playtest_quest(cn);
                 return;
             }
             Some("exit") if f_u => {
@@ -1602,6 +1646,159 @@ impl GameState {
         // Unknown command
         self.do_character_log(cn, FontColor::Red, &format!("Unknown command #{}\n", cmd));
     }
+
+    /// Give the player 10,000 gold when `/bling` is typed in playtest mode.
+    ///
+    /// Only reachable when `playtest_mode` is `true`.  Adds
+    /// `PLAYTEST_BLING_GOLD` gold (stored internally as silver × 100) directly
+    /// to the character's purse and triggers a stat update so the client sees
+    /// the new balance immediately.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the player receiving the gold.
+    fn do_playtest_bling(&mut self, cn: usize) {
+        /// Gold awarded by `/bling` in playtest mode (1 gold = 100 silver).
+        const PLAYTEST_BLING_GOLD: i32 = 10_000;
+
+        log::info!(
+            "do_playtest_bling: character {} used /bling command",
+            c_string_to_str(&self.characters[cn].name)
+        );
+
+        self.characters[cn].gold += PLAYTEST_BLING_GOLD * 100;
+        self.characters[cn].set_do_update_flags();
+        self.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("You receive {}G. Bling!\n", PLAYTEST_BLING_GOLD),
+        );
+    }
+
+    /// Give the player a set of quest items when `/quest` is typed in playtest mode.
+    ///
+    /// Only reachable when `playtest_mode` is `true`.  Iterates
+    /// [`PLAYTEST_QUEST_TEMPLATES`], creates a live item from each template, and
+    /// places it in the player's inventory.  If the global item pool is
+    /// exhausted, or if the player has no free inventory slots, an error
+    /// message is displayed and the remaining items are skipped.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the player receiving the items.
+    fn do_playtest_quest(&mut self, cn: usize) {
+        /// Quest item template IDs handed to the player when `/quest` is typed in playtest mode.
+        /// Duplicated items are intentional as some classes
+        /// require multiple of the same item to complete their quests.
+        const PLAYTEST_QUEST_TEMPLATES: &[usize] = &[
+            105, // Jamil's amulet
+            107, // Ruby amulet
+            113, // Belt from haunted mansion
+            115, // Ruby from skeleton house
+            118, // Joe's armor
+            127, // Greater healing potion
+            127, // Greater healing potion
+            129, // Barbarian's sword
+            131, // GMana potion
+            136, // Sword of stealth
+            148, // Potion of life
+            148, // Potion of life
+            191, // Resistance amulet
+            255, // Ratling fighter's eye
+            348, // Silver ring with small ruby
+        ];
+
+        log::info!(
+            "do_playtest_quest: character {} used /quest command",
+            c_string_to_str(&self.characters[cn].name)
+        );
+
+        for &template_id in PLAYTEST_QUEST_TEMPLATES {
+            let Some(item_id) = God::create_item(self, template_id) else {
+                log::warn!(
+                    "do_playtest_quest: could not create item from template {} for character {}",
+                    template_id,
+                    cn
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "Could not create item (server item pool full).\n",
+                );
+                continue;
+            };
+
+            if !God::give_character_item(self, cn, item_id) {
+                // Destroy the orphaned item so it doesn't leak.
+                self.items[item_id].used = core::constants::USE_EMPTY;
+                self.do_character_log(cn, FontColor::Red, "Not enough inventory space.\n");
+            }
+        }
+
+        self.do_character_log(
+            cn,
+            FontColor::Green,
+            "You have been given a full set of quest items.\n",
+        );
+    }
+
+    /// Give the player the hard-coded playtest loadout when `/equip` is typed.
+    ///
+    /// Only reachable when `playtest_mode` is `true`.  Iterates
+    /// [`PLAYTEST_EQUIP_TEMPLATES`], creates a live item from each template, and
+    /// places it in the player's inventory.  If the global item pool is
+    /// exhausted, or if the player has no free inventory slots, an error
+    /// message is displayed and the remaining items are skipped.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the player receiving the items.
+    fn do_playtest_equip(&mut self, cn: usize) {
+        /// Template IDs handed to the player when `/equip` is typed in playtest mode.
+        const PLAYTEST_EQUIP_TEMPLATES: &[usize] = &[
+            125, // Titanium two-handed
+            492, // Golden ring with huge sapphires
+            492, // Golden ring with huge sapphires
+            523, // Titanium dagger
+            524, // Titanium sword
+            768, // Ankh amulet
+            781, // Golden belt with silver buckle
+            782, // Golden belt with red buckle
+        ];
+
+        log::info!(
+            "do_playtest_equip: character {} used /equip command",
+            c_string_to_str(&self.characters[cn].name)
+        );
+
+        for &template_id in PLAYTEST_EQUIP_TEMPLATES {
+            let Some(item_id) = God::create_item(self, template_id) else {
+                log::warn!(
+                    "do_playtest_equip: could not create item from template {} for character {}",
+                    template_id,
+                    cn
+                );
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "Could not create item (server item pool full).\n",
+                );
+                continue;
+            };
+
+            if !God::give_character_item(self, cn, item_id) {
+                // Destroy the orphaned item so it doesn't leak.
+                self.items[item_id].used = core::constants::USE_EMPTY;
+                self.do_character_log(cn, FontColor::Red, "Not enough inventory space.\n");
+            }
+        }
+
+        self.do_character_log(
+            cn,
+            FontColor::Green,
+            "You have been given a full set of playtest equipment.\n",
+        );
+    }
 }
 
 #[cfg(test)]
@@ -1712,6 +1909,11 @@ mod tests {
         bonuses.attrib[Attribute::Strength as usize] = 5;
         bonuses.skill[SK_WEAPON] = 3;
         bonuses.dodge = 10;
+        bonuses.armor_percent = 7;
+        bonuses.weapon_percent = -4;
+        bonuses.hp_flat = 12;
+        bonuses.mana_flat = -3;
+        bonuses.end_flat = 8;
 
         assert_eq!(
             format_talent_bonus_lines(&bonuses),
@@ -1719,6 +1921,11 @@ mod tests {
                 "  Strength: +5".to_string(),
                 "  Weapon Skill: +3".to_string(),
                 "  Dodge chance: +10%".to_string(),
+                "  Armor: +7%".to_string(),
+                "  Weapon: -4%".to_string(),
+                "  HP: +12".to_string(),
+                "  Mana: -3".to_string(),
+                "  Endurance: +8".to_string(),
             ]
         );
     }
@@ -1755,5 +1962,25 @@ mod tests {
             assert!(text.contains("Strength: +5"));
             assert!(text.contains("Dodge chance: +5%"));
         });
+    }
+
+    #[test]
+    fn match_command_equip_recognized() {
+        assert_eq!(match_command("equip"), Some("equip"));
+        assert_eq!(match_command("EQUIP"), Some("equip"));
+        assert_eq!(match_command("eq"), Some("equip"));
+    }
+
+    #[test]
+    fn match_command_bling_recognized() {
+        assert_eq!(match_command("bling"), Some("bling"));
+        assert_eq!(match_command("BLING"), Some("bling"));
+        assert_eq!(match_command("bli"), Some("bling"));
+    }
+
+    #[test]
+    fn match_command_quest_recognized() {
+        assert_eq!(match_command("quest"), Some("quest"));
+        assert_eq!(match_command("QUEST"), Some("quest"));
     }
 }

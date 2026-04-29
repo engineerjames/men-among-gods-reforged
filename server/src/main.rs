@@ -93,12 +93,31 @@ fn main() -> Result<(), String> {
         process::exit(1);
     }
 
+    let god_password = match env::var("MAG_GOD_PASSWORD") {
+        Ok(v) if !v.is_empty() => v,
+        _ => {
+            log::error!("Environment variable MAG_GOD_PASSWORD is not set or is empty. Exiting.");
+            process::exit(1);
+        }
+    };
+
     let mut gs = GameState::initialize().unwrap_or_else(|e| {
         log::error!("Failed to initialize game state: {}. Exiting.", e);
         process::exit(1);
     });
 
     handle_command_line_args(&args, &mut gs);
+
+    if env::var("MAG_PLAYTEST")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+    {
+        gs.playtest_mode = true;
+        log::info!("Playtest mode enabled (MAG_PLAYTEST is set).");
+    }
+
+    gs.god_password = god_password;
+    log::info!("God password loaded from MAG_GOD_PASSWORD.");
 
     if gs.globals.is_dirty() {
         log::error!("Data files were not closed cleanly last time. Exiting.");

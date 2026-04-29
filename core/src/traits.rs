@@ -36,6 +36,39 @@ pub enum Class {
     ArchTemplar = KIN_ARCHTEMPLAR,
     ArchHarakim = KIN_ARCHHARAKIM,
     SeyanDu = KIN_SEYAN_DU,
+
+    // No known bit value for this "class" (which is really a catch-all
+    // for non-player characters), but it is used in the codebase and
+    // should be representable.
+    Monster = KIN_MONSTER,
+}
+
+impl From<i32> for Class {
+    fn from(kindred: i32) -> Self {
+        let k = kindred as u32;
+        if k & KIN_MERCENARY != 0 {
+            Class::Mercenary
+        } else if k & KIN_TEMPLAR != 0 {
+            Class::Templar
+        } else if k & KIN_HARAKIM != 0 {
+            Class::Harakim
+        } else if k & KIN_SEYAN_DU != 0 {
+            Class::SeyanDu
+        } else if k & KIN_ARCHTEMPLAR != 0 {
+            Class::ArchTemplar
+        } else if k & KIN_ARCHHARAKIM != 0 {
+            Class::ArchHarakim
+        } else if k & KIN_SORCERER != 0 {
+            Class::Sorcerer
+        } else if k & KIN_WARRIOR != 0 {
+            Class::Warrior
+        } else if k & KIN_MONSTER != 0 {
+            Class::Monster
+        } else {
+            log::error!("invalid kindred value: {kindred}");
+            Class::Mercenary
+        }
+    }
 }
 
 /// Maps a character class/sex pair to the sprite ID used in the character selection list.
@@ -82,6 +115,7 @@ pub fn get_race_integer(is_male: bool, class: Class) -> i32 {
             Class::ArchHarakim => 545,
             Class::Sorcerer => 546,
             Class::Warrior => 547,
+            Class::Monster => 999, // No known value, using an out-of-range placeholder
         }
     } else {
         match class {
@@ -93,6 +127,7 @@ pub fn get_race_integer(is_male: bool, class: Class) -> i32 {
             Class::ArchHarakim => 550,
             Class::Sorcerer => 551,
             Class::Warrior => 552,
+            Class::Monster => 999, // No known value, using an out-of-range placeholder
         }
     }
 }
@@ -167,6 +202,7 @@ impl Class {
             Class::ArchTemplar => "Arch Templar",
             Class::ArchHarakim => "Arch Harakim",
             Class::SeyanDu => "Seyan Du",
+            Class::Monster => "Monster",
         }
     }
 }
@@ -292,6 +328,7 @@ pub fn allowed_weapon_flags_for_class(class: Class) -> ItemFlags {
         }
         Class::Harakim | Class::ArchHarakim => ItemFlags::IF_WP_DAGGER | ItemFlags::IF_WP_STAFF,
         Class::Mercenary => ItemFlags::IF_WP_SWORD | ItemFlags::IF_WP_DAGGER,
+        Class::Monster => ItemFlags::all(), // No known restrictions, allowing all weapon types for monsters
     }
 }
 

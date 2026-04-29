@@ -14,10 +14,7 @@
 
 use crate::skills::{self, Attribute, Skill, SkillIndex};
 
-use crate::traits::{
-    Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_SEYAN_DU,
-    KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
-};
+use crate::traits::Class;
 
 pub mod harakim;
 pub mod mercenary;
@@ -96,19 +93,63 @@ impl TalentRef {
 }
 
 /// The set of mutations a learned talent can apply.
+///
+/// List-form variants (`SkillsFlat`, `SkillsPercent`, `AttributesFlat`,
+/// `AttributesPercent`) take parallel slices of equal length: the first slice
+/// is the targets to bonus, and the second slice is the per-target bonus
+/// amount or percent. A single-element list is the natural way to express a
+/// bonus to one stat. Length mismatches are rejected by both structural tests
+/// and a runtime assertion in [`accumulate_stat_bonus`].
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TalentEffect {
-    /// Add `amount` to a skill's base value.
-    SkillFlat { skill: Skill, amount: u8 },
-    /// Add `percent`% of the current base to a skill's base value.
-    SkillPercent { skill: Skill, percent: i32 },
-    /// Add `amount` to an attribute's base value.
-    AttributeFlat { attr: Attribute, amount: u8 },
-    /// Add `percent`% of the current base to an attribute's base value.
-    AttributePercent { attr: Attribute, percent: i32 },
+    /// Add a flat amount to one or more skills' base values.
+    SkillsFlat {
+        /// Target skills.
+        skills: &'static [Skill],
+        /// Per-skill flat bonus amount; same length as `skills`.
+        amounts: &'static [u8],
+    },
+    /// Add a percent of the current base to one or more skills' base values.
+    SkillsPercent {
+        /// Target skills.
+        skills: &'static [Skill],
+        /// Per-skill percent bonus; same length as `skills`.
+        percents: &'static [i32],
+    },
+    /// Add a flat amount to one or more attributes' base values.
+    AttributesFlat {
+        /// Target attributes.
+        attrs: &'static [Attribute],
+        /// Per-attribute flat bonus amount; same length as `attrs`.
+        amounts: &'static [u8],
+    },
+    /// Add a percent of the current base to one or more attributes' base values.
+    AttributesPercent {
+        /// Target attributes.
+        attrs: &'static [Attribute],
+        /// Per-attribute percent bonus; same length as `attrs`.
+        percents: &'static [i32],
+    },
     /// Add `percent`% dodge chance to the character's total.
     DodgeChancePercent { percent: i32 },
+    /// Add `percent`% to the aggregated armor value.
+    ArmorPercent { percent: i32 },
+    /// Add `percent`% to the aggregated weapon value.
+    WeaponPercent { percent: i32 },
+    /// Add a flat amount to HP, mana, and/or endurance maxima.
+    ///
+    /// Each component is independent; any may be `0` to leave that pool
+    /// unchanged. Negative values reduce the pool and are naturally
+    /// bounded by the existing per-pool clamps in `really_update_char`.
+    HpManaEndFlat {
+        /// Flat HP bonus added to the character's max HP pool.
+        hp: i32,
+        /// Flat mana bonus added to the character's max mana pool.
+        mana: i32,
+        /// Flat endurance bonus added to the character's max endurance pool.
+        end: i32,
+    },
     /// Grant a previously-unknown skill (set base value to 1).
     GrantSkill { skill: Skill },
 }
@@ -145,6 +186,16 @@ pub struct TalentStatBonuses {
     pub skill: [i32; 50],
     /// Dodge chance bonuses from talents, in percent.
     pub dodge: i32,
+    /// Armor value bonus from talents, in percent of aggregated AV.
+    pub armor_percent: i32,
+    /// Weapon value bonus from talents, in percent of aggregated WV.
+    pub weapon_percent: i32,
+    /// Flat HP bonus from talents, added to the max HP pool.
+    pub hp_flat: i32,
+    /// Flat mana bonus from talents, added to the max mana pool.
+    pub mana_flat: i32,
+    /// Flat endurance bonus from talents, added to the max endurance pool.
+    pub end_flat: i32,
 }
 
 impl Default for TalentStatBonuses {
@@ -153,6 +204,11 @@ impl Default for TalentStatBonuses {
             attrib: [0; 5],
             skill: [0; 50],
             dodge: 0,
+            armor_percent: 0,
+            weapon_percent: 0,
+            hp_flat: 0,
+            mana_flat: 0,
+            end_flat: 0,
         }
     }
 }
@@ -188,6 +244,7 @@ pub fn tree_for(class: Class) -> Option<&'static TalentTree> {
         Class::SeyanDu => Some(&seyan_du::SEYAN_DU_TREE),
         Class::Templar => Some(&templar::TEMPLAR_TREE),
         Class::ArchTemplar => Some(&templar::TEMPLAR_TREE),
+        _ => None,
     }
 }
 
@@ -206,43 +263,6 @@ pub fn tree_for(class: Class) -> Option<&'static TalentTree> {
 /// * `None` otherwise.
 pub fn find_node(tree: &'static TalentTree, slot: TalentRef) -> Option<&'static TalentNode> {
     tree.nodes.iter().find(|n| n.slot == slot)
-}
-
-/// Resolve the `Class` represented by the kindred bitfield on a
-/// `Character`.
-///
-/// The bitfield can carry several flags (sex, monster, etc.); only the
-/// class bits are inspected, in priority order.
-///
-/// # Arguments
-///
-/// * `kindred` - Raw `Character::kindred` value (`i32`).
-///
-/// # Returns
-///
-/// * `Some(class)` for the first matching class bit.
-/// * `None` if no class bit is set.
-pub fn class_for_kindred(kindred: i32) -> Option<Class> {
-    let k = kindred as u32;
-    if k & KIN_MERCENARY != 0 {
-        Some(Class::Mercenary)
-    } else if k & KIN_TEMPLAR != 0 {
-        Some(Class::Templar)
-    } else if k & KIN_HARAKIM != 0 {
-        Some(Class::Harakim)
-    } else if k & KIN_SEYAN_DU != 0 {
-        Some(Class::SeyanDu)
-    } else if k & KIN_ARCHTEMPLAR != 0 {
-        Some(Class::ArchTemplar)
-    } else if k & KIN_ARCHHARAKIM != 0 {
-        Some(Class::ArchHarakim)
-    } else if k & KIN_SORCERER != 0 {
-        Some(Class::Sorcerer)
-    } else if k & KIN_WARRIOR != 0 {
-        Some(Class::Warrior)
-    } else {
-        None
-    }
 }
 
 /// Read the number of unspent talent points from the packed array.
@@ -440,9 +460,7 @@ pub fn talent_stat_bonuses(
     attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
     skill: &[[u8; SkillIndex::MaxIndex as usize]; 50],
 ) -> TalentStatBonuses {
-    let Some(class) = class_for_kindred(kindred) else {
-        return TalentStatBonuses::default();
-    };
+    let class = Class::from(kindred);
     let Some(tree) = tree_for(class) else {
         return TalentStatBonuses::default();
     };
@@ -467,19 +485,13 @@ pub fn talent_stat_bonuses(
 ///
 /// # Arguments
 ///
-/// * `kindred` - Character kindred bits used to resolve the class tree.
+/// * `class` - Character class used to resolve the talent tree.
 /// * `talents` - Packed talent-tree state from the character record.
 ///
 /// # Returns
 ///
 /// * Accumulated dodge chance bonus from learned talents, in percent.
-pub fn talent_dodge_bonuses(kindred: i32, talents: &[u8; 25]) -> i32 {
-    let Some(class) = class_for_kindred(kindred) else {
-        log::warn!(
-            "Unknown class for kindred bits {kindred:#010x}; no talent bonuses will be applied"
-        );
-        return 0;
-    };
+pub fn talent_dodge_bonuses(class: Class, talents: &[u8; 25]) -> i32 {
     let Some(tree) = tree_for(class) else {
         log::warn!(
             "No talent tree registered for class {:?}; no talent bonuses will be applied",
@@ -517,24 +529,63 @@ fn accumulate_stat_bonus(
     bonuses: &mut TalentStatBonuses,
 ) {
     match effect {
-        TalentEffect::SkillFlat { skill, amount } => {
-            let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
-            bonuses.skill[skill_idx] += amount as i32;
+        TalentEffect::SkillsFlat { skills, amounts } => {
+            assert_eq!(
+                skills.len(),
+                amounts.len(),
+                "SkillsFlat: skills and amounts must have equal length",
+            );
+            for (skill, amount) in skills.iter().zip(amounts.iter()) {
+                let skill_idx = skills::canonicalize_weapon_skill(*skill as usize);
+                bonuses.skill[skill_idx] += *amount as i32;
+            }
         }
-        TalentEffect::SkillPercent { skill, percent } => {
-            let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
-            let base = skill_rows[skill_idx][SkillIndex::BaseValue as usize];
-            bonuses.skill[skill_idx] += percent_bonus(base, percent);
+        TalentEffect::SkillsPercent { skills, percents } => {
+            assert_eq!(
+                skills.len(),
+                percents.len(),
+                "SkillsPercent: skills and percents must have equal length",
+            );
+            for (skill, percent) in skills.iter().zip(percents.iter()) {
+                let skill_idx = skills::canonicalize_weapon_skill(*skill as usize);
+                let base = skill_rows[skill_idx][SkillIndex::BaseValue as usize];
+                bonuses.skill[skill_idx] += percent_bonus(base, *percent);
+            }
         }
-        TalentEffect::AttributeFlat { attr, amount } => {
-            bonuses.attrib[attr as usize] += amount as i32;
+        TalentEffect::AttributesFlat { attrs, amounts } => {
+            assert_eq!(
+                attrs.len(),
+                amounts.len(),
+                "AttributesFlat: attrs and amounts must have equal length",
+            );
+            for (attr, amount) in attrs.iter().zip(amounts.iter()) {
+                bonuses.attrib[*attr as usize] += *amount as i32;
+            }
         }
-        TalentEffect::AttributePercent { attr, percent } => {
-            let base = attrib[attr as usize][SkillIndex::BaseValue as usize];
-            bonuses.attrib[attr as usize] += percent_bonus(base, percent);
+        TalentEffect::AttributesPercent { attrs, percents } => {
+            assert_eq!(
+                attrs.len(),
+                percents.len(),
+                "AttributesPercent: attrs and percents must have equal length",
+            );
+            for (attr, percent) in attrs.iter().zip(percents.iter()) {
+                let base = attrib[*attr as usize][SkillIndex::BaseValue as usize];
+                bonuses.attrib[*attr as usize] += percent_bonus(base, *percent);
+            }
         }
         TalentEffect::DodgeChancePercent { percent } => {
             bonuses.dodge += percent;
+        }
+        TalentEffect::ArmorPercent { percent } => {
+            bonuses.armor_percent += percent;
+        }
+        TalentEffect::WeaponPercent { percent } => {
+            bonuses.weapon_percent += percent;
+        }
+        TalentEffect::HpManaEndFlat { hp, mana, end } => {
+            bonuses.hp_flat += hp;
+            bonuses.mana_flat += mana;
+            bonuses.end_flat += end;
         }
         TalentEffect::GrantSkill { .. } => {}
     }
@@ -852,43 +903,6 @@ mod tests {
     }
 
     #[test]
-    fn class_for_kindred_resolves_each_class_bit() {
-        assert_eq!(
-            class_for_kindred(KIN_MERCENARY as i32),
-            Some(Class::Mercenary)
-        );
-        assert_eq!(class_for_kindred(KIN_TEMPLAR as i32), Some(Class::Templar));
-        assert_eq!(class_for_kindred(KIN_HARAKIM as i32), Some(Class::Harakim));
-        assert_eq!(class_for_kindred(KIN_SEYAN_DU as i32), Some(Class::SeyanDu));
-        assert_eq!(
-            class_for_kindred(KIN_ARCHTEMPLAR as i32),
-            Some(Class::ArchTemplar)
-        );
-        assert_eq!(
-            class_for_kindred(KIN_ARCHHARAKIM as i32),
-            Some(Class::ArchHarakim)
-        );
-        assert_eq!(
-            class_for_kindred(KIN_SORCERER as i32),
-            Some(Class::Sorcerer)
-        );
-        assert_eq!(class_for_kindred(KIN_WARRIOR as i32), Some(Class::Warrior));
-    }
-
-    #[test]
-    fn class_for_kindred_returns_none_when_no_class_bit_set() {
-        assert_eq!(class_for_kindred(0), None);
-        // Sex flag alone is not a class.
-        assert_eq!(class_for_kindred(crate::traits::KIN_MALE as i32), None);
-    }
-
-    #[test]
-    fn class_for_kindred_picks_first_matching_bit_when_multiple() {
-        let combined = (KIN_MERCENARY | KIN_TEMPLAR) as i32;
-        assert_eq!(class_for_kindred(combined), Some(Class::Mercenary));
-    }
-
-    #[test]
     fn tree_for_returns_registered_base_class_trees() {
         assert!(tree_for(Class::Mercenary).is_some());
         assert!(tree_for(Class::Templar).is_some());
@@ -933,22 +947,11 @@ mod tests {
     }
 
     #[test]
-    fn talent_dodge_bonuses_returns_zero_for_unknown_class() {
-        let talents = [0u8; 25];
-
-        assert_eq!(talent_dodge_bonuses(0, &talents), 0);
-        assert_eq!(
-            talent_dodge_bonuses(crate::traits::KIN_MALE as i32, &talents),
-            0
-        );
-    }
-
-    #[test]
     fn talent_dodge_bonuses_returns_zero_for_class_without_registered_tree() {
         let talents = [0u8; 25];
 
-        assert_eq!(talent_dodge_bonuses(KIN_WARRIOR as i32, &talents), 0);
-        assert_eq!(talent_dodge_bonuses(KIN_SORCERER as i32, &talents), 0);
+        assert_eq!(talent_dodge_bonuses(Class::Warrior, &talents), 0);
+        assert_eq!(talent_dodge_bonuses(Class::Sorcerer, &talents), 0);
     }
 
     #[test]
@@ -958,7 +961,7 @@ mod tests {
         let mut talents = [0u8; 25];
         talents[distract.layer as usize] |= distract.mask;
 
-        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 0);
+        assert_eq!(talent_dodge_bonuses(Class::Mercenary, &talents), 0);
     }
 
     #[test]
@@ -968,7 +971,7 @@ mod tests {
         let mut talents = [0u8; 25];
         talents[dodge_boost_1.layer as usize] |= dodge_boost_1.mask;
 
-        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 5);
+        assert_eq!(talent_dodge_bonuses(Class::Mercenary, &talents), 5);
     }
 
     #[test]
@@ -980,6 +983,231 @@ mod tests {
         talents[dodge_boost_1.layer as usize] |= dodge_boost_1.mask;
         talents[dodge_boost_2.layer as usize] |= dodge_boost_2.mask;
 
-        assert_eq!(talent_dodge_bonuses(KIN_MERCENARY as i32, &talents), 10);
+        assert_eq!(talent_dodge_bonuses(Class::Mercenary, &talents), 10);
+    }
+
+    // ---- list-variant structural and behavioral tests ----------------
+
+    #[test]
+    fn list_variant_lengths_match_in_every_node() {
+        for tree in all_trees() {
+            for node in tree.nodes {
+                match node.effect {
+                    TalentEffect::SkillsFlat { skills, amounts } => {
+                        assert_eq!(
+                            skills.len(),
+                            amounts.len(),
+                            "tree {:?} node '{}' SkillsFlat list length mismatch",
+                            tree.class,
+                            node.name,
+                        );
+                        assert!(
+                            !skills.is_empty(),
+                            "tree {:?} node '{}' SkillsFlat must be non-empty",
+                            tree.class,
+                            node.name,
+                        );
+                    }
+                    TalentEffect::SkillsPercent { skills, percents } => {
+                        assert_eq!(
+                            skills.len(),
+                            percents.len(),
+                            "tree {:?} node '{}' SkillsPercent list length mismatch",
+                            tree.class,
+                            node.name,
+                        );
+                        assert!(
+                            !skills.is_empty(),
+                            "tree {:?} node '{}' SkillsPercent must be non-empty",
+                            tree.class,
+                            node.name,
+                        );
+                    }
+                    TalentEffect::AttributesFlat { attrs, amounts } => {
+                        assert_eq!(
+                            attrs.len(),
+                            amounts.len(),
+                            "tree {:?} node '{}' AttributesFlat list length mismatch",
+                            tree.class,
+                            node.name,
+                        );
+                        assert!(
+                            !attrs.is_empty(),
+                            "tree {:?} node '{}' AttributesFlat must be non-empty",
+                            tree.class,
+                            node.name,
+                        );
+                    }
+                    TalentEffect::AttributesPercent { attrs, percents } => {
+                        assert_eq!(
+                            attrs.len(),
+                            percents.len(),
+                            "tree {:?} node '{}' AttributesPercent list length mismatch",
+                            tree.class,
+                            node.name,
+                        );
+                        assert!(
+                            !attrs.is_empty(),
+                            "tree {:?} node '{}' AttributesPercent must be non-empty",
+                            tree.class,
+                            node.name,
+                        );
+                    }
+                    TalentEffect::DodgeChancePercent { .. }
+                    | TalentEffect::ArmorPercent { .. }
+                    | TalentEffect::WeaponPercent { .. }
+                    | TalentEffect::HpManaEndFlat { .. }
+                    | TalentEffect::GrantSkill { .. } => {}
+                }
+            }
+        }
+    }
+
+    fn empty_attrib() -> [[u8; SkillIndex::MaxIndex as usize]; 5] {
+        [[0; SkillIndex::MaxIndex as usize]; 5]
+    }
+
+    fn empty_skill() -> [[u8; SkillIndex::MaxIndex as usize]; 50] {
+        [[0; SkillIndex::MaxIndex as usize]; 50]
+    }
+
+    #[test]
+    fn accumulate_attributes_flat_single_element_list() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::AttributesFlat {
+                attrs: &[Attribute::Strength],
+                amounts: &[7],
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.attrib[Attribute::Strength as usize], 7);
+    }
+
+    #[test]
+    fn accumulate_attributes_percent_multi_element_list() {
+        let mut attrib = empty_attrib();
+        attrib[Attribute::Strength as usize][SkillIndex::BaseValue as usize] = 50;
+        attrib[Attribute::Willpower as usize][SkillIndex::BaseValue as usize] = 80;
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength, Attribute::Willpower],
+                percents: &[10, 25],
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.attrib[Attribute::Strength as usize], 5);
+        assert_eq!(bonuses.attrib[Attribute::Willpower as usize], 20);
+    }
+
+    #[test]
+    fn accumulate_skills_flat_multi_element_list() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::SkillsFlat {
+                skills: &[Skill::Stealth, Skill::LockPicking],
+                amounts: &[3, 5],
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.skill[Skill::Stealth as usize], 3);
+        assert_eq!(bonuses.skill[Skill::LockPicking as usize], 5);
+    }
+
+    #[test]
+    fn accumulate_armor_percent_and_weapon_percent_sum_into_bonuses() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::ArmorPercent { percent: 10 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+        accumulate_stat_bonus(
+            TalentEffect::ArmorPercent { percent: 5 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+        accumulate_stat_bonus(
+            TalentEffect::WeaponPercent { percent: 20 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.armor_percent, 15);
+        assert_eq!(bonuses.weapon_percent, 20);
+    }
+
+    #[test]
+    fn accumulate_hp_mana_end_flat_sums_components_independently() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::HpManaEndFlat {
+                hp: 10,
+                mana: 0,
+                end: 5,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+        accumulate_stat_bonus(
+            TalentEffect::HpManaEndFlat {
+                hp: 4,
+                mana: 8,
+                end: 0,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.hp_flat, 14);
+        assert_eq!(bonuses.mana_flat, 8);
+        assert_eq!(bonuses.end_flat, 5);
+    }
+
+    #[test]
+    #[should_panic(expected = "AttributesPercent: attrs and percents must have equal length")]
+    fn accumulate_attributes_percent_panics_on_length_mismatch() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength, Attribute::Willpower],
+                percents: &[10],
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
     }
 }

@@ -52,9 +52,6 @@ pub const HOME_MERCENARY_Y: i32 = 512;
 pub const CNTSAY: i32 = TICKS;
 pub const MAXSAY: i32 = TICKS * 7;
 
-/// God password
-pub const GODPASSWORD: &str = "devpassword";
-
 /// SPEEDTAB row index bounds (character `speed` value).
 ///
 /// `SPEEDTAB` has 20 rows (0..=19) mapping *speed tier* -> tick pattern.

@@ -1,5 +1,4 @@
 mod login;
-pub mod tick_stream;
 
 use std::collections::HashMap;
 use std::sync::mpsc;

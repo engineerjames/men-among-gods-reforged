@@ -112,6 +112,8 @@ services:
       SERVER_TLS_KEY: /certs/server.key
       MAG_ADMIN_API_TOKEN: ${MAG_ADMIN_API_TOKEN:-}
       MAG_ADMIN_RELOAD_DISABLED: ${MAG_ADMIN_RELOAD_DISABLED:-}
+      MAG_PLAYTEST: ${MAG_PLAYTEST:-}
+      MAG_GOD_PASSWORD: ${MAG_GOD_PASSWORD:?MAG_GOD_PASSWORD is required}
     volumes:
       - tls-certs:/certs:ro
     ports:

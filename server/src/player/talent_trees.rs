@@ -15,8 +15,9 @@ use core::{
     string_operations::c_string_to_str,
     talent_trees::{
         TalentEffect, TalentNode, TalentRef, apply_talent_point, available_talent_points,
-        class_for_kindred, find_node, talent_prereqs_met, tree_for,
+        find_node, talent_prereqs_met, tree_for,
     },
+    types::Class,
 };
 
 use crate::game_state::GameState;
@@ -38,8 +39,7 @@ use crate::game_state::GameState;
 /// * `Ok(())` on a successful learn.
 /// * `Err(reason)` on any validation failure.
 pub fn learn_talent(gs: &mut GameState, cn: usize, slot: TalentRef) -> Result<(), String> {
-    let class = class_for_kindred(gs.characters[cn].kindred)
-        .ok_or_else(|| "Character has no class set".to_string())?;
+    let class = Class::from(gs.characters[cn].kindred);
     let tree = tree_for(class).ok_or_else(|| format!("No talent tree for class {:?}", class))?;
     let node: &TalentNode =
         find_node(tree, slot).ok_or_else(|| format!("Unknown talent slot {:?}", slot))?;
@@ -106,11 +106,14 @@ fn dispatch_immediate_effect(
 ) -> Result<(), String> {
     match effect {
         TalentEffect::GrantSkill { skill } => grant_skill(cn, gs, skill),
-        TalentEffect::SkillFlat { .. }
-        | TalentEffect::SkillPercent { .. }
-        | TalentEffect::AttributeFlat { .. }
-        | TalentEffect::AttributePercent { .. }
-        | TalentEffect::DodgeChancePercent { .. } => Ok(()),
+        TalentEffect::SkillsFlat { .. }
+        | TalentEffect::SkillsPercent { .. }
+        | TalentEffect::AttributesFlat { .. }
+        | TalentEffect::AttributesPercent { .. }
+        | TalentEffect::DodgeChancePercent { .. }
+        | TalentEffect::ArmorPercent { .. }
+        | TalentEffect::WeaponPercent { .. }
+        | TalentEffect::HpManaEndFlat { .. } => Ok(()),
     }
 }
 
@@ -463,22 +466,11 @@ mod tests {
     }
 
     #[test]
-    fn learn_talent_rejects_when_kindred_unset() {
-        with_test_gs(|gs| {
-            let cn = 1;
-            gs.characters[cn].kindred = 0;
-            gs.characters[cn].future1[TALENT_POINTS_INDEX] = 5;
-            let err = learn_talent(gs, cn, mercenary_slot("Distract")).unwrap_err();
-            assert!(err.to_lowercase().contains("no class"), "got: {err}");
-        });
-    }
-
-    #[test]
     fn learn_talent_recomputes_effect_without_mutating_base() {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 1);
-            // DISTRACT's effect is `AttributePercent { Strength, +10% }`.
+            // DISTRACT's effect is `AttributesPercent { [Strength], [+10%] }`.
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
             learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
@@ -596,11 +588,13 @@ mod tests {
 
     fn assert_effect(effect: TalentEffect, expected_attr: Attribute, expected_percent: i32) {
         match effect {
-            TalentEffect::AttributePercent { attr, percent } => {
-                assert_eq!(attr, expected_attr);
-                assert_eq!(percent, expected_percent);
+            TalentEffect::AttributesPercent { attrs, percents } => {
+                assert_eq!(attrs.len(), 1, "expected single-attribute talent");
+                assert_eq!(percents.len(), 1, "expected single-percent talent");
+                assert_eq!(attrs[0], expected_attr);
+                assert_eq!(percents[0], expected_percent);
             }
-            other => panic!("expected AttributePercent, got {other:?}"),
+            other => panic!("expected AttributesPercent, got {other:?}"),
         }
     }
 }
