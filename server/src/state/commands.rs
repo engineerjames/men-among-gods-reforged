@@ -1696,14 +1696,15 @@ impl GameState {
             113, // Belt from haunted mansion
             115, // Ruby from skeleton house
             118, // Joe's armor
+            127, // Greater healing potion
+            127, // Greater healing potion
             129, // Barbarian's sword
             131, // GMana potion
             136, // Sword of stealth
             148, // Potion of life
             148, // Potion of life
             191, // Resistance amulet
-            274, // Greater healing potion
-            274, // Greater healing potion
+            255, // Ratling fighter's eye
             348, // Silver ring with small ruby
         ];
 
