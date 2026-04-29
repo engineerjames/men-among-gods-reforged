@@ -1683,7 +1683,24 @@ impl GameState {
     /// * `cn` - Character index of the player receiving the items.
     fn do_playtest_quest(&mut self, cn: usize) {
         /// Quest item template IDs handed to the player when `/quest` is typed in playtest mode.
-        const PLAYTEST_QUEST_TEMPLATES: &[usize] = &[];
+        /// Duplicated items are intentional as some classes
+        /// require multiple of the same item to complete their quests.
+        const PLAYTEST_QUEST_TEMPLATES: &[usize] = &[
+            105, // Jamil's amulet
+            107, // Ruby amulet
+            113, // Belt from haunted mansion
+            115, // Ruby from skeleton house
+            118, // Joe's armor
+            129, // Barbarian's sword
+            131, // GMana potion
+            136, // Sword of stealth
+            148, // Potion of life
+            148, // Potion of life
+            191, // Resistance amulet
+            274, // Greater healing potion
+            274, // Greater healing potion
+            348, // Silver ring with small ruby
+        ];
 
         for &template_id in PLAYTEST_QUEST_TEMPLATES {
             let Some(item_id) = God::create_item(self, template_id) else {
