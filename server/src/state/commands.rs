@@ -1670,7 +1670,7 @@ impl GameState {
         self.characters[cn].set_do_update_flags();
         self.do_character_log(
             cn,
-            FontColor::Yellow,
+            FontColor::Green,
             &format!("You receive {}G. Bling!\n", PLAYTEST_BLING_GOLD),
         );
     }
@@ -1733,6 +1733,12 @@ impl GameState {
                 self.do_character_log(cn, FontColor::Red, "Not enough inventory space.\n");
             }
         }
+
+        self.do_character_log(
+            cn,
+            FontColor::Green,
+            "You have been given a full set of quest items.\n",
+        );
     }
 
     /// Give the player the hard-coded playtest loadout when `/equip` is typed.
@@ -1785,6 +1791,12 @@ impl GameState {
                 self.do_character_log(cn, FontColor::Red, "Not enough inventory space.\n");
             }
         }
+
+        self.do_character_log(
+            cn,
+            FontColor::Green,
+            "You have been given a full set of playtest equipment.\n",
+        );
     }
 }
 
