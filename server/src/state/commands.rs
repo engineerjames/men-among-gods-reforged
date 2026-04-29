@@ -102,6 +102,7 @@ const ALL_COMMANDS: &[&str] = &[
     "announce",
     "balance",
     "black",
+    "bling",
     "bow",
     "build",
     "cap",
@@ -1072,6 +1073,11 @@ impl GameState {
                 self.do_playtest_equip(cn);
                 return;
             }
+            Some("bling") if f_p && self.playtest_mode => {
+                log::debug!("Processing bling command for {}", cn);
+                self.do_playtest_bling(cn);
+                return;
+            }
             Some("exit") if f_u => {
                 log::debug!("Processing exit command for {}", cn);
                 God::exit_usurp(self, cn);
@@ -1635,6 +1641,29 @@ impl GameState {
         self.do_character_log(cn, FontColor::Red, &format!("Unknown command #{}\n", cmd));
     }
 
+    /// Give the player 10,000 gold when `/bling` is typed in playtest mode.
+    ///
+    /// Only reachable when `playtest_mode` is `true`.  Adds
+    /// `PLAYTEST_BLING_GOLD` gold (stored internally as silver × 100) directly
+    /// to the character's purse and triggers a stat update so the client sees
+    /// the new balance immediately.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index of the player receiving the gold.
+    fn do_playtest_bling(&mut self, cn: usize) {
+        /// Gold awarded by `/bling` in playtest mode (1 gold = 100 silver).
+        const PLAYTEST_BLING_GOLD: i32 = 10_000;
+
+        self.characters[cn].gold += PLAYTEST_BLING_GOLD * 100;
+        self.characters[cn].set_do_update_flags();
+        self.do_character_log(
+            cn,
+            FontColor::Yellow,
+            &format!("You receive {}G. Bling!\n", PLAYTEST_BLING_GOLD),
+        );
+    }
+
     /// Give the player the hard-coded playtest loadout when `/equip` is typed.
     ///
     /// Only reachable when `playtest_mode` is `true`.  Iterates
@@ -1851,5 +1880,12 @@ mod tests {
         assert_eq!(match_command("equip"), Some("equip"));
         assert_eq!(match_command("EQUIP"), Some("equip"));
         assert_eq!(match_command("eq"), Some("equip"));
+    }
+
+    #[test]
+    fn match_command_bling_recognized() {
+        assert_eq!(match_command("bling"), Some("bling"));
+        assert_eq!(match_command("BLING"), Some("bling"));
+        assert_eq!(match_command("bl"), Some("bling"));
     }
 }
