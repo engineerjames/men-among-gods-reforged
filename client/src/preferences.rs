@@ -143,6 +143,9 @@ pub struct Settings {
     /// Whether spell visual effects are rendered.
     #[serde(default = "default_true")]
     pub spell_effects_enabled: bool,
+    /// Whether weather / ambient particle effects are rendered.
+    #[serde(default = "default_true")]
+    pub weather_enabled: bool,
     /// Master volume (0.0–1.0).
     #[serde(default)]
     pub master_volume: f32,
@@ -175,6 +178,7 @@ impl Default for Settings {
             vsync_enabled: true,
             shadows_enabled: true,
             spell_effects_enabled: true,
+            weather_enabled: true,
             master_volume: 0.0,
             hide: false,
             show_names: true,
@@ -237,6 +241,7 @@ fn global_settings_only(settings: &Settings) -> Settings {
         vsync_enabled: settings.vsync_enabled,
         shadows_enabled: settings.shadows_enabled,
         spell_effects_enabled: settings.spell_effects_enabled,
+        weather_enabled: settings.weather_enabled,
         master_volume: settings.master_volume.clamp(0.0, 1.0),
         hide: settings.hide,
         show_names: settings.show_names,

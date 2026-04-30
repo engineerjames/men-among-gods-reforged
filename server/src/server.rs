@@ -424,6 +424,7 @@ impl Server {
             }
 
             player::tick::plr_tick(gs, n);
+            crate::state::weather::weather_tick(gs, n);
 
             if is_normal {
                 online += 1;

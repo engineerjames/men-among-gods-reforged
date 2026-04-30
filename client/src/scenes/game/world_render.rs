@@ -482,10 +482,13 @@ impl GameScene {
         show_names: bool,
         show_proz: bool,
         hide: bool,
+        camera_shake: (i32, i32),
     ) -> Result<(), String> {
         let map = ps.map();
         let ci = ps.character_info();
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (cam_xoff_base, cam_yoff_base) = Self::camera_offsets(ps);
+        let cam_xoff = cam_xoff_base + camera_shake.0;
+        let cam_yoff = cam_yoff_base + camera_shake.1;
         let hover_highlight = self.resolve_hover_highlight(ps);
 
         // Pass 1: Background / terrain sprites (legacy eng_display order: y descending).

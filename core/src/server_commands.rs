@@ -76,6 +76,12 @@ pub enum ServerCommandType {
     ///
     /// Total length: 26 bytes.  See `client::network::tick_stream::sv_cmd_len`.
     SetCharTalents = 75,
+    /// Per-player weather / ambient effect state.
+    ///
+    /// Wire format: opcode (1) + kind (1) + intensity (1) + duration_ticks
+    /// (u16 LE) + tint_r (1) + tint_g (1) + tint_b (1) + tint_a (1) + flags
+    /// (1) = **10 bytes total**. See [`crate::weather::WeatherKind`].
+    SetWeather = 76,
     SetMap = 128,
 }
 
@@ -185,6 +191,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharAMana => 3,
             ServerCommandType::SetCharDir => 2,
             ServerCommandType::SetCharTalents => 26,
+            ServerCommandType::SetWeather => 10,
             ServerCommandType::SetCharPts => 13,
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
@@ -298,6 +305,7 @@ impl From<u8> for ServerCommandType {
             73 => ServerCommandType::Ignore,
             74 => ServerCommandType::Pong,
             75 => ServerCommandType::SetCharTalents,
+            76 => ServerCommandType::SetWeather,
             128 => ServerCommandType::SetMap,
             _ => {
                 log::error!("Unknown server command opcode: {value}");
@@ -491,6 +499,20 @@ pub enum ServerCommandData {
         nr: u32,
         vol: i32,
         pan: i32,
+    },
+    /// Per-player weather / ambient effect state.
+    ///
+    /// `kind` is a [`crate::weather::WeatherKind`] discriminant; `intensity`
+    /// (0..=255) scales particle density and shake amplitude; `duration_ticks`
+    /// of `0` means "persistent until replaced"; `tint` is RGBA where alpha
+    /// `0` means "use the kind's default tint"; `flags` is a bitmask
+    /// (`WEATHER_FLAG_*` in [`crate::weather`]).
+    SetWeather {
+        kind: u8,
+        intensity: u8,
+        duration_ticks: u16,
+        tint: [u8; 4],
+        flags: u8,
     },
     Load {
         load: u32,
@@ -1113,6 +1135,21 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 values: bytes.get(1..26)?.try_into().ok()?,
             },
         )),
+        76 => Some((
+            ServerCommandType::SetWeather,
+            ServerCommandData::SetWeather {
+                kind: *bytes.get(1)?,
+                intensity: *bytes.get(2)?,
+                duration_ticks: read_u16(bytes, 3)?,
+                tint: [
+                    *bytes.get(5)?,
+                    *bytes.get(6)?,
+                    *bytes.get(7)?,
+                    *bytes.get(8)?,
+                ],
+                flags: *bytes.get(9)?,
+            },
+        )),
         _ => None,
     }
 }
@@ -1326,5 +1363,43 @@ mod tests {
         assert_eq!(sv_setmap3_len(6), 7);
         // SV_SETMAP3 = cl_light_26 (26 tiles): 4 header + 13 nibble bytes = 17
         assert_eq!(sv_setmap3_len(26), 17);
+    }
+
+    // -- SV_WEATHER (opcode 76) --
+
+    #[test]
+    fn parse_set_weather_roundtrip() {
+        let pkt: [u8; 10] = [76, 4, 200, 0x10, 0x00, 220, 60, 30, 90, 0b1000_0001];
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_eq!(cmd.header, ServerCommandType::SetWeather);
+        match cmd.structured_data {
+            ServerCommandData::SetWeather {
+                kind,
+                intensity,
+                duration_ticks,
+                tint,
+                flags,
+            } => {
+                assert_eq!(kind, 4);
+                assert_eq!(intensity, 200);
+                assert_eq!(duration_ticks, 0x0010);
+                assert_eq!(tint, [220, 60, 30, 90]);
+                assert_eq!(flags, 0b1000_0001);
+            }
+            _ => panic!("Expected SetWeather variant"),
+        }
+    }
+
+    #[test]
+    fn set_weather_expected_length_is_ten() {
+        let pkt = make_packet(76, &[0; 9]);
+        let mut last_n = 0i32;
+        let len = ServerCommandType::get_expected_length(&pkt, &mut last_n).unwrap();
+        assert_eq!(len, 10);
+    }
+
+    #[test]
+    fn set_weather_opcode_decodes_from_u8() {
+        assert_eq!(ServerCommandType::from(76), ServerCommandType::SetWeather);
     }
 }

@@ -72,6 +72,21 @@ pub struct ServerPlayer {
     pub unique: u64,
 
     pub passwd: [u8; 16],
+
+    /// Active weather kind sent to this player (0 = none).
+    ///
+    /// Numeric value matches [`core::weather::WeatherKind`]; not persisted
+    /// to KeyDB — transient per-session state.
+    pub weather_kind: u8,
+    /// Active weather intensity (0..=255) currently sent to this player.
+    pub weather_intensity: u8,
+    /// Tick at which the active weather expires; `0` = persistent.
+    pub weather_expire_tick: u32,
+    /// RGBA tint currently applied to the active weather (server-side cache).
+    pub weather_tint: [u8; 4],
+    /// Wire flags currently applied to the active weather, including the
+    /// admin-override bit (`core::weather::WEATHER_FLAG_OVERRIDE`).
+    pub weather_flags: u8,
 }
 
 impl ServerPlayer {
@@ -122,6 +137,11 @@ impl ServerPlayer {
             ticker_started: 0,
             unique: 0,
             passwd: [0; 16],
+            weather_kind: 0,
+            weather_intensity: 0,
+            weather_expire_tick: 0,
+            weather_tint: [0; 4],
+            weather_flags: 0,
         }
     }
 

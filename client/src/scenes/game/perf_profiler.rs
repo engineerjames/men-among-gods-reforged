@@ -34,11 +34,13 @@ pub(super) enum PerfLabel {
     DrawHelperText,
     /// egui overlay rendering (escape menu, certificate dialogs).
     RenderUi,
+    /// Weather / ambient particle and tint overlay.
+    DrawWeather,
 }
 
 impl PerfLabel {
     /// All variants in the order they should appear in the summary.
-    const ALL: [PerfLabel; 9] = [
+    const ALL: [PerfLabel; 10] = [
         Self::DrawWorld,
         Self::DrawChat,
         Self::SyncAndDrawStatus,
@@ -48,6 +50,7 @@ impl PerfLabel {
         Self::DrawCarriedItem,
         Self::DrawHelperText,
         Self::RenderUi,
+        Self::DrawWeather,
     ];
 
     fn as_str(self) -> &'static str {
@@ -61,6 +64,7 @@ impl PerfLabel {
             Self::DrawCarriedItem => "draw_carried_item",
             Self::DrawHelperText => "draw_helper_text",
             Self::RenderUi => "render_ui",
+            Self::DrawWeather => "draw_weather",
         }
     }
 }
@@ -450,6 +454,7 @@ mod tests {
             PerfLabel::DrawCarriedItem,
             PerfLabel::DrawHelperText,
             PerfLabel::RenderUi,
+            PerfLabel::DrawWeather,
         ];
         assert_eq!(PerfLabel::ALL.len(), all_variants.len());
         for v in all_variants {

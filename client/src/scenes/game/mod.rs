@@ -15,6 +15,7 @@ mod game_math;
 mod net_events;
 mod perf_profiler;
 mod profile;
+mod weather;
 mod world_input;
 mod world_render;
 
@@ -277,6 +278,8 @@ pub struct GameScene {
     pub(super) active_profile_character: Option<CharacterIdentity>,
     /// Wall-clock profiler for rendering functions (activated from escape menu).
     perf_profiler: PerfProfiler,
+    /// Active client-side weather/ambient overlay state.
+    pub(super) weather: weather::WeatherState,
     /// `true` when the player is using a game controller (mirrors
     /// `AppState::controller_active`). Stored locally so `handle_event` can
     /// read it without re-borrowing `AppState`.
@@ -422,6 +425,7 @@ impl GameScene {
             pending_skill_assignment: None,
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
+            weather: weather::WeatherState::new(),
             controller_mode: false,
             vcursor_x: TARGET_WIDTH_INT as f32 / 2.0,
             vcursor_y: TARGET_HEIGHT_INT as f32 / 2.0,
@@ -488,6 +492,7 @@ impl GameScene {
         SettingsPanelData {
             shadows_enabled: app_state.settings.shadows_enabled,
             spell_effects_enabled: app_state.settings.spell_effects_enabled,
+            weather_enabled: app_state.settings.weather_enabled,
             show_names: app_state.settings.show_names,
             show_health_pct: app_state.settings.show_proz,
             hide_walls: app_state.settings.hide,
@@ -534,6 +539,10 @@ impl GameScene {
                 }
                 WidgetAction::SetSpellEffects(v) => {
                     app_state.settings.spell_effects_enabled = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetWeather(v) => {
+                    app_state.settings.weather_enabled = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetShowNames(v) => {
@@ -1110,6 +1119,7 @@ impl Scene for GameScene {
             net.shutdown();
         }
         app_state.player_state = None;
+        self.weather.reset();
     }
 
     /// Dispatch SDL2 events to the appropriate handler.
@@ -1532,6 +1542,24 @@ impl Scene for GameScene {
         // 1. World tiles (two-pass painter order)
         let shadows_on = settings.shadows_enabled;
         let effects_on = settings.spell_effects_enabled;
+
+        // Advance weather state up-front so its shake offset is available to
+        // the world camera below. Rendering the weather overlay still happens
+        // *after* the world pass so particles/tints layer on top.
+        if settings.weather_enabled {
+            self.weather
+                .update_auto(TARGET_WIDTH_INT as i32, TARGET_HEIGHT_INT as i32);
+        } else {
+            // Pause (not reset) so re-enabling resumes the same effect; the
+            // server only re-sends when the resolved state changes.
+            self.weather.pause();
+        }
+        let camera_shake = if settings.weather_enabled {
+            self.weather.shake_offset()
+        } else {
+            (0, 0)
+        };
+
         self.perf_profiler.begin_sample(PerfLabel::DrawWorld);
         self.draw_world(
             canvas,
@@ -1542,8 +1570,16 @@ impl Scene for GameScene {
             settings.show_names,
             settings.show_proz,
             settings.hide,
+            camera_shake,
         )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
+
+        // 1b. Weather / ambient overlay (rendered above world tiles, below HUD).
+        self.perf_profiler.begin_sample(PerfLabel::DrawWeather);
+        if settings.weather_enabled {
+            self.weather.render_post_world(canvas)?;
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawWeather);
 
         // 5. Chat log + input line (via ChatBox widget)
         self.perf_profiler.begin_sample(PerfLabel::DrawChat);

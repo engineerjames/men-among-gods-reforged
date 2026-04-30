@@ -391,3 +391,26 @@ appendfsync everysec
 save 900 1
 ```
 
+
+## Weather (`SV_WEATHER`, opcode 76)
+
+Per-player ambient overlay channel. The server picks a weather kind for each
+connected player every ~1 second (driven by `state::weather::weather_tick`)
+and only re-sends when the resolved state differs from the last cached value
+on `ServerPlayer`. The kind is determined by:
+
+1. An admin override set via the `weather` admin command
+   (`God::weather_cmd`). Overrides set the `WEATHER_FLAG_OVERRIDE` flag and
+   may carry a duration in ticks; while active they suppress area defaults.
+2. Otherwise the area-default table in `core::weather_areas::AREA_WEATHER`,
+   matched by character world position.
+
+The 10-byte packet payload is `[opcode, kind, intensity, dur_lo, dur_hi,
+r, g, b, a, flags]` (see `core::server_commands::ServerCommandData::SetWeather`).
+A `tint` alpha of `0` lets the client substitute its kind-default tint.
+
+Client rendering (`client/src/scenes/game/weather.rs`) is CPU-side particles
+plus full-screen tints drawn via SDL2 primitives, layered between the world
+pass and the HUD pass. The render is gated on `Settings.weather_enabled`.
+Weather is intentionally not persisted: it is recomputed at connect time and
+on every area change.

@@ -33,6 +33,8 @@ pub mod talent_trees;
 pub mod template_store;
 pub mod traits;
 pub mod types;
+pub mod weather;
+pub mod weather_areas;
 
 #[derive(Debug)]
 struct BacktracePatternEncoder {
