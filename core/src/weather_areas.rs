@@ -21,8 +21,8 @@ pub struct AreaWeather {
     pub kind: WeatherKind,
     /// Particle/effect intensity (0..=255).
     pub intensity: u8,
-    /// Optional tint override; `[0,0,0,0]` keeps the kind's client default.
-    pub tint: [u8; 4],
+    /// Optional tint override; `None` keeps the kind's client default.
+    pub tint: Option<[u8; 4]>,
     /// Wire-protocol flags forwarded to the client (e.g. additive blending).
     pub flags: u8,
 }
@@ -36,7 +36,7 @@ pub const AREA_WEATHER: &[AreaWeather] = &[
         area_name: "Strange Forest",
         kind: WeatherKind::Fireflies,
         intensity: 64,
-        tint: [0, 0, 0, 0],
+        tint: None,
         flags: 0,
     },
     AreaWeather {
@@ -44,14 +44,14 @@ pub const AREA_WEATHER: &[AreaWeather] = &[
         kind: WeatherKind::Fire,
         intensity: 180,
         // Strong red glow.
-        tint: [200, 50, 30, 80],
+        tint: Some([200, 50, 30, 80]),
         flags: 0,
     },
     AreaWeather {
         area_name: "Ice Pentagram Quest",
         kind: WeatherKind::Snow,
         intensity: 160,
-        tint: [180, 200, 230, 50],
+        tint: Some([180, 200, 230, 50]),
         flags: 0,
     },
 ];

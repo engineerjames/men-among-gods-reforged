@@ -147,7 +147,12 @@ pub fn weather_tick(gs: &mut GameState, nr: usize) {
     let area = area_weather_for(x, y);
 
     let (target_kind, intensity, tint, flags) = match area {
-        Some(a) => (a.kind as u8, a.intensity, a.tint, a.flags),
+        Some(a) => (
+            a.kind as u8,
+            a.intensity,
+            a.tint.unwrap_or([0u8; 4]),
+            a.flags,
+        ),
         None => (WeatherKind::None as u8, 0u8, [0u8; 4], 0u8),
     };
 
