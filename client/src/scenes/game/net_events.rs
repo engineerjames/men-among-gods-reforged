@@ -117,8 +117,13 @@ impl GameScene {
                                     duration_ticks,
                                     flags
                                 );
-                                self.weather
-                                    .apply_packet(*kind, *intensity, *duration_ticks, *tint, *flags);
+                                self.weather.apply_packet(
+                                    *kind,
+                                    *intensity,
+                                    *duration_ticks,
+                                    *tint,
+                                    *flags,
+                                );
                             }
                             ServerCommandData::Exit { reason } => {
                                 log::info!("Received exit command from server: {}", reason);

@@ -67,7 +67,8 @@ const DS_Y_SEP: i32 = DS_Y_WALLS + DS_ROW_H + 4;
 const DS_Y_DISPLAY_MODE: i32 = DS_Y_SEP + 8;
 const DS_Y_PIXEL_PERFECT: i32 = DS_Y_DISPLAY_MODE + 20;
 const DS_Y_VSYNC: i32 = DS_Y_PIXEL_PERFECT + DS_ROW_H;
-const DS_PANEL_H: u32 = (DS_Y_VSYNC + DS_ROW_H + 10 + BTN_H as i32 + 8) as u32;
+const DS_Y_WEATHER: i32 = DS_Y_VSYNC + DS_ROW_H;
+const DS_PANEL_H: u32 = (DS_Y_WEATHER + DS_ROW_H + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Diagnostics sub-panel
@@ -236,11 +237,12 @@ struct DisplaySettingsSubPanel {
     drp_display_mode: Dropdown,
     chk_pixel_perfect: Checkbox,
     chk_vsync: Checkbox,
+    chk_weather: Checkbox,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
     /// Controller focus index. 0=Shadows, 1=SpellEffects, 2=ShowNames,
     /// 3=ShowHealth, 4=HelperText, 5=HideWalls, 6=DisplayMode,
-    /// 7=PixelPerfect, 8=VSync, 9=Close.
+    /// 7=PixelPerfect, 8=VSync, 9=Weather, 10=Close.
     controller_focused: Option<usize>,
 }
 
@@ -310,6 +312,11 @@ impl DisplaySettingsSubPanel {
                 "VSync",
                 0,
             ),
+            chk_weather: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_WEATHER, w, DS_ROW_H as u32),
+                "Enable Particle Effects",
+                0,
+            ),
             btn_close: RectButton::new(Bounds::new(x, close_y, w, BTN_H), btn_bg())
                 .with_label("Close", 0)
                 .with_border(btn_border()),
@@ -319,7 +326,7 @@ impl DisplaySettingsSubPanel {
     }
 
     /// Number of focusable elements in the display sub-panel.
-    const FOCUSABLE_COUNT: usize = 10;
+    const FOCUSABLE_COUNT: usize = 11;
 
     /// Applies controller focus highlighting.
     fn apply_controller_focus(&mut self) {
@@ -333,7 +340,8 @@ impl DisplaySettingsSubPanel {
         self.drp_display_mode.set_hovered(f == Some(6));
         self.chk_pixel_perfect.set_hovered(f == Some(7));
         self.chk_vsync.set_hovered(f == Some(8));
-        self.btn_close.set_hovered(f == Some(9));
+        self.chk_weather.set_hovered(f == Some(9));
+        self.btn_close.set_hovered(f == Some(10));
     }
 
     /// Loads widget values from the data snapshot.
@@ -352,6 +360,7 @@ impl DisplaySettingsSubPanel {
         self.chk_pixel_perfect
             .set_checked(data.pixel_perfect_scaling);
         self.chk_vsync.set_checked(data.vsync_enabled);
+        self.chk_weather.set_checked(data.weather_enabled);
 
         let mode_idx = DisplayMode::ALL
             .iter()
@@ -404,6 +413,10 @@ impl DisplaySettingsSubPanel {
             self.pending_actions
                 .push(WidgetAction::SetVSync(self.chk_vsync.is_checked()));
         }
+        if self.chk_weather.was_toggled() {
+            self.pending_actions
+                .push(WidgetAction::SetWeather(self.chk_weather.is_checked()));
+        }
     }
 
     /// Shifts all widgets by a pixel delta.
@@ -421,6 +434,7 @@ impl DisplaySettingsSubPanel {
         shift(&mut self.drp_display_mode, dx, dy);
         shift(&mut self.chk_pixel_perfect, dx, dy);
         shift(&mut self.chk_vsync, dx, dy);
+        shift(&mut self.chk_weather, dx, dy);
         shift(&mut self.btn_close, dx, dy);
     }
 
@@ -517,6 +531,11 @@ impl DisplaySettingsSubPanel {
                         self.pending_actions.push(WidgetAction::SetVSync(v));
                     }
                     Some(9) => {
+                        let v = !self.chk_weather.is_checked();
+                        self.chk_weather.set_checked(v);
+                        self.pending_actions.push(WidgetAction::SetWeather(v));
+                    }
+                    Some(10) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
@@ -566,6 +585,7 @@ impl DisplaySettingsSubPanel {
             },
             self.chk_pixel_perfect.handle_event(event),
             self.chk_vsync.handle_event(event),
+            self.chk_weather.handle_event(event),
         ];
 
         self.collect_child_actions();
@@ -605,6 +625,7 @@ impl DisplaySettingsSubPanel {
         self.chk_hide_walls.render(ctx)?;
         self.chk_pixel_perfect.render(ctx)?;
         self.chk_vsync.render(ctx)?;
+        self.chk_weather.render(ctx)?;
         self.btn_close.render(ctx)?;
         // Dropdown last so expanded list overlays.
         self.drp_display_mode.render(ctx)?;
@@ -1563,6 +1584,8 @@ pub struct SettingsPanelData {
     pub shadows_enabled: bool,
     /// Whether spell visual effects are rendered.
     pub spell_effects_enabled: bool,
+    /// Whether weather / ambient particle effects are rendered.
+    pub weather_enabled: bool,
     /// Whether overhead player names are shown.
     pub show_names: bool,
     /// Whether overhead health percentages are shown.
@@ -2262,6 +2285,7 @@ mod tests {
         SettingsPanelData {
             shadows_enabled: true,
             spell_effects_enabled: false,
+            weather_enabled: true,
             show_names: true,
             show_health_pct: true,
             hide_walls: false,

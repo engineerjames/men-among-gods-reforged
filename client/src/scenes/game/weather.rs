@@ -88,6 +88,10 @@ pub struct WeatherState {
     rng_state: u32,
     /// Last update timestamp; used to derive `dt` internally.
     last_update: Option<Instant>,
+    /// Set after a kind change; the next `update` pre-distributes particles
+    /// across the screen so steady-state effects (snow, fog, leaves) don't
+    /// appear as a single in-rushing wave.
+    needs_initial_fill: bool,
 }
 
 impl Default for WeatherState {
@@ -114,12 +118,12 @@ impl WeatherState {
             shake_offset: (0, 0),
             rng_state: 0x9E37_79B9,
             last_update: None,
+            needs_initial_fill: false,
         }
     }
 
     /// Returns the current shake offset; renderers may add this to their
     /// camera transform. `(0, 0)` whenever earthquake is inactive.
-    #[allow(dead_code)] // wired into world camera in a follow-up
     pub fn shake_offset(&self) -> (i32, i32) {
         self.shake_offset
     }
@@ -133,6 +137,7 @@ impl WeatherState {
         self.lightning_flash = 0.0;
         self.shake_offset = (0, 0);
         self.last_update = None;
+        self.needs_initial_fill = false;
         for p in self.particles.iter_mut() {
             *p = Particle::dead();
         }
@@ -167,6 +172,7 @@ impl WeatherState {
             self.started_at = Instant::now();
             self.lightning_flash = 0.0;
             self.next_lightning_at = 4.0;
+            self.needs_initial_fill = true;
         }
         self.kind = new_kind;
         self.intensity = intensity;
@@ -176,7 +182,10 @@ impl WeatherState {
 
     /// Pseudo-random `0.0..1.0` based on the internal state.
     fn rand_unit(&mut self) -> f32 {
-        self.rng_state = self.rng_state.wrapping_mul(1664525).wrapping_add(1013904223);
+        self.rng_state = self
+            .rng_state
+            .wrapping_mul(1664525)
+            .wrapping_add(1013904223);
         (self.rng_state >> 8) as f32 / (1u32 << 24) as f32
     }
 
@@ -207,8 +216,34 @@ impl WeatherState {
         (scaled as usize).min(MAX_PARTICLES)
     }
 
+    /// Mean particle lifetime (seconds) for the active kind. Used to derive
+    /// a steady-state spawn rate of `target / mean_lifetime` per second.
+    fn mean_lifetime(&self) -> f32 {
+        match self.kind {
+            WeatherKind::Rain => 1.0,
+            WeatherKind::Snow => 11.0,
+            WeatherKind::Fireflies => 5.0,
+            WeatherKind::Fire => 1.05,
+            WeatherKind::Embers => 3.0,
+            WeatherKind::Fog => 9.0,
+            WeatherKind::Leaves => 6.0,
+            WeatherKind::HeatHaze => 2.25,
+            _ => 0.0,
+        }
+    }
+
     /// Spawn one particle for the currently active kind in a dead slot.
-    fn spawn_particle(&mut self, slot: usize, view_w: i32, view_h: i32) {
+    ///
+    /// # Arguments
+    ///
+    /// * `slot` - Pool index to overwrite.
+    /// * `view_w` - Logical viewport width (px).
+    /// * `view_h` - Logical viewport height (px).
+    /// * `pre_distribute` - When `true`, randomize the spawn position
+    ///   along the particle's normal travel path so an initial fill looks
+    ///   like an in-progress steady stream rather than a wavefront. When
+    ///   `false`, spawn at the kind's normal entry edge.
+    fn spawn_particle(&mut self, slot: usize, view_w: i32, view_h: i32, pre_distribute: bool) {
         let kind = self.kind;
         let w = view_w as f32;
         let h = view_h as f32;
@@ -218,7 +253,11 @@ impl WeatherState {
             WeatherKind::Rain => Particle {
                 kind: kind as u8,
                 x,
-                y: -10.0,
+                y: if pre_distribute {
+                    self.rand_range(-10.0, h)
+                } else {
+                    -10.0
+                },
                 vx: -120.0,
                 vy: 700.0,
                 phase,
@@ -228,7 +267,11 @@ impl WeatherState {
             WeatherKind::Snow => Particle {
                 kind: kind as u8,
                 x,
-                y: -10.0,
+                y: if pre_distribute {
+                    self.rand_range(-10.0, h)
+                } else {
+                    -10.0
+                },
                 vx: 0.0,
                 vy: self.rand_range(35.0, 70.0),
                 phase,
@@ -248,7 +291,11 @@ impl WeatherState {
             WeatherKind::Fire => Particle {
                 kind: kind as u8,
                 x,
-                y: h + 5.0,
+                y: if pre_distribute {
+                    self.rand_range(0.0, h + 5.0)
+                } else {
+                    h + 5.0
+                },
                 vx: self.rand_range(-20.0, 20.0),
                 vy: self.rand_range(-200.0, -120.0),
                 phase,
@@ -258,7 +305,11 @@ impl WeatherState {
             WeatherKind::Embers => Particle {
                 kind: kind as u8,
                 x,
-                y: h + 5.0,
+                y: if pre_distribute {
+                    self.rand_range(0.0, h + 5.0)
+                } else {
+                    h + 5.0
+                },
                 vx: self.rand_range(-10.0, 10.0),
                 vy: self.rand_range(-80.0, -40.0),
                 phase,
@@ -278,7 +329,11 @@ impl WeatherState {
             WeatherKind::Leaves => Particle {
                 kind: kind as u8,
                 x,
-                y: -10.0,
+                y: if pre_distribute {
+                    self.rand_range(-10.0, h)
+                } else {
+                    -10.0
+                },
                 vx: self.rand_range(-25.0, 25.0),
                 vy: self.rand_range(40.0, 70.0),
                 phase,
@@ -371,19 +426,49 @@ impl WeatherState {
             }
         }
 
-        // Spawn replacements up to the target count, capped per-frame.
+        // Spawn replacements up to the target count.
+        //
+        // Two-phase spawning:
+        //   1. On the first frame after a kind change, pre-distribute the
+        //      whole pool across the screen so steady-state effects (snow,
+        //      fog, leaves) appear as an existing column instead of a wave
+        //      of particles rushing in from the spawn edge.
+        //   2. After that, spawn at the entry edge at the steady-state rate
+        //      (`target / mean_lifetime`), so the on-screen population stays
+        //      level instead of cycling through fill/drain waves.
         let target = self.target_particle_count();
+        if self.needs_initial_fill {
+            self.needs_initial_fill = false;
+            let mut filled = 0usize;
+            for slot in 0..self.particles.len() {
+                if filled >= target {
+                    break;
+                }
+                if self.particles[slot].life <= 0.0 {
+                    self.spawn_particle(slot, view_w, view_h, true);
+                    filled += 1;
+                }
+            }
+        }
         let alive = self.particles.iter().filter(|p| p.life > 0.0).count();
+        let mean_life = self.mean_lifetime();
+        // Steady-state spawn rate keeps `alive` close to `target`. Allow a
+        // small over-spawn factor (1.2) to cover variance and refill quickly
+        // after intensity changes without producing visible waves.
+        let spawn_rate_per_sec = if mean_life > 0.0 {
+            (target as f32 / mean_life) * 1.2
+        } else {
+            0.0
+        };
         let needed = target.saturating_sub(alive);
-        // Spawn a fraction this frame to avoid bursts on first activation.
-        let spawn_budget = ((target as f32 * dt * 4.0).ceil() as usize).max(1).min(needed);
+        let spawn_budget = ((spawn_rate_per_sec * dt).ceil() as usize).min(needed);
         let mut spawned = 0usize;
         for slot in 0..self.particles.len() {
             if spawned >= spawn_budget {
                 break;
             }
             if self.particles[slot].life <= 0.0 {
-                self.spawn_particle(slot, view_w, view_h);
+                self.spawn_particle(slot, view_w, view_h, false);
                 spawned += 1;
             }
         }

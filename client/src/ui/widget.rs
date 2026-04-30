@@ -324,6 +324,8 @@ pub enum WidgetAction {
     SetShadows(bool),
     /// Toggle spell/visual effects.
     SetSpellEffects(bool),
+    /// Toggle weather / ambient particle effects.
+    SetWeather(bool),
     /// Toggle overhead player name display.
     SetShowNames(bool),
     /// Toggle overhead health percentage display.

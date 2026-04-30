@@ -492,6 +492,7 @@ impl GameScene {
         SettingsPanelData {
             shadows_enabled: app_state.settings.shadows_enabled,
             spell_effects_enabled: app_state.settings.spell_effects_enabled,
+            weather_enabled: app_state.settings.weather_enabled,
             show_names: app_state.settings.show_names,
             show_health_pct: app_state.settings.show_proz,
             hide_walls: app_state.settings.hide,
@@ -538,6 +539,10 @@ impl GameScene {
                 }
                 WidgetAction::SetSpellEffects(v) => {
                     app_state.settings.spell_effects_enabled = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetWeather(v) => {
+                    app_state.settings.weather_enabled = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetShowNames(v) => {
@@ -1537,6 +1542,22 @@ impl Scene for GameScene {
         // 1. World tiles (two-pass painter order)
         let shadows_on = settings.shadows_enabled;
         let effects_on = settings.spell_effects_enabled;
+
+        // Advance weather state up-front so its shake offset is available to
+        // the world camera below. Rendering the weather overlay still happens
+        // *after* the world pass so particles/tints layer on top.
+        if settings.weather_enabled {
+            self.weather
+                .update_auto(TARGET_WIDTH_INT as i32, TARGET_HEIGHT_INT as i32);
+        } else {
+            self.weather.reset();
+        }
+        let camera_shake = if settings.weather_enabled {
+            self.weather.shake_offset()
+        } else {
+            (0, 0)
+        };
+
         self.perf_profiler.begin_sample(PerfLabel::DrawWorld);
         self.draw_world(
             canvas,
@@ -1547,17 +1568,14 @@ impl Scene for GameScene {
             settings.show_names,
             settings.show_proz,
             settings.hide,
+            camera_shake,
         )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 
         // 1b. Weather / ambient overlay (rendered above world tiles, below HUD).
         self.perf_profiler.begin_sample(PerfLabel::DrawWeather);
         if settings.weather_enabled {
-            self.weather
-                .update_auto(TARGET_WIDTH_INT as i32, TARGET_HEIGHT_INT as i32);
             self.weather.render_post_world(canvas)?;
-        } else {
-            self.weather.reset();
         }
         self.perf_profiler.end_sample(PerfLabel::DrawWeather);
 
