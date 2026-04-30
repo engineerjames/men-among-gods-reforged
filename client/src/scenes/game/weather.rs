@@ -143,6 +143,27 @@ impl WeatherState {
         }
     }
 
+    /// Pause rendering while preserving the active weather metadata.
+    ///
+    /// Used when the user toggles the weather setting off: the particle
+    /// pool is drained and timing state is dropped so the next resume
+    /// starts cleanly, but `kind` / `intensity` / `tint` / `flags` are
+    /// retained so re-enabling resumes the same effect (the server only
+    /// re-sends when the resolved state changes, so without preserving
+    /// these the effect would not return until the next area change or
+    /// admin command).
+    pub fn pause(&mut self) {
+        self.lightning_flash = 0.0;
+        self.shake_offset = (0, 0);
+        self.last_update = None;
+        // Force the next update to pre-distribute a fresh pool so the
+        // resumed effect appears as a steady stream rather than a wave.
+        self.needs_initial_fill = self.kind != WeatherKind::None;
+        for p in self.particles.iter_mut() {
+            *p = Particle::dead();
+        }
+    }
+
     /// Apply a `SV_WEATHER` packet payload.
     ///
     /// Resets the particle pool whenever the kind changes; intensity-only
@@ -745,5 +766,33 @@ mod tests {
         assert_eq!(w.kind, WeatherKind::None);
         assert!(w.particles.iter().all(|p| p.life <= 0.0));
         assert_eq!(w.shake_offset(), (0, 0));
+    }
+
+    #[test]
+    fn pause_preserves_metadata_and_resume_respawns_particles() {
+        let mut w = WeatherState::new();
+        w.apply_packet(
+            WeatherKind::Snow as u8,
+            200,
+            0,
+            [10, 20, 30, 40],
+            0b0000_0001,
+        );
+        for _ in 0..10 {
+            w.update(0.016, 800, 600);
+        }
+        w.pause();
+        // Metadata retained.
+        assert_eq!(w.kind, WeatherKind::Snow);
+        assert_eq!(w.intensity, 200);
+        assert_eq!(w.tint, [10, 20, 30, 40]);
+        assert_eq!(w.flags, 0b0000_0001);
+        // Particles drained, refill armed.
+        assert!(w.particles.iter().all(|p| p.life <= 0.0));
+        assert!(w.needs_initial_fill);
+        // Resume → particles repopulate immediately.
+        w.update(0.016, 800, 600);
+        let alive = w.particles.iter().filter(|p| p.life > 0.0).count();
+        assert!(alive > 0, "resume should refill particles");
     }
 }

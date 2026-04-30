@@ -1550,7 +1550,9 @@ impl Scene for GameScene {
             self.weather
                 .update_auto(TARGET_WIDTH_INT as i32, TARGET_HEIGHT_INT as i32);
         } else {
-            self.weather.reset();
+            // Pause (not reset) so re-enabling resumes the same effect; the
+            // server only re-sends when the resolved state changes.
+            self.weather.pause();
         }
         let camera_shake = if settings.weather_enabled {
             self.weather.shake_offset()
