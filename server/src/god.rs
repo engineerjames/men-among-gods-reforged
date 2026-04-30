@@ -4544,4 +4544,142 @@ impl God {
             );
         }
     }
+
+    /// Admin: trigger a weather / ambient effect on one or more players.
+    ///
+    /// Syntax: `weather <kind> [intensity=128] [duration_secs=60] [target=self]`
+    ///
+    /// `kind` accepts names from [`core::weather::parse_weather_name`] (e.g.
+    /// `rain`, `snow`, `fire`, `fireflies`, `bloodmoon`, `none`). `target`
+    /// is `self`, `all`, or a character name. Sets the override flag so the
+    /// area-tick driver does not immediately replace the override.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state.
+    /// * `cn` - Calling character (used for feedback messages).
+    /// * `kind_arg` - Raw kind argument from the command line.
+    /// * `intensity_arg` - Raw intensity argument (defaults to `128`).
+    /// * `duration_arg` - Raw duration in seconds (defaults to `60`; `0` =
+    ///   persistent until cleared).
+    /// * `target_arg` - Raw target argument (defaults to `self`).
+    pub fn weather_cmd(
+        gs: &mut GameState,
+        cn: usize,
+        kind_arg: &str,
+        intensity_arg: &str,
+        duration_arg: &str,
+        target_arg: &str,
+    ) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        if kind_arg.is_empty() {
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Usage: weather <kind> [intensity=128] [duration_secs=60] [target=self]\n",
+            );
+            return;
+        }
+
+        let kind = match core::weather::parse_weather_name(kind_arg) {
+            Some(k) => k,
+            None => {
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("Unknown weather kind '{}'.\n", kind_arg),
+                );
+                return;
+            }
+        };
+
+        let intensity: u8 = if intensity_arg.is_empty() {
+            128
+        } else {
+            intensity_arg.parse::<i32>().unwrap_or(128).clamp(0, 255) as u8
+        };
+
+        let duration_secs: i64 = if duration_arg.is_empty() {
+            60
+        } else {
+            duration_arg.parse::<i64>().unwrap_or(60).max(0)
+        };
+        // Cap to u16 ticks at 36 TPS (~30 minutes).
+        let duration_ticks: u16 = (duration_secs.saturating_mul(36)).min(u16::MAX as i64) as u16;
+
+        let target = if target_arg.is_empty() {
+            "self"
+        } else {
+            target_arg
+        };
+        let flags = core::weather::WEATHER_FLAG_OVERRIDE;
+
+        let mut targets: Vec<usize> = Vec::new();
+        match target {
+            "self" => {
+                let pid = gs.characters[cn].player as usize;
+                if pid != 0 {
+                    targets.push(pid);
+                }
+            }
+            "all" => {
+                for i in 1..gs.players.len() {
+                    if gs.players[i].sock.is_some()
+                        && gs.players[i].state == core::constants::ST_NORMAL
+                    {
+                        targets.push(i);
+                    }
+                }
+            }
+            other => {
+                if let Some((co, _name)) = Self::find_character_by_name_or_id(gs, other) {
+                    let pid = gs.characters[co].player as usize;
+                    if pid != 0 {
+                        targets.push(pid);
+                    } else {
+                        gs.do_character_log(
+                            cn,
+                            core::types::FontColor::Red,
+                            &format!("Target '{}' has no player connection.\n", other),
+                        );
+                        return;
+                    }
+                } else {
+                    gs.do_character_log(
+                        cn,
+                        core::types::FontColor::Red,
+                        &format!("No such target '{}'.\n", other),
+                    );
+                    return;
+                }
+            }
+        }
+
+        for pid in &targets {
+            crate::state::weather::send_weather(
+                gs,
+                *pid,
+                kind as u8,
+                intensity,
+                duration_ticks,
+                [0; 4],
+                flags,
+            );
+        }
+
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Green,
+            &format!(
+                "Weather '{}' (intensity={}, {} ticks) sent to {} player(s).\n",
+                kind_arg,
+                intensity,
+                duration_ticks,
+                targets.len()
+            ),
+        );
+    }
 }

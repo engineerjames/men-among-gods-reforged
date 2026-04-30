@@ -103,6 +103,23 @@ impl GameScene {
                                     app_state.settings.master_volume,
                                 );
                             }
+                            ServerCommandData::SetWeather {
+                                kind,
+                                intensity,
+                                duration_ticks,
+                                tint,
+                                flags,
+                            } => {
+                                log::info!(
+                                    "SetWeather: kind={} intensity={} dur={} flags={:08b}",
+                                    kind,
+                                    intensity,
+                                    duration_ticks,
+                                    flags
+                                );
+                                self.weather
+                                    .apply_packet(*kind, *intensity, *duration_ticks, *tint, *flags);
+                            }
                             ServerCommandData::Exit { reason } => {
                                 log::info!("Received exit command from server: {}", reason);
                                 if let Some(ps) = app_state.player_state.as_mut() {

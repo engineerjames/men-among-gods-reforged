@@ -15,6 +15,7 @@ mod game_math;
 mod net_events;
 mod perf_profiler;
 mod profile;
+mod weather;
 mod world_input;
 mod world_render;
 
@@ -277,6 +278,8 @@ pub struct GameScene {
     pub(super) active_profile_character: Option<CharacterIdentity>,
     /// Wall-clock profiler for rendering functions (activated from escape menu).
     perf_profiler: PerfProfiler,
+    /// Active client-side weather/ambient overlay state.
+    pub(super) weather: weather::WeatherState,
     /// `true` when the player is using a game controller (mirrors
     /// `AppState::controller_active`). Stored locally so `handle_event` can
     /// read it without re-borrowing `AppState`.
@@ -422,6 +425,7 @@ impl GameScene {
             pending_skill_assignment: None,
             active_profile_character: None,
             perf_profiler: PerfProfiler::new(),
+            weather: weather::WeatherState::new(),
             controller_mode: false,
             vcursor_x: TARGET_WIDTH_INT as f32 / 2.0,
             vcursor_y: TARGET_HEIGHT_INT as f32 / 2.0,
@@ -1110,6 +1114,7 @@ impl Scene for GameScene {
             net.shutdown();
         }
         app_state.player_state = None;
+        self.weather.reset();
     }
 
     /// Dispatch SDL2 events to the appropriate handler.
@@ -1544,6 +1549,17 @@ impl Scene for GameScene {
             settings.hide,
         )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
+
+        // 1b. Weather / ambient overlay (rendered above world tiles, below HUD).
+        self.perf_profiler.begin_sample(PerfLabel::DrawWeather);
+        if settings.weather_enabled {
+            self.weather
+                .update_auto(TARGET_WIDTH_INT as i32, TARGET_HEIGHT_INT as i32);
+            self.weather.render_post_world(canvas)?;
+        } else {
+            self.weather.reset();
+        }
+        self.perf_profiler.end_sample(PerfLabel::DrawWeather);
 
         // 5. Chat log + input line (via ChatBox widget)
         self.perf_profiler.begin_sample(PerfLabel::DrawChat);

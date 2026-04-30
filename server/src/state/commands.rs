@@ -223,6 +223,7 @@ const ALL_COMMANDS: &[&str] = &[
     "unique",
     "usurp",
     "wave",
+    "weather",
     "who",
     "withdraw",
     "write",
@@ -1627,6 +1628,11 @@ impl GameState {
             Some("wave") if !f_sh => {
                 log::debug!("Processing wave command for {}", cn);
                 self.characters[cn].misc_action = core::constants::DR_WAVE as u16;
+                return;
+            }
+            Some("weather") if f_giu => {
+                log::debug!("Processing weather command for {}", cn);
+                God::weather_cmd(self, cn, arg_get(1), arg_get(2), arg_get(3), arg_get(4));
                 return;
             }
             Some("withdraw") if !f_m => {
