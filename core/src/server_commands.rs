@@ -6,7 +6,6 @@ use crate::string_operations::c_string_to_str;
 pub enum ServerCommandType {
     Empty = 0,
     Challenge = 1,
-    NewPlayer = 2,
     SetCharName1 = 3,
     SetCharName2 = 4,
     SetCharName3 = 5,
@@ -241,7 +240,6 @@ impl From<u8> for ServerCommandType {
         match value {
             0 => ServerCommandType::Empty,
             1 => ServerCommandType::Challenge,
-            2 => ServerCommandType::NewPlayer,
             3 => ServerCommandType::SetCharName1,
             4 => ServerCommandType::SetCharName2,
             5 => ServerCommandType::SetCharName3,
@@ -348,12 +346,6 @@ pub enum ServerCommandData {
     },
     Challenge {
         server_challenge: u32,
-    },
-    NewPlayer {
-        _player_id: u32,
-        _pass1: u32,
-        _pass2: u32,
-        server_version: u32,
     },
     SetCharName1 {
         chunk: String,
@@ -684,21 +676,6 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             ServerCommandType::Challenge,
             ServerCommandData::Challenge {
                 server_challenge: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
-            },
-        )),
-        2 => Some((
-            ServerCommandType::NewPlayer,
-            ServerCommandData::NewPlayer {
-                _pass1: 0,
-                _pass2: 0,
-                _player_id: 0,
-                // TODO: Evaluate if we need this...
-                // player_id: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
-                // pass1: u32::from_le_bytes(bytes.get(5..9)?.try_into().ok()?),
-                // pass2: u32::from_le_bytes(bytes.get(9..13)?.try_into().ok()?),
-                server_version: (u32::from(*bytes.get(13)?)
-                    | (u32::from(*bytes.get(14)?) << 8)
-                    | (u32::from(*bytes.get(15)?) << 16)),
             },
         )),
         3 => Some((

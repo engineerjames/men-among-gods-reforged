@@ -25,13 +25,6 @@ pub enum NetworkEvent {
     /// One complete framed server tick packet was processed.
     Tick,
     Error(String),
-    #[allow(dead_code)]
-    NewPlayerCredentials {
-        // TODO: Can we remove this?
-        _user_id: u32,
-        _pass1: u32,
-        _pass2: u32,
-    },
     LoggedIn,
 }
 

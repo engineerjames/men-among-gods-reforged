@@ -77,11 +77,6 @@ impl GameScene {
                     }
                     log::info!("Logged in to game server");
                 }
-                NetworkEvent::NewPlayerCredentials {
-                    _user_id,
-                    _pass1,
-                    _pass2,
-                } => {}
                 NetworkEvent::Bytes { bytes, received_at } => {
                     if bytes.is_empty() {
                         continue;

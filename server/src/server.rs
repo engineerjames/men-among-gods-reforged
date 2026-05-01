@@ -1687,13 +1687,10 @@ impl Server {
         gs.players[n].tptr = 0;
         gs.players[n].challenge = 0;
         gs.players[n].usnr = 0;
-        gs.players[n].pass1 = 0;
-        gs.players[n].pass2 = 0;
 
         gs.players[n].cmap.fill(CMap::default());
         gs.players[n].smap.fill(CMap::default());
         gs.players[n].xmap.fill(Map::default());
-        gs.players[n].passwd.fill(0);
 
         for m in 0..(TILEX * TILEY) {
             gs.players[n].cmap[m].ba_sprite = core::constants::SPR_EMPTY as i16;

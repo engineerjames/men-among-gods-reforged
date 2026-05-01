@@ -15,7 +15,7 @@ use crate::{
             plr_turn_left, plr_turn_leftdown, plr_turn_leftup, plr_turn_right, plr_turn_rightdown,
             plr_turn_rightup, plr_turn_up,
         },
-        connection::{plr_login, plr_logout, plr_newlogin},
+        connection::{plr_login, plr_logout},
         map::{plr_change_light, plr_change_map, plr_change_position},
     },
 };
@@ -495,23 +495,8 @@ pub fn plr_state(gs: &mut GameState, nr: usize) {
     }
 
     match state {
-        state if state == core::constants::ST_NEWLOGIN => {
-            plr_newlogin(gs, nr);
-        }
         state if state == core::constants::ST_LOGIN => {
             plr_login(gs, nr);
-        }
-        state if state == core::constants::ST_NEWCAP => {
-            // Timeout after 10 seconds, go back to NEWLOGIN
-            if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 10 {
-                gs.players[nr].state = core::constants::ST_NEWLOGIN;
-            }
-        }
-        state if state == core::constants::ST_CAP => {
-            // Timeout after 10 seconds, go back to LOGIN
-            if ticker.wrapping_sub(lasttick) > core::constants::TICKS * 10 {
-                gs.players[nr].state = core::constants::ST_LOGIN;
-            }
         }
         state if state == core::constants::ST_NEW_CHALLENGE => {
             // Do nothing - waiting for challenge response
@@ -1228,8 +1213,8 @@ mod tests {
     };
     use core::{
         constants::{
-            CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, ST_CAP, ST_CONNECT, ST_EXIT,
-            ST_LOGIN, ST_NEWCAP, ST_NEWLOGIN, ST_NORMAL, USE_ACTIVE, USE_NONACTIVE,
+            CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, ST_CONNECT, ST_EXIT, ST_NORMAL,
+            USE_ACTIVE,
         },
         string_operations::write_ascii_into_fixed,
         types::Map,
@@ -1268,16 +1253,6 @@ mod tests {
         write_ascii_into_fixed(&mut gs.characters[cn].name, name);
         write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
         gs.map[map_index(10, 10)].ch = cn as u32;
-    }
-
-    fn seed_character_template(gs: &mut GameState, template_id: usize) {
-        gs.character_templates[template_id] = core::types::Character::default();
-        gs.character_templates[template_id].used = USE_ACTIVE;
-        gs.character_templates[template_id].mode = 1;
-        gs.character_templates[template_id].x = 10;
-        gs.character_templates[template_id].y = 10;
-        gs.character_templates[template_id].tox = 10;
-        gs.character_templates[template_id].toy = 10;
     }
 
     fn active_tick_for_speed(speed: usize) -> usize {
@@ -1416,20 +1391,6 @@ mod tests {
 
         with_test_gs(|gs| {
             let (_, nr) = add_test_player(gs);
-            gs.players[nr].state = ST_NEWCAP;
-            gs.players[nr].lasttick = 0;
-            gs.globals.ticker = TICKS * 11;
-            plr_state(gs, nr);
-            assert_eq!(gs.players[nr].state, ST_NEWLOGIN);
-
-            gs.players[nr].state = ST_CAP;
-            gs.players[nr].lasttick = 0;
-            plr_state(gs, nr);
-            assert_eq!(gs.players[nr].state, ST_LOGIN);
-        });
-
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
             gs.players[nr].state = ST_CONNECT;
             gs.players[nr].lasttick = 0;
@@ -1437,41 +1398,6 @@ mod tests {
 
             plr_state(gs, nr);
             assert_eq!(gs.players[nr].state, ST_EXIT);
-        });
-    }
-
-    #[test]
-    fn plr_state_dispatches_newlogin_and_login_handlers() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            seed_character_template(gs, 2);
-            gs.players[nr].state = ST_NEWLOGIN;
-            gs.players[nr].version = core::constants::VERSION as i32;
-            gs.players[nr].race = 2;
-
-            plr_state(gs, nr);
-
-            assert_eq!(gs.players[nr].state, ST_NORMAL);
-            assert!(gs.players[nr].usnr > 0);
-        });
-
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            setup_existing_character(gs, 2, 0, USE_NONACTIVE, "LoginTarget");
-            gs.characters[2].pass1 = 111;
-            gs.characters[2].pass2 = 222;
-            gs.players[nr].state = ST_LOGIN;
-            gs.players[nr].version = core::constants::VERSION as i32;
-            gs.players[nr].usnr = 2;
-            gs.players[nr].pass1 = 111;
-            gs.players[nr].pass2 = 222;
-
-            plr_state(gs, nr);
-
-            assert_eq!(gs.players[nr].state, ST_NORMAL);
-            assert_eq!(gs.characters[2].player, nr as i32);
         });
     }
 

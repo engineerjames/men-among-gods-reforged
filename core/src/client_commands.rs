@@ -4,10 +4,6 @@
 #[repr(u8)]
 pub enum ClientCommandType {
     _Empty = 0,
-    #[allow(dead_code)]
-    NewLogin = 1,
-    #[allow(dead_code)]
-    Login = 2,
     Challenge = 3,
     #[allow(dead_code)]
     PerfReport = 4,
@@ -40,7 +36,6 @@ pub enum ClientCommandType {
     CmdInput8 = 30,
     CmdExit = 31,
     CmdUnique = 32,
-    Passwd = 33,
     Ping = 34,
     ApiLogin = 35,
     /// Auto-loot a grave at the given tile coordinates.
@@ -67,8 +62,6 @@ impl From<u8> for ClientCommandType {
     fn from(value: u8) -> Self {
         match value {
             0 => ClientCommandType::_Empty,
-            1 => ClientCommandType::NewLogin,
-            2 => ClientCommandType::Login,
             3 => ClientCommandType::Challenge,
             4 => ClientCommandType::PerfReport,
             5 => ClientCommandType::CmdMove,
@@ -99,7 +92,6 @@ impl From<u8> for ClientCommandType {
             30 => ClientCommandType::CmdInput8,
             31 => ClientCommandType::CmdExit,
             32 => ClientCommandType::CmdUnique,
-            33 => ClientCommandType::Passwd,
             34 => ClientCommandType::Ping,
             35 => ClientCommandType::ApiLogin,
             36 => ClientCommandType::CmdAutoloot,
