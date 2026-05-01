@@ -62,17 +62,21 @@ impl Write for GameStream {
 
 /// Loads a TLS `ServerConfig` from PEM cert-chain and private-key files.
 ///
-/// Returns `None` if the env vars `SERVER_TLS_CERT` / `SERVER_TLS_KEY` are
-/// not set.  Returns an error if the files exist but cannot be parsed.
-pub fn load_tls_config() -> Result<Option<Arc<rustls::ServerConfig>>, String> {
-    let cert_path = match std::env::var("SERVER_TLS_CERT") {
-        Ok(p) if !p.trim().is_empty() => p,
-        _ => return Ok(None),
-    };
-    let key_path = match std::env::var("SERVER_TLS_KEY") {
-        Ok(p) if !p.trim().is_empty() => p,
-        _ => return Ok(None),
-    };
+/// Both `SERVER_TLS_CERT` and `SERVER_TLS_KEY` environment variables are
+/// required; the server refuses to start without them.
+pub fn load_tls_config() -> Result<Arc<rustls::ServerConfig>, String> {
+    let cert_path = std::env::var("SERVER_TLS_CERT")
+        .ok()
+        .filter(|p| !p.trim().is_empty())
+        .ok_or_else(|| {
+            "SERVER_TLS_CERT environment variable is required (TLS is mandatory)".to_string()
+        })?;
+    let key_path = std::env::var("SERVER_TLS_KEY")
+        .ok()
+        .filter(|p| !p.trim().is_empty())
+        .ok_or_else(|| {
+            "SERVER_TLS_KEY environment variable is required (TLS is mandatory)".to_string()
+        })?;
 
     let cert_file = std::fs::File::open(&cert_path)
         .map_err(|e| format!("Cannot open TLS cert file '{cert_path}': {e}"))?;
@@ -93,7 +97,7 @@ pub fn load_tls_config() -> Result<Option<Arc<rustls::ServerConfig>>, String> {
         .with_single_cert(certs, key.into())
         .map_err(|e| format!("Invalid TLS configuration: {e}"))?;
 
-    Ok(Some(Arc::new(config)))
+    Ok(Arc::new(config))
 }
 
 /// Perform a blocking TLS handshake on `stream` using `config`.

@@ -4,7 +4,7 @@
 /// back to `<server_url>:5554`.
 ///
 /// # Returns
-/// * A `String` such as `"http://127.0.0.1:5554"`.
+/// * A `String` such as `"https://127.0.0.1:5554"`.
 pub fn get_api_base_url() -> String {
     std::env::var("MAG_API_URL")
         .ok()
@@ -16,7 +16,7 @@ pub fn get_api_base_url() -> String {
 /// Extracts the hostname from an API base URL.
 ///
 /// # Arguments
-/// * `base_url` - API base URL such as `http://127.0.0.1:5554`.
+/// * `base_url` - API base URL such as `https://127.0.0.1:5554`.
 ///
 /// # Returns
 /// * `Some(host)` when parsing succeeds.

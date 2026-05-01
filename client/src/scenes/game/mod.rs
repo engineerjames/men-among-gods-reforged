@@ -61,7 +61,6 @@ use crate::{
         style::Padding,
         visuals::rank_progress_line::RankProgressLine,
         visuals::rank_sigil::RankSigil,
-        visuals::tls_warning_banner::TlsWarningBanner,
         visuals::vitality_bars::VitalityBars,
         widget::{Bounds, GameAction, KeyBindings, KeyModifiers, UiEvent, Widget, WidgetAction},
         widgets::on_screen_keyboard::OnScreenKeyboard,
@@ -238,8 +237,6 @@ pub struct GameScene {
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
     /// SDL2 certificate-mismatch dialog (created on demand when a mismatch is detected).
     cert_dialog: Option<CertDialog>,
-    /// Non-interactive TLS warning banner shown when the connection is unencrypted.
-    tls_banner: TlsWarningBanner,
     pub(super) ctrl_held: bool,
     pub(super) shift_held: bool,
     pub(super) alt_held: bool,
@@ -403,7 +400,6 @@ impl GameScene {
             pending_exit: None,
             certificate_mismatch: None,
             cert_dialog: None,
-            tls_banner: TlsWarningBanner::new(),
             ctrl_held: false,
             shift_held: false,
             alt_held: false,
@@ -997,13 +993,11 @@ impl GameScene {
 
         let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
             .unwrap_or_else(crate::hosts::get_server_ip);
-        let use_tls = app_state.api.base_url.starts_with("https://");
 
         log::info!(
-            "GameScene: connecting to {}:5555 with ticket={} tls={} (api_base_url={})",
+            "GameScene: connecting to {}:5555 with ticket={} (api_base_url={})",
             host,
             login_target.ticket,
-            use_tls,
             app_state.api.base_url
         );
 
@@ -1016,7 +1010,6 @@ impl GameScene {
             5555,
             login_target.ticket,
             login_target.race,
-            use_tls,
         ));
 
         app_state.player_state = Some(PlayerState::default());
@@ -1050,7 +1043,6 @@ impl Scene for GameScene {
         self.pending_exit = None;
         self.certificate_mismatch = None;
         self.cert_dialog = None;
-        self.tls_banner.set_visible(false);
         self.ctrl_held = false;
         self.shift_held = false;
         self.alt_held = false;
@@ -1481,13 +1473,6 @@ impl Scene for GameScene {
             ));
         }
 
-        // Update TLS warning banner visibility.
-        let is_unencrypted = app_state
-            .network
-            .as_ref()
-            .map_or(false, |n| n.logged_in && !n.tls_active);
-        self.tls_banner.set_visible(is_unencrypted);
-
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut() {
@@ -1767,13 +1752,12 @@ impl Scene for GameScene {
 
         self.perf_profiler.end_frame();
 
-        // Render TLS warning banner and cert dialog as final overlays.
+        // Render cert dialog as final overlay.
         {
             let mut ctx = RenderContext {
                 canvas,
                 gfx: gfx_cache,
             };
-            self.tls_banner.render(&mut ctx)?;
             if let Some(ref mut dialog) = self.cert_dialog {
                 dialog.render(&mut ctx)?;
             }

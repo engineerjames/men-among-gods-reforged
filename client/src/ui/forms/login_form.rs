@@ -111,8 +111,6 @@ pub struct LoginForm {
     show_submitting: bool,
     /// Optional error message text.
     error_text: Option<String>,
-    /// Whether to show the unencrypted-connection warning banner.
-    show_unencrypted_warning: bool,
     /// Controller focus index into the focusable elements list, if any.
     /// Order: 0=music_checkbox, 1=login, 2=create, 3=reset, 4=quit.
     controller_focused: Option<usize>,
@@ -240,7 +238,6 @@ impl LoginForm {
             actions: Vec::new(),
             show_submitting: false,
             error_text: None,
-            show_unencrypted_warning: false,
             controller_focused: None,
         }
     }
@@ -279,15 +276,6 @@ impl LoginForm {
     /// * `msg` - Error text, or `None` to clear.
     pub fn set_error(&mut self, msg: Option<String>) {
         self.error_text = msg;
-    }
-
-    /// Sets or clears the unencrypted-connection warning banner.
-    ///
-    /// # Arguments
-    ///
-    /// * `show` - Whether to show the warning.
-    pub fn set_unencrypted_warning(&mut self, show: bool) {
-        self.show_unencrypted_warning = show;
     }
 
     /// Drains pending [`LoginFormAction`]s.
@@ -585,28 +573,6 @@ impl Widget for LoginForm {
         )?;
 
         let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 8;
-
-        // ── Unencrypted warning ──────────────────────────────────────────
-        if self.show_unencrypted_warning {
-            let warn_rect = sdl2::rect::Rect::new(
-                self.bounds.x + PAD_X,
-                cursor_y,
-                INPUT_W,
-                font_cache::BITMAP_GLYPH_H + 6,
-            );
-            ctx.canvas.set_draw_color(Color::RGBA(60, 50, 0, 220));
-            ctx.canvas.fill_rect(warn_rect)?;
-            font_cache::draw_text(
-                ctx.canvas,
-                ctx.gfx,
-                FONT,
-                "Warning: connection is not encrypted!",
-                self.bounds.x + PAD_X + 3,
-                cursor_y + 3,
-                font_cache::TextStyle::tinted(Color::RGB(255, 255, 80)),
-            )?;
-            cursor_y += font_cache::BITMAP_GLYPH_H as i32 + 10;
-        }
 
         // ── IP field ─────────────────────────────────────────────────────
         font_cache::draw_text(

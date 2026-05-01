@@ -45,7 +45,7 @@ pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
 
-    /// TLS configuration, if `SERVER_TLS_CERT` and `SERVER_TLS_KEY` are set.
+    /// TLS configuration (loaded from `SERVER_TLS_CERT` / `SERVER_TLS_KEY`).
     tls_config: Option<Arc<rustls::ServerConfig>>,
 
     /// Tick rate performance statistics buffer.
@@ -166,23 +166,11 @@ impl Server {
         self.sock = Some(listener);
         log::info!("Socket bound to port 5555");
 
-        // Load TLS configuration if cert/key env vars are set
-        match tls::load_tls_config() {
-            Ok(Some(config)) => {
-                log::info!("TLS enabled — accepting encrypted connections on port 5555");
-                self.tls_config = Some(config);
-            }
-            Ok(None) => {
-                log::warn!("╔══════════════════════════════════════════════════════════════╗");
-                log::warn!("║  WARNING: Server is running WITHOUT TLS encryption!         ║");
-                log::warn!("║  All game traffic is transmitted in plaintext.               ║");
-                log::warn!("║  Set SERVER_TLS_CERT and SERVER_TLS_KEY to enable TLS.       ║");
-                log::warn!("╚══════════════════════════════════════════════════════════════╝");
-            }
-            Err(e) => {
-                return Err(format!("TLS initialization failed: {e}"));
-            }
-        }
+        // Load TLS configuration (mandatory).
+        let tls_config =
+            tls::load_tls_config().map_err(|e| format!("TLS initialization failed: {e}"))?;
+        log::info!("TLS enabled — accepting encrypted connections on port 5555");
+        self.tls_config = Some(tls_config);
 
         crate::network_manager::initialize_packet_stats()?;
 
@@ -424,7 +412,9 @@ impl Server {
             }
 
             player::tick::plr_tick(gs, n);
-            crate::state::weather::weather_tick(gs, n);
+            // Weather (especially area-driven effects) is temporarily disabled
+            // while we tune things — re-enable once areas are configured.
+            // crate::state::weather::weather_tick(gs, n);
 
             if is_normal {
                 online += 1;
@@ -1612,20 +1602,18 @@ impl Server {
             match listener.accept() {
                 Ok((stream, addr)) => {
                     log::info!("New connection from {}", addr);
-                    // Wrap with TLS if configured
-                    if let Some(ref config) = self.tls_config {
-                        match tls::accept_tls(stream, config.clone()) {
-                            Ok(tls_stream) => {
-                                log::info!("TLS handshake completed for {}", addr);
-                                self.new_player(gs, tls_stream, addr.ip());
-                            }
-                            Err(e) => {
-                                log::warn!("TLS handshake failed for {}: {}", addr, e);
-                            }
+                    let config = self
+                        .tls_config
+                        .as_ref()
+                        .expect("TLS config must be initialized before handle_network_io");
+                    match tls::accept_tls(stream, config.clone()) {
+                        Ok(tls_stream) => {
+                            log::info!("TLS handshake completed for {}", addr);
+                            self.new_player(gs, tls_stream, addr.ip());
                         }
-                    } else {
-                        let _ = stream.set_nonblocking(true);
-                        self.new_player(gs, GameStream::Plain(stream), addr.ip());
+                        Err(e) => {
+                            log::warn!("TLS handshake failed for {}: {}", addr, e);
+                        }
                     }
                 }
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {

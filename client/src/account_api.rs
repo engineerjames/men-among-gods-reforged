@@ -17,7 +17,7 @@ use mag_core::types::api::{
 };
 
 /// Build an HTTP client that uses TOFU certificate verification for HTTPS
-/// and falls back to default behaviour for plain HTTP.
+/// requests against the API.
 fn build_http_client() -> Result<Client, String> {
     cert_trust::build_reqwest_client()
 }
@@ -228,9 +228,9 @@ pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummar
     let client = build_http_client()?;
 
     let url = format!("{}/characters", base_url.trim_end_matches('/'));
-    // The API is configured with a strict global rate limit (typically 1 req/sec).
+    // The API is configured with a global rate limit (currently ~10 req/sec).
     // The client often performs back-to-back requests (e.g. login -> get characters),
-    // so retry once or twice on 429 to smooth UX.
+    // so retry a few times on 429 with a short backoff to smooth UX.
     let mut last_status = None;
     for attempt in 0..=2u32 {
         let resp = client
@@ -250,7 +250,7 @@ pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummar
         }
 
         if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
-            std::thread::sleep(Duration::from_millis(1100));
+            std::thread::sleep(Duration::from_millis(150));
             continue;
         }
 

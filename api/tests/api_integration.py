@@ -2,13 +2,14 @@
 """Basic integration tests for the API using only the Python standard library.
 
 Run:
-  python3 api/tests/api_integration.py --base-url http://127.0.0.1:5554
+  python3 api/tests/api_integration.py --base-url https://127.0.0.1:5554 --insecure
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import ssl
 import sys
 import time
 import urllib.error
@@ -19,6 +20,7 @@ from typing import Any, Callable
 _LAST_REQUEST_AT: float = 0.0
 _MIN_REQUEST_INTERVAL: float = 1.1
 _SUFFIX_COUNTER: int = 0
+_SSL_CONTEXT: ssl.SSLContext | None = None
 
 
 def unique_suffix() -> str:
@@ -82,7 +84,7 @@ def request_json(
         for key, value in headers.items():
             req.add_header(key, value)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
             data = resp.read().decode("utf-8")
             return resp.status, data
     except urllib.error.HTTPError as exc:
@@ -217,7 +219,7 @@ def test_login_malformed_json(base_url: str) -> None:
     req.add_header("Accept", "application/json")
     req.data = b"{not-json"
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5, context=_SSL_CONTEXT) as resp:
             status = resp.status
     except urllib.error.HTTPError as exc:
         status = exc.code
@@ -908,7 +910,7 @@ def test_malformed_json(base_url: str) -> None:
     req.add_header("Accept", "application/json")
     req.data = b"{not-json"
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5, context=_SSL_CONTEXT) as resp:
             status = resp.status
     except urllib.error.HTTPError as exc:
         status = exc.code
@@ -960,10 +962,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="API integration tests")
     parser.add_argument(
         "--base-url",
-        default="http://127.0.0.1:5554",
+        default="https://127.0.0.1:5554",
         help="Base URL for the API",
     )
+    parser.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Skip TLS certificate verification (useful for self-signed dev certs)",
+    )
     args = parser.parse_args()
+
+    if args.insecure:
+        global _SSL_CONTEXT
+        _SSL_CONTEXT = ssl._create_unverified_context()
 
     tests: list[Callable[[str], None]] = [
         test_rate_limit,

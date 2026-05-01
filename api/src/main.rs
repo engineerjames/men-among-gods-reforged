@@ -148,12 +148,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_file.as_deref().unwrap_or("none")
     );
 
-    // 1 req/s globally
+    // 10 req/s globally
     init_rate_limiter!(
-        default: RuleConfig::new(Duration::seconds(1), 1)
+        default: RuleConfig::new(Duration::seconds(1), 10)
     )
     .await;
-    info!("Rate limiter initialized: 1 req/s");
+    info!("Rate limiter initialized: 10 req/s");
 
     // Ensure the right environment variables exist
     if env::var("API_JWT_SECRET").is_err() {
@@ -220,37 +220,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let bind_address = format!("{}:{}", resolve_api_bind_addr(), resolve_api_port());
     info!("Listening on {}", bind_address);
 
-    let tls_cert = std::env::var("API_TLS_CERT").ok();
-    let tls_key = std::env::var("API_TLS_KEY").ok();
+    let tls_cert = std::env::var("API_TLS_CERT").map_err(|_| {
+        "API_TLS_CERT environment variable is required (TLS is mandatory)".to_string()
+    })?;
+    let tls_key = std::env::var("API_TLS_KEY").map_err(|_| {
+        "API_TLS_KEY environment variable is required (TLS is mandatory)".to_string()
+    })?;
 
-    match (tls_cert, tls_key) {
-        (Some(cert_path), Some(key_path)) => {
-            info!("HTTPS enabled (cert={}, key={})", cert_path, key_path);
-            let tls_config =
-                axum_server::tls_rustls::RustlsConfig::from_pem_file(&cert_path, &key_path)
-                    .await
-                    .map_err(|e| format!("Failed to load TLS cert/key: {e}"))?;
-            let addr: SocketAddr = bind_address
-                .parse()
-                .map_err(|e| format!("Invalid bind address: {e}"))?;
-            axum_server::bind_rustls(addr, tls_config)
-                .serve(app.into_make_service_with_connect_info::<SocketAddr>())
-                .await?;
-        }
-        _ => {
-            warn!("╔══════════════════════════════════════════════════════════════╗");
-            warn!("║  WARNING: API is running WITHOUT TLS encryption!            ║");
-            warn!("║  All HTTP traffic is transmitted in plaintext.              ║");
-            warn!("║  Set API_TLS_CERT and API_TLS_KEY to enable HTTPS.          ║");
-            warn!("╚══════════════════════════════════════════════════════════════╝");
-            let listener = tokio::net::TcpListener::bind(&bind_address).await?;
-            axum::serve(
-                listener,
-                app.into_make_service_with_connect_info::<SocketAddr>(),
-            )
-            .await?;
-        }
-    }
+    info!("HTTPS enabled (cert={}, key={})", tls_cert, tls_key);
+    let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(&tls_cert, &tls_key)
+        .await
+        .map_err(|e| format!("Failed to load TLS cert/key: {e}"))?;
+    let addr: SocketAddr = bind_address
+        .parse()
+        .map_err(|e| format!("Invalid bind address: {e}"))?;
+    axum_server::bind_rustls(addr, tls_config)
+        .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+        .await?;
 
     info!("Server shutdown");
     Ok(())

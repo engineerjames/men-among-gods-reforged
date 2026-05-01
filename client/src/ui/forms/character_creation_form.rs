@@ -181,7 +181,7 @@ impl CharacterCreationForm {
         let name_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let name_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, name_y, INPUT_W, INPUT_H),
-            "character name",
+            "",
             FONT,
             40,
             false,
@@ -209,7 +209,7 @@ impl CharacterCreationForm {
         let desc_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let description_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, desc_y, INPUT_W, INPUT_H),
-            "description",
+            "",
             FONT,
             200,
             false,

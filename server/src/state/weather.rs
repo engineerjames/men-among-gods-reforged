@@ -17,6 +17,7 @@ use crate::network_manager::xsend;
 
 /// Approximately one second at 36 TPS — how often the area-driven driver
 /// re-evaluates each player's location.
+#[allow(dead_code)]
 const WEATHER_TICK_PERIOD: u32 = 36;
 
 /// Build the 10-byte `SV_WEATHER` packet body and send it to a single player.
@@ -82,6 +83,7 @@ pub fn send_weather(
 ///
 /// * `gs` - Mutable game state.
 /// * `player_id` - Index into `gs.players`.
+#[allow(dead_code)]
 pub fn clear_weather(gs: &mut GameState, player_id: usize) {
     send_weather(gs, player_id, WeatherKind::None as u8, 0, 0, [0; 4], 0);
 }
@@ -103,6 +105,7 @@ pub fn clear_weather(gs: &mut GameState, player_id: usize) {
 ///
 /// * `gs` - Mutable game state.
 /// * `nr` - Player index.
+#[allow(dead_code)]
 pub fn weather_tick(gs: &mut GameState, nr: usize) {
     if nr == 0 || nr >= gs.players.len() {
         return;

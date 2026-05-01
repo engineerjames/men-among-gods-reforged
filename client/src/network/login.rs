@@ -15,79 +15,56 @@ use mag_core::{
 
 use super::{NetworkCommand, NetworkEvent};
 
-/// A game connection backed by either a plain TCP stream or a TLS session.
+/// A game connection backed by a TLS session over TCP.
 struct GameConnection {
-    stream: ConnectionStream,
-}
-
-enum ConnectionStream {
-    Plain(TcpStream),
-    Tls(rustls::StreamOwned<rustls::ClientConnection, TcpStream>),
+    stream: rustls::StreamOwned<rustls::ClientConnection, TcpStream>,
 }
 
 impl GameConnection {
     fn set_nonblocking(&self, nonblocking: bool) -> std::io::Result<()> {
-        match &self.stream {
-            ConnectionStream::Plain(stream) => stream.set_nonblocking(nonblocking),
-            ConnectionStream::Tls(stream) => stream.sock.set_nonblocking(nonblocking),
-        }
+        self.stream.sock.set_nonblocking(nonblocking)
     }
 
     fn shutdown(&mut self) {
-        match &mut self.stream {
-            ConnectionStream::Plain(stream) => {
-                let _ = stream.shutdown(Shutdown::Both);
-            }
-            ConnectionStream::Tls(stream) => {
-                let _ = stream.sock.set_nonblocking(false);
+        let stream = &mut self.stream;
+        let _ = stream.sock.set_nonblocking(false);
 
-                stream.conn.send_close_notify();
+        stream.conn.send_close_notify();
 
-                let (conn, sock) = (&mut stream.conn, &mut stream.sock);
-                while conn.wants_write() {
-                    match conn.write_tls(sock) {
-                        Ok(0) => break,
-                        Ok(_) => {}
-                        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => continue,
-                        Err(err) => {
-                            log::debug!("Failed to write TLS close_notify: {err}");
-                            break;
-                        }
-                    }
+        let (conn, sock) = (&mut stream.conn, &mut stream.sock);
+        while conn.wants_write() {
+            match conn.write_tls(sock) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => continue,
+                Err(err) => {
+                    log::debug!("Failed to write TLS close_notify: {err}");
+                    break;
                 }
-
-                let _ = sock.shutdown(Shutdown::Both);
             }
         }
+
+        let _ = sock.shutdown(Shutdown::Both);
     }
 }
 
 impl Read for GameConnection {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        match &mut self.stream {
-            ConnectionStream::Plain(stream) => stream.read(buf),
-            ConnectionStream::Tls(stream) => stream.read(buf),
-        }
+        self.stream.read(buf)
     }
 }
 
 impl Write for GameConnection {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        match &mut self.stream {
-            ConnectionStream::Plain(stream) => stream.write(buf),
-            ConnectionStream::Tls(stream) => stream.write(buf),
-        }
+        self.stream.write(buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        match &mut self.stream {
-            ConnectionStream::Plain(stream) => stream.flush(),
-            ConnectionStream::Tls(stream) => stream.flush(),
-        }
+        self.stream.flush()
     }
 }
 
-/// Runs the network task: connect, optionally wrap in TLS, handshake, then main loop.
+/// Runs the network task: connect, wrap in TLS, handshake, then main loop.
 ///
 /// Intended to be called from `std::thread::spawn`.
 pub(crate) fn run_network_task(
@@ -95,13 +72,11 @@ pub(crate) fn run_network_task(
     port: u16,
     ticket: u64,
     race: i32,
-    use_tls: bool,
     command_rx: mpsc::Receiver<NetworkCommand>,
     event_tx: mpsc::Sender<NetworkEvent>,
 ) {
     let _ = event_tx.send(NetworkEvent::Status(format!(
-        "Connecting to {host}:{port}{}...",
-        if use_tls { " (TLS)" } else { "" }
+        "Connecting to {host}:{port} (TLS)..."
     )));
 
     let addr = format!("{host}:{port}");
@@ -117,23 +92,15 @@ pub(crate) fn run_network_task(
         log::warn!("Failed to set read timeout: {e}");
     }
 
-    let mut conn = if use_tls {
-        let _ = event_tx.send(NetworkEvent::Status("TLS handshake...".to_string()));
-        match crate::cert_trust::build_game_tls_connector(&host) {
-            Ok(tls_conn) => {
-                let tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream);
-                GameConnection {
-                    stream: ConnectionStream::Tls(tls_stream),
-                }
-            }
-            Err(e) => {
-                let _ = event_tx.send(NetworkEvent::Error(format!("TLS setup failed: {e}")));
-                return;
-            }
+    let _ = event_tx.send(NetworkEvent::Status("TLS handshake...".to_string()));
+    let mut conn = match crate::cert_trust::build_game_tls_connector(&host) {
+        Ok(tls_conn) => {
+            let tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream);
+            GameConnection { stream: tls_stream }
         }
-    } else {
-        GameConnection {
-            stream: ConnectionStream::Plain(tcp_stream),
+        Err(e) => {
+            let _ = event_tx.send(NetworkEvent::Error(format!("TLS setup failed: {e}")));
+            return;
         }
     };
 
