@@ -388,9 +388,10 @@ fn apply_api_login_character_record(
                 gs.characters[cn].luck = 205;
                 gs.characters[cn].mode = 1;
 
-                // Mark as a player/new user in the same way as `plr_newlogin`.
-                gs.characters[cn].flags |=
-                    CharacterFlags::NewUser.bits() | CharacterFlags::Player.bits();
+                // API-created characters already have validated profile data, so they do not
+                // need the legacy in-game name/description finalization state.
+                gs.characters[cn].flags |= CharacterFlags::Player.bits();
+                gs.characters[cn].flags &= !CharacterFlags::NewUser.bits();
             }
 
             cn
@@ -897,27 +898,6 @@ fn send_mod(gs: &mut GameState, nr: usize) {
     }
 }
 
-/// Port of `plr_perf_report` from `svr_tick.cpp`
-///
-/// Parses a client's performance/timing report and uses it to refresh the
-/// player's network timeout (`lasttick`). The metric values are parsed for
-/// completeness but currently not acted upon.
-///
-/// # Arguments
-/// * `nr` - Player slot index reporting performance
-pub fn plr_perf_report(gs: &mut GameState, nr: usize) {
-    // Read performance metrics from inbuf (unused but parsed for completeness)
-    let _ticksize = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
-    let _skip = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]);
-    let _idle = u16::from_le_bytes([gs.players[nr].inbuf[5], gs.players[nr].inbuf[6]]);
-
-    let ticker = gs.globals.ticker as u32;
-    gs.players[nr].lasttick = ticker;
-
-    // Optional: log performance metrics (commented out in original)
-    // log::trace!("Player {} perf: ticksize={}, skip={}%, idle={}%", nr, ticksize, skip, idle);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1046,7 +1026,7 @@ mod tests {
             assert_eq!(gs.characters[new_cn].get_name(), "Api Hero");
             assert_eq!(gs.characters[new_cn].get_reference(), "Api Hero");
             assert_eq!(gs.characters[new_cn].tavern_x, HOME_MERCENARY_X as u16);
-            assert_ne!(
+            assert_eq!(
                 gs.characters[new_cn].flags & CharacterFlags::NewUser.bits(),
                 0
             );
@@ -1275,23 +1255,6 @@ mod tests {
             assert_eq!(gs.players[nr].iptr, 16 * 8);
             assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod1 as u8), 1);
             assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod8 as u8), 1);
-        });
-    }
-
-    #[test]
-    fn plr_perf_report_refreshes_lasttick() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            gs.globals.ticker = 909;
-            let mut packet = [0u8; 7];
-            packet[1..3].copy_from_slice(&10u16.to_le_bytes());
-            packet[3..5].copy_from_slice(&20u16.to_le_bytes());
-            packet[5..7].copy_from_slice(&30u16.to_le_bytes());
-            write_inbuf(gs, nr, &packet);
-
-            plr_perf_report(gs, nr);
-
-            assert_eq!(gs.players[nr].lasttick, 909);
         });
     }
 }

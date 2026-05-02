@@ -5,8 +5,6 @@
 pub enum ClientCommandType {
     _Empty = 0,
     Challenge = 3,
-    #[allow(dead_code)]
-    PerfReport = 4,
     CmdMove = 5,
     CmdPickup = 6,
     CmdAttack = 7,
@@ -21,8 +19,6 @@ pub enum ClientCommandType {
     CmdInvLook = 16,
     CmdLookItem = 17,
     CmdUse = 18,
-    #[allow(dead_code)]
-    CmdSetUser = 19,
     CmdTurn = 20,
     CmdAutoLook = 21,
     CmdInput3 = 22,
@@ -63,7 +59,6 @@ impl From<u8> for ClientCommandType {
         match value {
             0 => ClientCommandType::_Empty,
             3 => ClientCommandType::Challenge,
-            4 => ClientCommandType::PerfReport,
             5 => ClientCommandType::CmdMove,
             6 => ClientCommandType::CmdPickup,
             7 => ClientCommandType::CmdAttack,
@@ -78,7 +73,6 @@ impl From<u8> for ClientCommandType {
             16 => ClientCommandType::CmdInvLook,
             17 => ClientCommandType::CmdLookItem,
             18 => ClientCommandType::CmdUse,
-            19 => ClientCommandType::CmdSetUser,
             20 => ClientCommandType::CmdTurn,
             21 => ClientCommandType::CmdAutoLook,
             22 => ClientCommandType::CmdInput3,
@@ -640,5 +634,11 @@ mod tests {
             ClientCommandType::from(38u8),
             ClientCommandType::CmdResetTalents
         );
+    }
+
+    #[test]
+    fn retired_opcodes_decode_as_empty() {
+        assert_eq!(ClientCommandType::from(4u8), ClientCommandType::_Empty);
+        assert_eq!(ClientCommandType::from(19u8), ClientCommandType::_Empty);
     }
 }

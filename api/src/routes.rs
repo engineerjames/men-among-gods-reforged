@@ -20,6 +20,98 @@ use subtle::ConstantTimeEq;
 
 const MAX_CHARACTERS_PER_ACCOUNT: usize = 10;
 
+enum CharacterNameValidationError {
+    BadRequest(String),
+    Unprocessable(String),
+    Internal(String),
+}
+
+/// Normalizes a character name and validates global availability constraints.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `name` - Raw user-provided character name.
+/// * `exclude_character_id` - Character ID to ignore during duplicate checks.
+///
+/// # Returns
+/// * `Ok(String)` with the canonical character name.
+/// * `Err(CharacterNameValidationError)` with the route-level rejection reason.
+async fn normalize_and_validate_character_name(
+    con: &mut redis::aio::MultiplexedConnection,
+    name: &str,
+    exclude_character_id: Option<u64>,
+) -> Result<String, CharacterNameValidationError> {
+    let normalized_name = helpers::normalize_character_name(name)
+        .map_err(CharacterNameValidationError::BadRequest)?;
+
+    let duplicate_check = match exclude_character_id {
+        Some(excluded_id) => {
+            pipelines::character_name_exists_scan_excluding(
+                con,
+                &normalized_name,
+                Some(excluded_id),
+            )
+            .await
+        }
+        None => pipelines::character_name_exists_scan(con, &normalized_name).await,
+    };
+
+    match duplicate_check {
+        Ok(true) => {
+            return Err(CharacterNameValidationError::Unprocessable(format!(
+                "name already taken: {}",
+                normalized_name
+            )));
+        }
+        Ok(false) => {}
+        Err(err) => return Err(CharacterNameValidationError::Internal(err.to_string())),
+    }
+
+    match pipelines::character_template_name_exists(con, &normalized_name).await {
+        Ok(true) => {
+            return Err(CharacterNameValidationError::Unprocessable(format!(
+                "name matches character template: {}",
+                normalized_name
+            )));
+        }
+        Ok(false) => {}
+        Err(err) => return Err(CharacterNameValidationError::Internal(err.to_string())),
+    }
+
+    let bad_names = pipelines::load_bad_names(con)
+        .await
+        .map_err(|err| CharacterNameValidationError::Internal(err.to_string()))?;
+    helpers::validate_character_name_bad_patterns(&normalized_name, &bad_names)
+        .map_err(CharacterNameValidationError::BadRequest)?;
+
+    Ok(normalized_name)
+}
+
+/// Converts a character-name validation failure into the route status code.
+///
+/// # Arguments
+/// * `context` - Log context for the operation being rejected.
+/// * `err` - Name validation error.
+///
+/// # Returns
+/// * `StatusCode` to return from the route.
+fn character_name_error_status(context: &str, err: CharacterNameValidationError) -> StatusCode {
+    match err {
+        CharacterNameValidationError::BadRequest(reason) => {
+            warn!("{context} rejected: invalid character name: {reason}");
+            StatusCode::BAD_REQUEST
+        }
+        CharacterNameValidationError::Unprocessable(reason) => {
+            warn!("{context} rejected: {reason}");
+            StatusCode::UNPROCESSABLE_ENTITY
+        }
+        CharacterNameValidationError::Internal(reason) => {
+            error!("Redis read failed: {reason}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
+}
+
 /// Creates a new character for the authenticated account.
 /// Validates the JWT from the `Authorization` header, validates the request payload, and then
 /// writes the character data to KeyDB.
@@ -76,32 +168,15 @@ pub(crate) async fn create_new_character(
         class,
     } = payload;
 
-    let name = name.trim().to_string();
-    if name.is_empty() {
-        warn!("Create character rejected: empty name");
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(types::CharacterSummary::default()),
-        );
-    }
-
-    match pipelines::character_name_exists_scan(&mut con, &name).await {
-        Ok(true) => {
-            warn!("Create character rejected: name already taken: {}", name);
-            return (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                Json(types::CharacterSummary::default()),
-            );
-        }
-        Ok(false) => {}
+    let name = match normalize_and_validate_character_name(&mut con, &name, None).await {
+        Ok(value) => value,
         Err(err) => {
-            error!("Redis read failed: {}", err);
             return (
-                StatusCode::INTERNAL_SERVER_ERROR,
+                character_name_error_status("Create character", err),
                 Json(types::CharacterSummary::default()),
             );
         }
-    }
+    };
 
     let description = match description.as_deref().map(str::trim) {
         Some(value) if !value.is_empty() => {
@@ -677,41 +752,40 @@ pub(crate) async fn update_character(
         return StatusCode::BAD_REQUEST;
     }
 
-    if let Some(name) = payload.name.as_deref() {
-        let trimmed_name = name.trim();
-        if trimmed_name.is_empty() {
-            warn!(
-                "Update character rejected: empty name for character {}",
-                character_id
-            );
-            return StatusCode::BAD_REQUEST;
-        }
-
-        match pipelines::character_name_exists_scan_excluding(
-            &mut con,
-            trimmed_name,
-            Some(character_id),
-        )
-        .await
-        {
-            Ok(true) => {
-                warn!(
-                    "Update character rejected: name already taken for character {}: {}",
-                    character_id, trimmed_name
-                );
-                return StatusCode::UNPROCESSABLE_ENTITY;
-            }
-            Ok(false) => {}
-            Err(err) => {
-                error!("Redis read failed: {}", err);
-                return StatusCode::INTERNAL_SERVER_ERROR;
+    let normalized_name = match payload.name.as_deref() {
+        Some(name) => {
+            match normalize_and_validate_character_name(&mut con, name, Some(character_id)).await {
+                Ok(value) => Some(value),
+                Err(err) => return character_name_error_status("Update character", err),
             }
         }
-    }
+        None => None,
+    };
 
-    if let Some(description) = payload.description.as_deref() {
-        let name_for_validation = match payload.name.as_deref() {
-            Some(value) => value.trim().to_string(),
+    let description_for_validation = match payload.description.as_deref() {
+        Some(description) => Some(description.trim().to_string()),
+        None if normalized_name.is_some() => {
+            match pipelines::get_character_description(&mut con, character_id).await {
+                Ok(Some(value)) => Some(value.trim().to_string()),
+                Ok(None) => {
+                    warn!(
+                        "Update character rejected: missing stored description for character {}",
+                        character_id
+                    );
+                    return StatusCode::BAD_REQUEST;
+                }
+                Err(err) => {
+                    error!("Redis read failed: {}", err);
+                    return StatusCode::INTERNAL_SERVER_ERROR;
+                }
+            }
+        }
+        None => None,
+    };
+
+    if let Some(description) = description_for_validation.as_deref() {
+        let name_for_validation = match normalized_name.as_deref() {
+            Some(value) => value.to_string(),
             None => match pipelines::get_character_name(&mut con, character_id).await {
                 Ok(Some(value)) => value.trim().to_string(),
                 Ok(None) => {
@@ -728,6 +802,32 @@ pub(crate) async fn update_character(
             },
         };
 
+        if payload.description.is_some() {
+            let server_id = match pipelines::get_character_server_id(&mut con, character_id).await {
+                Ok(value) => value,
+                Err(err) => {
+                    error!("Redis read failed: {}", err);
+                    return StatusCode::INTERNAL_SERVER_ERROR;
+                }
+            };
+            if let Some(server_id) = server_id {
+                match pipelines::character_slot_has_no_desc(&mut con, server_id).await {
+                    Ok(true) => {
+                        warn!(
+                            "Update character rejected: NoDesc flag blocks description changes for character {}",
+                            character_id
+                        );
+                        return StatusCode::BAD_REQUEST;
+                    }
+                    Ok(false) => {}
+                    Err(err) => {
+                        error!("Redis read failed: {}", err);
+                        return StatusCode::INTERNAL_SERVER_ERROR;
+                    }
+                }
+            }
+        }
+
         if let Err(err) = helpers::validate_character_description(&name_for_validation, description)
         {
             warn!(
@@ -741,7 +841,7 @@ pub(crate) async fn update_character(
     match pipelines::update_character(
         &mut con,
         character_id,
-        payload.name.as_deref(),
+        normalized_name.as_deref(),
         payload.description.as_deref(),
     )
     .await

@@ -1,4 +1,5 @@
 use mag_core::traits::{self, Class, Sex};
+use mag_core::{constants, template_store};
 
 use crate::types;
 use log::info;
@@ -363,6 +364,135 @@ pub(crate) async fn get_character_name(
 ) -> Result<Option<String>, redis::RedisError> {
     let character_key = format!("character:{}", character_id);
     con.hget(&character_key, "name").await
+}
+
+/// Gets the stored description for an API character.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `character_id` - Character ID whose `description` field should be read.
+///
+/// # Returns
+/// * `Ok(Some(description))` if present.
+/// * `Ok(None)` if missing.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn get_character_description(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+) -> Result<Option<String>, redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    con.hget(&character_key, "description").await
+}
+
+/// Gets the linked game-server character slot for an API character.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `character_id` - API character ID whose `server_id` field should be read.
+///
+/// # Returns
+/// * `Ok(Some(server_id))` if present.
+/// * `Ok(None)` if missing.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn get_character_server_id(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+) -> Result<Option<u32>, redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    con.hget(&character_key, "server_id").await
+}
+
+/// Loads banned character-name patterns from game data.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+///
+/// # Returns
+/// * `Ok(Vec<String>)` containing banned name substrings.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn load_bad_names(
+    con: &mut redis::aio::MultiplexedConnection,
+) -> Result<Vec<String>, redis::RedisError> {
+    let bytes: Vec<u8> = con.get("game:badnames").await?;
+    let (bad_names, _consumed): (Vec<String>, usize) =
+        bincode::decode_from_slice(&bytes, bincode::config::standard()).map_err(|err| {
+            redis::RedisError::from((
+                redis::ErrorKind::UnexpectedReturnType,
+                "Decode game:badnames failed",
+                err.to_string(),
+            ))
+        })?;
+    Ok(bad_names)
+}
+
+/// Checks whether a name collides with a character template name.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `name` - Normalized character name to compare.
+///
+/// # Returns
+/// * `Ok(true)` if a template has the same name, ignoring ASCII case.
+/// * `Ok(false)` otherwise.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn character_template_name_exists(
+    con: &mut redis::aio::MultiplexedConnection,
+    name: &str,
+) -> Result<bool, redis::RedisError> {
+    let target_name = name.trim();
+    if target_name.is_empty() {
+        return Ok(false);
+    }
+
+    let pattern = format!("{}*", template_store::CHARACTER_TEMPLATE_KEY_PREFIX);
+    let keys = scan_keys_matching(con, &pattern, 400).await?;
+    for key in keys {
+        let bytes: Option<Vec<u8>> = con.get(&key).await?;
+        let Some(bytes) = bytes else {
+            continue;
+        };
+
+        let Ok(character) = template_store::decode_character_template(&bytes) else {
+            continue;
+        };
+
+        if character
+            .get_name()
+            .trim()
+            .eq_ignore_ascii_case(target_name)
+        {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Checks whether a linked game character has the `NoDesc` flag set.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `server_id` - Game-server character slot ID.
+///
+/// # Returns
+/// * `Ok(true)` if the slot exists and has `NoDesc`.
+/// * `Ok(false)` if absent, undecodable, or not flagged.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn character_slot_has_no_desc(
+    con: &mut redis::aio::MultiplexedConnection,
+    server_id: u32,
+) -> Result<bool, redis::RedisError> {
+    let key = format!("game:char:{}", server_id);
+    let bytes: Option<Vec<u8>> = con.get(key).await?;
+    let Some(bytes) = bytes else {
+        return Ok(false);
+    };
+
+    let Some(character) = mag_core::types::Character::from_bytes(&bytes) else {
+        return Ok(false);
+    };
+
+    Ok((character.flags & constants::CharacterFlags::NoDesc.bits()) != 0)
 }
 
 /// Updates a character hash by setting any provided fields.

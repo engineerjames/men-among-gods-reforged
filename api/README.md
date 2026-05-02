@@ -208,6 +208,21 @@ sequenceDiagram
     end
 ```
 
+## Character profile validation
+Character names and descriptions are validated by the API before they are stored
+or sent to the game server. This replaces the retired in-game `CmdSetUser`
+profile finalization packet.
+
+Names must be 4 to 15 ASCII letters, are stored in canonical title case, must
+not be `Self`, must be globally unique ignoring ASCII case, must not match a
+character template name, and must not contain a configured banned-name pattern
+from `game:badnames`.
+
+Descriptions must be printable ASCII, 10 to 200 bytes, must contain the stored
+character name exactly, and must not contain double quotes. Updating a linked
+character's description is rejected when the live game character has the
+`NoDesc` flag set.
+
 # Integration with the game server and client applications
 The authentication service is designed to be integrated with both the game server and client applications. Over time this is hoped to be a tighter integration.
 
