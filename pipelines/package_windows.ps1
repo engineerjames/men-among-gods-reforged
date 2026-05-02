@@ -40,6 +40,7 @@ New-Item -ItemType Directory -Force -Path $serverPackageDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $clientPackageDir 'assets') | Out-Null
 
 Copy-RequiredFile -Source 'target/release/server.exe' -Destination (Join-Path $serverPackageDir 'server.exe')
+Copy-RequiredFile -Source 'target/release/mag-admin.exe' -Destination (Join-Path $serverPackageDir 'mag-admin.exe')
 Copy-RequiredFile -Source 'target/release/map_viewer.exe' -Destination (Join-Path $serverPackageDir 'map_viewer.exe')
 Copy-RequiredFile -Source 'target/release/template_viewer.exe' -Destination (Join-Path $serverPackageDir 'template_viewer.exe')
 Copy-RequiredFile -Source 'target/release/api.exe' -Destination (Join-Path $serverPackageDir 'api.exe')

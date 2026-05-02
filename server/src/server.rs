@@ -64,6 +64,10 @@ pub struct Server {
     /// requests to the tick loop.
     template_reload_watcher: Option<server::keydb::template_reload::TemplateReloadWatcher>,
 
+    /// Background watcher that surfaces admin-issued text reload requests to
+    /// the tick loop.
+    text_reload_watcher: Option<server::keydb::text_reload::TextReloadWatcher>,
+
     /// Background watcher that surfaces admin-issued map-tile patches to
     /// the tick loop.
     map_patch_watcher: Option<server::keydb::map_patch::MapPatchWatcher>,
@@ -94,6 +98,7 @@ impl Server {
             measurement_interval: 20,
             background_saver: None,
             template_reload_watcher: None,
+            text_reload_watcher: None,
             map_patch_watcher: None,
             item_patch_watcher: None,
             character_patch_watcher: None,
@@ -253,6 +258,9 @@ impl Server {
         // Spawn the admin template-reload watcher (no-op when disabled).
         self.template_reload_watcher =
             server::keydb::template_reload::TemplateReloadWatcher::spawn();
+
+        // Spawn the admin text-reload watcher (no-op when disabled).
+        self.text_reload_watcher = server::keydb::text_reload::TextReloadWatcher::spawn();
 
         // Spawn the admin map-patch watcher (no-op when disabled).
         self.map_patch_watcher = server::keydb::map_patch::MapPatchWatcher::spawn();
@@ -1141,6 +1149,72 @@ impl Server {
         }
     }
 
+    /// Drain pending admin text reload requests and apply them to `gs`.
+    ///
+    /// Each drained request reloads externally managed text data from KeyDB on
+    /// the tick thread, preserving single-threaded access to `GameState`.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose text-data fields will be replaced.
+    pub fn drain_text_reloads(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.text_reload_watcher.as_ref() else {
+            return;
+        };
+        while let Some(req) = watcher.try_recv() {
+            self.apply_text_reload(gs, req);
+        }
+    }
+
+    fn apply_text_reload(
+        &self,
+        gs: &mut GameState,
+        req: server::keydb::text_reload::TextReloadRequest,
+    ) {
+        let mut con = match server::keydb::connection::connect() {
+            Ok(connection) => connection,
+            Err(error) => {
+                log::warn!(
+                    "text reload {}: keydb connect failed: {}",
+                    req.request_id,
+                    error
+                );
+                return;
+            }
+        };
+
+        if req.reload_badwords {
+            match server::keydb::store::load_bad_words(&mut con) {
+                Ok(bad_words) => {
+                    log::info!(
+                        "text reload {}: swapped {} badwords",
+                        req.request_id,
+                        bad_words.len()
+                    );
+                    gs.bad_words = bad_words;
+                }
+                Err(error) => {
+                    log::warn!(
+                        "text reload {}: load badwords failed: {}",
+                        req.request_id,
+                        error
+                    );
+                    return;
+                }
+            }
+        }
+
+        if let Err(error) =
+            server::keydb::text_reload::write_applied_status(&mut con, &req.request_id)
+        {
+            log::warn!(
+                "text reload {}: status write failed: {}",
+                req.request_id,
+                error
+            );
+        }
+    }
+
     /// Drain any pending admin map-tile patches and apply them to `gs.map`.
     ///
     /// Called once per tick from the main loop (outside `tick`) so the swap
@@ -1424,6 +1498,10 @@ impl Server {
     pub fn shutdown_background_saver(&mut self) {
         if let Some(mut watcher) = self.template_reload_watcher.take() {
             log::info!("Stopping template reload watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.text_reload_watcher.take() {
+            log::info!("Stopping text reload watcher...");
             watcher.shutdown();
         }
         if let Some(mut watcher) = self.map_patch_watcher.take() {

@@ -135,6 +135,7 @@ fn main() -> Result<(), String> {
 
     while !quit_flag.load(Ordering::SeqCst) {
         server.drain_template_reloads(&mut gs);
+        server.drain_text_reloads(&mut gs);
         server.drain_map_patches(&mut gs);
         server.drain_item_patches(&mut gs);
         server.drain_character_patches(&mut gs);

@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/build/target,sharing=locked \
     cargo build --release -p server-utils \
     && mkdir -p /out \
-    && cp target/release/map_viewer target/release/template_viewer /out/
+    && cp target/release/mag-admin target/release/map_viewer target/release/template_viewer /out/
 
 # Stage 2: runtime
 FROM ubuntu:24.04
@@ -50,5 +50,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Use software rendering so the container works without a GPU.
 ENV LIBGL_ALWAYS_SOFTWARE=1
 
+COPY --from=builder /out/mag-admin /usr/local/bin/
 COPY --from=builder /out/map_viewer /usr/local/bin/
 COPY --from=builder /out/template_viewer /usr/local/bin/

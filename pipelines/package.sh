@@ -57,6 +57,7 @@ rm -rf dist
 mkdir -p "dist/${SERVER_DIR}"
 
 copy_required_file "target/release/server" "dist/${SERVER_DIR}/server"
+copy_required_file "target/release/mag-admin" "dist/${SERVER_DIR}/mag-admin"
 copy_required_file "target/release/map_viewer" "dist/${SERVER_DIR}/map_viewer"
 copy_required_file "target/release/template_viewer" "dist/${SERVER_DIR}/template_viewer"
 copy_required_file "target/release/api" "dist/${SERVER_DIR}/api"

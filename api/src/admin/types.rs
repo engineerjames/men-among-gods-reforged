@@ -106,6 +106,77 @@ impl ErrorResponse {
     }
 }
 
+/// Response for `GET /admin/text/badwords`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsListResponse {
+    /// Canonical badword entries in stable storage order.
+    pub words: Vec<String>,
+    /// Number of entries in `words`.
+    pub count: usize,
+    /// Current badwords version counter.
+    pub version: u64,
+}
+
+/// Response for `GET /admin/text/badwords/entry`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordEntryResponse {
+    /// Canonicalized query word.
+    pub word: String,
+    /// Whether `word` currently exists in the badwords list.
+    pub exists: bool,
+}
+
+/// Request body used by badwords mutation endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsMutationRequest {
+    /// Raw words to add, remove, or use as the replacement list.
+    pub words: Vec<String>,
+}
+
+/// Response returned by badwords mutation endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsMutationResponse {
+    /// Canonical badword entries after the mutation.
+    pub words: Vec<String>,
+    /// Number of entries after the mutation.
+    pub count: usize,
+    /// Current badwords version counter.
+    pub version: u64,
+    /// Canonical words newly added by this mutation.
+    pub added: Vec<String>,
+    /// Canonical words removed by this mutation.
+    pub removed: Vec<String>,
+    /// Canonical requested words that left storage unchanged.
+    pub unchanged: Vec<String>,
+}
+
+/// Body for `POST /admin/text/reload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadRequest {
+    /// Which text data kinds to reload.
+    ///
+    /// Recognised values: `"badwords"`. Unknown values are rejected with `400`.
+    pub kinds: Vec<String>,
+}
+
+/// Response for `POST /admin/text/reload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadResponse {
+    /// Opaque identifier the caller polls via the reload-status endpoint.
+    pub request_id: String,
+    /// Echoes the validated reload kinds.
+    pub kinds: Vec<String>,
+}
+
+/// Status snapshot for `GET /admin/text/reload/status`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadStatusResponse {
+    /// One of `"pending"` or `"applied"`.
+    pub status: String,
+    /// Opaque identifier echoed back by the API.
+    pub request_id: String,
+}
+
 /// Response shape for `PUT /admin/world/map/{x}/{y}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PutMapTileResponse {

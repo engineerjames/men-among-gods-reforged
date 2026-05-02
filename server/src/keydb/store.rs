@@ -530,6 +530,23 @@ pub fn save_runtime_data(
     Ok(())
 }
 
+/// Load the badwords text-data list from KeyDB.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+///
+/// # Returns
+///
+/// * `Ok(Vec<String>)` containing canonical badword entries.
+/// * `Err(String)` if the key cannot be read or decoded.
+pub fn load_bad_words(con: &mut Connection) -> Result<Vec<String>, String> {
+    let bytes: Vec<u8> = con
+        .get(core::text_store::BADWORDS_KEY)
+        .map_err(|e| format!("KeyDB GET {}: {e}", core::text_store::BADWORDS_KEY))?;
+    core::text_store::decode_badwords(&bytes).map_err(|e| e.to_string())
+}
+
 /// Save all map tiles to KeyDB under `game:map:{x}:{y}` keys.
 ///
 /// # Arguments

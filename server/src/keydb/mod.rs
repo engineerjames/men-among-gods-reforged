@@ -9,7 +9,7 @@
 //! * [`background_saver`] — rotating saver thread that flushes dirty
 //!   game data back to KeyDB on the ~12 minute schedule documented in
 //!   `docs/server/DESIGN.md`.
-//! * [`template_reload`], [`map_patch`], [`item_patch`],
+//! * [`template_reload`], [`text_reload`], [`map_patch`], [`item_patch`],
 //!   [`character_patch`] — pub/sub watchers that ingest live patches
 //!   published to KeyDB by the admin tooling.
 
@@ -37,3 +37,6 @@ pub mod map_patch;
 
 /// KeyDB pub/sub watcher for template (item + character) reload requests.
 pub mod template_reload;
+
+/// KeyDB watcher for externally managed text-data reload requests.
+pub mod text_reload;

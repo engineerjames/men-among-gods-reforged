@@ -22,6 +22,7 @@ redis = "1.0.3"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+clap = { version = "4.5", features = ["derive", "env"] }
 
 [[bin]]
 name = "template_viewer"
@@ -30,5 +31,9 @@ path = "src/bin/template_viewer.rs"
 [[bin]]
 name = "map_viewer"
 path = "src/bin/map_viewer.rs"
+
+[[bin]]
+name = "mag-admin"
+path = "src/bin/mag_admin.rs"
 
 
