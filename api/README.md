@@ -448,6 +448,7 @@ small burst. Excess requests return `429`.
 | POST | `/admin/text/reload` | Ask the running server to refresh externally managed text data. |
 | GET | `/admin/text/reload/status` | Poll the lifecycle of a previous text reload request (query `request_id`). |
 | GET | `/admin/world/map` | Bulk-read every map tile (`application/octet-stream`, bincode `Vec<Map>`). |
+| GET | `/admin/world/globals` | Read persisted global server counters as JSON. |
 | GET | `/admin/world/map/version` | Read the admin map-version counter (increments on each accepted patch). |
 | GET | `/admin/world/map/{x}/{y}` | Read a single map tile (bincode `Map` bytes). |
 | PUT | `/admin/world/map/{x}/{y}` | Enqueue a patch for a single map tile (bincode `MapPatch` bytes). |
@@ -472,6 +473,11 @@ Full templates use bincode (`application/octet-stream`) instead of JSON to
 avoid serialising fixed-size byte arrays through quoted JSON. The
 `mag_core::template_store` module exposes the encode/decode helpers so the
 client and the server agree on the wire format.
+
+`GET /admin/world/globals` reads the persisted `game:global` bincode value and
+returns an operator-facing JSON snapshot of counters, load/network totals,
+hourly arrays, moon markers, and global flags. It is read-only and observes the
+latest state written to KeyDB by the server saver.
 
 `POST /admin/templates/reload` accepts a JSON body
 `{"kinds":["items","characters"]}` and returns

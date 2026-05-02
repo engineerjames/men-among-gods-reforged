@@ -82,33 +82,43 @@ cargo run --package server-utils --bin map_viewer -- --snapshot server/assets/wo
 
 ### MAG Admin CLI
 
-A scriptable admin API client for operator workflows. The first supported data
-area is badwords CRUD; the tool talks to the API and never connects directly to
-KeyDB.
+An admin API client for operator workflows. By default it opens a guided
+interactive menu for browsing templates, viewing globals, and managing
+badwords. Scriptable command mode is explicit: pass `--auto` before the
+subcommand. The tool talks to the API and never connects directly to KeyDB.
 
 **Usage:**
 ```bash
 export MAG_API_BASE_URL=https://127.0.0.1:5554
 export MAG_ADMIN_API_TOKEN=<32+ byte admin token>
 
+# Open the guided interactive menu
+cargo run --package server-utils --bin mag-admin
+
+# Search templates and inspect full details
+cargo run --package server-utils --bin mag-admin -- --auto templates items search sword
+cargo run --package server-utils --bin mag-admin -- --auto templates characters search guard --limit 10
+cargo run --package server-utils --bin mag-admin -- --auto templates items show 42
+cargo run --package server-utils --bin mag-admin -- --auto templates characters show 100
+
+# View persisted global server counters
+cargo run --package server-utils --bin mag-admin -- --auto globals show --format json
+
 # List badwords as JSON
-cargo run --package server-utils --bin mag-admin -- badwords list --format json
+cargo run --package server-utils --bin mag-admin -- --auto badwords list --format json
 
 # Add or remove entries; --wait implies a running-server refresh request
-cargo run --package server-utils --bin mag-admin -- badwords add word1 word2 --wait
-cargo run --package server-utils --bin mag-admin -- badwords remove word1 --refresh
+cargo run --package server-utils --bin mag-admin -- --auto badwords add word1 word2 --wait
+cargo run --package server-utils --bin mag-admin -- --auto badwords remove word1 --refresh
 
 # Replace from JSON, a {"words":[...]} object, or newline-delimited stdin
-printf 'word1\nword2\n' | cargo run --package server-utils --bin mag-admin -- badwords replace --input -
+printf 'word1\nword2\n' | cargo run --package server-utils --bin mag-admin -- --auto badwords replace --input -
 
 # Export one word per line
-cargo run --package server-utils --bin mag-admin -- badwords export --output badwords.txt --format plain
+cargo run --package server-utils --bin mag-admin -- --auto badwords export --output badwords.txt --format plain
 
 # Explicitly refresh the running server's cached badwords list
-cargo run --package server-utils --bin mag-admin -- badwords refresh --wait
-
-# Open the guided interactive menu for the same badwords actions
-cargo run --package server-utils --bin mag-admin -- --menu
+cargo run --package server-utils --bin mag-admin -- --auto badwords refresh --wait
 ```
 
 **Scriptability:** data is written to stdout, diagnostics are written to
@@ -116,9 +126,9 @@ stderr, stdin/stdout paths can be `-`, and exit codes are stable: `0` success,
 `1` runtime/API failure, `2` command-line usage failure, and `3` for `badwords
 get` when the word is not present.
 
-`--menu` is intentionally opt-in and interactive. It reuses the same API calls
-as the scriptable subcommands, with guided prompts for listing, checking,
-adding, removing, replacing, exporting, and refreshing badwords.
+Subcommands require `--auto` so automatable interactions are opt-in. Running
+without `--auto` opens the interactive menu, which reuses the same API calls as
+the scriptable subcommands.
 
 ## Local Development Workflow
 
@@ -128,7 +138,7 @@ Run the services in Docker, but run the viewers natively on the host:
 docker compose up -d --build
 cargo run --package server-utils --bin map_viewer
 cargo run --package server-utils --bin template_viewer
-cargo run --package server-utils --bin mag-admin -- badwords list
+cargo run --package server-utils --bin mag-admin -- --auto badwords list
 ```
 
 The viewers use the same KeyDB URL resolution as the server crate:

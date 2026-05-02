@@ -105,6 +105,93 @@ pub struct MapVersionResponse {
     pub version: u64,
 }
 
+/// JSON view returned by `GET /admin/world/globals`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalsResponse {
+    /// Current in-game minute/time counter.
+    pub mdtime: i32,
+    /// Current in-game day.
+    pub mdday: i32,
+    /// Current in-game year.
+    pub mdyear: i32,
+    /// Current daylight value.
+    pub dlight: i32,
+    /// Total player characters created.
+    pub players_created: i32,
+    /// Total NPCs created.
+    pub npcs_created: i32,
+    /// Total player deaths.
+    pub players_died: i32,
+    /// Total NPC deaths.
+    pub npcs_died: i32,
+    /// Current character count.
+    pub character_cnt: i32,
+    /// Current item count.
+    pub item_cnt: i32,
+    /// Current effect count.
+    pub effect_cnt: i32,
+    /// Expiration pass counter.
+    pub expire_cnt: i32,
+    /// Expiration run marker.
+    pub expire_run: i32,
+    /// Garbage-collection pass counter.
+    pub gc_cnt: i32,
+    /// Garbage-collection run marker.
+    pub gc_run: i32,
+    /// Lost-object pass counter.
+    pub lost_cnt: i32,
+    /// Lost-object run marker.
+    pub lost_run: i32,
+    /// Character reset counter.
+    pub reset_char: i32,
+    /// Item reset counter.
+    pub reset_item: i32,
+    /// Server tick counter.
+    pub ticker: i32,
+    /// Total player online time.
+    pub total_online_time: i64,
+    /// Online time bucketed by hour.
+    pub online_per_hour: [i64; 24],
+    /// Global flag bitfield.
+    pub flags: i32,
+    /// Total server uptime.
+    pub uptime: i64,
+    /// Server uptime bucketed by hour.
+    pub uptime_per_hour: [i64; 24],
+    /// Awake-state counter.
+    pub awake: i32,
+    /// Body-state counter.
+    pub body: i32,
+    /// Current number of online players.
+    pub players_online: i32,
+    /// Current queue size.
+    pub queuesize: i32,
+    /// Total received bytes.
+    pub recv: i64,
+    /// Total sent bytes.
+    pub send: i64,
+    /// Transfer reset time marker.
+    pub transfer_reset_time: i32,
+    /// Current load average.
+    pub load_avg: i32,
+    /// Current raw load value.
+    pub load: i64,
+    /// Maximum online player count.
+    pub max_online: i32,
+    /// Maximum online count bucketed by hour.
+    pub max_online_per_hour: [i32; 24],
+    /// Full-moon marker.
+    pub fullmoon: i8,
+    /// New-moon marker.
+    pub newmoon: i8,
+    /// Unique id counter.
+    pub unique: u64,
+    /// Current cap value.
+    pub cap: i32,
+    /// Whether the global dirty flag is currently set.
+    pub dirty: bool,
+}
+
 /// Per-slot summary returned by world entity listing endpoints.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorldEntitySummary {
@@ -723,6 +810,27 @@ impl AdminClient {
         let body: MapVersionResponse =
             resp.json().map_err(|e| format!("GET {url}: decode: {e}"))?;
         Ok(body.version)
+    }
+
+    /// Fetch the persisted global game-state counters.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(globals)` on success.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn fetch_globals(&self) -> Result<GlobalsResponse, String> {
+        let url = self.url("/admin/world/globals");
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<GlobalsResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
     }
 
     // ------------------------------------------------------------------
