@@ -838,6 +838,31 @@ impl GameState {
         }
     }
 
+    /// Resolves a `/allow` argument to a character id.
+    ///
+    /// Numeric arguments preserve the legacy slot-id behavior. Non-numeric
+    /// arguments use the standard player-name lookup so `/allow Name` grants
+    /// access to that character instead of parsing as zero.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Owner character id.
+    /// * `target` - Name or numeric character id from the command.
+    ///
+    /// # Returns
+    ///
+    /// * Character id to allow, or `0` to revoke/no-match.
+    pub(crate) fn resolve_allow_target(&mut self, cn: usize, target: &str) -> usize {
+        let target = target.trim();
+        if target.is_empty() {
+            return 0;
+        }
+        if target.chars().next().is_some_and(|ch| ch.is_ascii_digit()) {
+            return target.parse::<usize>().unwrap_or(0);
+        }
+        self.do_lookup_char_self(target, cn).max(0) as usize
+    }
+
     /// Port of `do_mark(cn, co, msg)` from `svr_do.cpp`.
     ///
     /// Sets or clears a short marker text for the given character. When

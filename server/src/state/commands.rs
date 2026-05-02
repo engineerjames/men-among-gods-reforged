@@ -969,7 +969,8 @@ impl GameState {
             }
             Some("allow") if f_p => {
                 log::debug!("Processing allow command for {}", cn);
-                self.do_allow(cn, parse_usize(arg_get(1)));
+                let co = self.resolve_allow_target(cn, arg_get(1));
+                self.do_allow(cn, co);
                 return;
             }
             Some("announce") if f_gius => {
@@ -1967,6 +1968,48 @@ mod tests {
             assert!(text.contains("Active talent bonuses:"));
             assert!(text.contains("Strength: +5"));
             assert!(text.contains("Dodge chance: +5%"));
+        });
+    }
+
+    #[test]
+    fn allow_command_resolves_character_name() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let target = 2usize;
+            gs.characters[target] = core::types::Character::default();
+            gs.characters[target].used = core::constants::USE_ACTIVE;
+            gs.characters[target].flags = core::constants::CharacterFlags::Player.bits();
+            gs.characters[target].set_name("Grave Friend");
+
+            gs.do_command(cn, "allow Grave");
+
+            assert_eq!(
+                gs.characters[cn].data[core::constants::CHD_ALLOW],
+                target as i32
+            );
+            assert!(logged_text(gs, nr).contains("Grave Friend is now allowed"));
+        });
+    }
+
+    #[test]
+    fn allow_command_preserves_numeric_target() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let target = 42usize;
+            gs.characters[target] = core::types::Character::default();
+            gs.characters[target].used = core::constants::USE_ACTIVE;
+            gs.characters[target].flags = core::constants::CharacterFlags::Player.bits();
+            gs.characters[target].set_name("Numeric Friend");
+
+            gs.do_command(cn, "allow 42");
+
+            assert_eq!(
+                gs.characters[cn].data[core::constants::CHD_ALLOW],
+                target as i32
+            );
+            assert!(logged_text(gs, nr).contains("Numeric Friend is now allowed"));
         });
     }
 
