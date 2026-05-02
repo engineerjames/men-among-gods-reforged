@@ -1,4 +1,6 @@
 use clap::{Parser, Subcommand, ValueEnum};
+use dialoguer::theme::ColorfulTheme;
+use dialoguer::{Confirm, Input, MultiSelect, Select};
 use serde::Deserialize;
 use serde::Serialize;
 use server_utils::admin_client::{
@@ -19,7 +21,6 @@ const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 10;
     name = "mag-admin",
     version,
     about = "Scriptable admin CLI for Men Among Gods Reforged",
-    subcommand_required = true,
     arg_required_else_help = true
 )]
 struct Cli {
@@ -40,7 +41,7 @@ struct Cli {
         global = true,
         help = "Admin bearer token"
     )]
-    admin_token: String,
+    admin_token: Option<String>,
 
     #[arg(
         long,
@@ -54,8 +55,15 @@ struct Cli {
     #[arg(long, global = true, help = "Suppress non-data status messages")]
     quiet: bool,
 
+    #[arg(
+        long,
+        global = true,
+        help = "Open an interactive menu instead of running one command"
+    )]
+    menu: bool,
+
     #[command(subcommand)]
-    command: Commands,
+    command: Option<Commands>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -137,6 +145,18 @@ enum CliError {
     NotFound(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MenuAction {
+    List,
+    Get,
+    Add,
+    Remove,
+    Replace,
+    Export,
+    Refresh,
+    Quit,
+}
+
 #[derive(Debug, Deserialize)]
 struct WordsInput {
     words: Vec<String>,
@@ -158,18 +178,258 @@ fn main() -> ExitCode {
 }
 
 fn run(cli: Cli) -> Result<(), CliError> {
-    if cli.admin_token.trim().is_empty() {
+    let Some(admin_token) = cli.admin_token.as_deref().map(str::trim) else {
+        return Err(CliError::Runtime(
+            "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
+        ));
+    };
+    if admin_token.is_empty() {
         return Err(CliError::Runtime(
             "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
         ));
     }
 
-    let client =
-        AdminClient::new(cli.api.trim(), cli.admin_token.trim()).map_err(CliError::Runtime)?;
+    let client = AdminClient::new(cli.api.trim(), admin_token).map_err(CliError::Runtime)?;
 
-    match &cli.command {
+    if cli.menu {
+        return run_menu(&cli, &client);
+    }
+
+    let Some(command) = &cli.command else {
+        return Err(CliError::Runtime(
+            "no command provided; pass --menu or run `mag-admin help`".to_string(),
+        ));
+    };
+
+    match command {
         Commands::Badwords { command } => run_badwords(&cli, &client, command),
     }
+}
+
+fn run_menu(cli: &Cli, client: &AdminClient) -> Result<(), CliError> {
+    let theme = ColorfulTheme::default();
+    print_menu_header(&cli.api);
+
+    loop {
+        let action = choose_menu_action(&theme)?;
+        match action {
+            MenuAction::List => menu_list_badwords(client)?,
+            MenuAction::Get => menu_get_badword(client, &theme)?,
+            MenuAction::Add => menu_add_badwords(client, &theme)?,
+            MenuAction::Remove => menu_remove_badwords(client, &theme)?,
+            MenuAction::Replace => menu_replace_badwords(client, &theme)?,
+            MenuAction::Export => menu_export_badwords(client, &theme)?,
+            MenuAction::Refresh => menu_refresh_badwords(client, &theme)?,
+            MenuAction::Quit => break,
+        }
+
+        if !Confirm::with_theme(&theme)
+            .with_prompt("Return to the admin menu?")
+            .default(true)
+            .interact()
+            .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?
+        {
+            break;
+        }
+    }
+
+    Ok(())
+}
+
+fn print_menu_header(api: &str) {
+    println!("+--------------------------------------------+");
+    println!("| Men Among Gods Reforged Admin              |");
+    println!("| Interactive operator menu                  |");
+    println!("+--------------------------------------------+");
+    println!("API: {api}");
+    println!();
+}
+
+fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
+    let items = [
+        "List badwords",
+        "Check one badword",
+        "Add badwords",
+        "Remove badwords",
+        "Replace badwords list",
+        "Export badwords",
+        "Refresh running server cache",
+        "Quit",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("Choose an action")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => MenuAction::List,
+        1 => MenuAction::Get,
+        2 => MenuAction::Add,
+        3 => MenuAction::Remove,
+        4 => MenuAction::Replace,
+        5 => MenuAction::Export,
+        6 => MenuAction::Refresh,
+        _ => MenuAction::Quit,
+    })
+}
+
+fn menu_list_badwords(client: &AdminClient) -> Result<(), CliError> {
+    let response = client.fetch_badwords().map_err(CliError::Runtime)?;
+    print_badwords_list(&response, OutputFormat::Table)
+}
+
+fn menu_get_badword(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let word = prompt_text(theme, "Word to check", None)?;
+    let response = client.get_badword(&word).map_err(CliError::Runtime)?;
+    print_badword_entry(&response, OutputFormat::Table)
+}
+
+fn menu_add_badwords(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let words = prompt_words(theme, "Words to add (comma or newline separated)")?;
+    if words.is_empty() {
+        println!("No words entered; nothing changed.");
+        return Ok(());
+    }
+    let response = client.add_badwords(&words).map_err(CliError::Runtime)?;
+    print_mutation_response(&response, OutputFormat::Table, false)?;
+    menu_refresh_after_mutation(client, theme)
+}
+
+fn menu_remove_badwords(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let current = client.fetch_badwords().map_err(CliError::Runtime)?;
+    let selected = if current.words.is_empty() {
+        prompt_words(theme, "Words to remove (comma or newline separated)")?
+    } else {
+        let indexes = MultiSelect::with_theme(theme)
+            .with_prompt("Select words to remove, or press Enter to type manually")
+            .items(&current.words)
+            .interact()
+            .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+        if indexes.is_empty() {
+            prompt_words(theme, "Words to remove (comma or newline separated)")?
+        } else {
+            indexes
+                .into_iter()
+                .filter_map(|index| current.words.get(index).cloned())
+                .collect()
+        }
+    };
+
+    if selected.is_empty() {
+        println!("No words selected; nothing changed.");
+        return Ok(());
+    }
+    let response = client
+        .remove_badwords(&selected)
+        .map_err(CliError::Runtime)?;
+    print_mutation_response(&response, OutputFormat::Table, false)?;
+    menu_refresh_after_mutation(client, theme)
+}
+
+fn menu_replace_badwords(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let mode_items = ["Paste/type entries", "Read from file", "Cancel"];
+    let selected = Select::with_theme(theme)
+        .with_prompt("How would you like to provide the replacement list?")
+        .items(&mode_items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    let words = match selected {
+        0 => prompt_words(theme, "Replacement words (comma or newline separated)")?,
+        1 => {
+            let path = prompt_text(theme, "Input file", None)?;
+            read_words_input(&path)?
+        }
+        _ => return Ok(()),
+    };
+
+    println!("Replacement list contains {} entries.", words.len());
+    if !Confirm::with_theme(theme)
+        .with_prompt("Replace the complete badwords list?")
+        .default(false)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?
+    {
+        println!("Replacement cancelled.");
+        return Ok(());
+    }
+
+    let response = client.replace_badwords(&words).map_err(CliError::Runtime)?;
+    print_mutation_response(&response, OutputFormat::Table, false)?;
+    menu_refresh_after_mutation(client, theme)
+}
+
+fn menu_export_badwords(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let response = client.fetch_badwords().map_err(CliError::Runtime)?;
+    let output = prompt_text(theme, "Output file (`-` for stdout)", Some("-"))?;
+    write_badwords_export(&response, OutputFormat::Plain, &output)
+}
+
+fn menu_refresh_badwords(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let wait = Confirm::with_theme(theme)
+        .with_prompt("Wait for the running server to apply the refresh?")
+        .default(true)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+    let timeout_seconds = if wait {
+        prompt_timeout_seconds(theme)?
+    } else {
+        DEFAULT_WAIT_TIMEOUT_SECS
+    };
+    let response = client
+        .request_text_reload(true)
+        .map_err(CliError::Runtime)?;
+    if wait {
+        let status = wait_for_text_reload(client, &response.request_id, timeout_seconds)?;
+        print_reload_status(&status, OutputFormat::Table, false)
+    } else {
+        print_reload_response(&response, OutputFormat::Table, false)
+    }
+}
+
+fn menu_refresh_after_mutation(
+    client: &AdminClient,
+    theme: &ColorfulTheme,
+) -> Result<(), CliError> {
+    if Confirm::with_theme(theme)
+        .with_prompt("Refresh the running server cache now?")
+        .default(true)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?
+    {
+        menu_refresh_badwords(client, theme)?;
+    }
+    Ok(())
+}
+
+fn prompt_text(
+    theme: &ColorfulTheme,
+    prompt: &str,
+    default: Option<&str>,
+) -> Result<String, CliError> {
+    let mut input = Input::<String>::with_theme(theme).with_prompt(prompt.to_string());
+    if let Some(default) = default {
+        input = input.default(default.to_string());
+    }
+    input
+        .interact_text()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))
+}
+
+fn prompt_words(theme: &ColorfulTheme, prompt: &str) -> Result<Vec<String>, CliError> {
+    let raw = prompt_text(theme, prompt, None)?;
+    Ok(split_words(&raw))
+}
+
+fn prompt_timeout_seconds(theme: &ColorfulTheme) -> Result<u64, CliError> {
+    Input::<u64>::with_theme(theme)
+        .with_prompt("Refresh wait timeout in seconds")
+        .default(DEFAULT_WAIT_TIMEOUT_SECS)
+        .interact_text()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))
 }
 
 fn run_badwords(
@@ -335,12 +595,15 @@ fn parse_words_input(raw: &str) -> Result<Vec<String>, CliError> {
             .map_err(|error| CliError::Runtime(format!("parse JSON object: {error}")));
     }
 
-    Ok(raw
-        .lines()
+    Ok(split_words(raw))
+}
+
+fn split_words(raw: &str) -> Vec<String> {
+    raw.split(|character: char| character == ',' || character == '\n' || character == '\r')
         .map(str::trim)
-        .filter(|line| !line.is_empty())
+        .filter(|word| !word.is_empty())
         .map(ToString::to_string)
-        .collect())
+        .collect()
 }
 
 fn write_badwords_export(
@@ -496,5 +759,18 @@ mod tests {
     fn parse_words_input_accepts_newline_list() {
         let words = parse_words_input("alpha\n\nbravo\n").unwrap();
         assert_eq!(words, vec!["alpha".to_string(), "bravo".to_string()]);
+    }
+
+    #[test]
+    fn parse_words_input_accepts_comma_list() {
+        let words = parse_words_input("alpha, bravo,,charlie").unwrap();
+        assert_eq!(
+            words,
+            vec![
+                "alpha".to_string(),
+                "bravo".to_string(),
+                "charlie".to_string()
+            ]
+        );
     }
 }

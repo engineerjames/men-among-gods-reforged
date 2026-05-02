@@ -106,12 +106,19 @@ cargo run --package server-utils --bin mag-admin -- badwords export --output bad
 
 # Explicitly refresh the running server's cached badwords list
 cargo run --package server-utils --bin mag-admin -- badwords refresh --wait
+
+# Open the guided interactive menu for the same badwords actions
+cargo run --package server-utils --bin mag-admin -- --menu
 ```
 
 **Scriptability:** data is written to stdout, diagnostics are written to
 stderr, stdin/stdout paths can be `-`, and exit codes are stable: `0` success,
 `1` runtime/API failure, `2` command-line usage failure, and `3` for `badwords
 get` when the word is not present.
+
+`--menu` is intentionally opt-in and interactive. It reuses the same API calls
+as the scriptable subcommands, with guided prompts for listing, checking,
+adding, removing, replacing, exporting, and refreshing badwords.
 
 ## Local Development Workflow
 
