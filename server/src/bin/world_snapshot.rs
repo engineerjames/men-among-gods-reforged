@@ -212,15 +212,18 @@ fn cmd_import(input: &PathBuf, skip_if_seeded: bool, force: bool) {
         process::exit(1);
     });
 
-    // Seeded-data guard.
-    let exists = store::has_game_data(&mut con).unwrap_or(false);
+    // Seeded-data guard. This performs a semantic map check, not just a
+    // schema-marker check, so corrupt all-default map volumes get reseeded.
+    let exists = store::has_valid_game_data(&mut con).unwrap_or(false);
     if exists && !force {
         if skip_if_seeded {
-            println!("Game data already exists in KeyDB. Skipping import (--skip-if-seeded).");
+            println!(
+                "Valid game data already exists in KeyDB. Skipping import (--skip-if-seeded)."
+            );
             return;
         }
         eprintln!(
-            "Error: game data already exists in KeyDB (game:meta:version found).\n\
+            "Error: valid game data already exists in KeyDB.\n\
              Use --force to overwrite."
         );
         process::exit(1);

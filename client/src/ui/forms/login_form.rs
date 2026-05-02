@@ -159,7 +159,7 @@ impl LoginForm {
         let user_input_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let mut username_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, user_input_y, INPUT_W, INPUT_H),
-            "username",
+            "",
             FONT,
             64,
             false,
@@ -173,7 +173,7 @@ impl LoginForm {
         let pw_input_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let password_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, pw_input_y, INPUT_W, INPUT_H),
-            "password",
+            "",
             FONT,
             64,
             true,

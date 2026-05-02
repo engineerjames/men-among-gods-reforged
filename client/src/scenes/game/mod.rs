@@ -19,7 +19,7 @@ mod weather;
 mod world_input;
 mod world_render;
 
-use mag_core::types::Class;
+use mag_core::traits::class_from_kindred;
 use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::collections::HashSet;
@@ -1608,10 +1608,8 @@ impl Scene for GameScene {
                     points: ci.points,
                     sorted_skills: sorted,
                 });
-                {
-                    let class = Class::from(ci.kindred);
-                    self.talent_panel.sync_state(*ps.talents(), Some(class));
-                }
+                self.talent_panel
+                    .sync_state(*ps.talents(), class_from_kindred(ci.kindred));
                 use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
                     items: ci.item,

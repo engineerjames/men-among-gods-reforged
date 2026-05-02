@@ -55,6 +55,55 @@ pub fn has_game_data(con: &mut Connection) -> Result<bool, String> {
     Ok(exists)
 }
 
+/// Check whether KeyDB contains semantically valid seeded game data.
+///
+/// This first checks the schema marker, then loads and validates the map so
+/// corrupted volumes with an all-default map do not satisfy `--skip-if-seeded`.
+///
+/// # Arguments
+///
+/// * `con` - An open Redis/KeyDB connection.
+///
+/// # Returns
+///
+/// * `Ok(true)` if the schema marker and map sanity checks pass.
+/// * `Ok(false)` if data is missing or fails semantic validation.
+/// * `Err` with a human-readable message if the marker check fails.
+pub fn has_valid_game_data(con: &mut Connection) -> Result<bool, String> {
+    if !has_game_data(con)? {
+        return Ok(false);
+    }
+
+    let map = match load_map(con) {
+        Ok(map) => map,
+        Err(e) => {
+            log::warn!(
+                "KeyDB game data marker is present, but map validation could not load the map: {}",
+                e
+            );
+            return Ok(false);
+        }
+    };
+
+    match validate_loaded_map(&map) {
+        Ok(non_default) => {
+            log::info!(
+                "Existing KeyDB game data validated: {} map tiles ({} non-default).",
+                map.len(),
+                non_default
+            );
+            Ok(true)
+        }
+        Err(e) => {
+            log::warn!(
+                "KeyDB game data marker is present, but map validation failed: {}",
+                e
+            );
+            Ok(false)
+        }
+    }
+}
+
 /// Load a single bincode-encoded entity from a KeyDB key.
 ///
 /// # Arguments
@@ -169,6 +218,50 @@ pub fn load_map(con: &mut Connection) -> Result<Vec<core::types::Map>, String> {
     }
 
     Ok(results)
+}
+
+/// Count map tiles that differ from a completely empty/default tile.
+///
+/// A healthy world map has many non-default tiles because terrain sprites,
+/// walls, flags, items, and occupants are persisted in `game:map:*` records.
+///
+/// # Arguments
+///
+/// * `map` - Loaded map tiles in row-major order.
+///
+/// # Returns
+///
+/// * Number of tiles that are not [`core::types::Map::default`].
+fn count_non_default_map_tiles(map: &[core::types::Map]) -> usize {
+    let empty = core::types::Map::default();
+    map.iter().filter(|tile| **tile != empty).count()
+}
+
+/// Validate that the loaded map contains actual world geometry.
+///
+/// This catches KeyDB datasets where `game:meta:version` exists but the map
+/// was accidentally seeded or saved as an all-default vector. Without this
+/// guard the server can start, stream a black world to clients, and slowly
+/// repopulate `map.ch` from character validation while leaving terrain absent.
+///
+/// # Arguments
+///
+/// * `map` - Loaded map tiles in row-major order.
+///
+/// # Returns
+///
+/// * `Ok(non_default_count)` when at least one tile contains data.
+/// * `Err` with an operator-facing recovery hint when the map is empty.
+fn validate_loaded_map(map: &[core::types::Map]) -> Result<usize, String> {
+    let non_default = count_non_default_map_tiles(map);
+    if non_default == 0 {
+        return Err(
+            "Loaded KeyDB map contains zero non-default tiles; game:map:* data appears empty or corrupt. Re-import a world snapshot with `world-snapshot import --force --input server/assets/world_seed.wsnap` before starting the server."
+                .to_string(),
+        );
+    }
+
+    Ok(non_default)
 }
 
 // ---------------------------------------------------------------------------
@@ -315,7 +408,12 @@ pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
 
     log::info!("  Loading map tiles...");
     let map = load_map(con)?;
-    log::info!("  Loaded {} map tiles.", map.len());
+    let non_default_map_tiles = validate_loaded_map(&map)?;
+    log::info!(
+        "  Loaded {} map tiles ({} non-default).",
+        map.len(),
+        non_default_map_tiles
+    );
 
     log::info!("  Loading items...");
     let items =
@@ -446,7 +544,13 @@ pub fn save_map(con: &mut Connection, map: &[core::types::Map]) -> Result<(), St
     let map_x = core::constants::SERVER_MAPX as usize;
     let total = map.len();
 
-    log::info!("  Saving {} map tiles...", total);
+    let non_default = validate_loaded_map(map)?;
+
+    log::info!(
+        "  Saving {} map tiles ({} non-default)...",
+        total,
+        non_default
+    );
     for batch_start in (0..total).step_by(PIPELINE_BATCH_SIZE) {
         let batch_end = (batch_start + PIPELINE_BATCH_SIZE).min(total);
         let mut pipeline = pipe();
@@ -746,6 +850,37 @@ mod tests {
         let (decoded, _): (core::types::Map, _) =
             bincode::decode_from_slice(&bytes, bincode::config::standard()).expect("decode Map");
         assert_eq!(original, decoded);
+    }
+
+    /// An all-default map should be rejected as corrupt seeded data.
+    #[test]
+    fn validate_loaded_map_rejects_all_default_tiles() {
+        let map = vec![core::types::Map::default(); 4];
+
+        let err = validate_loaded_map(&map).expect_err("default map should fail validation");
+
+        assert!(err.contains("zero non-default tiles"));
+    }
+
+    /// A map with any real terrain data should pass validation.
+    #[test]
+    fn validate_loaded_map_accepts_non_default_tiles() {
+        let mut map = vec![core::types::Map::default(); 4];
+        map[2].sprite = 42;
+
+        let count = validate_loaded_map(&map).expect("non-default map should validate");
+
+        assert_eq!(count, 1);
+    }
+
+    /// Full map saves should reject corrupt all-default data before writing.
+    #[test]
+    fn save_map_validation_rejects_all_default_tiles() {
+        let map = vec![core::types::Map::default(); 4];
+
+        let err = validate_loaded_map(&map).expect_err("default map should fail validation");
+
+        assert!(err.contains("world-snapshot import --force"));
     }
 
     /// Round-trip encode/decode for a default `Item`.
