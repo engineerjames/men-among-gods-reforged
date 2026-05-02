@@ -42,7 +42,7 @@ impl ApiTokenState {
     /// active session.
     ///
     /// # Arguments
-    /// * `base_url` - The root URL of the account/auth API (e.g. `http://127.0.0.1:5554`).
+    /// * `base_url` - The root URL of the account/auth API (e.g. `https://127.0.0.1:5554`).
     ///
     /// # Returns
     /// * A new `ApiTokenState` with all session fields set to `None`.

@@ -440,15 +440,6 @@ impl PlayerState {
         }
 
         match &command.structured_data {
-            ServerCommandData::NewPlayer {
-                _player_id: _,
-                _pass1: _,
-                _pass2: _,
-                server_version,
-            } => {
-                // TODO: player_id, pass1 and pass2 are only needed for the legacy login flow
-                self.server_version = *server_version;
-            }
             ServerCommandData::LoginOk { server_version } => {
                 self.server_version = *server_version;
             }

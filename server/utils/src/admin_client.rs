@@ -17,7 +17,7 @@ use mag_core::template_store::{
 use mag_core::types::{Character, Item, Map};
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 const OCTET_STREAM: &str = "application/octet-stream";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -105,6 +105,93 @@ pub struct MapVersionResponse {
     pub version: u64,
 }
 
+/// JSON view returned by `GET /admin/world/globals`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalsResponse {
+    /// Current in-game minute/time counter.
+    pub mdtime: i32,
+    /// Current in-game day.
+    pub mdday: i32,
+    /// Current in-game year.
+    pub mdyear: i32,
+    /// Current daylight value.
+    pub dlight: i32,
+    /// Total player characters created.
+    pub players_created: i32,
+    /// Total NPCs created.
+    pub npcs_created: i32,
+    /// Total player deaths.
+    pub players_died: i32,
+    /// Total NPC deaths.
+    pub npcs_died: i32,
+    /// Current character count.
+    pub character_cnt: i32,
+    /// Current item count.
+    pub item_cnt: i32,
+    /// Current effect count.
+    pub effect_cnt: i32,
+    /// Expiration pass counter.
+    pub expire_cnt: i32,
+    /// Expiration run marker.
+    pub expire_run: i32,
+    /// Garbage-collection pass counter.
+    pub gc_cnt: i32,
+    /// Garbage-collection run marker.
+    pub gc_run: i32,
+    /// Lost-object pass counter.
+    pub lost_cnt: i32,
+    /// Lost-object run marker.
+    pub lost_run: i32,
+    /// Character reset counter.
+    pub reset_char: i32,
+    /// Item reset counter.
+    pub reset_item: i32,
+    /// Server tick counter.
+    pub ticker: i32,
+    /// Total player online time.
+    pub total_online_time: i64,
+    /// Online time bucketed by hour.
+    pub online_per_hour: [i64; 24],
+    /// Global flag bitfield.
+    pub flags: i32,
+    /// Total server uptime.
+    pub uptime: i64,
+    /// Server uptime bucketed by hour.
+    pub uptime_per_hour: [i64; 24],
+    /// Awake-state counter.
+    pub awake: i32,
+    /// Body-state counter.
+    pub body: i32,
+    /// Current number of online players.
+    pub players_online: i32,
+    /// Current queue size.
+    pub queuesize: i32,
+    /// Total received bytes.
+    pub recv: i64,
+    /// Total sent bytes.
+    pub send: i64,
+    /// Transfer reset time marker.
+    pub transfer_reset_time: i32,
+    /// Current load average.
+    pub load_avg: i32,
+    /// Current raw load value.
+    pub load: i64,
+    /// Maximum online player count.
+    pub max_online: i32,
+    /// Maximum online count bucketed by hour.
+    pub max_online_per_hour: [i32; 24],
+    /// Full-moon marker.
+    pub fullmoon: i8,
+    /// New-moon marker.
+    pub newmoon: i8,
+    /// Unique id counter.
+    pub unique: u64,
+    /// Current cap value.
+    pub cap: i32,
+    /// Whether the global dirty flag is currently set.
+    pub dirty: bool,
+}
+
 /// Per-slot summary returned by world entity listing endpoints.
 #[derive(Debug, Clone, Deserialize)]
 pub struct WorldEntitySummary {
@@ -162,6 +249,66 @@ pub struct WorldEntityReloadStatusResponse {
 pub struct WorldEntityVersionResponse {
     /// Current value of the version counter.
     pub version: u64,
+}
+
+/// Response envelope from `GET /admin/text/badwords`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsListResponse {
+    /// Canonical badword entries in stable storage order.
+    pub words: Vec<String>,
+    /// Number of entries in `words`.
+    pub count: usize,
+    /// Current badwords version counter.
+    pub version: u64,
+}
+
+/// Response envelope from `GET /admin/text/badwords/entry`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordEntryResponse {
+    /// Canonicalized query word.
+    pub word: String,
+    /// Whether `word` exists in the badwords list.
+    pub exists: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct BadwordsMutationRequest<'a> {
+    words: &'a [String],
+}
+
+/// Response envelope from badwords mutation endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsMutationResponse {
+    /// Canonical badword entries after the mutation.
+    pub words: Vec<String>,
+    /// Number of entries after the mutation.
+    pub count: usize,
+    /// Current badwords version counter.
+    pub version: u64,
+    /// Canonical words newly added by the mutation.
+    pub added: Vec<String>,
+    /// Canonical words removed by the mutation.
+    pub removed: Vec<String>,
+    /// Canonical requested words that left storage unchanged.
+    pub unchanged: Vec<String>,
+}
+
+/// Response envelope from `POST /admin/text/reload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadResponse {
+    /// Opaque request identifier assigned by the API.
+    pub request_id: String,
+    /// Echoes the validated reload kinds.
+    pub kinds: Vec<String>,
+}
+
+/// Response envelope from `GET /admin/text/reload/status`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadStatusResponse {
+    /// Lifecycle state: `pending` or `applied`.
+    pub status: String,
+    /// Opaque identifier echoed back by the API.
+    pub request_id: String,
 }
 
 /// Blocking client for the admin API.
@@ -665,6 +812,27 @@ impl AdminClient {
         Ok(body.version)
     }
 
+    /// Fetch the persisted global game-state counters.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(globals)` on success.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn fetch_globals(&self) -> Result<GlobalsResponse, String> {
+        let url = self.url("/admin/world/globals");
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<GlobalsResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
     // ------------------------------------------------------------------
     //  Item editing (live world state)
     // ------------------------------------------------------------------
@@ -1026,6 +1194,176 @@ impl AdminClient {
         let body: WorldEntityVersionResponse =
             resp.json().map_err(|e| format!("GET {url}: decode: {e}"))?;
         Ok(body.version)
+    }
+
+    // ------------------------------------------------------------------
+    //  Text data: badwords
+    // ------------------------------------------------------------------
+
+    /// Fetch the complete badwords list.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` with canonical badwords and version metadata.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn fetch_badwords(&self) -> Result<BadwordsListResponse, String> {
+        let url = self.url("/admin/text/badwords");
+        let resp = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<BadwordsListResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Query whether a badword entry exists.
+    ///
+    /// # Arguments
+    ///
+    /// * `word` - Raw word to canonicalize and query server-side.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` with the canonical word and existence flag.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn get_badword(&self, word: &str) -> Result<BadwordEntryResponse, String> {
+        let url = self.url("/admin/text/badwords/entry");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("word", word)])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<BadwordEntryResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Add one or more badword entries idempotently.
+    ///
+    /// # Arguments
+    ///
+    /// * `words` - Raw words to add.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` with mutation details.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn add_badwords(&self, words: &[String]) -> Result<BadwordsMutationResponse, String> {
+        self.mutate_badwords(reqwest::Method::POST, words)
+    }
+
+    /// Replace the complete badwords list.
+    ///
+    /// # Arguments
+    ///
+    /// * `words` - Raw replacement entries.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` with mutation details.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn replace_badwords(&self, words: &[String]) -> Result<BadwordsMutationResponse, String> {
+        self.mutate_badwords(reqwest::Method::PUT, words)
+    }
+
+    /// Remove one or more badword entries idempotently.
+    ///
+    /// # Arguments
+    ///
+    /// * `words` - Raw words to remove.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` with mutation details.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn remove_badwords(&self, words: &[String]) -> Result<BadwordsMutationResponse, String> {
+        self.mutate_badwords(reqwest::Method::DELETE, words)
+    }
+
+    fn mutate_badwords(
+        &self,
+        method: reqwest::Method,
+        words: &[String],
+    ) -> Result<BadwordsMutationResponse, String> {
+        let url = self.url("/admin/text/badwords");
+        let resp = self
+            .client
+            .request(method.clone(), &url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .json(&BadwordsMutationRequest { words })
+            .send()
+            .map_err(|e| format!("{} {url}: {e}", method.as_str()))?;
+        if !resp.status().is_success() {
+            return Err(format!("{} {url}: HTTP {}", method.as_str(), resp.status()));
+        }
+        resp.json::<BadwordsMutationResponse>()
+            .map_err(|e| format!("{} {url}: decode: {e}", method.as_str()))
+    }
+
+    /// Request a running server refresh of text data.
+    ///
+    /// # Arguments
+    ///
+    /// * `reload_badwords` - Whether badwords should be refreshed.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` containing the request id.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn request_text_reload(&self, reload_badwords: bool) -> Result<TextReloadResponse, String> {
+        let url = self.url("/admin/text/reload");
+        let kinds: Vec<&str> = if reload_badwords {
+            vec!["badwords"]
+        } else {
+            Vec::new()
+        };
+        let resp = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .json(&serde_json::json!({ "kinds": kinds }))
+            .send()
+            .map_err(|e| format!("POST {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("POST {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<TextReloadResponse>()
+            .map_err(|e| format!("POST {url}: decode: {e}"))
+    }
+
+    /// Poll text reload status for a previous request.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - Identifier returned by [`request_text_reload`](Self::request_text_reload).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` with the current lifecycle state.
+    /// * `Err(message)` on HTTP or JSON decode failure.
+    pub fn text_reload_status(&self, request_id: &str) -> Result<TextReloadStatusResponse, String> {
+        let url = self.url("/admin/text/reload/status");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("request_id", request_id)])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<TextReloadStatusResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
     }
 }
 

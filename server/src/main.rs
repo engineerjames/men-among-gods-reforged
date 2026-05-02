@@ -73,7 +73,10 @@ fn main() -> Result<(), String> {
         process::exit(1);
     });
 
-    log::info!("Starting Men Among Gods: Reforged Server v1.1.0");
+    log::info!(
+        "Starting Men Among Gods: Reforged Server v{}",
+        env!("CARGO_PKG_VERSION")
+    );
     log::info!("Process PID: {}", process::id());
 
     let quit_flag = Arc::new(AtomicBool::new(false));
@@ -135,6 +138,7 @@ fn main() -> Result<(), String> {
 
     while !quit_flag.load(Ordering::SeqCst) {
         server.drain_template_reloads(&mut gs);
+        server.drain_text_reloads(&mut gs);
         server.drain_map_patches(&mut gs);
         server.drain_item_patches(&mut gs);
         server.drain_character_patches(&mut gs);

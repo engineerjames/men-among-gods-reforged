@@ -106,6 +106,77 @@ impl ErrorResponse {
     }
 }
 
+/// Response for `GET /admin/text/badwords`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsListResponse {
+    /// Canonical badword entries in stable storage order.
+    pub words: Vec<String>,
+    /// Number of entries in `words`.
+    pub count: usize,
+    /// Current badwords version counter.
+    pub version: u64,
+}
+
+/// Response for `GET /admin/text/badwords/entry`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordEntryResponse {
+    /// Canonicalized query word.
+    pub word: String,
+    /// Whether `word` currently exists in the badwords list.
+    pub exists: bool,
+}
+
+/// Request body used by badwords mutation endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsMutationRequest {
+    /// Raw words to add, remove, or use as the replacement list.
+    pub words: Vec<String>,
+}
+
+/// Response returned by badwords mutation endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BadwordsMutationResponse {
+    /// Canonical badword entries after the mutation.
+    pub words: Vec<String>,
+    /// Number of entries after the mutation.
+    pub count: usize,
+    /// Current badwords version counter.
+    pub version: u64,
+    /// Canonical words newly added by this mutation.
+    pub added: Vec<String>,
+    /// Canonical words removed by this mutation.
+    pub removed: Vec<String>,
+    /// Canonical requested words that left storage unchanged.
+    pub unchanged: Vec<String>,
+}
+
+/// Body for `POST /admin/text/reload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadRequest {
+    /// Which text data kinds to reload.
+    ///
+    /// Recognised values: `"badwords"`. Unknown values are rejected with `400`.
+    pub kinds: Vec<String>,
+}
+
+/// Response for `POST /admin/text/reload`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadResponse {
+    /// Opaque identifier the caller polls via the reload-status endpoint.
+    pub request_id: String,
+    /// Echoes the validated reload kinds.
+    pub kinds: Vec<String>,
+}
+
+/// Status snapshot for `GET /admin/text/reload/status`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextReloadStatusResponse {
+    /// One of `"pending"` or `"applied"`.
+    pub status: String,
+    /// Opaque identifier echoed back by the API.
+    pub request_id: String,
+}
+
 /// Response shape for `PUT /admin/world/map/{x}/{y}`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PutMapTileResponse {
@@ -143,6 +214,150 @@ pub struct MapReloadStatusResponse {
 pub struct MapVersionResponse {
     /// Current value of the map version counter.
     pub version: u64,
+}
+
+/// JSON view of the persisted global game-state counters.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GlobalsResponse {
+    /// Current in-game minute/time counter.
+    pub mdtime: i32,
+    /// Current in-game day.
+    pub mdday: i32,
+    /// Current in-game year.
+    pub mdyear: i32,
+    /// Current daylight value.
+    pub dlight: i32,
+    /// Total player characters created.
+    pub players_created: i32,
+    /// Total NPCs created.
+    pub npcs_created: i32,
+    /// Total player deaths.
+    pub players_died: i32,
+    /// Total NPC deaths.
+    pub npcs_died: i32,
+    /// Current character count.
+    pub character_cnt: i32,
+    /// Current item count.
+    pub item_cnt: i32,
+    /// Current effect count.
+    pub effect_cnt: i32,
+    /// Expiration pass counter.
+    pub expire_cnt: i32,
+    /// Expiration run marker.
+    pub expire_run: i32,
+    /// Garbage-collection pass counter.
+    pub gc_cnt: i32,
+    /// Garbage-collection run marker.
+    pub gc_run: i32,
+    /// Lost-object pass counter.
+    pub lost_cnt: i32,
+    /// Lost-object run marker.
+    pub lost_run: i32,
+    /// Character reset counter.
+    pub reset_char: i32,
+    /// Item reset counter.
+    pub reset_item: i32,
+    /// Server tick counter.
+    pub ticker: i32,
+    /// Total player online time.
+    pub total_online_time: i64,
+    /// Online time bucketed by hour.
+    pub online_per_hour: [i64; 24],
+    /// Global flag bitfield.
+    pub flags: i32,
+    /// Total server uptime.
+    pub uptime: i64,
+    /// Server uptime bucketed by hour.
+    pub uptime_per_hour: [i64; 24],
+    /// Awake-state counter.
+    pub awake: i32,
+    /// Body-state counter.
+    pub body: i32,
+    /// Current number of online players.
+    pub players_online: i32,
+    /// Current queue size.
+    pub queuesize: i32,
+    /// Total received bytes.
+    pub recv: i64,
+    /// Total sent bytes.
+    pub send: i64,
+    /// Transfer reset time marker.
+    pub transfer_reset_time: i32,
+    /// Current load average.
+    pub load_avg: i32,
+    /// Current raw load value.
+    pub load: i64,
+    /// Maximum online player count.
+    pub max_online: i32,
+    /// Maximum online count bucketed by hour.
+    pub max_online_per_hour: [i32; 24],
+    /// Full-moon marker.
+    pub fullmoon: i8,
+    /// New-moon marker.
+    pub newmoon: i8,
+    /// Unique id counter.
+    pub unique: u64,
+    /// Current cap value.
+    pub cap: i32,
+    /// Whether the global dirty flag is currently set.
+    pub dirty: bool,
+}
+
+impl From<mag_core::types::Global> for GlobalsResponse {
+    /// Build a JSON response DTO from the bincode-backed global state.
+    ///
+    /// # Arguments
+    ///
+    /// * `global` - Persisted global game-state value.
+    ///
+    /// # Returns
+    ///
+    /// * A [`GlobalsResponse`] with every operator-facing field copied out.
+    fn from(global: mag_core::types::Global) -> Self {
+        Self {
+            mdtime: global.mdtime,
+            mdday: global.mdday,
+            mdyear: global.mdyear,
+            dlight: global.dlight,
+            players_created: global.players_created,
+            npcs_created: global.npcs_created,
+            players_died: global.players_died,
+            npcs_died: global.npcs_died,
+            character_cnt: global.character_cnt,
+            item_cnt: global.item_cnt,
+            effect_cnt: global.effect_cnt,
+            expire_cnt: global.expire_cnt,
+            expire_run: global.expire_run,
+            gc_cnt: global.gc_cnt,
+            gc_run: global.gc_run,
+            lost_cnt: global.lost_cnt,
+            lost_run: global.lost_run,
+            reset_char: global.reset_char,
+            reset_item: global.reset_item,
+            ticker: global.ticker,
+            total_online_time: global.total_online_time,
+            online_per_hour: global.online_per_hour,
+            flags: global.flags,
+            uptime: global.uptime,
+            uptime_per_hour: global.uptime_per_hour,
+            awake: global.awake,
+            body: global.body,
+            players_online: global.players_online,
+            queuesize: global.queuesize,
+            recv: global.recv,
+            send: global.send,
+            transfer_reset_time: global.transfer_reset_time,
+            load_avg: global.load_avg,
+            load: global.load,
+            max_online: global.max_online,
+            max_online_per_hour: global.max_online_per_hour,
+            fullmoon: global.fullmoon,
+            newmoon: global.newmoon,
+            unique: global.unique,
+            cap: global.cap,
+            dirty: global.is_dirty(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

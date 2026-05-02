@@ -4,13 +4,7 @@
 #[repr(u8)]
 pub enum ClientCommandType {
     _Empty = 0,
-    #[allow(dead_code)]
-    NewLogin = 1,
-    #[allow(dead_code)]
-    Login = 2,
     Challenge = 3,
-    #[allow(dead_code)]
-    PerfReport = 4,
     CmdMove = 5,
     CmdPickup = 6,
     CmdAttack = 7,
@@ -25,8 +19,6 @@ pub enum ClientCommandType {
     CmdInvLook = 16,
     CmdLookItem = 17,
     CmdUse = 18,
-    #[allow(dead_code)]
-    CmdSetUser = 19,
     CmdTurn = 20,
     CmdAutoLook = 21,
     CmdInput3 = 22,
@@ -40,7 +32,6 @@ pub enum ClientCommandType {
     CmdInput8 = 30,
     CmdExit = 31,
     CmdUnique = 32,
-    Passwd = 33,
     Ping = 34,
     ApiLogin = 35,
     /// Auto-loot a grave at the given tile coordinates.
@@ -67,10 +58,7 @@ impl From<u8> for ClientCommandType {
     fn from(value: u8) -> Self {
         match value {
             0 => ClientCommandType::_Empty,
-            1 => ClientCommandType::NewLogin,
-            2 => ClientCommandType::Login,
             3 => ClientCommandType::Challenge,
-            4 => ClientCommandType::PerfReport,
             5 => ClientCommandType::CmdMove,
             6 => ClientCommandType::CmdPickup,
             7 => ClientCommandType::CmdAttack,
@@ -85,7 +73,6 @@ impl From<u8> for ClientCommandType {
             16 => ClientCommandType::CmdInvLook,
             17 => ClientCommandType::CmdLookItem,
             18 => ClientCommandType::CmdUse,
-            19 => ClientCommandType::CmdSetUser,
             20 => ClientCommandType::CmdTurn,
             21 => ClientCommandType::CmdAutoLook,
             22 => ClientCommandType::CmdInput3,
@@ -99,7 +86,6 @@ impl From<u8> for ClientCommandType {
             30 => ClientCommandType::CmdInput8,
             31 => ClientCommandType::CmdExit,
             32 => ClientCommandType::CmdUnique,
-            33 => ClientCommandType::Passwd,
             34 => ClientCommandType::Ping,
             35 => ClientCommandType::ApiLogin,
             36 => ClientCommandType::CmdAutoloot,
@@ -648,5 +634,11 @@ mod tests {
             ClientCommandType::from(38u8),
             ClientCommandType::CmdResetTalents
         );
+    }
+
+    #[test]
+    fn retired_opcodes_decode_as_empty() {
+        assert_eq!(ClientCommandType::from(4u8), ClientCommandType::_Empty);
+        assert_eq!(ClientCommandType::from(19u8), ClientCommandType::_Empty);
     }
 }

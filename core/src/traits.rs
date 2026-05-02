@@ -1,3 +1,5 @@
+use std::backtrace;
+
 use crate::constants::ItemFlags;
 use serde::Deserialize;
 use serde::Serialize;
@@ -66,6 +68,8 @@ impl From<i32> for Class {
             Class::Monster
         } else {
             log::error!("invalid kindred value: {kindred}");
+            // Add a stack trace to help diagnose how this happened, since it should be impossible with valid data.
+            log::error!("stack trace: {:?}", backtrace::Backtrace::force_capture());
             Class::Mercenary
         }
     }

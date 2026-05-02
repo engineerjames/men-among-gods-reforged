@@ -39,8 +39,6 @@ pub struct ServerPlayer {
     pub lasttick: u32,
     pub lasttick2: u32,
     pub usnr: usize, // character number this player controls
-    pub pass1: u32,
-    pub pass2: u32,
     /// One-time API login ticket used for account-managed character login.
     pub login_ticket: u64,
     /// API-side character id currently linked to this session.
@@ -70,8 +68,6 @@ pub struct ServerPlayer {
     pub ticker_started: i32,
 
     pub unique: u64,
-
-    pub passwd: [u8; 16],
 
     /// Active weather kind sent to this player (0 = none).
     ///
@@ -118,8 +114,6 @@ impl ServerPlayer {
             lasttick: 0,
             lasttick2: 0,
             usnr: 0,
-            pass1: 0,
-            pass2: 0,
             login_ticket: 0,
             api_character_id: 0,
             ltick: 0,
@@ -136,7 +130,6 @@ impl ServerPlayer {
             zs: None,
             ticker_started: 0,
             unique: 0,
-            passwd: [0; 16],
             weather_kind: 0,
             weather_intensity: 0,
             weather_expire_tick: 0,

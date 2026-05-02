@@ -42,9 +42,9 @@ jobs:
         cargo install cargo-vcpkg
         cargo vcpkg -v build --manifest-path client/Cargo.toml
 
-    - name: Build
-      run: cargo build
-    - name: Run tests
-      run: cargo test
-    - name: Run clippy
-      run: cargo clippy -- -D warnings
+    - name: Build release workspace
+      run: cargo build --workspace --all-targets --release
+    - name: Run workspace tests
+      run: cargo test --workspace --all-targets --release
+    - name: Run workspace clippy
+      run: cargo clippy --workspace --all-targets -- -D warnings

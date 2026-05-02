@@ -164,15 +164,16 @@ impl LoginScene {
             return;
         }
 
-        let api_base_url =
-            if entered_host.starts_with("http://") || entered_host.starts_with("https://") {
-                entered_host.trim_end_matches('/').to_string()
-            } else {
-                format!("https://{}:5554", entered_host)
-            };
-
-        self.login_form
-            .set_unencrypted_warning(api_base_url.to_ascii_lowercase().starts_with("http://"));
+        let api_base_url = if let Some(rest) = entered_host.strip_prefix("https://") {
+            format!("https://{}", rest.trim_end_matches('/'))
+        } else if entered_host.starts_with("http://") {
+            self.login_form.set_error(Some(
+                "Server URL must use https:// (TLS required)".to_string(),
+            ));
+            return;
+        } else {
+            format!("https://{}:5554", entered_host)
+        };
 
         self.begin_login_request(app_state, api_base_url, username, password);
     }

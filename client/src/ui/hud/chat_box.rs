@@ -39,6 +39,9 @@ const IDLE_FADE_DELAY_SECS: f32 = 5.0;
 /// Duration in seconds of the fade-out transition (fully opaque --> invisible).
 const IDLE_FADE_DURATION_SECS: f32 = 1.0;
 
+/// Duration in seconds for one complete caret blink cycle.
+const CARET_BLINK_PERIOD_SECS: f32 = 1.0;
+
 /// A self-contained scrollable chat log with an input line.
 ///
 /// Draws a semi-transparent background, then the most recent messages
@@ -60,6 +63,7 @@ pub struct ChatBox {
     // -- Data owned by the widget --
     messages: Vec<LogMessage>,
     input_buf: String,
+    input_cursor: usize,
     sent_chat_history: Vec<String>,
     chat_history_index: Option<usize>,
     chat_history_draft: Option<String>,
@@ -71,6 +75,8 @@ pub struct ChatBox {
     // -- Idle fade --
     /// Seconds elapsed since the last user interaction or incoming message.
     idle_elapsed: f32,
+    /// Seconds elapsed in the current caret blink cycle.
+    caret_elapsed: f32,
     /// Current draw opacity in the range 0 (invisible) – 255 (fully opaque).
     alpha: u8,
 }
@@ -102,12 +108,14 @@ impl ChatBox {
             line_height,
             messages: Vec::new(),
             input_buf: String::new(),
+            input_cursor: 0,
             sent_chat_history: Vec::new(),
             chat_history_index: None,
             chat_history_draft: None,
             focused: false,
             pending_actions: Vec::new(),
             idle_elapsed: 0.0,
+            caret_elapsed: 0.0,
             alpha: 255,
         }
     }
@@ -156,6 +164,7 @@ impl ChatBox {
         self.focused = focused;
         if focused {
             self.idle_elapsed = 0.0;
+            self.reset_caret_blink();
         }
     }
 
@@ -168,7 +177,9 @@ impl ChatBox {
     pub fn inject_char(&mut self, ch: char) {
         self.idle_elapsed = 0.0;
         if self.input_buf.len() + ch.len_utf8() <= MAX_INPUT_LEN {
-            self.input_buf.push(ch);
+            self.input_buf.insert(self.input_cursor, ch);
+            self.input_cursor += ch.len_utf8();
+            self.reset_caret_blink();
         }
     }
 
@@ -176,7 +187,7 @@ impl ChatBox {
     /// keyboard backspace).
     pub fn inject_backspace(&mut self) {
         self.idle_elapsed = 0.0;
-        self.input_buf.pop();
+        self.delete_before_cursor();
     }
 
     /// Runs the follow-tail and clamping logic for the scroll offset.
@@ -235,16 +246,116 @@ impl ChatBox {
         }
     }
 
+    /// Resets the caret blink cycle so the caret is immediately visible.
+    fn reset_caret_blink(&mut self) {
+        self.caret_elapsed = 0.0;
+    }
+
+    /// Clamps cursor state to a valid UTF-8 boundary inside the input buffer.
+    fn normalize_cursor(&mut self) {
+        if self.input_cursor > self.input_buf.len() {
+            self.input_cursor = self.input_buf.len();
+        }
+        while !self.input_buf.is_char_boundary(self.input_cursor) {
+            self.input_cursor -= 1;
+        }
+    }
+
+    /// Moves the input cursor one Unicode scalar value to the left.
+    fn move_cursor_left(&mut self) {
+        self.normalize_cursor();
+        if self.input_cursor == 0 {
+            return;
+        }
+        if let Some((idx, _)) = self.input_buf[..self.input_cursor]
+            .char_indices()
+            .next_back()
+        {
+            self.input_cursor = idx;
+            self.reset_caret_blink();
+        }
+    }
+
+    /// Moves the input cursor one Unicode scalar value to the right.
+    fn move_cursor_right(&mut self) {
+        self.normalize_cursor();
+        if self.input_cursor >= self.input_buf.len() {
+            return;
+        }
+        if let Some(ch) = self.input_buf[self.input_cursor..].chars().next() {
+            self.input_cursor += ch.len_utf8();
+            self.reset_caret_blink();
+        }
+    }
+
+    /// Deletes the character immediately before the input cursor.
+    fn delete_before_cursor(&mut self) {
+        self.normalize_cursor();
+        if self.input_cursor == 0 {
+            return;
+        }
+        if let Some((start, _)) = self.input_buf[..self.input_cursor]
+            .char_indices()
+            .next_back()
+        {
+            self.input_buf.drain(start..self.input_cursor);
+            self.input_cursor = start;
+            self.reset_caret_blink();
+        }
+    }
+
+    /// Inserts text at the cursor while respecting the maximum input length.
+    fn insert_text_at_cursor(&mut self, text: &str) {
+        self.normalize_cursor();
+        if self.input_buf.len() + text.len() <= MAX_INPUT_LEN {
+            self.input_buf.insert_str(self.input_cursor, text);
+            self.input_cursor += text.len();
+            self.reset_caret_blink();
+        }
+    }
+
+    /// Replaces the input buffer and moves the cursor to the end.
+    fn replace_input(&mut self, text: String) {
+        self.input_buf = text;
+        self.input_cursor = self.input_buf.len();
+        self.reset_caret_blink();
+    }
+
+    /// Returns the visible input suffix and cursor position within it.
+    fn visible_input_window(&self, max_visible_chars: usize) -> (String, usize) {
+        let cursor_char = self.input_buf[..self.input_cursor].chars().count();
+        let char_count = self.input_buf.chars().count();
+        if char_count <= max_visible_chars {
+            return (self.input_buf.clone(), cursor_char);
+        }
+
+        let desired_start = cursor_char
+            .saturating_add(1)
+            .saturating_sub(max_visible_chars);
+        let max_start = char_count.saturating_sub(max_visible_chars);
+        let start_char = desired_start.min(max_start);
+        let visible: String = self
+            .input_buf
+            .chars()
+            .skip(start_char)
+            .take(max_visible_chars)
+            .collect();
+
+        (visible, cursor_char.saturating_sub(start_char))
+    }
+
     // -- Input / history helpers --
 
     /// Handles the Enter key: sends the current input and records history.
     pub fn submit_input(&mut self) {
         self.focused = false;
         if self.input_buf.is_empty() {
+            self.input_cursor = 0;
             return;
         }
         let text = self.input_buf.clone();
         self.input_buf.clear();
+        self.input_cursor = 0;
 
         self.sent_chat_history.push(text.clone());
         if self.sent_chat_history.len() > MAX_HISTORY_LEN {
@@ -270,7 +381,7 @@ impl ChatBox {
         };
         self.chat_history_index = Some(next_index);
         if let Some(msg) = self.sent_chat_history.get(next_index) {
-            self.input_buf = msg.clone();
+            self.replace_input(msg.clone());
         }
     }
 
@@ -283,11 +394,12 @@ impl ChatBox {
             let next = idx + 1;
             self.chat_history_index = Some(next);
             if let Some(msg) = self.sent_chat_history.get(next) {
-                self.input_buf = msg.clone();
+                self.replace_input(msg.clone());
             }
         } else {
             self.chat_history_index = None;
-            self.input_buf = self.chat_history_draft.take().unwrap_or_default();
+            let draft = self.chat_history_draft.take().unwrap_or_default();
+            self.replace_input(draft);
         }
     }
 }
@@ -327,9 +439,7 @@ impl Widget for ChatBox {
                     return EventResponse::Ignored;
                 }
                 self.idle_elapsed = 0.0;
-                if self.input_buf.len() + text.len() <= MAX_INPUT_LEN {
-                    self.input_buf.push_str(text);
-                }
+                self.insert_text_at_cursor(text);
                 EventResponse::Consumed
             }
 
@@ -339,11 +449,14 @@ impl Widget for ChatBox {
                         Keycode::Return | Keycode::KpEnter | Keycode::Slash => {
                             self.idle_elapsed = 0.0;
                             self.focused = true;
+                            self.input_cursor = self.input_buf.len();
+                            self.reset_caret_blink();
                             return EventResponse::Consumed;
                         }
                         Keycode::Up => {
                             self.idle_elapsed = 0.0;
                             self.focused = true;
+                            self.reset_caret_blink();
                             self.history_back();
                             return EventResponse::Consumed;
                         }
@@ -362,7 +475,25 @@ impl Widget for ChatBox {
                         EventResponse::Consumed
                     }
                     Keycode::Backspace => {
-                        self.input_buf.pop();
+                        self.delete_before_cursor();
+                        EventResponse::Consumed
+                    }
+                    Keycode::Left => {
+                        self.move_cursor_left();
+                        EventResponse::Consumed
+                    }
+                    Keycode::Right => {
+                        self.move_cursor_right();
+                        EventResponse::Consumed
+                    }
+                    Keycode::Home => {
+                        self.input_cursor = 0;
+                        self.reset_caret_blink();
+                        EventResponse::Consumed
+                    }
+                    Keycode::End => {
+                        self.input_cursor = self.input_buf.len();
+                        self.reset_caret_blink();
                         EventResponse::Consumed
                     }
                     Keycode::Up => {
@@ -391,6 +522,13 @@ impl Widget for ChatBox {
     }
 
     fn update(&mut self, dt: Duration) {
+        self.caret_elapsed = (self.caret_elapsed + dt.as_secs_f32()) % CARET_BLINK_PERIOD_SECS;
+        if self.focused {
+            self.idle_elapsed = 0.0;
+            self.alpha = 255;
+            return;
+        }
+
         self.idle_elapsed += dt.as_secs_f32();
         self.alpha = if self.idle_elapsed < IDLE_FADE_DELAY_SECS {
             255
@@ -469,13 +607,8 @@ impl Widget for ChatBox {
         // just cache a "visible input substring" that gets updated on input events.
         const MAX_INPUT_TO_SHOW: usize = 43;
         let input_y = sep_y + 3; // 3px below separator
-        let input_text_to_render = if self.input_buf.len() > MAX_INPUT_TO_SHOW {
-            // Truncate input text if it's too long to fit (heuristic)
-            let start = self.input_buf.len() - MAX_INPUT_TO_SHOW;
-            format!("...{}", &self.input_buf[start..])
-        } else {
-            self.input_buf.clone()
-        };
+        let (input_text_to_render, visible_cursor_chars) =
+            self.visible_input_window(MAX_INPUT_TO_SHOW);
 
         font_cache::draw_text(
             ctx.canvas,
@@ -486,6 +619,20 @@ impl Widget for ChatBox {
             input_y,
             font_cache::TextStyle::faded(self.alpha),
         )?;
+
+        if self.focused && self.caret_elapsed < CARET_BLINK_PERIOD_SECS / 2.0 {
+            let caret_x =
+                inner.x + (visible_cursor_chars as i32 * font_cache::BITMAP_GLYPH_ADVANCE as i32);
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                INPUT_FONT,
+                "|",
+                caret_x,
+                input_y,
+                font_cache::TextStyle::faded(self.alpha),
+            )?;
+        }
 
         Ok(())
     }
@@ -679,6 +826,22 @@ mod tests {
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Consumed);
         assert_eq!(cb.input_text(), "hi");
+        assert_eq!(cb.input_cursor, 2);
+    }
+
+    #[test]
+    fn text_input_inserts_at_cursor() {
+        let mut cb = test_chat_box();
+        cb.focused = true;
+        cb.input_buf = "helo".to_owned();
+        cb.input_cursor = 2;
+        let event = UiEvent::TextInput {
+            text: "l".to_owned(),
+        };
+        let resp = cb.handle_event(&event);
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(cb.input_text(), "hello");
+        assert_eq!(cb.input_cursor, 3);
     }
 
     #[test]
@@ -712,6 +875,7 @@ mod tests {
         let mut cb = test_chat_box();
         cb.focused = true;
         cb.input_buf = "hello world".to_owned();
+        cb.input_cursor = cb.input_buf.len();
         let event = UiEvent::KeyDown {
             keycode: Keycode::Return,
             modifiers: crate::ui::widget::KeyModifiers::default(),
@@ -719,6 +883,7 @@ mod tests {
         let resp = cb.handle_event(&event);
         assert_eq!(resp, EventResponse::Consumed);
         assert_eq!(cb.input_text(), "");
+        assert_eq!(cb.input_cursor, 0);
         assert!(!cb.focused);
 
         let actions = cb.take_actions();
@@ -742,6 +907,51 @@ mod tests {
         // Focus must be dropped so the transparent box cannot silently eat
         // subsequent keystrokes.
         assert!(!cb.focused);
+    }
+
+    #[test]
+    fn arrow_keys_move_cursor_and_backspace_deletes_before_it() {
+        let mut cb = test_chat_box();
+        cb.focused = true;
+        cb.input_buf = "abc".to_owned();
+        cb.input_cursor = cb.input_buf.len();
+
+        cb.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::Left,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+        assert_eq!(cb.input_cursor, 2);
+
+        cb.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::Backspace,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+        assert_eq!(cb.input_text(), "ac");
+        assert_eq!(cb.input_cursor, 1);
+    }
+
+    #[test]
+    fn focused_update_keeps_chat_visible_and_blinks_caret() {
+        let mut cb = test_chat_box();
+        cb.focused = true;
+
+        cb.update(Duration::from_secs(10));
+
+        assert!(cb.focused);
+        assert_eq!(cb.alpha, 255);
+        assert!(cb.caret_elapsed < CARET_BLINK_PERIOD_SECS);
+    }
+
+    #[test]
+    fn visible_input_window_keeps_cursor_visible() {
+        let mut cb = test_chat_box();
+        cb.input_buf = "abcdefghijklmnopqrstuvwxyz".to_owned();
+        cb.input_cursor = cb.input_buf.len();
+
+        let (visible, cursor) = cb.visible_input_window(10);
+
+        assert_eq!(visible, "qrstuvwxyz");
+        assert_eq!(cursor, 10);
     }
 
     #[test]
@@ -822,6 +1032,7 @@ mod tests {
         let mut cb = test_chat_box();
         cb.focused = true;
         cb.input_buf = "abc".to_owned();
+        cb.input_cursor = cb.input_buf.len();
         let event = UiEvent::KeyDown {
             keycode: Keycode::Backspace,
             modifiers: crate::ui::widget::KeyModifiers::default(),

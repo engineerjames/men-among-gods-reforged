@@ -91,9 +91,10 @@ fn main() -> Result<(), String> {
 
     log::info!("Creating window and event pump...");
     let video = sdl_context.video()?;
+    let window_title = format!("Men Among Gods - Reforged v{}", env!("CARGO_PKG_VERSION"));
     let mut window = video
         .window(
-            "Men Among Gods - Reforged v1.3.0",
+            &window_title,
             constants::TARGET_WIDTH_INT,
             constants::TARGET_HEIGHT_INT,
         )

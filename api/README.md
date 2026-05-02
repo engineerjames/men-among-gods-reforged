@@ -208,6 +208,21 @@ sequenceDiagram
     end
 ```
 
+## Character profile validation
+Character names and descriptions are validated by the API before they are stored
+or sent to the game server. This replaces the retired in-game `CmdSetUser`
+profile finalization packet.
+
+Names must be 4 to 15 ASCII letters, are stored in canonical title case, must
+not be `Self`, must be globally unique ignoring ASCII case, must not match a
+character template name, and must not contain a configured banned-name pattern
+from `game:badnames`.
+
+Descriptions must be printable ASCII, 10 to 200 bytes, must contain the stored
+character name exactly, and must not contain double quotes. Updating a linked
+character's description is rejected when the live game character has the
+`NoDesc` flag set.
+
 # Integration with the game server and client applications
 The authentication service is designed to be integrated with both the game server and client applications. Over time this is hoped to be a tighter integration.
 
@@ -424,8 +439,16 @@ small burst. Excess requests return `429`.
 | GET | `/admin/templates/characters/{idx}` | Read a single character template (bincode bytes). |
 | PUT | `/admin/templates/characters/{idx}` | Replace a single character template (bincode bytes). |
 | POST | `/admin/templates/reload` | Ask the running server to swap its in-memory template tables. |
-| GET | `/admin/templates/reload/{request_id}` | Poll the lifecycle of a previous reload request. |
+| GET | `/admin/templates/reload/status` | Poll the lifecycle of a previous reload request (query `request_id`). |
+| GET | `/admin/text/badwords` | List badwords as JSON. |
+| GET | `/admin/text/badwords/entry` | Check one badword (query `word`). |
+| POST | `/admin/text/badwords` | Add one or more badwords idempotently. |
+| PUT | `/admin/text/badwords` | Replace the complete badwords list. |
+| DELETE | `/admin/text/badwords` | Remove one or more badwords using a JSON body. |
+| POST | `/admin/text/reload` | Ask the running server to refresh externally managed text data. |
+| GET | `/admin/text/reload/status` | Poll the lifecycle of a previous text reload request (query `request_id`). |
 | GET | `/admin/world/map` | Bulk-read every map tile (`application/octet-stream`, bincode `Vec<Map>`). |
+| GET | `/admin/world/globals` | Read persisted global server counters as JSON. |
 | GET | `/admin/world/map/version` | Read the admin map-version counter (increments on each accepted patch). |
 | GET | `/admin/world/map/{x}/{y}` | Read a single map tile (bincode `Map` bytes). |
 | PUT | `/admin/world/map/{x}/{y}` | Enqueue a patch for a single map tile (bincode `MapPatch` bytes). |
@@ -451,15 +474,36 @@ avoid serialising fixed-size byte arrays through quoted JSON. The
 `mag_core::template_store` module exposes the encode/decode helpers so the
 client and the server agree on the wire format.
 
+`GET /admin/world/globals` reads the persisted `game:global` bincode value and
+returns an operator-facing JSON snapshot of counters, load/network totals,
+hourly arrays, moon markers, and global flags. It is read-only and observes the
+latest state written to KeyDB by the server saver.
+
 `POST /admin/templates/reload` accepts a JSON body
-`{"reload_items": bool, "reload_characters": bool}` and returns
-`{"request_id": "...", "status": "pending", "reload_items": ..., "reload_characters": ...}`.
+`{"kinds":["items","characters"]}` and returns
+`{"request_id":"...","kinds":[...]}`.
 The API enqueues the request via a short-lived KeyDB key
 (`game:templates:reload_request`, TTL 30s) and the server's reload watcher
 consumes it on the tick thread, swaps the relevant template slices on
 `GameState`, and writes
 `game:templates:reload_status:{request_id} = applied:{unix_ts}` (TTL 5
 minutes) which the GET endpoint exposes.
+
+### Badwords text data
+
+Badwords are stored in KeyDB as a bincode `Vec<String>` at `game:badwords`,
+but the admin API exposes JSON for operator tooling and shell scripts. Mutating
+endpoints accept `{"words":[...]}`. Entries are canonicalized by trimming,
+removing whitespace, lowercasing ASCII letters, rejecting control characters,
+and deduplicating while preserving first-seen order. Successful writes update
+`game:badwords` and increment `game:meta:badwords:version`.
+
+`POST /admin/text/reload` accepts `{"kinds":["badwords"]}` and returns a
+`request_id`. The server's text reload watcher consumes
+`game:text:reload_request`, reloads `game:badwords` on the tick thread, and
+writes `game:text:reload_status:{request_id} = applied:{unix_ts}` (TTL 5
+minutes). This refreshes the running server's cached list; it does not add new
+chat-filter enforcement behavior by itself.
 
 ### Map editing
 

@@ -45,7 +45,7 @@ pub struct Server {
     sock: Option<TcpListener>,
     last_tick_time: Option<Instant>,
 
-    /// TLS configuration, if `SERVER_TLS_CERT` and `SERVER_TLS_KEY` are set.
+    /// TLS configuration (loaded from `SERVER_TLS_CERT` / `SERVER_TLS_KEY`).
     tls_config: Option<Arc<rustls::ServerConfig>>,
 
     /// Tick rate performance statistics buffer.
@@ -63,6 +63,10 @@ pub struct Server {
     /// Background watcher that surfaces admin-issued template reload
     /// requests to the tick loop.
     template_reload_watcher: Option<server::keydb::template_reload::TemplateReloadWatcher>,
+
+    /// Background watcher that surfaces admin-issued text reload requests to
+    /// the tick loop.
+    text_reload_watcher: Option<server::keydb::text_reload::TextReloadWatcher>,
 
     /// Background watcher that surfaces admin-issued map-tile patches to
     /// the tick loop.
@@ -94,6 +98,7 @@ impl Server {
             measurement_interval: 20,
             background_saver: None,
             template_reload_watcher: None,
+            text_reload_watcher: None,
             map_patch_watcher: None,
             item_patch_watcher: None,
             character_patch_watcher: None,
@@ -166,23 +171,11 @@ impl Server {
         self.sock = Some(listener);
         log::info!("Socket bound to port 5555");
 
-        // Load TLS configuration if cert/key env vars are set
-        match tls::load_tls_config() {
-            Ok(Some(config)) => {
-                log::info!("TLS enabled — accepting encrypted connections on port 5555");
-                self.tls_config = Some(config);
-            }
-            Ok(None) => {
-                log::warn!("╔══════════════════════════════════════════════════════════════╗");
-                log::warn!("║  WARNING: Server is running WITHOUT TLS encryption!         ║");
-                log::warn!("║  All game traffic is transmitted in plaintext.               ║");
-                log::warn!("║  Set SERVER_TLS_CERT and SERVER_TLS_KEY to enable TLS.       ║");
-                log::warn!("╚══════════════════════════════════════════════════════════════╝");
-            }
-            Err(e) => {
-                return Err(format!("TLS initialization failed: {e}"));
-            }
-        }
+        // Load TLS configuration (mandatory).
+        let tls_config =
+            tls::load_tls_config().map_err(|e| format!("TLS initialization failed: {e}"))?;
+        log::info!("TLS enabled — accepting encrypted connections on port 5555");
+        self.tls_config = Some(tls_config);
 
         crate::network_manager::initialize_packet_stats()?;
 
@@ -265,6 +258,9 @@ impl Server {
         // Spawn the admin template-reload watcher (no-op when disabled).
         self.template_reload_watcher =
             server::keydb::template_reload::TemplateReloadWatcher::spawn();
+
+        // Spawn the admin text-reload watcher (no-op when disabled).
+        self.text_reload_watcher = server::keydb::text_reload::TextReloadWatcher::spawn();
 
         // Spawn the admin map-patch watcher (no-op when disabled).
         self.map_patch_watcher = server::keydb::map_patch::MapPatchWatcher::spawn();
@@ -424,7 +420,9 @@ impl Server {
             }
 
             player::tick::plr_tick(gs, n);
-            crate::state::weather::weather_tick(gs, n);
+            // Weather (especially area-driven effects) is temporarily disabled
+            // while we tune things — re-enable once areas are configured.
+            // crate::state::weather::weather_tick(gs, n);
 
             if is_normal {
                 online += 1;
@@ -1151,6 +1149,72 @@ impl Server {
         }
     }
 
+    /// Drain pending admin text reload requests and apply them to `gs`.
+    ///
+    /// Each drained request reloads externally managed text data from KeyDB on
+    /// the tick thread, preserving single-threaded access to `GameState`.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose text-data fields will be replaced.
+    pub fn drain_text_reloads(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.text_reload_watcher.as_ref() else {
+            return;
+        };
+        while let Some(req) = watcher.try_recv() {
+            self.apply_text_reload(gs, req);
+        }
+    }
+
+    fn apply_text_reload(
+        &self,
+        gs: &mut GameState,
+        req: server::keydb::text_reload::TextReloadRequest,
+    ) {
+        let mut con = match server::keydb::connection::connect() {
+            Ok(connection) => connection,
+            Err(error) => {
+                log::warn!(
+                    "text reload {}: keydb connect failed: {}",
+                    req.request_id,
+                    error
+                );
+                return;
+            }
+        };
+
+        if req.reload_badwords {
+            match server::keydb::store::load_bad_words(&mut con) {
+                Ok(bad_words) => {
+                    log::info!(
+                        "text reload {}: swapped {} badwords",
+                        req.request_id,
+                        bad_words.len()
+                    );
+                    gs.bad_words = bad_words;
+                }
+                Err(error) => {
+                    log::warn!(
+                        "text reload {}: load badwords failed: {}",
+                        req.request_id,
+                        error
+                    );
+                    return;
+                }
+            }
+        }
+
+        if let Err(error) =
+            server::keydb::text_reload::write_applied_status(&mut con, &req.request_id)
+        {
+            log::warn!(
+                "text reload {}: status write failed: {}",
+                req.request_id,
+                error
+            );
+        }
+    }
+
     /// Drain any pending admin map-tile patches and apply them to `gs.map`.
     ///
     /// Called once per tick from the main loop (outside `tick`) so the swap
@@ -1436,6 +1500,10 @@ impl Server {
             log::info!("Stopping template reload watcher...");
             watcher.shutdown();
         }
+        if let Some(mut watcher) = self.text_reload_watcher.take() {
+            log::info!("Stopping text reload watcher...");
+            watcher.shutdown();
+        }
         if let Some(mut watcher) = self.map_patch_watcher.take() {
             log::info!("Stopping map patch watcher...");
             watcher.shutdown();
@@ -1612,20 +1680,18 @@ impl Server {
             match listener.accept() {
                 Ok((stream, addr)) => {
                     log::info!("New connection from {}", addr);
-                    // Wrap with TLS if configured
-                    if let Some(ref config) = self.tls_config {
-                        match tls::accept_tls(stream, config.clone()) {
-                            Ok(tls_stream) => {
-                                log::info!("TLS handshake completed for {}", addr);
-                                self.new_player(gs, tls_stream, addr.ip());
-                            }
-                            Err(e) => {
-                                log::warn!("TLS handshake failed for {}: {}", addr, e);
-                            }
+                    let config = self
+                        .tls_config
+                        .as_ref()
+                        .expect("TLS config must be initialized before handle_network_io");
+                    match tls::accept_tls(stream, config.clone()) {
+                        Ok(tls_stream) => {
+                            log::info!("TLS handshake completed for {}", addr);
+                            self.new_player(gs, tls_stream, addr.ip());
                         }
-                    } else {
-                        let _ = stream.set_nonblocking(true);
-                        self.new_player(gs, GameStream::Plain(stream), addr.ip());
+                        Err(e) => {
+                            log::warn!("TLS handshake failed for {}: {}", addr, e);
+                        }
                     }
                 }
                 Err(ref e) if e.kind() == ErrorKind::WouldBlock => {
@@ -1699,13 +1765,10 @@ impl Server {
         gs.players[n].tptr = 0;
         gs.players[n].challenge = 0;
         gs.players[n].usnr = 0;
-        gs.players[n].pass1 = 0;
-        gs.players[n].pass2 = 0;
 
         gs.players[n].cmap.fill(CMap::default());
         gs.players[n].smap.fill(CMap::default());
         gs.players[n].xmap.fill(Map::default());
-        gs.players[n].passwd.fill(0);
 
         for m in 0..(TILEX * TILEY) {
             gs.players[n].cmap[m].ba_sprite = core::constants::SPR_EMPTY as i16;

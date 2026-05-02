@@ -11,7 +11,9 @@
 
 pub mod auth;
 pub mod routes;
+pub mod routes_badwords;
 pub mod routes_characters;
+pub mod routes_globals;
 pub mod routes_items;
 pub mod routes_map;
 pub mod types;
@@ -58,6 +60,7 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
         .route("/templates/reload", post(routes::request_reload))
         .route("/templates/reload/status", get(routes::get_reload_status))
         .route("/world/map", get(routes_map::get_map_bulk))
+        .route("/world/globals", get(routes_globals::get_globals))
         .route("/world/map/version", get(routes_map::get_map_version))
         .route("/world/map/reload", post(routes_map::request_map_reload))
         .route(
@@ -106,6 +109,22 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
         .route(
             "/world/characters/{id}",
             get(routes_characters::get_character).put(routes_characters::put_character),
+        )
+        .route(
+            "/text/badwords",
+            get(routes_badwords::get_badwords)
+                .post(routes_badwords::add_badwords)
+                .put(routes_badwords::replace_badwords)
+                .delete(routes_badwords::remove_badwords),
+        )
+        .route(
+            "/text/badwords/entry",
+            get(routes_badwords::get_badword_entry),
+        )
+        .route("/text/reload", post(routes_badwords::request_text_reload))
+        .route(
+            "/text/reload/status",
+            get(routes_badwords::get_text_reload_status),
         )
         .layer(axum::middleware::from_fn_with_state(
             admin_state.clone(),

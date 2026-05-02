@@ -9,6 +9,9 @@ members = [
     "api",
 ]
 
+[workspace.package]
+version = "1.3.0"
+
 # Build with: `cargo build --profile profiling`
 # Goal: mostly-release-like performance while keeping symbols/line info for profilers.
 [profile.profiling]

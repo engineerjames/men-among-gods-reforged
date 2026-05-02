@@ -2,13 +2,14 @@
 """Basic integration tests for the API using only the Python standard library.
 
 Run:
-  python3 api/tests/api_integration.py --base-url http://127.0.0.1:5554
+  python3 api/tests/api_integration.py --base-url https://127.0.0.1:5554 --insecure
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import ssl
 import sys
 import time
 import urllib.error
@@ -19,6 +20,7 @@ from typing import Any, Callable
 _LAST_REQUEST_AT: float = 0.0
 _MIN_REQUEST_INTERVAL: float = 1.1
 _SUFFIX_COUNTER: int = 0
+_SSL_CONTEXT: ssl.SSLContext | None = None
 
 
 def unique_suffix() -> str:
@@ -33,13 +35,43 @@ def unique_suffix() -> str:
     return f"{time.time_ns()}{_SUFFIX_COUNTER}"
 
 
+def unique_alpha_suffix(length: int = 8) -> str:
+    """Generate an alphabetic suffix suitable for legacy character names.
+
+    :param length: Number of letters to return.
+    :returns: A lowercase alphabetic suffix.
+    """
+    value = int(unique_suffix())
+    alphabet = "abcdefghijklmnopqrstuvwxyz"
+    chars: list[str] = []
+    while len(chars) < length:
+        value, remainder = divmod(value, len(alphabet))
+        chars.append(alphabet[remainder])
+    return "".join(chars)
+
+
+def unique_character_name(prefix: str = "Hero") -> str:
+    """Generate a unique API-valid character name.
+
+    Character names are legacy-compatible: ASCII letters only and at most 15
+    characters.
+
+    :param prefix: Alphabetic prefix to use for readability.
+    :returns: A unique title-cased character name.
+    """
+    prefix = "".join(c for c in prefix if c.isalpha())[:7] or "Hero"
+    prefix = prefix[0].upper() + prefix[1:].lower()
+    return f"{prefix}{unique_alpha_suffix(15 - len(prefix))}"
+
+
 def valid_character_description(name: str) -> str:
     """Return a description that satisfies API validation rules.
 
     Rules enforced by API currently require:
-    - length > 12
+    - length >= 10 and <= 200
     - description contains the character name
     - printable ASCII
+    - no double quotes
     """
     return f"{name} is a reliable integration-test adventurer."
 
@@ -82,7 +114,7 @@ def request_json(
         for key, value in headers.items():
             req.add_header(key, value)
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CONTEXT) as resp:
             data = resp.read().decode("utf-8")
             return resp.status, data
     except urllib.error.HTTPError as exc:
@@ -217,7 +249,7 @@ def test_login_malformed_json(base_url: str) -> None:
     req.add_header("Accept", "application/json")
     req.data = b"{not-json"
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5, context=_SSL_CONTEXT) as resp:
             status = resp.status
     except urllib.error.HTTPError as exc:
         status = exc.code
@@ -366,7 +398,7 @@ def test_create_character_requires_auth(base_url: str) -> None:
     :returns: None.
     """
     payload = {
-        "name": f"hero{unique_suffix()}",
+        "name": unique_character_name("Hero"),
         "description": "Brave",
         "sex": "Male",
         "class": "Mercenary",
@@ -402,7 +434,7 @@ def test_create_character_ok_and_get(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"char{unique_suffix()}")
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -444,7 +476,7 @@ def test_create_character_limit_10(base_url: str) -> None:
     headers = {"Authorization": f"Bearer {token}"}
 
     for i in range(10):
-        name = f"hero{i}_{unique_suffix()}"
+        name = unique_character_name("Hero")
         payload = {
             "name": name,
             "description": valid_character_description(name),
@@ -459,7 +491,7 @@ def test_create_character_limit_10(base_url: str) -> None:
         )
         assert_status(200, status, f"create character {i + 1} status")
 
-    over_limit_name = f"hero_over_{unique_suffix()}"
+    over_limit_name = unique_character_name("Over")
     payload = {
         "name": over_limit_name,
         "description": valid_character_description(over_limit_name),
@@ -482,7 +514,7 @@ def test_create_character_duplicate_name(base_url: str) -> None:
     :raises AssertionError: If duplicate name creation is accepted.
     :returns: None.
     """
-    shared_name = f"Hero{str(unique_suffix())[-10:]}"
+    shared_name = unique_character_name("Hero")
 
     token_a, _ = create_account_and_token(base_url, f"dupchara{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"dupcharb{unique_suffix()}")
@@ -525,7 +557,7 @@ def test_create_character_invalid_race(base_url: str) -> None:
     """
     token, _ = create_account_and_token(base_url, f"race{unique_suffix()}")
     payload = {
-        "name": f"hero{unique_suffix()}",
+        "name": unique_character_name("Hero"),
         "description": "Forbidden",
         "sex": "Female",
         "class": "SeyanDu",
@@ -547,7 +579,7 @@ def test_update_character_ok(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"up{unique_suffix()}")
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -565,7 +597,7 @@ def test_update_character_ok(base_url: str) -> None:
     if not isinstance(character_id, int) or character_id <= 0:
         raise AssertionError("create character response missing id")
 
-    updated_name = f"Updated{str(unique_suffix())[-8:]}"
+    updated_name = unique_character_name("Update")
     update_payload = {
         "name": updated_name,
         "description": valid_character_description(updated_name),
@@ -604,7 +636,7 @@ def test_update_character_missing_fields(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"upbad{unique_suffix()}")
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -641,7 +673,7 @@ def test_update_character_wrong_user(base_url: str) -> None:
     """
     token_a, _ = create_account_and_token(base_url, f"upa{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"upb{unique_suffix()}")
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -679,8 +711,8 @@ def test_update_character_duplicate_name(base_url: str) -> None:
     token_a, _ = create_account_and_token(base_url, f"upddup-a{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"upddup-b{unique_suffix()}")
 
-    first_name = f"Hero{str(unique_suffix())[-10:]}"
-    second_name = f"Hero{str(unique_suffix())[-10:]}"
+    first_name = unique_character_name("Hero")
+    second_name = unique_character_name("Hero")
 
     status, body = request_json(
         "POST",
@@ -728,7 +760,7 @@ def test_delete_character_ok(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"del{unique_suffix()}")
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -774,7 +806,7 @@ def test_delete_character_wrong_user(base_url: str) -> None:
     """
     token_a, _ = create_account_and_token(base_url, f"dela{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"delb{unique_suffix()}")
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -823,7 +855,7 @@ def test_create_game_login_ticket_ok(base_url: str) -> None:
     :returns: None.
     """
     token, _ = create_account_and_token(base_url, f"ticket{unique_suffix()}")
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -866,7 +898,7 @@ def test_create_game_login_ticket_wrong_owner(base_url: str) -> None:
     token_a, _ = create_account_and_token(base_url, f"ticka{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"tickb{unique_suffix()}")
 
-    name = f"hero{unique_suffix()}"
+    name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
@@ -908,7 +940,7 @@ def test_malformed_json(base_url: str) -> None:
     req.add_header("Accept", "application/json")
     req.data = b"{not-json"
     try:
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5, context=_SSL_CONTEXT) as resp:
             status = resp.status
     except urllib.error.HTTPError as exc:
         status = exc.code
@@ -960,10 +992,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="API integration tests")
     parser.add_argument(
         "--base-url",
-        default="http://127.0.0.1:5554",
+        default="https://127.0.0.1:5554",
         help="Base URL for the API",
     )
+    parser.add_argument(
+        "--insecure",
+        action="store_true",
+        help="Skip TLS certificate verification (useful for self-signed dev certs)",
+    )
     args = parser.parse_args()
+
+    if args.insecure:
+        global _SSL_CONTEXT
+        _SSL_CONTEXT = ssl._create_unverified_context()
 
     tests: list[Callable[[str], None]] = [
         test_rate_limit,

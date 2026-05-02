@@ -124,7 +124,7 @@ impl NewAccountForm {
         let email_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let email_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, email_y, INPUT_W, INPUT_H),
-            "e-mail address",
+            "",
             FONT,
             128,
             false,
@@ -137,7 +137,7 @@ impl NewAccountForm {
         let user_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let username_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, user_y, INPUT_W, INPUT_H),
-            "username",
+            "",
             FONT,
             64,
             false,
@@ -150,7 +150,7 @@ impl NewAccountForm {
         let pw_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let password_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, pw_y, INPUT_W, INPUT_H),
-            "password",
+            "",
             FONT,
             64,
             true,
@@ -163,7 +163,7 @@ impl NewAccountForm {
         let confirm_pw_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
         let confirm_password_input = TextInput::new(
             Bounds::new(panel_x + PAD_X, confirm_pw_y, INPUT_W, INPUT_H),
-            "confirm password",
+            "",
             FONT,
             64,
             true,

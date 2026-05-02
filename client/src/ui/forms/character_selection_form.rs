@@ -474,7 +474,8 @@ impl Widget for CharacterSelectionForm {
             cursor_y += font_cache::BITMAP_GLYPH_H as i32 + 4;
         }
 
-        // Status.
+        // Status. Always reserve the line so layout doesn't jump when the
+        // status text appears or disappears.
         if let Some(ref status) = self.status_text {
             font_cache::draw_text(
                 ctx.canvas,
@@ -485,8 +486,8 @@ impl Widget for CharacterSelectionForm {
                 cursor_y,
                 font_cache::TextStyle::tinted(Color::RGB(180, 180, 255)),
             )?;
-            cursor_y += font_cache::BITMAP_GLYPH_H as i32 + 4;
         }
+        cursor_y += font_cache::BITMAP_GLYPH_H as i32 + 4;
 
         // "Characters" label.
         font_cache::draw_text(

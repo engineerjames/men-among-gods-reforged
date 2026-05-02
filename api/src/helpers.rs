@@ -122,7 +122,84 @@ pub(crate) fn is_valid_reset_code(code: &str) -> bool {
     code.len() == 6 && code.chars().all(|c| c.is_ascii_digit())
 }
 
+pub(crate) const MIN_CHARACTER_NAME_LEN: usize = 4;
+pub(crate) const MAX_CHARACTER_NAME_LEN: usize = 15;
 pub(crate) const MAX_DESCRIPTION_LEN: usize = 200;
+
+/// Normalizes and validates a player-visible character name.
+///
+/// The legacy `CmdSetUser` flow accepted ASCII letters only, title-cased the
+/// first letter, rejected `Self`, and effectively capped names at 15 bytes via
+/// the bad-name check.
+///
+/// # Arguments
+/// * `name` - Raw user-provided character name.
+///
+/// # Returns
+/// * `Ok(String)` with the canonical display name.
+/// * `Err(String)` when the name violates legacy-compatible format rules.
+pub(crate) fn normalize_character_name(name: &str) -> Result<String, String> {
+    let trimmed = name.trim();
+    let len = trimmed.len();
+
+    if len < MIN_CHARACTER_NAME_LEN {
+        return Err(format!(
+            "Character name must be at least {} characters",
+            MIN_CHARACTER_NAME_LEN
+        ));
+    }
+
+    if len > MAX_CHARACTER_NAME_LEN {
+        return Err(format!(
+            "Character name must be at most {} characters",
+            MAX_CHARACTER_NAME_LEN
+        ));
+    }
+
+    if !trimmed.as_bytes().iter().all(u8::is_ascii_alphabetic) {
+        return Err("Character name must contain ASCII letters only".to_string());
+    }
+
+    let mut normalized = trimmed.to_ascii_lowercase();
+    if let Some(first) = normalized.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+
+    if normalized == "Self" {
+        return Err("Character name is reserved".to_string());
+    }
+
+    Ok(normalized)
+}
+
+/// Validates a normalized character name against banned substring patterns.
+///
+/// # Arguments
+/// * `name` - Canonical character name from [`normalize_character_name`].
+/// * `bad_names` - Banned name patterns loaded from KeyDB.
+///
+/// # Returns
+/// * `Ok(())` when no pattern matches.
+/// * `Err(String)` when the name contains a banned pattern.
+pub(crate) fn validate_character_name_bad_patterns(
+    name: &str,
+    bad_names: &[String],
+) -> Result<(), String> {
+    let name_lc = name.to_ascii_lowercase();
+    for pattern in bad_names {
+        let pattern = pattern
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+
+        if pattern.len() >= 3 && name_lc.contains(&pattern) {
+            return Err("Character name is not allowed".to_string());
+        }
+    }
+
+    Ok(())
+}
 
 pub(crate) fn default_character_description(name: &str) -> String {
     let name = name.trim();
@@ -142,8 +219,8 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
         return Err("Character name is required".to_string());
     }
 
-    if description.len() <= 12 {
-        return Err("Description must be longer than 12 characters".to_string());
+    if description.len() < 10 {
+        return Err("Description must be at least 10 characters".to_string());
     }
 
     if description.len() > MAX_DESCRIPTION_LEN {
@@ -162,9 +239,11 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
         return Err("Description must be ASCII-only (printable characters)".to_string());
     }
 
-    let desc_lc = description.to_lowercase();
-    let name_lc = name.to_lowercase();
-    if !desc_lc.contains(&name_lc) {
+    if description.contains('"') {
+        return Err("Description must not contain double quotes".to_string());
+    }
+
+    if !description.contains(name) {
         return Err("Description must contain the character name".to_string());
     }
 
@@ -175,7 +254,8 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
 mod tests {
     use super::{
         default_character_description, get_token_from_headers, is_valid_email_regex,
-        is_valid_password, is_valid_reset_code, is_valid_username, validate_character_description,
+        is_valid_password, is_valid_reset_code, is_valid_username, normalize_character_name,
+        validate_character_description, validate_character_name_bad_patterns,
     };
     use crate::types;
     use jsonwebtoken::{EncodingKey, Header};
@@ -395,6 +475,37 @@ mod tests {
     }
 
     #[test]
+    fn character_name_normalization_title_cases_ascii_letters() {
+        assert_eq!(normalize_character_name("  aLiCe  ").unwrap(), "Alice");
+    }
+
+    #[test]
+    fn character_name_validation_rejects_too_short_or_long() {
+        assert!(normalize_character_name("Ada").is_err());
+        assert!(normalize_character_name("abcdefghijklmnop").is_err());
+    }
+
+    #[test]
+    fn character_name_validation_rejects_non_letters() {
+        assert!(normalize_character_name("Alice1").is_err());
+        assert!(normalize_character_name("Alice_Bob").is_err());
+    }
+
+    #[test]
+    fn character_name_validation_rejects_self() {
+        assert!(normalize_character_name("self").is_err());
+        assert!(normalize_character_name("Self").is_err());
+    }
+
+    #[test]
+    fn character_name_bad_patterns_rejects_substring_matches() {
+        let bad_names = vec!["bad".to_string(), " no pe ".to_string()];
+        assert!(validate_character_name_bad_patterns("Baddie", &bad_names).is_err());
+        assert!(validate_character_name_bad_patterns("Noper", &bad_names).is_err());
+        assert!(validate_character_name_bad_patterns("Alice", &bad_names).is_ok());
+    }
+
+    #[test]
     fn description_validation_accepts_valid() {
         let name = "TestHero";
         let desc = "TestHero is a brave warrior.";
@@ -412,6 +523,13 @@ mod tests {
     fn description_validation_rejects_missing_name() {
         let name = "TestHero";
         let desc = "A brave warrior who travels.";
+        assert!(validate_character_description(name, desc).is_err());
+    }
+
+    #[test]
+    fn description_validation_rejects_double_quotes() {
+        let name = "TestHero";
+        let desc = "TestHero says \"hello\" to everyone.";
         assert!(validate_character_description(name, desc).is_err());
     }
 

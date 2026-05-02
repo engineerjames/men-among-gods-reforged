@@ -52,11 +52,13 @@ fi
 
 SERVER_DIR="men-among-gods-server-${VERSION}-${PLATFORM}"
 CLIENT_DIR="men-among-gods-client-${VERSION}-${PLATFORM}"
+BUNDLE_VERSION="${VERSION#v}"
 
 rm -rf dist
 mkdir -p "dist/${SERVER_DIR}"
 
 copy_required_file "target/release/server" "dist/${SERVER_DIR}/server"
+copy_required_file "target/release/mag-admin" "dist/${SERVER_DIR}/mag-admin"
 copy_required_file "target/release/map_viewer" "dist/${SERVER_DIR}/map_viewer"
 copy_required_file "target/release/template_viewer" "dist/${SERVER_DIR}/template_viewer"
 copy_required_file "target/release/api" "dist/${SERVER_DIR}/api"
@@ -128,9 +130,9 @@ if [[ "$PLATFORM" == "macos" ]]; then
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>${VERSION}</string>
+  <string>${BUNDLE_VERSION}</string>
   <key>CFBundleVersion</key>
-  <string>${VERSION}</string>
+  <string>${BUNDLE_VERSION}</string>
   <key>CFBundleIconFile</key>
   <string>${ICON_BASENAME}</string>
   <key>NSHighResolutionCapable</key>
