@@ -151,7 +151,6 @@ enum MenuAction {
     Get,
     Add,
     Remove,
-    Replace,
     Export,
     Refresh,
     Quit,
@@ -217,7 +216,6 @@ fn run_menu(cli: &Cli, client: &AdminClient) -> Result<(), CliError> {
             MenuAction::Get => menu_get_badword(client, &theme)?,
             MenuAction::Add => menu_add_badwords(client, &theme)?,
             MenuAction::Remove => menu_remove_badwords(client, &theme)?,
-            MenuAction::Replace => menu_replace_badwords(client, &theme)?,
             MenuAction::Export => menu_export_badwords(client, &theme)?,
             MenuAction::Refresh => menu_refresh_badwords(client, &theme)?,
             MenuAction::Quit => break,
@@ -251,7 +249,6 @@ fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
         "Check one badword",
         "Add badwords",
         "Remove badwords",
-        "Replace badwords list",
         "Export badwords",
         "Refresh running server cache",
         "Quit",
@@ -268,9 +265,8 @@ fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
         1 => MenuAction::Get,
         2 => MenuAction::Add,
         3 => MenuAction::Remove,
-        4 => MenuAction::Replace,
-        5 => MenuAction::Export,
-        6 => MenuAction::Refresh,
+        4 => MenuAction::Export,
+        5 => MenuAction::Refresh,
         _ => MenuAction::Quit,
     })
 }
@@ -324,40 +320,6 @@ fn menu_remove_badwords(client: &AdminClient, theme: &ColorfulTheme) -> Result<(
     let response = client
         .remove_badwords(&selected)
         .map_err(CliError::Runtime)?;
-    print_mutation_response(&response, OutputFormat::Table, false)?;
-    menu_refresh_after_mutation(client, theme)
-}
-
-fn menu_replace_badwords(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
-    let mode_items = ["Paste/type entries", "Read from file", "Cancel"];
-    let selected = Select::with_theme(theme)
-        .with_prompt("How would you like to provide the replacement list?")
-        .items(&mode_items)
-        .default(0)
-        .interact()
-        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
-
-    let words = match selected {
-        0 => prompt_words(theme, "Replacement words (comma or newline separated)")?,
-        1 => {
-            let path = prompt_text(theme, "Input file", None)?;
-            read_words_input(&path)?
-        }
-        _ => return Ok(()),
-    };
-
-    println!("Replacement list contains {} entries.", words.len());
-    if !Confirm::with_theme(theme)
-        .with_prompt("Replace the complete badwords list?")
-        .default(false)
-        .interact()
-        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?
-    {
-        println!("Replacement cancelled.");
-        return Ok(());
-    }
-
-    let response = client.replace_badwords(&words).map_err(CliError::Runtime)?;
     print_mutation_response(&response, OutputFormat::Table, false)?;
     menu_refresh_after_mutation(client, theme)
 }
