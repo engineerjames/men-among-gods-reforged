@@ -6,7 +6,7 @@ use std::{
 };
 
 use flate2::{Decompress, FlushDecompress, Status};
-use mag_core::{client_commands, server_commands::ServerCommand};
+use mag_core::{client_commands, constants, server_commands::ServerCommand};
 use mag_core::{encrypt::xcrypt, server_commands::ServerCommandData};
 use mag_core::{
     logout_reasons::{LogoutReason, get_exit_reason},
@@ -182,7 +182,7 @@ fn login_handshake(
             let encrypted_challenge = xcrypt(server_challenge);
             let challenge_response = client_commands::ClientCommand::new_challenge(
                 encrypted_challenge,
-                0xFFFFFF, // client version 3.0.0
+                constants::VERSION,
                 race,
             );
             stream

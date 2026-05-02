@@ -143,7 +143,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     mag_core::initialize_logger(log_level, log_file.as_deref())?;
 
     info!(
-        "API starting (level={}, logfile={})",
+        "API v{} starting (level={}, logfile={})",
+        env!("CARGO_PKG_VERSION"),
         log_level,
         log_file.as_deref().unwrap_or("none")
     );

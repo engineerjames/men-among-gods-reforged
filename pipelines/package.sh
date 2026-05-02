@@ -52,6 +52,7 @@ fi
 
 SERVER_DIR="men-among-gods-server-${VERSION}-${PLATFORM}"
 CLIENT_DIR="men-among-gods-client-${VERSION}-${PLATFORM}"
+BUNDLE_VERSION="${VERSION#v}"
 
 rm -rf dist
 mkdir -p "dist/${SERVER_DIR}"
@@ -129,9 +130,9 @@ if [[ "$PLATFORM" == "macos" ]]; then
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>${VERSION}</string>
+  <string>${BUNDLE_VERSION}</string>
   <key>CFBundleVersion</key>
-  <string>${VERSION}</string>
+  <string>${BUNDLE_VERSION}</string>
   <key>CFBundleIconFile</key>
   <string>${ICON_BASENAME}</string>
   <key>NSHighResolutionCapable</key>

@@ -37,6 +37,24 @@ bash pipelines/install_linux_deps.sh
 
 ## Local usage
 
+### Update product version before release
+
+Run the release-version updater from a clean working tree, review the diff, run
+the verification you want for the release, then commit the version bump before
+dispatching the GitHub release workflow.
+
+```bash
+python3 scripts/update_release_version.py --version 1.2.1
+cargo test --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+The updater uses bare semver (`1.2.1`) as the Cargo product version and prints
+the derived release tag (`v1.2.1`) to use for packaging and the GitHub workflow.
+Protocol compatibility values in `core::constants::VERSION` and
+`core::constants::MINVERSION` are intentionally separate from routine product
+release bumps.
+
 ### Build release binaries
 
 ```bash
