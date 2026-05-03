@@ -107,6 +107,7 @@ fn main() -> Result<(), String> {
         server.drain_map_patches(&mut gs);
         server.drain_item_patches(&mut gs);
         server.drain_character_patches(&mut gs);
+        server.drain_ban_actions(&mut gs);
         server.drain_world_actions(&mut gs);
         server.tick(&mut gs);
     }

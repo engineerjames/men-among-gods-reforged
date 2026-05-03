@@ -15,6 +15,8 @@ pub mod result {
 }
 
 pub mod area;
+pub mod ban_action_store;
+pub mod ban_store;
 pub mod character_store;
 pub mod circular_buffer;
 pub mod client_commands;

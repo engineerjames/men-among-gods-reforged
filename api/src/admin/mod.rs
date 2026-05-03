@@ -12,6 +12,7 @@
 pub mod auth;
 pub mod routes;
 pub mod routes_badwords;
+pub mod routes_bans;
 pub mod routes_characters;
 pub mod routes_globals;
 pub mod routes_items;
@@ -118,6 +119,26 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
         .route(
             "/world/actions/status",
             get(routes_world_actions::get_world_action_status),
+        )
+        .route(
+            "/bans",
+            get(routes_bans::list_bans).post(routes_bans::create_ban),
+        )
+        .route(
+            "/bans/account/{account_id}",
+            get(routes_bans::get_account_ban).delete(routes_bans::delete_account_ban),
+        )
+        .route(
+            "/bans/character/{character_id}",
+            get(routes_bans::get_character_ban).delete(routes_bans::delete_character_ban),
+        )
+        .route(
+            "/bans/ip/{address}",
+            get(routes_bans::get_ipv4_ban).delete(routes_bans::delete_ipv4_ban),
+        )
+        .route(
+            "/bans/actions/status",
+            get(routes_bans::get_ban_action_status),
         )
         .route(
             "/text/badwords",

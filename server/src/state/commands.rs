@@ -101,6 +101,8 @@ const ALL_COMMANDS: &[&str] = &[
     "allow",
     "announce",
     "balance",
+    "ban",
+    "bans",
     "black",
     "bling",
     "bow",
@@ -221,6 +223,7 @@ const ALL_COMMANDS: &[&str] = &[
     "tinfo",
     "top",
     "unique",
+    "unban",
     "usurp",
     "wave",
     "weather",
@@ -983,6 +986,16 @@ impl GameState {
                 God::add_ban(self, cn, parse_usize(arg_get(1)));
                 return;
             }
+            Some("ban") if f_gi => {
+                log::debug!("Processing ban command for {}", cn);
+                God::ban(self, cn, arg_get(1), arg_get(2), args_get(2));
+                return;
+            }
+            Some("bans") if f_giu => {
+                log::debug!("Processing bans command for {}", cn);
+                God::list_ban(self, cn);
+                return;
+            }
             Some("bow") if !f_sh => {
                 log::debug!("Processing bow command for {}", cn);
                 self.characters[cn].misc_action = core::constants::DR_BOW as u16;
@@ -1600,6 +1613,11 @@ impl GameState {
             Some("tinfo") if f_g => {
                 log::debug!("Processing tinfo command for {}", cn);
                 God::tinfo(self, cn, parse_usize(arg_get(1)));
+                return;
+            }
+            Some("unban") if f_giu => {
+                log::debug!("Processing unban command for {}", cn);
+                God::unban(self, cn, arg_get(1), arg_get(2));
                 return;
             }
             Some("top") if f_g => {

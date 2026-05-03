@@ -1,4 +1,5 @@
 use core::{
+    ban_store::BanTarget,
     constants::CharacterFlags,
     logout_reasons::LogoutReason,
     server_commands::ServerCommandType,
@@ -34,6 +35,7 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
 
     gs.players[nr].version = login_ticket_data.client_version as i32;
     gs.players[nr].race = login_ticket_data.race;
+    gs.players[nr].api_account_id = login_ticket_data.account_id;
     gs.players[nr].api_character_id = login_ticket_data.character_id;
 
     // version check
@@ -109,6 +111,11 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     if is_kicked {
         log::warn!("Login as {} denied (kicked)", cn);
         gs.characters[cn].flags &= !CharacterFlags::Kicked.bits();
+        plr_logout(gs, 0, nr, LogoutReason::Kicked);
+        return;
+    }
+
+    if login_target_is_banned(gs, nr, cn) {
         plr_logout(gs, 0, nr, LogoutReason::Kicked);
         return;
     }
@@ -262,6 +269,47 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     // announce
     let name = gs.characters[cn].get_name().to_string();
     gs.do_announce(cn, 0, &format!("{} entered the game.\n", name));
+}
+
+fn login_target_is_banned(gs: &GameState, nr: usize, cn: usize) -> bool {
+    let checks = [
+        BanTarget::Account {
+            account_id: gs.players[nr].api_account_id,
+        },
+        BanTarget::Character {
+            character_id: gs.players[nr].api_character_id,
+        },
+        BanTarget::Ipv4 {
+            address: gs.players[nr].addr,
+        },
+    ];
+
+    for target in checks {
+        match server::keydb::ban::target_is_banned(&target) {
+            Ok(true) => {
+                log::info!(
+                    "login for character {} denied by {} ban {}",
+                    cn,
+                    target.scope(),
+                    target.value()
+                );
+                return true;
+            }
+            Ok(false) => {}
+            Err(error) => {
+                log::warn!(
+                    "login for character {} denied because ban lookup failed for {} {}: {}",
+                    cn,
+                    target.scope(),
+                    target.value(),
+                    error
+                );
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 fn resolve_api_login_character(
@@ -717,6 +765,7 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
 
     gs.players[player_id].state = core::constants::ST_EXIT;
     gs.players[player_id].lasttick = ticker;
+    gs.players[player_id].api_account_id = 0;
     gs.players[player_id].api_character_id = 0;
 
     let maybe_char = gs
@@ -759,6 +808,7 @@ pub fn plr_api_login(gs: &mut GameState, nr: usize) {
     gs.players[nr].lasttick = ticker;
     gs.players[nr].login_ticket = ticket;
     gs.players[nr].usnr = 0;
+    gs.players[nr].api_account_id = 0;
     gs.players[nr].api_character_id = 0;
 
     log::info!("Player {} api login ticket accepted for resolution", nr);
@@ -980,6 +1030,7 @@ mod tests {
     #[test]
     fn consume_api_login_ticket_handles_metadata_and_errors() {
         let metadata = GameLoginTicketMetadata {
+            account_id: 11,
             character_id: 77,
             client_version: core::constants::VERSION,
             race: 3,

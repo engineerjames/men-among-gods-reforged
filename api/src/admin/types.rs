@@ -6,6 +6,117 @@
 
 use serde::{Deserialize, Serialize};
 
+/// JSON target selector used when creating a ban.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum BanTargetRequest {
+    /// Account ban selected by account id or username.
+    Account {
+        /// Optional API account id.
+        #[serde(default)]
+        account_id: Option<u64>,
+        /// Optional username to resolve to an account id.
+        #[serde(default)]
+        username: Option<String>,
+    },
+    /// Character ban selected by API character id.
+    Character {
+        /// API character id.
+        character_id: u64,
+    },
+    /// IPv4 ban selected by dotted IPv4 address.
+    Ipv4 {
+        /// Dotted IPv4 address.
+        address: String,
+    },
+}
+
+/// Request body for `POST /admin/bans`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanCreateRequest {
+    /// Target to ban.
+    pub target: BanTargetRequest,
+    /// Optional operator reason.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// Optional Unix timestamp when the ban expires.
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    /// Optional relative duration in seconds. Mutually exclusive with `expires_at`.
+    #[serde(default)]
+    pub duration_seconds: Option<u64>,
+    /// Optional issuer label. Defaults to `admin_api`.
+    #[serde(default)]
+    pub created_by: Option<String>,
+    /// Whether the live server should kick matching online players.
+    #[serde(default)]
+    pub kick_online: Option<bool>,
+}
+
+/// JSON view of a ban target.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanTargetResponse {
+    /// Target scope: `account`, `character`, or `ipv4`.
+    pub scope: String,
+    /// Human-readable target value.
+    pub value: String,
+    /// Account id when the scope is `account`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<u64>,
+    /// Character id when the scope is `character`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub character_id: Option<u64>,
+    /// Dotted IPv4 address when the scope is `ipv4`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+}
+
+/// JSON view of an active or expired ban record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanRecordResponse {
+    /// Opaque ban id.
+    pub id: String,
+    /// Target covered by this ban.
+    pub target: BanTargetResponse,
+    /// Operator reason.
+    pub reason: String,
+    /// Issuer label.
+    pub created_by: String,
+    /// Creation Unix timestamp.
+    pub created_at: u64,
+    /// Optional expiration Unix timestamp.
+    pub expires_at: Option<u64>,
+    /// Whether the ban is active at response time.
+    pub active: bool,
+    /// Mutation source label.
+    pub source: String,
+}
+
+/// Response for `GET /admin/bans`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanListResponse {
+    /// Matching ban records.
+    pub bans: Vec<BanRecordResponse>,
+    /// Number of records returned.
+    pub count: usize,
+    /// Ban-store version counter.
+    pub version: u64,
+}
+
+/// Response returned by ban mutation endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanMutationResponse {
+    /// Record after a create/update, or removed record after an unban.
+    pub ban: Option<BanRecordResponse>,
+    /// Whether persistent state changed.
+    pub changed: bool,
+    /// Ban-store version counter.
+    pub version: u64,
+    /// Optional live-action request id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub live_request_id: Option<String>,
+}
+
 /// Per-slot summary returned by listing endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSummary {

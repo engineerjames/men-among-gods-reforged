@@ -40,6 +40,8 @@ pub struct ServerPlayer {
     pub usnr: usize, // character number this player controls
     /// One-time API login ticket used for account-managed character login.
     pub login_ticket: u64,
+    /// API-side account id currently linked to this session.
+    pub api_account_id: u64,
     /// API-side character id currently linked to this session.
     pub api_character_id: u64,
     pub ltick: u32,
@@ -111,6 +113,7 @@ impl ServerPlayer {
             lasttick2: 0,
             usnr: 0,
             login_ticket: 0,
+            api_account_id: 0,
             api_character_id: 0,
             ltick: 0,
             rtick: 0,

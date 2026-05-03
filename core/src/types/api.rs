@@ -57,6 +57,8 @@ pub struct CreateGameLoginTicketResponse {
 /// player fields previously carried by the challenge response packet.
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct GameLoginTicketMetadata {
+    /// API account ID that owns the authorized character.
+    pub account_id: u64,
     /// API character ID authorized for the one-time game login.
     pub character_id: u64,
     /// Client protocol version accepted by the API.
@@ -219,6 +221,7 @@ mod tests {
     #[test]
     fn game_login_ticket_metadata_bincode_roundtrip() {
         let metadata = GameLoginTicketMetadata {
+            account_id: 7,
             character_id: 42,
             client_version: 0x020E07,
             race: 12,
@@ -234,6 +237,7 @@ mod tests {
     #[test]
     fn game_login_ticket_metadata_rejects_trailing_bytes() {
         let metadata = GameLoginTicketMetadata {
+            account_id: 7,
             character_id: 42,
             client_version: 0x020E07,
             race: 12,

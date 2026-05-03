@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use crate::ApiState;
+use crate::admin::routes_bans;
 use crate::helpers;
 use crate::pipelines;
 use crate::types;
@@ -471,6 +472,60 @@ pub(crate) async fn create_game_login_ticket(
         );
     }
 
+    match routes_bans::account_is_banned(&mut con, account_id).await {
+        Ok(true) => {
+            warn!(
+                "Create game login ticket rejected: account {} is banned",
+                account_id
+            );
+            return (
+                StatusCode::FORBIDDEN,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Account banned".to_string()),
+                }),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+    }
+
+    match routes_bans::character_is_banned(&mut con, payload.character_id).await {
+        Ok(true) => {
+            warn!(
+                "Create game login ticket rejected: character {} is banned",
+                payload.character_id
+            );
+            return (
+                StatusCode::FORBIDDEN,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Character banned".to_string()),
+                }),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+    }
+
     let (sex, class) =
         match pipelines::get_character_login_traits(&mut con, payload.character_id).await {
             Ok(Some(value)) => value,
@@ -500,6 +555,7 @@ pub(crate) async fn create_game_login_ticket(
         };
     let race = traits::get_race_integer(sex == traits::Sex::Male, class);
     let ticket_metadata = types::GameLoginTicketMetadata {
+        account_id,
         character_id: payload.character_id,
         client_version: payload.client_version,
         race,
@@ -1097,6 +1153,28 @@ pub(crate) async fn login(
                 token: String::new(),
             }),
         );
+    }
+
+    match routes_bans::account_is_banned(&mut con, user_id).await {
+        Ok(true) => {
+            warn!("Login rejected: account {} is banned", user_id);
+            return (
+                StatusCode::FORBIDDEN,
+                Json(types::LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::LoginResponse {
+                    token: String::new(),
+                }),
+            );
+        }
     }
 
     let secret = match env::var("API_JWT_SECRET") {
