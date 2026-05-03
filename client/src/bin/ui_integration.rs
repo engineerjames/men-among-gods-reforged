@@ -19,6 +19,8 @@
 //! | `3`   | Toggle Settings panel         |
 //! | `4`   | Toggle Shop panel             |
 //! | `5`   | Toggle Look panel             |
+//! | `P`   | Print render timing stats     |
+//! | `C`   | Toggle coordinate overlay     |
 //! | `Esc` | Quit                          |
 
 use std::time::{Duration, Instant};
@@ -56,6 +58,7 @@ use client::ui::widgets::panel::Panel;
 use client::ui::widgets::slider::Slider;
 use client::ui::widgets::text_input::TextInput;
 use client::ui::{RenderContext, sdl_to_ui_event};
+use client::font_cache::{self, TextStyle};
 
 // ---------------------------------------------------------------------------
 // Layout constants — arranged as a gallery across the 960×540 viewport
@@ -318,8 +321,6 @@ fn main() -> Result<(), String> {
             None,
             None,
             None,
-            None,
-            None,
         ],
         spell: [0; 20],
         active: [0; 20],
@@ -354,10 +355,11 @@ fn main() -> Result<(), String> {
     let mut alt_held = false;
     let mut mouse_x: i32 = 0;
     let mut mouse_y: i32 = 0;
+    let mut show_coords = true;
 
     let mut last_frame = Instant::now();
 
-    println!("UI Integration Test running — press 1-5 to toggle panels, Esc to quit.");
+    println!("UI Integration Test running — press 1-5 to toggle panels, C to toggle coordinate overlay, Esc to quit.");
 
     // --- Main loop -------------------------------------------------------
     'running: loop {
@@ -379,6 +381,10 @@ fn main() -> Result<(), String> {
                         Keycode::LShift | Keycode::RShift => shift_held = true,
                         Keycode::LAlt | Keycode::RAlt => alt_held = true,
                         Keycode::Escape => break 'running,
+                        Keycode::C => {
+                            show_coords = !show_coords;
+                            println!("[Key] Coordinate overlay {}", if show_coords { "on" } else { "off" });
+                        }
                         Keycode::P => {
                             print_render_stats(&[
                                 ("Label", &t_label),
@@ -585,6 +591,40 @@ fn main() -> Result<(), String> {
         timed_render(&mut settings_panel, &mut ctx, &mut t_settings_panel);
         timed_render(&mut look_panel, &mut ctx, &mut t_look_panel);
         timed_render(&mut shop_panel, &mut ctx, &mut t_shop_panel);
+
+        // Coordinate overlay — rendered last so it appears on top of everything.
+        if show_coords {
+            let coord_text = format!("x={mouse_x}  y={mouse_y}");
+            let text_w = font_cache::text_width(&coord_text);
+            let text_h = font_cache::BITMAP_GLYPH_H;
+            // Background pill behind the text so it's readable over any widget.
+            ctx.canvas.set_draw_color(Color::RGBA(0, 0, 0, 180));
+            let _ = ctx.canvas.fill_rect(sdl2::rect::Rect::new(
+                mouse_x - text_w as i32 / 2 - 3,
+                mouse_y - text_h as i32 - 6,
+                text_w + 6,
+                text_h + 4,
+            ));
+            let _ = font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                0,
+                &coord_text,
+                mouse_x - text_w as i32 / 2,
+                mouse_y - text_h as i32 - 4,
+                TextStyle::tinted(Color::RGB(255, 255, 100)),
+            );
+            // Small crosshair at the cursor position.
+            ctx.canvas.set_draw_color(Color::RGBA(255, 255, 100, 200));
+            let _ = ctx.canvas.draw_line(
+                sdl2::rect::Point::new(mouse_x - 6, mouse_y),
+                sdl2::rect::Point::new(mouse_x + 6, mouse_y),
+            );
+            let _ = ctx.canvas.draw_line(
+                sdl2::rect::Point::new(mouse_x, mouse_y - 6),
+                sdl2::rect::Point::new(mouse_x, mouse_y + 6),
+            );
+        }
 
         ctx.canvas.present();
 

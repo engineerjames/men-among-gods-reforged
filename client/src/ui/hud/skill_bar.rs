@@ -27,37 +27,35 @@ use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, Wid
 // ---------------------------------------------------------------------------
 
 /// Side length of each square cell in pixels.
-const CELL: i32 = 20;
+const CELL: i32 = 29;
 
 /// Number of cells in the top (skill-bind) row.
-pub const TOP_CELLS: usize = 13;
+pub const TOP_CELLS: usize = 11;
 
 /// Vertical offset of all cells relative to the widget (background image)
 /// origin.  Increase to scoot cells downward.
-const CELLS_OFFSET_Y: i32 = 46;
+const CELLS_OFFSET_Y: i32 = 67;
 
 /// Hard-coded cell origins relative to the widget background.
 pub const TOP_CELL_POSITIONS: [(i32, i32); TOP_CELLS] = [
-    (63, CELLS_OFFSET_Y),  // 1
-    (92, CELLS_OFFSET_Y),  // 2
-    (122, CELLS_OFFSET_Y), // 3
-    (152, CELLS_OFFSET_Y), // 4
-    (183, CELLS_OFFSET_Y), // 5
-    (212, CELLS_OFFSET_Y), // 6
-    (240, CELLS_OFFSET_Y), // 7
-    (268, CELLS_OFFSET_Y), // 8
-    (298, CELLS_OFFSET_Y), // 9
-    (327, CELLS_OFFSET_Y), // 10
-    (356, CELLS_OFFSET_Y), // 11
-    (388, CELLS_OFFSET_Y), // 12
-    (418, CELLS_OFFSET_Y), // 13
+    (73, CELLS_OFFSET_Y),           // 1
+    (73 + 32, CELLS_OFFSET_Y),      // 2
+    (73 + 32 * 2, CELLS_OFFSET_Y),  // 3
+    (73 + 32 * 3, CELLS_OFFSET_Y),  // 4
+    (73 + 32 * 4, CELLS_OFFSET_Y),  // 5
+    (73 + 32 * 5, CELLS_OFFSET_Y),  // 6
+    (73 + 32 * 6, CELLS_OFFSET_Y),  // 7
+    (73 + 32 * 7, CELLS_OFFSET_Y),  // 8
+    (73 + 32 * 8, CELLS_OFFSET_Y),  // 9
+    (73 + 32 * 9, CELLS_OFFSET_Y),  // 10
+    (73 + 32 * 10, CELLS_OFFSET_Y), // 11
 ];
 
 /// Total widget width (determined by the wider top row).
 const BAR_W: u32 = 500;
 
-/// Total widget height (two rows plus gap).
-const BAR_H: u32 = 80;
+/// Total widget height .
+const BAR_H: u32 = 100;
 
 /// Background fill for each cell.
 const CELL_BG: Color = Color::RGBA(15, 15, 35, 200);
@@ -320,10 +318,11 @@ impl Widget for SkillBar {
         ctx.canvas.set_blend_mode(BlendMode::Blend);
 
         // ── Background image (lazy-loaded) ─────────────────────────────
+        // TODO: Update to use the gfx cache once things are settled.
         if self.bg_texture_id.is_none() {
             let path = filepaths::get_asset_directory()
                 .join("gfx")
-                .join("skillbar4.png");
+                .join("skillbar_6.png");
             if let Ok(id) = ctx.gfx.load_texture_from_path(&path) {
                 self.bg_texture_id = Some(id);
             }
