@@ -76,6 +76,7 @@ pub struct CharacterSummary {
     /// Rank index (0–23) derived from `points_tot` by the server, written to the
     /// `character:{id}` hash when selection metadata is synced.  `None` for
     /// characters that have never been loaded by the game server.
+    #[serde(default)]
     pub rank_index: Option<u8>,
 }
 
@@ -206,8 +207,8 @@ mod tests {
             "id": 1,
             "name": "OldChar",
             "description": "",
-            "sex": 0,
-            "class": 0,
+            "sex": "Male",
+            "class": "Mercenary",
             "selection_sprite_id": null,
             "server_id": null
         }"#;

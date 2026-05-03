@@ -37,9 +37,6 @@ const FONT: usize = 1;
 /// Width of the scrollbar track.
 const SCROLLBAR_W: u32 = 6;
 
-/// Horizontal gap between the label text and the rank sigil.
-const SIGIL_GAP: i32 = 6;
-
 /// Lowest rank index that should display a sigil (rank 0 is fully transparent).
 const FIRST_VISIBLE_RANK: usize = 1;
 
@@ -356,17 +353,24 @@ impl Widget for ScrollableList {
                 font_cache::TextStyle::PLAIN,
             )?;
 
-            // Rank sigil (right of label, vertically centered, rank 0 is invisible).
+            // Rank sigil (right-justified, vertically centered, rank 0 is invisible).
+            // Scale down proportionally so the sigil fits within 40px tall.
             if let Some(rank_idx) = item.rank_index {
                 if rank_idx >= FIRST_VISIBLE_RANK {
                     let sigil_sprite_id = 10 + rank_idx.min(20);
                     let (trim_top, draw_h) = RankSigil::draw_metrics(rank_idx);
-                    let dest_h = draw_h.min((ROW_H - 4) as u32);
-                    let sigil_x = text_x + font_cache::text_width(&item.label) as i32 + SIGIL_GAP;
+                    let max_h = 40_u32;
+                    let (dest_w, dest_h) = if draw_h > max_h {
+                        let scaled_w = (rank_sigil::SIGIL_WIDTH as u32 * max_h / draw_h).max(1);
+                        (scaled_w, max_h)
+                    } else {
+                        (rank_sigil::SIGIL_WIDTH as u32, draw_h)
+                    };
+                    let sigil_x = self.bounds.x + content_w as i32 - dest_w as i32 - PAD_X;
                     let sigil_y = row_y + (ROW_H - dest_h as i32) / 2;
                     let tex = ctx.gfx.get_texture(sigil_sprite_id);
                     let src = Rect::new(0, trim_top as i32, rank_sigil::SIGIL_WIDTH as u32, draw_h);
-                    let dst = Rect::new(sigil_x, sigil_y, rank_sigil::SIGIL_WIDTH as u32, dest_h);
+                    let dst = Rect::new(sigil_x, sigil_y, dest_w, dest_h);
                     let _ = ctx.canvas.copy(tex, Some(src), Some(dst));
                 }
             }
