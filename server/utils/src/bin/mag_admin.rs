@@ -131,13 +131,6 @@ enum WorldActionCommand {
         #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
         timeout_seconds: u64,
     },
-    /// Wipe dynamic runtime world state.
-    Wipe {
-        #[arg(long, help = "Wait until the running server reports action applied")]
-        wait: bool,
-        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
-        timeout_seconds: u64,
-    },
     /// Recompute map lighting.
     RebuildLights {
         #[arg(long, help = "Wait until the running server reports action applied")]
@@ -288,7 +281,6 @@ enum MenuAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum WorldMenuAction {
     Populate,
-    Wipe,
     RebuildLights,
     SyncSkills,
     ResetChar,
@@ -458,12 +450,6 @@ fn run_world_effects_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result
             WorldMenuAction::Populate => {
                 menu_request_world_action(client, theme, WorldActionKind::PopulateMissing, None)?
             }
-            WorldMenuAction::Wipe => menu_request_world_action(
-                client,
-                theme,
-                WorldActionKind::WipeRuntime,
-                Some("wipe dynamic runtime world state"),
-            )?,
             WorldMenuAction::RebuildLights => {
                 menu_request_world_action(client, theme, WorldActionKind::RebuildLights, None)?
             }
@@ -487,7 +473,6 @@ fn run_world_effects_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result
 fn choose_world_menu_action(theme: &ColorfulTheme) -> Result<WorldMenuAction, CliError> {
     let items = [
         "Populate missing NPCs",
-        "Wipe runtime state",
         "Rebuild lights",
         "Sync player skills",
         "Reset character template",
@@ -504,12 +489,11 @@ fn choose_world_menu_action(theme: &ColorfulTheme) -> Result<WorldMenuAction, Cl
 
     Ok(match selected {
         0 => WorldMenuAction::Populate,
-        1 => WorldMenuAction::Wipe,
-        2 => WorldMenuAction::RebuildLights,
-        3 => WorldMenuAction::SyncSkills,
-        4 => WorldMenuAction::ResetChar,
-        5 => WorldMenuAction::ResetItem,
-        6 => WorldMenuAction::ResetAll,
+        1 => WorldMenuAction::RebuildLights,
+        2 => WorldMenuAction::SyncSkills,
+        3 => WorldMenuAction::ResetChar,
+        4 => WorldMenuAction::ResetItem,
+        5 => WorldMenuAction::ResetAll,
         _ => WorldMenuAction::Back,
     })
 }
@@ -1004,10 +988,6 @@ fn run_world_action(
             wait,
             timeout_seconds,
         } => (WorldActionKind::PopulateMissing, *wait, *timeout_seconds),
-        WorldActionCommand::Wipe {
-            wait,
-            timeout_seconds,
-        } => (WorldActionKind::WipeRuntime, *wait, *timeout_seconds),
         WorldActionCommand::RebuildLights {
             wait,
             timeout_seconds,
