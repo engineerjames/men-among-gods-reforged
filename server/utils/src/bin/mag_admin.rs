@@ -947,13 +947,19 @@ fn menu_list_bans(client: &AdminClient) -> Result<(), CliError> {
 }
 
 fn menu_add_account_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
-    let account_id = prompt_u64(theme, "Account id")?;
+    let character = menu_select_character_for_ban(client, theme)?;
+    let Some(account_id) = character.account_id else {
+        return Err(CliError::Runtime(format!(
+            "character '{}' does not have an account id",
+            character.name
+        )));
+    };
     let reason = prompt_optional_text(theme, "Reason (optional)")?;
     let response = client
         .create_ban(&BanCreateRequest {
             target: BanCreateTargetRequest::Account {
                 account_id: Some(account_id),
-                username: None,
+                username: character.account_username.clone(),
             },
             reason,
             expires_at: None,
@@ -1015,10 +1021,12 @@ fn menu_select_character_for_ban(
 }
 
 fn format_character_search_result(character: &CharacterSearchResult) -> String {
-    let account = character
-        .account_id
-        .map(|value| value.to_string())
-        .unwrap_or_else(|| "unknown".to_string());
+    let account = match (&character.account_username, character.account_id) {
+        (Some(username), Some(account_id)) => format!("{} ({})", username, account_id),
+        (Some(username), None) => username.clone(),
+        (None, Some(account_id)) => account_id.to_string(),
+        (None, None) => "unknown".to_string(),
+    };
     let server = character
         .server_id
         .map(|value| value.to_string())
@@ -1047,20 +1055,44 @@ fn menu_add_ip_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), Cl
 }
 
 fn menu_remove_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
-    let scopes = ["account", "character", "ip"];
+    let bans = client
+        .list_bans(None, false)
+        .map_err(CliError::Runtime)?
+        .bans;
+    if bans.is_empty() {
+        println!("No active bans to remove.");
+        return Ok(());
+    }
+
+    let items: Vec<String> = bans.iter().map(format_ban_choice).collect();
     let selected = Select::with_theme(theme)
-        .with_prompt("Ban scope")
-        .items(&scopes)
+        .with_prompt("Choose ban to remove")
+        .items(&items)
         .default(0)
         .interact()
         .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
-    let scope = scopes[selected];
-    let value = prompt_text(theme, "Target value", None)?;
+    let ban = &bans[selected];
     let response = client
-        .remove_ban(scope, &value)
+        .remove_ban(&ban.target.scope, &ban.target.value)
         .map_err(CliError::Runtime)?;
     print_ban_mutation(&response, OutputFormat::Table, false)?;
     menu_wait_for_ban_action(client, theme, &response)
+}
+
+fn format_ban_choice(ban: &server_utils::admin_client::BanRecordResponse) -> String {
+    let expires_at = ban
+        .expires_at
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "permanent".to_string());
+    let reason = if ban.reason.trim().is_empty() {
+        "no reason"
+    } else {
+        ban.reason.trim()
+    };
+    format!(
+        "{} {} (expires {}, by {}, {})",
+        ban.target.scope, ban.target.value, expires_at, ban.created_by, reason
+    )
 }
 
 fn menu_wait_for_ban_action(
@@ -1123,13 +1155,6 @@ fn prompt_timeout_seconds(theme: &ColorfulTheme) -> Result<u64, CliError> {
 
 fn prompt_usize(theme: &ColorfulTheme, prompt: &str) -> Result<usize, CliError> {
     Input::<usize>::with_theme(theme)
-        .with_prompt(prompt.to_string())
-        .interact_text()
-        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))
-}
-
-fn prompt_u64(theme: &ColorfulTheme, prompt: &str) -> Result<u64, CliError> {
-    Input::<u64>::with_theme(theme)
         .with_prompt(prompt.to_string())
         .interact_text()
         .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))

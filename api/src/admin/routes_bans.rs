@@ -258,6 +258,7 @@ pub(crate) async fn search_characters(
             id: value.id,
             name: value.name,
             account_id: value.account_id,
+            account_username: value.account_username,
             server_id: value.server_id,
         })
         .collect();

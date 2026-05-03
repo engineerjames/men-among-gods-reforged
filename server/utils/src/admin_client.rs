@@ -431,6 +431,8 @@ pub struct CharacterSearchResult {
     pub name: String,
     /// Owning account id when present.
     pub account_id: Option<u64>,
+    /// Owning account username when present.
+    pub account_username: Option<String>,
     /// Live/game character slot id last written by the server.
     pub server_id: Option<u32>,
 }

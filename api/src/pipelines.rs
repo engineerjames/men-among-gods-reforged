@@ -717,6 +717,8 @@ pub(crate) struct CharacterNameSearchMatch {
     pub name: String,
     /// Owning account id, when present.
     pub account_id: Option<u64>,
+    /// Owning account username, when present.
+    pub account_username: Option<String>,
     /// Last linked live server slot id, when present.
     pub server_id: Option<u32>,
 }
@@ -771,6 +773,13 @@ pub(crate) async fn search_characters_by_name_scan(
         let account_id = character_map
             .get("account_id")
             .and_then(|value| value.parse::<u64>().ok());
+        let account_username = match account_id {
+            Some(account_id) => {
+                let account_key = format!("account:{}", account_id);
+                con.hget(&account_key, "username").await?
+            }
+            None => None,
+        };
         let server_id = character_map
             .get("server_id")
             .and_then(|value| value.parse::<u32>().ok());
@@ -780,6 +789,7 @@ pub(crate) async fn search_characters_by_name_scan(
                 id: character_id,
                 name,
                 account_id,
+                account_username,
                 server_id,
             },
         ));
