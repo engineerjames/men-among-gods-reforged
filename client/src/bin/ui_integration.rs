@@ -37,7 +37,7 @@ use client::filepaths;
 use client::font_cache::{self, TextStyle};
 use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
-use client::ui::hud::button_arc::HudButtonBar;
+use client::ui::hud::button_bar::HudButtonBar;
 use client::ui::hud::chat_box::ChatBox;
 use client::ui::hud::inventory_panel::{InventoryPanel, InventoryPanelData};
 use client::ui::hud::look_panel::LookPanel;
