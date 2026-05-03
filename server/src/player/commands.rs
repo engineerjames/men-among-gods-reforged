@@ -2378,6 +2378,38 @@ mod tests {
     }
 
     #[test]
+    fn plr_cmd_autoloot_transfers_diagonal_corpse_gold() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let corpse = 2;
+            place_character(gs, corpse, 11, 11, CharacterFlags::Body.bits(), "Corpse");
+            gs.characters[corpse].gold = 456;
+
+            configure_item(
+                gs,
+                30,
+                "Tombstone",
+                "tombstone",
+                "A marked tombstone.",
+                0,
+                core::constants::IT_TOMBSTONE as u16,
+                Some((11, 11)),
+            );
+            gs.items[30].data[0] = corpse as u32;
+
+            let mut packet = [0u8; 5];
+            packet[1..3].copy_from_slice(&(11u16).to_le_bytes());
+            packet[3..5].copy_from_slice(&(11u16).to_le_bytes());
+            write_inbuf(gs, nr, &packet);
+            plr_cmd_autoloot(gs, nr);
+
+            assert_eq!(gs.characters[cn].gold, 456);
+            assert_eq!(gs.characters[corpse].gold, 0);
+        });
+    }
+
+    #[test]
     fn plr_cmd_inv_covers_swap_gold_use_and_look_branches() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
