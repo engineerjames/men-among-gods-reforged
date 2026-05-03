@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 pub use mag_core::types::api::{
     CharacterSummary, CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
-    CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
-    LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,
-    ResetPasswordRequest, ResetPasswordRequestResponse,
+    CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GameLoginTicketMetadata,
+    GetCharactersResponse, LoginRequest, LoginResponse, ResetPasswordConfirm,
+    ResetPasswordConfirmResponse, ResetPasswordRequest, ResetPasswordRequestResponse,
 };
 
 #[derive(Deserialize, Serialize)]

@@ -12,8 +12,10 @@ use serde::Serialize;
 use serde_json::Value;
 use server_utils::admin_client::{
     AdminClient, BadwordEntryResponse, BadwordsListResponse, BadwordsMutationResponse,
-    GlobalsResponse, TemplateListResponse, TemplateSummary, TextReloadResponse,
-    TextReloadStatusResponse,
+    BanActionStatusResponse, BanCreateRequest, BanCreateTargetRequest, BanListResponse,
+    BanMutationResponse, CharacterSearchResult, GlobalsResponse, TemplateListResponse,
+    TemplateSummary, TextReloadResponse, TextReloadStatusResponse, WorldActionKind,
+    WorldActionResponse, WorldActionStatusResponse,
 };
 use std::fs;
 use std::io::{self, Read};
@@ -23,6 +25,7 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_API_URL: &str = "https://127.0.0.1:5554";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 10;
+const CREATED_BY: &str = "mag-admin";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -96,6 +99,11 @@ enum Commands {
         #[command(subcommand)]
         command: BadwordsCommand,
     },
+    /// Query and mutate account, character, and IPv4 bans.
+    Bans {
+        #[command(subcommand)]
+        command: BansCommand,
+    },
     /// Search and inspect item and character templates.
     Templates {
         #[command(subcommand)]
@@ -105,6 +113,59 @@ enum Commands {
     Globals {
         #[command(subcommand)]
         command: GlobalsCommand,
+    },
+    /// Execute live world actions on the running server.
+    World {
+        #[command(subcommand)]
+        command: WorldActionCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum WorldActionCommand {
+    /// Spawn missing respawnable NPC templates.
+    Populate {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Recompute map lighting.
+    RebuildLights {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Synchronize player skill metadata from templates.
+    SyncSkills {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Reset one character template and its live instances.
+    ResetChar {
+        template_id: usize,
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Reset one item template and its live instances.
+    ResetItem {
+        template_id: usize,
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Reset all character and item templates.
+    ResetAll {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
     },
 }
 
@@ -201,6 +262,92 @@ enum BadwordsCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum BansCommand {
+    /// List active bans.
+    List {
+        #[arg(long, help = "Filter by account, character, or ipv4")]
+        scope: Option<String>,
+        #[arg(long, help = "Include expired records still present in storage")]
+        include_expired: bool,
+    },
+    /// Ban an account by account id or username.
+    AddAccount {
+        #[arg(long)]
+        account_id: Option<u64>,
+        #[arg(long)]
+        username: Option<String>,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        expires_at: Option<u64>,
+        #[arg(long)]
+        duration_seconds: Option<u64>,
+        #[arg(long, help = "Do not request live kicks for matching online sessions")]
+        no_kick: bool,
+        #[arg(long, help = "Wait until live kick enforcement is applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Ban a character by API character id.
+    AddCharacter {
+        character_id: u64,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        expires_at: Option<u64>,
+        #[arg(long)]
+        duration_seconds: Option<u64>,
+        #[arg(long, help = "Do not request live kicks for matching online sessions")]
+        no_kick: bool,
+        #[arg(long, help = "Wait until live kick enforcement is applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Ban an IPv4 address.
+    AddIp {
+        address: String,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        expires_at: Option<u64>,
+        #[arg(long)]
+        duration_seconds: Option<u64>,
+        #[arg(long, help = "Do not request live kicks for matching online sessions")]
+        no_kick: bool,
+        #[arg(long, help = "Wait until live kick enforcement is applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Remove an account ban.
+    RemoveAccount {
+        account_id: u64,
+        #[arg(long, help = "Wait until live unban notification is applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Remove a character ban.
+    RemoveCharacter {
+        character_id: u64,
+        #[arg(long, help = "Wait until live unban notification is applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Remove an IPv4 ban.
+    RemoveIp {
+        address: String,
+        #[arg(long, help = "Wait until live unban notification is applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+}
+
 #[derive(Debug)]
 enum CliError {
     Runtime(String),
@@ -209,18 +356,53 @@ enum CliError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MenuAction {
+    WorldEffects,
+    BanManagement,
+    BadwordManagement,
+    TemplateManagement,
+    ShowGlobals,
+    Quit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorldMenuAction {
+    Populate,
+    RebuildLights,
+    SyncSkills,
+    ResetChar,
+    ResetItem,
+    ResetAll,
+    Back,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BadwordsMenuAction {
+    List,
+    Get,
+    Add,
+    Remove,
+    Export,
+    Refresh,
+    Back,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BansMenuAction {
+    List,
+    AddAccount,
+    AddCharacter,
+    AddIp,
+    Remove,
+    Back,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TemplatesMenuAction {
     SearchItemTemplates,
     SearchCharacterTemplates,
     ShowItemTemplate,
     ShowCharacterTemplate,
-    ShowGlobals,
-    ListBadwords,
-    GetBadword,
-    AddBadwords,
-    RemoveBadwords,
-    ExportBadwords,
-    RefreshBadwords,
-    Quit,
+    Back,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -272,22 +454,18 @@ fn run(cli: Cli) -> Result<(), CliError> {
         ));
     }
 
-    let Some(admin_token) = cli.admin_token.as_deref().map(str::trim) else {
-        return Err(CliError::Runtime(
-            "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
-        ));
-    };
-    if admin_token.is_empty() {
-        return Err(CliError::Runtime(
-            "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
-        ));
-    }
+    let admin_token = cli
+        .admin_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| {
+            CliError::Runtime(
+                "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
+            )
+        })?;
 
     let client = AdminClient::new(cli.api.trim(), admin_token).map_err(CliError::Runtime)?;
-
-    if cli.menu && !cli.auto {
-        return run_menu(&cli, &client);
-    }
 
     if !cli.auto {
         return run_menu(&cli, &client);
@@ -301,8 +479,10 @@ fn run(cli: Cli) -> Result<(), CliError> {
 
     match command {
         Commands::Badwords { command } => run_badwords(&cli, &client, command),
+        Commands::Bans { command } => run_bans(&cli, &client, command),
         Commands::Templates { command } => run_templates(&cli, &client, command),
         Commands::Globals { command } => run_globals(&cli, &client, command),
+        Commands::World { command } => run_world_action(&cli, &client, command),
     }
 }
 
@@ -313,35 +493,12 @@ fn run_menu(cli: &Cli, client: &AdminClient) -> Result<(), CliError> {
     loop {
         let action = choose_menu_action(&theme)?;
         match action {
-            MenuAction::SearchItemTemplates => {
-                menu_search_templates(client, &theme, TemplateKindArg::Items)?
-            }
-            MenuAction::SearchCharacterTemplates => {
-                menu_search_templates(client, &theme, TemplateKindArg::Characters)?
-            }
-            MenuAction::ShowItemTemplate => {
-                menu_show_template(client, &theme, TemplateKindArg::Items)?
-            }
-            MenuAction::ShowCharacterTemplate => {
-                menu_show_template(client, &theme, TemplateKindArg::Characters)?
-            }
+            MenuAction::WorldEffects => run_world_effects_menu(client, &theme)?,
+            MenuAction::BanManagement => run_bans_menu(client, &theme)?,
+            MenuAction::BadwordManagement => run_badwords_menu(client, &theme)?,
+            MenuAction::TemplateManagement => run_templates_menu(client, &theme)?,
             MenuAction::ShowGlobals => menu_show_globals(client)?,
-            MenuAction::ListBadwords => menu_list_badwords(client)?,
-            MenuAction::GetBadword => menu_get_badword(client, &theme)?,
-            MenuAction::AddBadwords => menu_add_badwords(client, &theme)?,
-            MenuAction::RemoveBadwords => menu_remove_badwords(client, &theme)?,
-            MenuAction::ExportBadwords => menu_export_badwords(client, &theme)?,
-            MenuAction::RefreshBadwords => menu_refresh_badwords(client, &theme)?,
             MenuAction::Quit => break,
-        }
-
-        if !Confirm::with_theme(&theme)
-            .with_prompt("Return to the admin menu?")
-            .default(true)
-            .interact()
-            .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?
-        {
-            break;
         }
     }
 
@@ -359,17 +516,11 @@ fn print_menu_header(api: &str) {
 
 fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
     let items = [
-        "Search item templates",
-        "Search character templates",
-        "Show item template by id",
-        "Show character template by id",
-        "Show globals",
-        "List badwords",
-        "Check one badword",
-        "Add badwords",
-        "Remove badwords",
-        "Export badwords",
-        "Refresh running server cache",
+        "World effects",
+        "Ban management",
+        "Badword management",
+        "Template management",
+        "View globals",
         "Quit",
     ];
     let selected = Select::with_theme(theme)
@@ -380,18 +531,194 @@ fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
         .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
 
     Ok(match selected {
-        0 => MenuAction::SearchItemTemplates,
-        1 => MenuAction::SearchCharacterTemplates,
-        2 => MenuAction::ShowItemTemplate,
-        3 => MenuAction::ShowCharacterTemplate,
+        0 => MenuAction::WorldEffects,
+        1 => MenuAction::BanManagement,
+        2 => MenuAction::BadwordManagement,
+        3 => MenuAction::TemplateManagement,
         4 => MenuAction::ShowGlobals,
-        5 => MenuAction::ListBadwords,
-        6 => MenuAction::GetBadword,
-        7 => MenuAction::AddBadwords,
-        8 => MenuAction::RemoveBadwords,
-        9 => MenuAction::ExportBadwords,
-        10 => MenuAction::RefreshBadwords,
         _ => MenuAction::Quit,
+    })
+}
+
+fn run_bans_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    loop {
+        match choose_bans_menu_action(theme)? {
+            BansMenuAction::List => menu_list_bans(client)?,
+            BansMenuAction::AddAccount => menu_add_account_ban(client, theme)?,
+            BansMenuAction::AddCharacter => menu_add_character_ban(client, theme)?,
+            BansMenuAction::AddIp => menu_add_ip_ban(client, theme)?,
+            BansMenuAction::Remove => menu_remove_ban(client, theme)?,
+            BansMenuAction::Back => break,
+        }
+    }
+    Ok(())
+}
+
+fn choose_bans_menu_action(theme: &ColorfulTheme) -> Result<BansMenuAction, CliError> {
+    let items = [
+        "List bans",
+        "Ban account",
+        "Ban character",
+        "Ban IPv4 address",
+        "Remove ban",
+        "Back",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("Ban management")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => BansMenuAction::List,
+        1 => BansMenuAction::AddAccount,
+        2 => BansMenuAction::AddCharacter,
+        3 => BansMenuAction::AddIp,
+        4 => BansMenuAction::Remove,
+        _ => BansMenuAction::Back,
+    })
+}
+
+fn run_world_effects_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    loop {
+        match choose_world_menu_action(theme)? {
+            WorldMenuAction::Populate => {
+                menu_request_world_action(client, theme, WorldActionKind::PopulateMissing, None)?
+            }
+            WorldMenuAction::RebuildLights => {
+                menu_request_world_action(client, theme, WorldActionKind::RebuildLights, None)?
+            }
+            WorldMenuAction::SyncSkills => {
+                menu_request_world_action(client, theme, WorldActionKind::SyncPlayerSkills, None)?
+            }
+            WorldMenuAction::ResetChar => menu_reset_char(client, theme)?,
+            WorldMenuAction::ResetItem => menu_reset_item(client, theme)?,
+            WorldMenuAction::ResetAll => menu_request_world_action(
+                client,
+                theme,
+                WorldActionKind::ResetAll,
+                Some("reset all character and item templates"),
+            )?,
+            WorldMenuAction::Back => break,
+        }
+    }
+    Ok(())
+}
+
+fn choose_world_menu_action(theme: &ColorfulTheme) -> Result<WorldMenuAction, CliError> {
+    let items = [
+        "Populate missing NPCs",
+        "Rebuild lights",
+        "Sync player skills",
+        "Reset character template",
+        "Reset item template",
+        "Reset all templates",
+        "Back",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("World effects")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => WorldMenuAction::Populate,
+        1 => WorldMenuAction::RebuildLights,
+        2 => WorldMenuAction::SyncSkills,
+        3 => WorldMenuAction::ResetChar,
+        4 => WorldMenuAction::ResetItem,
+        5 => WorldMenuAction::ResetAll,
+        _ => WorldMenuAction::Back,
+    })
+}
+
+fn run_badwords_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    loop {
+        match choose_badwords_menu_action(theme)? {
+            BadwordsMenuAction::List => menu_list_badwords(client)?,
+            BadwordsMenuAction::Get => menu_get_badword(client, theme)?,
+            BadwordsMenuAction::Add => menu_add_badwords(client, theme)?,
+            BadwordsMenuAction::Remove => menu_remove_badwords(client, theme)?,
+            BadwordsMenuAction::Export => menu_export_badwords(client, theme)?,
+            BadwordsMenuAction::Refresh => menu_refresh_badwords(client, theme)?,
+            BadwordsMenuAction::Back => break,
+        }
+    }
+    Ok(())
+}
+
+fn choose_badwords_menu_action(theme: &ColorfulTheme) -> Result<BadwordsMenuAction, CliError> {
+    let items = [
+        "List badwords",
+        "Check one badword",
+        "Add badwords",
+        "Remove badwords",
+        "Export badwords",
+        "Refresh running server cache",
+        "Back",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("Badword management")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => BadwordsMenuAction::List,
+        1 => BadwordsMenuAction::Get,
+        2 => BadwordsMenuAction::Add,
+        3 => BadwordsMenuAction::Remove,
+        4 => BadwordsMenuAction::Export,
+        5 => BadwordsMenuAction::Refresh,
+        _ => BadwordsMenuAction::Back,
+    })
+}
+
+fn run_templates_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    loop {
+        match choose_templates_menu_action(theme)? {
+            TemplatesMenuAction::SearchItemTemplates => {
+                menu_search_templates(client, theme, TemplateKindArg::Items)?
+            }
+            TemplatesMenuAction::SearchCharacterTemplates => {
+                menu_search_templates(client, theme, TemplateKindArg::Characters)?
+            }
+            TemplatesMenuAction::ShowItemTemplate => {
+                menu_show_template(client, theme, TemplateKindArg::Items)?
+            }
+            TemplatesMenuAction::ShowCharacterTemplate => {
+                menu_show_template(client, theme, TemplateKindArg::Characters)?
+            }
+            TemplatesMenuAction::Back => break,
+        }
+    }
+    Ok(())
+}
+
+fn choose_templates_menu_action(theme: &ColorfulTheme) -> Result<TemplatesMenuAction, CliError> {
+    let items = [
+        "Search item templates",
+        "Search character templates",
+        "Show item template by id",
+        "Show character template by id",
+        "Back",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("Template management")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => TemplatesMenuAction::SearchItemTemplates,
+        1 => TemplatesMenuAction::SearchCharacterTemplates,
+        2 => TemplatesMenuAction::ShowItemTemplate,
+        3 => TemplatesMenuAction::ShowCharacterTemplate,
+        _ => TemplatesMenuAction::Back,
     })
 }
 
@@ -444,6 +771,66 @@ fn menu_show_template(
 fn menu_show_globals(client: &AdminClient) -> Result<(), CliError> {
     let globals = client.fetch_globals().map_err(CliError::Runtime)?;
     print_globals(&globals, OutputFormat::Table)
+}
+
+fn menu_reset_char(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let template_id = prompt_usize(theme, "Character template id")?;
+    menu_request_world_action(
+        client,
+        theme,
+        WorldActionKind::ResetChar { template_id },
+        Some("reset this character template and its live instances"),
+    )
+}
+
+fn menu_reset_item(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let template_id = prompt_usize(theme, "Item template id")?;
+    menu_request_world_action(
+        client,
+        theme,
+        WorldActionKind::ResetItem { template_id },
+        Some("reset this item template and its live instances"),
+    )
+}
+
+fn menu_request_world_action(
+    client: &AdminClient,
+    theme: &ColorfulTheme,
+    action: WorldActionKind,
+    confirmation: Option<&str>,
+) -> Result<(), CliError> {
+    if let Some(label) = confirmation {
+        let confirmed = Confirm::with_theme(theme)
+            .with_prompt(format!("Confirm world action: {label}?"))
+            .default(false)
+            .interact()
+            .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+        if !confirmed {
+            println!("Action cancelled.");
+            return Ok(());
+        }
+    }
+
+    let wait = Confirm::with_theme(theme)
+        .with_prompt("Wait for the running server to apply the action?")
+        .default(true)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+    let timeout_seconds = if wait {
+        prompt_timeout_seconds(theme)?
+    } else {
+        DEFAULT_WAIT_TIMEOUT_SECS
+    };
+
+    let response = client
+        .request_world_action(&action)
+        .map_err(CliError::Runtime)?;
+    if wait {
+        let status = wait_for_world_action(client, &response.request_id, timeout_seconds)?;
+        print_world_action_status(&status, OutputFormat::Table, false)
+    } else {
+        print_world_action_response(&response, OutputFormat::Table, false)
+    }
 }
 
 fn menu_list_badwords(client: &AdminClient) -> Result<(), CliError> {
@@ -542,6 +929,181 @@ fn menu_refresh_after_mutation(
     Ok(())
 }
 
+fn menu_list_bans(client: &AdminClient) -> Result<(), CliError> {
+    let response = client.list_bans(None, false).map_err(CliError::Runtime)?;
+    print_ban_list(&response, OutputFormat::Table)
+}
+
+fn menu_add_account_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let character = menu_select_character_for_ban(client, theme)?;
+    let Some(account_id) = character.account_id else {
+        return Err(CliError::Runtime(format!(
+            "character '{}' does not have an account id",
+            character.name
+        )));
+    };
+    let reason = prompt_optional_text(theme, "Reason (optional)")?;
+    let response = client
+        .create_ban(&BanCreateRequest {
+            target: BanCreateTargetRequest::Account {
+                account_id: Some(account_id),
+                username: character.account_username.clone(),
+            },
+            reason,
+            expires_at: None,
+            duration_seconds: None,
+            created_by: Some(CREATED_BY.to_string()),
+            kick_online: Some(true),
+        })
+        .map_err(CliError::Runtime)?;
+    print_ban_mutation(&response, OutputFormat::Table, false)?;
+    menu_wait_for_ban_action(client, theme, &response)
+}
+
+fn menu_add_character_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let character = menu_select_character_for_ban(client, theme)?;
+    let reason = prompt_optional_text(theme, "Reason (optional)")?;
+    let response = client
+        .create_ban(&BanCreateRequest {
+            target: BanCreateTargetRequest::Character {
+                character_id: character.id,
+            },
+            reason,
+            expires_at: None,
+            duration_seconds: None,
+            created_by: Some(CREATED_BY.to_string()),
+            kick_online: Some(true),
+        })
+        .map_err(CliError::Runtime)?;
+    print_ban_mutation(&response, OutputFormat::Table, false)?;
+    menu_wait_for_ban_action(client, theme, &response)
+}
+
+fn menu_select_character_for_ban(
+    client: &AdminClient,
+    theme: &ColorfulTheme,
+) -> Result<CharacterSearchResult, CliError> {
+    let query = prompt_text(theme, "Character name", None)?;
+    let response = client
+        .search_characters(&query, 20)
+        .map_err(CliError::Runtime)?;
+    if response.characters.is_empty() {
+        return Err(CliError::Runtime(format!(
+            "no characters found matching '{}'",
+            response.query
+        )));
+    }
+
+    let items: Vec<String> = response
+        .characters
+        .iter()
+        .map(format_character_search_result)
+        .collect();
+    let selected = Select::with_theme(theme)
+        .with_prompt("Choose character")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+    Ok(response.characters[selected].clone())
+}
+
+fn format_character_search_result(character: &CharacterSearchResult) -> String {
+    let account = match (&character.account_username, character.account_id) {
+        (Some(username), Some(account_id)) => format!("{} ({})", username, account_id),
+        (Some(username), None) => username.clone(),
+        (None, Some(account_id)) => account_id.to_string(),
+        (None, None) => "unknown".to_string(),
+    };
+    let server = character
+        .server_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "offline".to_string());
+    format!(
+        "{} (api id {}, /who id {}, account {})",
+        character.name, character.id, server, account
+    )
+}
+
+fn menu_add_ip_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let address = prompt_text(theme, "IPv4 address", None)?;
+    let reason = prompt_optional_text(theme, "Reason (optional)")?;
+    let response = client
+        .create_ban(&BanCreateRequest {
+            target: BanCreateTargetRequest::Ipv4 { address },
+            reason,
+            expires_at: None,
+            duration_seconds: None,
+            created_by: Some(CREATED_BY.to_string()),
+            kick_online: Some(true),
+        })
+        .map_err(CliError::Runtime)?;
+    print_ban_mutation(&response, OutputFormat::Table, false)?;
+    menu_wait_for_ban_action(client, theme, &response)
+}
+
+fn menu_remove_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let bans = client
+        .list_bans(None, false)
+        .map_err(CliError::Runtime)?
+        .bans;
+    if bans.is_empty() {
+        println!("No active bans to remove.");
+        return Ok(());
+    }
+
+    let items: Vec<String> = bans.iter().map(format_ban_choice).collect();
+    let selected = Select::with_theme(theme)
+        .with_prompt("Choose ban to remove")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+    let ban = &bans[selected];
+    let response = client
+        .remove_ban(&ban.target.scope, &ban.target.value)
+        .map_err(CliError::Runtime)?;
+    print_ban_mutation(&response, OutputFormat::Table, false)?;
+    menu_wait_for_ban_action(client, theme, &response)
+}
+
+fn format_ban_choice(ban: &server_utils::admin_client::BanRecordResponse) -> String {
+    let expires_at = ban
+        .expires_at
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "permanent".to_string());
+    let reason = if ban.reason.trim().is_empty() {
+        "no reason"
+    } else {
+        ban.reason.trim()
+    };
+    format!(
+        "{} {} (expires {}, by {}, {})",
+        ban.target.scope, ban.target.value, expires_at, ban.created_by, reason
+    )
+}
+
+fn menu_wait_for_ban_action(
+    client: &AdminClient,
+    theme: &ColorfulTheme,
+    response: &BanMutationResponse,
+) -> Result<(), CliError> {
+    let Some(request_id) = response.live_request_id.as_deref() else {
+        return Ok(());
+    };
+    if Confirm::with_theme(theme)
+        .with_prompt("Wait for live ban enforcement?")
+        .default(true)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?
+    {
+        let timeout_seconds = prompt_timeout_seconds(theme)?;
+        let status = wait_for_ban_action(client, request_id, timeout_seconds)?;
+        print_ban_action_status(&status, OutputFormat::Table, false)?;
+    }
+    Ok(())
+}
+
 fn prompt_text(
     theme: &ColorfulTheme,
     prompt: &str,
@@ -559,6 +1121,16 @@ fn prompt_text(
 fn prompt_words(theme: &ColorfulTheme, prompt: &str) -> Result<Vec<String>, CliError> {
     let raw = prompt_text(theme, prompt, None)?;
     Ok(split_words(&raw))
+}
+
+fn prompt_optional_text(theme: &ColorfulTheme, prompt: &str) -> Result<Option<String>, CliError> {
+    let value = prompt_text(theme, prompt, Some(""))?;
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(trimmed.to_string()))
+    }
 }
 
 fn prompt_timeout_seconds(theme: &ColorfulTheme) -> Result<u64, CliError> {
@@ -663,6 +1235,165 @@ fn run_badwords(
     }
 }
 
+fn run_bans(cli: &Cli, client: &AdminClient, command: &BansCommand) -> Result<(), CliError> {
+    match command {
+        BansCommand::List {
+            scope,
+            include_expired,
+        } => {
+            let response = client
+                .list_bans(scope.as_deref(), *include_expired)
+                .map_err(CliError::Runtime)?;
+            print_ban_list(&response, cli.format)
+        }
+        BansCommand::AddAccount {
+            account_id,
+            username,
+            reason,
+            expires_at,
+            duration_seconds,
+            no_kick,
+            wait,
+            timeout_seconds,
+        } => run_ban_create(
+            cli,
+            client,
+            BanCreateRequest {
+                target: BanCreateTargetRequest::Account {
+                    account_id: *account_id,
+                    username: username.clone(),
+                },
+                reason: reason.clone(),
+                expires_at: *expires_at,
+                duration_seconds: *duration_seconds,
+                created_by: Some(CREATED_BY.to_string()),
+                kick_online: Some(!*no_kick),
+            },
+            *wait,
+            *timeout_seconds,
+        ),
+        BansCommand::AddCharacter {
+            character_id,
+            reason,
+            expires_at,
+            duration_seconds,
+            no_kick,
+            wait,
+            timeout_seconds,
+        } => run_ban_create(
+            cli,
+            client,
+            BanCreateRequest {
+                target: BanCreateTargetRequest::Character {
+                    character_id: *character_id,
+                },
+                reason: reason.clone(),
+                expires_at: *expires_at,
+                duration_seconds: *duration_seconds,
+                created_by: Some(CREATED_BY.to_string()),
+                kick_online: Some(!*no_kick),
+            },
+            *wait,
+            *timeout_seconds,
+        ),
+        BansCommand::AddIp {
+            address,
+            reason,
+            expires_at,
+            duration_seconds,
+            no_kick,
+            wait,
+            timeout_seconds,
+        } => run_ban_create(
+            cli,
+            client,
+            BanCreateRequest {
+                target: BanCreateTargetRequest::Ipv4 {
+                    address: address.clone(),
+                },
+                reason: reason.clone(),
+                expires_at: *expires_at,
+                duration_seconds: *duration_seconds,
+                created_by: Some(CREATED_BY.to_string()),
+                kick_online: Some(!*no_kick),
+            },
+            *wait,
+            *timeout_seconds,
+        ),
+        BansCommand::RemoveAccount {
+            account_id,
+            wait,
+            timeout_seconds,
+        } => run_ban_remove(
+            cli,
+            client,
+            "account",
+            &account_id.to_string(),
+            *wait,
+            *timeout_seconds,
+        ),
+        BansCommand::RemoveCharacter {
+            character_id,
+            wait,
+            timeout_seconds,
+        } => run_ban_remove(
+            cli,
+            client,
+            "character",
+            &character_id.to_string(),
+            *wait,
+            *timeout_seconds,
+        ),
+        BansCommand::RemoveIp {
+            address,
+            wait,
+            timeout_seconds,
+        } => run_ban_remove(cli, client, "ip", address, *wait, *timeout_seconds),
+    }
+}
+
+fn run_ban_create(
+    cli: &Cli,
+    client: &AdminClient,
+    request: BanCreateRequest,
+    wait: bool,
+    timeout_seconds: u64,
+) -> Result<(), CliError> {
+    let response = client.create_ban(&request).map_err(CliError::Runtime)?;
+    print_ban_mutation(&response, cli.format, cli.quiet)?;
+    maybe_wait_for_ban_action(cli, client, &response, wait, timeout_seconds)
+}
+
+fn run_ban_remove(
+    cli: &Cli,
+    client: &AdminClient,
+    scope: &str,
+    value: &str,
+    wait: bool,
+    timeout_seconds: u64,
+) -> Result<(), CliError> {
+    let response = client.remove_ban(scope, value).map_err(CliError::Runtime)?;
+    print_ban_mutation(&response, cli.format, cli.quiet)?;
+    maybe_wait_for_ban_action(cli, client, &response, wait, timeout_seconds)
+}
+
+fn maybe_wait_for_ban_action(
+    cli: &Cli,
+    client: &AdminClient,
+    response: &BanMutationResponse,
+    wait: bool,
+    timeout_seconds: u64,
+) -> Result<(), CliError> {
+    if !wait {
+        return Ok(());
+    }
+    let Some(request_id) = response.live_request_id.as_deref() else {
+        return Ok(());
+    };
+    let status = wait_for_ban_action(client, request_id, timeout_seconds)?;
+    print_ban_action_status(&status, cli.format, cli.quiet)
+}
+
 fn run_templates(
     cli: &Cli,
     client: &AdminClient,
@@ -718,6 +1449,73 @@ fn run_globals(cli: &Cli, client: &AdminClient, command: &GlobalsCommand) -> Res
             let globals = client.fetch_globals().map_err(CliError::Runtime)?;
             print_globals(&globals, cli.format)
         }
+    }
+}
+
+fn run_world_action(
+    cli: &Cli,
+    client: &AdminClient,
+    command: &WorldActionCommand,
+) -> Result<(), CliError> {
+    let (action, wait, timeout_seconds) = match command {
+        WorldActionCommand::Populate {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::PopulateMissing, *wait, *timeout_seconds),
+        WorldActionCommand::RebuildLights {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::RebuildLights, *wait, *timeout_seconds),
+        WorldActionCommand::SyncSkills {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::SyncPlayerSkills, *wait, *timeout_seconds),
+        WorldActionCommand::ResetChar {
+            template_id,
+            wait,
+            timeout_seconds,
+        } => (
+            WorldActionKind::ResetChar {
+                template_id: *template_id,
+            },
+            *wait,
+            *timeout_seconds,
+        ),
+        WorldActionCommand::ResetItem {
+            template_id,
+            wait,
+            timeout_seconds,
+        } => (
+            WorldActionKind::ResetItem {
+                template_id: *template_id,
+            },
+            *wait,
+            *timeout_seconds,
+        ),
+        WorldActionCommand::ResetAll {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::ResetAll, *wait, *timeout_seconds),
+    };
+
+    request_and_maybe_wait_world_action(cli, client, action, wait, timeout_seconds)
+}
+
+fn request_and_maybe_wait_world_action(
+    cli: &Cli,
+    client: &AdminClient,
+    action: WorldActionKind,
+    wait: bool,
+    timeout_seconds: u64,
+) -> Result<(), CliError> {
+    let response = client
+        .request_world_action(&action)
+        .map_err(CliError::Runtime)?;
+    if wait {
+        let status = wait_for_world_action(client, &response.request_id, timeout_seconds)?;
+        print_world_action_status(&status, cli.format, cli.quiet)
+    } else {
+        print_world_action_response(&response, cli.format, cli.quiet)
     }
 }
 
@@ -898,6 +1696,64 @@ fn wait_for_text_reload(
     }
 }
 
+fn wait_for_world_action(
+    client: &AdminClient,
+    request_id: &str,
+    timeout_seconds: u64,
+) -> Result<WorldActionStatusResponse, CliError> {
+    let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
+    loop {
+        let status = client
+            .world_action_status(request_id)
+            .map_err(CliError::Runtime)?;
+        if status.status == "applied" {
+            return Ok(status);
+        }
+        if status.status == "failed" {
+            return Err(CliError::Runtime(format!(
+                "world action {} failed: {}",
+                request_id, status.message
+            )));
+        }
+        if Instant::now() >= deadline {
+            return Err(CliError::Runtime(format!(
+                "timed out waiting for world action {}",
+                request_id
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
+fn wait_for_ban_action(
+    client: &AdminClient,
+    request_id: &str,
+    timeout_seconds: u64,
+) -> Result<BanActionStatusResponse, CliError> {
+    let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
+    loop {
+        let status = client
+            .ban_action_status(request_id)
+            .map_err(CliError::Runtime)?;
+        if status.status == "applied" {
+            return Ok(status);
+        }
+        if status.status == "failed" {
+            return Err(CliError::Runtime(format!(
+                "ban action {} failed: {}",
+                request_id, status.message
+            )));
+        }
+        if Instant::now() >= deadline {
+            return Err(CliError::Runtime(format!(
+                "timed out waiting for ban action {}",
+                request_id
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
 fn read_words_input(path: &str) -> Result<Vec<String>, CliError> {
     let mut raw = String::new();
     if path == "-" {
@@ -1060,6 +1916,157 @@ fn print_reload_status(
         OutputFormat::Table => {
             println!("REQUEST_ID  STATUS");
             println!("{}  {}", response.request_id, response.status);
+        }
+    }
+    Ok(())
+}
+
+fn print_world_action_response(
+    response: &WorldActionResponse,
+    format: OutputFormat,
+    quiet: bool,
+) -> Result<(), CliError> {
+    if quiet {
+        return Ok(());
+    }
+    match format {
+        OutputFormat::Json => println!("{}", json_string(response)?),
+        OutputFormat::Plain => println!("{}", response.request_id),
+        OutputFormat::Table => {
+            println!("REQUEST_ID  ACTION");
+            println!("{}  {}", response.request_id, response.action);
+        }
+    }
+    Ok(())
+}
+
+fn print_world_action_status(
+    response: &WorldActionStatusResponse,
+    format: OutputFormat,
+    quiet: bool,
+) -> Result<(), CliError> {
+    if quiet {
+        return Ok(());
+    }
+    match format {
+        OutputFormat::Json => println!("{}", json_string(response)?),
+        OutputFormat::Plain => println!("{}", response.status),
+        OutputFormat::Table => {
+            println!("REQUEST_ID  ACTION  STATUS  UPDATED_AT  MESSAGE");
+            println!(
+                "{}  {}  {}  {}  {}",
+                response.request_id,
+                response.action,
+                response.status,
+                response.updated_at,
+                response.message
+            );
+        }
+    }
+    Ok(())
+}
+
+fn print_ban_list(response: &BanListResponse, format: OutputFormat) -> Result<(), CliError> {
+    match format {
+        OutputFormat::Json => println!("{}", json_string(response)?),
+        OutputFormat::Plain => {
+            for ban in &response.bans {
+                println!(
+                    "{}\t{}\t{}\t{}",
+                    ban.target.scope, ban.target.value, ban.active, ban.reason
+                );
+            }
+        }
+        OutputFormat::Table => {
+            println!("SCOPE  TARGET  ACTIVE  EXPIRES_AT  CREATED_BY  REASON");
+            for ban in &response.bans {
+                let expires_at = ban
+                    .expires_at
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "permanent".to_string());
+                println!(
+                    "{}  {}  {}  {}  {}  {}",
+                    ban.target.scope,
+                    ban.target.value,
+                    ban.active,
+                    expires_at,
+                    ban.created_by,
+                    ban.reason
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_ban_mutation(
+    response: &BanMutationResponse,
+    format: OutputFormat,
+    quiet: bool,
+) -> Result<(), CliError> {
+    if quiet {
+        return Ok(());
+    }
+    match format {
+        OutputFormat::Json => println!("{}", json_string(response)?),
+        OutputFormat::Plain => {
+            if let Some(ban) = &response.ban {
+                println!("{}\t{}", ban.target.scope, ban.target.value);
+            } else {
+                println!("unchanged");
+            }
+        }
+        OutputFormat::Table => {
+            println!("CHANGED  VERSION  LIVE_REQUEST_ID");
+            println!(
+                "{}  {}  {}",
+                response.changed,
+                response.version,
+                response.live_request_id.as_deref().unwrap_or("")
+            );
+            if let Some(ban) = &response.ban {
+                println!();
+                println!("SCOPE  TARGET  ACTIVE  EXPIRES_AT  CREATED_BY  REASON");
+                let expires_at = ban
+                    .expires_at
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "permanent".to_string());
+                println!(
+                    "{}  {}  {}  {}  {}  {}",
+                    ban.target.scope,
+                    ban.target.value,
+                    ban.active,
+                    expires_at,
+                    ban.created_by,
+                    ban.reason
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn print_ban_action_status(
+    response: &BanActionStatusResponse,
+    format: OutputFormat,
+    quiet: bool,
+) -> Result<(), CliError> {
+    if quiet {
+        return Ok(());
+    }
+    match format {
+        OutputFormat::Json => println!("{}", json_string(response)?),
+        OutputFormat::Plain => println!("{}", response.status),
+        OutputFormat::Table => {
+            println!("REQUEST_ID  ACTION  STATUS  UPDATED_AT  MESSAGE");
+            println!(
+                "{}  {}  {}  {}  {}",
+                response.request_id,
+                response.action,
+                response.status,
+                response.updated_at,
+                response.message
+            );
         }
     }
     Ok(())
@@ -1533,9 +2540,9 @@ fn format_gold_silver(value: u32) -> String {
 fn format_gold_silver_i32(value: i32) -> String {
     let gold = value / 1000;
     let silver = value % 1000;
-    if gold > 0 && silver > 0 {
+    if gold != 0 && silver != 0 {
         format!("{value} ({gold} gold, {silver} silver)")
-    } else if gold > 0 {
+    } else if gold != 0 {
         format!("{value} ({gold} gold)")
     } else {
         format!("{value} ({silver} silver)")
@@ -1564,7 +2571,7 @@ fn placement_label(placement: u16) -> String {
         (constants::PL_SHIELD, "Shield"),
         (constants::PL_CLOAK, "Cloak"),
         (constants::PL_TWOHAND, "Two-Hand"),
-        (0x0900, "Two-Handed"),
+        (constants::PL_WEAPON | constants::PL_TWOHAND, "Two-Handed"),
         (constants::PL_RING, "Ring"),
     ];
     labels
@@ -1627,66 +2634,10 @@ fn item_flag_info() -> &'static [(ItemFlags, &'static str)] {
 }
 
 fn active_character_flags(bits: u64) -> Vec<&'static str> {
-    let flags = CharacterFlags::from_bits_truncate(bits);
-    character_flag_info()
+    CharacterFlags::from_bits_truncate(bits)
         .iter()
-        .filter_map(|flag| {
-            flags
-                .contains(*flag)
-                .then_some(constants::character_flags_name(*flag))
-        })
+        .map(constants::character_flags_name)
         .collect()
-}
-
-fn character_flag_info() -> &'static [CharacterFlags] {
-    &[
-        CharacterFlags::Immortal,
-        CharacterFlags::God,
-        CharacterFlags::Creator,
-        CharacterFlags::BuildMode,
-        CharacterFlags::Respawn,
-        CharacterFlags::Player,
-        CharacterFlags::NewUser,
-        CharacterFlags::NoTell,
-        CharacterFlags::NoShout,
-        CharacterFlags::Merchant,
-        CharacterFlags::Staff,
-        CharacterFlags::NoHpReg,
-        CharacterFlags::NoEndReg,
-        CharacterFlags::NoManaReg,
-        CharacterFlags::Invisible,
-        CharacterFlags::Infrared,
-        CharacterFlags::Body,
-        CharacterFlags::NoSleep,
-        CharacterFlags::Undead,
-        CharacterFlags::NoMagic,
-        CharacterFlags::Stoned,
-        CharacterFlags::Usurp,
-        CharacterFlags::Imp,
-        CharacterFlags::ShutUp,
-        CharacterFlags::NoDesc,
-        CharacterFlags::Profile,
-        CharacterFlags::Simple,
-        CharacterFlags::Kicked,
-        CharacterFlags::NoList,
-        CharacterFlags::NoWho,
-        CharacterFlags::SpellIgnore,
-        CharacterFlags::ComputerControlledPlayer,
-        CharacterFlags::Safe,
-        CharacterFlags::NoStaff,
-        CharacterFlags::Poh,
-        CharacterFlags::PohLeader,
-        CharacterFlags::Thrall,
-        CharacterFlags::LabKeeper,
-        CharacterFlags::IsLooting,
-        CharacterFlags::Golden,
-        CharacterFlags::Black,
-        CharacterFlags::Passwd,
-        CharacterFlags::Update,
-        CharacterFlags::SaveMe,
-        CharacterFlags::GreaterGod,
-        CharacterFlags::GreaterInv,
-    ]
 }
 
 fn active_kindred_flags(kindred: i32) -> Vec<&'static str> {

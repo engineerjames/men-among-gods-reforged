@@ -5,7 +5,6 @@ use crate::string_operations::c_string_to_str;
 #[repr(u8)]
 pub enum ServerCommandType {
     Empty = 0,
-    Challenge = 1,
     SetCharName1 = 3,
     SetCharName2 = 4,
     SetCharName3 = 5,
@@ -65,7 +64,6 @@ pub enum ServerCommandType {
     SetCharAEnd = 69,
     SetCharAMana = 70,
     SetCharDir = 71,
-    Unique = 72,
     Ignore = 73,
     Pong = 74,
     /// Full snapshot of the character's 25-byte packed talent state.
@@ -214,7 +212,6 @@ impl ServerCommandType {
             ServerCommandType::SetTarget => 13,
             ServerCommandType::PlaySound => 13,
             ServerCommandType::Load => 5,
-            ServerCommandType::Unique => 9,
             ServerCommandType::Exit => {
                 if bytes.len() >= 16 {
                     16
@@ -239,7 +236,6 @@ impl From<u8> for ServerCommandType {
     fn from(value: u8) -> Self {
         match value {
             0 => ServerCommandType::Empty,
-            1 => ServerCommandType::Challenge,
             3 => ServerCommandType::SetCharName1,
             4 => ServerCommandType::SetCharName2,
             5 => ServerCommandType::SetCharName3,
@@ -299,7 +295,6 @@ impl From<u8> for ServerCommandType {
             69 => ServerCommandType::SetCharAEnd,
             70 => ServerCommandType::SetCharAMana,
             71 => ServerCommandType::SetCharDir,
-            72 => ServerCommandType::Unique,
             73 => ServerCommandType::Ignore,
             74 => ServerCommandType::Pong,
             75 => ServerCommandType::SetCharTalents,
@@ -343,9 +338,6 @@ pub enum ServerCommandData {
         start_index: u16,
         base_light: u8,
         packed: Vec<u8>,
-    },
-    Challenge {
-        server_challenge: u32,
     },
     SetCharName1 {
         chunk: String,
@@ -509,10 +501,6 @@ pub enum ServerCommandData {
     Load {
         load: u32,
     },
-    Unique {
-        unique1: u32,
-        unique2: u32,
-    },
     Ignore {
         _size: u32,
     },
@@ -672,12 +660,6 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
 
     match bytes[0] {
         0 => Some((ServerCommandType::Empty, ServerCommandData::Empty)),
-        1 => Some((
-            ServerCommandType::Challenge,
-            ServerCommandData::Challenge {
-                server_challenge: u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?),
-            },
-        )),
         3 => Some((
             ServerCommandType::SetCharName1,
             ServerCommandData::SetCharName1 {
@@ -1086,13 +1068,6 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 dir: *bytes.get(1)?,
             },
         )),
-        72 => Some((
-            ServerCommandType::Unique,
-            ServerCommandData::Unique {
-                unique1: read_u32(bytes, 1)?,
-                unique2: read_u32(bytes, 5)?,
-            },
-        )),
         73 => Some((
             ServerCommandType::Ignore,
             ServerCommandData::Ignore {
@@ -1173,21 +1148,6 @@ mod tests {
         let pkt = make_packet(0, &[]);
         let cmd = ServerCommand::from_bytes(&pkt).unwrap();
         assert!(matches!(cmd.structured_data, ServerCommandData::Empty));
-    }
-
-    #[test]
-    fn parse_challenge() {
-        let mut pkt = vec![0u8; 16];
-        pkt[0] = 1; // Challenge opcode
-        let sc: u32 = 12345;
-        pkt[1..5].copy_from_slice(&sc.to_le_bytes());
-        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
-        match cmd.structured_data {
-            ServerCommandData::Challenge { server_challenge } => {
-                assert_eq!(server_challenge, 12345);
-            }
-            _ => panic!("Expected Challenge variant"),
-        }
     }
 
     #[test]

@@ -5,6 +5,7 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
 use crate::ApiState;
+use crate::admin::routes_bans;
 use crate::helpers;
 use crate::pipelines;
 use crate::types;
@@ -13,6 +14,7 @@ use axum::{Json, extract::ConnectInfo, extract::Path, extract::State, http::Stat
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
 use log::{error, info, warn};
+use mag_core::{constants, traits};
 use rand::RngCore;
 use rand::rngs::OsRng;
 use redis::AsyncCommands;
@@ -401,6 +403,24 @@ pub(crate) async fn create_game_login_ticket(
     };
 
     let username_lc = token_data.claims.sub.trim().to_lowercase();
+
+    if payload.client_version < constants::MINVERSION || payload.client_version > constants::VERSION
+    {
+        warn!(
+            "Create game login ticket rejected: unsupported client version {} (supported {}..={})",
+            payload.client_version,
+            constants::MINVERSION,
+            constants::VERSION
+        );
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(types::CreateGameLoginTicketResponse {
+                ticket: None,
+                error: Some("Unsupported client version".to_string()),
+            }),
+        );
+    }
+
     let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(value)) => value,
         Ok(None) => {
@@ -452,7 +472,109 @@ pub(crate) async fn create_game_login_ticket(
         );
     }
 
-    // 30 second, one-time ticket stored as `SET game_login_ticket:{ticket} {character_id} EX 30 NX`.
+    match routes_bans::account_is_banned(&mut con, account_id).await {
+        Ok(true) => {
+            warn!(
+                "Create game login ticket rejected: account {} is banned",
+                account_id
+            );
+            return (
+                StatusCode::FORBIDDEN,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Account banned".to_string()),
+                }),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+    }
+
+    match routes_bans::character_is_banned(&mut con, payload.character_id).await {
+        Ok(true) => {
+            warn!(
+                "Create game login ticket rejected: character {} is banned",
+                payload.character_id
+            );
+            return (
+                StatusCode::FORBIDDEN,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Character banned".to_string()),
+                }),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+    }
+
+    let (sex, class) =
+        match pipelines::get_character_login_traits(&mut con, payload.character_id).await {
+            Ok(Some(value)) => value,
+            Ok(None) => {
+                error!(
+                    "Create game login ticket failed: character {} missing login metadata",
+                    payload.character_id
+                );
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(types::CreateGameLoginTicketResponse {
+                        ticket: None,
+                        error: Some("Server error".to_string()),
+                    }),
+                );
+            }
+            Err(err) => {
+                error!("Redis read failed: {}", err);
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(types::CreateGameLoginTicketResponse {
+                        ticket: None,
+                        error: Some("Server error".to_string()),
+                    }),
+                );
+            }
+        };
+    let race = traits::get_race_integer(sex == traits::Sex::Male, class);
+    let ticket_metadata = types::GameLoginTicketMetadata {
+        account_id,
+        character_id: payload.character_id,
+        client_version: payload.client_version,
+        race,
+    };
+    let ticket_bytes = match ticket_metadata.to_bytes() {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Failed to encode game login ticket metadata: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(types::CreateGameLoginTicketResponse {
+                    ticket: None,
+                    error: Some("Server error".to_string()),
+                }),
+            );
+        }
+    };
+
+    // 30 second, one-time ticket stored as typed bincode metadata at `game_login_ticket:{ticket}`.
     // Uses a random u64 to make guessing infeasible.
     let mut attempts = 0u32;
     loop {
@@ -475,7 +597,7 @@ pub(crate) async fn create_game_login_ticket(
         let key = format!("game_login_ticket:{}", ticket);
         let result: Option<String> = match redis::cmd("SET")
             .arg(&key)
-            .arg(payload.character_id)
+            .arg(&ticket_bytes)
             .arg("EX")
             .arg(30)
             .arg("NX")
@@ -497,8 +619,8 @@ pub(crate) async fn create_game_login_ticket(
 
         if result.is_some() {
             info!(
-                "Issued game login ticket for account {} character {}",
-                account_id, payload.character_id
+                "Issued game login ticket for account {} character {} version {} race {}",
+                account_id, payload.character_id, payload.client_version, race
             );
             return (
                 StatusCode::OK,
@@ -965,9 +1087,7 @@ pub(crate) async fn login(
         warn!("Login rejected: invalid password format");
         return (
             StatusCode::BAD_REQUEST,
-            Json(types::LoginResponse {
-                token: String::new(),
-            }),
+            login_response("", Some("Invalid password format")),
         );
     }
 
@@ -977,18 +1097,14 @@ pub(crate) async fn login(
             warn!("Login rejected: username not found {}", username_lc);
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Invalid username or password")),
             );
         }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Server error")),
             );
         }
     };
@@ -1000,9 +1116,7 @@ pub(crate) async fn login(
                 error!("Redis read failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::LoginResponse {
-                        token: String::new(),
-                    }),
+                    login_response("", Some("Server error")),
                 );
             }
         };
@@ -1016,9 +1130,7 @@ pub(crate) async fn login(
             );
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Invalid username or password")),
             );
         }
     };
@@ -1027,10 +1139,26 @@ pub(crate) async fn login(
         warn!("Login rejected: password mismatch for {}", username_lc);
         return (
             StatusCode::UNAUTHORIZED,
-            Json(types::LoginResponse {
-                token: String::new(),
-            }),
+            login_response("", Some("Invalid username or password")),
         );
+    }
+
+    match routes_bans::account_is_banned(&mut con, user_id).await {
+        Ok(true) => {
+            warn!("Login rejected: account {} is banned", user_id);
+            return (
+                StatusCode::FORBIDDEN,
+                login_response("", Some("Account banned")),
+            );
+        }
+        Ok(false) => {}
+        Err(err) => {
+            error!("Redis read failed: {}", err);
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                login_response("", Some("Server error")),
+            );
+        }
     }
 
     let secret = match env::var("API_JWT_SECRET") {
@@ -1039,9 +1167,7 @@ pub(crate) async fn login(
             error!("Login failed: API_JWT_SECRET is not set");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Server error")),
             );
         }
     };
@@ -1065,14 +1191,19 @@ pub(crate) async fn login(
             error!("JWT encode failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Server error")),
             );
         }
     };
 
-    (StatusCode::OK, Json(types::LoginResponse { token }))
+    (StatusCode::OK, login_response(token, None))
+}
+
+fn login_response(token: impl Into<String>, error: Option<&str>) -> Json<types::LoginResponse> {
+    Json(types::LoginResponse {
+        token: token.into(),
+        error: error.map(str::to_string),
+    })
 }
 
 /// Maximum number of password reset requests allowed per IP within the rate

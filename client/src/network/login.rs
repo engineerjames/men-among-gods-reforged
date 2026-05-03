@@ -6,8 +6,8 @@ use std::{
 };
 
 use flate2::{Decompress, FlushDecompress, Status};
-use mag_core::{client_commands, constants, server_commands::ServerCommand};
-use mag_core::{encrypt::xcrypt, server_commands::ServerCommandData};
+use mag_core::server_commands::ServerCommandData;
+use mag_core::{client_commands, server_commands::ServerCommand};
 use mag_core::{
     logout_reasons::{LogoutReason, get_exit_reason},
     server_commands::ServerCommandType,
@@ -71,7 +71,6 @@ pub(crate) fn run_network_task(
     host: String,
     port: u16,
     ticket: u64,
-    race: i32,
     command_rx: mpsc::Receiver<NetworkCommand>,
     event_tx: mpsc::Sender<NetworkEvent>,
 ) {
@@ -106,7 +105,7 @@ pub(crate) fn run_network_task(
 
     let _ = event_tx.send(NetworkEvent::Status("Connected. Logging in...".to_string()));
 
-    if let Err(e) = login_handshake(&mut conn, ticket, race, &event_tx) {
+    if let Err(e) = login_handshake(&mut conn, ticket, &event_tx) {
         log::error!("login_handshake failed: {e}");
         conn.shutdown();
         let _ = event_tx.send(NetworkEvent::Error(e));
@@ -156,12 +155,11 @@ fn get_server_response(stream: &mut GameConnection) -> Result<ServerCommand, Str
 
 /// Performs the API-ticket login handshake.
 ///
-/// Flow: `CL_API_LOGIN(ticket)` --> `SV_CHALLENGE` --> `xcrypt()` --> `CL_CHALLENGE` + `CL_UNIQUE`
-/// --> loop until `SV_LOGIN_OK` (or `SV_NEW_PLAYER` for new accounts).
+/// Flow: `CL_API_LOGIN(ticket)` --> loop until `SV_LOGIN_OK`, while accepting
+/// login-time mod data and server exits.
 fn login_handshake(
     stream: &mut GameConnection,
     ticket: u64,
-    race: i32,
     event_tx: &mpsc::Sender<NetworkEvent>,
 ) -> Result<(), String> {
     log::info!("Sending api login command (CL_API_LOGIN)");
@@ -170,42 +168,7 @@ fn login_handshake(
         .write_all(&cmd.to_bytes())
         .map_err(|e| format!("Send failed: {e}"))?;
 
-    log::info!("Waiting for server response to login command");
-    let login_response = get_server_response(stream)?;
-    log::info!("Received login response: {:?}", login_response);
-    let _ = event_tx.send(NetworkEvent::Status(
-        "Initial command successful.".to_string(),
-    ));
-
-    match login_response.structured_data {
-        ServerCommandData::Challenge { server_challenge } => {
-            let encrypted_challenge = xcrypt(server_challenge);
-            let challenge_response = client_commands::ClientCommand::new_challenge(
-                encrypted_challenge,
-                constants::VERSION,
-                race,
-            );
-            stream
-                .write_all(&challenge_response.to_bytes())
-                .map_err(|e| format!("Send failed: {e}"))?;
-        }
-        ServerCommandData::Exit { reason } => {
-            return Err(get_exit_reason(LogoutReason::from(reason as u8)).to_string());
-        }
-        _ => {
-            log::error!(
-                "Unexpected server response during login (expected Challenge): {:?}",
-                login_response
-            );
-            return Err("Server did not respond with a login challenge".to_string());
-        }
-    }
-
-    log::info!("Sending unique command");
-    let unique_command = client_commands::ClientCommand::new_unique(12345, 67890);
-    stream
-        .write_all(&unique_command.to_bytes())
-        .map_err(|e| format!("Send failed: {e}"))?;
+    let _ = event_tx.send(NetworkEvent::Status("Login command sent.".to_string()));
 
     loop {
         let response = get_server_response(stream)?;

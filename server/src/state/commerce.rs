@@ -79,8 +79,14 @@ impl GameState {
             let co_x = self.characters[co].x as i32;
             let co_y = self.characters[co].y as i32;
 
-            let distance = (cn_x - co_x).abs() + (cn_y - co_y).abs();
-            if distance > 1 {
+            let dx = (cn_x - co_x).abs();
+            let dy = (cn_y - co_y).abs();
+            let in_range = if autoloot != 0 {
+                dx <= 1 && dy <= 1
+            } else {
+                dx + dy <= 1
+            };
+            if !in_range {
                 return;
             }
         }

@@ -41,8 +41,6 @@ pub struct PlayerState {
     pending_log: String,
     server_version: u32,
     load_percentage: u32,
-    unique1: u32,
-    unique2: u32,
 
     server_ctick: u8,
     server_ctick_pending: bool,
@@ -88,8 +86,6 @@ impl Default for PlayerState {
 
             server_version: 0,
             load_percentage: 0,
-            unique1: 0,
-            unique2: 0,
 
             server_ctick: 0,
             server_ctick_pending: false,
@@ -571,10 +567,6 @@ impl PlayerState {
             }
             ServerCommandData::Load { load } => {
                 self.load_percentage = *load;
-            }
-            ServerCommandData::Unique { unique1, unique2 } => {
-                self.unique1 = *unique1;
-                self.unique2 = *unique2;
             }
             ServerCommandData::Log { font, chunk } => {
                 self.handle_log_chunk(*font, chunk);

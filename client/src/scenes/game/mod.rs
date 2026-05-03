@@ -1005,12 +1005,7 @@ impl GameScene {
             net.shutdown();
         }
 
-        app_state.network = Some(NetworkRuntime::new(
-            host,
-            5555,
-            login_target.ticket,
-            login_target.race,
-        ));
+        app_state.network = Some(NetworkRuntime::new(host, 5555, login_target.ticket));
 
         app_state.player_state = Some(PlayerState::default());
         self.pending_exit = None;

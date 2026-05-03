@@ -147,7 +147,6 @@ The payload is a **byte stream of server messages** queued via `xsend()`.
 
 Here is a full list of the op-codes with a brief description of each:
 - `SV_EMPTY (0)`: No-op/empty message; used as a placeholder in the protocol.
-- `SV_CHALLENGE (1)`: Login handshake challenge; server sends to prove liveness and gate authentication.
 - `SV_NEWPLAYER (2)`: Binds the TCP connection to a character id + session keys; server sends after successful new login.
 - `SV_SETCHAR_NAME1 (3)`: Character name update (part 1); server sends when the client needs name state.
 - `SV_SETCHAR_NAME2 (4)`: Character name update (part 2); server sends when the client needs name state.
@@ -209,7 +208,6 @@ Here is a full list of the op-codes with a brief description of each:
 - `SV_SETCHAR_AEND (69)`: “Active/augmented” endurance update; server sends when derived endurance changes.
 - `SV_SETCHAR_AMANA (70)`: “Active/augmented” mana update; server sends when derived mana changes.
 - `SV_SETCHAR_DIR (71)`: Facing direction update; server sends when direction changes.
-- `SV_UNIQUE (72)`: Unique/entropy handshake response; server sends to complete `CL_CMD_UNIQUE` flows.
 - `SV_IGNORE (73)`: Ignore-list update; server sends when ignore state changes.
 - `SV_SETMAP (128+)`: Bulk/short map update opcodes (128–255 reserved); server sends high-volume tile updates efficiently.
 
@@ -315,10 +313,10 @@ file backend has been removed.
 | `game:badwords` | bincode `Vec<String>` | 1 |
 | `game:motd` | UTF-8 string | 1 |
 | `game:meta:version` | integer | 1 |
-| `admin:map:patch_queue` | bincode `MapPatch` list (RPUSH) | dynamic |
-| `admin:map:reload:request` | JSON `{request_id, requested_at_ms}` (TTL 30s) | 0–1 |
-| `admin:map:reload:status:{request_id}` | JSON `{status, request_id}` (TTL 300s) | 0..n |
-| `admin:map:version` | integer counter | 1 |
+| `game:map:patch_queue` | bincode `MapPatch` list (RPUSH) | dynamic |
+| `game:map:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
+| `game:map:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
+| `game:meta:map:version` | integer counter | 1 |
 | `game:item:patch_queue` | bincode `ItemPatch` list (RPUSH) | dynamic |
 | `game:item:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
 | `game:item:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
@@ -327,6 +325,16 @@ file backend has been removed.
 | `game:char:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
 | `game:char:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
 | `game:meta:char:version` | integer counter | 1 |
+| `game:admin:world_action_queue` | bincode `WorldActionRequest` list (RPUSH) | dynamic |
+| `game:admin:world_action_status:{request_id}` | `status|action|unix_ts|message` (TTL 300s) | 0..n |
+
+Admin world actions (`populate_missing`, `wipe_runtime`, `rebuild_lights`,
+`sync_player_skills`, `reset_char`, `reset_item`, `reset_all`) are enqueued by
+the API and executed by the running server on the tick thread. Before mutation
+the server flushes pending background-save jobs; after a successful action it
+persists runtime state to KeyDB and writes the final status. Legacy `.dat`
+load/save actions are not live admin operations; full imports and exports stay
+with `world-snapshot`.
 
 ### Background Save Rotation
 

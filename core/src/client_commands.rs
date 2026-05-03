@@ -4,7 +4,6 @@
 #[repr(u8)]
 pub enum ClientCommandType {
     _Empty = 0,
-    Challenge = 3,
     CmdMove = 5,
     CmdPickup = 6,
     CmdAttack = 7,
@@ -31,7 +30,6 @@ pub enum ClientCommandType {
     CmdInput7 = 29,
     CmdInput8 = 30,
     CmdExit = 31,
-    CmdUnique = 32,
     Ping = 34,
     ApiLogin = 35,
     /// Auto-loot a grave at the given tile coordinates.
@@ -58,7 +56,6 @@ impl From<u8> for ClientCommandType {
     fn from(value: u8) -> Self {
         match value {
             0 => ClientCommandType::_Empty,
-            3 => ClientCommandType::Challenge,
             5 => ClientCommandType::CmdMove,
             6 => ClientCommandType::CmdPickup,
             7 => ClientCommandType::CmdAttack,
@@ -85,7 +82,6 @@ impl From<u8> for ClientCommandType {
             29 => ClientCommandType::CmdInput7,
             30 => ClientCommandType::CmdInput8,
             31 => ClientCommandType::CmdExit,
-            32 => ClientCommandType::CmdUnique,
             34 => ClientCommandType::Ping,
             35 => ClientCommandType::ApiLogin,
             36 => ClientCommandType::CmdAutoloot,
@@ -165,33 +161,6 @@ impl ClientCommand {
         payload.extend_from_slice(&x.to_le_bytes());
         payload.extend_from_slice(&y.to_le_bytes());
         Self::new(cmd, payload)
-    }
-
-    /// Creates the challenge-response packet sent during login.
-    pub fn new_challenge(server_challenge: u32, client_version: u32, race: i32) -> Self {
-        let mut payload = Vec::with_capacity(12);
-        payload.extend_from_slice(&server_challenge.to_le_bytes());
-        payload.extend_from_slice(&client_version.to_le_bytes());
-        payload.extend_from_slice(&race.to_le_bytes());
-        let mut cmd = Self::new(ClientCommandType::Challenge, payload);
-
-        cmd.context = Some(format!(
-            "challenge={server_challenge} version={client_version} race={race}"
-        ));
-
-        cmd
-    }
-
-    /// Creates a `CL_UNIQUE` packet with two client-chosen values.
-    pub fn new_unique(unique_value_1: i32, unique_value_2: i32) -> Self {
-        let mut payload = Vec::with_capacity(8);
-        payload.extend_from_slice(&unique_value_1.to_le_bytes());
-        payload.extend_from_slice(&unique_value_2.to_le_bytes());
-        let mut cmd = Self::new(ClientCommandType::CmdUnique, payload);
-        cmd.context = Some(format!(
-            "unique_value_1={unique_value_1} unique_value_2={unique_value_2}"
-        ));
-        cmd
     }
 
     /// Creates an API-ticket login packet.
@@ -486,25 +455,6 @@ mod tests {
         assert_eq!(
             i32::from_le_bytes([bytes[3], bytes[4], bytes[5], bytes[6]]),
             200
-        );
-    }
-
-    #[test]
-    fn challenge_opcode_and_payload() {
-        let cmd = ClientCommand::new_challenge(111, 222, -1);
-        let bytes = cmd.to_bytes();
-        assert_eq!(bytes[0], ClientCommandType::Challenge as u8);
-        assert_eq!(
-            u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]),
-            111
-        );
-        assert_eq!(
-            u32::from_le_bytes([bytes[5], bytes[6], bytes[7], bytes[8]]),
-            222
-        );
-        assert_eq!(
-            i32::from_le_bytes([bytes[9], bytes[10], bytes[11], bytes[12]]),
-            -1
         );
     }
 

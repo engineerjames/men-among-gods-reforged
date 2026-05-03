@@ -1024,63 +1024,6 @@ pub fn invis_level(ch: &Character) -> i32 {
     1
 }
 
-/// Helper: points needed to raise an attribute.
-///
-/// Port of `attrib_needed` from `svr_do.cpp`. Computes the cost in points
-/// to raise an attribute value `v` by incremental difficulty `diff`.
-///
-/// # Arguments
-/// * `v` - Current attribute value
-/// * `diff` - Difficulty multiplier
-pub fn attrib_needed(v: i32, diff: i32) -> i32 {
-    v * v * v * diff / 20
-}
-
-/// Helper: points needed to raise HP.
-///
-/// Port of `hp_needed` from the original server.
-///
-/// # Arguments
-/// * `v` - Current HP value
-/// * `diff` - Difficulty increment
-pub fn hp_needed(v: i32, diff: i32) -> i32 {
-    v * diff
-}
-
-/// Helper: points needed to raise endurance.
-///
-/// Port of `end_needed` from the original server.
-///
-/// # Arguments
-/// * `v` - Current endurance value
-/// * `diff` - Difficulty increment
-pub fn end_needed(v: i32, diff: i32) -> i32 {
-    v * diff / 2
-}
-
-/// Helper: points needed to raise mana.
-///
-/// Port of `mana_needed` from `svr_do.cpp`.
-///
-/// # Arguments
-/// * `v` - Current mana value
-/// * `diff` - Difficulty increment
-pub fn mana_needed(v: i32, diff: i32) -> i32 {
-    v * diff
-}
-
-/// Helper: points needed to raise a skill.
-///
-/// Port of `skill_needed` from `svr_do.cpp`. Returns the cost in points
-/// required to raise skill value `v` considering difficulty `diff`.
-///
-/// # Arguments
-/// * `v` - Current skill value
-/// * `diff` - Difficulty increment
-pub fn skill_needed(v: i32, diff: i32) -> i32 {
-    std::cmp::max(v, v * v * v * diff / 40)
-}
-
 /// Returns the Euclidean distance in map tiles between two characters.
 ///
 /// Computes the straight-line distance using the `x` and `y` positions of
@@ -1500,63 +1443,6 @@ mod tests {
     }
 
     #[test]
-    fn test_attrib_needed() {
-        // Test basic calculation: v * v * v * diff / 20
-        assert_eq!(attrib_needed(1, 1), 0); // 1 * 1 * 1 * 1 / 20 = 0 (integer division)
-        assert_eq!(attrib_needed(2, 1), 0); // 8 / 20 = 0
-        assert_eq!(attrib_needed(3, 1), 1); // 27 / 20 = 1
-        assert_eq!(attrib_needed(5, 1), 6); // 125 / 20 = 6
-        assert_eq!(attrib_needed(10, 1), 50); // 1000 / 20 = 50
-
-        // Test with different difficulty multipliers
-        assert_eq!(attrib_needed(5, 2), 12); // 125 * 2 / 20 = 12
-        assert_eq!(attrib_needed(5, 5), 31); // 125 * 5 / 20 = 31
-
-        // Test edge cases
-        assert_eq!(attrib_needed(0, 1), 0);
-        assert_eq!(attrib_needed(1, 0), 0);
-    }
-
-    #[test]
-    fn test_hp_needed() {
-        // Test basic calculation: v * diff
-        assert_eq!(hp_needed(10, 1), 10);
-        assert_eq!(hp_needed(50, 2), 100);
-        assert_eq!(hp_needed(100, 3), 300);
-
-        // Test edge cases
-        assert_eq!(hp_needed(0, 5), 0);
-        assert_eq!(hp_needed(10, 0), 0);
-    }
-
-    #[test]
-    fn test_end_needed() {
-        // Test basic calculation: v * diff / 2
-        assert_eq!(end_needed(10, 2), 10); // 10 * 2 / 2 = 10
-        assert_eq!(end_needed(20, 3), 30); // 20 * 3 / 2 = 30
-        assert_eq!(end_needed(15, 4), 30); // 15 * 4 / 2 = 30
-
-        // Test odd numbers (integer division)
-        assert_eq!(end_needed(11, 1), 5); // 11 * 1 / 2 = 5
-
-        // Test edge cases
-        assert_eq!(end_needed(0, 5), 0);
-        assert_eq!(end_needed(10, 0), 0);
-    }
-
-    #[test]
-    fn test_mana_needed() {
-        // Test basic calculation: v * diff
-        assert_eq!(mana_needed(10, 1), 10);
-        assert_eq!(mana_needed(25, 2), 50);
-        assert_eq!(mana_needed(100, 3), 300);
-
-        // Test edge cases
-        assert_eq!(mana_needed(0, 5), 0);
-        assert_eq!(mana_needed(10, 0), 0);
-    }
-
-    #[test]
     fn get_distance_same_tile_is_zero() {
         crate::test_helpers::with_test_gs(|gs| {
             gs.characters[1].x = 10;
@@ -1617,59 +1503,5 @@ mod tests {
             let d21 = get_distance(gs, 2, 1);
             assert!((d12 - d21).abs() < 1e-5);
         });
-    }
-
-    #[test]
-    fn test_skill_needed() {
-        // Test basic calculation: max(v, v * v * v * diff / 40)
-        assert_eq!(skill_needed(1, 1), 1); // max(1, 1/40) = 1
-        assert_eq!(skill_needed(2, 1), 2); // max(2, 8/40) = 2
-        assert_eq!(skill_needed(5, 1), 5); // max(5, 125/40) = max(5, 3) = 5
-        assert_eq!(skill_needed(10, 1), 25); // max(10, 1000/40) = max(10, 25) = 25
-        assert_eq!(skill_needed(20, 1), 200); // max(20, 8000/40) = max(20, 200) = 200
-
-        // Test with different difficulty multipliers
-        assert_eq!(skill_needed(5, 2), 6); // max(5, 250/40) = max(5, 6) = 6
-        assert_eq!(skill_needed(5, 10), 31); // max(5, 1250/40) = max(5, 31) = 31
-
-        // Test edge cases
-        assert_eq!(skill_needed(0, 1), 0);
-        assert_eq!(skill_needed(1, 0), 1); // max(1, 0) = 1
-    }
-
-    #[test]
-    fn test_cost_functions_consistency() {
-        // Test that all cost functions handle zero inputs consistently
-        assert_eq!(attrib_needed(0, 1), 0);
-        assert_eq!(hp_needed(0, 1), 0);
-        assert_eq!(end_needed(0, 1), 0);
-        assert_eq!(mana_needed(0, 1), 0);
-        assert_eq!(skill_needed(0, 1), 0);
-
-        // Test that all cost functions handle zero difficulty consistently
-        assert_eq!(attrib_needed(10, 0), 0);
-        assert_eq!(hp_needed(10, 0), 0);
-        assert_eq!(end_needed(10, 0), 0);
-        assert_eq!(mana_needed(10, 0), 0);
-        assert_eq!(skill_needed(10, 0), 10); // Exception: skill_needed returns max(v, calculation)
-
-        // Test that costs increase with value and difficulty
-        for v in [1, 5, 10, 20] {
-            for diff in [1, 2, 5] {
-                if v > 0 && diff > 0 {
-                    assert!(attrib_needed(v + 1, diff) >= attrib_needed(v, diff));
-                    assert!(hp_needed(v + 1, diff) >= hp_needed(v, diff));
-                    assert!(end_needed(v + 1, diff) >= end_needed(v, diff));
-                    assert!(mana_needed(v + 1, diff) >= mana_needed(v, diff));
-                    assert!(skill_needed(v + 1, diff) >= skill_needed(v, diff));
-
-                    assert!(attrib_needed(v, diff + 1) >= attrib_needed(v, diff));
-                    assert!(hp_needed(v, diff + 1) >= hp_needed(v, diff));
-                    assert!(end_needed(v, diff + 1) >= end_needed(v, diff));
-                    assert!(mana_needed(v, diff + 1) >= mana_needed(v, diff));
-                    assert!(skill_needed(v, diff + 1) >= skill_needed(v, diff));
-                }
-            }
-        }
     }
 }
