@@ -991,6 +991,7 @@ mod tests {
                 class: Class::Mercenary,
                 selection_sprite_id: None,
                 server_id: Some(5),
+                rank_index: None,
             };
 
             let (cn, is_new) = apply_api_login_character_record(gs, &existing).unwrap();
@@ -1016,6 +1017,7 @@ mod tests {
                 class: Class::Mercenary,
                 selection_sprite_id: None,
                 server_id: None,
+                rank_index: None,
             };
 
             let (new_cn, is_new) = apply_api_login_character_record(gs, &created).unwrap();
@@ -1086,6 +1088,7 @@ mod tests {
                         class: Class::Mercenary,
                         selection_sprite_id: None,
                         server_id: None,
+                        rank_index: None,
                     }))
                 },
                 |_, server_id| {

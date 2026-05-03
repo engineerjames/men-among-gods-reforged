@@ -72,6 +72,11 @@ pub struct CharacterSummary {
 
     /// Server id
     pub server_id: Option<u32>,
+
+    /// Rank index (0–23) derived from `points_tot` by the server, written to the
+    /// `character:{id}` hash when selection metadata is synced.  `None` for
+    /// characters that have never been loaded by the game server.
+    pub rank_index: Option<u8>,
 }
 
 impl Default for CharacterSummary {
@@ -84,6 +89,7 @@ impl Default for CharacterSummary {
             class: Class::Mercenary,
             selection_sprite_id: None,
             server_id: None,
+            rank_index: None,
         }
     }
 }
@@ -157,4 +163,55 @@ pub struct ResetPasswordConfirm {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResetPasswordConfirmResponse {
     pub message: String,
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn character_summary_rank_index_serde_roundtrip() {
+        let original = CharacterSummary {
+            id: 42,
+            name: "TestChar".to_string(),
+            description: "desc".to_string(),
+            sex: Sex::Female,
+            class: Class::Harakim,
+            selection_sprite_id: Some(4048),
+            server_id: Some(7),
+            rank_index: Some(5),
+        };
+        let json = serde_json::to_string(&original).expect("serialize");
+        let decoded: CharacterSummary = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.rank_index, Some(5));
+        assert_eq!(decoded.id, 42);
+    }
+
+    #[test]
+    fn character_summary_rank_index_none_serde_roundtrip() {
+        let original = CharacterSummary::default();
+        let json = serde_json::to_string(&original).expect("serialize");
+        let decoded: CharacterSummary = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.rank_index, None);
+    }
+
+    #[test]
+    fn character_summary_missing_rank_index_deserializes_as_none() {
+        // Simulate an older API response that omits rank_index.
+        let json = r#"{
+            "id": 1,
+            "name": "OldChar",
+            "description": "",
+            "sex": 0,
+            "class": 0,
+            "selection_sprite_id": null,
+            "server_id": null
+        }"#;
+        let decoded: CharacterSummary = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(decoded.rank_index, None);
+    }
 }

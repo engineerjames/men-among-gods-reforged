@@ -386,6 +386,7 @@ impl Scene for CharacterSelectionScene {
                                     id: c.id,
                                     label: format!("{} ({})", c.name, c.class.to_string()),
                                     sprite_id,
+                                    rank_index: c.rank_index.map(usize::from),
                                 }
                             })
                             .collect();

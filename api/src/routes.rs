@@ -274,6 +274,7 @@ pub(crate) async fn create_new_character(
                         class, sex,
                     ) as u16),
                     server_id: None,
+                    rank_index: None,
                 }),
             )
         }

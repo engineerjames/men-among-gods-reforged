@@ -549,11 +549,13 @@ mod tests {
                 id: 1,
                 label: "Hero (Mercenary)".into(),
                 sprite_id: Some(5072),
+                rank_index: None,
             },
             ListItem {
                 id: 2,
                 label: "Mage (Harakim)".into(),
                 sprite_id: Some(4048),
+                rank_index: None,
             },
         ];
         let names = vec![(1, "Hero".into()), (2, "Mage".into())];

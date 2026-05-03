@@ -760,6 +760,9 @@ pub(crate) async fn list_characters_for_account_scan(
         let selection_sprite_id = character_map
             .get("selection_sprite_id")
             .and_then(|value| value.parse::<u16>().ok());
+        let rank_index = character_map
+            .get("rank_index")
+            .and_then(|value| value.parse::<u8>().ok());
 
         characters.push(types::CharacterSummary {
             id: character_id,
@@ -769,6 +772,7 @@ pub(crate) async fn list_characters_for_account_scan(
             class: class,
             selection_sprite_id,
             server_id,
+            rank_index,
         });
     }
 
