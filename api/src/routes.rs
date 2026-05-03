@@ -1087,9 +1087,7 @@ pub(crate) async fn login(
         warn!("Login rejected: invalid password format");
         return (
             StatusCode::BAD_REQUEST,
-            Json(types::LoginResponse {
-                token: String::new(),
-            }),
+            login_response("", Some("Invalid password format")),
         );
     }
 
@@ -1099,18 +1097,14 @@ pub(crate) async fn login(
             warn!("Login rejected: username not found {}", username_lc);
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Invalid username or password")),
             );
         }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Server error")),
             );
         }
     };
@@ -1122,9 +1116,7 @@ pub(crate) async fn login(
                 error!("Redis read failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::LoginResponse {
-                        token: String::new(),
-                    }),
+                    login_response("", Some("Server error")),
                 );
             }
         };
@@ -1138,9 +1130,7 @@ pub(crate) async fn login(
             );
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Invalid username or password")),
             );
         }
     };
@@ -1149,9 +1139,7 @@ pub(crate) async fn login(
         warn!("Login rejected: password mismatch for {}", username_lc);
         return (
             StatusCode::UNAUTHORIZED,
-            Json(types::LoginResponse {
-                token: String::new(),
-            }),
+            login_response("", Some("Invalid username or password")),
         );
     }
 
@@ -1160,9 +1148,7 @@ pub(crate) async fn login(
             warn!("Login rejected: account {} is banned", user_id);
             return (
                 StatusCode::FORBIDDEN,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Account banned")),
             );
         }
         Ok(false) => {}
@@ -1170,9 +1156,7 @@ pub(crate) async fn login(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Server error")),
             );
         }
     }
@@ -1183,9 +1167,7 @@ pub(crate) async fn login(
             error!("Login failed: API_JWT_SECRET is not set");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Server error")),
             );
         }
     };
@@ -1209,14 +1191,19 @@ pub(crate) async fn login(
             error!("JWT encode failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::LoginResponse {
-                    token: String::new(),
-                }),
+                login_response("", Some("Server error")),
             );
         }
     };
 
-    (StatusCode::OK, Json(types::LoginResponse { token }))
+    (StatusCode::OK, login_response(token, None))
+}
+
+fn login_response(token: impl Into<String>, error: Option<&str>) -> Json<types::LoginResponse> {
+    Json(types::LoginResponse {
+        token: token.into(),
+        error: error.map(str::to_string),
+    })
 }
 
 /// Maximum number of password reset requests allowed per IP within the rate

@@ -83,14 +83,25 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
         return Ok(body.token);
     }
 
+    let body = resp.json::<LoginResponse>().ok();
+    Err(login_failure_message(
+        status,
+        body.as_ref().and_then(|body| body.error.as_deref()),
+    ))
+}
+
+fn login_failure_message(status: StatusCode, error: Option<&str>) -> String {
+    if let Some(error) = error.map(str::trim).filter(|error| !error.is_empty()) {
+        return error.to_string();
+    }
+
     let message = match status {
         StatusCode::BAD_REQUEST => "Invalid password format",
         StatusCode::UNAUTHORIZED => "Invalid username or password",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Login failed",
     };
-
-    Err(format!("{message} ({})", status.as_u16()))
+    format!("{message} ({})", status.as_u16())
 }
 
 /// Creates a new account via the account API.
@@ -472,4 +483,25 @@ pub fn confirm_password_reset(
     };
 
     Err(fallback.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn login_failure_message_uses_api_error() {
+        assert_eq!(
+            login_failure_message(StatusCode::FORBIDDEN, Some("Account banned")),
+            "Account banned"
+        );
+    }
+
+    #[test]
+    fn login_failure_message_falls_back_to_status() {
+        assert_eq!(
+            login_failure_message(StatusCode::FORBIDDEN, None),
+            "Login failed (403)"
+        );
+    }
 }
