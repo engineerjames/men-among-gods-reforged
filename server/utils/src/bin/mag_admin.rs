@@ -13,7 +13,7 @@ use serde_json::Value;
 use server_utils::admin_client::{
     AdminClient, BadwordEntryResponse, BadwordsListResponse, BadwordsMutationResponse,
     GlobalsResponse, TemplateListResponse, TemplateSummary, TextReloadResponse,
-    TextReloadStatusResponse,
+    TextReloadStatusResponse, WorldActionKind, WorldActionResponse, WorldActionStatusResponse,
 };
 use std::fs;
 use std::io::{self, Read};
@@ -105,6 +105,75 @@ enum Commands {
     Globals {
         #[command(subcommand)]
         command: GlobalsCommand,
+    },
+    /// Execute live world actions on the running server.
+    World {
+        #[command(subcommand)]
+        command: WorldCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum WorldCommand {
+    /// Enqueue a live world action.
+    Action {
+        #[command(subcommand)]
+        command: WorldActionCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum WorldActionCommand {
+    /// Spawn missing respawnable NPC templates.
+    Populate {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Wipe dynamic runtime world state.
+    Wipe {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Recompute map lighting.
+    RebuildLights {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Synchronize player skill metadata from templates.
+    SyncSkills {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Reset one character template and its live instances.
+    ResetChar {
+        template_id: usize,
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Reset one item template and its live instances.
+    ResetItem {
+        template_id: usize,
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
+    },
+    /// Reset all character and item templates.
+    ResetAll {
+        #[arg(long, help = "Wait until the running server reports action applied")]
+        wait: bool,
+        #[arg(long, default_value_t = DEFAULT_WAIT_TIMEOUT_SECS)]
+        timeout_seconds: u64,
     },
 }
 
@@ -214,6 +283,13 @@ enum MenuAction {
     ShowItemTemplate,
     ShowCharacterTemplate,
     ShowGlobals,
+    WorldPopulate,
+    WorldWipe,
+    WorldRebuildLights,
+    WorldSyncSkills,
+    WorldResetChar,
+    WorldResetItem,
+    WorldResetAll,
     ListBadwords,
     GetBadword,
     AddBadwords,
@@ -303,6 +379,7 @@ fn run(cli: Cli) -> Result<(), CliError> {
         Commands::Badwords { command } => run_badwords(&cli, &client, command),
         Commands::Templates { command } => run_templates(&cli, &client, command),
         Commands::Globals { command } => run_globals(&cli, &client, command),
+        Commands::World { command } => run_world(&cli, &client, command),
     }
 }
 
@@ -326,6 +403,29 @@ fn run_menu(cli: &Cli, client: &AdminClient) -> Result<(), CliError> {
                 menu_show_template(client, &theme, TemplateKindArg::Characters)?
             }
             MenuAction::ShowGlobals => menu_show_globals(client)?,
+            MenuAction::WorldPopulate => {
+                menu_request_world_action(client, &theme, WorldActionKind::PopulateMissing, None)?
+            }
+            MenuAction::WorldWipe => menu_request_world_action(
+                client,
+                &theme,
+                WorldActionKind::WipeRuntime,
+                Some("wipe dynamic runtime world state"),
+            )?,
+            MenuAction::WorldRebuildLights => {
+                menu_request_world_action(client, &theme, WorldActionKind::RebuildLights, None)?
+            }
+            MenuAction::WorldSyncSkills => {
+                menu_request_world_action(client, &theme, WorldActionKind::SyncPlayerSkills, None)?
+            }
+            MenuAction::WorldResetChar => menu_reset_char(client, &theme)?,
+            MenuAction::WorldResetItem => menu_reset_item(client, &theme)?,
+            MenuAction::WorldResetAll => menu_request_world_action(
+                client,
+                &theme,
+                WorldActionKind::ResetAll,
+                Some("reset all character and item templates"),
+            )?,
             MenuAction::ListBadwords => menu_list_badwords(client)?,
             MenuAction::GetBadword => menu_get_badword(client, &theme)?,
             MenuAction::AddBadwords => menu_add_badwords(client, &theme)?,
@@ -364,6 +464,13 @@ fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
         "Show item template by id",
         "Show character template by id",
         "Show globals",
+        "World: populate missing NPCs",
+        "World: wipe runtime state",
+        "World: rebuild lights",
+        "World: sync player skills",
+        "World: reset character template",
+        "World: reset item template",
+        "World: reset all templates",
         "List badwords",
         "Check one badword",
         "Add badwords",
@@ -385,12 +492,19 @@ fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
         2 => MenuAction::ShowItemTemplate,
         3 => MenuAction::ShowCharacterTemplate,
         4 => MenuAction::ShowGlobals,
-        5 => MenuAction::ListBadwords,
-        6 => MenuAction::GetBadword,
-        7 => MenuAction::AddBadwords,
-        8 => MenuAction::RemoveBadwords,
-        9 => MenuAction::ExportBadwords,
-        10 => MenuAction::RefreshBadwords,
+        5 => MenuAction::WorldPopulate,
+        6 => MenuAction::WorldWipe,
+        7 => MenuAction::WorldRebuildLights,
+        8 => MenuAction::WorldSyncSkills,
+        9 => MenuAction::WorldResetChar,
+        10 => MenuAction::WorldResetItem,
+        11 => MenuAction::WorldResetAll,
+        12 => MenuAction::ListBadwords,
+        13 => MenuAction::GetBadword,
+        14 => MenuAction::AddBadwords,
+        15 => MenuAction::RemoveBadwords,
+        16 => MenuAction::ExportBadwords,
+        17 => MenuAction::RefreshBadwords,
         _ => MenuAction::Quit,
     })
 }
@@ -444,6 +558,66 @@ fn menu_show_template(
 fn menu_show_globals(client: &AdminClient) -> Result<(), CliError> {
     let globals = client.fetch_globals().map_err(CliError::Runtime)?;
     print_globals(&globals, OutputFormat::Table)
+}
+
+fn menu_reset_char(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let template_id = prompt_usize(theme, "Character template id")?;
+    menu_request_world_action(
+        client,
+        theme,
+        WorldActionKind::ResetChar { template_id },
+        Some("reset this character template and its live instances"),
+    )
+}
+
+fn menu_reset_item(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    let template_id = prompt_usize(theme, "Item template id")?;
+    menu_request_world_action(
+        client,
+        theme,
+        WorldActionKind::ResetItem { template_id },
+        Some("reset this item template and its live instances"),
+    )
+}
+
+fn menu_request_world_action(
+    client: &AdminClient,
+    theme: &ColorfulTheme,
+    action: WorldActionKind,
+    confirmation: Option<&str>,
+) -> Result<(), CliError> {
+    if let Some(label) = confirmation {
+        let confirmed = Confirm::with_theme(theme)
+            .with_prompt(format!("Confirm world action: {label}?"))
+            .default(false)
+            .interact()
+            .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+        if !confirmed {
+            println!("Action cancelled.");
+            return Ok(());
+        }
+    }
+
+    let wait = Confirm::with_theme(theme)
+        .with_prompt("Wait for the running server to apply the action?")
+        .default(true)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+    let timeout_seconds = if wait {
+        prompt_timeout_seconds(theme)?
+    } else {
+        DEFAULT_WAIT_TIMEOUT_SECS
+    };
+
+    let response = client
+        .request_world_action(&action)
+        .map_err(CliError::Runtime)?;
+    if wait {
+        let status = wait_for_world_action(client, &response.request_id, timeout_seconds)?;
+        print_world_action_status(&status, OutputFormat::Table, false)
+    } else {
+        print_world_action_response(&response, OutputFormat::Table, false)
+    }
 }
 
 fn menu_list_badwords(client: &AdminClient) -> Result<(), CliError> {
@@ -721,6 +895,83 @@ fn run_globals(cli: &Cli, client: &AdminClient, command: &GlobalsCommand) -> Res
     }
 }
 
+fn run_world(cli: &Cli, client: &AdminClient, command: &WorldCommand) -> Result<(), CliError> {
+    match command {
+        WorldCommand::Action { command } => run_world_action(cli, client, command),
+    }
+}
+
+fn run_world_action(
+    cli: &Cli,
+    client: &AdminClient,
+    command: &WorldActionCommand,
+) -> Result<(), CliError> {
+    let (action, wait, timeout_seconds) = match command {
+        WorldActionCommand::Populate {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::PopulateMissing, *wait, *timeout_seconds),
+        WorldActionCommand::Wipe {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::WipeRuntime, *wait, *timeout_seconds),
+        WorldActionCommand::RebuildLights {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::RebuildLights, *wait, *timeout_seconds),
+        WorldActionCommand::SyncSkills {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::SyncPlayerSkills, *wait, *timeout_seconds),
+        WorldActionCommand::ResetChar {
+            template_id,
+            wait,
+            timeout_seconds,
+        } => (
+            WorldActionKind::ResetChar {
+                template_id: *template_id,
+            },
+            *wait,
+            *timeout_seconds,
+        ),
+        WorldActionCommand::ResetItem {
+            template_id,
+            wait,
+            timeout_seconds,
+        } => (
+            WorldActionKind::ResetItem {
+                template_id: *template_id,
+            },
+            *wait,
+            *timeout_seconds,
+        ),
+        WorldActionCommand::ResetAll {
+            wait,
+            timeout_seconds,
+        } => (WorldActionKind::ResetAll, *wait, *timeout_seconds),
+    };
+
+    request_and_maybe_wait_world_action(cli, client, action, wait, timeout_seconds)
+}
+
+fn request_and_maybe_wait_world_action(
+    cli: &Cli,
+    client: &AdminClient,
+    action: WorldActionKind,
+    wait: bool,
+    timeout_seconds: u64,
+) -> Result<(), CliError> {
+    let response = client
+        .request_world_action(&action)
+        .map_err(CliError::Runtime)?;
+    if wait {
+        let status = wait_for_world_action(client, &response.request_id, timeout_seconds)?;
+        print_world_action_status(&status, cli.format, cli.quiet)
+    } else {
+        print_world_action_response(&response, cli.format, cli.quiet)
+    }
+}
+
 fn fetch_template_summaries(
     client: &AdminClient,
     kind: TemplateKindArg,
@@ -898,6 +1149,35 @@ fn wait_for_text_reload(
     }
 }
 
+fn wait_for_world_action(
+    client: &AdminClient,
+    request_id: &str,
+    timeout_seconds: u64,
+) -> Result<WorldActionStatusResponse, CliError> {
+    let deadline = Instant::now() + Duration::from_secs(timeout_seconds);
+    loop {
+        let status = client
+            .world_action_status(request_id)
+            .map_err(CliError::Runtime)?;
+        if status.status == "applied" {
+            return Ok(status);
+        }
+        if status.status == "failed" {
+            return Err(CliError::Runtime(format!(
+                "world action {} failed: {}",
+                request_id, status.message
+            )));
+        }
+        if Instant::now() >= deadline {
+            return Err(CliError::Runtime(format!(
+                "timed out waiting for world action {}",
+                request_id
+            )));
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+}
+
 fn read_words_input(path: &str) -> Result<Vec<String>, CliError> {
     let mut raw = String::new();
     if path == "-" {
@@ -1060,6 +1340,51 @@ fn print_reload_status(
         OutputFormat::Table => {
             println!("REQUEST_ID  STATUS");
             println!("{}  {}", response.request_id, response.status);
+        }
+    }
+    Ok(())
+}
+
+fn print_world_action_response(
+    response: &WorldActionResponse,
+    format: OutputFormat,
+    quiet: bool,
+) -> Result<(), CliError> {
+    if quiet {
+        return Ok(());
+    }
+    match format {
+        OutputFormat::Json => println!("{}", json_string(response)?),
+        OutputFormat::Plain => println!("{}", response.request_id),
+        OutputFormat::Table => {
+            println!("REQUEST_ID  ACTION");
+            println!("{}  {}", response.request_id, response.action);
+        }
+    }
+    Ok(())
+}
+
+fn print_world_action_status(
+    response: &WorldActionStatusResponse,
+    format: OutputFormat,
+    quiet: bool,
+) -> Result<(), CliError> {
+    if quiet {
+        return Ok(());
+    }
+    match format {
+        OutputFormat::Json => println!("{}", json_string(response)?),
+        OutputFormat::Plain => println!("{}", response.status),
+        OutputFormat::Table => {
+            println!("REQUEST_ID  ACTION  STATUS  UPDATED_AT  MESSAGE");
+            println!(
+                "{}  {}  {}  {}  {}",
+                response.request_id,
+                response.action,
+                response.status,
+                response.updated_at,
+                response.message
+            );
         }
     }
     Ok(())

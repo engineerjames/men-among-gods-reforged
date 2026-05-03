@@ -35,6 +35,7 @@ pub mod traits;
 pub mod types;
 pub mod weather;
 pub mod weather_areas;
+pub mod world_action_store;
 
 #[derive(Debug)]
 struct BacktracePatternEncoder {

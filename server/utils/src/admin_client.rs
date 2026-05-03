@@ -15,6 +15,9 @@ use mag_core::template_store::{
     encode_item_template,
 };
 use mag_core::types::{Character, Item, Map};
+pub use mag_core::world_action_store::{
+    WorldActionKind, WorldActionResponse, WorldActionStatusResponse,
+};
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -830,6 +833,64 @@ impl AdminClient {
             return Err(format!("GET {url}: HTTP {}", resp.status()));
         }
         resp.json::<GlobalsResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Enqueue a world action for the running server to execute.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - Action to execute on the server tick thread.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` containing the request id to poll.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn request_world_action(
+        &self,
+        action: &WorldActionKind,
+    ) -> Result<WorldActionResponse, String> {
+        let url = self.url("/admin/world/actions");
+        let resp = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .json(action)
+            .send()
+            .map_err(|e| format!("POST {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("POST {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<WorldActionResponse>()
+            .map_err(|e| format!("POST {url}: decode: {e}"))
+    }
+
+    /// Poll the world-action status endpoint.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - Identifier returned by [`request_world_action`](Self::request_world_action).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(status)` describing the current lifecycle state.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn world_action_status(
+        &self,
+        request_id: &str,
+    ) -> Result<WorldActionStatusResponse, String> {
+        let url = self.url("/admin/world/actions/status");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("request_id", request_id)])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<WorldActionStatusResponse>()
             .map_err(|e| format!("GET {url}: decode: {e}"))
     }
 

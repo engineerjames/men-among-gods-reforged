@@ -444,51 +444,6 @@ impl GameState {
         }
     }
 
-    /// Port of `do_admin_log(source, text)` from the original server.
-    ///
-    /// Sends an administrative log message to staff, IMPs and USURPed
-    /// characters only. Visibility/invisibility rules are applied when a
-    /// `source` is provided.
-    #[allow(dead_code)]
-    pub(crate) fn do_admin_log(&mut self, source: i32, text: &str) {
-        if text.is_empty() {
-            log::error!("do_admin_log called with empty text");
-            return;
-        }
-
-        for n in 1..core::constants::MAXCHARS {
-            // Exclude if not a player
-            if self.characters[n].player == 0 {
-                continue;
-            }
-            // Only to staff, IMP, or USURP
-            if (self.characters[n].flags
-                & (CharacterFlags::Staff.bits()
-                    | CharacterFlags::Imp.bits()
-                    | CharacterFlags::Usurp.bits()))
-                == 0
-            {
-                continue;
-            }
-            // C++: if ( ( ch[ source ].flags & ( CF_INVISIBLE | CF_NOWHO ) ) && invis_level( source ) > invis_level( n ) ) continue;
-            if source > 0 {
-                let src_flags = self.characters[source as usize].flags;
-                let src_invis_level =
-                    crate::helpers::invis_level(&self.characters[source as usize]);
-                let n_invis_level = crate::helpers::invis_level(&self.characters[n]);
-                if (src_flags
-                    & (core::constants::CharacterFlags::Invisible.bits()
-                        | core::constants::CharacterFlags::NoWho.bits()))
-                    != 0
-                    && src_invis_level > n_invis_level
-                {
-                    continue;
-                }
-            }
-            self.do_log(n, core::types::FontColor::Blue, text);
-        }
-    }
-
     /// Port of `do_staff_log(font, text)` from the original server.
     ///
     /// Sends a message to staff/IMP/USURPed characters that do not have the

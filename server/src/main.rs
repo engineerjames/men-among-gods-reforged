@@ -32,37 +32,15 @@ use core;
 
 use crate::game_state::GameState;
 
-fn handle_command_line_args(args: &[String], gs: &mut GameState) {
-    if args.len() == 2 {
-        let cmd = args[1].to_lowercase();
-        match cmd.as_str() {
-            "pop" => {
-                populate::populate(gs);
-                process::exit(0);
-            }
-            "wipe" => {
-                populate::pop_wipe(gs);
-                process::exit(0);
-            }
-            "light" => {
-                populate::init_lights(gs);
-                process::exit(0);
-            }
-            "skill" => {
-                populate::pop_skill(gs);
-                process::exit(0);
-            }
-            "load" => {
-                populate::pop_load_all_chars(gs);
-                process::exit(0);
-            }
-            "save" => {
-                populate::pop_save_all_chars(gs);
-                process::exit(0);
-            }
-            _ => {}
-        }
+fn reject_legacy_command_line_args(args: &[String]) {
+    if args.len() <= 1 {
+        return;
     }
+
+    log::error!(
+        "server maintenance commands are no longer accepted as startup args; use mag-admin world action instead"
+    );
+    process::exit(1);
 }
 
 fn main() -> Result<(), String> {
@@ -109,7 +87,7 @@ fn main() -> Result<(), String> {
         process::exit(1);
     });
 
-    handle_command_line_args(&args, &mut gs);
+    reject_legacy_command_line_args(&args);
 
     if env::var("MAG_PLAYTEST")
         .map(|v| !v.is_empty())
@@ -142,6 +120,7 @@ fn main() -> Result<(), String> {
         server.drain_map_patches(&mut gs);
         server.drain_item_patches(&mut gs);
         server.drain_character_patches(&mut gs);
+        server.drain_world_actions(&mut gs);
         server.tick(&mut gs);
     }
 

@@ -16,6 +16,7 @@ pub mod routes_characters;
 pub mod routes_globals;
 pub mod routes_items;
 pub mod routes_map;
+pub mod routes_world_actions;
 pub mod types;
 
 use crate::ApiState;
@@ -109,6 +110,14 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
         .route(
             "/world/characters/{id}",
             get(routes_characters::get_character).put(routes_characters::put_character),
+        )
+        .route(
+            "/world/actions",
+            post(routes_world_actions::request_world_action),
+        )
+        .route(
+            "/world/actions/status",
+            get(routes_world_actions::get_world_action_status),
         )
         .route(
             "/text/badwords",

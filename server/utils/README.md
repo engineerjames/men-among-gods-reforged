@@ -104,6 +104,15 @@ cargo run --package server-utils --bin mag-admin -- --auto templates characters 
 # View persisted global server counters
 cargo run --package server-utils --bin mag-admin -- --auto globals show --format json
 
+# Execute live world actions through the admin API
+cargo run --package server-utils --bin mag-admin -- --auto world action populate --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action rebuild-lights --wait --format json
+cargo run --package server-utils --bin mag-admin -- --auto world action sync-skills --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action reset-char 123 --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action reset-item 456 --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action wipe --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action reset-all --wait
+
 # List badwords as JSON
 cargo run --package server-utils --bin mag-admin -- --auto badwords list --format json
 
@@ -128,6 +137,8 @@ get` when the word is not present.
 
 Subcommands require `--auto` so automatable interactions are opt-in. Running
 without `--auto` opens the interactive menu, which reuses the same API calls as
+the scriptable commands. World actions execute on the running server and are
+pollable with `--wait`; destructive menu actions prompt for confirmation.
 the scriptable subcommands.
 
 ## Local Development Workflow

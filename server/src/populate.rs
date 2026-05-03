@@ -5,13 +5,76 @@ use core::{
         TICKS, USE_ACTIVE, USE_EMPTY,
     },
     skills,
+    world_action_store::WorldActionKind,
 };
 
 use {core::constants::CharacterFlags, core::constants::ItemFlags};
 
 use crate::{
     driver::use_item, effect::EffectManager, game_state::GameState, god::God, helpers, player,
+    points,
 };
+
+/// Result summary returned after a world admin action executes.
+pub struct WorldActionOutcome {
+    /// Human-readable completion detail.
+    pub message: String,
+}
+
+/// Execute a world admin action against the live game state.
+///
+/// # Arguments
+///
+/// * `gs`     - Mutable game state.
+/// * `action` - Action requested by an authenticated admin.
+///
+/// # Returns
+///
+/// * `Ok(outcome)` when the action completed.
+/// * `Err(message)` when the action is invalid or failed before completion.
+pub fn execute_world_action(
+    gs: &mut GameState,
+    action: &WorldActionKind,
+) -> Result<WorldActionOutcome, String> {
+    let message = match action {
+        WorldActionKind::PopulateMissing => {
+            populate(gs);
+            "populate completed".to_string()
+        }
+        WorldActionKind::WipeRuntime => {
+            pop_wipe(gs);
+            "runtime world state wiped".to_string()
+        }
+        WorldActionKind::RebuildLights => {
+            init_lights(gs);
+            "map lighting rebuilt".to_string()
+        }
+        WorldActionKind::SyncPlayerSkills => {
+            pop_skill(gs);
+            "player skills synchronized".to_string()
+        }
+        WorldActionKind::ResetChar { template_id } => {
+            if !(1..MAXTCHARS).contains(template_id) {
+                return Err(format!("character template {} out of range", template_id));
+            }
+            reset_char(gs, *template_id);
+            format!("character template {} reset", template_id)
+        }
+        WorldActionKind::ResetItem { template_id } => {
+            if !(2..MAXTITEM).contains(template_id) {
+                return Err(format!("item template {} out of range", template_id));
+            }
+            reset_item(gs, *template_id);
+            format!("item template {} reset", template_id)
+        }
+        WorldActionKind::ResetAll => {
+            pop_reset_all(gs);
+            "all templates reset".to_string()
+        }
+    };
+
+    Ok(WorldActionOutcome { message })
+}
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
@@ -883,7 +946,7 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
 /// Resets a character template and all instances
 pub fn reset_char(gs: &mut GameState, n: usize) {
     if !(1..MAXTCHARS).contains(&n) {
-        log::error!("reset_char: invalid template {}", n);
+        log::warn!("reset_char: invalid template {}", n);
         return;
     }
 
@@ -901,7 +964,9 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
     let name = gs.character_templates[n].get_name().to_string();
     log::info!("Resetting char {} ({})", n, name);
 
-    // Recalculate character template points
+    let points_tot = points::calculate_points_tot(&gs.character_templates[n]);
+    gs.character_templates[n].points_tot = points_tot;
+
     let mut cnt = 0;
 
     // Destroy all instances of this template (they will be respawned)
@@ -935,19 +1000,27 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
         if effect_used == USE_ACTIVE && effect_type == 2 && data2 == n as u32 {
             log::info!(" --> effect {}", m);
             gs.effects[m].used = USE_EMPTY;
+            cnt += 1;
         }
     }
 
-    // Clean up items carried by this template
+    // Clean up graves that still point at a corpse/body for this template.
     for m in 0..MAXITEM {
         let item_used = gs.items[m].used;
-        let carried = gs.items[m].carried;
+        let driver = gs.items[m].driver;
+        let corpse_cn = gs.items[m].data[0] as usize;
 
-        if item_used == USE_ACTIVE && carried as usize == n {
-            let temp = gs.items[m].temp;
-            let item_template = gs.item_templates[temp as usize];
-            gs.items[m] = item_template;
-            gs.items[m].temp = temp;
+        if item_used == USE_ACTIVE
+            && driver == 7
+            && corpse_cn != 0
+            && corpse_cn < MAXCHARS
+            && gs.characters[corpse_cn].temp as usize == n
+        {
+            log::info!(" --> grave {}", m);
+            God::destroy_items(gs, corpse_cn);
+            gs.characters[corpse_cn].used = USE_EMPTY;
+            gs.items[m].data[0] = 0;
+            cnt += 1;
         }
     }
 
@@ -1132,9 +1205,12 @@ pub fn pop_tick(gs: &mut GameState) {
 
     let ticker = gs.globals.ticker as u32;
 
-    if ticker - gs.last_population_reset_tick >= RESETTICKER {
+    if ticker.saturating_sub(gs.last_population_reset_tick) >= RESETTICKER {
+        let nr = ((ticker / RESETTICKER) as usize) % MAXTCHARS;
+        if nr > 0 && nr < MAXTCHARS {
+            reset_char(gs, nr);
+        }
         gs.last_population_reset_tick = ticker;
-        log::info!("Population tick: checking for resets");
     }
 
     // Check for character reset
@@ -1157,10 +1233,18 @@ pub fn pop_tick(gs: &mut GameState) {
 #[allow(dead_code)]
 pub fn pop_reset_all(gs: &mut GameState) {
     for n in 1..MAXTCHARS {
-        reset_char(gs, n);
+        let used = gs.character_templates[n].used;
+        let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
+        if used != USE_EMPTY && has_respawn {
+            reset_char(gs, n);
+        }
     }
     for n in 1..MAXTITEM {
-        reset_item(gs, n);
+        let used = gs.item_templates[n].used;
+        let driver = gs.item_templates[n].driver;
+        if used != USE_EMPTY && driver != 36 && driver != 38 {
+            reset_item(gs, n);
+        }
     }
     log::info!("Reset all templates");
 }
@@ -1211,15 +1295,20 @@ pub fn pop_wipe(gs: &mut GameState) {
 pub fn populate(gs: &mut GameState) {
     log::info!("Populating world...");
 
-    // Iterate through all character templates and spawn respawnable NPCs
+    // Iterate through templates and reset only those with no live instance.
     for n in 1..MAXTCHARS {
         let used = gs.character_templates[n].used;
-        let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
+        if used == USE_EMPTY {
+            continue;
+        }
 
-        if used != USE_EMPTY && has_respawn {
-            if let Some(cn) = pop_create_char(gs, n, true) {
-                log::debug!("Spawned NPC {} from template {}", cn, n);
-            }
+        let has_instance = (1..MAXCHARS).any(|m| {
+            gs.characters[m].used == USE_ACTIVE
+                && (gs.characters[m].flags & CharacterFlags::Body.bits()) == 0
+                && gs.characters[m].temp as usize == n
+        });
+        if !has_instance {
+            reset_char(gs, n);
         }
     }
 

@@ -80,6 +80,10 @@ pub struct Server {
     /// the tick loop.
     character_patch_watcher: Option<server::keydb::character_patch::CharacterPatchWatcher>,
 
+    /// Background watcher that surfaces admin-issued world actions to the
+    /// tick loop.
+    world_action_watcher: Option<server::keydb::world_action::WorldActionWatcher>,
+
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
@@ -102,6 +106,7 @@ impl Server {
             map_patch_watcher: None,
             item_patch_watcher: None,
             character_patch_watcher: None,
+            world_action_watcher: None,
             save_tick_counter: 0,
         }
     }
@@ -271,6 +276,9 @@ impl Server {
         // Spawn the admin character-patch watcher (no-op when disabled).
         self.character_patch_watcher =
             server::keydb::character_patch::CharacterPatchWatcher::spawn();
+
+        // Spawn the admin world-action watcher (no-op when disabled).
+        self.world_action_watcher = server::keydb::world_action::WorldActionWatcher::spawn();
 
         Ok(())
     }
@@ -1483,6 +1491,130 @@ impl Server {
         true
     }
 
+    /// Drain pending admin world actions and execute them on the tick thread.
+    ///
+    /// Actions are queued by the admin API in KeyDB. The watcher only moves
+    /// requests onto an in-process channel; this method performs every
+    /// mutation while `GameState` is owned by the main server loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state to mutate and persist.
+    pub fn drain_world_actions(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.world_action_watcher.as_ref() else {
+            return;
+        };
+
+        let mut requests = Vec::new();
+        while let Some(request) = watcher.try_recv() {
+            requests.push(request);
+        }
+
+        for request in requests {
+            self.apply_world_action(gs, request);
+        }
+    }
+
+    fn apply_world_action(
+        &mut self,
+        gs: &mut GameState,
+        request: core::world_action_store::WorldActionRequest,
+    ) {
+        let started = Instant::now();
+        log::info!(
+            "world action {} ({}) started",
+            request.request_id,
+            request.action.name()
+        );
+
+        let mut status_connection = match server::keydb::connection::connect() {
+            Ok(connection) => Some(connection),
+            Err(error) => {
+                log::warn!(
+                    "world action {}: keydb connect for status failed: {}",
+                    request.request_id,
+                    error
+                );
+                None
+            }
+        };
+
+        if let Some(connection) = status_connection.as_mut() {
+            if let Err(error) =
+                server::keydb::world_action::write_running_status(connection, &request)
+            {
+                log::warn!(
+                    "world action {}: running status write failed: {}",
+                    request.request_id,
+                    error
+                );
+            }
+        }
+
+        if let Some(saver) = self.background_saver.as_ref() {
+            if let Err(error) = saver.flush() {
+                let message = format!("background saver flush failed: {}", error);
+                self.write_world_action_failure(status_connection.as_mut(), &request, &message);
+                return;
+            }
+        }
+
+        match populate::execute_world_action(gs, &request.action) {
+            Ok(outcome) => {
+                gs.globals.set_dirty(true);
+                match gs.save() {
+                    Ok(()) => {
+                        let elapsed_ms = started.elapsed().as_millis();
+                        let message = format!("{} ({} ms)", outcome.message, elapsed_ms);
+                        if let Some(connection) = status_connection.as_mut() {
+                            if let Err(error) = server::keydb::world_action::write_applied_status(
+                                connection, &request, &message,
+                            ) {
+                                log::warn!(
+                                    "world action {}: applied status write failed: {}",
+                                    request.request_id,
+                                    error
+                                );
+                            }
+                        }
+                        log::info!("world action {} applied: {}", request.request_id, message);
+                    }
+                    Err(error) => {
+                        let message = format!("save after action failed: {}", error);
+                        self.write_world_action_failure(
+                            status_connection.as_mut(),
+                            &request,
+                            &message,
+                        );
+                    }
+                }
+            }
+            Err(error) => {
+                self.write_world_action_failure(status_connection.as_mut(), &request, &error);
+            }
+        }
+    }
+
+    fn write_world_action_failure(
+        &self,
+        status_connection: Option<&mut redis::Connection>,
+        request: &core::world_action_store::WorldActionRequest,
+        message: &str,
+    ) {
+        if let Some(connection) = status_connection {
+            if let Err(error) =
+                server::keydb::world_action::write_failed_status(connection, request, message)
+            {
+                log::warn!(
+                    "world action {}: failed status write failed: {}",
+                    request.request_id,
+                    error
+                );
+            }
+        }
+        log::warn!("world action {} failed: {}", request.request_id, message);
+    }
+
     /// Flush all pending background save jobs and then shut down the saver thread.
     ///
     /// `flush()` provides an explicit, observable synchronization point: it
@@ -1514,6 +1646,10 @@ impl Server {
         }
         if let Some(mut watcher) = self.character_patch_watcher.take() {
             log::info!("Stopping character patch watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.world_action_watcher.take() {
+            log::info!("Stopping world action watcher...");
             watcher.shutdown();
         }
         if let Some(mut saver) = self.background_saver.take() {

@@ -466,6 +466,8 @@ small burst. Excess requests return `429`.
 | PUT | `/admin/world/characters/{id}` | Enqueue a patch for a single character (bincode `CharacterPatch`). |
 | POST | `/admin/world/characters/reload` | Ask the running server to drain pending character patches. |
 | GET | `/admin/world/characters/reload/status` | Poll the lifecycle of a previous character-reload request. |
+| POST | `/admin/world/actions` | Enqueue a live world action for the running server. |
+| GET | `/admin/world/actions/status` | Poll a world-action request (query `request_id`). |
 
 Full templates use bincode (`application/octet-stream`) instead of JSON to
 avoid serialising fixed-size byte arrays through quoted JSON. The
@@ -476,6 +478,19 @@ client and the server agree on the wire format.
 returns an operator-facing JSON snapshot of counters, load/network totals,
 hourly arrays, moon markers, and global flags. It is read-only and observes the
 latest state written to KeyDB by the server saver.
+
+`POST /admin/world/actions` accepts a tagged JSON action body such as
+`{"action":"populate_missing"}`, `{"action":"rebuild_lights"}`,
+`{"action":"sync_player_skills"}`, `{"action":"wipe_runtime"}`,
+`{"action":"reset_char","template_id":123}`,
+`{"action":"reset_item","template_id":456}`, or
+`{"action":"reset_all"}`. The API enqueues a bincode request in
+`game:admin:world_action_queue`; the server drains it on the tick thread,
+flushes pending background saves before mutation, persists successful actions
+to KeyDB, and writes a pollable status under
+`game:admin:world_action_status:{request_id}`. Legacy live `load`/`save`
+actions are intentionally not exposed; full world import/export remains the
+offline `world-snapshot` workflow.
 
 `POST /admin/templates/reload` accepts a JSON body
 `{"kinds":["items","characters"]}` and returns

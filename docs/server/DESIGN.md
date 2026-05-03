@@ -313,10 +313,10 @@ file backend has been removed.
 | `game:badwords` | bincode `Vec<String>` | 1 |
 | `game:motd` | UTF-8 string | 1 |
 | `game:meta:version` | integer | 1 |
-| `admin:map:patch_queue` | bincode `MapPatch` list (RPUSH) | dynamic |
-| `admin:map:reload:request` | JSON `{request_id, requested_at_ms}` (TTL 30s) | 0–1 |
-| `admin:map:reload:status:{request_id}` | JSON `{status, request_id}` (TTL 300s) | 0..n |
-| `admin:map:version` | integer counter | 1 |
+| `game:map:patch_queue` | bincode `MapPatch` list (RPUSH) | dynamic |
+| `game:map:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
+| `game:map:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
+| `game:meta:map:version` | integer counter | 1 |
 | `game:item:patch_queue` | bincode `ItemPatch` list (RPUSH) | dynamic |
 | `game:item:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
 | `game:item:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
@@ -325,6 +325,16 @@ file backend has been removed.
 | `game:char:patch_request` | JSON `{request_id, requested_at}` (TTL 30s) | 0–1 |
 | `game:char:patch_status:{request_id}` | `applied:{unix_ts}` (TTL 300s) | 0..n |
 | `game:meta:char:version` | integer counter | 1 |
+| `game:admin:world_action_queue` | bincode `WorldActionRequest` list (RPUSH) | dynamic |
+| `game:admin:world_action_status:{request_id}` | `status|action|unix_ts|message` (TTL 300s) | 0..n |
+
+Admin world actions (`populate_missing`, `wipe_runtime`, `rebuild_lights`,
+`sync_player_skills`, `reset_char`, `reset_item`, `reset_all`) are enqueued by
+the API and executed by the running server on the tick thread. Before mutation
+the server flushes pending background-save jobs; after a successful action it
+persists runtime state to KeyDB and writes the final status. Legacy `.dat`
+load/save actions are not live admin operations; full imports and exports stay
+with `world-snapshot`.
 
 ### Background Save Rotation
 
