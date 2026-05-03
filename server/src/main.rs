@@ -32,19 +32,8 @@ use core;
 
 use crate::game_state::GameState;
 
-fn reject_legacy_command_line_args(args: &[String]) {
-    if args.len() <= 1 {
-        return;
-    }
-
-    log::error!(
-        "server maintenance commands are no longer accepted as startup args; use mag-admin world action instead"
-    );
-    process::exit(1);
-}
-
 fn main() -> Result<(), String> {
-    let args: Vec<String> = env::args().collect();
+    let _: Vec<String> = env::args().collect();
 
     core::initialize_logger(log::LevelFilter::Info, Some("server.log")).unwrap_or_else(|e| {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);
@@ -86,8 +75,6 @@ fn main() -> Result<(), String> {
         log::error!("Failed to initialize game state: {}. Exiting.", e);
         process::exit(1);
     });
-
-    reject_legacy_command_line_args(&args);
 
     if env::var("MAG_PLAYTEST")
         .map(|v| !v.is_empty())
