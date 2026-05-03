@@ -3,7 +3,7 @@ use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
 use crate::helpers::{self};
-use crate::{chlog, driver, player, populate};
+use crate::{chlog, driver, player, points, populate};
 use core::constants::{
     AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, ItemFlags, MAXITEM, MAXSKILL,
     MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
@@ -1182,7 +1182,7 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
         let v = current_val as i32;
         let diff = difficulty as i32;
-        let pts = helpers::skill_needed(v, diff);
+        let pts = points::skill_needed(v, diff);
         gs.characters[cn].points_tot += pts;
         gs.characters[cn].skill[skill_nr][0] += 1;
         gs.do_check_new_level(cn);
@@ -1527,21 +1527,21 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         let mut pts = 0i32;
         for z in 0..5 {
             for m in 10..(ch.attrib[z][0] as i32) {
-                pts += helpers::attrib_needed(m, 3);
+                pts += points::attrib_needed(m, 3);
             }
         }
         for m in 50..(ch.hp[0] as i32) {
-            pts += helpers::hp_needed(m, 3);
+            pts += points::hp_needed(m, 3);
         }
         for m in 50..(ch.end[0] as i32) {
-            pts += helpers::end_needed(m, 2);
+            pts += points::end_needed(m, 2);
         }
         for m in 50..(ch.mana[0] as i32) {
-            pts += helpers::mana_needed(m, 3);
+            pts += points::mana_needed(m, 3);
         }
         for z in 0..50 {
             for m in 1..(ch.skill[z][0] as i32) {
-                pts += helpers::skill_needed(m, 2);
+                pts += points::skill_needed(m, 2);
             }
         }
 

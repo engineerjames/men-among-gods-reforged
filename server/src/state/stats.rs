@@ -9,7 +9,7 @@ use core::{skills, traits};
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
-use crate::{driver, helpers};
+use crate::{driver, helpers, points};
 
 impl GameState {
     /// Helper function to check if character wears a specific item
@@ -947,7 +947,7 @@ impl GameState {
         }
 
         // Calculate points needed to raise this attribute
-        let points_needed = helpers::attrib_needed(current_val as i32, diff as i32);
+        let points_needed = points::attrib_needed(current_val as i32, diff as i32);
 
         if points_needed > available_points {
             return false;
@@ -980,7 +980,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = helpers::hp_needed(current_val as i32, diff as i32);
+        let points_needed = points::hp_needed(current_val as i32, diff as i32);
 
         if points_needed > available_points {
             return false;
@@ -1012,7 +1012,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = helpers::end_needed(current_val as i32, diff as i32);
+        let points_needed = points::end_needed(current_val as i32, diff as i32);
 
         if points_needed > available_points {
             return false;
@@ -1046,7 +1046,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = helpers::mana_needed(current_val as i32, diff as i32);
+        let points_needed = points::mana_needed(current_val as i32, diff as i32);
 
         if points_needed > available_points {
             return false;
@@ -1088,7 +1088,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = helpers::skill_needed(current_val as i32, diff as i32);
+        let points_needed = points::skill_needed(current_val as i32, diff as i32);
 
         if points_needed > available_points {
             return false;
@@ -1123,7 +1123,7 @@ impl GameState {
         let new_val = self.characters[cn].hp[0];
         let diff = self.characters[cn].hp[3];
 
-        let points_lost = helpers::hp_needed(new_val as i32, diff as i32);
+        let points_lost = points::hp_needed(new_val as i32, diff as i32);
 
         self.characters[cn].points_tot -= points_lost;
 
@@ -1154,7 +1154,7 @@ impl GameState {
         let new_val = self.characters[cn].mana[0];
         let diff = self.characters[cn].mana[3];
 
-        let points_lost = helpers::mana_needed(new_val as i32, diff as i32);
+        let points_lost = points::mana_needed(new_val as i32, diff as i32);
 
         self.characters[cn].points_tot -= points_lost;
         self.do_update_char(cn);
