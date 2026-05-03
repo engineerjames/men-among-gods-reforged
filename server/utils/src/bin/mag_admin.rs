@@ -25,6 +25,7 @@ use std::time::{Duration, Instant};
 
 const DEFAULT_API_URL: &str = "https://127.0.0.1:5554";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 10;
+const CREATED_BY: &str = "mag-admin";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -115,15 +116,6 @@ enum Commands {
     },
     /// Execute live world actions on the running server.
     World {
-        #[command(subcommand)]
-        command: WorldCommand,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum WorldCommand {
-    /// Enqueue a live world action.
-    Action {
         #[command(subcommand)]
         command: WorldActionCommand,
     },
@@ -462,22 +454,18 @@ fn run(cli: Cli) -> Result<(), CliError> {
         ));
     }
 
-    let Some(admin_token) = cli.admin_token.as_deref().map(str::trim) else {
-        return Err(CliError::Runtime(
-            "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
-        ));
-    };
-    if admin_token.is_empty() {
-        return Err(CliError::Runtime(
-            "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
-        ));
-    }
+    let admin_token = cli
+        .admin_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| {
+            CliError::Runtime(
+                "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
+            )
+        })?;
 
     let client = AdminClient::new(cli.api.trim(), admin_token).map_err(CliError::Runtime)?;
-
-    if cli.menu && !cli.auto {
-        return run_menu(&cli, &client);
-    }
 
     if !cli.auto {
         return run_menu(&cli, &client);
@@ -494,7 +482,7 @@ fn run(cli: Cli) -> Result<(), CliError> {
         Commands::Bans { command } => run_bans(&cli, &client, command),
         Commands::Templates { command } => run_templates(&cli, &client, command),
         Commands::Globals { command } => run_globals(&cli, &client, command),
-        Commands::World { command } => run_world(&cli, &client, command),
+        Commands::World { command } => run_world_action(&cli, &client, command),
     }
 }
 
@@ -964,7 +952,7 @@ fn menu_add_account_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(
             reason,
             expires_at: None,
             duration_seconds: None,
-            created_by: Some("mag-admin".to_string()),
+            created_by: Some(CREATED_BY.to_string()),
             kick_online: Some(true),
         })
         .map_err(CliError::Runtime)?;
@@ -983,7 +971,7 @@ fn menu_add_character_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result
             reason,
             expires_at: None,
             duration_seconds: None,
-            created_by: Some("mag-admin".to_string()),
+            created_by: Some(CREATED_BY.to_string()),
             kick_online: Some(true),
         })
         .map_err(CliError::Runtime)?;
@@ -1046,7 +1034,7 @@ fn menu_add_ip_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), Cl
             reason,
             expires_at: None,
             duration_seconds: None,
-            created_by: Some("mag-admin".to_string()),
+            created_by: Some(CREATED_BY.to_string()),
             kick_online: Some(true),
         })
         .map_err(CliError::Runtime)?;
@@ -1278,7 +1266,7 @@ fn run_bans(cli: &Cli, client: &AdminClient, command: &BansCommand) -> Result<()
                 reason: reason.clone(),
                 expires_at: *expires_at,
                 duration_seconds: *duration_seconds,
-                created_by: Some("mag-admin".to_string()),
+                created_by: Some(CREATED_BY.to_string()),
                 kick_online: Some(!*no_kick),
             },
             *wait,
@@ -1302,7 +1290,7 @@ fn run_bans(cli: &Cli, client: &AdminClient, command: &BansCommand) -> Result<()
                 reason: reason.clone(),
                 expires_at: *expires_at,
                 duration_seconds: *duration_seconds,
-                created_by: Some("mag-admin".to_string()),
+                created_by: Some(CREATED_BY.to_string()),
                 kick_online: Some(!*no_kick),
             },
             *wait,
@@ -1326,7 +1314,7 @@ fn run_bans(cli: &Cli, client: &AdminClient, command: &BansCommand) -> Result<()
                 reason: reason.clone(),
                 expires_at: *expires_at,
                 duration_seconds: *duration_seconds,
-                created_by: Some("mag-admin".to_string()),
+                created_by: Some(CREATED_BY.to_string()),
                 kick_online: Some(!*no_kick),
             },
             *wait,
@@ -1461,12 +1449,6 @@ fn run_globals(cli: &Cli, client: &AdminClient, command: &GlobalsCommand) -> Res
             let globals = client.fetch_globals().map_err(CliError::Runtime)?;
             print_globals(&globals, cli.format)
         }
-    }
-}
-
-fn run_world(cli: &Cli, client: &AdminClient, command: &WorldCommand) -> Result<(), CliError> {
-    match command {
-        WorldCommand::Action { command } => run_world_action(cli, client, command),
     }
 }
 
@@ -2558,9 +2540,9 @@ fn format_gold_silver(value: u32) -> String {
 fn format_gold_silver_i32(value: i32) -> String {
     let gold = value / 1000;
     let silver = value % 1000;
-    if gold > 0 && silver > 0 {
+    if gold != 0 && silver != 0 {
         format!("{value} ({gold} gold, {silver} silver)")
-    } else if gold > 0 {
+    } else if gold != 0 {
         format!("{value} ({gold} gold)")
     } else {
         format!("{value} ({silver} silver)")
@@ -2589,7 +2571,7 @@ fn placement_label(placement: u16) -> String {
         (constants::PL_SHIELD, "Shield"),
         (constants::PL_CLOAK, "Cloak"),
         (constants::PL_TWOHAND, "Two-Hand"),
-        (0x0900, "Two-Handed"),
+        (constants::PL_WEAPON | constants::PL_TWOHAND, "Two-Handed"),
         (constants::PL_RING, "Ring"),
     ];
     labels
@@ -2652,66 +2634,10 @@ fn item_flag_info() -> &'static [(ItemFlags, &'static str)] {
 }
 
 fn active_character_flags(bits: u64) -> Vec<&'static str> {
-    let flags = CharacterFlags::from_bits_truncate(bits);
-    character_flag_info()
+    CharacterFlags::from_bits_truncate(bits)
         .iter()
-        .filter_map(|flag| {
-            flags
-                .contains(*flag)
-                .then_some(constants::character_flags_name(*flag))
-        })
+        .map(constants::character_flags_name)
         .collect()
-}
-
-fn character_flag_info() -> &'static [CharacterFlags] {
-    &[
-        CharacterFlags::Immortal,
-        CharacterFlags::God,
-        CharacterFlags::Creator,
-        CharacterFlags::BuildMode,
-        CharacterFlags::Respawn,
-        CharacterFlags::Player,
-        CharacterFlags::NewUser,
-        CharacterFlags::NoTell,
-        CharacterFlags::NoShout,
-        CharacterFlags::Merchant,
-        CharacterFlags::Staff,
-        CharacterFlags::NoHpReg,
-        CharacterFlags::NoEndReg,
-        CharacterFlags::NoManaReg,
-        CharacterFlags::Invisible,
-        CharacterFlags::Infrared,
-        CharacterFlags::Body,
-        CharacterFlags::NoSleep,
-        CharacterFlags::Undead,
-        CharacterFlags::NoMagic,
-        CharacterFlags::Stoned,
-        CharacterFlags::Usurp,
-        CharacterFlags::Imp,
-        CharacterFlags::ShutUp,
-        CharacterFlags::NoDesc,
-        CharacterFlags::Profile,
-        CharacterFlags::Simple,
-        CharacterFlags::Kicked,
-        CharacterFlags::NoList,
-        CharacterFlags::NoWho,
-        CharacterFlags::SpellIgnore,
-        CharacterFlags::ComputerControlledPlayer,
-        CharacterFlags::Safe,
-        CharacterFlags::NoStaff,
-        CharacterFlags::Poh,
-        CharacterFlags::PohLeader,
-        CharacterFlags::Thrall,
-        CharacterFlags::LabKeeper,
-        CharacterFlags::IsLooting,
-        CharacterFlags::Golden,
-        CharacterFlags::Black,
-        CharacterFlags::Passwd,
-        CharacterFlags::Update,
-        CharacterFlags::SaveMe,
-        CharacterFlags::GreaterGod,
-        CharacterFlags::GreaterInv,
-    ]
 }
 
 fn active_kindred_flags(kindred: i32) -> Vec<&'static str> {
