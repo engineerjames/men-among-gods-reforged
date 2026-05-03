@@ -1,8 +1,8 @@
 //! A toggleable minimap button + viewport widget.
 //!
 //! Displays a circular button near the top-right of the screen. When clicked
-//! the button opens a framed minimap viewport anchored just below. Clicking
-//! again hides the viewport.
+//! the button opens a framed minimap viewport anchored to the left of the
+//! button. Clicking again hides the viewport.
 
 use sdl2::pixels::Color;
 
@@ -30,8 +30,8 @@ const PANEL_PADDING: u32 = 0;
 /// Border thickness around the panel (pixels).
 const PANEL_BORDER: u32 = 1;
 
-/// Vertical gap between the bottom of the circle button and the top of the
-/// map panel (pixels).
+/// Horizontal gap between the right edge of the map panel and the left edge
+/// of the circle button (pixels).
 const BUTTON_MAP_GAP: i32 = 4;
 
 /// Width of each zoom control button in pixels.
@@ -213,8 +213,11 @@ impl MinimapWidget {
 
         let screen_w = crate::constants::TARGET_WIDTH_INT as i32;
         let max_panel_x = (screen_w - self.panel_w as i32).max(0);
-        let panel_x = (button_cx - self.panel_w as i32 / 2).clamp(0, max_panel_x);
-        let panel_y = button_cy + button_radius as i32 + BUTTON_MAP_GAP;
+        // Open to the left: right edge of panel flush with left edge of button,
+        // with a small gap. Top of panel aligned with the button center.
+        let panel_x = (button_cx - button_radius as i32 - BUTTON_MAP_GAP - self.panel_w as i32)
+            .clamp(0, max_panel_x);
+        let panel_y = button_cy - button_radius as i32;
 
         let zoom_y = panel_y - ZOOM_BUTTON_H as i32 - ZOOM_BUTTON_PANEL_GAP;
         let zoom_in_x = panel_x;

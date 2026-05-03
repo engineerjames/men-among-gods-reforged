@@ -34,6 +34,7 @@ use mag_core::stat_buffer::StatisticsBuffer;
 
 use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
+use client::font_cache::{self, TextStyle};
 use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
 use client::ui::hud::button_arc::HudButtonBar;
@@ -58,7 +59,6 @@ use client::ui::widgets::panel::Panel;
 use client::ui::widgets::slider::Slider;
 use client::ui::widgets::text_input::TextInput;
 use client::ui::{RenderContext, sdl_to_ui_event};
-use client::font_cache::{self, TextStyle};
 
 // ---------------------------------------------------------------------------
 // Layout constants — arranged as a gallery across the 960×540 viewport
@@ -203,7 +203,7 @@ fn main() -> Result<(), String> {
 
     // Column 2: Stateful/interactive widgets
     let mut chat_box = ChatBox::new(
-        Bounds::new(COL2_X, 10, 230, 200),
+        Bounds::new(TARGET_WIDTH_INT as i32 - 290, 4, 230, 192),
         Color::RGBA(10, 10, 30, 200),
         Padding::uniform(4),
     );
@@ -227,7 +227,11 @@ fn main() -> Result<(), String> {
 
     let mut mode_button = ModeButton::new(COL3_X + 30, 250, 18);
 
-    let mut minimap_widget = MinimapWidget::new(TARGET_WIDTH_INT as i32 - 30, 30, 14);
+    let mut minimap_widget = MinimapWidget::new(
+        HUD_BTN_CX,
+        HUD_BTN_BOTTOM_CY - 4 * HUD_BTN_SPACING as i32,
+        14,
+    );
 
     // HUD button bar (lower-right column — same position as in-game).
     let mut hud_buttons = HudButtonBar::new(
@@ -359,7 +363,9 @@ fn main() -> Result<(), String> {
 
     let mut last_frame = Instant::now();
 
-    println!("UI Integration Test running — press 1-5 to toggle panels, C to toggle coordinate overlay, Esc to quit.");
+    println!(
+        "UI Integration Test running — press 1-5 to toggle panels, C to toggle coordinate overlay, Esc to quit."
+    );
 
     // --- Main loop -------------------------------------------------------
     'running: loop {
@@ -383,7 +389,10 @@ fn main() -> Result<(), String> {
                         Keycode::Escape => break 'running,
                         Keycode::C => {
                             show_coords = !show_coords;
-                            println!("[Key] Coordinate overlay {}", if show_coords { "on" } else { "off" });
+                            println!(
+                                "[Key] Coordinate overlay {}",
+                                if show_coords { "on" } else { "off" }
+                            );
                         }
                         Keycode::P => {
                             print_render_stats(&[

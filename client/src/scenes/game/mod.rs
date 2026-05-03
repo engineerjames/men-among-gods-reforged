@@ -45,7 +45,7 @@ use crate::{
     ui::{
         self, RenderContext,
         forms::cert_dialog::CertDialog,
-        hud::button_arc::HudButtonBar,
+        hud::button_bar::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::inventory_panel::InventoryPanel,
         hud::look_panel::LookPanel,
@@ -108,10 +108,10 @@ pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32
     - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 4) - (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 4))
     + MAP_Y_TWEAK;
 
-const CHATBOX_X: i32 = 0;
-const CHATBOX_Y: i32 = TARGET_HEIGHT_INT as i32 - CHATBOX_H as i32;
+const CHATBOX_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - CHATBOX_W as i32 - 4;
+const CHATBOX_Y: i32 = 4;
 const CHATBOX_W: u32 = 300;
-const CHATBOX_H: u32 = 200;
+const CHATBOX_H: u32 = 192;
 
 // ---- HUD button bar layout ---- //
 
@@ -148,8 +148,8 @@ const HUD_PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
 
 /// X center of the minimap toggle button (near top-right of screen).
 const MINIMAP_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
-/// Y center of the minimap toggle button.
-const MINIMAP_BTN_CY: i32 = 30;
+/// Y center of the minimap toggle button (one spacing above the top HUD button).
+const MINIMAP_BTN_CY: i32 = HUD_BTN_BOTTOM_CY - 4 * HUD_BTN_SPACING as i32;
 /// Radius of the minimap toggle button.
 const MINIMAP_BTN_RADIUS: u32 = 14;
 
@@ -204,7 +204,7 @@ const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 37;
 /// X position of the vitality chevrons (horizontal centre of the player sprite).
 const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
 /// Y position of the vitality chevron feet.
-const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 60;
+const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 
 // ---------------------------------------------------------------------------
 // GameScene struct
@@ -347,10 +347,10 @@ impl GameScene {
                 HUD_SPRITE_IDS,
             ),
             rank_progress_line: RankProgressLine::new(
-                (TARGET_WIDTH_INT as i32 - 380) / 2,
-                TARGET_HEIGHT_INT as i32 - 38,
-                400,
-                2,
+                (TARGET_WIDTH_INT as i32 - 370) / 2,
+                TARGET_HEIGHT_INT as i32 - 40,
+                370,
+                4,
             ),
             skills_panel: SkillsPanel::new(
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),

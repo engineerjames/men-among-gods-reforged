@@ -15,7 +15,7 @@ use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 const UNFILLED_COLOR: Color = Color::RGBA(60, 60, 80, 120);
 
 /// Default color for the filled (progress) portion of the line.
-const FILLED_COLOR: Color = Color::RGBA(220, 180, 50, 220);
+const FILLED_COLOR: Color = Color::RGBA(220, 180, 50, 255);
 
 /// A horizontal progress bar that visualises rank progress.
 ///

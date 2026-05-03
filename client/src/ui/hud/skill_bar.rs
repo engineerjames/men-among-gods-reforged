@@ -131,6 +131,8 @@ pub struct SkillBar {
     actions: Vec<WidgetAction>,
     /// Lazily-loaded texture ID for the `skillbar.png` background image.
     bg_texture_id: Option<usize>,
+    /// Lazily-loaded texture ID for the test icon drawn in cell 0.
+    test_icon_texture_id: Option<usize>,
     /// Active-spell sprite layout configuration.
     config: SkillBarConfig,
     /// Controller-selected skill slot index (0..12), or `None` if no slot is highlighted.
@@ -158,6 +160,7 @@ impl SkillBar {
             mouse_y: 0,
             actions: Vec::new(),
             bg_texture_id: None,
+            test_icon_texture_id: None,
             config,
             controller_selected_slot: None,
         }
@@ -327,6 +330,16 @@ impl Widget for SkillBar {
                 self.bg_texture_id = Some(id);
             }
         }
+
+        // Lazy-load the test icon for cell 0.
+        if self.test_icon_texture_id.is_none() {
+            let path = filepaths::get_asset_directory()
+                .join("gfx")
+                .join("bless_icon.png");
+            if let Ok(id) = ctx.gfx.load_texture_from_path(&path) {
+                self.test_icon_texture_id = Some(id);
+            }
+        }
         if let Some(bg_id) = self.bg_texture_id {
             let tex = ctx.gfx.get_texture(bg_id);
             let dst = Rect::new(self.bounds.x, self.bounds.y, BAR_W, BAR_H);
@@ -346,6 +359,14 @@ impl Widget for SkillBar {
             ctx.canvas.fill_rect(rect)?;
             ctx.canvas.set_draw_color(CELL_BORDER);
             ctx.canvas.draw_rect(rect)?;
+
+            // Cell 0: draw the test icon image instead of a plain fill.
+            if i == 0 {
+                if let Some(icon_id) = self.test_icon_texture_id {
+                    let tex = ctx.gfx.get_texture(icon_id);
+                    ctx.canvas.copy(tex, None, Some(rect))?;
+                }
+            }
 
             // Hover highlight.
             if self.hit_top_cell(self.mouse_x, self.mouse_y) == Some(i) {
@@ -378,31 +399,34 @@ impl Widget for SkillBar {
                 font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
             )?;
             // Skill name or "+" hint in the lower half of the cell.
-            let cy = y + 10; // 10 = glyph height; sits directly below the number
-            if let Some(skill_nr) = data.keybinds[i] {
-                let name = skills::get_skill_name(skill_nr);
-                let abbr = Self::abbreviate(name);
-                font_cache::draw_text(
-                    ctx.canvas,
-                    ctx.gfx,
-                    UI_FONT,
-                    &abbr,
-                    cx,
-                    cy,
-                    font_cache::TextStyle::centered()
-                        .with_tint(SKILL_TEXT_COLOR)
-                        .with_drop_shadow(),
-                )?;
-            } else {
-                font_cache::draw_text(
-                    ctx.canvas,
-                    ctx.gfx,
-                    UI_FONT,
-                    "+",
-                    cx,
-                    cy,
-                    font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
-                )?;
+            // Cell 0 uses an icon image, so skip the text there.
+            if i != 0 {
+                let cy = y + 10; // 10 = glyph height; sits directly below the number
+                if let Some(skill_nr) = data.keybinds[i] {
+                    let name = skills::get_skill_name(skill_nr);
+                    let abbr = Self::abbreviate(name);
+                    font_cache::draw_text(
+                        ctx.canvas,
+                        ctx.gfx,
+                        UI_FONT,
+                        &abbr,
+                        cx,
+                        cy,
+                        font_cache::TextStyle::centered()
+                            .with_tint(SKILL_TEXT_COLOR)
+                            .with_drop_shadow(),
+                    )?;
+                } else {
+                    font_cache::draw_text(
+                        ctx.canvas,
+                        ctx.gfx,
+                        UI_FONT,
+                        "+",
+                        cx,
+                        cy,
+                        font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
+                    )?;
+                }
             }
         }
 
