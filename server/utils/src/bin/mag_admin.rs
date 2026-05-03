@@ -278,25 +278,43 @@ enum CliError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MenuAction {
+    WorldEffects,
+    BadwordManagement,
+    TemplateManagement,
+    ShowGlobals,
+    Quit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorldMenuAction {
+    Populate,
+    Wipe,
+    RebuildLights,
+    SyncSkills,
+    ResetChar,
+    ResetItem,
+    ResetAll,
+    Back,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BadwordsMenuAction {
+    List,
+    Get,
+    Add,
+    Remove,
+    Export,
+    Refresh,
+    Back,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TemplatesMenuAction {
     SearchItemTemplates,
     SearchCharacterTemplates,
     ShowItemTemplate,
     ShowCharacterTemplate,
-    ShowGlobals,
-    WorldPopulate,
-    WorldWipe,
-    WorldRebuildLights,
-    WorldSyncSkills,
-    WorldResetChar,
-    WorldResetItem,
-    WorldResetAll,
-    ListBadwords,
-    GetBadword,
-    AddBadwords,
-    RemoveBadwords,
-    ExportBadwords,
-    RefreshBadwords,
-    Quit,
+    Back,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -390,58 +408,11 @@ fn run_menu(cli: &Cli, client: &AdminClient) -> Result<(), CliError> {
     loop {
         let action = choose_menu_action(&theme)?;
         match action {
-            MenuAction::SearchItemTemplates => {
-                menu_search_templates(client, &theme, TemplateKindArg::Items)?
-            }
-            MenuAction::SearchCharacterTemplates => {
-                menu_search_templates(client, &theme, TemplateKindArg::Characters)?
-            }
-            MenuAction::ShowItemTemplate => {
-                menu_show_template(client, &theme, TemplateKindArg::Items)?
-            }
-            MenuAction::ShowCharacterTemplate => {
-                menu_show_template(client, &theme, TemplateKindArg::Characters)?
-            }
+            MenuAction::WorldEffects => run_world_effects_menu(client, &theme)?,
+            MenuAction::BadwordManagement => run_badwords_menu(client, &theme)?,
+            MenuAction::TemplateManagement => run_templates_menu(client, &theme)?,
             MenuAction::ShowGlobals => menu_show_globals(client)?,
-            MenuAction::WorldPopulate => {
-                menu_request_world_action(client, &theme, WorldActionKind::PopulateMissing, None)?
-            }
-            MenuAction::WorldWipe => menu_request_world_action(
-                client,
-                &theme,
-                WorldActionKind::WipeRuntime,
-                Some("wipe dynamic runtime world state"),
-            )?,
-            MenuAction::WorldRebuildLights => {
-                menu_request_world_action(client, &theme, WorldActionKind::RebuildLights, None)?
-            }
-            MenuAction::WorldSyncSkills => {
-                menu_request_world_action(client, &theme, WorldActionKind::SyncPlayerSkills, None)?
-            }
-            MenuAction::WorldResetChar => menu_reset_char(client, &theme)?,
-            MenuAction::WorldResetItem => menu_reset_item(client, &theme)?,
-            MenuAction::WorldResetAll => menu_request_world_action(
-                client,
-                &theme,
-                WorldActionKind::ResetAll,
-                Some("reset all character and item templates"),
-            )?,
-            MenuAction::ListBadwords => menu_list_badwords(client)?,
-            MenuAction::GetBadword => menu_get_badword(client, &theme)?,
-            MenuAction::AddBadwords => menu_add_badwords(client, &theme)?,
-            MenuAction::RemoveBadwords => menu_remove_badwords(client, &theme)?,
-            MenuAction::ExportBadwords => menu_export_badwords(client, &theme)?,
-            MenuAction::RefreshBadwords => menu_refresh_badwords(client, &theme)?,
             MenuAction::Quit => break,
-        }
-
-        if !Confirm::with_theme(&theme)
-            .with_prompt("Return to the admin menu?")
-            .default(true)
-            .interact()
-            .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?
-        {
-            break;
         }
     }
 
@@ -459,24 +430,10 @@ fn print_menu_header(api: &str) {
 
 fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
     let items = [
-        "Search item templates",
-        "Search character templates",
-        "Show item template by id",
-        "Show character template by id",
-        "Show globals",
-        "World: populate missing NPCs",
-        "World: wipe runtime state",
-        "World: rebuild lights",
-        "World: sync player skills",
-        "World: reset character template",
-        "World: reset item template",
-        "World: reset all templates",
-        "List badwords",
-        "Check one badword",
-        "Add badwords",
-        "Remove badwords",
-        "Export badwords",
-        "Refresh running server cache",
+        "World effects",
+        "Badword management",
+        "Template management",
+        "View globals",
         "Quit",
     ];
     let selected = Select::with_theme(theme)
@@ -487,25 +444,161 @@ fn choose_menu_action(theme: &ColorfulTheme) -> Result<MenuAction, CliError> {
         .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
 
     Ok(match selected {
-        0 => MenuAction::SearchItemTemplates,
-        1 => MenuAction::SearchCharacterTemplates,
-        2 => MenuAction::ShowItemTemplate,
-        3 => MenuAction::ShowCharacterTemplate,
-        4 => MenuAction::ShowGlobals,
-        5 => MenuAction::WorldPopulate,
-        6 => MenuAction::WorldWipe,
-        7 => MenuAction::WorldRebuildLights,
-        8 => MenuAction::WorldSyncSkills,
-        9 => MenuAction::WorldResetChar,
-        10 => MenuAction::WorldResetItem,
-        11 => MenuAction::WorldResetAll,
-        12 => MenuAction::ListBadwords,
-        13 => MenuAction::GetBadword,
-        14 => MenuAction::AddBadwords,
-        15 => MenuAction::RemoveBadwords,
-        16 => MenuAction::ExportBadwords,
-        17 => MenuAction::RefreshBadwords,
+        0 => MenuAction::WorldEffects,
+        1 => MenuAction::BadwordManagement,
+        2 => MenuAction::TemplateManagement,
+        3 => MenuAction::ShowGlobals,
         _ => MenuAction::Quit,
+    })
+}
+
+fn run_world_effects_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    loop {
+        match choose_world_menu_action(theme)? {
+            WorldMenuAction::Populate => {
+                menu_request_world_action(client, theme, WorldActionKind::PopulateMissing, None)?
+            }
+            WorldMenuAction::Wipe => menu_request_world_action(
+                client,
+                theme,
+                WorldActionKind::WipeRuntime,
+                Some("wipe dynamic runtime world state"),
+            )?,
+            WorldMenuAction::RebuildLights => {
+                menu_request_world_action(client, theme, WorldActionKind::RebuildLights, None)?
+            }
+            WorldMenuAction::SyncSkills => {
+                menu_request_world_action(client, theme, WorldActionKind::SyncPlayerSkills, None)?
+            }
+            WorldMenuAction::ResetChar => menu_reset_char(client, theme)?,
+            WorldMenuAction::ResetItem => menu_reset_item(client, theme)?,
+            WorldMenuAction::ResetAll => menu_request_world_action(
+                client,
+                theme,
+                WorldActionKind::ResetAll,
+                Some("reset all character and item templates"),
+            )?,
+            WorldMenuAction::Back => break,
+        }
+    }
+    Ok(())
+}
+
+fn choose_world_menu_action(theme: &ColorfulTheme) -> Result<WorldMenuAction, CliError> {
+    let items = [
+        "Populate missing NPCs",
+        "Wipe runtime state",
+        "Rebuild lights",
+        "Sync player skills",
+        "Reset character template",
+        "Reset item template",
+        "Reset all templates",
+        "Back",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("World effects")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => WorldMenuAction::Populate,
+        1 => WorldMenuAction::Wipe,
+        2 => WorldMenuAction::RebuildLights,
+        3 => WorldMenuAction::SyncSkills,
+        4 => WorldMenuAction::ResetChar,
+        5 => WorldMenuAction::ResetItem,
+        6 => WorldMenuAction::ResetAll,
+        _ => WorldMenuAction::Back,
+    })
+}
+
+fn run_badwords_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    loop {
+        match choose_badwords_menu_action(theme)? {
+            BadwordsMenuAction::List => menu_list_badwords(client)?,
+            BadwordsMenuAction::Get => menu_get_badword(client, theme)?,
+            BadwordsMenuAction::Add => menu_add_badwords(client, theme)?,
+            BadwordsMenuAction::Remove => menu_remove_badwords(client, theme)?,
+            BadwordsMenuAction::Export => menu_export_badwords(client, theme)?,
+            BadwordsMenuAction::Refresh => menu_refresh_badwords(client, theme)?,
+            BadwordsMenuAction::Back => break,
+        }
+    }
+    Ok(())
+}
+
+fn choose_badwords_menu_action(theme: &ColorfulTheme) -> Result<BadwordsMenuAction, CliError> {
+    let items = [
+        "List badwords",
+        "Check one badword",
+        "Add badwords",
+        "Remove badwords",
+        "Export badwords",
+        "Refresh running server cache",
+        "Back",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("Badword management")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => BadwordsMenuAction::List,
+        1 => BadwordsMenuAction::Get,
+        2 => BadwordsMenuAction::Add,
+        3 => BadwordsMenuAction::Remove,
+        4 => BadwordsMenuAction::Export,
+        5 => BadwordsMenuAction::Refresh,
+        _ => BadwordsMenuAction::Back,
+    })
+}
+
+fn run_templates_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
+    loop {
+        match choose_templates_menu_action(theme)? {
+            TemplatesMenuAction::SearchItemTemplates => {
+                menu_search_templates(client, theme, TemplateKindArg::Items)?
+            }
+            TemplatesMenuAction::SearchCharacterTemplates => {
+                menu_search_templates(client, theme, TemplateKindArg::Characters)?
+            }
+            TemplatesMenuAction::ShowItemTemplate => {
+                menu_show_template(client, theme, TemplateKindArg::Items)?
+            }
+            TemplatesMenuAction::ShowCharacterTemplate => {
+                menu_show_template(client, theme, TemplateKindArg::Characters)?
+            }
+            TemplatesMenuAction::Back => break,
+        }
+    }
+    Ok(())
+}
+
+fn choose_templates_menu_action(theme: &ColorfulTheme) -> Result<TemplatesMenuAction, CliError> {
+    let items = [
+        "Search item templates",
+        "Search character templates",
+        "Show item template by id",
+        "Show character template by id",
+        "Back",
+    ];
+    let selected = Select::with_theme(theme)
+        .with_prompt("Template management")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+
+    Ok(match selected {
+        0 => TemplatesMenuAction::SearchItemTemplates,
+        1 => TemplatesMenuAction::SearchCharacterTemplates,
+        2 => TemplatesMenuAction::ShowItemTemplate,
+        3 => TemplatesMenuAction::ShowCharacterTemplate,
+        _ => TemplatesMenuAction::Back,
     })
 }
 

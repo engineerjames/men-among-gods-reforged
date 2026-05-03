@@ -83,9 +83,10 @@ cargo run --package server-utils --bin map_viewer -- --snapshot server/assets/wo
 ### MAG Admin CLI
 
 An admin API client for operator workflows. By default it opens a guided
-interactive menu for browsing templates, viewing globals, and managing
-badwords. Scriptable command mode is explicit: pass `--auto` before the
-subcommand. The tool talks to the API and never connects directly to KeyDB.
+interactive menu organized into world effects, badword management, template
+management, globals, and quit. Scriptable command mode is explicit: pass
+`--auto` before the subcommand. The tool talks to the API and never connects
+directly to KeyDB.
 
 **Usage:**
 ```bash
@@ -139,7 +140,6 @@ Subcommands require `--auto` so automatable interactions are opt-in. Running
 without `--auto` opens the interactive menu, which reuses the same API calls as
 the scriptable commands. World actions execute on the running server and are
 pollable with `--wait`; destructive menu actions prompt for confirmation.
-the scriptable subcommands.
 
 ## Local Development Workflow
 
