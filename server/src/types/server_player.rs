@@ -34,7 +34,6 @@ pub struct ServerPlayer {
     /// write pointer into tbuf
     pub tptr: usize,
 
-    pub challenge: u32,
     pub state: u32,
     pub lasttick: u32,
     pub lasttick2: u32,
@@ -66,8 +65,6 @@ pub struct ServerPlayer {
     pub zs: Option<ZlibEncoder<Vec<u8>>>,
 
     pub ticker_started: i32,
-
-    pub unique: u64,
 
     /// Active weather kind sent to this player (0 = none).
     ///
@@ -109,7 +106,6 @@ impl ServerPlayer {
             iptr: 0,
             optr: 0,
             tptr: 0,
-            challenge: 0,
             state: 0,
             lasttick: 0,
             lasttick2: 0,
@@ -129,7 +125,6 @@ impl ServerPlayer {
             input: [0; 128],
             zs: None,
             ticker_started: 0,
-            unique: 0,
             weather_kind: 0,
             weather_intensity: 0,
             weather_expire_tick: 0,

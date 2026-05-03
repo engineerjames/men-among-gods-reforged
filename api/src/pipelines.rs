@@ -358,6 +358,45 @@ pub(crate) async fn get_character_account_id(
     con.hget(&character_key, "account_id").await
 }
 
+/// Gets the sex and class metadata used to derive game-login race data.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `character_id` - Character ID whose login metadata should be read.
+///
+/// # Returns
+/// * `Ok(Some((sex, class)))` if both fields exist and decode to known values.
+/// * `Ok(None)` if fields are missing or invalid.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn get_character_login_traits(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+) -> Result<Option<(Sex, Class)>, redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    let (sex_value, class_value): (Option<u32>, Option<u32>) = redis::cmd("HMGET")
+        .arg(&character_key)
+        .arg("sex")
+        .arg("class")
+        .query_async(&mut *con)
+        .await?;
+
+    let Some(sex_value) = sex_value else {
+        return Ok(None);
+    };
+    let Some(class_value) = class_value else {
+        return Ok(None);
+    };
+
+    let Some(sex) = Sex::from_u32(sex_value) else {
+        return Ok(None);
+    };
+    let Some(class) = Class::from_u32(class_value) else {
+        return Ok(None);
+    };
+
+    Ok(Some((sex, class)))
+}
+
 pub(crate) async fn get_character_name(
     con: &mut redis::aio::MultiplexedConnection,
     character_id: u64,

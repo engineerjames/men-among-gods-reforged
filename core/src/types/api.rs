@@ -1,3 +1,4 @@
+use bincode::{Decode, Encode};
 use serde::{Deserialize, Serialize};
 
 pub use crate::traits::{Class, Sex};
@@ -35,7 +36,10 @@ pub struct CreateAccountResponse {
 /// Request a one-time ticket to log into the game server.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateGameLoginTicketRequest {
+    /// API character ID the client wants to enter the game with.
     pub character_id: u64,
+    /// Client protocol version reported before the game-server TCP login.
+    pub client_version: u32,
 }
 
 /// Response containing a one-time game login ticket.
@@ -43,6 +47,55 @@ pub struct CreateGameLoginTicketRequest {
 pub struct CreateGameLoginTicketResponse {
     pub ticket: Option<u64>,
     pub error: Option<String>,
+}
+
+/// Metadata stored behind a short-lived game login ticket.
+///
+/// The API writes this payload into KeyDB after authenticating account
+/// ownership and validating protocol compatibility. The game server consumes
+/// it atomically during TCP login and uses it to initialize the same transient
+/// player fields previously carried by the challenge response packet.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct GameLoginTicketMetadata {
+    /// API character ID authorized for the one-time game login.
+    pub character_id: u64,
+    /// Client protocol version accepted by the API.
+    pub client_version: u32,
+    /// Server-derived character race/template integer for login state.
+    pub race: i32,
+}
+
+impl GameLoginTicketMetadata {
+    /// Encodes this ticket metadata to the canonical bincode byte representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<u8>)` containing the encoded payload.
+    /// * `Err(bincode::error::EncodeError)` when bincode encoding fails.
+    pub fn to_bytes(&self) -> Result<Vec<u8>, bincode::error::EncodeError> {
+        bincode::encode_to_vec(self, bincode::config::standard())
+    }
+
+    /// Decodes ticket metadata from the canonical bincode byte representation.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Raw bincode bytes loaded from KeyDB.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(GameLoginTicketMetadata)` when decoding consumes the entire input.
+    /// * `Err(bincode::error::DecodeError)` when decoding fails or trailing bytes remain.
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, bincode::error::DecodeError> {
+        let (metadata, consumed): (Self, usize) =
+            bincode::decode_from_slice(bytes, bincode::config::standard())?;
+        if consumed != bytes.len() {
+            return Err(bincode::error::DecodeError::OtherString(
+                "trailing bytes in game login ticket metadata".to_string(),
+            ));
+        }
+        Ok(metadata)
+    }
 }
 
 /// Summary of a character owned by an account.
@@ -157,4 +210,37 @@ pub struct ResetPasswordConfirm {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ResetPasswordConfirmResponse {
     pub message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn game_login_ticket_metadata_bincode_roundtrip() {
+        let metadata = GameLoginTicketMetadata {
+            character_id: 42,
+            client_version: 0x020E07,
+            race: 12,
+        };
+
+        let encoded = metadata.to_bytes().expect("metadata should encode");
+        let decoded =
+            GameLoginTicketMetadata::from_bytes(&encoded).expect("metadata should decode");
+
+        assert_eq!(decoded, metadata);
+    }
+
+    #[test]
+    fn game_login_ticket_metadata_rejects_trailing_bytes() {
+        let metadata = GameLoginTicketMetadata {
+            character_id: 42,
+            client_version: 0x020E07,
+            race: 12,
+        };
+        let mut encoded = metadata.to_bytes().expect("metadata should encode");
+        encoded.push(0);
+
+        assert!(GameLoginTicketMetadata::from_bytes(&encoded).is_err());
+    }
 }

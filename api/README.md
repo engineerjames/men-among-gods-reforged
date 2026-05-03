@@ -345,16 +345,15 @@ sequenceDiagram
 
     C->>GS: TCP connect :5555
     Note over C,API: Client mints a short-lived, one-time game login ticket
-    C->>API: POST /game/login_ticket (Authorization: Bearer JWT, character_id)
-    API->>DB: SET game_login_ticket:{ticket} {character_id} EX 30 NX
+    C->>API: POST /game/login_ticket (Authorization: Bearer JWT, character_id, client_version)
+    API->>API: Validate client_version and derive race from character sex/class
+    API->>DB: SET game_login_ticket:{ticket} bincode(GameLoginTicketMetadata) EX 30 NX
     API-->>C: 200 { ticket }
 
     Note over C,GS: Ticket is sent over the TCP login handshake
     C->>GS: CL_API_LOGIN { ticket }
-    GS-->>C: SV_CHALLENGE
-    C->>GS: CL_CHALLENGE
-
     GS->>DB: GET+DEL game_login_ticket:{ticket} (atomic consume)
+    GS->>GS: Set player version/race from ticket metadata
     GS->>DB: HGETALL character:{character_id}
     GS->>GS: Create in-game character slot if needed and set name/description
     GS->>DB: HSET character:{character_id} { server_id={cn}, class, sex, selection_sprite_id }
@@ -380,15 +379,14 @@ sequenceDiagram
 
     C->>GS: TCP connect :5555
     Note over C,API: Client mints a fresh one-time ticket each login
-    C->>API: POST /game/login_ticket (Authorization: Bearer JWT, character_id)
-    API->>DB: SET game_login_ticket:{ticket} {character_id} EX 30 NX
+    C->>API: POST /game/login_ticket (Authorization: Bearer JWT, character_id, client_version)
+    API->>API: Validate client_version and derive race from character sex/class
+    API->>DB: SET game_login_ticket:{ticket} bincode(GameLoginTicketMetadata) EX 30 NX
     API-->>C: 200 { ticket }
 
     C->>GS: CL_API_LOGIN { ticket }
-    GS-->>C: SV_CHALLENGE
-    C->>GS: CL_CHALLENGE
-
     GS->>DB: GET+DEL game_login_ticket:{ticket} (atomic consume)
+    GS->>GS: Set player version/race from ticket metadata
     GS->>DB: HGETALL character:{character_id}
     Note over GS: If character has a valid server_id, reuse that slot
     GS-->>C: SV_LOGIN_OK + SV_TICK

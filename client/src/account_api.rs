@@ -327,7 +327,10 @@ pub fn create_game_login_ticket(
     let resp = client
         .post(url)
         .bearer_auth(token)
-        .json(&CreateGameLoginTicketRequest { character_id })
+        .json(&CreateGameLoginTicketRequest {
+            character_id,
+            client_version: mag_core::constants::VERSION,
+        })
         .send()
         .map_err(|err| format!("Create login ticket request failed: {err}"))?;
 
@@ -345,7 +348,7 @@ pub fn create_game_login_ticket(
 
     let fallback = match status {
         StatusCode::UNAUTHORIZED => "Unauthorized",
-        StatusCode::BAD_REQUEST => "Invalid request",
+        StatusCode::BAD_REQUEST => "Invalid request or unsupported client version",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Ticket creation failed",
     };

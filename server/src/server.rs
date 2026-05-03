@@ -1763,7 +1763,6 @@ impl Server {
         gs.players[n].iptr = 0;
         gs.players[n].optr = 0;
         gs.players[n].tptr = 0;
-        gs.players[n].challenge = 0;
         gs.players[n].usnr = 0;
 
         gs.players[n].cmap.fill(CMap::default());

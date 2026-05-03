@@ -1,21 +1,41 @@
 use core::{
     constants::CharacterFlags,
-    encrypt::xcrypt,
     logout_reasons::LogoutReason,
     server_commands::ServerCommandType,
     skills,
     string_operations::write_ascii_into_fixed,
     traits::get_race_integer,
-    types::{CharacterSummary, Sex},
+    types::{CharacterSummary, Sex, api::GameLoginTicketMetadata},
 };
 
 use server::keydb::connection as keydb;
 
-use crate::{game_state::GameState, god::God, helpers, network_manager};
+use crate::{game_state::GameState, god::God, network_manager};
 
 /// Port of `plr_login` from `svr_tick.cpp`
 /// Handles existing player login (stub - to be implemented)
 pub fn plr_login(gs: &mut GameState, nr: usize) {
+    let login_ticket = gs.players[nr].login_ticket;
+    if login_ticket == 0 {
+        log::warn!("Login attempt without API ticket; rejecting");
+        plr_logout(gs, 0, nr, LogoutReason::ParamsInvalid);
+        return;
+    }
+
+    let login_ticket_data =
+        match consume_api_login_ticket(login_ticket, keydb::consume_login_ticket) {
+            Ok(login_ticket_data) => login_ticket_data,
+            Err(reason) => {
+                log::warn!("API login ticket denied: {:?}", reason);
+                plr_logout(gs, 0, nr, reason);
+                return;
+            }
+        };
+
+    gs.players[nr].version = login_ticket_data.client_version as i32;
+    gs.players[nr].race = login_ticket_data.race;
+    gs.players[nr].api_character_id = login_ticket_data.character_id;
+
     // version check
     let version = gs.players[nr].version as u32;
     if version < core::constants::MINVERSION {
@@ -24,13 +44,7 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let login_ticket = gs.players[nr].login_ticket;
-    if login_ticket == 0 {
-        log::warn!("Login attempt without API ticket; rejecting");
-        plr_logout(gs, 0, nr, LogoutReason::ParamsInvalid);
-        return;
-    }
-    let cn = match resolve_api_login_character(gs, nr, login_ticket) {
+    let cn = match resolve_api_login_character(gs, nr, login_ticket_data.character_id) {
         Ok(cn) => cn,
         Err(reason) => {
             log::warn!("API login denied: {:?}", reason);
@@ -253,46 +267,51 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
 fn resolve_api_login_character(
     gs: &mut GameState,
     nr: usize,
-    login_ticket: u64,
+    character_id: u64,
 ) -> Result<usize, LogoutReason> {
     resolve_api_login_character_with_ops(
         gs,
         nr,
-        login_ticket,
-        keydb::consume_login_ticket,
+        character_id,
         keydb::load_character,
         keydb::set_character_server_id,
         keydb::sync_character_selection_metadata,
     )
 }
 
-fn resolve_api_login_character_with_ops<ConsumeTicket, LoadCharacter, SetServerId, SyncMetadata>(
-    gs: &mut GameState,
-    nr: usize,
+fn consume_api_login_ticket<ConsumeTicket>(
     login_ticket: u64,
     mut consume_ticket: ConsumeTicket,
+) -> Result<GameLoginTicketMetadata, LogoutReason>
+where
+    ConsumeTicket: FnMut(u64) -> Result<Option<GameLoginTicketMetadata>, String>,
+{
+    match consume_ticket(login_ticket) {
+        Ok(Some(value)) => Ok(value),
+        Ok(None) => {
+            log::warn!("API login ticket not found or expired");
+            Err(LogoutReason::PasswordIncorrect)
+        }
+        Err(err) => {
+            log::error!("KeyDB ticket consume failed: {}", err);
+            Err(LogoutReason::Failure)
+        }
+    }
+}
+
+fn resolve_api_login_character_with_ops<LoadCharacter, SetServerId, SyncMetadata>(
+    gs: &mut GameState,
+    nr: usize,
+    character_id: u64,
     mut load_character: LoadCharacter,
     mut set_server_id: SetServerId,
     mut sync_selection_metadata: SyncMetadata,
 ) -> Result<usize, LogoutReason>
 where
-    ConsumeTicket: FnMut(u64) -> Result<Option<u64>, String>,
     LoadCharacter: FnMut(u64) -> Result<Option<CharacterSummary>, String>,
     SetServerId: FnMut(u64, u32) -> Result<(), String>,
     SyncMetadata: FnMut(u64, &core::types::Character) -> Result<(), String>,
 {
-    let character_id = match consume_ticket(login_ticket) {
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            log::warn!("API login ticket not found or expired");
-            return Err(LogoutReason::PasswordIncorrect);
-        }
-        Err(err) => {
-            log::error!("KeyDB ticket consume failed: {}", err);
-            return Err(LogoutReason::Failure);
-        }
-    };
-
     let character = match load_character(character_id) {
         Ok(Some(value)) => value,
         Ok(None) => {
@@ -716,97 +735,13 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
     }
 }
 
-/// Port of `plr_challenge` from `svr_tick.cpp`
-///
-/// Verifies the client's response to a previously issued challenge. Reads the
-/// response, client version, and race from the inbuf, stores version/race on
-/// the player record, validates the response using `xcrypt`, and moves the
-/// player through the login state machine on success (or logs them out on
-/// failure).
-///
-/// # Arguments
-/// * `nr` - Player slot index handling the challenge response
-pub fn plr_challenge(gs: &mut GameState, nr: usize) {
-    let (challenge, state) = (gs.players[nr].challenge, gs.players[nr].state);
-
-    let response = u32::from_le_bytes([
-        gs.players[nr].inbuf[1],
-        gs.players[nr].inbuf[2],
-        gs.players[nr].inbuf[3],
-        gs.players[nr].inbuf[4],
-    ]);
-    let version = i32::from_le_bytes([
-        gs.players[nr].inbuf[5],
-        gs.players[nr].inbuf[6],
-        gs.players[nr].inbuf[7],
-        gs.players[nr].inbuf[8],
-    ]);
-    let race = i32::from_le_bytes([
-        gs.players[nr].inbuf[9],
-        gs.players[nr].inbuf[10],
-        gs.players[nr].inbuf[11],
-        gs.players[nr].inbuf[12],
-    ]);
-
-    gs.players[nr].version = version;
-    gs.players[nr].race = race;
-
-    log::info!(
-        "Player {} challenge: response={:08X}, version={}, race={}",
-        nr,
-        response,
-        version,
-        race
-    );
-
-    // Verify the challenge response
-    if response != xcrypt(challenge) {
-        log::warn!("Player {} challenge failed", nr);
-        let usnr = gs.players[nr].usnr;
-        plr_logout(gs, usnr, nr, LogoutReason::ChallengeFailed);
-        return;
-    }
-
-    let ticker = gs.globals.ticker as u32;
-
-    // Update state based on current state
-    match state {
-        state if state == core::constants::ST_LOGIN_CHALLENGE => {
-            gs.players[nr].state = core::constants::ST_LOGIN;
-            gs.players[nr].lasttick = ticker;
-            log::info!("Player {} login challenge passed", nr);
-        }
-        state if state == core::constants::ST_CHALLENGE => {
-            gs.players[nr].state = core::constants::ST_NORMAL;
-            gs.players[nr].lasttick = ticker;
-            gs.players[nr].ltick = 0;
-            log::info!("Player {} logged in successfully", nr);
-        }
-        _ => {
-            log::warn!(
-                "Player {} challenge reply at unexpected state {}",
-                nr,
-                state
-            );
-        }
-    }
-
-    log::debug!("Player {} challenge ok", nr);
-}
-
-/// Handle API ticket based login challenge.
+/// Handle API ticket based login.
 ///
 /// The client sends `CL_API_LOGIN` with a u64 one-time ticket in the payload.
-/// We store the ticket on the player slot and then proceed with the normal
-/// `SV_CHALLENGE` / `CL_CHALLENGE` handshake.
-pub fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
-    log::debug!("Player {} challenge_api_login", nr);
-
-    // Generate random challenge value (0x3fffffff max, ensure non-zero)
-    let mut tmp = helpers::random_mod(0x3fffffff_u32 - 1) + 1;
-    if tmp == 0 {
-        tmp = 42;
-    }
+/// We store the ticket on the player slot, enter the login state, and send the
+/// login-time mod packets while `plr_login` consumes the typed ticket metadata.
+pub fn plr_api_login(gs: &mut GameState, nr: usize) {
+    log::debug!("Player {} api_login", nr);
 
     let ticket = u64::from_le_bytes([
         gs.players[nr].inbuf[1],
@@ -820,64 +755,15 @@ pub fn plr_challenge_api_login(gs: &mut GameState, nr: usize) {
     ]);
 
     let ticker = gs.globals.ticker as u32;
-    gs.players[nr].challenge = tmp;
-    gs.players[nr].state = core::constants::ST_LOGIN_CHALLENGE;
+    gs.players[nr].state = core::constants::ST_LOGIN;
     gs.players[nr].lasttick = ticker;
     gs.players[nr].login_ticket = ticket;
     gs.players[nr].usnr = 0;
     gs.players[nr].api_character_id = 0;
 
-    let mut buf: [u8; 16] = [0; 16];
-    buf[0] = ServerCommandType::Challenge as u8;
-    buf[1..5].copy_from_slice(&tmp.to_le_bytes());
-    network_manager::csend(gs, nr, &buf, 16);
-
-    log::info!("Player {} api login challenge issued", nr);
+    log::info!("Player {} api login ticket accepted for resolution", nr);
 
     send_mod(gs, nr);
-}
-
-/// Port of `plr_unique` from `svr_tick.cpp`
-///
-/// Receives the client's unique 8-byte identifier or generates a server-side
-/// unique if the client provided none. The server stores the value in
-/// `players[nr].unique` and echoes back a generated unique when applicable.
-///
-/// # Arguments
-/// * `nr` - Player slot index sending the unique
-pub fn plr_unique(gs: &mut GameState, nr: usize) {
-    // Read unique ID from inbuf (8 bytes as u64)
-    let unique = u64::from_le_bytes([
-        gs.players[nr].inbuf[1],
-        gs.players[nr].inbuf[2],
-        gs.players[nr].inbuf[3],
-        gs.players[nr].inbuf[4],
-        gs.players[nr].inbuf[5],
-        gs.players[nr].inbuf[6],
-        gs.players[nr].inbuf[7],
-        gs.players[nr].inbuf[8],
-    ]);
-
-    gs.players[nr].unique = unique;
-
-    log::debug!("Player {} received unique {:016X}", nr, unique);
-
-    // If client doesn't have a unique ID, generate one
-    if unique == 0 {
-        gs.globals.unique = gs.globals.unique.wrapping_add(1);
-        let new_unique = gs.globals.unique;
-
-        gs.players[nr].unique = new_unique;
-
-        // Send the new unique ID back to the client
-        let mut buf: [u8; 16] = [0; 16];
-        buf[0] = ServerCommandType::Unique as u8;
-        buf[1..9].copy_from_slice(&new_unique.to_le_bytes());
-
-        network_manager::xsend(gs, nr, &buf, 9);
-
-        log::debug!("Player {} sent unique {:016X}", nr, new_unique);
-    }
 }
 
 /// Port of `send_mod` from `svr_tick.cpp`
@@ -903,8 +789,8 @@ mod tests {
     use super::*;
     use core::{
         constants::{
-            CharacterFlags, HOME_MERCENARY_X, HOME_MERCENARY_Y, ST_CHALLENGE, ST_EXIT, ST_LOGIN,
-            ST_LOGIN_CHALLENGE, ST_NORMAL, USE_ACTIVE, USE_NONACTIVE,
+            CharacterFlags, HOME_MERCENARY_X, HOME_MERCENARY_Y, ST_EXIT, ST_LOGIN, USE_ACTIVE,
+            USE_NONACTIVE,
         },
         string_operations::c_string_to_str,
         traits,
@@ -962,14 +848,6 @@ mod tests {
         write_ascii_into_fixed(&mut gs.characters[cn].name, name);
         write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
         gs.map[map_index(10, 10)].ch = cn as u32;
-    }
-
-    fn challenge_response_packet(response: u32, version: i32, race: i32) -> [u8; 13] {
-        let mut packet = [0u8; 13];
-        packet[1..5].copy_from_slice(&response.to_le_bytes());
-        packet[5..9].copy_from_slice(&version.to_le_bytes());
-        packet[9..13].copy_from_slice(&race.to_le_bytes());
-        packet
     }
 
     fn count_obuf_packets(gs: &GameState, nr: usize, packet_id: u8) -> usize {
@@ -1044,21 +922,15 @@ mod tests {
     fn resolve_api_login_character_with_ops_handles_error_and_success_paths() {
         with_test_gs(|gs| {
             let (_, nr) = add_test_player(gs);
-            let called_load = Cell::new(false);
             let result = resolve_api_login_character_with_ops(
                 gs,
                 nr,
                 123,
                 |_| Ok(None),
-                |_| {
-                    called_load.set(true);
-                    Ok(None)
-                },
                 |_, _| Ok(()),
                 |_, _| Ok(()),
             );
             assert_eq!(result, Err(LogoutReason::PasswordIncorrect));
-            assert!(!called_load.get());
         });
 
         with_test_gs(|gs| {
@@ -1075,8 +947,7 @@ mod tests {
             let cn = resolve_api_login_character_with_ops(
                 gs,
                 nr,
-                999,
-                |_| Ok(Some(77)),
+                77,
                 |_| {
                     Ok(Some(CharacterSummary {
                         id: 77,
@@ -1104,6 +975,28 @@ mod tests {
             assert!(synced.get());
             assert_eq!(gs.players[nr].api_character_id, 77);
         });
+    }
+
+    #[test]
+    fn consume_api_login_ticket_handles_metadata_and_errors() {
+        let metadata = GameLoginTicketMetadata {
+            character_id: 77,
+            client_version: core::constants::VERSION,
+            race: 3,
+        };
+
+        assert_eq!(
+            consume_api_login_ticket(999, |_| Ok(Some(metadata.clone()))).unwrap(),
+            metadata
+        );
+        assert_eq!(
+            consume_api_login_ticket(999, |_| Ok(None)),
+            Err(LogoutReason::PasswordIncorrect)
+        );
+        assert_eq!(
+            consume_api_login_ticket(999, |_| Err("decode failed".to_string())),
+            Err(LogoutReason::Failure)
+        );
     }
 
     #[test]
@@ -1156,44 +1049,7 @@ mod tests {
     }
 
     #[test]
-    fn plr_challenge_transitions_states_and_rejects_bad_responses() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            gs.players[nr].challenge = 88;
-            gs.players[nr].state = ST_LOGIN_CHALLENGE;
-            gs.globals.ticker = 11;
-            write_inbuf(gs, nr, &challenge_response_packet(xcrypt(88), 321, 2));
-            plr_challenge(gs, nr);
-            assert_eq!(gs.players[nr].state, ST_LOGIN);
-        });
-
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            gs.players[nr].challenge = 99;
-            gs.players[nr].state = ST_CHALLENGE;
-            gs.players[nr].ltick = 44;
-            gs.globals.ticker = 12;
-            write_inbuf(gs, nr, &challenge_response_packet(xcrypt(99), 222, 3));
-            plr_challenge(gs, nr);
-            assert_eq!(gs.players[nr].state, ST_NORMAL);
-            assert_eq!(gs.players[nr].ltick, 0);
-        });
-
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            gs.players[nr].challenge = 55;
-            gs.players[nr].state = ST_LOGIN_CHALLENGE;
-            write_inbuf(gs, nr, &challenge_response_packet(12345, 1, 2));
-            plr_challenge(gs, nr);
-            assert_eq!(gs.players[nr].state, ST_EXIT);
-        });
-    }
-
-    #[test]
-    fn plr_challenge_api_login_stores_ticket_and_sends_mods() {
+    fn plr_api_login_stores_ticket_and_sends_mods() {
         with_test_gs(|gs| {
             let (_, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
@@ -1202,45 +1058,13 @@ mod tests {
             packet[1..9].copy_from_slice(&0x1122334455667788u64.to_le_bytes());
             write_inbuf(gs, nr, &packet);
 
-            plr_challenge_api_login(gs, nr);
+            plr_api_login(gs, nr);
 
-            assert_eq!(gs.players[nr].state, ST_LOGIN_CHALLENGE);
+            assert_eq!(gs.players[nr].state, ST_LOGIN);
             assert_eq!(gs.players[nr].login_ticket, 0x1122334455667788);
             assert_eq!(gs.players[nr].usnr, 0);
             assert_eq!(gs.players[nr].api_character_id, 0);
-            assert_eq!(gs.players[nr].iptr, 16 * 9);
-        });
-    }
-
-    #[test]
-    fn plr_unique_stores_client_unique_or_generates_one() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            let mut packet = [0u8; 9];
-            packet[1..9].copy_from_slice(&0xAA55AA55AA55AA55u64.to_le_bytes());
-            write_inbuf(gs, nr, &packet);
-
-            plr_unique(gs, nr);
-
-            assert_eq!(gs.players[nr].unique, 0xAA55AA55AA55AA55u64);
-            assert_eq!(gs.players[nr].tptr, 0);
-        });
-
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            gs.globals.unique = 10;
-            write_inbuf(gs, nr, &[0; 9]);
-
-            plr_unique(gs, nr);
-
-            assert_eq!(gs.players[nr].unique, 11);
-            assert_eq!(gs.players[nr].tbuf[0], ServerCommandType::Unique as u8);
-            assert_eq!(
-                u64::from_le_bytes(gs.players[nr].tbuf[1..9].try_into().unwrap()),
-                11
-            );
+            assert_eq!(gs.players[nr].iptr, 16 * 8);
         });
     }
 

@@ -589,14 +589,11 @@ pub const AUTOLOOT_ITEM_IDS: &[u16] = &[
 // =============================================================================
 
 pub const ST_CONNECT: u32 = 0;
-pub const ST_NEW_CHALLENGE: u32 = 1;
-pub const ST_LOGIN_CHALLENGE: u32 = 2;
 pub const ST_NEWLOGIN: u32 = 3;
 pub const ST_LOGIN: u32 = 4;
 pub const ST_NEWCAP: u32 = 5;
 pub const ST_CAP: u32 = 6;
 pub const ST_NORMAL: u32 = 10;
-pub const ST_CHALLENGE: u32 = 11;
 pub const ST_EXIT: u32 = 12;
 
 // =============================================================================

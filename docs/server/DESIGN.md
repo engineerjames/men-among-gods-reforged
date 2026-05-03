@@ -147,7 +147,6 @@ The payload is a **byte stream of server messages** queued via `xsend()`.
 
 Here is a full list of the op-codes with a brief description of each:
 - `SV_EMPTY (0)`: No-op/empty message; used as a placeholder in the protocol.
-- `SV_CHALLENGE (1)`: Login handshake challenge; server sends to prove liveness and gate authentication.
 - `SV_NEWPLAYER (2)`: Binds the TCP connection to a character id + session keys; server sends after successful new login.
 - `SV_SETCHAR_NAME1 (3)`: Character name update (part 1); server sends when the client needs name state.
 - `SV_SETCHAR_NAME2 (4)`: Character name update (part 2); server sends when the client needs name state.
@@ -209,7 +208,6 @@ Here is a full list of the op-codes with a brief description of each:
 - `SV_SETCHAR_AEND (69)`: “Active/augmented” endurance update; server sends when derived endurance changes.
 - `SV_SETCHAR_AMANA (70)`: “Active/augmented” mana update; server sends when derived mana changes.
 - `SV_SETCHAR_DIR (71)`: Facing direction update; server sends when direction changes.
-- `SV_UNIQUE (72)`: Unique/entropy handshake response; server sends to complete `CL_CMD_UNIQUE` flows.
 - `SV_IGNORE (73)`: Ignore-list update; server sends when ignore state changes.
 - `SV_SETMAP (128+)`: Bulk/short map update opcodes (128–255 reserved); server sends high-volume tile updates efficiently.
 

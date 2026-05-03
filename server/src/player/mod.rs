@@ -10,7 +10,7 @@ use crate::{
             plr_cmd_ping, plr_cmd_reset, plr_cmd_reset_talents, plr_cmd_shop, plr_cmd_skill,
             plr_cmd_stat, plr_cmd_turn, plr_cmd_use,
         },
-        connection::{plr_challenge, plr_challenge_api_login, plr_unique},
+        connection::plr_api_login,
     },
 };
 
@@ -27,19 +27,10 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
 
     let parsed_cmd = ClientCommandType::from(cmd);
 
-    // Handle pre-login commands (mirrors the initial switch in the original C++).
-    // These generally transition connection state; only `CL_CMD_UNIQUE` returns
-    // immediately in the original code.
+    // Handle pre-login commands that transition connection state before normal gameplay.
     match parsed_cmd {
-        ClientCommandType::Challenge => {
-            plr_challenge(gs, nr);
-        }
         ClientCommandType::ApiLogin => {
-            plr_challenge_api_login(gs, nr);
-        }
-        ClientCommandType::CmdUnique => {
-            plr_unique(gs, nr);
-            return;
+            plr_api_login(gs, nr);
         }
         _ => {
             // No need to log other commands here; they are logged in their handlers.

@@ -22,7 +22,6 @@ pub enum DisplayCommand {
 #[derive(Clone, Debug)]
 pub struct GameLoginTarget {
     pub ticket: u64,
-    pub race: i32,
     pub character_id: u64,
     pub character_name: String,
 }
