@@ -3,7 +3,7 @@
 use crate::ApiState;
 use crate::admin::types::{
     BanCreateRequest, BanListResponse, BanMutationResponse, BanRecordResponse, BanTargetRequest,
-    BanTargetResponse, ErrorResponse,
+    BanTargetResponse, CharacterSearchResponse, CharacterSearchResult, ErrorResponse,
 };
 use crate::pipelines;
 use axum::Json;
@@ -40,6 +40,18 @@ pub(crate) struct BanActionStatusQuery {
     /// Live action request id.
     request_id: String,
 }
+
+/// Query parameters for character-name search.
+#[derive(Debug, Deserialize)]
+pub(crate) struct CharacterSearchQuery {
+    /// Name or partial name to search for.
+    name: String,
+    /// Maximum number of matches to return.
+    limit: Option<usize>,
+}
+
+const DEFAULT_CHARACTER_SEARCH_LIMIT: usize = 20;
+const MAX_CHARACTER_SEARCH_LIMIT: usize = 50;
 
 /// GET `/admin/bans`.
 pub(crate) async fn list_bans(
@@ -215,6 +227,47 @@ pub(crate) async fn get_ban_action_status(
     };
 
     Json(parse_status(&query.request_id, stored)).into_response()
+}
+
+/// GET `/admin/bans/characters/search?name=...`.
+pub(crate) async fn search_characters(
+    State(state): State<ApiState>,
+    Query(query): Query<CharacterSearchQuery>,
+) -> Response {
+    let name = query.name.trim();
+    if name.is_empty() {
+        return bad_request("missing_name", "Provide ?name=<character name>");
+    }
+
+    let limit = query
+        .limit
+        .unwrap_or(DEFAULT_CHARACTER_SEARCH_LIMIT)
+        .min(MAX_CHARACTER_SEARCH_LIMIT);
+    let mut con = state.con.clone();
+    let matches = match pipelines::search_characters_by_name_scan(&mut con, name, limit).await {
+        Ok(matches) => matches,
+        Err(error) => {
+            warn!("admin character search failed: {}", error);
+            return internal_error("keydb_error", "Failed to search characters");
+        }
+    };
+
+    let characters: Vec<CharacterSearchResult> = matches
+        .into_iter()
+        .map(|value| CharacterSearchResult {
+            id: value.id,
+            name: value.name,
+            account_id: value.account_id,
+            server_id: value.server_id,
+        })
+        .collect();
+
+    Json(CharacterSearchResponse {
+        query: name.to_string(),
+        count: characters.len(),
+        characters,
+    })
+    .into_response()
 }
 
 /// Return whether an account has an active ban.

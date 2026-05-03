@@ -422,6 +422,30 @@ pub struct BanMutationResponse {
     pub live_request_id: Option<String>,
 }
 
+/// Character match returned by admin character-name search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSearchResult {
+    /// API character id used by ban records.
+    pub id: u64,
+    /// Unique character name.
+    pub name: String,
+    /// Owning account id when present.
+    pub account_id: Option<u64>,
+    /// Live/game character slot id last written by the server.
+    pub server_id: Option<u32>,
+}
+
+/// Response from `GET /admin/bans/characters/search`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSearchResponse {
+    /// Original query string.
+    pub query: String,
+    /// Number of returned matches.
+    pub count: usize,
+    /// Matching characters.
+    pub characters: Vec<CharacterSearchResult>,
+}
+
 /// Blocking client for the admin API.
 #[derive(Debug, Clone)]
 pub struct AdminClient {
@@ -1034,6 +1058,37 @@ impl AdminClient {
             return Err(format!("GET {url}: HTTP {}", resp.status()));
         }
         resp.json::<BanListResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Search account-managed characters by name for ban targeting.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Exact or partial character name.
+    /// * `limit` - Maximum number of matches to return.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` on success.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn search_characters(
+        &self,
+        name: &str,
+        limit: usize,
+    ) -> Result<CharacterSearchResponse, String> {
+        let url = self.url("/admin/bans/characters/search");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("name", name.to_string()), ("limit", limit.to_string())])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<CharacterSearchResponse>()
             .map_err(|e| format!("GET {url}: decode: {e}"))
     }
 

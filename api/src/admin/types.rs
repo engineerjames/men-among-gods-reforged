@@ -117,6 +117,30 @@ pub struct BanMutationResponse {
     pub live_request_id: Option<String>,
 }
 
+/// Character match returned by admin character-name search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSearchResult {
+    /// API character id used by account routes and character bans.
+    pub id: u64,
+    /// Unique character name.
+    pub name: String,
+    /// Owning API account id when present in the character hash.
+    pub account_id: Option<u64>,
+    /// Live/game character slot id last written by the server.
+    pub server_id: Option<u32>,
+}
+
+/// Response for admin character-name search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSearchResponse {
+    /// Original query string.
+    pub query: String,
+    /// Number of returned character matches.
+    pub count: usize,
+    /// Matching characters, exact case-insensitive name matches first.
+    pub characters: Vec<CharacterSearchResult>,
+}
+
 /// Per-slot summary returned by listing endpoints.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TemplateSummary {

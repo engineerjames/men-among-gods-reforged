@@ -125,6 +125,10 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
             get(routes_bans::list_bans).post(routes_bans::create_ban),
         )
         .route(
+            "/bans/characters/search",
+            get(routes_bans::search_characters),
+        )
+        .route(
             "/bans/account/{account_id}",
             get(routes_bans::get_account_ban).delete(routes_bans::delete_account_ban),
         )

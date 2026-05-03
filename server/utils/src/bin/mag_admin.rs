@@ -13,9 +13,9 @@ use serde_json::Value;
 use server_utils::admin_client::{
     AdminClient, BadwordEntryResponse, BadwordsListResponse, BadwordsMutationResponse,
     BanActionStatusResponse, BanCreateRequest, BanCreateTargetRequest, BanListResponse,
-    BanMutationResponse, GlobalsResponse, TemplateListResponse, TemplateSummary,
-    TextReloadResponse, TextReloadStatusResponse, WorldActionKind, WorldActionResponse,
-    WorldActionStatusResponse,
+    BanMutationResponse, CharacterSearchResult, GlobalsResponse, TemplateListResponse,
+    TemplateSummary, TextReloadResponse, TextReloadStatusResponse, WorldActionKind,
+    WorldActionResponse, WorldActionStatusResponse,
 };
 use std::fs;
 use std::io::{self, Read};
@@ -967,11 +967,13 @@ fn menu_add_account_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(
 }
 
 fn menu_add_character_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
-    let character_id = prompt_u64(theme, "Character id")?;
+    let character = menu_select_character_for_ban(client, theme)?;
     let reason = prompt_optional_text(theme, "Reason (optional)")?;
     let response = client
         .create_ban(&BanCreateRequest {
-            target: BanCreateTargetRequest::Character { character_id },
+            target: BanCreateTargetRequest::Character {
+                character_id: character.id,
+            },
             reason,
             expires_at: None,
             duration_seconds: None,
@@ -981,6 +983,50 @@ fn menu_add_character_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result
         .map_err(CliError::Runtime)?;
     print_ban_mutation(&response, OutputFormat::Table, false)?;
     menu_wait_for_ban_action(client, theme, &response)
+}
+
+fn menu_select_character_for_ban(
+    client: &AdminClient,
+    theme: &ColorfulTheme,
+) -> Result<CharacterSearchResult, CliError> {
+    let query = prompt_text(theme, "Character name", None)?;
+    let response = client
+        .search_characters(&query, 20)
+        .map_err(CliError::Runtime)?;
+    if response.characters.is_empty() {
+        return Err(CliError::Runtime(format!(
+            "no characters found matching '{}'",
+            response.query
+        )));
+    }
+
+    let items: Vec<String> = response
+        .characters
+        .iter()
+        .map(format_character_search_result)
+        .collect();
+    let selected = Select::with_theme(theme)
+        .with_prompt("Choose character")
+        .items(&items)
+        .default(0)
+        .interact()
+        .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))?;
+    Ok(response.characters[selected].clone())
+}
+
+fn format_character_search_result(character: &CharacterSearchResult) -> String {
+    let account = character
+        .account_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let server = character
+        .server_id
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "offline".to_string());
+    format!(
+        "{} (api id {}, /who id {}, account {})",
+        character.name, character.id, server, account
+    )
 }
 
 fn menu_add_ip_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), CliError> {
