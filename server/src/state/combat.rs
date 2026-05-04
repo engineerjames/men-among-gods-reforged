@@ -287,78 +287,98 @@ impl GameState {
     /// * `cn` - Attacker character index.
     /// * `co` - Primary defender character index.
     /// * `is_surround` - Whether learned Surround Hit should be evaluated after the primary strike.
-    pub(crate) fn do_attack(&mut self, cn: usize, co: usize, is_surround: bool) {
-        if !self.may_attack_msg(cn, co, true) {
-            self.characters[cn].attack_cn = 0;
-            self.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+    pub(crate) fn do_attack(
+        &mut self,
+        attacker_index: usize,
+        defender_index: usize,
+        is_surround: bool,
+    ) {
+        if !self.may_attack_msg(attacker_index, defender_index, true) {
+            self.characters[attacker_index].attack_cn = 0;
+            self.characters[attacker_index].cerrno = core::constants::ERR_FAILED as u16;
             return;
         }
 
-        let co_stoned =
-            (self.characters[co].flags & core::constants::CharacterFlags::Stoned.bits()) != 0;
+        let co_stoned = (self.characters[defender_index].flags
+            & core::constants::CharacterFlags::Stoned.bits())
+            != 0;
         if co_stoned {
-            self.characters[cn].attack_cn = 0;
-            self.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            self.characters[attacker_index].attack_cn = 0;
+            self.characters[attacker_index].cerrno = core::constants::ERR_FAILED as u16;
             return;
         }
 
         // Update current_enemy if it changed (for logging purposes in original C)
-        let current_enemy = self.characters[cn].current_enemy;
-        if current_enemy as usize != co {
-            self.characters[cn].current_enemy = co as u16;
-            let co_name = self.characters[co].get_name().to_string();
-            log::info!("Character {} attacks {} ({})", cn, co_name, co);
+        let current_enemy = self.characters[attacker_index].current_enemy;
+        if current_enemy as usize != defender_index {
+            self.characters[attacker_index].current_enemy = defender_index as u16;
+            let co_name = self.characters[defender_index].get_name().to_string();
+            log::info!(
+                "Character {} attacks {} ({})",
+                attacker_index,
+                co_name,
+                defender_index
+            );
         }
 
         // Port of add_enemy(co, cn) from C - this only updates the enemy array,
         // it does NOT set attack_cn. The fightback behavior is handled in driver_msg
         // when NT_GOTHIT/NT_GOTMISS messages are processed.
-        self.add_enemy(co, cn);
+        self.add_enemy(defender_index, attacker_index);
 
-        self.remember_pvp(cn, co);
+        self.remember_pvp(attacker_index, defender_index);
 
         // Read base fight skills
-        let mut s1 = self.get_fight_skill(cn);
-        let mut s2 = self.get_fight_skill(co);
+        let mut s1 = self.get_fight_skill(attacker_index);
+        let mut s2 = self.get_fight_skill(defender_index);
+
+        let attacker_is_player =
+            (self.characters[attacker_index].flags & CharacterFlags::Player.bits()) != 0;
+
+        let defender_is_player =
+            (self.characters[defender_index].flags & CharacterFlags::Player.bits()) != 0;
 
         // GF_MAYHEM: In mayhem mode, non-player characters get a skill bonus.
         let mayhem = (self.globals.flags & core::constants::GF_MAYHEM) != 0;
         if mayhem {
-            let cn_is_player = (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
-            let co_is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
-            if !cn_is_player {
+            if !attacker_is_player {
                 s1 += 10;
             }
-            if !co_is_player {
+            if !defender_is_player {
                 s2 += 10;
             }
         }
 
         // Apply negative luck adjustments if present (C++: luck < 0 -> luck/250 - 1)
         // Only applies to players in the original C code
-        let cn_is_player = (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
-        let cn_luck = self.characters[cn].luck;
-        let co_is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
-        let co_luck = self.characters[co].luck;
-        if cn_is_player && cn_luck < 0 {
-            s1 += cn_luck / 250 - 1;
+        let attacker_luck = self.characters[attacker_index].luck;
+        let defender_luck = self.characters[defender_index].luck;
+
+        if attacker_is_player && attacker_luck < 0 {
+            s1 += attacker_luck / 250 - 1;
         }
-        if co_is_player && co_luck < 0 {
-            s2 += co_luck / 250 - 1;
+        if defender_is_player && defender_luck < 0 {
+            s2 += defender_luck / 250 - 1;
         }
 
         // Use canonical helpers for facing/back checks
-        if !driver::is_facing(&self.characters[co], &self.characters[cn]) {
+        if !driver::is_facing(
+            &self.characters[defender_index],
+            &self.characters[attacker_index],
+        ) {
             s2 -= 10;
         }
 
-        if driver::is_back(&self.characters[co], &self.characters[cn]) {
+        if driver::is_back(
+            &self.characters[defender_index],
+            &self.characters[attacker_index],
+        ) {
             s2 -= 10;
         }
 
         // Reduce defender skill if stunned or not currently attacking
-        let def_stunned_or_no_attack =
-            self.characters[co].stunned != 0 || self.characters[co].attack_cn == 0;
+        let def_stunned_or_no_attack = self.characters[defender_index].stunned != 0
+            || self.characters[defender_index].attack_cn == 0;
         if def_stunned_or_no_attack {
             s2 -= 10;
         }
@@ -432,22 +452,23 @@ impl GameState {
         let hit = die <= chance;
 
         if hit {
-            if self.dodges_physical_attack(co) {
-                self.emit_attack_miss(cn, co);
+            if self.dodges_physical_attack(defender_index) {
+                self.emit_attack_miss(attacker_index, defender_index);
 
                 log::info!(
                     "Character {} dodged the attack from {}!",
-                    self.characters[co].get_name(),
-                    self.characters[cn].get_name()
+                    self.characters[defender_index].get_name(),
+                    self.characters[attacker_index].get_name()
                 );
                 return;
             }
 
             // Damage calculation follows original pattern
-            let strn = self.characters[cn].attrib[core::constants::AT_STREN as usize][5] as i32;
+            let strn = self.characters[attacker_index].attrib[core::constants::AT_STREN as usize][5]
+                as i32;
 
             // Base damage uses character.weapon
-            let base_weapon = self.characters[cn].weapon as i32;
+            let base_weapon = self.characters[attacker_index].weapon as i32;
             let mut dam = base_weapon + helpers::random_mod_i32(6) + 1;
             if strn > 3 {
                 let extra_max = strn / 2;
@@ -466,27 +487,27 @@ impl GameState {
             dam += bonus;
 
             // Apply weapon wear if wielding (only for players in original)
-            let cn_is_player = (self.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
-            if cn_is_player {
-                let rhand = self.characters[cn].worn[core::constants::WN_RHAND] as usize;
+            if attacker_is_player {
+                let rhand =
+                    self.characters[attacker_index].worn[core::constants::WN_RHAND] as usize;
                 if rhand != 0 {
-                    driver::item_damage_weapon(self, cn, dam);
+                    driver::item_damage_weapon(self, attacker_index, dam);
                 }
             }
 
             // Apply damage and capture actual applied damage
-            let applied = self.do_hurt(cn, co, dam, 0);
+            let applied = self.do_hurt(attacker_index, defender_index, dam, 0);
 
             // Play sounds depending on whether damage occurred (match original behaviour)
-            let tx = self.characters[co].x as i32;
-            let ty = self.characters[co].y as i32;
-            let base_sound = self.characters[cn].sound as i32;
+            let tx = self.characters[defender_index].x as i32;
+            let ty = self.characters[defender_index].y as i32;
+            let base_sound = self.characters[attacker_index].sound as i32;
             if applied < 1 {
-                self.do_area_sound(co, 0, tx, ty, base_sound + 3);
-                Self::char_play_sound(self, co, base_sound + 3, -150, 0);
+                self.do_area_sound(defender_index, 0, tx, ty, base_sound + 3);
+                Self::char_play_sound(self, defender_index, base_sound + 3, -150, 0);
             } else {
-                self.do_area_sound(co, 0, tx, ty, base_sound + 4);
-                Self::char_play_sound(self, co, base_sound + 4, -150, 0);
+                self.do_area_sound(defender_index, 0, tx, ty, base_sound + 4);
+                Self::char_play_sound(self, defender_index, base_sound + 4, -150, 0);
             }
 
             // Surrounding strikes grow from the original cross into larger AoE footprints.
@@ -497,40 +518,48 @@ impl GameState {
                 // Note: In this codebase `skill[z][5]` is a derived value and is
                 // clamped to at least 1 for *all* skills (see `really_update_char`),
                 // so using `[5] > 0` would incorrectly enable surround for everyone.
-                let surround_base = self.characters[cn].skill[skills::SK_SURROUND][0] as i32;
-                let surround_eff = self.characters[cn].skill[skills::SK_SURROUND][5] as i32;
+                let surround_base =
+                    self.characters[attacker_index].skill[skills::SK_SURROUND][0] as i32;
+                let surround_eff =
+                    self.characters[attacker_index].skill[skills::SK_SURROUND][5] as i32;
                 if surround_base != 0 {
-                    let aoe_base = if cn_is_player { surround_base } else { 1 };
+                    let aoe_base = if attacker_is_player { surround_base } else { 1 };
                     let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
-                    let attacker_x = self.characters[cn].x as i32;
-                    let attacker_y = self.characters[cn].y as i32;
+                    let attacker_x = self.characters[attacker_index].x as i32;
+                    let attacker_y = self.characters[attacker_index].y as i32;
 
-                    for co2 in
-                        helpers::skill_aoe_targets(self, Some(cn), attacker_x, attacker_y, aoe_base)
-                    {
-                        if co2 == cn || co2 == co {
+                    for co2 in helpers::skill_aoe_targets(
+                        self,
+                        Some(attacker_index),
+                        attacker_x,
+                        attacker_y,
+                        aoe_base,
+                    ) {
+                        if co2 == attacker_index || co2 == defender_index {
                             continue;
                         }
-                        if use_legacy_cross && self.characters[co2].attack_cn as usize != cn {
+                        if use_legacy_cross
+                            && self.characters[co2].attack_cn as usize != attacker_index
+                        {
                             continue;
                         }
-                        if !self.may_attack_msg(cn, co2, false) {
+                        if !self.may_attack_msg(attacker_index, co2, false) {
                             continue;
                         }
                         if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
                             let sdam = odam - odam / 4;
-                            self.remember_pvp(cn, co2);
+                            self.remember_pvp(attacker_index, co2);
                             if self.dodges_physical_attack(co2) {
-                                self.emit_attack_miss(cn, co2);
+                                self.emit_attack_miss(attacker_index, co2);
                             } else {
-                                self.do_hurt(cn, co2, sdam, 0);
+                                self.do_hurt(attacker_index, co2, sdam, 0);
                             }
                         }
                     }
                 }
             }
         } else {
-            self.emit_attack_miss(cn, co);
+            self.emit_attack_miss(attacker_index, defender_index);
         }
     }
 
