@@ -782,13 +782,21 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
             (0, false)
         };
 
-        // Check if spell changed OR active fraction changed OR IF_UPDATE is set
+        // Compute current spell_type (item template number used as skill identifier)
+        let current_spell_type = if in_idx != 0 {
+            gs.items[in_idx].temp as i16
+        } else {
+            0
+        };
+
+        // Check if spell changed OR active fraction changed OR IF_UPDATE is set OR spell_type changed
         let needs_update = (cpl_spell != in_idx as i32)
             || (cpl_active as i16 != current_active_frac)
-            || has_update_flag;
+            || has_update_flag
+            || (gs.players[nr].cpl.spell_type[i] != current_spell_type);
 
         if needs_update {
-            let mut buf: [u8; 9] = [0; 9];
+            let mut buf: [u8; 11] = [0; 11];
             buf[0] = ServerCommandType::SetCharSpell as u8;
             let idx_bytes = (i as u32).to_le_bytes();
             buf[1..5].copy_from_slice(&idx_bytes);
@@ -799,26 +807,27 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                     let sprite = it.sprite[1];
                     let duration = std::cmp::max(1, it.duration);
                     let active_frac = ((it.active * 16) / duration) as i16;
+                    let skill_nr = it.temp as i16;
 
                     buf[5] = (sprite & 0xff) as u8;
                     buf[6] = ((sprite >> 8) & 0xff) as u8;
                     buf[7] = (active_frac & 0xff) as u8;
                     buf[8] = ((active_frac >> 8) & 0xff) as u8;
+                    buf[9] = (skill_nr & 0xff) as u8;
+                    buf[10] = ((skill_nr >> 8) & 0xff) as u8;
                 }
                 // Clear IF_UPDATE flag
                 gs.items[in_idx].flags &= !core::constants::ItemFlags::IF_UPDATE.bits();
                 gs.players[nr].cpl.spell[i] = in_idx as i32;
                 gs.players[nr].cpl.active[i] = current_active_frac as i8;
+                gs.players[nr].cpl.spell_type[i] = current_spell_type;
             } else {
-                buf[5] = 0;
-                buf[6] = 0;
-                buf[7] = 0;
-                buf[8] = 0;
                 gs.players[nr].cpl.spell[i] = 0;
                 gs.players[nr].cpl.active[i] = 0;
+                gs.players[nr].cpl.spell_type[i] = 0;
             }
 
-            network_manager::xsend(gs, nr, &buf, 9);
+            network_manager::xsend(gs, nr, &buf, 11);
         }
     }
 

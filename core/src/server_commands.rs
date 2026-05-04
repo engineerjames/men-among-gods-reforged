@@ -195,7 +195,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
             ServerCommandType::SetCharWorn => 9,
-            ServerCommandType::SetCharSpell => 9,
+            ServerCommandType::SetCharSpell => 11,
             ServerCommandType::SetCharObj => 5,
             ServerCommandType::SetMap3 => sv_setmap3_len(26),
             ServerCommandType::SetMap4 => sv_setmap3_len(0),
@@ -421,6 +421,8 @@ pub enum ServerCommandData {
         index: u32,
         spell: i16,
         active: i16,
+        /// Template number of the skill that created this effect (matches `SK_*` constants).
+        skill_nr: i16,
     },
     SetCharObj {
         citem: i16,
@@ -906,6 +908,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 index: read_u32(bytes, 1)?,
                 spell: read_i16(bytes, 5)?,
                 active: read_i16(bytes, 7)?,
+                skill_nr: read_i16(bytes, 9)?,
             },
         )),
         47 => Some((

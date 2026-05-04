@@ -620,6 +620,7 @@ impl GameScene {
         self.rank_progress_line.handle_event(ui_event);
 
         self.vitality_bars.handle_event(ui_event);
+        self.spell_effect_bars.handle_event(ui_event);
 
         // --- StatusPanel (WV/AV display, right of skill bar) ---
         if self.status_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {

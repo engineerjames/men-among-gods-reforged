@@ -536,11 +536,13 @@ impl PlayerState {
                 index,
                 spell,
                 active,
+                skill_nr,
             } => {
                 let idx = *index as usize;
                 if idx < self.character_info.spell.len() {
                     self.character_info.spell[idx] = *spell as i32;
                     self.character_info.active[idx] = *active as i8;
+                    self.character_info.spell_type[idx] = *skill_nr;
                 }
             }
             ServerCommandData::SetCharObj { citem, citem_p } => {
