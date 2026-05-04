@@ -45,7 +45,6 @@ use client::ui::hud::minimap_widget::MinimapWidget;
 use client::ui::hud::mode_button::ModeButton;
 use client::ui::hud::settings_panel::{SETTINGS_PANEL_H, SettingsPanel};
 use client::ui::hud::shop_panel::ShopPanel;
-use client::ui::hud::skill_bar::SkillBarConfig;
 use client::ui::hud::skill_bar::{SkillBar, SkillBarData};
 use client::ui::hud::skills_panel::{SkillsPanel, SkillsPanelData};
 use client::ui::style::{Background, Border, Padding};
@@ -306,12 +305,7 @@ fn main() -> Result<(), String> {
         PANEL_BG,
     );
 
-    let mut skill_bar = SkillBar::new(SkillBarConfig {
-        spell_x: 10,
-        spell_y: 10,
-        spell_width: 24,
-        spell_height: 24,
-    });
+    let mut skill_bar = SkillBar::new();
     skill_bar.update_data(SkillBarData {
         keybinds: [
             Some(3),
@@ -326,8 +320,6 @@ fn main() -> Result<(), String> {
             None,
             None,
         ],
-        spell: [0; 20],
-        active: [0; 20],
     });
 
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).

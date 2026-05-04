@@ -1,16 +1,22 @@
 //! Spell-effect duration bars flanking the vitality chevrons.
 //!
-//! Positive buffs stack on the **left** of the vitality chevrons (bars grow
-//! rightward from the chevron edge, collapse leftward as they expire).
-//! Negative effects stack on the **right** (bars grow leftward from the
-//! chevron edge, collapse rightward as they expire).
+//! Positive buffs stack on the **left** of the vitality chevrons (bars shrink
+//! toward the chevron centre as they expire — the outer/left end retreats
+//! rightward). Negative effects stack on the **right** (bars shrink toward the
+//! centre — the outer/right end retreats leftward). No track background is
+//! drawn; only the colored fill bar is visible.
 //!
 //! Each bar is `BAR_H` px tall with a `BAR_GAP` px gap between bars, giving a
 //! stride of `BAR_H + BAR_GAP` px per slot. A full-width bar extends
 //! `MAX_BAR_W` px away from the chevron edge. The fill fraction comes from
 //! `active[n] / 16.0`, matching the server-side calculation.
 //!
-//! Hovering a bar shows a tooltip of the form `"SkillName (75%)"`.
+//! Hovering a bar shows a tooltip with the effect name and estimated time
+//! remaining (e.g. `"Bless (~1m 30s)"`) once enough elapsed time has been
+//! observed to compute a decay rate.
+
+use std::collections::HashMap;
+use std::time::Instant;
 
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
@@ -43,9 +49,6 @@ const MAX_BARS: usize = 12;
 /// Maximum bar width in pixels (full fill = this many pixels from the chevron
 /// edge).
 const MAX_BAR_W: i32 = 80;
-
-/// Background track color (dark, same role as the vitality chevron tracks).
-const TRACK_COLOR: Color = Color::RGB(30, 30, 30);
 
 // ---------------------------------------------------------------------------
 // SpellEffectKind
@@ -155,6 +158,13 @@ fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
             kind: SpellEffectKind::Positive,
             color: Color::RGB(160, 200, 255),
         }),
+        // Spell Exhaustion — added to the positive (left) side so the caster
+        // can see how long until they can cast again.
+        skills::SK_BLAST => Some(SpellEffectMeta {
+            name: "Spell Exhaustion",
+            kind: SpellEffectKind::Positive,
+            color: Color::RGB(200, 140, 40),
+        }),
         // ------------------------------------------------------------------
         // Negative effects (debuffs)
         // ------------------------------------------------------------------
@@ -174,6 +184,33 @@ fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
             color: Color::RGB(160, 80, 40),
         }),
         _ => None,
+    }
+}
+
+/// Formats a duration in seconds as a human-readable string for hover text.
+///
+/// # Arguments
+///
+/// * `secs` - Estimated remaining seconds.
+///
+/// # Returns
+///
+/// * `"< 10s"` for values below 10 s, `"Xs"` up to 59 s, `"Xm"` or
+///   `"Xm Ys"` for longer durations.
+fn format_duration(secs: f32) -> String {
+    let s = secs.round() as u32;
+    if s < 10 {
+        "< 10s".to_string()
+    } else if s < 60 {
+        format!("{}s", s)
+    } else {
+        let m = s / 60;
+        let r = s % 60;
+        if r == 0 {
+            format!("{}m", m)
+        } else {
+            format!("{}m {}s", m, r)
+        }
     }
 }
 
@@ -236,6 +273,9 @@ pub struct SpellEffectBars {
     negatives: Vec<SpellSlotEntry>,
     /// Bar currently under the cursor, if any.
     hovered: Option<HoveredBar>,
+    /// Tracks the instant and fill fraction when each `skill_nr` was first
+    /// observed active, used to estimate remaining duration for hover text.
+    seen_tracker: HashMap<i16, (Instant, f32)>,
 }
 
 impl SpellEffectBars {
@@ -257,6 +297,7 @@ impl SpellEffectBars {
             positives: Vec::new(),
             negatives: Vec::new(),
             hovered: None,
+            seen_tracker: HashMap::new(),
         }
     }
 
@@ -277,6 +318,7 @@ impl SpellEffectBars {
         self.positives.clear();
         self.negatives.clear();
 
+        let now = Instant::now();
         for i in 0..20usize {
             if spell[i] <= 0 || active[i] <= 0 {
                 continue;
@@ -300,6 +342,21 @@ impl SpellEffectBars {
                 }
             }
         }
+
+        // Add tracker entries for newly-seen effects; keep fill at first-seen value.
+        for entry in self.positives.iter().chain(self.negatives.iter()) {
+            self.seen_tracker
+                .entry(entry.skill_nr)
+                .or_insert_with(|| (now, entry.fill));
+        }
+        // Remove tracker entries for effects that are no longer active.
+        let active_nrs: Vec<i16> = self
+            .positives
+            .iter()
+            .chain(self.negatives.iter())
+            .map(|e| e.skill_nr)
+            .collect();
+        self.seen_tracker.retain(|nr, _| active_nrs.contains(nr));
     }
 
     /// Returns the hit rect for the bar at `row` on the given `kind` side.
@@ -395,7 +452,10 @@ impl SpellEffectBars {
 
     /// Returns hover tooltip text for the bar currently under the cursor.
     ///
-    /// Format: `"SkillName (75%)"`.
+    /// Shows the effect name followed by an estimated time remaining once
+    /// enough elapsed time has been observed to compute a decay rate, e.g.
+    /// `"Bless (~1m 30s)"`. If the effect was just cast (no rate data yet)
+    /// only the name is shown.
     ///
     /// # Returns
     ///
@@ -407,8 +467,20 @@ impl SpellEffectBars {
             SpellEffectKind::Negative => self.negatives.get(hov.index)?,
         };
         let meta = spell_meta(entry.skill_nr)?;
-        let pct = (entry.fill * 100.0).round() as u32;
-        Some(format!("{} ({}%)", meta.name, pct))
+        if let Some((t0, f0)) = self.seen_tracker.get(&entry.skill_nr) {
+            let elapsed = t0.elapsed().as_secs_f32();
+            let fill_delta = f0 - entry.fill;
+            if fill_delta > 0.001 && elapsed > 0.1 {
+                let rate = fill_delta / elapsed;
+                let remaining_secs = entry.fill / rate;
+                return Some(format!(
+                    "{} (~{})",
+                    meta.name,
+                    format_duration(remaining_secs)
+                ));
+            }
+        }
+        Some(meta.name.to_string())
     }
 
     /// Renders all active spell-effect bars onto the canvas.
@@ -459,21 +531,26 @@ impl SpellEffectBars {
                 continue;
             };
             let track = self.bar_rect(kind, i);
-
-            // Draw track background.
-            canvas.set_draw_color(TRACK_COLOR);
-            canvas.fill_rect(track)?;
-
-            // Draw fill rect.
             let fill_w = (entry.fill * MAX_BAR_W as f32).round() as i32;
             if fill_w > 0 {
                 let fill_rect = match kind {
                     SpellEffectKind::Positive => {
-                        // Fill grows rightward from the left edge of the track.
-                        Rect::new(track.x(), track.y(), fill_w as u32, BAR_H as u32)
+                        // Positive bars shrink toward the chevron (rightward):
+                        // the fill is anchored at the chevron edge and extends
+                        // outward (leftward). As fill decreases the outer end
+                        // retreats toward centre.
+                        Rect::new(
+                            track.right() - fill_w,
+                            track.y(),
+                            fill_w as u32,
+                            BAR_H as u32,
+                        )
                     }
                     SpellEffectKind::Negative => {
-                        // Fill grows rightward from the left edge of the track.
+                        // Negative bars shrink toward the chevron (leftward):
+                        // the fill is anchored at the chevron edge and extends
+                        // outward (rightward). As fill decreases the outer end
+                        // retreats toward centre.
                         Rect::new(track.x(), track.y(), fill_w as u32, BAR_H as u32)
                     }
                 };
@@ -543,13 +620,26 @@ mod tests {
         let mut bars = SpellEffectBars::new(400, 500);
         let (spell, active, spell_type) = make_spell_state(0, 1, 12, skills::SK_BLESS as i16);
         bars.sync(&spell, &active, &spell_type);
-        // Manually inject a hovered state.
         bars.hovered = Some(HoveredBar {
             kind: SpellEffectKind::Positive,
             index: 0,
         });
-        let text = bars.hover_text().unwrap();
-        assert_eq!(text, "Bless (75%)");
+        // No elapsed time yet (just first seen) — shows just the name.
+        let text_no_time = bars.hover_text().unwrap();
+        assert_eq!(text_no_time, "Bless");
+
+        // Inject a tracker entry from 30 s ago at fill = 1.0.
+        // fill = 12/16 = 0.75, delta = 0.25 over ~30s → rate ≈ 1/120 /s
+        // remaining ≈ 0.75 × 120 = 90s → "1m 30s".
+        bars.seen_tracker.insert(
+            skills::SK_BLESS as i16,
+            (
+                std::time::Instant::now() - std::time::Duration::from_secs(30),
+                1.0,
+            ),
+        );
+        let text_timed = bars.hover_text().unwrap();
+        assert_eq!(text_timed, "Bless (~1m 30s)");
     }
 
     #[test]

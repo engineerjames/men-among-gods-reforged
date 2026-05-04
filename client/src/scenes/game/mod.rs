@@ -392,12 +392,7 @@ impl GameScene {
                 Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
-            skill_bar: SkillBar::new(crate::ui::hud::skill_bar::SkillBarConfig {
-                spell_x: 295,
-                spell_y: TARGET_HEIGHT_INT as i32 - 57,
-                spell_width: 24,
-                spell_height: 24,
-            }),
+            skill_bar: SkillBar::new(),
             skill_picker: SkillPickerPopup::new(),
             last_synced_log_len: 0,
             pending_exit: None,
@@ -1643,7 +1638,7 @@ impl Scene for GameScene {
                     selected_char: ps.selected_char(),
                 });
 
-                // Skill bar: 13 keybinds plus all 20 active spell/activity slots.
+                // Skill bar: keybinds for the 11 assignable skill slots.
                 {
                     use crate::preferences::NUMBER_OF_KEYBINDS;
                     use crate::ui::hud::skill_bar::SkillBarData;
@@ -1651,11 +1646,7 @@ impl Scene for GameScene {
                     keybinds.copy_from_slice(
                         &app_state.settings.character.skill_keybinds[..NUMBER_OF_KEYBINDS],
                     );
-                    self.skill_bar.update_data(SkillBarData {
-                        keybinds,
-                        spell: ci.spell,
-                        active: ci.active,
-                    });
+                    self.skill_bar.update_data(SkillBarData { keybinds });
                 }
 
                 // Update minimap xmap buffer, then push viewport pixels to the widget.
