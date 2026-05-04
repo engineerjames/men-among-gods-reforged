@@ -1,4 +1,5 @@
 use core::{
+    ban_store::{BanRecord, BanTarget, ipv4_to_string, parse_ipv4},
     constants::{
         ArmorType, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
         DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, MagicArmorType, character_flags_name,
@@ -10,7 +11,7 @@ use core::{
     types::{Character, Map},
 };
 
-use server::keydb::connection as keydb;
+use server::keydb::{ban as keydb_ban, connection as keydb};
 
 use crate::{
     area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,
@@ -4244,11 +4245,219 @@ impl God {
             return;
         }
 
-        // Get player address - would need actual connection info
-        // For now using placeholder logic
-        let addr = 0u32; // TODO: Get actual player IP address
+        let Some(addr) = Self::online_ip_for_character(gs, co) else {
+            gs.do_character_log(cn, core::types::FontColor::Red, "Target is not online.\n");
+            return;
+        };
 
         Self::add_single_ban(gs, cn, co, addr);
+        Self::persist_ban_and_kick(gs, cn, BanTarget::Ipv4 { address: addr }, None);
+    }
+
+    /// Add a durable account, character, or IPv4 ban from an in-game god command.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state.
+    /// * `cn` - Issuing character id.
+    /// * `scope` - Target scope: `account`, `character`, or `ip`.
+    /// * `target` - Scope-specific target value.
+    /// * `reason` - Optional remainder text used as the ban reason.
+    pub fn ban(gs: &mut GameState, cn: usize, scope: &str, target: &str, reason: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let Some(target) = Self::parse_ban_target(gs, scope, target) else {
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Usage: /ban <account|character|ip> <id|online character|ipv4> [reason]\n",
+            );
+            return;
+        };
+
+        let reason = reason.trim();
+        let reason = if reason.is_empty() {
+            None
+        } else {
+            Some(reason.to_string())
+        };
+        Self::persist_ban_and_kick(gs, cn, target, reason);
+    }
+
+    /// Remove a durable account, character, or IPv4 ban from an in-game god command.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state.
+    /// * `cn` - Issuing character id.
+    /// * `scope` - Target scope: `account`, `character`, or `ip`.
+    /// * `target` - Scope-specific target value.
+    pub fn unban(gs: &mut GameState, cn: usize, scope: &str, target: &str) {
+        if !Character::is_sane_character(cn) {
+            return;
+        }
+
+        let Some(target) = Self::parse_ban_target(gs, scope, target) else {
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Usage: /unban <account|character|ip> <id|online character|ipv4>\n",
+            );
+            return;
+        };
+
+        match keydb_ban::remove_ban_target(&target) {
+            Ok(true) => gs.do_character_log(
+                cn,
+                core::types::FontColor::Green,
+                &format!("Removed {} ban for {}.\n", target.scope(), target.value()),
+            ),
+            Ok(false) => gs.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("No active {} ban for {}.\n", target.scope(), target.value()),
+            ),
+            Err(error) => gs.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Failed to remove ban: {}\n", error),
+            ),
+        }
+    }
+
+    fn parse_ban_target(gs: &GameState, scope: &str, target: &str) -> Option<BanTarget> {
+        let scope = scope.trim().to_ascii_lowercase();
+        let target = target.trim();
+        if target.is_empty() {
+            return None;
+        }
+
+        match scope.as_str() {
+            "account" | "acct" => Self::online_character_from_text(target)
+                .and_then(|co| Self::online_account_for_character(gs, co))
+                .or_else(|| target.parse::<u64>().ok())
+                .map(|account_id| BanTarget::Account { account_id }),
+            "character" | "char" => Self::online_character_from_text(target)
+                .and_then(|co| Self::online_api_character_for_character(gs, co))
+                .or_else(|| target.parse::<u64>().ok())
+                .map(|character_id| BanTarget::Character { character_id }),
+            "ip" | "ipv4" | "addr" | "address" => Self::online_character_from_text(target)
+                .and_then(|co| Self::online_ip_for_character(gs, co))
+                .or_else(|| parse_ipv4(target).ok())
+                .map(|address| BanTarget::Ipv4 { address }),
+            _ => None,
+        }
+    }
+
+    fn online_character_from_text(value: &str) -> Option<usize> {
+        value
+            .parse::<usize>()
+            .ok()
+            .filter(|co| Character::is_sane_character(*co))
+    }
+
+    fn online_player_id_for_character(gs: &GameState, co: usize) -> Option<usize> {
+        if !Character::is_sane_character(co) {
+            return None;
+        }
+        let player_id = gs.characters[co].player;
+        if player_id <= 0 {
+            return None;
+        }
+        let player_id = player_id as usize;
+        (player_id < gs.players.len() && gs.players[player_id].sock.is_some()).then_some(player_id)
+    }
+
+    fn online_account_for_character(gs: &GameState, co: usize) -> Option<u64> {
+        let player_id = Self::online_player_id_for_character(gs, co)?;
+        let account_id = gs.players[player_id].api_account_id;
+        (account_id > 0).then_some(account_id)
+    }
+
+    fn online_api_character_for_character(gs: &GameState, co: usize) -> Option<u64> {
+        let player_id = Self::online_player_id_for_character(gs, co)?;
+        let character_id = gs.players[player_id].api_character_id;
+        (character_id > 0).then_some(character_id)
+    }
+
+    fn online_ip_for_character(gs: &GameState, co: usize) -> Option<u32> {
+        let player_id = Self::online_player_id_for_character(gs, co)?;
+        let addr = gs.players[player_id].addr;
+        (addr != 0).then_some(addr)
+    }
+
+    fn persist_ban_and_kick(
+        gs: &mut GameState,
+        cn: usize,
+        target: BanTarget,
+        reason: Option<String>,
+    ) {
+        let created_by = gs.characters[cn].get_name().to_string();
+        let now = keydb_ban::now_secs();
+        let record = BanRecord {
+            id: format!("game-{}-{}-{}", now, target.scope(), target.value()),
+            target: target.clone(),
+            reason: reason.unwrap_or_default(),
+            created_by,
+            created_at: now,
+            expires_at: None,
+            source: "game_command".to_string(),
+        };
+
+        match keydb_ban::upsert_ban_record(&record) {
+            Ok(_) => {
+                let kicked = Self::kick_matching_ban_target(gs, &target);
+                let target_value = match &target {
+                    BanTarget::Ipv4 { address } => ipv4_to_string(*address),
+                    _ => target.value(),
+                };
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!(
+                        "Added {} ban for {} ({} online session(s) kicked).\n",
+                        target.scope(),
+                        target_value,
+                        kicked
+                    ),
+                );
+            }
+            Err(error) => gs.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                &format!("Failed to add ban: {}\n", error),
+            ),
+        }
+    }
+
+    fn kick_matching_ban_target(gs: &mut GameState, target: &BanTarget) -> usize {
+        let mut players_to_kick = Vec::new();
+        for player_id in 1..core::constants::MAXPLAYER.min(gs.players.len()) {
+            if gs.players[player_id].sock.is_none() {
+                continue;
+            }
+            let matches = match target {
+                BanTarget::Account { account_id } => {
+                    gs.players[player_id].api_account_id == *account_id
+                }
+                BanTarget::Character { character_id } => {
+                    gs.players[player_id].api_character_id == *character_id
+                }
+                BanTarget::Ipv4 { address } => gs.players[player_id].addr == *address,
+            };
+            if matches {
+                players_to_kick.push(player_id);
+            }
+        }
+
+        let kicked = players_to_kick.len();
+        for player_id in players_to_kick {
+            let character_id = gs.players[player_id].usnr;
+            player::connection::plr_logout(gs, character_id, player_id, LogoutReason::Kicked);
+        }
+        kicked
     }
 
     /// Delete a ban list entry by its index `nr`.

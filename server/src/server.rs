@@ -1,4 +1,6 @@
 use chrono::Timelike;
+use core::ban_action_store::BanActionKind;
+use core::ban_store::BanTarget;
 use core::constants::{CharacterFlags, TILEX, TILEY};
 use core::logout_reasons::LogoutReason;
 use core::stat_buffer::StatisticsBuffer;
@@ -35,6 +37,34 @@ enum CharacterTickState {
     CheckExpire,
     Body,
     Active,
+}
+
+fn kick_matching_ban_target(gs: &mut GameState, target: &BanTarget) -> usize {
+    let mut players_to_kick = Vec::new();
+    for player_id in 1..core::constants::MAXPLAYER {
+        if gs.players[player_id].sock.is_none() {
+            continue;
+        }
+        let matches = match target {
+            BanTarget::Account { account_id } => {
+                gs.players[player_id].api_account_id == *account_id
+            }
+            BanTarget::Character { character_id } => {
+                gs.players[player_id].api_character_id == *character_id
+            }
+            BanTarget::Ipv4 { address } => gs.players[player_id].addr == *address,
+        };
+        if matches {
+            players_to_kick.push(player_id);
+        }
+    }
+
+    let kicked = players_to_kick.len();
+    for player_id in players_to_kick {
+        let character_id = gs.players[player_id].usnr;
+        player::connection::plr_logout(gs, character_id, player_id, LogoutReason::Kicked);
+    }
+    kicked
 }
 
 /// The server runtime object which manages networking and tick timing.
@@ -80,6 +110,14 @@ pub struct Server {
     /// the tick loop.
     character_patch_watcher: Option<server::keydb::character_patch::CharacterPatchWatcher>,
 
+    /// Background watcher that surfaces admin-issued world actions to the
+    /// tick loop.
+    world_action_watcher: Option<server::keydb::world_action::WorldActionWatcher>,
+
+    /// Background watcher that surfaces live ban enforcement actions to the
+    /// tick loop.
+    ban_action_watcher: Option<server::keydb::ban_action::BanActionWatcher>,
+
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
@@ -102,6 +140,8 @@ impl Server {
             map_patch_watcher: None,
             item_patch_watcher: None,
             character_patch_watcher: None,
+            world_action_watcher: None,
+            ban_action_watcher: None,
             save_tick_counter: 0,
         }
     }
@@ -271,6 +311,12 @@ impl Server {
         // Spawn the admin character-patch watcher (no-op when disabled).
         self.character_patch_watcher =
             server::keydb::character_patch::CharacterPatchWatcher::spawn();
+
+        // Spawn the admin world-action watcher (no-op when disabled).
+        self.world_action_watcher = server::keydb::world_action::WorldActionWatcher::spawn();
+
+        // Spawn the live ban-action watcher (no-op when disabled).
+        self.ban_action_watcher = server::keydb::ban_action::BanActionWatcher::spawn();
 
         Ok(())
     }
@@ -1483,6 +1529,220 @@ impl Server {
         true
     }
 
+    /// Drain pending admin world actions and execute them on the tick thread.
+    ///
+    /// Actions are queued by the admin API in KeyDB. The watcher only moves
+    /// requests onto an in-process channel; this method performs every
+    /// mutation while `GameState` is owned by the main server loop.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state to mutate and persist.
+    pub fn drain_world_actions(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.world_action_watcher.as_ref() else {
+            return;
+        };
+
+        let mut requests = Vec::new();
+        while let Some(request) = watcher.try_recv() {
+            requests.push(request);
+        }
+
+        for request in requests {
+            self.apply_world_action(gs, request);
+        }
+    }
+
+    fn apply_world_action(
+        &mut self,
+        gs: &mut GameState,
+        request: core::world_action_store::WorldActionRequest,
+    ) {
+        let started = Instant::now();
+        log::info!(
+            "world action {} ({}) started",
+            request.request_id,
+            request.action.name()
+        );
+
+        let mut status_connection = match server::keydb::connection::connect() {
+            Ok(connection) => Some(connection),
+            Err(error) => {
+                log::warn!(
+                    "world action {}: keydb connect for status failed: {}",
+                    request.request_id,
+                    error
+                );
+                None
+            }
+        };
+
+        if let Some(connection) = status_connection.as_mut() {
+            if let Err(error) =
+                server::keydb::world_action::write_running_status(connection, &request)
+            {
+                log::warn!(
+                    "world action {}: running status write failed: {}",
+                    request.request_id,
+                    error
+                );
+            }
+        }
+
+        if let Some(saver) = self.background_saver.as_ref() {
+            if let Err(error) = saver.flush() {
+                let message = format!("background saver flush failed: {}", error);
+                self.write_world_action_failure(status_connection.as_mut(), &request, &message);
+                return;
+            }
+        }
+
+        match populate::execute_world_action(gs, &request.action) {
+            Ok(outcome) => {
+                gs.globals.set_dirty(true);
+                match gs.save() {
+                    Ok(()) => {
+                        let elapsed_ms = started.elapsed().as_millis();
+                        let message = format!("{} ({} ms)", outcome.message, elapsed_ms);
+                        if let Some(connection) = status_connection.as_mut() {
+                            if let Err(error) = server::keydb::world_action::write_applied_status(
+                                connection, &request, &message,
+                            ) {
+                                log::warn!(
+                                    "world action {}: applied status write failed: {}",
+                                    request.request_id,
+                                    error
+                                );
+                            }
+                        }
+                        log::info!("world action {} applied: {}", request.request_id, message);
+                    }
+                    Err(error) => {
+                        let message = format!("save after action failed: {}", error);
+                        self.write_world_action_failure(
+                            status_connection.as_mut(),
+                            &request,
+                            &message,
+                        );
+                    }
+                }
+            }
+            Err(error) => {
+                self.write_world_action_failure(status_connection.as_mut(), &request, &error);
+            }
+        }
+    }
+
+    fn write_world_action_failure(
+        &self,
+        status_connection: Option<&mut redis::Connection>,
+        request: &core::world_action_store::WorldActionRequest,
+        message: &str,
+    ) {
+        if let Some(connection) = status_connection {
+            if let Err(error) =
+                server::keydb::world_action::write_failed_status(connection, request, message)
+            {
+                log::warn!(
+                    "world action {}: failed status write failed: {}",
+                    request.request_id,
+                    error
+                );
+            }
+        }
+        log::warn!("world action {} failed: {}", request.request_id, message);
+    }
+
+    /// Drain pending live ban actions and execute them on the tick thread.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Mutable game state whose online sessions may be disconnected.
+    pub fn drain_ban_actions(&mut self, gs: &mut GameState) {
+        let Some(watcher) = self.ban_action_watcher.as_ref() else {
+            return;
+        };
+
+        let mut requests = Vec::new();
+        while let Some(request) = watcher.try_recv() {
+            requests.push(request);
+        }
+
+        for request in requests {
+            self.apply_ban_action(gs, request);
+        }
+    }
+
+    fn apply_ban_action(
+        &mut self,
+        gs: &mut GameState,
+        request: core::ban_action_store::BanActionRequest,
+    ) {
+        log::info!(
+            "ban action {} ({}) started",
+            request.request_id,
+            request.action.name()
+        );
+        let mut status_connection = match server::keydb::connection::connect() {
+            Ok(connection) => Some(connection),
+            Err(error) => {
+                log::warn!(
+                    "ban action {}: keydb connect for status failed: {}",
+                    request.request_id,
+                    error
+                );
+                None
+            }
+        };
+
+        if let Some(connection) = status_connection.as_mut() {
+            if let Err(error) =
+                server::keydb::ban_action::write_running_status(connection, &request)
+            {
+                log::warn!(
+                    "ban action {}: running status write failed: {}",
+                    request.request_id,
+                    error
+                );
+            }
+        }
+
+        let message = match &request.action {
+            BanActionKind::ApplyBan {
+                target,
+                kick_online,
+            } => {
+                if *kick_online {
+                    let kicked = kick_matching_ban_target(gs, target);
+                    format!("kicked {} matching online session(s)", kicked)
+                } else {
+                    "ban applied without live kicks".to_string()
+                }
+            }
+            BanActionKind::RemoveBan { target } => {
+                format!(
+                    "removed live ban state for {} {}",
+                    target.scope(),
+                    target.value()
+                )
+            }
+            BanActionKind::ReloadBans => "ban reload acknowledged".to_string(),
+        };
+
+        if let Some(connection) = status_connection.as_mut() {
+            if let Err(error) =
+                server::keydb::ban_action::write_applied_status(connection, &request, &message)
+            {
+                log::warn!(
+                    "ban action {}: applied status write failed: {}",
+                    request.request_id,
+                    error
+                );
+            }
+        }
+        log::info!("ban action {} applied: {}", request.request_id, message);
+    }
+
     /// Flush all pending background save jobs and then shut down the saver thread.
     ///
     /// `flush()` provides an explicit, observable synchronization point: it
@@ -1514,6 +1774,14 @@ impl Server {
         }
         if let Some(mut watcher) = self.character_patch_watcher.take() {
             log::info!("Stopping character patch watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.world_action_watcher.take() {
+            log::info!("Stopping world action watcher...");
+            watcher.shutdown();
+        }
+        if let Some(mut watcher) = self.ban_action_watcher.take() {
+            log::info!("Stopping ban action watcher...");
             watcher.shutdown();
         }
         if let Some(mut saver) = self.background_saver.take() {
@@ -1763,7 +2031,6 @@ impl Server {
         gs.players[n].iptr = 0;
         gs.players[n].optr = 0;
         gs.players[n].tptr = 0;
-        gs.players[n].challenge = 0;
         gs.players[n].usnr = 0;
 
         gs.players[n].cmap.fill(CMap::default());

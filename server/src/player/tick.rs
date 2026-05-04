@@ -498,12 +498,6 @@ pub fn plr_state(gs: &mut GameState, nr: usize) {
         state if state == core::constants::ST_LOGIN => {
             plr_login(gs, nr);
         }
-        state if state == core::constants::ST_NEW_CHALLENGE => {
-            // Do nothing - waiting for challenge response
-        }
-        state if state == core::constants::ST_LOGIN_CHALLENGE => {
-            // Do nothing - waiting for challenge response
-        }
         state if state == core::constants::ST_CONNECT => {
             // Do nothing - initial connection state
         }

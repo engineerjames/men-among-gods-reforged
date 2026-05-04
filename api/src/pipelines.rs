@@ -358,6 +358,45 @@ pub(crate) async fn get_character_account_id(
     con.hget(&character_key, "account_id").await
 }
 
+/// Gets the sex and class metadata used to derive game-login race data.
+///
+/// # Arguments
+/// * `con` - Multiplexed KeyDB connection.
+/// * `character_id` - Character ID whose login metadata should be read.
+///
+/// # Returns
+/// * `Ok(Some((sex, class)))` if both fields exist and decode to known values.
+/// * `Ok(None)` if fields are missing or invalid.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn get_character_login_traits(
+    con: &mut redis::aio::MultiplexedConnection,
+    character_id: u64,
+) -> Result<Option<(Sex, Class)>, redis::RedisError> {
+    let character_key = format!("character:{}", character_id);
+    let (sex_value, class_value): (Option<u32>, Option<u32>) = redis::cmd("HMGET")
+        .arg(&character_key)
+        .arg("sex")
+        .arg("class")
+        .query_async(&mut *con)
+        .await?;
+
+    let Some(sex_value) = sex_value else {
+        return Ok(None);
+    };
+    let Some(class_value) = class_value else {
+        return Ok(None);
+    };
+
+    let Some(sex) = Sex::from_u32(sex_value) else {
+        return Ok(None);
+    };
+    let Some(class) = Class::from_u32(class_value) else {
+        return Ok(None);
+    };
+
+    Ok(Some((sex, class)))
+}
+
 pub(crate) async fn get_character_name(
     con: &mut redis::aio::MultiplexedConnection,
     character_id: u64,
@@ -668,6 +707,111 @@ pub(crate) async fn character_name_exists_scan_excluding(
     }
 
     Ok(false)
+}
+
+/// Character-name search hit from account-managed character hashes.
+pub(crate) struct CharacterNameSearchMatch {
+    /// API character id.
+    pub id: u64,
+    /// Stored character name.
+    pub name: String,
+    /// Owning account id, when present.
+    pub account_id: Option<u64>,
+    /// Owning account username, when present.
+    pub account_username: Option<String>,
+    /// Last linked live server slot id, when present.
+    pub server_id: Option<u32>,
+}
+
+/// Search account-managed characters by exact or partial name.
+///
+/// Exact case-insensitive name matches sort first, followed by partial matches
+/// sorted by name and id. This supports admin flows where the operator knows a
+/// unique character name but not the API character id used by ban records.
+pub(crate) async fn search_characters_by_name_scan(
+    con: &mut redis::aio::MultiplexedConnection,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<CharacterNameSearchMatch>, redis::RedisError> {
+    let query = query.trim();
+    if query.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    let query_lc = query.to_ascii_lowercase();
+    let keys = scan_keys_matching(con, "character:*", 400).await?;
+    let mut matches: Vec<(bool, CharacterNameSearchMatch)> = Vec::new();
+
+    for key in keys {
+        if key == "character:next_id" {
+            continue;
+        }
+
+        let Some(character_id) = parse_numeric_id("character:", &key) else {
+            continue;
+        };
+
+        let raw: redis::Value = redis::cmd("HGETALL")
+            .arg(&key)
+            .query_async(&mut *con)
+            .await?;
+        let character_map: std::collections::HashMap<String, String> =
+            match redis::from_redis_value(raw) {
+                Ok(value) => value,
+                Err(_) => continue,
+            };
+
+        let Some(name) = character_map.get("name").cloned() else {
+            continue;
+        };
+        let name_lc = name.to_ascii_lowercase();
+        let exact = name_lc == query_lc;
+        if !exact && !name_lc.contains(&query_lc) {
+            continue;
+        }
+
+        let account_id = character_map
+            .get("account_id")
+            .and_then(|value| value.parse::<u64>().ok());
+        let account_username = match account_id {
+            Some(account_id) => {
+                let account_key = format!("account:{}", account_id);
+                con.hget(&account_key, "username").await?
+            }
+            None => None,
+        };
+        let server_id = character_map
+            .get("server_id")
+            .and_then(|value| value.parse::<u32>().ok());
+        matches.push((
+            exact,
+            CharacterNameSearchMatch {
+                id: character_id,
+                name,
+                account_id,
+                account_username,
+                server_id,
+            },
+        ));
+    }
+
+    matches.sort_by(|left, right| {
+        right
+            .0
+            .cmp(&left.0)
+            .then_with(|| {
+                left.1
+                    .name
+                    .to_ascii_lowercase()
+                    .cmp(&right.1.name.to_ascii_lowercase())
+            })
+            .then(left.1.id.cmp(&right.1.id))
+    });
+    Ok(matches
+        .into_iter()
+        .take(limit)
+        .map(|(_, character)| character)
+        .collect())
 }
 
 /// Lists all characters belonging to an account by scanning character hashes.

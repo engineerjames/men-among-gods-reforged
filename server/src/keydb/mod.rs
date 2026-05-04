@@ -26,6 +26,12 @@ pub mod snapshot;
 /// schedule for crash resilience.
 pub mod background_saver;
 
+/// Durable ban lookup helpers.
+pub mod ban;
+
+/// KeyDB watcher for live ban enforcement actions.
+pub mod ban_action;
+
 /// KeyDB pub/sub watcher for character-template hot reloads.
 pub mod character_patch;
 
@@ -40,3 +46,6 @@ pub mod template_reload;
 
 /// KeyDB watcher for externally managed text-data reload requests.
 pub mod text_reload;
+
+/// KeyDB watcher for admin-issued world actions.
+pub mod world_action;

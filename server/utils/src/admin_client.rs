@@ -7,6 +7,7 @@
 
 use std::time::Duration;
 
+pub use mag_core::ban_action_store::BanActionStatusResponse;
 use mag_core::character_store::CharacterPatch;
 use mag_core::item_store::ItemPatch;
 use mag_core::map_store::MapPatch;
@@ -15,6 +16,9 @@ use mag_core::template_store::{
     encode_item_template,
 };
 use mag_core::types::{Character, Item, Map};
+pub use mag_core::world_action_store::{
+    WorldActionKind, WorldActionResponse, WorldActionStatusResponse,
+};
 use reqwest::blocking::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
@@ -309,6 +313,139 @@ pub struct TextReloadStatusResponse {
     pub status: String,
     /// Opaque identifier echoed back by the API.
     pub request_id: String,
+}
+
+/// JSON target selector for creating a ban.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum BanCreateTargetRequest {
+    /// Account target by account id or username.
+    Account {
+        /// Optional account id.
+        #[serde(default)]
+        account_id: Option<u64>,
+        /// Optional username.
+        #[serde(default)]
+        username: Option<String>,
+    },
+    /// Character target by API character id.
+    Character {
+        /// API character id.
+        character_id: u64,
+    },
+    /// IPv4 target by dotted address.
+    Ipv4 {
+        /// Dotted IPv4 address.
+        address: String,
+    },
+}
+
+/// Request body for `POST /admin/bans`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanCreateRequest {
+    /// Target to ban.
+    pub target: BanCreateTargetRequest,
+    /// Optional operator reason.
+    #[serde(default)]
+    pub reason: Option<String>,
+    /// Optional absolute expiration timestamp.
+    #[serde(default)]
+    pub expires_at: Option<u64>,
+    /// Optional relative duration in seconds.
+    #[serde(default)]
+    pub duration_seconds: Option<u64>,
+    /// Optional issuer label.
+    #[serde(default)]
+    pub created_by: Option<String>,
+    /// Whether the server should kick matching online sessions.
+    #[serde(default)]
+    pub kick_online: Option<bool>,
+}
+
+/// JSON view of a ban target.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanTargetResponse {
+    /// Target scope.
+    pub scope: String,
+    /// Human-readable target value.
+    pub value: String,
+    /// Account id for account bans.
+    pub account_id: Option<u64>,
+    /// Character id for character bans.
+    pub character_id: Option<u64>,
+    /// IPv4 address for IP bans.
+    pub address: Option<String>,
+}
+
+/// JSON view of a ban record.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanRecordResponse {
+    /// Opaque ban id.
+    pub id: String,
+    /// Target covered by this ban.
+    pub target: BanTargetResponse,
+    /// Operator reason.
+    pub reason: String,
+    /// Issuer label.
+    pub created_by: String,
+    /// Creation Unix timestamp.
+    pub created_at: u64,
+    /// Optional expiration timestamp.
+    pub expires_at: Option<u64>,
+    /// Whether this ban is active.
+    pub active: bool,
+    /// Source label.
+    pub source: String,
+}
+
+/// Response from `GET /admin/bans`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanListResponse {
+    /// Matching ban records.
+    pub bans: Vec<BanRecordResponse>,
+    /// Number of records.
+    pub count: usize,
+    /// Ban-store version.
+    pub version: u64,
+}
+
+/// Response from ban mutation endpoints.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BanMutationResponse {
+    /// Record created/removed by the mutation.
+    pub ban: Option<BanRecordResponse>,
+    /// Whether persistent state changed.
+    pub changed: bool,
+    /// Ban-store version.
+    pub version: u64,
+    /// Optional live-action request id.
+    pub live_request_id: Option<String>,
+}
+
+/// Character match returned by admin character-name search.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSearchResult {
+    /// API character id used by ban records.
+    pub id: u64,
+    /// Unique character name.
+    pub name: String,
+    /// Owning account id when present.
+    pub account_id: Option<u64>,
+    /// Owning account username when present.
+    pub account_username: Option<String>,
+    /// Live/game character slot id last written by the server.
+    pub server_id: Option<u32>,
+}
+
+/// Response from `GET /admin/bans/characters/search`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterSearchResponse {
+    /// Original query string.
+    pub query: String,
+    /// Number of returned matches.
+    pub count: usize,
+    /// Matching characters.
+    pub characters: Vec<CharacterSearchResult>,
 }
 
 /// Blocking client for the admin API.
@@ -830,6 +967,214 @@ impl AdminClient {
             return Err(format!("GET {url}: HTTP {}", resp.status()));
         }
         resp.json::<GlobalsResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Enqueue a world action for the running server to execute.
+    ///
+    /// # Arguments
+    ///
+    /// * `action` - Action to execute on the server tick thread.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` containing the request id to poll.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn request_world_action(
+        &self,
+        action: &WorldActionKind,
+    ) -> Result<WorldActionResponse, String> {
+        let url = self.url("/admin/world/actions");
+        let resp = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .json(action)
+            .send()
+            .map_err(|e| format!("POST {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("POST {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<WorldActionResponse>()
+            .map_err(|e| format!("POST {url}: decode: {e}"))
+    }
+
+    /// Poll the world-action status endpoint.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - Identifier returned by [`request_world_action`](Self::request_world_action).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(status)` describing the current lifecycle state.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn world_action_status(
+        &self,
+        request_id: &str,
+    ) -> Result<WorldActionStatusResponse, String> {
+        let url = self.url("/admin/world/actions/status");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("request_id", request_id)])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<WorldActionStatusResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// List durable bans.
+    ///
+    /// # Arguments
+    ///
+    /// * `scope` - Optional scope filter.
+    /// * `include_expired` - Whether expired records should be returned.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` on success.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn list_bans(
+        &self,
+        scope: Option<&str>,
+        include_expired: bool,
+    ) -> Result<BanListResponse, String> {
+        let url = self.url("/admin/bans");
+        let mut query = vec![("include_expired", include_expired.to_string())];
+        if let Some(scope) = scope {
+            query.push(("scope", scope.to_string()));
+        }
+        let resp = self
+            .client
+            .get(&url)
+            .query(&query)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<BanListResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Search account-managed characters by name for ban targeting.
+    ///
+    /// # Arguments
+    ///
+    /// * `name` - Exact or partial character name.
+    /// * `limit` - Maximum number of matches to return.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` on success.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn search_characters(
+        &self,
+        name: &str,
+        limit: usize,
+    ) -> Result<CharacterSearchResponse, String> {
+        let url = self.url("/admin/bans/characters/search");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("name", name.to_string()), ("limit", limit.to_string())])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<CharacterSearchResponse>()
+            .map_err(|e| format!("GET {url}: decode: {e}"))
+    }
+
+    /// Create or replace a durable ban.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - Ban create request body.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` on success.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn create_ban(&self, request: &BanCreateRequest) -> Result<BanMutationResponse, String> {
+        let url = self.url("/admin/bans");
+        let resp = self
+            .client
+            .post(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .json(request)
+            .send()
+            .map_err(|e| format!("POST {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("POST {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<BanMutationResponse>()
+            .map_err(|e| format!("POST {url}: decode: {e}"))
+    }
+
+    /// Remove a durable ban by target scope and value.
+    ///
+    /// # Arguments
+    ///
+    /// * `scope` - `account`, `character`, or `ip`.
+    /// * `value` - Account id, character id, or dotted IPv4 address.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(response)` on success.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn remove_ban(&self, scope: &str, value: &str) -> Result<BanMutationResponse, String> {
+        let path = match scope {
+            "account" => format!("/admin/bans/account/{value}"),
+            "character" => format!("/admin/bans/character/{value}"),
+            "ip" | "ipv4" => format!("/admin/bans/ip/{value}"),
+            other => return Err(format!("unknown ban scope: {other}")),
+        };
+        let url = self.url(&path);
+        let resp = self
+            .client
+            .delete(&url)
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("DELETE {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("DELETE {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<BanMutationResponse>()
+            .map_err(|e| format!("DELETE {url}: decode: {e}"))
+    }
+
+    /// Poll the live ban-action status endpoint.
+    ///
+    /// # Arguments
+    ///
+    /// * `request_id` - Request id returned by a ban mutation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(status)` on success.
+    /// * `Err(message)` on HTTP or JSON failure.
+    pub fn ban_action_status(&self, request_id: &str) -> Result<BanActionStatusResponse, String> {
+        let url = self.url("/admin/bans/actions/status");
+        let resp = self
+            .client
+            .get(&url)
+            .query(&[("request_id", request_id)])
+            .header(AUTHORIZATION, format!("Bearer {}", self.token))
+            .send()
+            .map_err(|e| format!("GET {url}: {e}"))?;
+        if !resp.status().is_success() {
+            return Err(format!("GET {url}: HTTP {}", resp.status()));
+        }
+        resp.json::<BanActionStatusResponse>()
             .map_err(|e| format!("GET {url}: decode: {e}"))
     }
 

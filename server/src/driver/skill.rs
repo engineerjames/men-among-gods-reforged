@@ -12,7 +12,7 @@ use core::{
 
 use crate::{
     chlog, core::types::Character, driver, effect::EffectManager, game_state::GameState, god::God,
-    helpers, populate,
+    helpers, points, populate,
 };
 
 use core::constants::LEGACY_TICKS;
@@ -3246,25 +3246,25 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
 
     for z in 0..5 {
         for m in 10..(attribs[z][0] as i32) {
-            pts += helpers::attrib_needed(m, 3);
+            pts += points::attrib_needed(m, 3);
         }
     }
 
     for m in 50..(hp0 as i32) {
-        pts += helpers::hp_needed(m, 3);
+        pts += points::hp_needed(m, 3);
     }
 
     for m in 50..(end0 as i32) {
-        pts += helpers::end_needed(m, 2);
+        pts += points::end_needed(m, 2);
     }
 
     for m in 50..(mana0 as i32) {
-        pts += helpers::mana_needed(m, 3);
+        pts += points::mana_needed(m, 3);
     }
 
     for z in 0..50 {
         for m in 1..(skills[z][0] as i32) {
-            pts += helpers::skill_needed(m, 2);
+            pts += points::skill_needed(m, 2);
         }
     }
 

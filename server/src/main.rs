@@ -32,41 +32,8 @@ use core;
 
 use crate::game_state::GameState;
 
-fn handle_command_line_args(args: &[String], gs: &mut GameState) {
-    if args.len() == 2 {
-        let cmd = args[1].to_lowercase();
-        match cmd.as_str() {
-            "pop" => {
-                populate::populate(gs);
-                process::exit(0);
-            }
-            "wipe" => {
-                populate::pop_wipe(gs);
-                process::exit(0);
-            }
-            "light" => {
-                populate::init_lights(gs);
-                process::exit(0);
-            }
-            "skill" => {
-                populate::pop_skill(gs);
-                process::exit(0);
-            }
-            "load" => {
-                populate::pop_load_all_chars(gs);
-                process::exit(0);
-            }
-            "save" => {
-                populate::pop_save_all_chars(gs);
-                process::exit(0);
-            }
-            _ => {}
-        }
-    }
-}
-
 fn main() -> Result<(), String> {
-    let args: Vec<String> = env::args().collect();
+    let _: Vec<String> = env::args().collect();
 
     core::initialize_logger(log::LevelFilter::Info, Some("server.log")).unwrap_or_else(|e| {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);
@@ -109,8 +76,6 @@ fn main() -> Result<(), String> {
         process::exit(1);
     });
 
-    handle_command_line_args(&args, &mut gs);
-
     if env::var("MAG_PLAYTEST")
         .map(|v| !v.is_empty())
         .unwrap_or(false)
@@ -142,6 +107,8 @@ fn main() -> Result<(), String> {
         server.drain_map_patches(&mut gs);
         server.drain_item_patches(&mut gs);
         server.drain_character_patches(&mut gs);
+        server.drain_ban_actions(&mut gs);
+        server.drain_world_actions(&mut gs);
         server.tick(&mut gs);
     }
 

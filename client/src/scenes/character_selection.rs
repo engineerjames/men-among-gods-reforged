@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use mag_core::{traits, types::CharacterSummary};
+use mag_core::types::CharacterSummary;
 use sdl2::{event::Event, keyboard::Mod, render::Canvas, video::Window};
 
 use crate::{
@@ -49,7 +49,6 @@ pub struct CharacterSelectionScene {
     delete_thread: Option<std::thread::JoinHandle<()>>,
 
     logging_in: bool,
-    pending_race: Option<i32>,
     pending_delete_character_id: Option<u64>,
     pending_delete_character_name: Option<String>,
     pending_scene: Option<SceneType>,
@@ -83,7 +82,6 @@ impl CharacterSelectionScene {
             delete_rx: None,
             delete_thread: None,
             logging_in: false,
-            pending_race: None,
             pending_delete_character_id: None,
             pending_delete_character_name: None,
             pending_scene: None,
@@ -189,7 +187,6 @@ impl Scene for CharacterSelectionScene {
         self.is_loading_characters = false;
         self.logging_in = false;
         self.deleting_character = false;
-        self.pending_race = None;
         self.pending_delete_character_id = None;
         self.pending_delete_character_name = None;
         self.delete_dialog.hide();
@@ -293,17 +290,6 @@ impl Scene for CharacterSelectionScene {
                         continue;
                     };
 
-                    let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
-                    else {
-                        self.form
-                            .set_error(Some("Selected character not found".to_string()));
-                        continue;
-                    };
-
-                    let race_int =
-                        traits::get_race_integer(selected.sex == traits::Sex::Male, selected.class);
-
-                    self.pending_race = Some(race_int);
                     self.form.set_error(None);
 
                     let base_url = app_state.api.base_url.clone();
@@ -450,11 +436,9 @@ impl Scene for CharacterSelectionScene {
 
                         app_state.api.login_target = Some(GameLoginTarget {
                             ticket,
-                            race: self.pending_race.unwrap_or(0),
                             character_id,
                             character_name: selected.name.clone(),
                         });
-                        self.pending_race = None;
                         return Some(SceneType::Game);
                     }
                     Err(error) => {

@@ -21,6 +21,8 @@ _LAST_REQUEST_AT: float = 0.0
 _MIN_REQUEST_INTERVAL: float = 1.1
 _SUFFIX_COUNTER: int = 0
 _SSL_CONTEXT: ssl.SSLContext | None = None
+CLIENT_VERSION: int = 0x020E07
+MIN_CLIENT_VERSION: int = 0x020E06
 
 
 def unique_suffix() -> str:
@@ -842,25 +844,32 @@ def test_create_game_login_ticket_requires_auth(base_url: str) -> None:
     status, _ = request_json(
         "POST",
         f"{base_url}/game/login_ticket",
-        payload={"character_id": 1},
+        payload={"character_id": 1, "client_version": CLIENT_VERSION},
     )
     assert_status(401, status, "create game login ticket auth status")
 
 
-def test_create_game_login_ticket_ok(base_url: str) -> None:
-    """Test minting a one-time game login ticket for an owned character.
+def create_character_for_ticket(
+    base_url: str,
+    token: str,
+    sex: str = "Male",
+    class_name: str = "Mercenary",
+) -> int:
+    """Create a character suitable for login-ticket tests.
 
     :param base_url: Base URL for the API.
-    :raises AssertionError: If ticket creation fails or the ticket is missing.
-    :returns: None.
+    :param token: Bearer token for the owning account.
+    :param sex: Character sex to create.
+    :param class_name: Character class to create.
+    :returns: The new character ID.
+    :raises AssertionError: If creation fails or the ID is missing.
     """
-    token, _ = create_account_and_token(base_url, f"ticket{unique_suffix()}")
     name = unique_character_name("Hero")
     payload = {
         "name": name,
         "description": valid_character_description(name),
-        "sex": "Male",
-        "class": "Mercenary",
+        "sex": sex,
+        "class": class_name,
     }
     status, body = request_json(
         "POST",
@@ -872,11 +881,23 @@ def test_create_game_login_ticket_ok(base_url: str) -> None:
     character_id = json.loads(body or "{}").get("id")
     if not isinstance(character_id, int) or character_id <= 0:
         raise AssertionError("create character response missing id")
+    return character_id
+
+
+def test_create_game_login_ticket_ok(base_url: str) -> None:
+    """Test minting a one-time game login ticket for an owned character.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If ticket creation fails or the ticket is missing.
+    :returns: None.
+    """
+    token, _ = create_account_and_token(base_url, f"ticket{unique_suffix()}")
+    character_id = create_character_for_ticket(base_url, token)
 
     status, body = request_json(
         "POST",
         f"{base_url}/game/login_ticket",
-        payload={"character_id": character_id},
+        payload={"character_id": character_id, "client_version": CLIENT_VERSION},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert_status(200, status, "create game login ticket status")
@@ -897,35 +918,48 @@ def test_create_game_login_ticket_wrong_owner(base_url: str) -> None:
     """
     token_a, _ = create_account_and_token(base_url, f"ticka{unique_suffix()}")
     token_b, _ = create_account_and_token(base_url, f"tickb{unique_suffix()}")
-
-    name = unique_character_name("Hero")
-    payload = {
-        "name": name,
-        "description": valid_character_description(name),
-        "sex": "Female",
-        "class": "Templar",
-    }
-    status, body = request_json(
-        "POST",
-        f"{base_url}/characters",
-        payload=payload,
-        headers={"Authorization": f"Bearer {token_a}"},
-    )
-    assert_status(200, status, "create character for ticket wrong owner status")
-    character_id = json.loads(body or "{}").get("id")
-    if not isinstance(character_id, int) or character_id <= 0:
-        raise AssertionError("create character response missing id")
+    character_id = create_character_for_ticket(base_url, token_a, "Female", "Templar")
 
     status, body = request_json(
         "POST",
         f"{base_url}/game/login_ticket",
-        payload={"character_id": character_id},
+        payload={"character_id": character_id, "client_version": CLIENT_VERSION},
         headers={"Authorization": f"Bearer {token_b}"},
     )
     assert_status(401, status, "create game login ticket wrong owner status")
     data = json.loads(body or "{}")
     if data.get("ticket") is not None:
         raise AssertionError("expected null ticket for unauthorized request")
+
+
+def test_create_game_login_ticket_rejects_unsupported_version(base_url: str) -> None:
+    """Test that ticket creation requires a supported client version.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If unsupported versions are accepted.
+    :returns: None.
+    """
+    token, _ = create_account_and_token(base_url, f"tickv{unique_suffix()}")
+    character_id = create_character_for_ticket(base_url, token)
+
+    for payload, label in [
+        ({"character_id": character_id}, "missing client version"),
+        (
+            {"character_id": character_id, "client_version": MIN_CLIENT_VERSION - 1},
+            "too-old client version",
+        ),
+        (
+            {"character_id": character_id, "client_version": CLIENT_VERSION + 1},
+            "too-new client version",
+        ),
+    ]:
+        status, _ = request_json(
+            "POST",
+            f"{base_url}/game/login_ticket",
+            payload=payload,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert_status(400, status, f"create game login ticket {label} status")
 
 
 def test_malformed_json(base_url: str) -> None:
@@ -1035,6 +1069,7 @@ def main() -> None:
         test_create_game_login_ticket_requires_auth,
         test_create_game_login_ticket_ok,
         test_create_game_login_ticket_wrong_owner,
+        test_create_game_login_ticket_rejects_unsupported_version,
     ]
 
     failed = 0

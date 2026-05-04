@@ -53,13 +53,13 @@ impl NetworkRuntime {
     ///
     /// The background thread wraps the TCP connection in a TLS layer using the
     /// TOFU certificate verifier before starting the login handshake.
-    pub fn new(host: String, port: u16, ticket: u64, race: i32) -> Self {
+    pub fn new(host: String, port: u16, ticket: u64) -> Self {
         let (command_tx, command_rx) = mpsc::channel::<NetworkCommand>();
         let (event_tx, event_rx) = mpsc::channel::<NetworkEvent>();
 
         let tls_host = host.clone();
         let handle = std::thread::spawn(move || {
-            login::run_network_task(tls_host, port, ticket, race, command_rx, event_tx);
+            login::run_network_task(tls_host, port, ticket, command_rx, event_tx);
         });
 
         Self {

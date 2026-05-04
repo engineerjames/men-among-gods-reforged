@@ -83,9 +83,10 @@ cargo run --package server-utils --bin map_viewer -- --snapshot server/assets/wo
 ### MAG Admin CLI
 
 An admin API client for operator workflows. By default it opens a guided
-interactive menu for browsing templates, viewing globals, and managing
-badwords. Scriptable command mode is explicit: pass `--auto` before the
-subcommand. The tool talks to the API and never connects directly to KeyDB.
+interactive menu organized into world effects, badword management, template
+management, globals, and quit. Scriptable command mode is explicit: pass
+`--auto` before the subcommand. The tool talks to the API and never connects
+directly to KeyDB.
 
 **Usage:**
 ```bash
@@ -103,6 +104,15 @@ cargo run --package server-utils --bin mag-admin -- --auto templates characters 
 
 # View persisted global server counters
 cargo run --package server-utils --bin mag-admin -- --auto globals show --format json
+
+# Execute live world actions through the admin API
+cargo run --package server-utils --bin mag-admin -- --auto world action populate --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action rebuild-lights --wait --format json
+cargo run --package server-utils --bin mag-admin -- --auto world action sync-skills --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action reset-char 123 --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action reset-item 456 --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action wipe --wait
+cargo run --package server-utils --bin mag-admin -- --auto world action reset-all --wait
 
 # List badwords as JSON
 cargo run --package server-utils --bin mag-admin -- --auto badwords list --format json
@@ -128,7 +138,8 @@ get` when the word is not present.
 
 Subcommands require `--auto` so automatable interactions are opt-in. Running
 without `--auto` opens the interactive menu, which reuses the same API calls as
-the scriptable subcommands.
+the scriptable commands. World actions execute on the running server and are
+pollable with `--wait`; destructive menu actions prompt for confirmation.
 
 ## Local Development Workflow
 

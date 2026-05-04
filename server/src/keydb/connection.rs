@@ -1,5 +1,6 @@
 use core::ranks::points2rank;
 use core::traits::{Class, Sex, class_from_kindred, sex_from_kindred};
+use core::types::api::GameLoginTicketMetadata;
 use core::types::{Character, CharacterSummary};
 use redis::Commands;
 use std::collections::HashMap;
@@ -107,7 +108,7 @@ pub fn load_message_of_the_day() -> Result<String, String> {
         .map_err(|err| format!("Failed to load game MOTD from KeyDB: {err}"))
 }
 
-pub fn consume_login_ticket(ticket: u64) -> Result<Option<u64>, String> {
+pub fn consume_login_ticket(ticket: u64) -> Result<Option<GameLoginTicketMetadata>, String> {
     if ticket == 0 {
         return Ok(None);
     }
@@ -119,7 +120,7 @@ pub fn consume_login_ticket(ticket: u64) -> Result<Option<u64>, String> {
     let script =
         "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]); end; return v";
 
-    let value: Option<String> = redis::cmd("EVAL")
+    let value: Option<Vec<u8>> = redis::cmd("EVAL")
         .arg(script)
         .arg(1)
         .arg(&key)
@@ -130,12 +131,10 @@ pub fn consume_login_ticket(ticket: u64) -> Result<Option<u64>, String> {
         return Ok(None);
     };
 
-    let character_id = raw
-        .trim()
-        .parse::<u64>()
-        .map_err(|_| "Invalid login ticket value".to_string())?;
+    let metadata = GameLoginTicketMetadata::from_bytes(&raw)
+        .map_err(|err| format!("Invalid login ticket metadata: {err}"))?;
 
-    Ok(Some(character_id))
+    Ok(Some(metadata))
 }
 
 pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, String> {
