@@ -1687,8 +1687,13 @@ impl TemplateViewerApp {
             let mut armor = character.armor as i32;
             let mut weapon = character.weapon as i32;
             let mut light = character.light as i32;
+            let mut armor_bonus = character.armor_bonus as i32;
+            let mut weapon_bonus = character.weapon_bonus as i32;
+            let mut light_bonus = character.light_bonus as i32;
+            let mut gethit_bonus = character.gethit_bonus as i32;
             let mut mode = character.mode as i32;
             let mut speed = character.speed as i32;
+            let mut speed_mod_val = character.speed_mod as i32;
             let mut monster_class = character.monster_class;
             let mut a_hp = character.a_hp;
             let mut a_end = character.a_end;
@@ -1929,12 +1934,47 @@ impl TemplateViewerApp {
                     changed |= ui.add(egui::DragValue::new(&mut light).speed(1)).changed();
                     ui.end_row();
 
+                    ui.label("Armor Bonus:");
+                    ui.vertical(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut armor_bonus).speed(1)).changed();
+                        ui.label("Permanent armor added on top of worn items.");
+                    });
+                    ui.end_row();
+
+                    ui.label("Weapon Bonus:");
+                    ui.vertical(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut weapon_bonus).speed(1)).changed();
+                        ui.label("Permanent weapon damage added on top of worn items.");
+                    });
+                    ui.end_row();
+
+                    ui.label("Light Bonus:");
+                    ui.vertical(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut light_bonus).speed(1)).changed();
+                        ui.label("Permanent light radius added on top of worn items.");
+                    });
+                    ui.end_row();
+
+                    ui.label("Gethit Bonus:");
+                    ui.vertical(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut gethit_bonus).speed(1)).changed();
+                        ui.label("Thorns damage dealt back to melee attackers (rand(value)+1, armor-bypassing). 0 = disabled.");
+                    });
+                    ui.end_row();
+
                     ui.label("Mode:");
                     changed |= ui.add(egui::DragValue::new(&mut mode).speed(1)).changed();
                     ui.end_row();
 
                     ui.label("Speed:");
                     changed |= ui.add(egui::DragValue::new(&mut speed).speed(1)).changed();
+                    ui.end_row();
+
+                    ui.label("Speed Mod:");
+                    ui.vertical(|ui| {
+                        changed |= ui.add(egui::DragValue::new(&mut speed_mod_val).speed(1)).changed();
+                        ui.label("Race/template speed modifier applied on top of agility/strength.");
+                    });
                     ui.end_row();
 
                     ui.label("Monster Class:");
@@ -2223,8 +2263,13 @@ impl TemplateViewerApp {
             character.armor = Self::clamp_i16(armor);
             character.weapon = Self::clamp_i16(weapon);
             character.light = Self::clamp_u8(light);
+            character.armor_bonus = Self::clamp_u8(armor_bonus);
+            character.weapon_bonus = Self::clamp_u8(weapon_bonus);
+            character.light_bonus = Self::clamp_u8(light_bonus);
+            character.gethit_bonus = Self::clamp_i8(gethit_bonus);
             character.mode = Self::clamp_u8(mode);
             character.speed = Self::clamp_i16(speed);
+            character.speed_mod = Self::clamp_i8(speed_mod_val);
             character.monster_class = monster_class;
             character.a_hp = a_hp;
             character.a_end = a_end;
