@@ -26,8 +26,8 @@ impl EffectManager {
         !(m.ch != 0
             || m.to_ch != 0
             || m.it != 0
-            || (m.flags & MF_MOVEBLOCK as u64) != 0
-            || (m.flags & MF_DEATHTRAP as u64) != 0
+            || (m.flags & u64::from(MF_MOVEBLOCK)) != 0
+            || (m.flags & u64::from(MF_DEATHTRAP)) != 0
             || m.fsprite != 0)
     }
 
@@ -44,7 +44,7 @@ impl EffectManager {
 
         for n in 1..MAXEFFECT {
             let used = gs.effects[n].used;
-            let effect_type = gs.effects[n].effect_type as i32;
+            let effect_type = i32::from(gs.effects[n].effect_type);
 
             if used == USE_EMPTY {
                 continue;
@@ -110,7 +110,7 @@ impl EffectManager {
         if duration == 0 {
             // Check if target position is clear
             if player::commands::plr_check_target(gs, map_index) {
-                gs.map[map_index].flags |= MF_MOVEBLOCK as u64;
+                gs.map[map_index].flags |= u64::from(MF_MOVEBLOCK);
                 gs.effects[n].effect_type = 8;
             }
         }
@@ -134,7 +134,7 @@ impl EffectManager {
             gs.map[map_index].flags &= !MF_GFX_DEATH;
         } else {
             gs.map[map_index].flags &= !MF_GFX_DEATH;
-            gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
+            gs.map[map_index].flags |= u64::from(duration / 2) << 40;
 
             if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
                 player::map::plr_map_remove(gs, co);
@@ -152,8 +152,8 @@ impl EffectManager {
 
                     let flags = gs.characters[co].flags;
                     if (flags & CharacterFlags::Respawn.bits()) != 0 {
-                        let tx = gs.character_templates[temp].x as i32;
-                        let ty = gs.character_templates[temp].y as i32;
+                        let tx = i32::from(gs.character_templates[temp].x);
+                        let ty = i32::from(gs.character_templates[temp].y);
                         Self::fx_add_effect(
                             gs,
                             2,
@@ -188,7 +188,7 @@ impl EffectManager {
         if duration == Self::EFFECT_TOMBSTONE_DURATION {
             gs.effects[n].used = USE_EMPTY;
             gs.map[map_index].flags &= !MF_GFX_TOMB;
-            gs.map[map_index].flags &= !(MF_MOVEBLOCK as u64);
+            gs.map[map_index].flags &= !u64::from(MF_MOVEBLOCK);
 
             let in_id = God::create_item(gs, 170);
             if let Some(in_id) = in_id {
@@ -242,7 +242,7 @@ impl EffectManager {
             }
         } else {
             gs.map[map_index].flags &= !MF_GFX_TOMB;
-            gs.map[map_index].flags |= ((duration / 2) as u64) << 35;
+            gs.map[map_index].flags |= u64::from(duration / 2) << 35;
         }
     }
     /// Type 5: Evil magic
@@ -262,7 +262,7 @@ impl EffectManager {
         } else {
             let duration = gs.effects[n].duration;
             gs.map[map_index].flags &= !MF_GFX_EMAGIC;
-            gs.map[map_index].flags |= ((duration / 2) as u64) << 45;
+            gs.map[map_index].flags |= u64::from(duration / 2) << 45;
         }
     }
 
@@ -283,7 +283,7 @@ impl EffectManager {
         } else {
             let duration = gs.effects[n].duration;
             gs.map[map_index].flags &= !MF_GFX_GMAGIC;
-            gs.map[map_index].flags |= ((duration / 2) as u64) << 48;
+            gs.map[map_index].flags |= u64::from(duration / 2) << 48;
         }
     }
 
@@ -304,7 +304,7 @@ impl EffectManager {
         } else {
             let duration = gs.effects[n].duration;
             gs.map[map_index].flags &= !MF_GFX_CMAGIC;
-            gs.map[map_index].flags |= ((duration / 2) as u64) << 51;
+            gs.map[map_index].flags |= u64::from(duration / 2) << 51;
         }
     }
 
@@ -324,10 +324,10 @@ impl EffectManager {
             gs.map[map_index].flags &= !MF_GFX_DEATH;
         } else {
             gs.map[map_index].flags &= !MF_GFX_DEATH;
-            gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
+            gs.map[map_index].flags |= u64::from(duration / 2) << 40;
 
             if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
-                gs.map[map_index].flags &= !(MF_MOVEBLOCK as u64);
+                gs.map[map_index].flags &= !u64::from(MF_MOVEBLOCK);
 
                 let char_template_idx = gs.effects[n].data[2] as usize;
 
@@ -465,7 +465,7 @@ impl EffectManager {
         } else {
             let duration = gs.effects[n].duration;
             gs.map[map_index].flags &= !MF_GFX_DEATH;
-            gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
+            gs.map[map_index].flags |= u64::from(duration / 2) << 40;
         }
     }
 
@@ -571,7 +571,7 @@ impl EffectManager {
         let has_gold = ch.gold != 0;
 
         if has_items || has_gold {
-            gs.map[map_index].flags |= MF_MOVEBLOCK as u64;
+            gs.map[map_index].flags |= u64::from(MF_MOVEBLOCK);
 
             let fn_idx = Self::fx_add_effect(
                 gs,
@@ -593,11 +593,11 @@ impl EffectManager {
             gs.characters[co].used = USE_EMPTY;
 
             let co_flags = gs.characters[co].flags;
-            let co_name = gs.characters[co].get_name().to_string();
+            let co_name = gs.characters[co].get_name().to_owned();
 
             if temp != 0 && (co_flags & CharacterFlags::Respawn.bits()) != 0 {
-                let tx = gs.character_templates[temp].x as i32;
-                let ty = gs.character_templates[temp].y as i32;
+                let tx = i32::from(gs.character_templates[temp].x);
+                let ty = i32::from(gs.character_templates[temp].y);
 
                 if temp == 189 || temp == 561 {
                     Self::fx_add_effect(

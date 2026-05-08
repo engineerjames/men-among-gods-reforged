@@ -29,20 +29,20 @@ pub fn calculate_points_tot(character: &Character) -> i32 {
     let mut points = 0;
 
     for attribute in 0..5 {
-        for value in 10..character.attrib[attribute][0] as i32 {
+        for value in 10..i32::from(character.attrib[attribute][0]) {
             points += attrib_needed(value, 3);
         }
     }
 
-    for value in 50..character.hp[0] as i32 {
+    for value in 50..i32::from(character.hp[0]) {
         points += hp_needed(value, 3);
     }
 
-    for value in 50..character.end[0] as i32 {
+    for value in 50..i32::from(character.end[0]) {
         points += end_needed(value, 2);
     }
 
-    for value in 50..character.mana[0] as i32 {
+    for value in 50..i32::from(character.mana[0]) {
         points += mana_needed(value, 3);
     }
 
@@ -51,7 +51,7 @@ pub fn calculate_points_tot(character: &Character) -> i32 {
             continue;
         }
 
-        for value in 1..character.skill[skill][0] as i32 {
+        for value in 1..i32::from(character.skill[skill][0]) {
             points += skill_needed(value, 2);
         }
     }

@@ -23,7 +23,7 @@ where
     R: Send + 'static,
 {
     std::thread::Builder::new()
-        .name("server-test-gamestate".to_string())
+        .name("server-test-gamestate".to_owned())
         .stack_size(8 * 1024 * 1024)
         .spawn(move || {
             let mut gs = GameState::new();

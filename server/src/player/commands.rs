@@ -172,8 +172,8 @@ pub fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the request
 pub fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
-    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
-    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
+    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
     let cn = gs.players[nr].usnr;
 
     if !(0..core::constants::SERVER_MAPX).contains(&x)
@@ -228,8 +228,8 @@ pub fn plr_cmd_give(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the turn
 pub fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
-    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
-    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
+    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
     let cn = gs.players[nr].usnr;
 
     log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
@@ -254,8 +254,8 @@ pub fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index performing the drop
 pub fn plr_cmd_drop(gs: &mut GameState, nr: usize) {
-    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
-    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
+    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
     let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
@@ -277,8 +277,8 @@ pub fn plr_cmd_drop(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the pickup
 pub fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
-    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
-    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
+    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
     let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
@@ -480,8 +480,8 @@ pub fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the use
 pub fn plr_cmd_use(gs: &mut GameState, nr: usize) {
-    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
-    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
+    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
     let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
@@ -510,8 +510,8 @@ pub fn plr_cmd_use(gs: &mut GameState, nr: usize) {
 /// * `gs` - Mutable reference to the full game state.
 /// * `nr` - Player slot index issuing the command.
 pub fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
-    let x = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as i32;
-    let y = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
+    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
     let cn = gs.players[nr].usnr;
 
     // Bounds-check the incoming world coordinates.
@@ -531,8 +531,8 @@ pub fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
     }
 
     // Verify the player is adjacent (Chebyshev distance ≤ 1).
-    let cn_x = gs.characters[cn].x as i32;
-    let cn_y = gs.characters[cn].y as i32;
+    let cn_x = i32::from(gs.characters[cn].x);
+    let cn_y = i32::from(gs.characters[cn].y);
     if (cn_x - x).abs() > 1 || (cn_y - y).abs() > 1 {
         return;
     }
@@ -634,7 +634,7 @@ pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
             && tmp < gs.items.len()
             && gs.items[tmp].used == core::constants::USE_ACTIVE
         {
-            gs.items[tmp].temp as i32 == core::constants::IT_LAGSCROLL
+            i32::from(gs.items[tmp].temp) == core::constants::IT_LAGSCROLL
         } else {
             false
         };
@@ -764,7 +764,7 @@ pub fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
 /// * `nr` - Player slot index issuing the shop command
 pub fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
     let co = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
-    let n = u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]) as i32;
+    let n = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
     let cn = gs.players[nr].usnr;
 
     if (co & 0x8000) != 0 {
@@ -821,8 +821,8 @@ fn plr_turn(gs: &mut GameState, cn: usize, dir: u8) {
 /// * `None` if the direction is invalid and `cerrno` was set.
 fn plr_front_tile(gs: &mut GameState, cn: usize, action: &str) -> Option<(usize, i32, i32)> {
     let (mut x, mut y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -1152,8 +1152,8 @@ fn plr_social_action(
     gs.do_area_log(
         cn,
         0,
-        ch.x as i32,
-        ch.y as i32,
+        i32::from(ch.x),
+        i32::from(ch.y),
         core::types::FontColor::Blue,
         &area_message,
     );
@@ -1252,9 +1252,9 @@ pub fn plr_pickup(gs: &mut GameState, cn: usize) {
         gs.items[in_id as usize].y = 0;
 
         if active != 0 && light_active != 0 {
-            gs.do_add_light(x as i32, y as i32, -(light_active as i32));
+            gs.do_add_light(i32::from(x), i32::from(y), -i32::from(light_active));
         } else if light_inactive != 0 {
-            gs.do_add_light(x as i32, y as i32, -(light_inactive as i32));
+            gs.do_add_light(i32::from(x), i32::from(y), -i32::from(light_inactive));
         }
 
         return;
@@ -1279,7 +1279,7 @@ pub fn plr_pickup(gs: &mut GameState, cn: usize) {
             gs.characters[cn].citem = in_id;
         }
 
-        let item_name = gs.items[in_id as usize].get_name().to_string();
+        let item_name = gs.items[in_id as usize].get_name().to_owned();
 
         log::info!("Character {} took {}", cn, item_name);
     } else {
@@ -1295,9 +1295,9 @@ pub fn plr_pickup(gs: &mut GameState, cn: usize) {
     gs.items[in_id as usize].carried = cn as u16;
 
     if active != 0 && light_active != 0 {
-        gs.do_add_light(x as i32, y as i32, -(light_active as i32));
+        gs.do_add_light(i32::from(x), i32::from(y), -i32::from(light_active));
     } else if light_inactive != 0 {
-        gs.do_add_light(x as i32, y as i32, -(light_inactive as i32));
+        gs.do_add_light(i32::from(x), i32::from(y), -i32::from(light_inactive));
     }
 }
 
@@ -1379,7 +1379,7 @@ pub fn plr_skill(gs: &mut GameState, cn: usize) {
 
     let skill_target = gs.characters[cn].skill_target2;
 
-    driver::skill_driver(gs, cn, skill_target as i32);
+    driver::skill_driver(gs, cn, i32::from(skill_target));
 }
 
 /// Port of `plr_drop` from `svr_act.cpp`
@@ -1422,7 +1422,7 @@ pub fn plr_drop(gs: &mut GameState, cn: usize) {
     let is_blocked = gs.map[m].ch != 0
         || gs.map[m].to_ch != 0
         || gs.map[m].it != 0
-        || (gs.map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0;
+        || (gs.map[m].flags & u64::from(core::constants::MF_MOVEBLOCK)) != 0;
 
     if is_blocked {
         gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
@@ -1501,7 +1501,7 @@ pub fn plr_drop(gs: &mut GameState, cn: usize) {
             return;
         }
 
-        let item_name = gs.items[in_id as usize].get_name().to_string();
+        let item_name = gs.items[in_id as usize].get_name().to_owned();
         log::info!("Character {} dropped {}", cn, item_name);
         in_id
     };
@@ -1517,9 +1517,9 @@ pub fn plr_drop(gs: &mut GameState, cn: usize) {
     gs.items[final_in_id as usize].carried = 0;
 
     if active != 0 && light_active != 0 {
-        gs.do_add_light(x as i32, y as i32, light_active as i32);
+        gs.do_add_light(i32::from(x), i32::from(y), i32::from(light_active));
     } else if light_inactive != 0 {
-        gs.do_add_light(x as i32, y as i32, light_inactive as i32);
+        gs.do_add_light(i32::from(x), i32::from(y), i32::from(light_inactive));
     }
 }
 
@@ -1653,7 +1653,7 @@ pub fn plr_check_target(gs: &mut GameState, m: usize) -> bool {
         return false;
     }
 
-    if (gs.map[m].flags & core::constants::MF_MOVEBLOCK as u64) != 0 {
+    if (gs.map[m].flags & u64::from(core::constants::MF_MOVEBLOCK)) != 0 {
         return false;
     }
 

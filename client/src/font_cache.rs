@@ -312,7 +312,7 @@ pub fn draw_wrapped_text(
 
         // Try appending the word to the current line.
         let candidate = if current_line.is_empty() {
-            word.to_string()
+            word.to_owned()
         } else {
             format!("{} {}", current_line, word)
         };
@@ -326,7 +326,7 @@ pub fn draw_wrapped_text(
                 cur_y += line_h;
                 lines_drawn += 1;
             }
-            current_line = word.to_string();
+            current_line = word.to_owned();
         }
     }
 

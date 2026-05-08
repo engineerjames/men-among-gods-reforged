@@ -142,8 +142,8 @@ impl GameMap {
         let next_index = if off == 0 {
             absolute_tile_index
         } else {
-            let base = self.last_setmap_index.map(|v| v as i32).unwrap_or(-1);
-            let next = base + off as i32;
+            let base = self.last_setmap_index.map(|v| i32::from(v)).unwrap_or(-1);
+            let next = base + i32::from(off);
             if next < 0 { None } else { Some(next as u16) }
         };
 
@@ -256,8 +256,8 @@ impl GameMap {
         for y in 0..TILEY {
             for x in 0..TILEX {
                 if let Some(tile) = self.tiles.get_mut(n) {
-                    tile.x = (x as i32 + xp as i32) as u16;
-                    tile.y = (y as i32 + yp as i32) as u16;
+                    tile.x = (x as i32 + i32::from(xp)) as u16;
+                    tile.y = (y as i32 + i32::from(yp)) as u16;
                 }
                 n += 1;
                 if n >= self.tiles.len() {

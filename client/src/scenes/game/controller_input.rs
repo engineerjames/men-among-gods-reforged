@@ -222,7 +222,7 @@ impl GameScene {
                             Btn::DPadUp => self.skills_panel.controller_nav_up(),
                             Btn::DPadDown => self.skills_panel.controller_nav_down(),
                             Btn::DPadLeft | Btn::DPadRight => {
-                                self.skills_panel.controller_nav_left_right()
+                                self.skills_panel.controller_nav_left_right();
                             }
                             _ => {}
                         }
@@ -313,7 +313,7 @@ impl GameScene {
                                 net.send(ClientCommand::new_skill(
                                     skill_nr as u32,
                                     Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
+                                    u32::from(ps.character_info().attrib[0][0]),
                                 ));
                             }
                         } else {
@@ -375,7 +375,7 @@ impl GameScene {
                                     net.send(ClientCommand::new_skill(
                                         skill_nr as u32,
                                         Self::default_skill_target(ps),
-                                        ps.character_info().attrib[0][0] as u32,
+                                        u32::from(ps.character_info().attrib[0][0]),
                                     ));
                                 }
                             }
@@ -523,7 +523,7 @@ impl GameScene {
                                 net.send(ClientCommand::new_skill(
                                     skill_nr as u32,
                                     Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
+                                    u32::from(ps.character_info().attrib[0][0]),
                                 ));
                             }
                         }
@@ -562,7 +562,7 @@ impl GameScene {
                                     Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
                                 {
                                     let tile = ps.map().tile_at_xy(sx, sy);
-                                    let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
+                                    let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
                                     let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
                                     if target_cn != 0 {
                                         if let Some(ps_mut) = app_state.player_state.as_mut() {
@@ -677,7 +677,7 @@ impl GameScene {
                                 net.send(ClientCommand::new_skill(
                                     skill_nr as u32,
                                     Self::default_skill_target(ps),
-                                    ps.character_info().attrib[0][0] as u32,
+                                    u32::from(ps.character_info().attrib[0][0]),
                                 ));
                             }
                         }

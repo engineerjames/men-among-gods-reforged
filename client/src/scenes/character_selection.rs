@@ -142,7 +142,7 @@ impl Scene for CharacterSelectionScene {
         Self::cleanup_finished_thread(&mut self.delete_thread, "character delete");
 
         if Self::is_thread_running(&self.characters_thread) {
-            self.last_error = Some("Character loading already in progress".to_string());
+            self.last_error = Some("Character loading already in progress".to_owned());
             return;
         }
 
@@ -157,19 +157,19 @@ impl Scene for CharacterSelectionScene {
         self.pending_delete_character_name = None;
         self.delete_dialog.hide();
         self.form
-            .set_status(Some("Loading characters...".to_string()));
+            .set_status(Some("Loading characters...".to_owned()));
         self.form.set_error(None);
         self.form.set_username(app_state.api.username.clone());
 
         let Some(token) = app_state.api.token.as_deref() else {
             self.is_loading_characters = false;
-            self.last_error = Some("Missing account session token".to_string());
+            self.last_error = Some("Missing account session token".to_owned());
             self.form.set_error(self.last_error.clone());
             return;
         };
 
         let base_url = app_state.api.base_url.clone();
-        let token = token.to_string();
+        let token = token.to_owned();
         let (tx, rx) = mpsc::channel();
         self.characters_thread = Some(std::thread::spawn(move || {
             let result = account_api::get_characters(&base_url, &token);
@@ -224,19 +224,19 @@ impl Scene for CharacterSelectionScene {
                         DeleteCharacterDialogAction::Confirm { character_id } => {
                             if Self::is_thread_running(&self.delete_thread) {
                                 self.form.set_error(Some(
-                                    "Character delete already in progress".to_string(),
+                                    "Character delete already in progress".to_owned(),
                                 ));
                                 continue;
                             }
 
                             let Some(token) = app_state.api.token.as_deref() else {
                                 self.form
-                                    .set_error(Some("Missing account session token".to_string()));
+                                    .set_error(Some("Missing account session token".to_owned()));
                                 continue;
                             };
 
                             let base_url = app_state.api.base_url.clone();
-                            let token = token.to_string();
+                            let token = token.to_owned();
                             let (tx, rx) = mpsc::channel();
                             self.delete_thread = Some(std::thread::spawn(move || {
                                 let result =
@@ -280,20 +280,20 @@ impl Scene for CharacterSelectionScene {
                 CharacterSelectionFormAction::ContinueToGame { character_id } => {
                     if self.logging_in || Self::is_thread_running(&self.login_thread) {
                         self.form
-                            .set_error(Some("Login already in progress".to_string()));
+                            .set_error(Some("Login already in progress".to_owned()));
                         continue;
                     }
 
                     let Some(token) = app_state.api.token.as_deref() else {
                         self.form
-                            .set_error(Some("Missing account session token".to_string()));
+                            .set_error(Some("Missing account session token".to_owned()));
                         continue;
                     };
 
                     self.form.set_error(None);
 
                     let base_url = app_state.api.base_url.clone();
-                    let token = token.to_string();
+                    let token = token.to_owned();
                     let (tx, rx) = mpsc::channel();
                     self.login_thread = Some(std::thread::spawn(move || {
                         let result =
@@ -342,7 +342,7 @@ impl Scene for CharacterSelectionScene {
                     Ok(result) => Some(result),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        Some(Err("Character load task failed unexpectedly".to_string()))
+                        Some(Err("Character load task failed unexpectedly".to_owned()))
                     }
                 }
             } else {
@@ -407,7 +407,7 @@ impl Scene for CharacterSelectionScene {
                     Ok(result) => Some(result),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        Some(Err("Game login task failed unexpectedly".to_string()))
+                        Some(Err("Game login task failed unexpectedly".to_owned()))
                     }
                 }
             } else {
@@ -423,14 +423,14 @@ impl Scene for CharacterSelectionScene {
                         log::info!("Created game login ticket {}", ticket);
                         let Some(character_id) = self.selected_character_id else {
                             self.form
-                                .set_error(Some("Select a character first".to_string()));
+                                .set_error(Some("Select a character first".to_owned()));
                             return None;
                         };
 
                         let Some(selected) = self.characters.iter().find(|c| c.id == character_id)
                         else {
                             self.form
-                                .set_error(Some("Selected character not found".to_string()));
+                                .set_error(Some("Selected character not found".to_owned()));
                             return None;
                         };
 
@@ -456,7 +456,7 @@ impl Scene for CharacterSelectionScene {
                     Ok(result) => Some(result),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        Some(Err("Character delete task failed unexpectedly".to_string()))
+                        Some(Err("Character delete task failed unexpectedly".to_owned()))
                     }
                 }
             } else {
@@ -473,7 +473,7 @@ impl Scene for CharacterSelectionScene {
                         let deleted_character_name = self
                             .pending_delete_character_name
                             .clone()
-                            .unwrap_or_else(|| "<unknown>".to_string());
+                            .unwrap_or_else(|| "<unknown>".to_owned());
 
                         if let Some(character_id) = deleted_character_id {
                             self.characters.retain(|c| c.id != character_id);

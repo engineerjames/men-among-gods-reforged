@@ -256,8 +256,7 @@ fn validate_loaded_map(map: &[core::types::Map]) -> Result<usize, String> {
     let non_default = count_non_default_map_tiles(map);
     if non_default == 0 {
         return Err(
-            "Loaded KeyDB map contains zero non-default tiles; game:map:* data appears empty or corrupt. Re-import a world snapshot with `world-snapshot import --force --input server/assets/world_seed.wsnap` before starting the server."
-                .to_string(),
+            "Loaded KeyDB map contains zero non-default tiles; game:map:* data appears empty or corrupt. Re-import a world snapshot with `world-snapshot import --force --input server/assets/world_seed.wsnap` before starting the server.".to_owned(),
         );
     }
 
@@ -391,8 +390,7 @@ pub struct GameData {
 pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     if !has_game_data(con)? {
         return Err("No game data found in KeyDB (game:meta:version missing). \
-             Seed KeyDB with world-snapshot import first."
-            .to_string());
+             Seed KeyDB with world-snapshot import first.".to_owned());
     }
 
     let version: u32 = con

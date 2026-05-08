@@ -265,7 +265,7 @@ impl NewAccountForm {
     /// that the password and confirm-password fields match.
     fn push_create_action(&mut self) {
         if self.password_input.value() != self.confirm_password_input.value() {
-            self.error_text = Some("Passwords do not match".to_string());
+            self.error_text = Some("Passwords do not match".to_owned());
             return;
         }
         self.error_text = None;

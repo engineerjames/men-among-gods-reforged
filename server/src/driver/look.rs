@@ -16,7 +16,7 @@ pub fn look_rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) {
     for n in 0..9 {
         let temp_id = gs.items[item_idx].data[n] as usize;
         if temp_id != 0 {
-            let name = gs.item_templates[temp_id].get_name().to_string();
+            let name = gs.item_templates[temp_id].get_name().to_owned();
             gs.do_character_log(
                 cn,
                 FontColor::Yellow,

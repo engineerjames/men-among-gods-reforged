@@ -17,7 +17,7 @@ impl GameState {
     pub(crate) fn do_balance(&mut self, cn: usize) {
         let m = self.characters[cn].x as usize
             + (self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize);
-        let is_bank = (self.map[m].flags & core::constants::MF_BANK as u64) != 0;
+        let is_bank = (self.map[m].flags & u64::from(core::constants::MF_BANK)) != 0;
         if !is_bank {
             self.do_character_log(
                 cn,
@@ -28,7 +28,7 @@ impl GameState {
         }
 
         let balance = self.characters[cn].data[13];
-        let depot_sold = self.characters[cn].depot_sold as i32;
+        let depot_sold = i32::from(self.characters[cn].depot_sold);
         let depot_cost = self.characters[cn].depot_cost;
         self.do_character_log(
             cn,
@@ -83,7 +83,7 @@ impl GameState {
     pub(crate) fn do_withdraw(&mut self, cn: usize, g: i32, s: i32) {
         let m = self.characters[cn].x as usize
             + (self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize);
-        if (self.map[m].flags & core::constants::MF_BANK as u64) == 0 {
+        if (self.map[m].flags & u64::from(core::constants::MF_BANK)) == 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -143,7 +143,7 @@ impl GameState {
     pub(crate) fn do_deposit(&mut self, cn: usize, g: i32, s: i32) {
         let m = self.characters[cn].x as usize
             + (self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize);
-        if (self.map[m].flags & core::constants::MF_BANK as u64) == 0 {
+        if (self.map[m].flags & u64::from(core::constants::MF_BANK)) == 0 {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -267,8 +267,8 @@ impl GameState {
             );
             return;
         }
-        let iname = self.items[in_id].get_name().to_string();
-        let cname = self.characters[co].get_name().to_string();
+        let iname = self.items[in_id].get_name().to_owned();
+        let cname = self.characters[co].get_name().to_owned();
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,

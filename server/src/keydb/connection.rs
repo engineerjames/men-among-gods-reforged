@@ -54,7 +54,7 @@ fn keydb_url_with_dotenv(load_dotenv: bool) -> String {
             .collect();
         return format!("redis://:{encoded}@127.0.0.1:5556/");
     }
-    "redis://127.0.0.1:5556/".to_string()
+    "redis://127.0.0.1:5556/".to_owned()
 }
 
 /// Return the KeyDB connection URL.
@@ -147,7 +147,7 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
         .map_err(|err| format!("Failed to load character from KeyDB: {err}"))?;
 
     let character_map: HashMap<String, String> =
-        redis::from_redis_value(raw).map_err(|_| "Failed to parse character hash".to_string())?;
+        redis::from_redis_value(raw).map_err(|_| "Failed to parse character hash".to_owned())?;
 
     if character_map.is_empty() {
         return Ok(None);
@@ -165,15 +165,15 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
     let sex_value = character_map
         .get("sex")
         .and_then(|value| value.parse::<u32>().ok())
-        .ok_or_else(|| "Missing character sex".to_string())?;
-    let sex = Sex::from_u32(sex_value).ok_or_else(|| "Invalid character sex".to_string())?;
+        .ok_or_else(|| "Missing character sex".to_owned())?;
+    let sex = Sex::from_u32(sex_value).ok_or_else(|| "Invalid character sex".to_owned())?;
 
     let class_value = character_map
         .get("class")
         .and_then(|value| value.parse::<u32>().ok())
-        .ok_or_else(|| "Missing character class".to_string())?;
+        .ok_or_else(|| "Missing character class".to_owned())?;
     let class =
-        Class::from_u32(class_value).ok_or_else(|| "Invalid character class".to_string())?;
+        Class::from_u32(class_value).ok_or_else(|| "Invalid character class".to_owned())?;
 
     let server_id = character_map
         .get("server_id")
@@ -269,7 +269,7 @@ pub fn sync_character_selection_metadata(
 ) -> Result<(), String> {
     let (class, sex, selection_sprite_id, rank_index) =
         derive_character_selection_metadata(character)
-            .ok_or_else(|| "Failed to derive live character selection metadata".to_string())?;
+            .ok_or_else(|| "Failed to derive live character selection metadata".to_owned())?;
 
     set_character_selection_metadata(character_id, class, sex, selection_sprite_id, rank_index)
 }

@@ -91,7 +91,7 @@ pub(crate) fn run_network_task(
         log::warn!("Failed to set read timeout: {e}");
     }
 
-    let _ = event_tx.send(NetworkEvent::Status("TLS handshake...".to_string()));
+    let _ = event_tx.send(NetworkEvent::Status("TLS handshake...".to_owned()));
     let mut conn = match crate::cert_trust::build_game_tls_connector(&host) {
         Ok(tls_conn) => {
             let tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream);
@@ -103,7 +103,7 @@ pub(crate) fn run_network_task(
         }
     };
 
-    let _ = event_tx.send(NetworkEvent::Status("Connected. Logging in...".to_string()));
+    let _ = event_tx.send(NetworkEvent::Status("Connected. Logging in...".to_owned()));
 
     if let Err(e) = login_handshake(&mut conn, ticket, &event_tx) {
         log::error!("login_handshake failed: {e}");
@@ -123,7 +123,7 @@ fn get_server_response(stream: &mut GameConnection) -> Result<ServerCommand, Str
     let mut header = [0u8; 1];
     stream.read_exact(&mut header).map_err(|e| {
         if e.kind() == std::io::ErrorKind::WouldBlock {
-            "Timed out waiting for server response (check game server IP/port)".to_string()
+            "Timed out waiting for server response (check game server IP/port)".to_owned()
         } else {
             format!("Read failed: {e}")
         }
@@ -142,7 +142,7 @@ fn get_server_response(stream: &mut GameConnection) -> Result<ServerCommand, Str
         let mut rest = vec![0u8; remaining];
         stream.read_exact(&mut rest).map_err(|e| {
             if e.kind() == std::io::ErrorKind::WouldBlock {
-                "Timed out waiting for server response (check game server IP/port)".to_string()
+                "Timed out waiting for server response (check game server IP/port)".to_owned()
             } else {
                 format!("Read failed: {e}")
             }
@@ -150,7 +150,7 @@ fn get_server_response(stream: &mut GameConnection) -> Result<ServerCommand, Str
         buf.extend_from_slice(&rest);
     }
 
-    ServerCommand::from_bytes(&buf).ok_or_else(|| "Failed to parse server response".to_string())
+    ServerCommand::from_bytes(&buf).ok_or_else(|| "Failed to parse server response".to_owned())
 }
 
 /// Performs the API-ticket login handshake.
@@ -168,14 +168,14 @@ fn login_handshake(
         .write_all(&cmd.to_bytes())
         .map_err(|e| format!("Send failed: {e}"))?;
 
-    let _ = event_tx.send(NetworkEvent::Status("Login command sent.".to_string()));
+    let _ = event_tx.send(NetworkEvent::Status("Login command sent.".to_owned()));
 
     loop {
         let response = get_server_response(stream)?;
 
         match response.structured_data {
             ServerCommandData::LoginOk { server_version } => {
-                let _ = event_tx.send(NetworkEvent::Status("Login successful.".to_string()));
+                let _ = event_tx.send(NetworkEvent::Status("Login successful.".to_owned()));
                 log::info!("Logged in with server version: {}", server_version);
                 let _ = event_tx.send(NetworkEvent::LoggedIn);
                 return Ok(());
@@ -192,7 +192,7 @@ fn login_handshake(
             }
             ServerCommandData::Exit { reason } => {
                 log::warn!("Server demanded exit during login, reason={reason}");
-                return Err(get_exit_reason(LogoutReason::from(reason as u8)).to_string());
+                return Err(get_exit_reason(LogoutReason::from(reason as u8)).to_owned());
             }
             _ => {
                 log::error!(
@@ -240,7 +240,7 @@ fn run_network_loop(
                         }
                         NetworkCommand::Shutdown => {
                             stream.shutdown();
-                            let _ = event_tx.send(NetworkEvent::Status("Disconnected".to_string()));
+                            let _ = event_tx.send(NetworkEvent::Status("Disconnected".to_owned()));
                             return Ok(());
                         }
                     }
@@ -257,7 +257,7 @@ fn run_network_loop(
         match stream.read(&mut tick_buffer) {
             Ok(0) => {
                 log::warn!("Server closed connection");
-                return Err("Server closed connection".to_string());
+                return Err("Server closed connection".to_owned());
             }
             Ok(n) => {
                 did_work = true;
@@ -375,7 +375,7 @@ fn inflate_chunk(z: &mut Decompress, input: &[u8]) -> Result<Vec<u8>, String> {
         }
 
         if in_pos < input.len() && status == Status::Ok {
-            return Err("zlib inflate made no progress (truncated input?)".to_string());
+            return Err("zlib inflate made no progress (truncated input?)".to_owned());
         }
         break;
     }
@@ -392,7 +392,7 @@ fn split_tick_payload(payload: &[u8]) -> Result<Vec<Vec<u8>>, String> {
     while idx < payload.len() {
         let len = ServerCommandType::get_expected_length(&payload[idx..], &mut last_setmap_n)?;
         if len == 0 {
-            return Err("sv_cmd_len returned 0".to_string());
+            return Err("sv_cmd_len returned 0".to_owned());
         }
         if idx + len > payload.len() {
             let opcode = ServerCommandType::from(payload[idx]);

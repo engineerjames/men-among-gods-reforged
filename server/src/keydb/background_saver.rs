@@ -108,7 +108,7 @@ impl BackgroundSaver {
         self.send(SaveJob::Flush(ack_tx));
         ack_rx
             .recv()
-            .map_err(|_| "Background saver flush: channel closed".to_string())?
+            .map_err(|_| "Background saver flush: channel closed".to_owned())?
     }
 
     /// Signal the background thread to stop and block until it exits.

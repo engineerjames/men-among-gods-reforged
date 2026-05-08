@@ -83,13 +83,13 @@ impl EnterResetCodeScene {
         let confirm_password = confirm_password.trim();
 
         if code.is_empty() {
-            return Err("Reset code is required".to_string());
+            return Err("Reset code is required".to_owned());
         }
         if new_password.is_empty() {
-            return Err("New password is required".to_string());
+            return Err("New password is required".to_owned());
         }
         if new_password != confirm_password {
-            return Err("Passwords do not match".to_string());
+            return Err("Passwords do not match".to_owned());
         }
 
         account_api::confirm_password_reset(base_url, username, code, new_password)
@@ -105,7 +105,7 @@ impl EnterResetCodeScene {
             Some(u) => u.clone(),
             None => {
                 self.form
-                    .set_error(Some("Missing username — go back and try again".to_string()));
+                    .set_error(Some("Missing username — go back and try again".to_owned()));
                 return;
             }
         };
@@ -285,7 +285,7 @@ impl Scene for EnterResetCodeScene {
                     Ok(result) => Some(result),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        Some(Err("Reset confirm task failed unexpectedly".to_string()))
+                        Some(Err("Reset confirm task failed unexpectedly".to_owned()))
                     }
                 }
             } else {

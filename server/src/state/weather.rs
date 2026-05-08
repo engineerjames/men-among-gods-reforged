@@ -62,7 +62,7 @@ pub fn send_weather(
     let expire_tick = if duration_ticks == 0 {
         0
     } else {
-        (gs.globals.ticker as u32).wrapping_add(duration_ticks as u32)
+        (gs.globals.ticker as u32).wrapping_add(u32::from(duration_ticks))
     };
 
     {
@@ -145,8 +145,8 @@ pub fn weather_tick(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
+    let x = i32::from(gs.characters[cn].x);
+    let y = i32::from(gs.characters[cn].y);
     let area = area_weather_for(x, y);
 
     let (target_kind, intensity, tint, flags) = match area {

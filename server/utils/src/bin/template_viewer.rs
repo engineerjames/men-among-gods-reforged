@@ -66,7 +66,7 @@ fn centered_heading(ui: &mut egui::Ui, text: impl Into<egui::RichText>) {
 
 fn rank_label(min_rank: i8) -> String {
     if min_rank < 0 {
-        return "-1: None".to_string();
+        return "-1: None".to_owned();
     }
 
     let idx = min_rank as usize;
@@ -94,12 +94,12 @@ fn placement_options() -> &'static [(u16, &'static str)] {
 
 fn placement_label(placement: u16) -> String {
     if placement == 0 {
-        return "Unset".to_string();
+        return "Unset".to_owned();
     }
 
     for (value, name) in placement_options() {
         if *value == placement {
-            return (*name).to_string();
+            return (*name).to_owned();
         }
     }
 

@@ -289,8 +289,8 @@ impl GameState {
             self.characters[cn].citem = 0;
 
             // Log messages
-            let cn_name = self.characters[cn].get_name().to_string();
-            let co_name = self.characters[co].get_name().to_string();
+            let cn_name = self.characters[cn].get_name().to_owned();
+            let co_name = self.characters[co].get_name().to_owned();
             let cn_is_player = self.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
             self.do_character_log(
@@ -323,7 +323,7 @@ impl GameState {
             // Notify receiver
             self.do_notify_character(
                 co as u32,
-                core::constants::NT_GIVE as i32,
+                i32::from(core::constants::NT_GIVE),
                 cn as i32,
                 0,
                 gold_amount as i32,
@@ -347,8 +347,8 @@ impl GameState {
         }
 
         // Log the give action
-        let item_name = self.items[item_idx].get_name().to_string();
-        let co_name = self.characters[co].get_name().to_string();
+        let item_name = self.items[item_idx].get_name().to_owned();
+        let co_name = self.characters[co].get_name().to_owned();
 
         log::info!(
             "Character {} gives {} ({}) to {} ({})",
@@ -436,7 +436,7 @@ impl GameState {
         // Notify receiver
         self.do_notify_character(
             co as u32,
-            core::constants::NT_GIVE as i32,
+            i32::from(core::constants::NT_GIVE),
             cn as i32,
             item_idx as i32,
             0,
@@ -614,7 +614,7 @@ impl GameState {
                 if citem_idx > 0 && citem_idx < core::constants::MAXITEM {
                     self.do_character_log(cn, FontColor::Green, " \n");
 
-                    let citem_name = self.items[citem_idx].get_name().to_string();
+                    let citem_name = self.items[citem_idx].get_name().to_owned();
                     self.do_character_log(
                         cn,
                         FontColor::Green,
@@ -624,7 +624,7 @@ impl GameState {
                     // Compare weapon stats
                     let weapon_this = self.items[item_idx].weapon[0];
                     let weapon_carried = self.items[citem_idx].weapon[0];
-                    let name_this = self.items[item_idx].get_name().to_string();
+                    let name_this = self.items[item_idx].get_name().to_owned();
 
                     if weapon_this > weapon_carried {
                         self.do_character_log(

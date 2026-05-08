@@ -26,7 +26,7 @@ impl PacketStats {
 pub fn initialize_packet_stats() -> Result<(), String> {
     PACKET_STATS
         .set(RwLock::new(PacketStats::new()))
-        .map_err(|_| "PacketStats already initialized".to_string())
+        .map_err(|_| "PacketStats already initialized".to_owned())
 }
 
 /// Send bytes to a player's tick buffer.

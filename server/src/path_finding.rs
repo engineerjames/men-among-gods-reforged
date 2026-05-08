@@ -116,20 +116,20 @@ impl PathFinder {
 
     /// Check if a target location is marked as bad
     fn is_bad_target(&self, x: i16, y: i16, current_tick: u32) -> bool {
-        let idx = (x as i32 + y as i32 * SERVER_MAPX) as usize;
+        let idx = (i32::from(x) + i32::from(y) * SERVER_MAPX) as usize;
         self.bad_targets[idx].tick > current_tick
     }
 
     /// Mark a target location as bad
     fn add_bad_target(&mut self, x: i16, y: i16, current_tick: u32) {
-        let idx = (x as i32 + y as i32 * SERVER_MAPX) as usize;
+        let idx = (i32::from(x) + i32::from(y) * SERVER_MAPX) as usize;
         self.bad_targets[idx].tick = current_tick + 1;
     }
 
     /// Calculate heuristic cost from (fx, fy) to target
     fn heuristic_cost(&self, fx: i16, fy: i16, tx: i16, ty: i16) -> i32 {
-        let dx = (fx - tx).abs() as i32;
-        let dy = (fy - ty).abs() as i32;
+        let dx = i32::from((fx - tx).abs());
+        let dy = i32::from((fy - ty).abs());
 
         if dx > dy {
             (dx << 1) + dy
@@ -286,8 +286,8 @@ impl PathFinder {
         ty2: i16,
         max_step: usize,
     ) {
-        let base_x = node.x as i32;
-        let base_y = node.y as i32;
+        let base_x = i32::from(node.x);
+        let base_y = i32::from(node.y);
 
         // Cardinal directions
         let right_m = (base_x + 1 + base_y * SERVER_MAPX) as usize;
@@ -491,7 +491,7 @@ impl PathFinder {
             index: 0,
         };
 
-        let start_m = (fx as i32 + fy as i32 * SERVER_MAPX) as usize;
+        let start_m = (i32::from(fx) + i32::from(fy) * SERVER_MAPX) as usize;
         self.nodes.push(start_node);
         self.node_map[start_m] = Some(0);
         self.touched_node_map.push(start_m);
@@ -599,23 +599,23 @@ impl PathFinder {
             && (character.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
                 == 0
         {
-            MF_NOMONST as u64 | MF_MOVEBLOCK as u64
+            u64::from(MF_NOMONST) | u64::from(MF_MOVEBLOCK)
         } else {
-            MF_MOVEBLOCK as u64
+            u64::from(MF_MOVEBLOCK)
         };
 
         let mapblock = if (character.flags
             & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
             == 0
         {
-            mapblock | MF_DEATHTRAP as u64
+            mapblock | u64::from(MF_DEATHTRAP)
         } else {
             mapblock
         };
 
         // Check if target is passable (for exact target mode)
         if flag == 0 {
-            let target_m = (x1 as i32 + y1 as i32 * SERVER_MAPX) as usize;
+            let target_m = (i32::from(x1) + i32::from(y1) * SERVER_MAPX) as usize;
             if !Self::is_passable(map, items, target_m, mapblock) {
                 return None;
             }

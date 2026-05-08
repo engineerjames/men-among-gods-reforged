@@ -43,7 +43,7 @@ impl GameState {
 
         if !is_god {
             let map_idx = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
-            let in_bank = self.map[map_idx].flags & core::constants::MF_BANK as u64 != 0;
+            let in_bank = self.map[map_idx].flags & u64::from(core::constants::MF_BANK) != 0;
 
             if !in_bank {
                 self.do_character_log(
@@ -86,7 +86,7 @@ impl GameState {
         let points_bytes = points_tot.to_le_bytes();
         buf[5..9].copy_from_slice(&points_bytes);
 
-        let hp_bytes = (hp5 as u32).to_le_bytes();
+        let hp_bytes = u32::from(hp5).to_le_bytes();
         buf[9..13].copy_from_slice(&hp_bytes);
 
         network_manager::xsend(self, player_id as usize, &buf, 16);
@@ -215,13 +215,13 @@ impl GameState {
             return;
         }
 
-        let co_name = self.characters[co].get_name().to_string();
+        let co_name = self.characters[co].get_name().to_owned();
         let mut depot_items = Vec::new();
 
         for m in 0..62 {
             let item_idx = self.characters[co].depot[m];
             if item_idx != 0 {
-                let item_name = self.items[item_idx as usize].get_name().to_string();
+                let item_name = self.items[item_idx as usize].get_name().to_owned();
                 depot_items.push((item_idx, item_name));
             }
         }
@@ -268,13 +268,13 @@ impl GameState {
             return;
         }
 
-        let co_name = self.characters[co].get_name().to_string();
+        let co_name = self.characters[co].get_name().to_owned();
         let mut inventory_items = Vec::new();
 
         for n in 0..40 {
             let item_idx = self.characters[co].item[n];
             if item_idx != 0 {
-                let item_name = self.items[item_idx as usize].get_name().to_string();
+                let item_name = self.items[item_idx as usize].get_name().to_owned();
                 inventory_items.push((item_idx, item_name));
             }
         }
@@ -321,13 +321,13 @@ impl GameState {
             return;
         }
 
-        let co_name = self.characters[co].get_name().to_string();
+        let co_name = self.characters[co].get_name().to_owned();
         let mut equipment_items = Vec::new();
 
         for n in 0..20 {
             let item_idx = self.characters[co].worn[n];
             if item_idx != 0 {
-                let item_name = self.items[item_idx as usize].get_name().to_string();
+                let item_name = self.items[item_idx as usize].get_name().to_owned();
                 equipment_items.push((item_idx, item_name));
             }
         }
@@ -442,8 +442,8 @@ impl GameState {
 
                 // Get item reference and character name for logging
                 let item_reference =
-                    c_string_to_str(&mut self.items[item_id as usize].reference).to_string();
-                let co_name = self.characters[co].get_name().to_string();
+                    c_string_to_str(&mut self.items[item_id as usize].reference).to_owned();
+                let co_name = self.characters[co].get_name().to_owned();
 
                 self.do_character_log(
                     cn,
@@ -454,7 +454,7 @@ impl GameState {
             } else {
                 // Inventory full
                 let item_reference =
-                    c_string_to_str(&mut self.items[item_id as usize].reference).to_string();
+                    c_string_to_str(&mut self.items[item_id as usize].reference).to_owned();
 
                 self.do_character_log(
                     cn,

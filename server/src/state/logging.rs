@@ -33,7 +33,7 @@ impl GameState {
 
         // TODO: Think of a better way to handle newlines
         let message_with_newline = if message.ends_with('\n') {
-            message.to_string()
+            message.to_owned()
         } else {
             format!("{}\n", message)
         };
@@ -169,15 +169,15 @@ impl GameState {
     /// * `character_id` - Speaker character id
     /// * `message` - Raw speech text
     pub(crate) fn do_sayx(&mut self, character_id: usize, message: &str) {
-        let mut buf = message.to_string();
+        let mut buf = message.to_owned();
         self.process_options(character_id, &mut buf);
 
         let ch = &mut self.characters[character_id];
         let (x, y, is_player, name) = (
-            ch.x as i32,
-            ch.y as i32,
+            i32::from(ch.x),
+            i32::from(ch.y),
             (ch.flags & CharacterFlags::Player.bits()) != 0,
-            ch.get_name().to_string(),
+            ch.get_name().to_owned(),
         );
 
         let name_short: String = name.chars().take(30).collect();
@@ -322,8 +322,8 @@ impl GameState {
         buf.drain(..idx);
 
         if sound_id != 0 {
-            let x = self.characters[character_id].x as i32;
-            let y = self.characters[character_id].y as i32;
+            let x = i32::from(self.characters[character_id].x);
+            let y = i32::from(self.characters[character_id].y);
             self.do_area_sound(character_id, 0, x, y, sound_id);
         }
     }
@@ -363,11 +363,11 @@ impl GameState {
             log::error!("do_caution called with empty text");
             return;
         }
-        let anon = text.to_string();
+        let anon = text.to_owned();
         let named = if author != 0 {
             format!(
                 "[{}] {}\n",
-                self.characters[author].get_name().to_string(),
+                self.characters[author].get_name().to_owned(),
                 anon
             )
         } else {
@@ -404,11 +404,11 @@ impl GameState {
             log::error!("do_announce called with empty text");
             return;
         }
-        let anon = text.to_string();
+        let anon = text.to_owned();
         let named = if author != 0 {
             format!(
                 "[{}] {}\n",
-                self.characters[author].get_name().to_string(),
+                self.characters[author].get_name().to_owned(),
                 anon
             )
         } else {
@@ -486,7 +486,7 @@ impl GameState {
         // Build messages
         let msg_named = format!(
             "{}: \"{}\"\n",
-            self.characters[cn].get_name().to_string(),
+            self.characters[cn].get_name().to_owned(),
             text
         );
         let msg_invis = format!("Somebody says: \"{}\"\n", text);

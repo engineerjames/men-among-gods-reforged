@@ -274,8 +274,8 @@ impl Server {
                 continue;
             }
 
-            let ch_x = gs.character_templates[n].x as i32;
-            let ch_y = gs.character_templates[n].y as i32;
+            let ch_x = i32::from(gs.character_templates[n].x);
+            let ch_y = i32::from(gs.character_templates[n].y);
 
             if (x - ch_x).abs() + (y - ch_y).abs() > 200 {
                 log::error!(
@@ -287,7 +287,7 @@ impl Server {
                     x,
                     y
                 );
-                return Result::Err("Character template has invalid resting position.".to_string());
+                return Result::Err("Character template has invalid resting position.".to_owned());
             }
         }
 
@@ -633,7 +633,7 @@ impl Server {
                     }
                 }
 
-                player::tick::plr_act(gs, n)
+                player::tick::plr_act(gs, n);
             }
 
             gs.do_regenerate(n);
@@ -730,8 +730,8 @@ impl Server {
         let login_date = gs.characters[cn].login_date;
 
         let mut erase = false;
-        let pts = points_tot as i64;
-        let ld = login_date as i64;
+        let pts = i64::from(points_tot);
+        let ld = i64::from(login_date);
 
         if pts == 0 {
             if ld + 3 * day < now {
@@ -1716,7 +1716,7 @@ impl Server {
                     let kicked = kick_matching_ban_target(gs, target);
                     format!("kicked {} matching online session(s)", kicked)
                 } else {
-                    "ban applied without live kicks".to_string()
+                    "ban applied without live kicks".to_owned()
                 }
             }
             BanActionKind::RemoveBan { target } => {
@@ -1726,7 +1726,7 @@ impl Server {
                     target.value()
                 )
             }
-            BanActionKind::ReloadBans => "ban reload acknowledged".to_string(),
+            BanActionKind::ReloadBans => "ban reload acknowledged".to_owned(),
         };
 
         if let Some(connection) = status_connection.as_mut() {

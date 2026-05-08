@@ -469,7 +469,7 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
     let speed = (gs.characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
     let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
-    SPEEDTAB[speed][ctick] as i32
+    i32::from(SPEEDTAB[speed][ctick])
 }
 
 /// Port of `plr_state` from `svr_tick.cpp`
@@ -579,7 +579,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         let mut buf3: [u8; 16] = [0; 16];
         buf3[0] = ServerCommandType::SetCharName3 as u8;
         buf3[1..11].copy_from_slice(&ch.name[30..40]);
-        let temp_bytes = (ch.temp as u32).to_le_bytes();
+        let temp_bytes = u32::from(ch.temp).to_le_bytes();
         buf3[11..15].copy_from_slice(&temp_bytes[0..4]);
         network_manager::xsend(gs, nr, &buf3, 16);
 
@@ -590,14 +590,14 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
     }
 
     // send mode if different
-    let mode = gs.characters[cn].mode as i32;
+    let mode = i32::from(gs.characters[cn].mode);
     if gs.players[nr].cpl.mode != mode {
         let mode = gs.characters[cn].mode;
         let mut buf: [u8; 2] = [0; 2];
         buf[0] = ServerCommandType::SetCharMode as u8;
         buf[1] = mode;
         network_manager::xsend(gs, nr, &buf, 2);
-        gs.players[nr].cpl.mode = mode as i32;
+        gs.players[nr].cpl.mode = i32::from(mode);
     }
 
     // attribs (5 x 6 bytes)
@@ -785,7 +785,7 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
 
         // Check if spell changed OR active fraction changed OR IF_UPDATE is set OR spell_type changed
         let needs_update = (cpl_spell != in_idx as i32)
-            || (cpl_active as i16 != current_active_frac)
+            || (i16::from(cpl_active) != current_active_frac)
             || has_update_flag
             || (gs.players[nr].cpl.spell_type[i] != current_spell_type);
 
@@ -946,13 +946,13 @@ fn plr_change_dir(gs: &mut GameState, nr: usize, cn: usize) {
     let current_dir = gs.characters[cn].dir;
     let player_dir = gs.players[nr].cpl.dir;
 
-    if current_dir as i32 != player_dir {
+    if i32::from(current_dir) != player_dir {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = ServerCommandType::SetCharDir as u8;
         buf[1] = current_dir;
 
         network_manager::xsend(gs, nr, &buf, 2);
-        gs.players[nr].cpl.dir = current_dir as i32;
+        gs.players[nr].cpl.dir = i32::from(current_dir);
     }
 }
 
@@ -989,9 +989,9 @@ fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
     let cpl_armor = gs.players[nr].cpl.armor;
     let cpl_weapon = gs.players[nr].cpl.weapon;
 
-    if gold != cpl_gold || armor as i32 != cpl_armor || weapon as i32 != cpl_weapon {
-        let armor32: i32 = armor as i32;
-        let weapon32: i32 = weapon as i32;
+    if gold != cpl_gold || i32::from(armor) != cpl_armor || i32::from(weapon) != cpl_weapon {
+        let armor32: i32 = i32::from(armor);
+        let weapon32: i32 = i32::from(weapon);
 
         let mut buf: [u8; 13] = [0; 13];
         buf[0] = ServerCommandType::SetCharGold as u8;
@@ -1002,8 +1002,8 @@ fn plr_change_gold(gs: &mut GameState, nr: usize, cn: usize) {
         network_manager::xsend(gs, nr, &buf, 13);
 
         gs.players[nr].cpl.gold = gold;
-        gs.players[nr].cpl.armor = armor as i32;
-        gs.players[nr].cpl.weapon = weapon as i32;
+        gs.players[nr].cpl.armor = i32::from(armor);
+        gs.players[nr].cpl.weapon = i32::from(weapon);
     }
 }
 
@@ -1047,12 +1047,12 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
         gs.players[nr].cpl.misc_target2,
     );
 
-    if attack_cn as i32 != cpl_attack_cn
-        || goto_x as i32 != cpl_goto_x
-        || goto_y as i32 != cpl_goto_y
-        || misc_action as i32 != cpl_misc_action
-        || misc_target1 as i32 != cpl_misc_target1
-        || misc_target2 as i32 != cpl_misc_target2
+    if i32::from(attack_cn) != cpl_attack_cn
+        || i32::from(goto_x) != cpl_goto_x
+        || i32::from(goto_y) != cpl_goto_y
+        || i32::from(misc_action) != cpl_misc_action
+        || i32::from(misc_target1) != cpl_misc_target1
+        || i32::from(misc_target2) != cpl_misc_target2
     {
         let mut buf: [u8; 16] = [0; 16];
         buf[0] = ServerCommandType::SetTarget as u8;
@@ -1083,12 +1083,12 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
 
         network_manager::xsend(gs, nr, &buf, 13);
 
-        gs.players[nr].cpl.attack_cn = attack_cn as i32;
-        gs.players[nr].cpl.goto_x = goto_x as i32;
-        gs.players[nr].cpl.goto_y = goto_y as i32;
-        gs.players[nr].cpl.misc_action = misc_action as i32;
-        gs.players[nr].cpl.misc_target1 = misc_target1 as i32;
-        gs.players[nr].cpl.misc_target2 = misc_target2 as i32;
+        gs.players[nr].cpl.attack_cn = i32::from(attack_cn);
+        gs.players[nr].cpl.goto_x = i32::from(goto_x);
+        gs.players[nr].cpl.goto_y = i32::from(goto_y);
+        gs.players[nr].cpl.misc_action = i32::from(misc_action);
+        gs.players[nr].cpl.misc_target1 = i32::from(misc_target1);
+        gs.players[nr].cpl.misc_target2 = i32::from(misc_target2);
 
         log::debug!("plr_change_target: misc_action={}", misc_action);
     }
@@ -1124,11 +1124,11 @@ pub fn plr_tick(gs: &mut GameState, nr: usize) {
 
     // Check if player should be stoned due to lag
     if ltick > rtick.wrapping_add(data_19 as u32) && !is_stoned {
-        let name = gs.characters[cn].get_name().to_string();
+        let name = gs.characters[cn].get_name().to_owned();
         log::info!(
             "Character '{}' turned to stone due to lag ({:.2}s)",
             name,
-            (ltick.wrapping_sub(rtick)) as f64 / TICKS as f64
+            f64::from(ltick.wrapping_sub(rtick)) / f64::from(TICKS)
         );
         gs.characters[cn].flags |= CharacterFlags::Stoned.bits();
         stone_gc(gs, cn, true);
@@ -1140,7 +1140,7 @@ pub fn plr_tick(gs: &mut GameState, nr: usize) {
             .wrapping_sub(TICKS as u32)
         && is_stoned
     {
-        let name = gs.characters[cn].get_name().to_string();
+        let name = gs.characters[cn].get_name().to_owned();
         log::info!("Character '{}' unstoned, lag is gone", name);
         gs.characters[cn].flags &= !CharacterFlags::Stoned.bits();
         stone_gc(gs, cn, false);
@@ -1275,7 +1275,7 @@ mod tests {
 
             assert_eq!(
                 speedo(gs, cn),
-                SPEEDTAB[MAX_SPEEDTAB_SPEED_INDEX][ctick] as i32
+                i32::from(SPEEDTAB[MAX_SPEEDTAB_SPEED_INDEX][ctick])
             );
         });
     }
@@ -1549,7 +1549,7 @@ mod tests {
                     core::constants::DX_LEFT
                 ]
             );
-            assert_eq!(gs.players[nr].cpl.dir, core::constants::DX_LEFT as i32);
+            assert_eq!(gs.players[nr].cpl.dir, i32::from(core::constants::DX_LEFT));
 
             reset_tbuf(gs, nr);
             gs.characters[cn].points = 5;
@@ -1628,8 +1628,8 @@ mod tests {
             gs.characters[cn].attack_cn = 3;
             gs.characters[cn].goto_x = 14;
             gs.characters[cn].goto_y = 15;
-            gs.players[nr].cpl.x = gs.characters[cn].x as i32;
-            gs.players[nr].cpl.y = gs.characters[cn].y as i32;
+            gs.players[nr].cpl.x = i32::from(gs.characters[cn].x);
+            gs.players[nr].cpl.y = i32::from(gs.characters[cn].y);
             gs.players[nr].smap = gs.players[nr].cmap;
             gs.players[nr].xmap.fill(Map::default());
             let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
@@ -1640,7 +1640,7 @@ mod tests {
             assert!(gs.players[nr].tptr > 0);
             assert_eq!(gs.players[nr].cpl.name, gs.characters[cn].name);
             assert_eq!(gs.players[nr].cpl.a_hp, 3);
-            assert_eq!(gs.players[nr].cpl.dir, core::constants::DX_RIGHT as i32);
+            assert_eq!(gs.players[nr].cpl.dir, i32::from(core::constants::DX_RIGHT));
             assert_eq!(gs.players[nr].cpl.attack_cn, 3);
             assert_eq!(gs.players[nr].cpl.goto_x, 14);
             assert_eq!(gs.players[nr].cpl.goto_y, 15);

@@ -232,7 +232,7 @@ pub fn parse_ipv4(value: &str) -> Result<u32, BanStoreError> {
         .trim()
         .parse::<Ipv4Addr>()
         .map(u32::from)
-        .map_err(|_| BanStoreError::InvalidIpv4(value.trim().to_string()))
+        .map_err(|_| BanStoreError::InvalidIpv4(value.trim().to_owned()))
 }
 
 /// Convert a canonical IPv4 integer to dotted notation.
@@ -286,13 +286,13 @@ mod tests {
     #[test]
     fn record_expiration_controls_activity() {
         let mut record = BanRecord {
-            id: "ban-1".to_string(),
+            id: "ban-1".to_owned(),
             target: BanTarget::Account { account_id: 1 },
             reason: String::new(),
-            created_by: "test".to_string(),
+            created_by: "test".to_owned(),
             created_at: 10,
             expires_at: None,
-            source: "test".to_string(),
+            source: "test".to_owned(),
         };
         assert!(record.is_active_at(100));
 
@@ -304,15 +304,15 @@ mod tests {
     #[test]
     fn encode_decode_record_roundtrip() {
         let record = BanRecord {
-            id: "ban-1".to_string(),
+            id: "ban-1".to_owned(),
             target: BanTarget::Ipv4 {
                 address: 0xcb00_7107,
             },
-            reason: "test".to_string(),
-            created_by: "admin".to_string(),
+            reason: "test".to_owned(),
+            created_by: "admin".to_owned(),
             created_at: 123,
             expires_at: Some(456),
-            source: "admin_api".to_string(),
+            source: "admin_api".to_owned(),
         };
 
         let bytes = record.to_bytes().unwrap();

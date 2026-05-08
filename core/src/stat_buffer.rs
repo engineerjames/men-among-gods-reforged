@@ -61,8 +61,8 @@ impl<T: std::cmp::PartialOrd<f32> + std::convert::Into<f32> + Clone> StatisticsB
 
         // Update min and max based on collected data
         if !data_as_f32.is_empty() {
-            self.stats.min = data_as_f32.iter().cloned().fold(f32::MAX, f32::min);
-            self.stats.max = data_as_f32.iter().cloned().fold(f32::MIN, f32::max);
+            self.stats.min = data_as_f32.iter().copied().fold(f32::MAX, f32::min);
+            self.stats.max = data_as_f32.iter().copied().fold(f32::MIN, f32::max);
         } else {
             self.stats.min = f32::MAX;
             self.stats.max = f32::MIN;

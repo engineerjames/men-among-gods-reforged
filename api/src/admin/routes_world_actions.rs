@@ -27,7 +27,7 @@ pub(crate) async fn request_world_action(
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs())
         .unwrap_or(0);
-    let action_name = action.name().to_string();
+    let action_name = action.name().to_owned();
     let request = WorldActionRequest {
         request_id: request_id.clone(),
         action,
@@ -127,25 +127,25 @@ pub(crate) async fn get_world_action_status(
 fn parse_status(request_id: &str, stored: Option<String>) -> WorldActionStatusResponse {
     let Some(raw) = stored else {
         return WorldActionStatusResponse {
-            request_id: request_id.to_string(),
+            request_id: request_id.to_owned(),
             action: String::new(),
-            status: STATUS_PENDING.to_string(),
+            status: STATUS_PENDING.to_owned(),
             message: String::new(),
             updated_at: 0,
         };
     };
 
     let mut parts = raw.splitn(4, '|');
-    let status = parts.next().unwrap_or(STATUS_PENDING).to_string();
-    let action = parts.next().unwrap_or_default().to_string();
+    let status = parts.next().unwrap_or(STATUS_PENDING).to_owned();
+    let action = parts.next().unwrap_or_default().to_owned();
     let updated_at = parts
         .next()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
-    let message = parts.next().unwrap_or_default().to_string();
+    let message = parts.next().unwrap_or_default().to_owned();
 
     WorldActionStatusResponse {
-        request_id: request_id.to_string(),
+        request_id: request_id.to_owned(),
         action,
         status,
         message,
@@ -197,7 +197,7 @@ mod tests {
     fn parse_status_reads_delimited_value() {
         let response = parse_status(
             "abc",
-            Some("applied|rebuild_lights|42|map lighting rebuilt".to_string()),
+            Some("applied|rebuild_lights|42|map lighting rebuilt".to_owned()),
         );
         assert_eq!(response.request_id, "abc");
         assert_eq!(response.status, STATUS_APPLIED);

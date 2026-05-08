@@ -213,8 +213,7 @@ pub(crate) async fn get_text_reload_status(
     let status = match stored {
         Some(value) if value.starts_with("applied") => "applied",
         Some(_) | None => "pending",
-    }
-    .to_string();
+    }.to_owned();
 
     Json(TextReloadStatusResponse {
         status,

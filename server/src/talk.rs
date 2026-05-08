@@ -3154,7 +3154,7 @@ pub fn answer_spellinfo(gs: &mut GameState, cn: usize, co: usize) {
         if spell_idx != 0 && core::types::Item::is_sane_item(spell_idx) {
             let minutes = gs.items[spell_idx].active / (TICKS as u32 * 60);
             let seconds = (gs.items[spell_idx].active / TICKS as u32) % 60;
-            let name = gs.items[spell_idx].get_name().to_string();
+            let name = gs.items[spell_idx].get_name().to_owned();
             gs.do_sayx(cn, &format!("{}, for {}m {}s.", name, minutes, seconds));
             found = true;
         }
@@ -3179,11 +3179,11 @@ pub fn answer_transfer(gs: &mut GameState, cn: usize, co: usize) {
         return;
     }
 
-    let companion_name = gs.characters[cn].get_name().to_string();
+    let companion_name = gs.characters[cn].get_name().to_owned();
     let exp_to_give = gs.characters[cn].data[28];
     let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
     let (co_x, co_y) = (gs.characters[co].x, gs.characters[co].y);
-    let master_name = gs.characters[co].get_name().to_string();
+    let master_name = gs.characters[co].get_name().to_owned();
 
     gs.do_sayx(
         cn,
@@ -3195,8 +3195,8 @@ pub fn answer_transfer(gs: &mut GameState, cn: usize, co: usize) {
 
     gs.do_give_exp(co, exp_to_give, 1, -1);
 
-    EffectManager::fx_add_effect(gs, 6, 0, co_x as i32, co_y as i32, 0);
-    EffectManager::fx_add_effect(gs, 7, 0, cn_x as i32, cn_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, i32::from(co_x), i32::from(co_y), 0);
+    EffectManager::fx_add_effect(gs, 7, 0, i32::from(cn_x), i32::from(cn_y), 0);
 
     driver::die_companion(gs, cn);
 
@@ -3240,7 +3240,7 @@ pub fn answer_follow(gs: &mut GameState, cn: usize, co: usize) {
         characters[cn].data[69] = co as i32; // Set follow target
         characters[cn].data[29] = 0; // Clear wait position
 
-        characters[co].get_name().to_string()
+        characters[co].get_name().to_owned()
     };
     gs.do_sayx(cn, &format!("Yes, {}!", co_name));
 }
@@ -3273,15 +3273,15 @@ pub fn answer_wait(gs: &mut GameState, cn: usize, co: usize) {
         characters[cn].misc_action = 0;
 
         // Set wait position and direction
-        let x = characters[cn].x as i32;
-        let y = characters[cn].y as i32;
+        let x = i32::from(characters[cn].x);
+        let y = i32::from(characters[cn].y);
         let dir = characters[cn].dir;
 
         characters[cn].data[29] = x + y * core::constants::SERVER_MAPX;
-        characters[cn].data[30] = dir as i32;
+        characters[cn].data[30] = i32::from(dir);
         characters[cn].data[69] = 0; // Clear follow target
 
-        characters[co].get_name().to_string()
+        characters[co].get_name().to_owned()
     };
     gs.do_sayx(cn, &format!("Yes, {}!", co_name));
 }
@@ -3316,7 +3316,7 @@ pub fn answer_stop(gs: &mut GameState, cn: usize, co: usize) {
         characters[cn].data[78] = 0;
         characters[cn].data[27] = ticker;
 
-        characters[co].get_name().to_string()
+        characters[co].get_name().to_owned()
     };
     gs.do_sayx(cn, &format!("Yes master {}!", co_name));
 }
@@ -3343,12 +3343,12 @@ pub fn answer_move(gs: &mut GameState, cn: usize, co: usize) {
 
         characters[cn].attack_cn = 0;
         characters[cn].goto_x =
-            (cn_x as i32 + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPX - 1) as u16;
+            (i32::from(cn_x) + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPX - 1) as u16;
         characters[cn].goto_y =
-            (cn_y as i32 + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPY - 1) as u16;
+            (i32::from(cn_y) + 4 - helpers::random_mod_i32(9)).clamp(0, SERVER_MAPY - 1) as u16;
         characters[cn].misc_action = 0;
 
-        characters[co].get_name().to_string()
+        characters[co].get_name().to_owned()
     };
     gs.do_sayx(cn, &format!("Yes master {}!", co_name));
 }
@@ -3406,8 +3406,8 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
     // Find closest matching character
     let (best_target, best_dist) = {
         let characters = &gs.characters;
-        let cn_x = characters[cn].x as i32;
-        let cn_y = characters[cn].y as i32;
+        let cn_x = i32::from(characters[cn].x);
+        let cn_y = i32::from(characters[cn].y);
         let mut best = 9999;
         let mut bestn = 0;
 
@@ -3422,7 +3422,7 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
             let char_name_lower = characters[n].get_name().to_lowercase();
             if char_name_lower == target_name_lower {
                 let dist =
-                    (cn_x - characters[n].x as i32).abs() + (cn_y - characters[n].y as i32).abs();
+                    (cn_x - i32::from(characters[n].x)).abs() + (cn_y - i32::from(characters[n].y)).abs();
                 if dist < best {
                     best = dist;
                     bestn = n;
@@ -3433,7 +3433,7 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
     };
 
     if best_target != 0 && best_dist < 40 {
-        let co_name = gs.characters[co].get_name().to_string();
+        let co_name = gs.characters[co].get_name().to_owned();
 
         // Prevent attacks on self
         if best_target == co {
@@ -3453,7 +3453,7 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
             return;
         }
 
-        let target_name = gs.characters[best_target].get_name().to_string();
+        let target_name = gs.characters[best_target].get_name().to_owned();
 
         let target_id = helpers::char_id(&gs.characters[best_target]) as usize;
 
@@ -3473,7 +3473,7 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
         );
 
         // Notify target
-        gs.do_notify_character(best_target as u32, NT_GOTMISS as i32, co as i32, 0, 0, 0);
+        gs.do_notify_character(best_target as u32, i32::from(NT_GOTMISS), co as i32, 0, 0, 0);
     }
 }
 
@@ -3497,7 +3497,7 @@ pub fn answer_quiet(gs: &mut GameState, cn: usize, co: usize) {
         }
     };
 
-    let co_name = gs.characters[co].get_name().to_string();
+    let co_name = gs.characters[co].get_name().to_owned();
 
     if !is_talkative {
         gs.characters[cn].data[core::constants::CHD_TALKATIVE] = template_talkative;
@@ -3521,9 +3521,9 @@ pub fn answer_quiet(gs: &mut GameState, cn: usize, co: usize) {
 /// * `co` - Master character listening
 pub fn answer_health(gs: &mut GameState, cn: usize, co: usize) {
     let a_hp = gs.characters[cn].a_hp;
-    let hp5 = gs.characters[cn].hp[5] as i32;
+    let hp5 = i32::from(gs.characters[cn].hp[5]);
     let hp_max = hp5 * 550;
-    let co_name = gs.characters[co].get_name().to_string();
+    let co_name = gs.characters[co].get_name().to_owned();
 
     if a_hp > hp_max {
         gs.do_sayx(cn, &format!("I'm fine, {}.", co_name));
@@ -3545,7 +3545,7 @@ pub fn answer_health(gs: &mut GameState, cn: usize, co: usize) {
 pub fn answer_shop(gs: &mut GameState, cn: usize, co: usize) {
     let is_merchant =
         gs.characters[cn].flags & core::constants::CharacterFlags::Merchant.bits() != 0;
-    let co_name = gs.characters[co].get_name().to_string();
+    let co_name = gs.characters[co].get_name().to_owned();
 
     if is_merchant {
         gs.do_sayx(
@@ -3594,7 +3594,7 @@ pub fn answer_greeting(gs: &mut GameState, cn: usize, co: usize) {
 /// * `cn` - NPC character
 /// * `_co` - (unused) Player who asked
 pub fn answer_whoami(gs: &mut GameState, cn: usize, _co: usize) {
-    let name = gs.characters[cn].get_name().to_string();
+    let name = gs.characters[cn].get_name().to_owned();
     gs.do_sayx(cn, &format!("I am {}.", name));
 }
 
@@ -3719,7 +3719,7 @@ pub fn answer_buygold(gs: &mut GameState, cn: usize, co: usize) {
         let characters = &mut gs.characters;
         characters[co].data[41] += pts;
         characters[co].gold += pts * 100;
-        characters[co].get_name().to_string()
+        characters[co].get_name().to_owned()
     };
     gs.do_sayx(
         cn,
@@ -3841,7 +3841,7 @@ pub fn answer_buyexp(gs: &mut GameState, cn: usize, co: usize) {
         characters[co].data[41] += pts;
         characters[co].points += total_exp;
         characters[co].points_tot += total_exp;
-        characters[co].get_name().to_string()
+        characters[co].get_name().to_owned()
     };
     gs.do_check_new_level(co);
     gs.do_sayx(cn, &format!("Now I'll teach you a bit about life, the world and everything, {}. Thank you for your help!", co_name));
@@ -4018,7 +4018,7 @@ fn replace_synonym(word: &mut String) {
 /// * `text` - Text that the player spoke
 pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
     // Check for stop keyword
-    let stop_keyword = c_string_to_str(&gs.characters[cn].text[6]).to_string();
+    let stop_keyword = c_string_to_str(&gs.characters[cn].text[6]).to_owned();
 
     if !stop_keyword.is_empty() && text.eq_ignore_ascii_case(&stop_keyword) {
         for n in 80..92 {
@@ -4031,7 +4031,7 @@ pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
         gs.characters[cn].data[78] = 0;
         gs.characters[cn].data[27] = gs.globals.ticker;
 
-        let response = c_string_to_str(&gs.characters[cn].text[7]).to_string();
+        let response = c_string_to_str(&gs.characters[cn].text[7]).to_owned();
         if !response.is_empty() {
             gs.do_sayx(cn, &response);
         }
@@ -4120,7 +4120,7 @@ pub fn npc_hear(gs: &mut GameState, cn: usize, co: usize, text: &str) {
         // Check if NPC has the required knowledge, area, and temp
         if npc_knowledge >= know_entry.value
             && (npc_area == know_entry.area || npc_area == AR_ALL || know_entry.area == AR_GENERAL)
-            && (know_entry.temp == 0 || know_entry.temp == npc_temp as i32)
+            && (know_entry.temp == 0 || know_entry.temp == i32::from(npc_temp))
         {
             let mut hit = 0;
             let mut miss = 0;

@@ -337,8 +337,8 @@ impl Character {
     ///
     /// * `true` when close to the temple.
     pub fn is_close_to_temple(&self) -> bool {
-        let dx = (self.x as i32 - self.temple_x as i32).abs();
-        let dy = (self.y as i32 - self.temple_y as i32).abs();
+        let dx = (i32::from(self.x) - i32::from(self.temple_x)).abs();
+        let dy = (i32::from(self.y) - i32::from(self.temple_y)).abs();
         (dx + dy) <= 10
     }
 
@@ -360,7 +360,7 @@ impl Character {
         let map_index =
             (self.y as usize) * (crate::constants::SERVER_MAPX as usize) + (self.x as usize);
 
-        map_tiles[map_index].flags & crate::constants::MF_NOLAG as u64 != 0
+        map_tiles[map_index].flags & u64::from(crate::constants::MF_NOLAG) != 0
     }
 
     /// Returns `true` if `char_id` is a valid character slot index.
@@ -397,7 +397,7 @@ impl Character {
     pub fn get_next_inventory_slot(&self) -> Option<usize> {
         let inventory = self.item;
         for (i, &item_id) in inventory.iter().enumerate() {
-            if item_id == USE_EMPTY as u32 {
+            if item_id == u32::from(USE_EMPTY) {
                 return Some(i);
             }
         }
@@ -419,15 +419,15 @@ impl Character {
     pub fn get_kindred_as_string(&self) -> String {
         let kindred = self.kindred as u32;
         if kindred & traits::KIN_TEMPLAR != 0 {
-            "Templar".to_string()
+            "Templar".to_owned()
         } else if kindred & traits::KIN_HARAKIM != 0 {
-            "Harakim".to_string()
+            "Harakim".to_owned()
         } else if kindred & traits::KIN_MERCENARY != 0 {
-            "Monster".to_string()
+            "Monster".to_owned()
         } else if kindred & traits::KIN_SEYAN_DU != 0 {
-            "Seyan'Du".to_string()
+            "Seyan'Du".to_owned()
         } else {
-            "Monster".to_string()
+            "Monster".to_owned()
         }
     }
 
@@ -435,11 +435,11 @@ impl Character {
         // TODO: Rework to utilize the values in the traits module
         let kindred = self.kindred as u32;
         if kindred & traits::KIN_FEMALE != 0 {
-            "Female".to_string()
+            "Female".to_owned()
         } else if kindred & traits::KIN_MALE != 0 {
-            "Male".to_string()
+            "Male".to_owned()
         } else {
-            "It".to_string()
+            "It".to_owned()
         }
     }
 

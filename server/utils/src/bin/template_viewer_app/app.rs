@@ -265,7 +265,7 @@ impl TemplateViewerApp {
         }
 
         let Some(world) = self.loaded_world.as_mut() else {
-            return Err("No world loaded".to_string());
+            return Err("No world loaded".to_owned());
         };
 
         world.item_templates = self.item_templates.clone();
@@ -281,7 +281,7 @@ impl TemplateViewerApp {
         let world = self
             .loaded_world
             .as_ref()
-            .ok_or_else(|| "No world loaded".to_string())?;
+            .ok_or_else(|| "No world loaded".to_owned())?;
 
         save_world_snapshot(world, path)?;
         self.data_source = DataSource::SnapshotFile(path.to_path_buf());
@@ -323,7 +323,7 @@ impl TemplateViewerApp {
             return;
         }
         let Some(client) = self.admin_client.as_ref().cloned() else {
-            self.save_status = Some("Admin client not initialized".to_string());
+            self.save_status = Some("Admin client not initialized".to_owned());
             return;
         };
 
@@ -436,7 +436,7 @@ impl TemplateViewerApp {
             _ => {
                 if self.connect_form_base_url.is_empty() {
                     self.connect_form_base_url = std::env::var("MAG_API_BASE_URL")
-                        .unwrap_or_else(|_| "https://127.0.0.1:5554".to_string());
+                        .unwrap_or_else(|_| "https://127.0.0.1:5554".to_owned());
                 }
                 if self.connect_form_token.is_empty() {
                     self.connect_form_token =
@@ -454,15 +454,15 @@ impl TemplateViewerApp {
     /// Closes the dialog only on success; on failure leaves it open with an
     /// inline error message so the user can correct the URL/token.
     fn connect_to_api_from_form(&mut self) {
-        let base_url = self.connect_form_base_url.trim().to_string();
-        let token = self.connect_form_token.trim().to_string();
+        let base_url = self.connect_form_base_url.trim().to_owned();
+        let token = self.connect_form_token.trim().to_owned();
 
         if base_url.is_empty() {
-            self.connect_dialog_error = Some("Base URL is required".to_string());
+            self.connect_dialog_error = Some("Base URL is required".to_owned());
             return;
         }
         if token.is_empty() {
-            self.connect_dialog_error = Some("Admin token is required".to_string());
+            self.connect_dialog_error = Some("Admin token is required".to_owned());
             return;
         }
 
@@ -492,14 +492,14 @@ impl TemplateViewerApp {
         self.connect_dialog_error = None;
         // The "Source:" label in the toolbar already shows the URL, so we
         // only need a short confirmation without repeating it.
-        self.save_status = Some("Connected to admin API".to_string());
+        self.save_status = Some("Connected to admin API".to_owned());
     }
 
     /// Trigger a reload on the running server for both template kinds, plus
     /// items and characters. Status display tracks the templates request id.
     fn request_server_reload(&mut self) {
         let Some(client) = self.admin_client.as_ref().cloned() else {
-            self.save_status = Some("Admin client not initialized".to_string());
+            self.save_status = Some("Admin client not initialized".to_owned());
             return;
         };
 
@@ -507,12 +507,12 @@ impl TemplateViewerApp {
         if let Err(e) = client.request_items_reload() {
             extra.push(format!("items reload failed: {e}"));
         } else {
-            extra.push("items".to_string());
+            extra.push("items".to_owned());
         }
         if let Err(e) = client.request_characters_reload() {
             extra.push(format!("characters reload failed: {e}"));
         } else {
-            extra.push("characters".to_string());
+            extra.push("characters".to_owned());
         }
 
         match client.request_reload(true, true) {
@@ -741,9 +741,9 @@ impl TemplateViewerApp {
         self.dirty_item_slots.clear();
         self.dirty_character_slots.clear();
         if self.load_error.is_some() {
-            self.save_status = Some("Reverted changes (with load errors)".to_string());
+            self.save_status = Some("Reverted changes (with load errors)".to_owned());
         } else {
-            self.save_status = Some("Reverted unsaved changes".to_string());
+            self.save_status = Some("Reverted unsaved changes".to_owned());
         }
     }
 
@@ -778,19 +778,19 @@ impl TemplateViewerApp {
     }
 
     fn clamp_i8(v: i32) -> i8 {
-        v.clamp(i8::MIN as i32, i8::MAX as i32) as i8
+        v.clamp(i32::from(i8::MIN), i32::from(i8::MAX)) as i8
     }
 
     fn clamp_u8(v: i32) -> u8 {
-        v.clamp(u8::MIN as i32, u8::MAX as i32) as u8
+        v.clamp(i32::from(u8::MIN), i32::from(u8::MAX)) as u8
     }
 
     fn clamp_i16(v: i32) -> i16 {
-        v.clamp(i16::MIN as i32, i16::MAX as i32) as i16
+        v.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16
     }
 
     fn clamp_u16(v: i32) -> u16 {
-        v.clamp(u16::MIN as i32, u16::MAX as i32) as u16
+        v.clamp(i32::from(u16::MIN), i32::from(u16::MAX)) as u16
     }
 
     fn load_graphics_zip(&mut self, zip_path: PathBuf) {
@@ -1179,33 +1179,33 @@ impl TemplateViewerApp {
             ui.separator();
 
             // Copy all fields to avoid packed struct issues
-            let mut temp = item.temp as i32;
-            let mut used = item.used as i32;
+            let mut temp = i32::from(item.temp);
+            let mut used = i32::from(item.used);
             let mut name_buf = item.name;
             let mut reference_buf = item.reference;
             let mut description_buf = item.description;
-            let mut name = c_string_to_str(&name_buf).to_string();
-            let mut reference = c_string_to_str(&reference_buf).to_string();
-            let mut description = c_string_to_str(&description_buf).to_string();
+            let mut name = c_string_to_str(&name_buf).to_owned();
+            let mut reference = c_string_to_str(&reference_buf).to_owned();
+            let mut description = c_string_to_str(&description_buf).to_owned();
 
             let mut value = item.value;
             let mut placement = item.placement;
             let flags = item.flags;
-            let mut sprite_0 = item.sprite[0] as i32;
-            let mut sprite_1 = item.sprite[1] as i32;
-            let mut status_0 = item.status[0] as i32;
-            let mut status_1 = item.status[1] as i32;
-            let mut armor_0 = item.armor[0] as i32;
-            let mut armor_1 = item.armor[1] as i32;
-            let mut weapon_0 = item.weapon[0] as i32;
-            let mut weapon_1 = item.weapon[1] as i32;
-            let mut light_0 = item.light[0] as i32;
-            let mut light_1 = item.light[1] as i32;
+            let mut sprite_0 = i32::from(item.sprite[0]);
+            let mut sprite_1 = i32::from(item.sprite[1]);
+            let mut status_0 = i32::from(item.status[0]);
+            let mut status_1 = i32::from(item.status[1]);
+            let mut armor_0 = i32::from(item.armor[0]);
+            let mut armor_1 = i32::from(item.armor[1]);
+            let mut weapon_0 = i32::from(item.weapon[0]);
+            let mut weapon_1 = i32::from(item.weapon[1]);
+            let mut light_0 = i32::from(item.light[0]);
+            let mut light_1 = i32::from(item.light[1]);
             let mut duration = item.duration;
             let mut cost = item.cost;
             let mut power = item.power;
-            let mut min_rank = item.min_rank as i32;
-            let mut driver = item.driver as i32;
+            let mut min_rank = i32::from(item.min_rank);
+            let mut driver = i32::from(item.driver);
 
             let mut attrib = item.attrib;
             let mut hp = item.hp;
@@ -1424,7 +1424,7 @@ impl TemplateViewerApp {
                     for (i, name) in attrib_names.iter().enumerate() {
                         ui.label(*name);
                         for j in 0..3 {
-                            let mut v = attrib[i][j] as i32;
+                            let mut v = i32::from(attrib[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                                 attrib[i][j] = Self::clamp_i8(v);
                                 changed = true;
@@ -1435,7 +1435,7 @@ impl TemplateViewerApp {
 
                     ui.label("HP");
                     for j in 0..3 {
-                        let mut v = hp[j] as i32;
+                        let mut v = i32::from(hp[j]);
                         if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                             hp[j] = Self::clamp_i16(v);
                             changed = true;
@@ -1445,7 +1445,7 @@ impl TemplateViewerApp {
 
                     ui.label("Endurance");
                     for j in 0..3 {
-                        let mut v = end[j] as i32;
+                        let mut v = i32::from(end[j]);
                         if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                             end[j] = Self::clamp_i16(v);
                             changed = true;
@@ -1455,7 +1455,7 @@ impl TemplateViewerApp {
 
                     ui.label("Mana");
                     for j in 0..3 {
-                        let mut v = mana[j] as i32;
+                        let mut v = i32::from(mana[j]);
                         if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                             mana[j] = Self::clamp_i16(v);
                             changed = true;
@@ -1482,7 +1482,7 @@ impl TemplateViewerApp {
                         crate::centered_label(ui, format!("{}", i));
                         ui.label(skills::get_skill_name(i));
                         for j in 0..3 {
-                            let mut v = skill[i][j] as i32;
+                            let mut v = i32::from(skill[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                                 skill[i][j] = Self::clamp_i8(v);
                                 changed = true;
@@ -1602,8 +1602,8 @@ impl TemplateViewerApp {
 
                     let x = (tile_idx % tile_w) as u16;
                     let y = (tile_idx / tile_w) as u16;
-                    let area = mag_core::area::get_area_m(x as i32, y as i32)
-                        .unwrap_or_else(|| "Unknown".to_string());
+                    let area = mag_core::area::get_area_m(i32::from(x), i32::from(y))
+                        .unwrap_or_else(|| "Unknown".to_owned());
                     locations.push((item_id, x, y, area));
                 }
 
@@ -1661,39 +1661,39 @@ impl TemplateViewerApp {
             ui.separator();
 
             // Copy all packed fields to avoid alignment issues
-            let mut temp = character.temp as i32;
-            let mut used = character.used as i32;
+            let mut temp = i32::from(character.temp);
+            let mut used = i32::from(character.used);
             let mut name_buf = character.name;
             let mut reference_buf = character.reference;
             let mut description_buf = character.description;
-            let mut name = c_string_to_str(&name_buf).to_string();
-            let mut reference = c_string_to_str(&reference_buf).to_string();
-            let mut description = c_string_to_str(&description_buf).to_string();
+            let mut name = c_string_to_str(&name_buf).to_owned();
+            let mut reference = c_string_to_str(&reference_buf).to_owned();
+            let mut description = c_string_to_str(&description_buf).to_owned();
 
             let mut kindred = character.kindred;
-            let mut sprite = character.sprite as i32;
-            let mut sound = character.sound as i32;
+            let mut sprite = i32::from(character.sprite);
+            let mut sound = i32::from(character.sound);
             let flags = character.flags;
-            let mut alignment = character.alignment as i32;
-            let mut temple_x = character.temple_x as i32;
-            let mut temple_y = character.temple_y as i32;
-            let mut tavern_x = character.tavern_x as i32;
-            let mut tavern_y = character.tavern_y as i32;
-            let mut x = character.x as i32;
-            let mut y = character.y as i32;
+            let mut alignment = i32::from(character.alignment);
+            let mut temple_x = i32::from(character.temple_x);
+            let mut temple_y = i32::from(character.temple_y);
+            let mut tavern_x = i32::from(character.tavern_x);
+            let mut tavern_y = i32::from(character.tavern_y);
+            let mut x = i32::from(character.x);
+            let mut y = i32::from(character.y);
             let mut gold = character.gold;
             let mut points = character.points;
             let mut points_tot = character.points_tot;
-            let mut armor = character.armor as i32;
-            let mut weapon = character.weapon as i32;
-            let mut light = character.light as i32;
-            let mut armor_bonus = character.armor_bonus as i32;
-            let mut weapon_bonus = character.weapon_bonus as i32;
-            let mut light_bonus = character.light_bonus as i32;
-            let mut gethit_bonus = character.gethit_bonus as i32;
-            let mut mode = character.mode as i32;
-            let mut speed = character.speed as i32;
-            let mut speed_mod_val = character.speed_mod as i32;
+            let mut armor = i32::from(character.armor);
+            let mut weapon = i32::from(character.weapon);
+            let mut light = i32::from(character.light);
+            let mut armor_bonus = i32::from(character.armor_bonus);
+            let mut weapon_bonus = i32::from(character.weapon_bonus);
+            let mut light_bonus = i32::from(character.light_bonus);
+            let mut gethit_bonus = i32::from(character.gethit_bonus);
+            let mut mode = i32::from(character.mode);
+            let mut speed = i32::from(character.speed);
+            let mut speed_mod_val = i32::from(character.speed_mod);
             let mut monster_class = character.monster_class;
             let mut a_hp = character.a_hp;
             let mut a_end = character.a_end;
@@ -1899,7 +1899,7 @@ impl TemplateViewerApp {
 
                     ui.label("Area:");
                     ui.label(
-                        mag_core::area::get_area_m(x, y).unwrap_or_else(|| "Unknown".to_string()),
+                        mag_core::area::get_area_m(x, y).unwrap_or_else(|| "Unknown".to_owned()),
                     );
                     ui.end_row();
 
@@ -1911,7 +1911,7 @@ impl TemplateViewerApp {
                     ui.end_row();
 
                     ui.label("Points:");
-                    let points_tot_u32 = (points_tot as i64).max(0) as u32;
+                    let points_tot_u32 = i64::from(points_tot).max(0) as u32;
                     let rank_name = mag_core::ranks::rank_name(points_tot_u32);
                     ui.horizontal(|ui| {
                         changed |= ui.add(egui::DragValue::new(&mut points).speed(1)).changed();
@@ -2004,7 +2004,7 @@ impl TemplateViewerApp {
                     for (i, name) in attrib_names.iter().enumerate() {
                         ui.label(*name);
                         for j in 0..6 {
-                            let mut v = attrib[i][j] as i32;
+                            let mut v = i32::from(attrib[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                                 attrib[i][j] = Self::clamp_u8(v);
                                 changed = true;
@@ -2031,7 +2031,7 @@ impl TemplateViewerApp {
 
                     ui.label("HP");
                     for i in 0..6 {
-                        let mut v = hp[i] as i32;
+                        let mut v = i32::from(hp[i]);
                         if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                             hp[i] = Self::clamp_u16(v);
                             changed = true;
@@ -2041,7 +2041,7 @@ impl TemplateViewerApp {
 
                     ui.label("Endurance");
                     for i in 0..6 {
-                        let mut v = end[i] as i32;
+                        let mut v = i32::from(end[i]);
                         if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                             end[i] = Self::clamp_u16(v);
                             changed = true;
@@ -2051,7 +2051,7 @@ impl TemplateViewerApp {
 
                     ui.label("Mana");
                     for i in 0..6 {
-                        let mut v = mana[i] as i32;
+                        let mut v = i32::from(mana[i]);
                         if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                             mana[i] = Self::clamp_u16(v);
                             changed = true;
@@ -2101,7 +2101,7 @@ impl TemplateViewerApp {
                         crate::centered_label(ui, format!("{}", i));
                         ui.label(skills::get_skill_name(i));
                         for j in 0..6 {
-                            let mut v = skills[i][j] as i32;
+                            let mut v = i32::from(skills[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
                                 skills[i][j] = Self::clamp_u8(v);
                                 changed = true;
@@ -2126,9 +2126,9 @@ impl TemplateViewerApp {
 
                     let item_count = 40; // character.item.len()
                     for i in (0..item_count).step_by(2) {
-                        let mut item1 = inventory[i] as i64;
+                        let mut item1 = i64::from(inventory[i]);
                         let mut item2 = if i + 1 < item_count {
-                            inventory[i + 1] as i64
+                            i64::from(inventory[i + 1])
                         } else {
                             0
                         };
@@ -2178,7 +2178,7 @@ impl TemplateViewerApp {
 
                     let worn_count = 20;
                     for i in 0..worn_count {
-                        let mut worn_item = worn[i] as i64;
+                        let mut worn_item = i64::from(worn[i]);
                         ui.label(format!("{}", i));
                         ui.horizontal(|ui| {
                             if ui
@@ -2330,7 +2330,7 @@ impl eframe::App for TemplateViewerApp {
                 self.pending_reload_request_id = None;
                 self.pending_reload_since = None;
                 self.last_reload_poll = None;
-                self.save_status = Some("Reload status: timed out waiting for server".to_string());
+                self.save_status = Some("Reload status: timed out waiting for server".to_owned());
             } else {
                 let should_poll = self
                     .last_reload_poll

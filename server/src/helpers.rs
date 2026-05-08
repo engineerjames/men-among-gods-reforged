@@ -382,7 +382,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
             if co != 0 {
                 let flags = gs.characters[co].flags;
                 if flags & (CharacterFlags::Player.bits() | CharacterFlags::LabKeeper.bits()) != 0 {
-                    let name = gs.characters[co].get_name().to_string();
+                    let name = gs.characters[co].get_name().to_owned();
                     busy_name = Some(name);
                     break 'outer;
                 }
@@ -397,7 +397,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
         );
         log::info!(
             "Player {} attempted to enter lab {}, but area is busy with {}",
-            gs.characters[cn].get_name().to_string(),
+            gs.characters[cn].get_name().to_owned(),
             nr,
             name
         );
@@ -435,7 +435,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
             log::error!(
                 "use_labtransfer: pop_create_char({}) failed for player {}",
                 template,
-                gs.characters[cn].get_name().to_string()
+                gs.characters[cn].get_name().to_owned()
             );
             return false;
         }
@@ -446,7 +446,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
         log::error!(
             "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
             co,
-            gs.characters[cn].get_name().to_string()
+            gs.characters[cn].get_name().to_owned()
         );
         God::destroy_items(gs, co);
         gs.characters[co].used = core::constants::USE_EMPTY;
@@ -477,7 +477,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
         );
         log::error!(
             "use_labtransfer: god_transfer_char({}, 174, 166) failed",
-            gs.characters[cn].get_name().to_string()
+            gs.characters[cn].get_name().to_owned()
         );
         God::destroy_items(gs, co);
         gs.characters[co].used = core::constants::USE_EMPTY;
@@ -623,7 +623,7 @@ pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
 pub fn ago_string(dt: u128) -> String {
     let minutes = dt / (60 * core::constants::TICKS as u128);
     if minutes <= 0 {
-        return "just now".to_string();
+        return "just now".to_owned();
     }
     if minutes < 60 {
         return format!("{} minutes ago", minutes);
@@ -699,7 +699,7 @@ pub fn char_id(ch: &Character) -> i32 {
     let mut id = 0;
 
     for n in (0..40).step_by(std::mem::size_of::<i32>()) {
-        id ^= ch.name[n] as u32;
+        id ^= u32::from(ch.name[n]);
     }
 
     id ^= ch.pass1;
@@ -980,21 +980,21 @@ pub fn ch_base_status(n: u8) -> u8 {
 pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
     match (dx.cmp(&0), dy.cmp(&0)) {
         (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => {
-            core::constants::DX_RIGHTDOWN as i32
+            i32::from(core::constants::DX_RIGHTDOWN)
         }
         (std::cmp::Ordering::Greater, std::cmp::Ordering::Equal) => {
-            core::constants::DX_RIGHT as i32
+            i32::from(core::constants::DX_RIGHT)
         }
         (std::cmp::Ordering::Greater, std::cmp::Ordering::Less) => {
-            core::constants::DX_RIGHTUP as i32
+            i32::from(core::constants::DX_RIGHTUP)
         }
-        (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => core::constants::DX_DOWN as i32,
-        (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => core::constants::DX_UP as i32,
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => i32::from(core::constants::DX_DOWN),
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => i32::from(core::constants::DX_UP),
         (std::cmp::Ordering::Less, std::cmp::Ordering::Greater) => {
-            core::constants::DX_LEFTDOWN as i32
+            i32::from(core::constants::DX_LEFTDOWN)
         }
-        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => core::constants::DX_LEFT as i32,
-        (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => core::constants::DX_LEFTUP as i32,
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => i32::from(core::constants::DX_LEFT),
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => i32::from(core::constants::DX_LEFTUP),
         _ => -1,
     }
 }
@@ -1042,8 +1042,8 @@ pub fn get_distance(gs: &GameState, cn: usize, co: usize) -> f32 {
     let ch = &gs.characters[cn];
     let co = &gs.characters[co];
 
-    let dx = (ch.x - co.x) as f32;
-    let dy = (ch.y - co.y) as f32;
+    let dx = f32::from(ch.x - co.x);
+    let dy = f32::from(ch.y - co.y);
 
     (dx * dx + dy * dy).sqrt()
 }

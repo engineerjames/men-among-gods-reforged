@@ -38,8 +38,8 @@ impl Map {
     }
 
     pub fn add_light(&mut self, amount: i32) {
-        let new_light = self.light as i32 + amount;
-        self.light = new_light.clamp(0, i16::MAX as i32) as i16;
+        let new_light = i32::from(self.light) + amount;
+        self.light = new_light.clamp(0, i32::from(i16::MAX)) as i16;
     }
 
     pub fn is_sane_coordinates(x: usize, y: usize) -> bool {

@@ -8,7 +8,7 @@
 pub fn get_api_base_url() -> String {
     std::env::var("MAG_API_URL")
         .ok()
-        .map(|value| value.trim().to_string())
+        .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| get_server_url() + ":5554")
 }
@@ -35,7 +35,7 @@ pub fn get_host_from_api_base_url(base_url: &str) -> Option<String> {
 fn get_server_url() -> String {
     std::env::var("MAG_BASE_URL")
         .ok()
-        .map(|value| value.trim().to_string())
+        .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| format!("https://{}", get_server_ip()))
 }
@@ -50,13 +50,13 @@ fn get_server_url() -> String {
 pub fn get_server_ip() -> String {
     std::env::var("MAG_SERVER_IP")
         .ok()
-        .map(|value| value.trim().to_string())
+        .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| {
             if cfg!(debug_assertions) {
-                "127.0.0.1".to_string()
+                "127.0.0.1".to_owned()
             } else {
-                "menamonggods.ddns.net".to_string()
+                "menamonggods.ddns.net".to_owned()
             }
         })
 }

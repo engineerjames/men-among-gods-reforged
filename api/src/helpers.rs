@@ -20,7 +20,7 @@ pub async fn verify_token(token: &str) -> Result<TokenData<types::JwtClaims>, St
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
             error!("JWT secret missing for verify_token");
-            return Err("Internal server error".to_string());
+            return Err("Internal server error".to_owned());
         }
     };
 
@@ -32,7 +32,7 @@ pub async fn verify_token(token: &str) -> Result<TokenData<types::JwtClaims>, St
         Ok(data) => data,
         Err(err) => {
             error!("JWT decode failed: {}", err);
-            return Err("Unauthorized".to_string());
+            return Err("Unauthorized".to_owned());
         }
     };
 
@@ -57,7 +57,7 @@ pub async fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<S
         return None;
     }
 
-    Some(token.to_string())
+    Some(token.to_owned())
 }
 
 /// Validates email format using a regex pattern. This is a basic check and may not cover
@@ -157,7 +157,7 @@ pub(crate) fn normalize_character_name(name: &str) -> Result<String, String> {
     }
 
     if !trimmed.as_bytes().iter().all(u8::is_ascii_alphabetic) {
-        return Err("Character name must contain ASCII letters only".to_string());
+        return Err("Character name must contain ASCII letters only".to_owned());
     }
 
     let mut normalized = trimmed.to_ascii_lowercase();
@@ -166,7 +166,7 @@ pub(crate) fn normalize_character_name(name: &str) -> Result<String, String> {
     }
 
     if normalized == "Self" {
-        return Err("Character name is reserved".to_string());
+        return Err("Character name is reserved".to_owned());
     }
 
     Ok(normalized)
@@ -194,7 +194,7 @@ pub(crate) fn validate_character_name_bad_patterns(
             .to_ascii_lowercase();
 
         if pattern.len() >= 3 && name_lc.contains(&pattern) {
-            return Err("Character name is not allowed".to_string());
+            return Err("Character name is not allowed".to_owned());
         }
     }
 
@@ -216,11 +216,11 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
     let description = description.trim();
 
     if name.is_empty() {
-        return Err("Character name is required".to_string());
+        return Err("Character name is required".to_owned());
     }
 
     if description.len() < 10 {
-        return Err("Description must be at least 10 characters".to_string());
+        return Err("Description must be at least 10 characters".to_owned());
     }
 
     if description.len() > MAX_DESCRIPTION_LEN {
@@ -236,15 +236,15 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
         .copied()
         .all(|b| (32..=126).contains(&b))
     {
-        return Err("Description must be ASCII-only (printable characters)".to_string());
+        return Err("Description must be ASCII-only (printable characters)".to_owned());
     }
 
     if description.contains('"') {
-        return Err("Description must not contain double quotes".to_string());
+        return Err("Description must not contain double quotes".to_owned());
     }
 
     if !description.contains(name) {
-        return Err("Description must contain the character name".to_string());
+        return Err("Description must contain the character name".to_owned());
     }
 
     Ok(())
@@ -302,7 +302,7 @@ mod tests {
             );
 
             let token = get_token_from_headers(&headers).await;
-            assert_eq!(Some("abc.def.ghi".to_string()), token);
+            assert_eq!(Some("abc.def.ghi".to_owned()), token);
         });
     }
 
@@ -351,7 +351,7 @@ mod tests {
             let previous = set_env_var("API_JWT_SECRET", Some("test-secret"));
 
             let claims = types::JwtClaims {
-                sub: "tester".to_string(),
+                sub: "tester".to_owned(),
                 exp: 1_999_999_999,
             };
             let token = jsonwebtoken::encode(
@@ -499,7 +499,7 @@ mod tests {
 
     #[test]
     fn character_name_bad_patterns_rejects_substring_matches() {
-        let bad_names = vec!["bad".to_string(), " no pe ".to_string()];
+        let bad_names = vec!["bad".to_owned(), " no pe ".to_owned()];
         assert!(validate_character_name_bad_patterns("Baddie", &bad_names).is_err());
         assert!(validate_character_name_bad_patterns("Noper", &bad_names).is_err());
         assert!(validate_character_name_bad_patterns("Alice", &bad_names).is_ok());

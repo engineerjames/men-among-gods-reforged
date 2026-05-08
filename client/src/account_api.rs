@@ -66,7 +66,7 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
     let resp = client
         .post(url)
         .json(&LoginRequest {
-            username: username.to_string(),
+            username: username.to_owned(),
             password: password_hash,
         })
         .send()
@@ -78,7 +78,7 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
             .json()
             .map_err(|err| format!("Failed to parse login response: {err}"))?;
         if body.token.trim().is_empty() {
-            return Err("Login failed: empty token".to_string());
+            return Err("Login failed: empty token".to_owned());
         }
         return Ok(body.token);
     }
@@ -92,7 +92,7 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
 
 fn login_failure_message(status: StatusCode, error: Option<&str>) -> String {
     if let Some(error) = error.map(str::trim).filter(|error| !error.is_empty()) {
-        return error.to_string();
+        return error.to_owned();
     }
 
     let message = match status {
@@ -134,8 +134,8 @@ pub fn create_account(
     let resp = client
         .post(url)
         .json(&CreateAccountRequest {
-            email: email.to_string(),
-            username: username.to_string(),
+            email: email.to_owned(),
+            username: username.to_owned(),
             password: password_hash,
         })
         .send()
@@ -157,7 +157,7 @@ pub fn create_account(
         _ => "Account creation failed",
     };
 
-    Err(body.error.unwrap_or_else(|| fallback.to_string()))
+    Err(body.error.unwrap_or_else(|| fallback.to_owned()))
 }
 
 /// Creates a new character via the account API.
@@ -196,8 +196,8 @@ pub fn create_character(
         .post(url)
         .bearer_auth(token)
         .json(&CreateCharacterRequest {
-            name: name.to_string(),
-            description: description.map(|value| value.to_string()),
+            name: name.to_owned(),
+            description: description.map(|value| value.to_owned()),
             sex,
             class,
         })
@@ -354,7 +354,7 @@ pub fn create_game_login_ticket(
         if let Some(ticket) = body.ticket {
             return Ok(ticket);
         }
-        return Err("Ticket creation failed: empty ticket".to_string());
+        return Err("Ticket creation failed: empty ticket".to_owned());
     }
 
     let fallback = match status {
@@ -364,7 +364,7 @@ pub fn create_game_login_ticket(
         _ => "Ticket creation failed",
     };
 
-    Err(body.error.unwrap_or_else(|| fallback.to_string()))
+    Err(body.error.unwrap_or_else(|| fallback.to_owned()))
 }
 
 /// Requests a password reset code to be sent to the account's email.
@@ -399,8 +399,8 @@ pub fn request_password_reset(
     let resp = client
         .post(url)
         .json(&ResetPasswordRequest {
-            username: username.to_string(),
-            email: email.to_string(),
+            username: username.to_owned(),
+            email: email.to_owned(),
         })
         .send()
         .map_err(|err| format!("Password reset request failed: {err}"))?;
@@ -420,7 +420,7 @@ pub fn request_password_reset(
         _ => "Password reset request failed",
     };
 
-    Err(fallback.to_string())
+    Err(fallback.to_owned())
 }
 
 /// Confirms a password reset by submitting the 6-digit code and new password.
@@ -458,8 +458,8 @@ pub fn confirm_password_reset(
     let resp = client
         .post(url)
         .json(&ResetPasswordConfirm {
-            username: username.to_string(),
-            code: code.to_string(),
+            username: username.to_owned(),
+            code: code.to_owned(),
             new_password: password_hash,
         })
         .send()
@@ -482,7 +482,7 @@ pub fn confirm_password_reset(
         _ => "Password reset failed",
     };
 
-    Err(fallback.to_string())
+    Err(fallback.to_owned())
 }
 
 #[cfg(test)]

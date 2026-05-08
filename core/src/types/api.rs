@@ -97,7 +97,7 @@ impl GameLoginTicketMetadata {
             bincode::decode_from_slice(bytes, bincode::config::standard())?;
         if consumed != bytes.len() {
             return Err(bincode::error::DecodeError::OtherString(
-                "trailing bytes in game login ticket metadata".to_string(),
+                "trailing bytes in game login ticket metadata".to_owned(),
             ));
         }
         Ok(metadata)

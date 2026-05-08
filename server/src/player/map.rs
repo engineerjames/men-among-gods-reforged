@@ -35,7 +35,7 @@ pub fn plr_map_remove(gs: &mut GameState, cn: usize) {
     gs.map[m].ch = 0;
     gs.map[to_m].to_ch = 0;
     if light != 0 {
-        gs.do_add_light(x as i32, y as i32, -(light as i32));
+        gs.do_add_light(i32::from(x), i32::from(y), -i32::from(light));
     }
     if !is_body {
         let in_id = gs.map[m].it;
@@ -93,10 +93,10 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
 
                     // compute destination: x + (x - frx), y + (y - fry)
                     let (cx, cy, frx, fry, light) = (
-                        gs.characters[cn].x as i32,
-                        gs.characters[cn].y as i32,
-                        gs.characters[cn].frx as i32,
-                        gs.characters[cn].fry as i32,
+                        i32::from(gs.characters[cn].x),
+                        i32::from(gs.characters[cn].y),
+                        i32::from(gs.characters[cn].frx),
+                        i32::from(gs.characters[cn].fry),
                         gs.characters[cn].light,
                     );
 
@@ -121,7 +121,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
                         gs.map[idx].ch = cn as u32;
 
                         if light != 0 {
-                            gs.do_add_light(nx, ny, light as i32);
+                            gs.do_add_light(nx, ny, i32::from(light));
                         }
 
                         return;
@@ -132,8 +132,8 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
                     gs.map[m].to_ch = 0;
 
                     let (frx, fry, light) = (
-                        gs.characters[cn].frx as i32,
-                        gs.characters[cn].fry as i32,
+                        i32::from(gs.characters[cn].frx),
+                        i32::from(gs.characters[cn].fry),
                         gs.characters[cn].light,
                     );
 
@@ -151,7 +151,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
                     gs.map[idx].ch = cn as u32;
 
                     if light != 0 {
-                        gs.do_add_light(frx, fry, light as i32);
+                        gs.do_add_light(frx, fry, i32::from(light));
                     }
 
                     return;
@@ -166,7 +166,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
                     );
 
                     if current_light != 0 {
-                        gs.do_add_light(tx as i32, ty as i32, current_light as i32);
+                        gs.do_add_light(i32::from(tx), i32::from(ty), i32::from(current_light));
                     }
                     return;
                 }
@@ -174,7 +174,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
         }
 
         // Check for tavern
-        let is_tavern = (gs.map[m].flags & core::constants::MF_TAVERN as u64) != 0;
+        let is_tavern = (gs.map[m].flags & u64::from(core::constants::MF_TAVERN)) != 0;
 
         if is_tavern && is_player {
             gs.characters[cn].tavern_x = gs.characters[cn].x as u16;
@@ -188,7 +188,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
         }
 
         // Check for no magic zone, respect items that exempt char from nomagic
-        let is_nomagic = (gs.map[m].flags & core::constants::MF_NOMAGIC as u64) != 0;
+        let is_nomagic = (gs.map[m].flags & u64::from(core::constants::MF_NOMAGIC)) != 0;
 
         let wears_466 = gs.char_wears_item(cn, 466);
         let wears_481 = gs.char_wears_item(cn, 481);
@@ -234,11 +234,11 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
 
     if !is_body {
         if light != 0 {
-            gs.do_add_light(x as i32, y as i32, light as i32);
+            gs.do_add_light(i32::from(x), i32::from(y), i32::from(light));
         }
 
         // Check for death trap
-        let is_deathtrap = (gs.map[m].flags & core::constants::MF_DEATHTRAP as u64) != 0;
+        let is_deathtrap = (gs.map[m].flags & u64::from(core::constants::MF_DEATHTRAP)) != 0;
 
         if is_deathtrap {
             gs.do_character_log(
@@ -255,9 +255,9 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
     gs.do_area_notify(
         cn as i32,
         0,
-        x as i32,
-        y as i32,
-        core::constants::NT_SEE as i32,
+        i32::from(x),
+        i32::from(y),
+        i32::from(core::constants::NT_SEE),
         cn as i32,
         0,
         0,
@@ -299,13 +299,13 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     const XSCUT: i32 = 2;
     const XECUT: i32 = 2;
 
-    let ys = gs.characters[cn].y as i32 - (core::constants::TILEY as i32 / 2) + YSCUT;
-    let ye = gs.characters[cn].y as i32 + (core::constants::TILEY as i32 / 2) - YECUT;
-    let xs = gs.characters[cn].x as i32 - (core::constants::TILEX as i32 / 2) + XSCUT;
-    let xe = gs.characters[cn].x as i32 + (core::constants::TILEX as i32 / 2) - XECUT;
+    let ys = i32::from(gs.characters[cn].y) - (core::constants::TILEY as i32 / 2) + YSCUT;
+    let ye = i32::from(gs.characters[cn].y) + (core::constants::TILEY as i32 / 2) - YECUT;
+    let xs = i32::from(gs.characters[cn].x) - (core::constants::TILEX as i32 / 2) + XSCUT;
+    let xe = i32::from(gs.characters[cn].x) + (core::constants::TILEX as i32 / 2) - XECUT;
 
-    let current_x = gs.characters[cn].x as i32;
-    let current_y = gs.characters[cn].y as i32;
+    let current_x = i32::from(gs.characters[cn].x);
+    let current_y = i32::from(gs.characters[cn].y);
     gs.can_see(
         Some(cn),
         current_x,
@@ -384,7 +384,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
             let tmp = gs.check_dlightm(mi);
 
-            let mut light = std::cmp::max(gs.map[mi].light as i32, tmp);
+            let mut light = std::cmp::max(i32::from(gs.map[mi].light), tmp);
             light = gs.do_character_calculate_light(cn, light);
 
             if light <= 5 && (gs.characters[cn].flags & CharacterFlags::Infrared.bits()) != 0 {
@@ -420,7 +420,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                         | MF_GFX_EMAGIC
                         | MF_GFX_GMAGIC
                         | MF_GFX_CMAGIC
-                        | MF_UWATER as u64)
+                        | u64::from(MF_UWATER))
                     != 0
                 {
                     if map_flags & core::constants::MF_GFX_INJURED != 0 {
@@ -456,7 +456,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                         smap[n].flags |= ((map_flags & MF_GFX_CMAGIC) >> 23) as u32;
                     }
 
-                    if map_flags & core::constants::MF_UWATER as u64 != 0 {
+                    if map_flags & u64::from(core::constants::MF_UWATER) != 0 {
                         smap[n].flags |= UWATER;
                     }
                 }
@@ -550,7 +550,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].ch_id = helpers::char_id(&char_co) as u16;
 
                     if tmp_see <= 75 && char_co.hp[5] > 0 {
-                        smap[n].ch_proz = (((char_co.a_hp + 5) / 10) / char_co.hp[5] as i32) as u8;
+                        smap[n].ch_proz = (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
                     } else {
                         smap[n].ch_proz = 0;
                     }
@@ -957,44 +957,44 @@ pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
     let cpl_x = gs.players[nr].cpl.x;
     let cpl_y = gs.players[nr].cpl.y;
 
-    if x as i32 != cpl_x || y as i32 != cpl_y {
+    if i32::from(x) != cpl_x || i32::from(y) != cpl_y {
         let mut buf: [u8; 16] = [0; 16];
         let tilex = core::constants::TILEX;
         let total = core::constants::TILEX * core::constants::TILEY;
 
-        if cpl_x == (x as i32 - 1) && cpl_y == y as i32 {
+        if cpl_x == (i32::from(x) - 1) && cpl_y == i32::from(y) {
             buf[0] = ServerCommandType::ScrollRight as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             gs.players[nr].cmap.copy_within(1..total, 0);
-        } else if cpl_x == (x as i32 + 1) && cpl_y == y as i32 {
+        } else if cpl_x == (i32::from(x) + 1) && cpl_y == i32::from(y) {
             buf[0] = ServerCommandType::ScrollLeft as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             gs.players[nr].cmap.copy_within(0..(total - 1), 1);
-        } else if cpl_x == x as i32 && cpl_y == (y as i32 - 1) {
+        } else if cpl_x == i32::from(x) && cpl_y == (i32::from(y) - 1) {
             buf[0] = ServerCommandType::ScrollDown as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             gs.players[nr].cmap.copy_within(tilex..total, 0);
-        } else if cpl_x == x as i32 && cpl_y == (y as i32 + 1) {
+        } else if cpl_x == i32::from(x) && cpl_y == (i32::from(y) + 1) {
             buf[0] = ServerCommandType::ScrollUp as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             gs.players[nr].cmap.copy_within(0..(total - tilex), tilex);
-        } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 + 1) {
+        } else if cpl_x == (i32::from(x) + 1) && cpl_y == (i32::from(y) + 1) {
             buf[0] = ServerCommandType::ScrollLeftUp as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             gs.players[nr]
                 .cmap
                 .copy_within(0..(total - tilex - 1), tilex + 1);
-        } else if cpl_x == (x as i32 + 1) && cpl_y == (y as i32 - 1) {
+        } else if cpl_x == (i32::from(x) + 1) && cpl_y == (i32::from(y) - 1) {
             buf[0] = ServerCommandType::ScrollLeftDown as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             gs.players[nr].cmap.copy_within((tilex - 1)..total, 0);
-        } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 + 1) {
+        } else if cpl_x == (i32::from(x) - 1) && cpl_y == (i32::from(y) + 1) {
             buf[0] = ServerCommandType::ScrollRightUp as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             gs.players[nr]
                 .cmap
                 .copy_within(0..(total - tilex + 1), tilex - 1);
-        } else if cpl_x == (x as i32 - 1) && cpl_y == (y as i32 - 1) {
+        } else if cpl_x == (i32::from(x) - 1) && cpl_y == (i32::from(y) - 1) {
             buf[0] = ServerCommandType::ScrollRightDown as u8;
             network_manager::xsend(gs, nr, &buf, 1);
             let src_start = tilex + 1;
@@ -1004,12 +1004,12 @@ pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
                 .copy_within(src_start..(src_start + count), 0);
         }
 
-        gs.players[nr].cpl.x = x as i32;
-        gs.players[nr].cpl.y = y as i32;
+        gs.players[nr].cpl.x = i32::from(x);
+        gs.players[nr].cpl.y = i32::from(y);
 
         buf[0] = ServerCommandType::SetOrigin as u8;
-        let ox: i16 = (x as i32 - (core::constants::TILEX as i32 / 2)) as i16;
-        let oy: i16 = (y as i32 - (core::constants::TILEY as i32 / 2)) as i16;
+        let ox: i16 = (i32::from(x) - (core::constants::TILEX as i32 / 2)) as i16;
+        let oy: i16 = (i32::from(y) - (core::constants::TILEY as i32 / 2)) as i16;
         let ox_b = ox.to_le_bytes();
         let oy_b = oy.to_le_bytes();
         buf[1] = ox_b[0];

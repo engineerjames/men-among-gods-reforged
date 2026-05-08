@@ -446,7 +446,7 @@ impl GameScene {
     pub(super) fn own_ch_nr(ps: &PlayerState) -> u32 {
         ps.map()
             .tile_at_xy(TILEX / 2, TILEY / 2)
-            .map(|t| t.ch_nr as u32)
+            .map(|t| u32::from(t.ch_nr))
             .unwrap_or(0)
     }
 
@@ -457,7 +457,7 @@ impl GameScene {
     /// 2) Current attack target (`attack_cn`)
     /// 3) No target (0)
     pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
-        let selected = ps.selected_char() as u32;
+        let selected = u32::from(ps.selected_char());
         if selected != 0 && selected != Self::own_ch_nr(ps) {
             return selected;
         }
@@ -1003,7 +1003,7 @@ impl GameScene {
             .api
             .login_target
             .clone()
-            .ok_or_else(|| "No login target".to_string())?;
+            .ok_or_else(|| "No login target".to_owned())?;
 
         let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
             .unwrap_or_else(crate::hosts::get_server_ip);
@@ -1083,7 +1083,7 @@ impl Scene for GameScene {
             Some(t) => t,
             None => {
                 log::error!("GameScene on_enter: no login_target set");
-                self.pending_exit = Some("No login target".to_string());
+                self.pending_exit = Some("No login target".to_owned());
                 return;
             }
         };
@@ -1361,8 +1361,8 @@ impl Scene for GameScene {
 
             let dt_secs = dt.as_secs_f32();
 
-            let raw_x = self.left_stick_x as f32;
-            let raw_y = self.left_stick_y as f32;
+            let raw_x = f32::from(self.left_stick_x);
+            let raw_y = f32::from(self.left_stick_y);
 
             let norm_x = if raw_x.abs() > DEADZONE {
                 ((raw_x.abs() - DEADZONE) / (MAX_AXIS - DEADZONE))
@@ -1415,7 +1415,7 @@ impl Scene for GameScene {
 
             const RS_DEADZONE: f32 = 8000.0;
             if self.skill_picker.is_visible() {
-                let rs_y = self.right_stick_y as f32;
+                let rs_y = f32::from(self.right_stick_y);
                 if self.right_stick_cooldown <= 0.0 && rs_y.abs() > RS_DEADZONE {
                     self.skill_picker
                         .controller_move_selection(if rs_y > 0.0 { 1 } else { -1 });
@@ -1424,7 +1424,7 @@ impl Scene for GameScene {
             } else {
                 use crate::ui::hud::skill_bar::TOP_CELLS;
 
-                let rs_x = self.right_stick_x as f32;
+                let rs_x = f32::from(self.right_stick_x);
 
                 if self.right_stick_cooldown <= 0.0 && rs_x.abs() > RS_DEADZONE {
                     let current = self.skill_bar.controller_selected_slot();
@@ -1458,7 +1458,7 @@ impl Scene for GameScene {
                             if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
                             {
                                 let tile = ps.map().tile_at_xy(sx, sy);
-                                let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
+                                let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
                                 if target_cn != 0 {
                                     if let Some(net) = app_state.network.as_ref() {
                                         self.play_click_sound(app_state);
@@ -1600,11 +1600,11 @@ impl Scene for GameScene {
                 self.mode_button.sync(ci.mode);
                 self.vitality_bars.sync(
                     ci.a_hp,
-                    ci.hp[5] as i32,
+                    i32::from(ci.hp[5]),
                     ci.a_end,
-                    ci.end[5] as i32,
+                    i32::from(ci.end[5]),
                     ci.a_mana,
-                    ci.mana[5] as i32,
+                    i32::from(ci.mana[5]),
                 );
                 self.spell_effect_bars
                     .sync(&ci.spell, &ci.active, &ci.spell_type);

@@ -230,7 +230,7 @@ impl LookPanel {
 
         // Fall back to the look struct's static sprite if tile search failed.
         if sprite_id <= 0 {
-            sprite_id = look.sprite() as i32;
+            sprite_id = i32::from(look.sprite());
         }
 
         let mut worn = [0u16; 12];
@@ -243,7 +243,7 @@ impl LookPanel {
 
         self.snap = LookSnapshot {
             visible: true,
-            name: look.name().unwrap_or("").to_string(),
+            name: look.name().unwrap_or("").to_owned(),
             sprite_id,
             worn,
             a_hp: look.a_hp(),
@@ -273,7 +273,7 @@ impl LookPanel {
 
         if max > 0 {
             let filled =
-                ((current as i64 * BAR_W as i64) / max as i64).clamp(0, BAR_W as i64) as u32;
+                ((i64::from(current) * i64::from(BAR_W)) / i64::from(max)).clamp(0, i64::from(BAR_W)) as u32;
             if filled > 0 {
                 ctx.canvas.set_draw_color(fill);
                 ctx.canvas

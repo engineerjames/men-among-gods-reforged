@@ -119,9 +119,9 @@ impl GameState {
                     }
 
                     // TODO: This distance calculation seems incorrect potentially -- doublecheck
-                    let distance = (self.characters[cn].x as i32 - self.characters[co].x as i32)
+                    let distance = (i32::from(self.characters[cn].x) - i32::from(self.characters[co].x))
                         .abs()
-                        + (self.characters[cn].y as i32 - self.characters[co].y as i32).abs();
+                        + (i32::from(self.characters[cn].y) - i32::from(self.characters[co].y)).abs();
 
                     if distance < best[0] {
                         best[2] = best[1];
@@ -249,8 +249,8 @@ impl GameState {
 
             // Show description or reference
             let has_desc = self.characters[co].description[0] != 0;
-            let description = c_string_to_str(&mut self.characters[co].description).to_string();
-            let reference = c_string_to_str(&mut self.characters[co].reference).to_string();
+            let description = c_string_to_str(&mut self.characters[co].description).to_owned();
+            let reference = c_string_to_str(&mut self.characters[co].reference).to_owned();
 
             if has_desc {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", description));
@@ -261,10 +261,10 @@ impl GameState {
             // Check if target is AFK (away from keyboard)
             let co_is_player = self.characters[co].is_player();
             let co_data0 = self.characters[co].data[0];
-            let co_text0 = c_string_to_str(&mut self.characters[co].text[0]).to_string();
+            let co_text0 = c_string_to_str(&mut self.characters[co].text[0]).to_owned();
 
             if co_is_player && co_data0 != 0 {
-                let co_name = c_string_to_str(&mut self.characters[co].name).to_string();
+                let co_name = c_string_to_str(&mut self.characters[co].name).to_owned();
 
                 if !co_text0.is_empty() {
                     self.do_character_log(
@@ -284,7 +284,7 @@ impl GameState {
 
             // Check for Purple One follower
             let co_kindred = self.characters[co].kindred;
-            let co_reference = c_string_to_str(&mut self.characters[co].reference).to_string();
+            let co_reference = c_string_to_str(&mut self.characters[co].reference).to_owned();
 
             if co_is_player && (co_kindred as u32 & traits::KIN_PURPLE) != 0 {
                 self.do_character_log(
@@ -300,7 +300,7 @@ impl GameState {
             let cn_is_shutup = self.characters[cn].flags & CharacterFlags::ShutUp.bits() != 0;
 
             if godflag == 0 && cn != co && cn_is_player && !cn_is_invisible && !cn_is_shutup {
-                let cn_name = c_string_to_str(&mut self.characters[cn].name).to_string();
+                let cn_name = c_string_to_str(&mut self.characters[cn].name).to_owned();
 
                 self.do_character_log(
                     co,
@@ -318,13 +318,13 @@ impl GameState {
 
             if co_is_player && co_data14 != 0 && !co_is_god {
                 let killer = if co_data15 == 0 {
-                    "unknown causes".to_string()
+                    "unknown causes".to_owned()
                 } else if co_data15 >= core::constants::MAXCHARS as i32 {
                     let killer_idx = (co_data15 & 0xFFFF) as usize;
-                    c_string_to_str(&mut self.characters[killer_idx].reference).to_string()
+                    c_string_to_str(&mut self.characters[killer_idx].reference).to_owned()
                 } else {
                     let idx = co_data15 as usize;
-                    c_string_to_str(&mut self.character_templates[idx].reference).to_string()
+                    c_string_to_str(&mut self.character_templates[idx].reference).to_owned()
                 };
 
                 let area = {
@@ -383,7 +383,7 @@ impl GameState {
             }
 
             // Show custom text[3] (player description/title)
-            let co_text3 = c_string_to_str(&mut self.characters[co].text[3]).to_string();
+            let co_text3 = c_string_to_str(&mut self.characters[co].text[3]).to_owned();
 
             if !co_text3.is_empty() && co_is_player {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", co_text3));
@@ -473,16 +473,16 @@ impl GameState {
 
             // Apply random variation if visibility is poor (populate shared diffs)
             if visibility > 75 {
-                hp_diff = (hp5 as i32) / 2 - helpers::random_mod_i32(hp5 as i32 + 1);
-                end_diff = (end5 as i32) / 2 - helpers::random_mod_i32(end5 as i32 + 1);
-                mana_diff = (mana5 as i32) / 2 - helpers::random_mod_i32(mana5 as i32 + 1);
+                hp_diff = i32::from(hp5) / 2 - helpers::random_mod_i32(i32::from(hp5) + 1);
+                end_diff = i32::from(end5) / 2 - helpers::random_mod_i32(i32::from(end5) + 1);
+                mana_diff = i32::from(mana5) / 2 - helpers::random_mod_i32(i32::from(mana5) + 1);
             } else {
                 hp_diff = 0;
                 end_diff = 0;
                 mana_diff = 0;
             }
 
-            let hp_display = ((hp5 as i32 + hp_diff) as u32).to_le_bytes();
+            let hp_display = ((i32::from(hp5) + hp_diff) as u32).to_le_bytes();
             buf[9..13].copy_from_slice(&hp_display);
         } else {
             // Obscured
@@ -506,7 +506,7 @@ impl GameState {
 
         // reuse previously computed hp_diff, end_diff, mana_diff (populated in SV_LOOK2)
 
-        let end_display = (end5 as i32 + end_diff) as u16;
+        let end_display = (i32::from(end5) + end_diff) as u16;
         buf[1] = (end_display & 0xFF) as u8;
         buf[2] = (end_display >> 8) as u8;
 
@@ -526,7 +526,7 @@ impl GameState {
         buf[9] = (co_id_u16 & 0xFF) as u8;
         buf[10] = (co_id_u16 >> 8) as u8;
 
-        let mana_display = (mana5 as i32 + mana_diff) as u16;
+        let mana_display = (i32::from(mana5) + mana_diff) as u16;
         buf[11] = (mana_display & 0xFF) as u8;
         buf[12] = (mana_display >> 8) as u8;
 
@@ -863,7 +863,7 @@ impl GameState {
                 core::types::FontColor::Green,
                 &format!("You get {} experience points.\n", p),
             );
-            self.do_notify_character(cn as u32, core::constants::NT_GOTEXP as i32, p, 0, 0, 0);
+            self.do_notify_character(cn as u32, i32::from(core::constants::NT_GOTEXP), p, 0, 0, 0);
             chlog!(
                 cn,
                 "Gets {} EXP (total {})",
@@ -909,7 +909,7 @@ impl GameState {
 
             self.do_character_log(cn, FontColor::Red, "Yes, Sire, I recognise you!\n");
 
-            let (x, y) = (self.characters[cn].x as i32, self.characters[cn].y as i32);
+            let (x, y) = (i32::from(self.characters[cn].x), i32::from(self.characters[cn].y));
             self.do_area_log(
                 cn,
                 0,
@@ -928,25 +928,25 @@ impl GameState {
             let is_skua = text == "Skua!" && (kindred & traits::KIN_PURPLE as i32) == 0;
             let is_purple = text == "Purple!" && (kindred & traits::KIN_PURPLE as i32) != 0;
             if (is_skua || is_purple) && self.characters[cn].luck > 100 {
-                if self.characters[cn].a_hp < self.characters[cn].hp[5] as i32 * 200 {
+                if self.characters[cn].a_hp < i32::from(self.characters[cn].hp[5]) * 200 {
                     self.characters[cn].a_hp += 50000 + helpers::random_mod_i32(100000);
-                    let cap = self.characters[cn].hp[5] as i32 * 1000;
+                    let cap = i32::from(self.characters[cn].hp[5]) * 1000;
                     if self.characters[cn].a_hp > cap {
                         self.characters[cn].a_hp = cap;
                     }
                     self.characters[cn].luck -= 25;
                 }
-                if self.characters[cn].a_end < self.characters[cn].end[5] as i32 * 200 {
+                if self.characters[cn].a_end < i32::from(self.characters[cn].end[5]) * 200 {
                     self.characters[cn].a_end += 50000 + helpers::random_mod_i32(100000);
-                    let cap = self.characters[cn].end[5] as i32 * 1000;
+                    let cap = i32::from(self.characters[cn].end[5]) * 1000;
                     if self.characters[cn].a_end > cap {
                         self.characters[cn].a_end = cap;
                     }
                     self.characters[cn].luck -= 10;
                 }
-                if self.characters[cn].a_mana < self.characters[cn].mana[5] as i32 * 200 {
+                if self.characters[cn].a_mana < i32::from(self.characters[cn].mana[5]) * 200 {
                     self.characters[cn].a_mana += 50000 + helpers::random_mod_i32(100000);
-                    let cap = self.characters[cn].mana[5] as i32 * 1000;
+                    let cap = i32::from(self.characters[cn].mana[5]) * 1000;
                     if self.characters[cn].a_mana > cap {
                         self.characters[cn].a_mana = cap;
                     }
@@ -988,7 +988,7 @@ impl GameState {
         let mut ptr: &str = text;
         let m_idx = self.characters[cn].x as usize
             + self.characters[cn].y as usize * core::constants::SERVER_MAPX as usize;
-        let is_underwater = self.map[m_idx].flags & core::constants::MF_UWATER as u64 != 0;
+        let is_underwater = self.map[m_idx].flags & u64::from(core::constants::MF_UWATER) != 0;
 
         if is_underwater {
             let mut found_blue = false;
@@ -1037,7 +1037,7 @@ impl GameState {
 
         let cx = self.characters[cn].x as usize;
         let cy = self.characters[cn].y as usize;
-        let name = self.characters[cn].get_name().to_string();
+        let name = self.characters[cn].get_name().to_owned();
 
         if is_player_or_usurp {
             self.do_area_say1(cn, cx, cy, ptr);
@@ -1084,8 +1084,8 @@ impl GameState {
         let co_used = self.characters[co].used;
         let co_invis = (self.characters[co].flags & CharacterFlags::Invisible.bits()) != 0;
         let cn_flags = self.characters[cn].flags;
-        let co_name = self.characters[co].get_name().to_string();
-        let cn_name = self.characters[cn].get_name().to_string();
+        let co_name = self.characters[co].get_name().to_owned();
+        let cn_name = self.characters[cn].get_name().to_owned();
         let cn_is_god = (cn_flags & CharacterFlags::God.bits()) != 0;
         let cn_is_player = (cn_flags & CharacterFlags::Player.bits()) != 0;
         let co_is_player = (co_flags & CharacterFlags::Player.bits()) != 0;
@@ -1114,7 +1114,7 @@ impl GameState {
         if co_afk {
             let co_afk_msg = self.characters[co].text[0][0] != 0;
             if co_afk_msg {
-                let msg = c_string_to_str(&mut self.characters[co].text[0]).to_string();
+                let msg = c_string_to_str(&mut self.characters[co].text[0]).to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -1198,7 +1198,7 @@ impl GameState {
                 if !is_member {
                     self.characters[cn].data[n] = 0;
                 } else {
-                    let name = self.characters[cn].get_name().to_string();
+                    let name = self.characters[cn].get_name().to_owned();
                     self.do_character_log(
                         co,
                         core::types::FontColor::Green,
@@ -1242,7 +1242,7 @@ impl GameState {
             );
             return;
         }
-        let name = self.characters[cn].get_name().to_string();
+        let name = self.characters[cn].get_name().to_owned();
         self.do_staff_log(
             core::types::FontColor::Blue,
             &format!("{:.30} staff-tells: \"{:.200}\"\n", name, text),
@@ -1270,13 +1270,13 @@ impl GameState {
         }
         if (self.characters[cn].flags & CharacterFlags::Usurp.bits()) != 0 {
             // simplified
-            let name = self.characters[cn].get_name().to_string();
+            let name = self.characters[cn].get_name().to_owned();
             self.do_imp_log(
                 core::types::FontColor::Blue,
                 &format!("{:.30} (usurp) imp-tells: \"{:.170}\"\n", name, text),
             );
         } else {
-            let name = self.characters[cn].get_name().to_string();
+            let name = self.characters[cn].get_name().to_owned();
             self.do_imp_log(
                 core::types::FontColor::Blue,
                 &format!("{:.30} imp-tells: \"{:.200}\"\n", name, text),
@@ -1319,7 +1319,7 @@ impl GameState {
         let buf = if (self.characters[cn].flags & CharacterFlags::Invisible.bits()) != 0 {
             format!("Somebody shouts: \"{}\"\n", text)
         } else {
-            let name = self.characters[cn].get_name().to_string();
+            let name = self.characters[cn].get_name().to_owned();
             format!("{} shouts: \"{}\"\n", name, text)
         };
 

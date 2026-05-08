@@ -492,7 +492,7 @@ impl InventoryPanel {
             Some(d) => d,
             None => return,
         };
-        let selected_char = data.selected_char as u32;
+        let selected_char = u32::from(data.selected_char);
 
         match slot {
             InvSlotKind::Backpack(idx) => {
@@ -671,7 +671,7 @@ impl Widget for InventoryPanel {
                     Some(d) => d,
                     None => return EventResponse::Consumed,
                 };
-                let selected_char = data.selected_char as u32;
+                let selected_char = u32::from(data.selected_char);
 
                 // Check inventory grid hit.
                 if let Some(idx) = self.hovered_inv_slot() {

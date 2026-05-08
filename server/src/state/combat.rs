@@ -24,7 +24,7 @@ impl GameState {
     ///
     /// * Effective weapon/fight skill value used by melee combat resolution.
     pub(crate) fn get_fight_skill(&mut self, cn: usize) -> i32 {
-        self.characters[cn].skill[skills::SK_WEAPON][5] as i32
+        i32::from(self.characters[cn].skill[skills::SK_WEAPON][5])
     }
 
     /// Calculates the physical dodge chance for a defender.
@@ -88,24 +88,24 @@ impl GameState {
     /// * `cn` - Attacker character index.
     /// * `co` - Defender character index.
     fn emit_attack_miss(&mut self, cn: usize, co: usize) {
-        let base_sound = self.characters[cn].sound as i32;
+        let base_sound = i32::from(self.characters[cn].sound);
         self.do_area_sound(
             co,
             0,
-            self.characters[co].x as i32,
-            self.characters[co].y as i32,
+            i32::from(self.characters[co].x),
+            i32::from(self.characters[co].y),
             base_sound + 5,
         );
         Self::char_play_sound(self, co, base_sound + 5, -150, 0);
 
-        let ax = self.characters[cn].x as i32;
-        let ay = self.characters[cn].y as i32;
+        let ax = i32::from(self.characters[cn].x);
+        let ay = i32::from(self.characters[cn].y);
         self.do_area_notify(
             cn as i32,
             co as i32,
             ax,
             ay,
-            core::constants::NT_SEEMISS as i32,
+            i32::from(core::constants::NT_SEEMISS),
             cn as i32,
             co as i32,
             0,
@@ -113,7 +113,7 @@ impl GameState {
         );
         self.do_notify_character(
             co as u32,
-            core::constants::NT_GOTMISS as i32,
+            i32::from(core::constants::NT_GOTMISS),
             cn as i32,
             0,
             0,
@@ -121,7 +121,7 @@ impl GameState {
         );
         self.do_notify_character(
             cn as u32,
-            core::constants::NT_DIDMISS as i32,
+            i32::from(core::constants::NT_DIDMISS),
             co as i32,
             0,
             0,
@@ -167,7 +167,7 @@ impl GameState {
         // Only works on NPCs
         let is_player = (self.characters[co].flags & CharacterFlags::Player.bits()) != 0;
         if is_player {
-            let name = self.characters[co].get_name().to_string();
+            let name = self.characters[co].get_name().to_owned();
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -203,8 +203,8 @@ impl GameState {
 
         if driver::npc_is_enemy(&self.characters[co], &self.characters[cv], cv) {
             if !driver::npc_remove_enemy(self, co, cv) {
-                let vname = self.characters[cv].get_name().to_string();
-                let cname = self.characters[co].get_name().to_string();
+                let vname = self.characters[cv].get_name().to_owned();
+                let cname = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     FontColor::Red,
@@ -216,8 +216,8 @@ impl GameState {
                     cname
                 );
             } else {
-                let vname = self.characters[cv].get_name().to_string();
-                let cname = self.characters[co].get_name().to_string();
+                let vname = self.characters[cv].get_name().to_owned();
+                let cname = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     FontColor::Yellow,
@@ -232,8 +232,8 @@ impl GameState {
         let same_group = self.characters[co].data[core::constants::CHD_GROUP]
             == self.characters[cv].data[core::constants::CHD_GROUP];
         if same_group {
-            let cname = self.characters[co].get_name().to_string();
-            let vname = self.characters[cv].get_name().to_string();
+            let cname = self.characters[co].get_name().to_owned();
+            let vname = self.characters[cv].get_name().to_owned();
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -243,7 +243,7 @@ impl GameState {
         }
 
         if !driver::npc_add_enemy(self, co, cv, true) {
-            let cname = self.characters[co].get_name().to_string();
+            let cname = self.characters[co].get_name().to_owned();
             self.do_character_log(
                 cn,
                 FontColor::Red,
@@ -255,18 +255,18 @@ impl GameState {
         // If caller has text[1], make NPC say its text[1] with victim name substitution
         let caller_has_text1 = !c_string_to_str(&mut self.characters[cn].text[1]).is_empty();
         if caller_has_text1 {
-            let victim_name = self.characters[cv].get_name().to_string();
+            let victim_name = self.characters[cv].get_name().to_owned();
             driver::npc_saytext_n(self, co, 1, Some(&victim_name));
         }
 
         // Log chlogs via info for now
-        let vname = self.characters[cv].get_name().to_string();
-        let cname = self.characters[co].get_name().to_string();
+        let vname = self.characters[cv].get_name().to_owned();
+        let cname = self.characters[co].get_name().to_owned();
         log::info!("IMP: Made {} an enemy of {}", vname, cname);
         log::info!(
             "Added {} to kill list (#ENEMY by {})",
             vname,
-            self.characters[cn].get_name().to_string()
+            self.characters[cn].get_name().to_owned()
         );
 
         self.do_character_log(
@@ -312,7 +312,7 @@ impl GameState {
         let current_enemy = self.characters[attacker_index].current_enemy;
         if current_enemy as usize != defender_index {
             self.characters[attacker_index].current_enemy = defender_index as u16;
-            let co_name = self.characters[defender_index].get_name().to_string();
+            let co_name = self.characters[defender_index].get_name().to_owned();
             log::info!(
                 "Character {} attacks {} ({})",
                 attacker_index,
@@ -468,9 +468,9 @@ impl GameState {
         }
 
         let strn =
-            self.characters[attacker_index].attrib[core::constants::AT_STREN as usize][5] as i32;
+            i32::from(self.characters[attacker_index].attrib[core::constants::AT_STREN as usize][5]);
 
-        let base_weapon = self.characters[attacker_index].weapon as i32;
+        let base_weapon = i32::from(self.characters[attacker_index].weapon);
         let mut dam = base_weapon + helpers::random_mod_i32(6) + 1;
         if strn > 3 {
             let extra_max = strn / 2;
@@ -500,9 +500,9 @@ impl GameState {
         let applied = self.do_hurt(attacker_index, defender_index, dam, 0);
 
         // Play sounds depending on whether damage occurred (match original behaviour)
-        let tx = self.characters[defender_index].x as i32;
-        let ty = self.characters[defender_index].y as i32;
-        let base_sound = self.characters[attacker_index].sound as i32;
+        let tx = i32::from(self.characters[defender_index].x);
+        let ty = i32::from(self.characters[defender_index].y);
+        let base_sound = i32::from(self.characters[attacker_index].sound);
         if applied < 1 {
             self.do_area_sound(defender_index, 0, tx, ty, base_sound + 3);
             Self::char_play_sound(self, defender_index, base_sound + 3, -150, 0);
@@ -520,13 +520,13 @@ impl GameState {
             // clamped to at least 1 for *all* skills (see `really_update_char`),
             // so using `[5] > 0` would incorrectly enable surround for everyone.
             let surround_base =
-                self.characters[attacker_index].skill[skills::SK_SURROUND][0] as i32;
-            let surround_eff = self.characters[attacker_index].skill[skills::SK_SURROUND][5] as i32;
+                i32::from(self.characters[attacker_index].skill[skills::SK_SURROUND][0]);
+            let surround_eff = i32::from(self.characters[attacker_index].skill[skills::SK_SURROUND][5]);
             if surround_base != 0 {
                 let aoe_base = if attacker_is_player { surround_base } else { 1 };
                 let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
-                let attacker_x = self.characters[attacker_index].x as i32;
-                let attacker_y = self.characters[attacker_index].y as i32;
+                let attacker_x = i32::from(self.characters[attacker_index].x);
+                let attacker_y = i32::from(self.characters[attacker_index].y);
 
                 for co2 in helpers::skill_aoe_targets(
                     self,
@@ -610,13 +610,13 @@ impl GameState {
             for m in 0..4 {
                 let co = self.characters[cn].enemy[m] as usize;
                 if co != 0 {
-                    per += self.characters[co].skill[skills::SK_PERCEPT][5] as i32;
+                    per += i32::from(self.characters[co].skill[skills::SK_PERCEPT][5]);
                 }
             }
             per
         };
 
-        let ste = self.characters[cn].skill[skills::SK_STEALTH][5] as i32;
+        let ste = i32::from(self.characters[cn].skill[skills::SK_STEALTH][5]);
 
         let mut chance = if per == 0 { 0 } else { ste * 15 / per };
 
@@ -647,7 +647,7 @@ impl GameState {
     /// * `co` - Corpse owner character index whose inventory is being inspected.
     /// * `msg` - Message template used when reporting discovered loot hints.
     pub(crate) fn do_ransack_corpse(&mut self, cn: usize, co: usize, msg: &str) {
-        let sense_skill = self.characters[cn].skill[skills::SK_SENSE][5] as i32;
+        let sense_skill = i32::from(self.characters[cn].skill[skills::SK_SENSE][5]);
 
         // Check for unique weapon in right hand
         let rhand = self.characters[co].worn[core::constants::WN_RHAND];
@@ -688,9 +688,9 @@ impl GameState {
             }
 
             // scrolls: ranges 699-716, 175-178, 181-189
-            let is_scroll = (699..=716).contains(&(temp as i32))
-                || (175..=178).contains(&(temp as i32))
-                || (181..=189).contains(&(temp as i32));
+            let is_scroll = (699..=716).contains(&i32::from(temp))
+                || (175..=178).contains(&i32::from(temp))
+                || (181..=189).contains(&i32::from(temp));
             if is_scroll && sense_skill > helpers::random_mod_i32(200) {
                 let message = msg.replacen("%s", "a magical scroll", 1);
                 self.do_character_log(cn, FontColor::Yellow, &message);
@@ -699,7 +699,7 @@ impl GameState {
 
             // potions: explicit list
             let is_potion = matches!(
-                temp as i32,
+                i32::from(temp),
                 101 | 102 | 127 | 131 | 135 | 148 | 224 | 273 | 274 | 449
             );
             if is_potion && sense_skill > helpers::random_mod_i32(200) {
@@ -807,7 +807,7 @@ impl GameState {
         let mut co_actual = co;
 
         // Player companion? Act as if trying to attack the master instead
-        if self.characters[cn].temp as i32 == CT_COMPANION
+        if i32::from(self.characters[cn].temp) == CT_COMPANION
             && self.characters[cn].data[CHD_COMPANION] == 0
         {
             cn_actual = self.characters[cn].data[CHD_MASTER] as usize;
@@ -822,10 +822,10 @@ impl GameState {
         }
 
         // Check for NOFIGHT
-        let m1 = (self.characters[cn_actual].x as i32
-            + self.characters[cn_actual].y as i32 * SERVER_MAPX) as usize;
-        let m2 = (self.characters[co_actual].x as i32
-            + self.characters[co_actual].y as i32 * SERVER_MAPX) as usize;
+        let m1 = (i32::from(self.characters[cn_actual].x)
+            + i32::from(self.characters[cn_actual].y) * SERVER_MAPX) as usize;
+        let m2 = (i32::from(self.characters[co_actual].x)
+            + i32::from(self.characters[co_actual].y) * SERVER_MAPX) as usize;
 
         if ((self.map[m1].flags | self.map[m2].flags) & MF_NOFIGHT) != 0 {
             if msg {
@@ -839,7 +839,7 @@ impl GameState {
         }
 
         // Player companion target? Act as if trying to attack the master instead
-        if self.characters[co_actual].temp as i32 == CT_COMPANION
+        if i32::from(self.characters[co_actual].temp) == CT_COMPANION
             && self.characters[co_actual].data[CHD_COMPANION] == 0
         {
             co_actual = self.characters[co_actual].data[CHD_MASTER] as usize;
@@ -856,7 +856,7 @@ impl GameState {
         }
 
         // Both are players. Check for Arena (OK)
-        if ((self.map[m1].flags & self.map[m2].flags) & MF_ARENA as u64) != 0 {
+        if ((self.map[m1].flags & self.map[m2].flags) & u64::from(MF_ARENA)) != 0 {
             return true;
         }
 
@@ -925,11 +925,11 @@ impl GameState {
     /// * `cn` - Attacker character index
     /// * `co` - Victim character index
     pub fn remember_pvp(&mut self, cn: usize, co: usize) {
-        let m = (self.characters[cn].x as i32
-            + self.characters[cn].y as i32 * core::constants::SERVER_MAPX) as usize;
+        let m = (i32::from(self.characters[cn].x)
+            + i32::from(self.characters[cn].y) * core::constants::SERVER_MAPX) as usize;
 
         // Arena attacks don't count
-        if (self.map[m].flags & core::constants::MF_ARENA as u64) != 0 {
+        if (self.map[m].flags & u64::from(core::constants::MF_ARENA)) != 0 {
             return;
         }
 

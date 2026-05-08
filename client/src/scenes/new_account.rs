@@ -83,15 +83,15 @@ impl NewAccountScene {
         let password = password.trim();
 
         if email.is_empty() {
-            return Err("Email is required".to_string());
+            return Err("Email is required".to_owned());
         }
 
         if username.is_empty() {
-            return Err("Username is required".to_string());
+            return Err("Username is required".to_owned());
         }
 
         if password.is_empty() {
-            return Err("Password is required".to_string());
+            return Err("Password is required".to_owned());
         }
 
         account_api::create_account(base_url, email, username, password).map(|_| ())
@@ -276,7 +276,7 @@ impl Scene for NewAccountScene {
                     Ok(result) => Some(result),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        Some(Err("Account creation task failed unexpectedly".to_string()))
+                        Some(Err("Account creation task failed unexpectedly".to_owned()))
                     }
                 }
             } else {

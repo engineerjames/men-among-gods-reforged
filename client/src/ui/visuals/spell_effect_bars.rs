@@ -200,7 +200,7 @@ fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
 fn format_duration(secs: f32) -> String {
     let s = secs.round() as u32;
     if s < 10 {
-        "< 10s".to_string()
+        "< 10s".to_owned()
     } else if s < 60 {
         format!("{}s", s)
     } else {
@@ -327,7 +327,7 @@ impl SpellEffectBars {
             let Some(meta) = spell_meta(nr) else {
                 continue;
             };
-            let fill = (active[i] as f32 / 16.0).clamp(0.0, 1.0);
+            let fill = (f32::from(active[i]) / 16.0).clamp(0.0, 1.0);
             let entry = SpellSlotEntry { skill_nr: nr, fill };
             match meta.kind {
                 SpellEffectKind::Positive => {
@@ -480,7 +480,7 @@ impl SpellEffectBars {
                 ));
             }
         }
-        Some(meta.name.to_string())
+        Some(meta.name.to_owned())
     }
 
     /// Renders all active spell-effect bars onto the canvas.

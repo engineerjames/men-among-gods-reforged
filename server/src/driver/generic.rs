@@ -13,13 +13,13 @@ use crate::{core, driver, helpers};
 pub fn act_idle(gs: &mut GameState, cn: usize) {
     let should_notify = (gs.globals.ticker & 15) == (cn as i32 & 15);
     if should_notify {
-        let (x, y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+        let (x, y) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
         gs.do_area_notify(
             cn as i32,
             0,
             x,
             y,
-            core::constants::NT_SEE as i32,
+            i32::from(core::constants::NT_SEE),
             cn as i32,
             0,
             0,
@@ -405,7 +405,7 @@ pub fn act_attack(gs: &mut GameState, cn: usize) {
         loop {
             vv = helpers::random_mod_i32(3);
             let last = gs.characters[cn].lastattack;
-            if vv != last as i32 {
+            if vv != i32::from(last) {
                 break;
             }
         }
@@ -483,7 +483,7 @@ pub fn act_turn(gs: &mut GameState, cn: usize, dir: i32) {
         d if d == core::constants::DX_RIGHTDOWN => act_turn_rightdown(gs, cn),
         _ => {
             log::error!("act_turn: invalid direction {} for character {}", dir, cn);
-            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
         }
     }
 }
@@ -661,8 +661,8 @@ pub fn act_move_rightdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -711,8 +711,8 @@ pub fn act_move_rightup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -761,8 +761,8 @@ pub fn act_move_leftdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -811,8 +811,8 @@ pub fn act_move_leftup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -861,8 +861,8 @@ pub fn act_move_right(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -897,8 +897,8 @@ pub fn act_move_left(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -933,8 +933,8 @@ pub fn act_move_down(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -969,8 +969,8 @@ pub fn act_move_up(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
     let (x, y, dir) = (
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         gs.characters[cn].dir,
     );
 
@@ -1020,12 +1020,12 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     }
 
     let (x, tox, y, toy, ax, ay) = (
-        gs.characters[co].x as i32,
-        gs.characters[co].tox as i32,
-        gs.characters[co].y as i32,
-        gs.characters[co].toy as i32,
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].tox),
+        i32::from(gs.characters[co].y),
+        i32::from(gs.characters[co].toy),
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
     );
 
     if (x == ax + 1 && (y == ay + 1 || y == ay - 1))
@@ -1034,13 +1034,12 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         let err = char_moveto(gs, cn, x, y, 2, tox, toy);
         if err == -1 {
             return -1;
-        } else {
-            return 0;
         }
+        return 0;
     }
 
     if (ax == x - 1 && ay == y) || (ax == tox - 1 && ay == toy) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHT) {
             act_turn_right(gs, cn);
             return 0;
         }
@@ -1048,7 +1047,7 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         return 0;
     }
     if (ax == x + 1 && ay == y) || (ax == tox + 1 && ay == toy) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFT) {
             act_turn_left(gs, cn);
             return 0;
         }
@@ -1056,7 +1055,7 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         return 0;
     }
     if (ax == x && ay == y - 1) || (ax == tox && ay == toy - 1) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_DOWN) {
             act_turn_down(gs, cn);
             return 0;
         }
@@ -1064,7 +1063,7 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         return 0;
     }
     if (ax == x && ay == y + 1) || (ax == tox && ay == toy + 1) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_UP) {
             act_turn_up(gs, cn);
             return 0;
         }
@@ -1096,12 +1095,12 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     }
 
     let (x, tox, y, toy, ax, ay) = (
-        gs.characters[co].x as i32,
-        gs.characters[co].tox as i32,
-        gs.characters[co].y as i32,
-        gs.characters[co].toy as i32,
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].tox),
+        i32::from(gs.characters[co].y),
+        i32::from(gs.characters[co].toy),
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
     );
 
     // diagonal adjacency
@@ -1111,14 +1110,13 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         let err = char_moveto(gs, cn, x, y, 2, tox, toy);
         if err == -1 {
             return -1;
-        } else {
-            return 0;
         }
+        return 0;
     }
 
     // attack if possible
     if (ax == x - 1 && ay == y) || (ax == tox - 1 && ay == toy) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHT) {
             act_turn_right(gs, cn);
             return 0;
         }
@@ -1126,7 +1124,7 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         return 1;
     }
     if (ax == x + 1 && ay == y) || (ax == tox + 1 && ay == toy) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFT) {
             act_turn_left(gs, cn);
             return 0;
         }
@@ -1134,7 +1132,7 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         return 1;
     }
     if (ax == x && ay == y - 1) || (ax == tox && ay == toy - 1) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_DOWN) {
             act_turn_down(gs, cn);
             return 0;
         }
@@ -1142,7 +1140,7 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         return 1;
     }
     if (ax == x && ay == y + 1) || (ax == tox && ay == toy + 1) {
-        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_UP) {
             act_turn_up(gs, cn);
             return 0;
         }
@@ -1202,10 +1200,10 @@ pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return -1;
     }
 
-    let cx = gs.characters[cn].x as i32;
-    let cy = gs.characters[cn].y as i32;
+    let cx = i32::from(gs.characters[cn].x);
+    let cy = i32::from(gs.characters[cn].y);
     if cx == x - 1 && cy == y {
-        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHT) {
             act_turn_right(gs, cn);
             return 0;
         }
@@ -1213,7 +1211,7 @@ pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x + 1 && cy == y {
-        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFT) {
             act_turn_left(gs, cn);
             return 0;
         }
@@ -1221,7 +1219,7 @@ pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x && cy == y - 1 {
-        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_DOWN) {
             act_turn_down(gs, cn);
             return 0;
         }
@@ -1229,7 +1227,7 @@ pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x && cy == y + 1 {
-        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_UP) {
             act_turn_up(gs, cn);
             return 0;
         }
@@ -1250,11 +1248,11 @@ pub fn char_pickup(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return -1;
     }
 
-    let cx = gs.characters[cn].x as i32;
-    let cy = gs.characters[cn].y as i32;
+    let cx = i32::from(gs.characters[cn].x);
+    let cy = i32::from(gs.characters[cn].y);
 
     if cx == x - 1 && cy == y {
-        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHT) {
             act_turn_right(gs, cn);
             return 0;
         }
@@ -1262,7 +1260,7 @@ pub fn char_pickup(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x + 1 && cy == y {
-        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFT) {
             act_turn_left(gs, cn);
             return 0;
         }
@@ -1270,7 +1268,7 @@ pub fn char_pickup(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x && cy == y - 1 {
-        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_DOWN) {
             act_turn_down(gs, cn);
             return 0;
         }
@@ -1278,7 +1276,7 @@ pub fn char_pickup(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x && cy == y + 1 {
-        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_UP) {
             act_turn_up(gs, cn);
             return 0;
         }
@@ -1305,9 +1303,8 @@ pub fn char_pickupto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     if ret == -1 {
         if char_moveto(gs, cn, x, y, 1, 0, 0) == -1 {
             return -1;
-        } else {
-            return 0;
         }
+        return 0;
     }
     if ret == 1 {
         return 1;
@@ -1322,11 +1319,11 @@ pub fn char_use(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return -1;
     }
 
-    let cx = gs.characters[cn].x as i32;
-    let cy = gs.characters[cn].y as i32;
+    let cx = i32::from(gs.characters[cn].x);
+    let cy = i32::from(gs.characters[cn].y);
 
     if cx == x - 1 && cy == y {
-        if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHT) {
             act_turn_right(gs, cn);
             return 0;
         }
@@ -1334,7 +1331,7 @@ pub fn char_use(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x + 1 && cy == y {
-        if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFT) {
             act_turn_left(gs, cn);
             return 0;
         }
@@ -1342,7 +1339,7 @@ pub fn char_use(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x && cy == y - 1 {
-        if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_DOWN) {
             act_turn_down(gs, cn);
             return 0;
         }
@@ -1350,7 +1347,7 @@ pub fn char_use(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
         return 1;
     }
     if cx == x && cy == y + 1 {
-        if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+        if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_UP) {
             act_turn_up(gs, cn);
             return 0;
         }
@@ -1372,9 +1369,8 @@ pub fn char_useto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     if ret == -1 {
         if char_moveto(gs, cn, x, y, 1, 0, 0) == -1 {
             return -1;
-        } else {
-            return 0;
         }
+        return 0;
     }
     if ret == 1 {
         return 1;
@@ -1391,7 +1387,7 @@ pub fn char_moveto(
     x2: i32,
     y2: i32,
 ) -> i32 {
-    let (cx, cy) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+    let (cx, cy) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
     if cx == x && cy == y && flag != 1 && flag != 3 {
         return 1;
     }
@@ -1405,8 +1401,8 @@ pub fn char_moveto(
     let unreach = gs.characters[cn].unreach;
     let unreachx = gs.characters[cn].unreachx;
     let unreachy = gs.characters[cn].unreachy;
-    let ticker = gs.globals.ticker as i64;
-    if unreach as i64 > ticker && unreachx == x && unreachy == y {
+    let ticker = i64::from(gs.globals.ticker);
+    if i64::from(unreach) > ticker && unreachx == x && unreachy == y {
         return -1;
     }
 
@@ -1438,7 +1434,7 @@ pub fn char_moveto(
 
     match dir {
         d if d == Some(core::constants::DX_RIGHTDOWN) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_RIGHTDOWN as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHTDOWN) {
                 act_turn_rightdown(gs, cn);
                 return 0;
             }
@@ -1446,7 +1442,7 @@ pub fn char_moveto(
             0
         }
         d if d == Some(core::constants::DX_RIGHTUP) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_RIGHTUP as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHTUP) {
                 act_turn_rightup(gs, cn);
                 return 0;
             }
@@ -1454,7 +1450,7 @@ pub fn char_moveto(
             0
         }
         d if d == Some(core::constants::DX_LEFTDOWN) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_LEFTDOWN as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFTDOWN) {
                 act_turn_leftdown(gs, cn);
                 return 0;
             }
@@ -1462,7 +1458,7 @@ pub fn char_moveto(
             0
         }
         d if d == Some(core::constants::DX_LEFTUP) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_LEFTUP as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFTUP) {
                 act_turn_leftup(gs, cn);
                 return 0;
             }
@@ -1470,7 +1466,7 @@ pub fn char_moveto(
             0
         }
         d if d == Some(core::constants::DX_RIGHT) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_RIGHT as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_RIGHT) {
                 act_turn_right(gs, cn);
                 return 0;
             }
@@ -1488,7 +1484,7 @@ pub fn char_moveto(
             0
         }
         d if d == Some(core::constants::DX_LEFT) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_LEFT as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_LEFT) {
                 act_turn_left(gs, cn);
                 return 0;
             }
@@ -1506,7 +1502,7 @@ pub fn char_moveto(
             0
         }
         d if d == Some(core::constants::DX_DOWN) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_DOWN as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_DOWN) {
                 act_turn_down(gs, cn);
                 return 0;
             }
@@ -1524,7 +1520,7 @@ pub fn char_moveto(
             0
         }
         d if d == Some(core::constants::DX_UP) => {
-            if gs.characters[cn].dir as i32 != core::constants::DX_UP as i32 {
+            if i32::from(gs.characters[cn].dir) != i32::from(core::constants::DX_UP) {
                 act_turn_up(gs, cn);
                 return 0;
             }
@@ -1559,10 +1555,10 @@ pub fn drv_moveto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
 
 pub fn drv_turnto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     let dir = crate::helpers::drv_dcoor2dir(
-        x as i32 - gs.characters[cn].x as i32,
-        y as i32 - gs.characters[cn].y as i32,
+        x as i32 - i32::from(gs.characters[cn].x),
+        y as i32 - i32::from(gs.characters[cn].y),
     );
-    if dir == gs.characters[cn].dir as i32 {
+    if dir == i32::from(gs.characters[cn].dir) {
         gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
         gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
     } else {
@@ -1775,8 +1771,8 @@ pub fn driver_msg(
     }
 
     match msg_type as u32 {
-        x if x == core::constants::NT_GOTHIT as u32 || x == core::constants::NT_GOTMISS as u32 => {
-            let attack_cn = gs.characters[cn].attack_cn as i32;
+        x if x == u32::from(core::constants::NT_GOTHIT) || x == u32::from(core::constants::NT_GOTMISS) => {
+            let attack_cn = i32::from(gs.characters[cn].attack_cn);
             let fightback = gs.characters[cn].data[core::constants::CHD_FIGHTBACK];
             let misc_action = gs.characters[cn].misc_action;
             if attack_cn == 0 && fightback == 0 && misc_action != core::constants::DR_GIVE as u16 {
@@ -1792,9 +1788,9 @@ pub fn follow_driver(gs: &mut GameState, cn: usize, co: usize) -> bool {
         return false;
     }
     let (tox, toy, dir) = (
-        gs.characters[co].tox as i32,
-        gs.characters[co].toy as i32,
-        gs.characters[co].dir as i32,
+        i32::from(gs.characters[co].tox),
+        i32::from(gs.characters[co].toy),
+        i32::from(gs.characters[co].dir),
     );
     if !(5..=core::constants::SERVER_MAPX - 6).contains(&tox)
         || !(5..=core::constants::SERVER_MAPY - 6).contains(&toy)
@@ -1848,13 +1844,13 @@ pub fn follow_driver(gs: &mut GameState, cn: usize, co: usize) -> bool {
     }
 
     if is_adjacent {
-        let cur_dir = gs.characters[cn].dir as i32;
+        let cur_dir = i32::from(gs.characters[cn].dir);
         if cur_dir as u8 == dir_val {
             gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
             return true;
         }
         gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
-        let (x, y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+        let (x, y) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
         match dir_val {
             core::constants::DX_UP => {
                 gs.characters[cn].misc_target1 = x as u16;
@@ -1937,7 +1933,7 @@ pub fn driver(gs: &mut GameState, cn: usize) {
 
     let use_nr = gs.characters[cn].use_nr;
     if use_nr != 0 {
-        drv_use(gs, cn, use_nr as i32);
+        drv_use(gs, cn, i32::from(use_nr));
         return;
     }
 
@@ -1969,7 +1965,7 @@ pub fn driver(gs: &mut GameState, cn: usize) {
     }
 
     let misc_action = gs.characters[cn].misc_action;
-    match misc_action as u32 {
+    match u32::from(misc_action) {
         x if x == core::constants::DR_IDLE => {
             let is_player = (gs.characters[cn].flags
                 & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))

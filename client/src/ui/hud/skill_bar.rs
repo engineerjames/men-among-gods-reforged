@@ -194,7 +194,7 @@ impl SkillBar {
     /// Abbreviate a skill name to fit inside a cell.
     fn abbreviate(name: &str) -> String {
         if name.len() <= MAX_ABBREV {
-            return name.to_string();
+            return name.to_owned();
         }
         // Take the first MAX_ABBREV characters.
         name.chars().take(MAX_ABBREV).collect()

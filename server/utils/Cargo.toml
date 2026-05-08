@@ -12,16 +12,16 @@ server = { path = "../" }
 eframe = "0.30"
 egui = "0.30"
 rfd = "0.15"
-log = "0.4"
+log.workspace = true
 env_logger = "0.11"
-zip = "0.6.6"
+zip.workspace = true
 image = { version = "0.25", default-features = false, features = ["png"] }
-bincode = { version = "2.0", features = ["derive"] }
-anyhow = "1.0"
-redis = "1.0.3"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+bincode.workspace = true
+anyhow.workspace = true
+redis.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 clap = { version = "4.5", features = ["derive", "env"] }
 dialoguer = "0.11"
 

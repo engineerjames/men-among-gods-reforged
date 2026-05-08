@@ -229,7 +229,7 @@ impl PlayerState {
         }
         self.look_names[idx] = Some(LookNameEntry {
             id,
-            name: name.to_string(),
+            name: name.to_owned(),
         });
     }
 
@@ -364,7 +364,7 @@ impl PlayerState {
         for line in wrapped.split('\n') {
             let line = line.trim_end_matches('\r');
             if !line.is_empty() {
-                self.push_log_message(line.to_string(), font);
+                self.push_log_message(line.to_owned(), font);
             }
         }
     }
@@ -450,7 +450,7 @@ impl PlayerState {
                 // TODO: Race here is only needed for the legacy login flow; we should remove it eventually
             }
             ServerCommandData::SetCharMode { mode } => {
-                self.character_info.mode = *mode as i32;
+                self.character_info.mode = i32::from(*mode);
             }
             ServerCommandData::SetCharAttrib { index, values } => {
                 let idx = *index as usize;
@@ -477,16 +477,16 @@ impl PlayerState {
                 self.character_info.mana = (*values).map(|v| v.max(0) as u16);
             }
             ServerCommandData::SetCharAHP { value } => {
-                self.character_info.a_hp = *value as i32;
+                self.character_info.a_hp = i32::from(*value);
             }
             ServerCommandData::SetCharAEnd { value } => {
-                self.character_info.a_end = *value as i32;
+                self.character_info.a_end = i32::from(*value);
             }
             ServerCommandData::SetCharAMana { value } => {
-                self.character_info.a_mana = *value as i32;
+                self.character_info.a_mana = i32::from(*value);
             }
             ServerCommandData::SetCharDir { dir } => {
-                self.character_info.dir = *dir as i32;
+                self.character_info.dir = i32::from(*dir);
             }
             ServerCommandData::SetCharPts {
                 points,
@@ -513,8 +513,8 @@ impl PlayerState {
             } => {
                 let idx = *index as usize;
                 if idx < self.character_info.item.len() {
-                    self.character_info.item[idx] = *item as i32;
-                    self.character_info.item_p[idx] = *item_p as i32;
+                    self.character_info.item[idx] = i32::from(*item);
+                    self.character_info.item_p[idx] = i32::from(*item_p);
                 }
             }
             ServerCommandData::SetCharWorn {
@@ -524,8 +524,8 @@ impl PlayerState {
             } => {
                 let idx = *index as usize;
                 if idx < self.character_info.worn.len() {
-                    self.character_info.worn[idx] = *worn as i32;
-                    self.character_info.worn_p[idx] = *worn_p as i32;
+                    self.character_info.worn[idx] = i32::from(*worn);
+                    self.character_info.worn_p[idx] = i32::from(*worn_p);
                 }
             }
             ServerCommandData::SetCharSpell {
@@ -536,14 +536,14 @@ impl PlayerState {
             } => {
                 let idx = *index as usize;
                 if idx < self.character_info.spell.len() {
-                    self.character_info.spell[idx] = *spell as i32;
+                    self.character_info.spell[idx] = i32::from(*spell);
                     self.character_info.active[idx] = *active as i8;
                     self.character_info.spell_type[idx] = *skill_nr;
                 }
             }
             ServerCommandData::SetCharObj { citem, citem_p } => {
-                self.character_info.citem = *citem as i32;
-                self.character_info.citem_p = *citem_p as i32;
+                self.character_info.citem = i32::from(*citem);
+                self.character_info.citem_p = i32::from(*citem_p);
             }
             ServerCommandData::Tick { ctick } => {
                 self.server_ctick = *ctick;
@@ -560,12 +560,12 @@ impl PlayerState {
                 misc_target1,
                 misc_target2,
             } => {
-                self.character_info.attack_cn = *attack_cn as i32;
-                self.character_info.goto_x = *goto_x as i32;
-                self.character_info.goto_y = *goto_y as i32;
-                self.character_info.misc_action = *misc_action as i32;
-                self.character_info.misc_target1 = *misc_target1 as i32;
-                self.character_info.misc_target2 = *misc_target2 as i32;
+                self.character_info.attack_cn = i32::from(*attack_cn);
+                self.character_info.goto_x = i32::from(*goto_x);
+                self.character_info.goto_y = i32::from(*goto_y);
+                self.character_info.misc_action = i32::from(*misc_action);
+                self.character_info.misc_target1 = i32::from(*misc_target1);
+                self.character_info.misc_target2 = i32::from(*misc_target2);
             }
             ServerCommandData::Load { load } => {
                 self.load_percentage = *load;

@@ -287,8 +287,8 @@ impl MinimapWidget {
         let view = MINIMAP_WIDGET_VIEW_SIZE as usize;
         let sample = self.current_sample_size();
         let half = sample as i32 / 2;
-        let mapx = ((center_x as i32) - half).clamp(0, WORLD_SIZE as i32 - sample as i32);
-        let mapy = ((center_y as i32) - half).clamp(0, WORLD_SIZE as i32 - sample as i32);
+        let mapx = (i32::from(center_x) - half).clamp(0, WORLD_SIZE as i32 - sample as i32);
+        let mapy = (i32::from(center_y) - half).clamp(0, WORLD_SIZE as i32 - sample as i32);
 
         // C call convention: dd_show_map(xmap, mapy, mapx).
         // xo = mapy (column offset in global Y), yo = mapx (row offset in global X).

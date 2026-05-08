@@ -190,8 +190,8 @@ fn item_summary(id: usize, item: &Item) -> WorldEntitySummary {
     WorldEntitySummary {
         id,
         used: item.used != 0,
-        name: string_operations::c_string_to_str(&item.name).to_string(),
-        reference: string_operations::c_string_to_str(&item.reference).to_string(),
+        name: string_operations::c_string_to_str(&item.name).to_owned(),
+        reference: string_operations::c_string_to_str(&item.reference).to_owned(),
     }
 }
 
@@ -393,8 +393,7 @@ pub(crate) async fn get_items_reload_status(
         Some(s) if s.starts_with("applied") => "applied",
         Some(_) => "pending",
         None => "pending",
-    }
-    .to_string();
+    }.to_owned();
 
     Json(WorldEntityReloadStatusResponse {
         status,

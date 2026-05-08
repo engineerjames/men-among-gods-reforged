@@ -57,7 +57,7 @@ impl DataSource {
     /// * A label suitable for toolbars and status text.
     pub fn display_label(&self) -> String {
         match self {
-            Self::NotLoaded => "None".to_string(),
+            Self::NotLoaded => "None".to_owned(),
             Self::SnapshotFile(path) => format!("Snapshot: {}", path.display()),
             Self::LiveApi { base_url, .. } => format!("Live API: {}", base_url),
         }
@@ -124,7 +124,7 @@ pub fn graphics_zip_from_args() -> Option<PathBuf> {
 /// * `Err(String)` when the source cannot be read or decoded.
 pub fn load_world_snapshot(source: &DataSource) -> Result<WorldSnapshot, String> {
     match source {
-        DataSource::NotLoaded => Err("No source configured".to_string()),
+        DataSource::NotLoaded => Err("No source configured".to_owned()),
         DataSource::SnapshotFile(path) => WorldSnapshot::from_file(path),
         DataSource::LiveApi { base_url, token } => load_world_snapshot_from_api(base_url, token),
     }
@@ -219,8 +219,7 @@ fn load_world_snapshot_from_api(base_url: &str, token: &str) -> Result<WorldSnap
 
     if token.is_empty() {
         return Err(
-            "Admin token is empty. Pass --admin-token <tok> or set MAG_ADMIN_API_TOKEN."
-                .to_string(),
+            "Admin token is empty. Pass --admin-token <tok> or set MAG_ADMIN_API_TOKEN.".to_owned(),
         );
     }
     let client = crate::admin_client::AdminClient::new(base_url, token)?;

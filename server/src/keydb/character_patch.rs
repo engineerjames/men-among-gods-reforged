@@ -253,7 +253,7 @@ fn extract_string_field(raw: &str, field: &str) -> Option<String> {
     if value.is_empty() {
         None
     } else {
-        Some(value.to_string())
+        Some(value.to_owned())
     }
 }
 

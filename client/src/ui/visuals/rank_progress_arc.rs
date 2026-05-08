@@ -113,7 +113,7 @@ impl RankArc {
         canvas.set_draw_color(color);
 
         // Number of angular steps: use circumference-based count for smooth rendering.
-        let outer_r = r as f64;
+        let outer_r = f64::from(r);
         let steps = ((outer_r * (angle_end - angle_start)) * 2.0)
             .ceil()
             .max(1.0) as usize;
@@ -127,12 +127,12 @@ impl RankArc {
             let sin_t = theta.sin();
 
             for dr in 0..stroke {
-                let ri = outer_r - dr as f64;
+                let ri = outer_r - f64::from(dr);
                 if ri < 0.0 {
                     break;
                 }
-                let px = (cx as f64 + ri * cos_t).round() as i32;
-                let py = (cy as f64 - ri * sin_t).round() as i32;
+                let px = (f64::from(cx) + ri * cos_t).round() as i32;
+                let py = (f64::from(cy) - ri * sin_t).round() as i32;
                 points.push(sdl2::rect::Point::new(px, py));
             }
         }

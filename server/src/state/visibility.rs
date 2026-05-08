@@ -139,7 +139,7 @@ impl GameState {
 
                 let m = (x + y * core::constants::SERVER_MAPX) as usize;
 
-                let should_continue = self.map[m].flags & core::constants::MF_INDOORS as u64 != 0;
+                let should_continue = self.map[m].flags & u64::from(core::constants::MF_INDOORS) != 0;
 
                 if should_continue {
                     continue;
@@ -213,7 +213,7 @@ impl GameState {
                 };
 
                 if light_value_from_item != 0 {
-                    self.do_add_light(xx, yy, light_value_from_item as i32);
+                    self.do_add_light(xx, yy, i32::from(light_value_from_item));
                 }
 
                 let cn = self.map[m].ch as usize;
@@ -225,10 +225,10 @@ impl GameState {
                 };
 
                 if light_value_from_character != 0 {
-                    self.do_add_light(xx, yy, light_value_from_character as i32);
+                    self.do_add_light(xx, yy, i32::from(light_value_from_character));
                 }
 
-                let is_indoors = self.map[m].flags & core::constants::MF_INDOORS as u64 != 0;
+                let is_indoors = self.map[m].flags & u64::from(core::constants::MF_INDOORS) != 0;
                 if is_indoors {
                     self.compute_dlight(xx, yy);
                 }
@@ -449,10 +449,10 @@ impl GameState {
     /// # Arguments
     /// * `map_index` - Linear map index
     pub(crate) fn check_dlightm(&mut self, map_index: usize) -> i32 {
-        if self.map[map_index].flags & core::constants::MF_INDOORS as u64 == 0 {
+        if self.map[map_index].flags & u64::from(core::constants::MF_INDOORS) == 0 {
             self.globals.dlight
         } else {
-            (self.globals.dlight * self.map[map_index].dlight as i32) / 256
+            (self.globals.dlight * i32::from(self.map[map_index].dlight)) / 256
         }
     }
 
@@ -474,7 +474,7 @@ impl GameState {
         }
 
         adjusted_light =
-            adjusted_light * std::cmp::min(character.skill[skills::SK_PERCEPT][5] as i32, 10) / 10;
+            adjusted_light * std::cmp::min(i32::from(character.skill[skills::SK_PERCEPT][5]), 10) / 10;
 
         if adjusted_light > 255 {
             adjusted_light = 255;
@@ -526,8 +526,8 @@ impl GameState {
             return 0;
         }
 
-        let d1 = (self.characters[cn].x - self.characters[co].x).abs() as i32;
-        let d2 = (self.characters[cn].y - self.characters[co].y).abs() as i32;
+        let d1 = i32::from((self.characters[cn].x - self.characters[co].x).abs());
+        let d2 = i32::from((self.characters[cn].y - self.characters[co].y).abs());
 
         let rd = d1 * d1 + d2 * d2;
         let mut d = rd;
@@ -539,24 +539,24 @@ impl GameState {
         // Modify by perception and stealth
         match self.characters[co].mode {
             0 => {
-                d = (d * (self.characters[co].skill[skills::SK_STEALTH][5] as i32 + 20)) / 20;
+                d = (d * (i32::from(self.characters[co].skill[skills::SK_STEALTH][5]) + 20)) / 20;
             }
             1 => {
-                d = (d * (self.characters[co].skill[skills::SK_STEALTH][5] as i32 + 50)) / 50;
+                d = (d * (i32::from(self.characters[co].skill[skills::SK_STEALTH][5]) + 50)) / 50;
             }
             _ => {
-                d = (d * (self.characters[co].skill[skills::SK_STEALTH][5] as i32 + 100)) / 100;
+                d = (d * (i32::from(self.characters[co].skill[skills::SK_STEALTH][5]) + 100)) / 100;
             }
         }
 
-        d -= self.characters[cn].skill[skills::SK_PERCEPT][5] as i32 * 2;
+        d -= i32::from(self.characters[cn].skill[skills::SK_PERCEPT][5]) * 2;
 
         // Modify by light
         if self.characters[cn].flags & CharacterFlags::Infrared.bits() == 0 {
             let map_index = self.characters[co].x as usize
                 + self.characters[co].y as usize * core::constants::SERVER_MAPX as usize;
             let mut light = std::cmp::max(
-                self.map[map_index].light as i32,
+                i32::from(self.map[map_index].light),
                 self.check_dlight(
                     self.characters[co].x as usize,
                     self.characters[co].y as usize,
@@ -586,10 +586,10 @@ impl GameState {
 
         if self.can_see(
             Some(cn),
-            self.characters[cn].x as i32,
-            self.characters[cn].y as i32,
-            self.characters[co].x as i32,
-            self.characters[co].y as i32,
+            i32::from(self.characters[cn].x),
+            i32::from(self.characters[cn].y),
+            i32::from(self.characters[co].x),
+            i32::from(self.characters[co].y),
             (core::constants::TILEX / 2) as i32,
         ) == 0
         {
@@ -620,8 +620,8 @@ impl GameState {
         }
 
         // Calculate raw distance (squared)
-        let d1 = (self.characters[cn].x - self.items[in_idx].x as i16).abs() as i32;
-        let d2 = (self.characters[cn].y - self.items[in_idx].y as i16).abs() as i32;
+        let d1 = i32::from((self.characters[cn].x - self.items[in_idx].x as i16).abs());
+        let d2 = i32::from((self.characters[cn].y - self.items[in_idx].y as i16).abs());
 
         let rd = d1 * d1 + d2 * d2;
         let mut d = rd;
@@ -632,14 +632,14 @@ impl GameState {
         }
 
         // Modify by perception
-        d += 50 - self.characters[cn].skill[skills::SK_PERCEPT][5] as i32 * 2;
+        d += 50 - i32::from(self.characters[cn].skill[skills::SK_PERCEPT][5]) * 2;
 
         // Modify by light (unless character has infrared)
         if self.characters[cn].flags & CharacterFlags::Infrared.bits() == 0 {
             let map_index = self.items[in_idx].x as usize
                 + self.items[in_idx].y as usize * core::constants::SERVER_MAPX as usize;
             let mut light = std::cmp::max(
-                self.map[map_index].light as i32,
+                i32::from(self.map[map_index].light),
                 self.check_dlight(self.items[in_idx].x as usize, self.items[in_idx].y as usize),
             );
 
@@ -671,10 +671,10 @@ impl GameState {
         // Check line of sight
         let can_see = self.can_see(
             Some(cn),
-            self.characters[cn].x as i32,
-            self.characters[cn].y as i32,
-            self.items[in_idx].x as i32,
-            self.items[in_idx].y as i32,
+            i32::from(self.characters[cn].x),
+            i32::from(self.characters[cn].y),
+            i32::from(self.items[in_idx].x),
+            i32::from(self.items[in_idx].y),
             (core::constants::TILEX / 2) as i32,
         );
 
@@ -750,7 +750,7 @@ impl GameState {
             best = visi[((x - 1) + (y - 1) * stride) as usize];
         }
 
-        if best == 99 { 0 } else { best as i32 }
+        if best == 99 { 0 } else { i32::from(best) }
     }
 
     /// Port of `add_vis(x,y,value)` from original helper code.
@@ -848,14 +848,14 @@ impl GameState {
         // Check if it's a monster and the map blocks monsters
         if self.is_monster {
             let blocked = self.map[m].flags
-                & (core::constants::MF_SIGHTBLOCK | core::constants::MF_NOMONST) as u64
+                & u64::from(core::constants::MF_SIGHTBLOCK | core::constants::MF_NOMONST)
                 != 0;
             if blocked {
                 return false;
             }
         } else {
             // Check for sight blocking flags
-            let blocked = self.map[m].flags & core::constants::MF_SIGHTBLOCK as u64 != 0;
+            let blocked = self.map[m].flags & u64::from(core::constants::MF_SIGHTBLOCK) != 0;
             if blocked {
                 return false;
             }
@@ -894,7 +894,7 @@ impl GameState {
 
         let m = (x + y * core::constants::SERVER_MAPX) as usize;
 
-        if self.map[m].flags & core::constants::MF_MOVEBLOCK as u64 != 0 {
+        if self.map[m].flags & u64::from(core::constants::MF_MOVEBLOCK) != 0 {
             return false;
         }
 
@@ -1019,7 +1019,7 @@ impl GameState {
                 };
 
                 if light_value_from_item != 0 {
-                    self.do_add_light(xx, yy, -(light_value_from_item as i32));
+                    self.do_add_light(xx, yy, -i32::from(light_value_from_item));
                 }
 
                 let cn = self.map[m].ch as usize;
@@ -1031,7 +1031,7 @@ impl GameState {
                 };
 
                 if light_value_from_character != 0 {
-                    self.do_add_light(xx, yy, -(light_value_from_character as i32));
+                    self.do_add_light(xx, yy, -i32::from(light_value_from_character));
                 }
 
                 self.map[m].dlight = 0;
