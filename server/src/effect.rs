@@ -1,4 +1,11 @@
-use core::{constants::CharacterFlags, string_operations::c_string_to_str};
+use core::{
+    constants::{
+        CharacterFlags, DX_RIGHTUP, MAXEFFECT, MF_DEATHTRAP, MF_GFX_CMAGIC, MF_GFX_DEATH,
+        MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2,
+        MF_GFX_TOMB, MF_MOVEBLOCK, SERVER_MAPX, TICKS, USE_ACTIVE, USE_EMPTY,
+    },
+    string_operations::c_string_to_str,
+};
 
 use crate::{game_state::GameState, god::God, helpers, player, populate};
 
@@ -19,8 +26,8 @@ impl EffectManager {
         !(m.ch != 0
             || m.to_ch != 0
             || m.it != 0
-            || (m.flags & core::constants::MF_MOVEBLOCK as u64) != 0
-            || (m.flags & core::constants::MF_DEATHTRAP as u64) != 0
+            || (m.flags & MF_MOVEBLOCK as u64) != 0
+            || (m.flags & MF_DEATHTRAP as u64) != 0
             || m.fsprite != 0)
     }
 
@@ -35,16 +42,16 @@ impl EffectManager {
     pub fn effect_tick(gs: &mut GameState) {
         let mut cnt = 0;
 
-        for n in 1..core::constants::MAXEFFECT {
+        for n in 1..MAXEFFECT {
             let used = gs.effects[n].used;
             let effect_type = gs.effects[n].effect_type as i32;
 
-            if used == core::constants::USE_EMPTY {
+            if used == USE_EMPTY {
                 continue;
             }
             cnt += 1;
 
-            if used != core::constants::USE_ACTIVE {
+            if used != USE_ACTIVE {
                 continue;
             }
 
@@ -77,14 +84,12 @@ impl EffectManager {
         gs.effects[n].duration -= 1;
 
         if gs.effects[n].duration == 0 {
-            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.effects[n].used = USE_EMPTY;
 
             let map_index = gs.effects[n].data[0] as usize
-                + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+                + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
 
-            gs.map[map_index].flags &= !(core::constants::MF_GFX_INJURED
-                | core::constants::MF_GFX_INJURED1
-                | core::constants::MF_GFX_INJURED2);
+            gs.map[map_index].flags &= !(MF_GFX_INJURED | MF_GFX_INJURED1 | MF_GFX_INJURED2);
         }
     }
 
@@ -99,13 +104,13 @@ impl EffectManager {
             gs.effects[n].duration -= 1;
         }
         let duration = gs.effects[n].duration;
-        let map_index = gs.effects[n].data[0] as usize
-            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index =
+            gs.effects[n].data[0] as usize + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
 
         if duration == 0 {
             // Check if target position is clear
             if player::commands::plr_check_target(gs, map_index) {
-                gs.map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
+                gs.map[map_index].flags |= MF_MOVEBLOCK as u64;
                 gs.effects[n].effect_type = 8;
             }
         }
@@ -119,16 +124,16 @@ impl EffectManager {
     fn handle_effect_type_3(gs: &mut GameState, n: usize) {
         gs.effects[n].duration += 1;
         let duration = gs.effects[n].duration;
-        let map_index = gs.effects[n].data[0] as usize
-            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index =
+            gs.effects[n].data[0] as usize + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
         let co = gs.effects[n].data[2] as usize;
         let killer = gs.effects[n].data[3] as i32;
 
         if duration == Self::EFFECT_DEATH_MIST_DURATION {
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+            gs.effects[n].used = USE_EMPTY;
+            gs.map[map_index].flags &= !MF_GFX_DEATH;
         } else {
-            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+            gs.map[map_index].flags &= !MF_GFX_DEATH;
             gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
 
             if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
@@ -143,7 +148,7 @@ impl EffectManager {
 
                     God::destroy_items(gs, co);
 
-                    gs.characters[co].used = core::constants::USE_EMPTY;
+                    gs.characters[co].used = USE_EMPTY;
 
                     let flags = gs.characters[co].flags;
                     if (flags & CharacterFlags::Respawn.bits()) != 0 {
@@ -152,8 +157,7 @@ impl EffectManager {
                         Self::fx_add_effect(
                             gs,
                             2,
-                            (core::constants::TICKS as u32 * 60 * 5
-                                + helpers::random_mod(core::constants::TICKS as u32 * 60 * 10))
+                            (TICKS as u32 * 60 * 5 + helpers::random_mod(TICKS as u32 * 60 * 10))
                                 as i32,
                             tx,
                             ty,
@@ -179,12 +183,12 @@ impl EffectManager {
         let drop_y = gs.effects[n].data[1] as usize;
         let co = gs.effects[n].data[2] as usize;
         let killer = gs.effects[n].data[3] as usize;
-        let map_index = drop_x + drop_y * core::constants::SERVER_MAPX as usize;
+        let map_index = drop_x + drop_y * SERVER_MAPX as usize;
 
         if duration == Self::EFFECT_TOMBSTONE_DURATION {
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_TOMB;
-            gs.map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
+            gs.effects[n].used = USE_EMPTY;
+            gs.map[map_index].flags &= !MF_GFX_TOMB;
+            gs.map[map_index].flags &= !(MF_MOVEBLOCK as u64);
 
             let in_id = God::create_item(gs, 170);
             if let Some(in_id) = in_id {
@@ -237,7 +241,7 @@ impl EffectManager {
                 log::info!("Grave done for character {}", co);
             }
         } else {
-            gs.map[map_index].flags &= !core::constants::MF_GFX_TOMB;
+            gs.map[map_index].flags &= !MF_GFX_TOMB;
             gs.map[map_index].flags |= ((duration / 2) as u64) << 35;
         }
     }
@@ -249,15 +253,15 @@ impl EffectManager {
     fn handle_effect_type_5(gs: &mut GameState, n: usize) {
         gs.effects[n].duration += 1;
 
-        let map_index = gs.effects[n].data[0] as usize
-            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index =
+            gs.effects[n].data[0] as usize + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
 
         if gs.effects[n].duration == Self::EFFECT_MAGIC_DURATION {
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
+            gs.effects[n].used = USE_EMPTY;
+            gs.map[map_index].flags &= !MF_GFX_EMAGIC;
         } else {
             let duration = gs.effects[n].duration;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_EMAGIC;
+            gs.map[map_index].flags &= !MF_GFX_EMAGIC;
             gs.map[map_index].flags |= ((duration / 2) as u64) << 45;
         }
     }
@@ -270,15 +274,15 @@ impl EffectManager {
     fn handle_effect_type_6(gs: &mut GameState, n: usize) {
         gs.effects[n].duration += 1;
 
-        let map_index = gs.effects[n].data[0] as usize
-            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index =
+            gs.effects[n].data[0] as usize + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
 
         if gs.effects[n].duration == Self::EFFECT_MAGIC_DURATION {
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
+            gs.effects[n].used = USE_EMPTY;
+            gs.map[map_index].flags &= !MF_GFX_GMAGIC;
         } else {
             let duration = gs.effects[n].duration;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_GMAGIC;
+            gs.map[map_index].flags &= !MF_GFX_GMAGIC;
             gs.map[map_index].flags |= ((duration / 2) as u64) << 48;
         }
     }
@@ -291,15 +295,15 @@ impl EffectManager {
     fn handle_effect_type_7(gs: &mut GameState, n: usize) {
         gs.effects[n].duration += 1;
 
-        let map_index = gs.effects[n].data[0] as usize
-            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index =
+            gs.effects[n].data[0] as usize + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
 
         if gs.effects[n].duration == Self::EFFECT_MAGIC_DURATION {
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
+            gs.effects[n].used = USE_EMPTY;
+            gs.map[map_index].flags &= !MF_GFX_CMAGIC;
         } else {
             let duration = gs.effects[n].duration;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_CMAGIC;
+            gs.map[map_index].flags &= !MF_GFX_CMAGIC;
             gs.map[map_index].flags |= ((duration / 2) as u64) << 51;
         }
     }
@@ -312,18 +316,18 @@ impl EffectManager {
     fn handle_effect_type_8(gs: &mut GameState, n: usize) {
         gs.effects[n].duration += 1;
         let duration = gs.effects[n].duration;
-        let map_index = gs.effects[n].data[0] as usize
-            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index =
+            gs.effects[n].data[0] as usize + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
 
         if duration == Self::EFFECT_DEATH_MIST_DURATION {
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+            gs.effects[n].used = USE_EMPTY;
+            gs.map[map_index].flags &= !MF_GFX_DEATH;
         } else {
-            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+            gs.map[map_index].flags &= !MF_GFX_DEATH;
             gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
 
             if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
-                gs.map[map_index].flags &= !(core::constants::MF_MOVEBLOCK as u64);
+                gs.map[map_index].flags &= !(MF_MOVEBLOCK as u64);
 
                 let char_template_idx = gs.effects[n].data[2] as usize;
 
@@ -339,8 +343,8 @@ impl EffectManager {
 
                     if respawn_flag {
                         gs.effects[n].effect_type = 2;
-                        gs.effects[n].duration = (core::constants::TICKS * 60 * 5) as u32;
-                        gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+                        gs.effects[n].duration = (TICKS * 60 * 5) as u32;
+                        gs.map[map_index].flags &= !MF_GFX_DEATH;
                     }
                 }
             }
@@ -366,20 +370,20 @@ impl EffectManager {
             let x = gs.items[in_id].x;
             let y = gs.items[in_id].y;
 
-            let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
+            let map_index = x as usize + y as usize * SERVER_MAPX as usize;
             gs.map[map_index].it = 0;
 
             let spawn_template = gs.effects[n].data[1];
             if spawn_template != 0 {
                 if let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
                     God::drop_char(gs, cn, x as usize, y as usize);
-                    gs.characters[cn].dir = core::constants::DX_RIGHTUP;
+                    gs.characters[cn].dir = DX_RIGHTUP;
                     player::commands::plr_reset_status(gs, cn);
                 }
             }
 
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.items[in_id].used = core::constants::USE_EMPTY;
+            gs.effects[n].used = USE_EMPTY;
+            gs.items[in_id].used = USE_EMPTY;
         }
     }
 
@@ -395,12 +399,12 @@ impl EffectManager {
         } else {
             let drop_x = gs.effects[n].data[0] as usize;
             let drop_y = gs.effects[n].data[1] as usize;
-            let map_index = drop_x + drop_y * core::constants::SERVER_MAPX as usize;
+            let map_index = drop_x + drop_y * SERVER_MAPX as usize;
             let item_template = gs.effects[n].data[2] as usize;
 
             // Check if object isn't allowed to respawn (supporting beams for mine)
             if Self::check_surrounding_beams(gs, map_index) {
-                gs.effects[n].duration = (core::constants::TICKS * 60 * 15) as u32;
+                gs.effects[n].duration = (TICKS * 60 * 15) as u32;
                 return;
             }
 
@@ -413,13 +417,13 @@ impl EffectManager {
                 let drop_success = God::drop_item(gs, in_id, drop_x, drop_y);
 
                 if !drop_success {
-                    gs.effects[n].duration = (core::constants::TICKS * 60) as u32;
-                    gs.items[in_id].used = core::constants::USE_EMPTY;
+                    gs.effects[n].duration = (TICKS * 60) as u32;
+                    gs.items[in_id].used = USE_EMPTY;
                     gs.map[map_index].it = in2;
                 } else {
-                    gs.effects[n].used = core::constants::USE_EMPTY;
+                    gs.effects[n].used = USE_EMPTY;
                     if in2 != 0 {
-                        gs.items[in2 as usize].used = core::constants::USE_EMPTY;
+                        gs.items[in2 as usize].used = USE_EMPTY;
                     }
                     gs.reset_go(drop_x as i32, drop_y as i32);
                 }
@@ -436,7 +440,7 @@ impl EffectManager {
         gs.effects[n].duration -= 1;
 
         if gs.effects[n].duration < 1 {
-            gs.effects[n].used = core::constants::USE_EMPTY;
+            gs.effects[n].used = USE_EMPTY;
 
             let co = gs.effects[n].data[0] as usize;
             let mask = !gs.effects[n].data[1];
@@ -452,15 +456,15 @@ impl EffectManager {
     fn handle_effect_type_12(gs: &mut GameState, n: usize) {
         gs.effects[n].duration += 1;
 
-        let map_index = gs.effects[n].data[0] as usize
-            + gs.effects[n].data[1] as usize * core::constants::SERVER_MAPX as usize;
+        let map_index =
+            gs.effects[n].data[0] as usize + gs.effects[n].data[1] as usize * SERVER_MAPX as usize;
 
         if gs.effects[n].duration == Self::EFFECT_DEATH_MIST_DURATION {
-            gs.effects[n].used = core::constants::USE_EMPTY;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+            gs.effects[n].used = USE_EMPTY;
+            gs.map[map_index].flags &= !MF_GFX_DEATH;
         } else {
             let duration = gs.effects[n].duration;
-            gs.map[map_index].flags &= !core::constants::MF_GFX_DEATH;
+            gs.map[map_index].flags &= !MF_GFX_DEATH;
             gs.map[map_index].flags |= ((duration / 2) as u64) << 40;
         }
     }
@@ -475,9 +479,9 @@ impl EffectManager {
         d3: i32,
     ) -> Option<usize> {
         let effects = &mut gs.effects;
-        for n in 1..core::constants::MAXEFFECT {
-            if effects[n].used == core::constants::USE_EMPTY {
-                effects[n].used = core::constants::USE_ACTIVE;
+        for n in 1..MAXEFFECT {
+            if effects[n].used == USE_EMPTY {
+                effects[n].used = USE_ACTIVE;
                 effects[n].effect_type = effect_type as u8;
                 effects[n].duration = duration as u32;
                 effects[n].flags = 0;
@@ -501,28 +505,28 @@ impl EffectManager {
             0,
             1,
             -1,
-            core::constants::SERVER_MAPX,
-            -core::constants::SERVER_MAPX,
-            1 + core::constants::SERVER_MAPX,
-            1 - core::constants::SERVER_MAPX,
-            -1 + core::constants::SERVER_MAPX,
-            -1 - core::constants::SERVER_MAPX,
+            SERVER_MAPX,
+            -SERVER_MAPX,
+            1 + SERVER_MAPX,
+            1 - SERVER_MAPX,
+            -1 + SERVER_MAPX,
+            -1 - SERVER_MAPX,
             2,
             -2,
-            2 * core::constants::SERVER_MAPX,
-            -2 * core::constants::SERVER_MAPX,
-            2 + core::constants::SERVER_MAPX,
-            2 - core::constants::SERVER_MAPX,
-            -2 + core::constants::SERVER_MAPX,
-            -2 - core::constants::SERVER_MAPX,
-            1 + 2 * core::constants::SERVER_MAPX,
-            1 - 2 * core::constants::SERVER_MAPX,
-            -1 + 2 * core::constants::SERVER_MAPX,
-            -1 - 2 * core::constants::SERVER_MAPX,
-            2 + 2 * core::constants::SERVER_MAPX,
-            2 - 2 * core::constants::SERVER_MAPX,
-            -2 + 2 * core::constants::SERVER_MAPX,
-            -2 - 2 * core::constants::SERVER_MAPX,
+            2 * SERVER_MAPX,
+            -2 * SERVER_MAPX,
+            2 + SERVER_MAPX,
+            2 - SERVER_MAPX,
+            -2 + SERVER_MAPX,
+            -2 - SERVER_MAPX,
+            1 + 2 * SERVER_MAPX,
+            1 - 2 * SERVER_MAPX,
+            -1 + 2 * SERVER_MAPX,
+            -1 - 2 * SERVER_MAPX,
+            2 + 2 * SERVER_MAPX,
+            2 - 2 * SERVER_MAPX,
+            -2 + 2 * SERVER_MAPX,
+            -2 - 2 * SERVER_MAPX,
         ];
 
         for offset in offsets.iter() {
@@ -567,14 +571,14 @@ impl EffectManager {
         let has_gold = ch.gold != 0;
 
         if has_items || has_gold {
-            gs.map[map_index].flags |= core::constants::MF_MOVEBLOCK as u64;
+            gs.map[map_index].flags |= MF_MOVEBLOCK as u64;
 
             let fn_idx = Self::fx_add_effect(
                 gs,
                 4,
                 0,
-                (map_index % core::constants::SERVER_MAPX as usize) as i32,
-                (map_index / core::constants::SERVER_MAPX as usize) as i32,
+                (map_index % SERVER_MAPX as usize) as i32,
+                (map_index / SERVER_MAPX as usize) as i32,
                 co as i32,
             );
 
@@ -586,7 +590,7 @@ impl EffectManager {
 
             God::destroy_items(gs, co);
 
-            gs.characters[co].used = core::constants::USE_EMPTY;
+            gs.characters[co].used = USE_EMPTY;
 
             let co_flags = gs.characters[co].flags;
             let co_name = gs.characters[co].get_name().to_string();
@@ -599,8 +603,7 @@ impl EffectManager {
                     Self::fx_add_effect(
                         gs,
                         2,
-                        (core::constants::TICKS as u32 * 60 * 20
-                            + helpers::random_mod(core::constants::TICKS as u32 * 60 * 5))
+                        (TICKS as u32 * 60 * 20 + helpers::random_mod(TICKS as u32 * 60 * 5))
                             as i32,
                         tx,
                         ty,
@@ -610,9 +613,7 @@ impl EffectManager {
                     Self::fx_add_effect(
                         gs,
                         2,
-                        (core::constants::TICKS as u32 * 60 * 4
-                            + helpers::random_mod(core::constants::TICKS as u32 * 60))
-                            as i32,
+                        (TICKS as u32 * 60 * 4 + helpers::random_mod(TICKS as u32 * 60)) as i32,
                         tx,
                         ty,
                         temp as i32,
@@ -635,28 +636,28 @@ impl EffectManager {
             0,
             -1,
             1,
-            -core::constants::SERVER_MAPX,
-            core::constants::SERVER_MAPX,
+            -SERVER_MAPX,
+            SERVER_MAPX,
             -2,
             2,
-            -2 * core::constants::SERVER_MAPX,
-            2 * core::constants::SERVER_MAPX,
-            -1 + core::constants::SERVER_MAPX,
-            1 + core::constants::SERVER_MAPX,
-            -1 - core::constants::SERVER_MAPX,
-            1 - core::constants::SERVER_MAPX,
-            -2 + core::constants::SERVER_MAPX,
-            2 + core::constants::SERVER_MAPX,
-            -2 - core::constants::SERVER_MAPX,
-            2 - core::constants::SERVER_MAPX,
-            -1 + 2 * core::constants::SERVER_MAPX,
-            1 + 2 * core::constants::SERVER_MAPX,
-            -1 - 2 * core::constants::SERVER_MAPX,
-            1 - 2 * core::constants::SERVER_MAPX,
-            -2 + 2 * core::constants::SERVER_MAPX,
-            2 + 2 * core::constants::SERVER_MAPX,
-            -2 - 2 * core::constants::SERVER_MAPX,
-            2 - 2 * core::constants::SERVER_MAPX,
+            -2 * SERVER_MAPX,
+            2 * SERVER_MAPX,
+            -1 + SERVER_MAPX,
+            1 + SERVER_MAPX,
+            -1 - SERVER_MAPX,
+            1 - SERVER_MAPX,
+            -2 + SERVER_MAPX,
+            2 + SERVER_MAPX,
+            -2 - SERVER_MAPX,
+            2 - SERVER_MAPX,
+            -1 + 2 * SERVER_MAPX,
+            1 + 2 * SERVER_MAPX,
+            -1 - 2 * SERVER_MAPX,
+            1 - 2 * SERVER_MAPX,
+            -2 + 2 * SERVER_MAPX,
+            2 + 2 * SERVER_MAPX,
+            -2 - 2 * SERVER_MAPX,
+            2 - 2 * SERVER_MAPX,
         ];
 
         let map_len = gs.map.len();
