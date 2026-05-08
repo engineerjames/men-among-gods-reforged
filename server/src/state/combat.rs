@@ -451,115 +451,111 @@ impl GameState {
         let die = helpers::random_mod_i32(20) + 1;
         let hit = die <= chance;
 
-        if hit {
-            if self.dodges_physical_attack(defender_index) {
-                self.emit_attack_miss(attacker_index, defender_index);
+        if !hit {
+            self.emit_attack_miss(attacker_index, defender_index);
+            return;
+        }
 
-                log::info!(
-                    "Character {} dodged the attack from {}!",
-                    self.characters[defender_index].get_name(),
-                    self.characters[attacker_index].get_name()
-                );
-                return;
+        if self.dodges_physical_attack(defender_index) {
+            self.emit_attack_miss(attacker_index, defender_index);
+
+            log::info!(
+                "Character {} dodged the attack from {}!",
+                self.characters[defender_index].get_name(),
+                self.characters[attacker_index].get_name()
+            );
+            return;
+        }
+
+        let strn =
+            self.characters[attacker_index].attrib[core::constants::AT_STREN as usize][5] as i32;
+
+        let base_weapon = self.characters[attacker_index].weapon as i32;
+        let mut dam = base_weapon + helpers::random_mod_i32(6) + 1;
+        if strn > 3 {
+            let extra_max = strn / 2;
+            if extra_max > 0 {
+                dam += helpers::random_mod_i32(extra_max);
             }
+        }
+        if die == 2 {
+            dam += helpers::random_mod_i32(6) + 1;
+        }
+        if die == 1 {
+            dam += helpers::random_mod_i32(6) + helpers::random_mod_i32(6) + 2;
+        }
 
-            // Damage calculation follows original pattern
-            let strn = self.characters[attacker_index].attrib[core::constants::AT_STREN as usize][5]
-                as i32;
+        let odam = dam;
+        dam += bonus;
 
-            // Base damage uses character.weapon
-            let base_weapon = self.characters[attacker_index].weapon as i32;
-            let mut dam = base_weapon + helpers::random_mod_i32(6) + 1;
-            if strn > 3 {
-                let extra_max = strn / 2;
-                if extra_max > 0 {
-                    dam += helpers::random_mod_i32(extra_max);
-                }
+        // Apply weapon wear if wielding (only for players in original)
+        if attacker_is_player {
+            let rhand = self.characters[attacker_index].worn[core::constants::WN_RHAND] as usize;
+            if rhand != 0 {
+                driver::item_damage_weapon(self, attacker_index, dam);
             }
-            if die == 2 {
-                dam += helpers::random_mod_i32(6) + 1;
-            }
-            if die == 1 {
-                dam += helpers::random_mod_i32(6) + helpers::random_mod_i32(6) + 2;
-            }
+        }
 
-            let odam = dam;
-            dam += bonus;
+        // Apply damage and capture actual applied damage
+        let applied = self.do_hurt(attacker_index, defender_index, dam, 0);
 
-            // Apply weapon wear if wielding (only for players in original)
-            if attacker_is_player {
-                let rhand =
-                    self.characters[attacker_index].worn[core::constants::WN_RHAND] as usize;
-                if rhand != 0 {
-                    driver::item_damage_weapon(self, attacker_index, dam);
-                }
-            }
+        // Play sounds depending on whether damage occurred (match original behaviour)
+        let tx = self.characters[defender_index].x as i32;
+        let ty = self.characters[defender_index].y as i32;
+        let base_sound = self.characters[attacker_index].sound as i32;
+        if applied < 1 {
+            self.do_area_sound(defender_index, 0, tx, ty, base_sound + 3);
+            Self::char_play_sound(self, defender_index, base_sound + 3, -150, 0);
+        } else {
+            self.do_area_sound(defender_index, 0, tx, ty, base_sound + 4);
+            Self::char_play_sound(self, defender_index, base_sound + 4, -150, 0);
+        }
 
-            // Apply damage and capture actual applied damage
-            let applied = self.do_hurt(attacker_index, defender_index, dam, 0);
+        // Surrounding strikes grow from the original cross into larger AoE footprints.
+        if is_surround {
+            // Match original C++ behavior: surround hits only happen if the
+            // character actually *has learned* Surround Hit.
+            //
+            // Note: In this codebase `skill[z][5]` is a derived value and is
+            // clamped to at least 1 for *all* skills (see `really_update_char`),
+            // so using `[5] > 0` would incorrectly enable surround for everyone.
+            let surround_base =
+                self.characters[attacker_index].skill[skills::SK_SURROUND][0] as i32;
+            let surround_eff = self.characters[attacker_index].skill[skills::SK_SURROUND][5] as i32;
+            if surround_base != 0 {
+                let aoe_base = if attacker_is_player { surround_base } else { 1 };
+                let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
+                let attacker_x = self.characters[attacker_index].x as i32;
+                let attacker_y = self.characters[attacker_index].y as i32;
 
-            // Play sounds depending on whether damage occurred (match original behaviour)
-            let tx = self.characters[defender_index].x as i32;
-            let ty = self.characters[defender_index].y as i32;
-            let base_sound = self.characters[attacker_index].sound as i32;
-            if applied < 1 {
-                self.do_area_sound(defender_index, 0, tx, ty, base_sound + 3);
-                Self::char_play_sound(self, defender_index, base_sound + 3, -150, 0);
-            } else {
-                self.do_area_sound(defender_index, 0, tx, ty, base_sound + 4);
-                Self::char_play_sound(self, defender_index, base_sound + 4, -150, 0);
-            }
-
-            // Surrounding strikes grow from the original cross into larger AoE footprints.
-            if is_surround {
-                // Match original C++ behavior: surround hits only happen if the
-                // character actually *has learned* Surround Hit.
-                //
-                // Note: In this codebase `skill[z][5]` is a derived value and is
-                // clamped to at least 1 for *all* skills (see `really_update_char`),
-                // so using `[5] > 0` would incorrectly enable surround for everyone.
-                let surround_base =
-                    self.characters[attacker_index].skill[skills::SK_SURROUND][0] as i32;
-                let surround_eff =
-                    self.characters[attacker_index].skill[skills::SK_SURROUND][5] as i32;
-                if surround_base != 0 {
-                    let aoe_base = if attacker_is_player { surround_base } else { 1 };
-                    let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
-                    let attacker_x = self.characters[attacker_index].x as i32;
-                    let attacker_y = self.characters[attacker_index].y as i32;
-
-                    for co2 in helpers::skill_aoe_targets(
-                        self,
-                        Some(attacker_index),
-                        attacker_x,
-                        attacker_y,
-                        aoe_base,
-                    ) {
-                        if co2 == attacker_index || co2 == defender_index {
-                            continue;
-                        }
-                        if use_legacy_cross
-                            && self.characters[co2].attack_cn as usize != attacker_index
-                        {
-                            continue;
-                        }
-                        if !self.may_attack_msg(attacker_index, co2, false) {
-                            continue;
-                        }
-                        if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
-                            let sdam = odam - odam / 4;
-                            self.remember_pvp(attacker_index, co2);
-                            if self.dodges_physical_attack(co2) {
-                                self.emit_attack_miss(attacker_index, co2);
-                            } else {
-                                self.do_hurt(attacker_index, co2, sdam, 0);
-                            }
+                for co2 in helpers::skill_aoe_targets(
+                    self,
+                    Some(attacker_index),
+                    attacker_x,
+                    attacker_y,
+                    aoe_base,
+                ) {
+                    if co2 == attacker_index || co2 == defender_index {
+                        continue;
+                    }
+                    if use_legacy_cross && self.characters[co2].attack_cn as usize != attacker_index
+                    {
+                        continue;
+                    }
+                    if !self.may_attack_msg(attacker_index, co2, false) {
+                        continue;
+                    }
+                    if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
+                        let sdam = odam - odam / 4;
+                        self.remember_pvp(attacker_index, co2);
+                        if self.dodges_physical_attack(co2) {
+                            self.emit_attack_miss(attacker_index, co2);
+                        } else {
+                            self.do_hurt(attacker_index, co2, sdam, 0);
                         }
                     }
                 }
             }
-        } else {
-            self.emit_attack_miss(attacker_index, defender_index);
         }
     }
 

@@ -1122,6 +1122,30 @@ mod tests {
     }
 
     #[test]
+    fn test_d20_behavior() {
+        let mut samples: Vec<i32> = Vec::new();
+        for _ in 0..10_000 {
+            let v = random_mod_i32(20) + 1;
+            samples.push(v);
+        }
+
+        for v in 1..=20 {
+            assert!(samples.contains(&v), "D20 roll did not produce value {}", v);
+        }
+
+        // Print distribution for manual inspection (not an automated test)
+        let mut counts = [0; 20];
+        for v in samples {
+            counts[(v - 1) as usize] += 1;
+        }
+
+        println!("D20 distribution over 10,000 rolls:");
+        for (i, count) in counts.iter().enumerate() {
+            println!("{}: {}", i + 1, count);
+        }
+    }
+
+    #[test]
     fn test_get_class_name() {
         // Test valid class indices
         assert_eq!(get_class_name(0), "");
