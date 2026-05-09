@@ -1203,7 +1203,7 @@ pub(crate) async fn login(
 fn login_response(token: impl Into<String>, error: Option<&str>) -> Json<types::LoginResponse> {
     Json(types::LoginResponse {
         token: token.into(),
-        error: error.map(str::to_string),
+        error: error.map(str::to_owned),
     })
 }
 
