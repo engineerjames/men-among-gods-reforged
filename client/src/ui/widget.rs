@@ -268,11 +268,11 @@ pub enum WidgetAction {
         /// The skilltab index of the skill to assign.
         skill_id: usize,
     },
-    /// Bind a skill to a numeric key slot (1–9).
+    /// Bind a skill to a skill-bar slot (1-10).
     BindSkillKey {
         /// The protocol skill number to bind.
         skill_nr: usize,
-        /// Key slot index (0 = key "1", 8 = key "9").
+        /// Key slot index (0 = slot "1", 9 = slot "10").
         key_slot: u8,
     },
     /// Inventory interaction (pick up, equip, shift-equip, etc.).

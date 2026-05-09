@@ -16,8 +16,10 @@ use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::BlendMode;
 
-use crate::filepaths;
 use crate::ui::RenderContext;
+use crate::ui::visuals::spell_icons::{
+    SpellIconMeta, active_spell_effect_icon_meta, spell_icon_path,
+};
 use crate::ui::widget::{EventResponse, UiEvent};
 use mag_core::skills;
 
@@ -80,17 +82,13 @@ pub enum SpellEffectKind {
 // SpellEffectMeta
 // ---------------------------------------------------------------------------
 
-/// Display metadata for a single spell effect type.
+/// Display metadata for a single active spell effect type.
 #[derive(Clone, Copy, Debug)]
 struct SpellEffectMeta {
-    /// Short display name shown in hover tooltips.
-    name: &'static str,
     /// Whether the effect is a buff or debuff.
     kind: SpellEffectKind,
-    /// Fallback tile color when the icon texture cannot be loaded.
-    color: Color,
-    /// Temporary filesystem icon filename under `assets/gfx/spells`.
-    icon_filename: &'static str,
+    /// Shared icon display metadata.
+    icon: SpellIconMeta,
 }
 
 /// Returns display metadata for the given `skill_nr` (`SK_*` constant), or
@@ -108,70 +106,23 @@ struct SpellEffectMeta {
 ///
 /// * `Some(SpellEffectMeta)` for known displayable effects, `None` otherwise.
 fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
-    let nr = skill_nr as usize;
-    match nr {
-        skills::SK_LIGHT => Some(SpellEffectMeta {
-            name: "Light",
-            kind: SpellEffectKind::Positive,
-            color: Color::RGB(240, 230, 100),
-            icon_filename: "light_icon.png",
-        }),
-        skills::SK_PROTECT => Some(SpellEffectMeta {
-            name: "Protection",
-            kind: SpellEffectKind::Positive,
-            color: Color::RGB(80, 160, 240),
-            icon_filename: "protect_icon.png",
-        }),
-        skills::SK_ENHANCE => Some(SpellEffectMeta {
-            name: "Enhancement",
-            kind: SpellEffectKind::Positive,
-            color: Color::RGB(100, 220, 100),
-            icon_filename: "enhance_icon.png",
-        }),
-        skills::SK_BLESS => Some(SpellEffectMeta {
-            name: "Bless",
-            kind: SpellEffectKind::Positive,
-            color: Color::RGB(200, 200, 255),
-            icon_filename: "bless_icon.png",
-        }),
-        skills::SK_MSHIELD => Some(SpellEffectMeta {
-            name: "Magic Shield",
-            kind: SpellEffectKind::Positive,
-            color: Color::RGB(100, 140, 255),
-            icon_filename: "mshield_icon.png",
-        }),
-        skills::SK_RECALL => Some(SpellEffectMeta {
-            name: "Recall",
-            kind: SpellEffectKind::Positive,
-            color: Color::RGB(160, 200, 255),
-            icon_filename: "recall_icon.png",
-        }),
-        skills::SK_BLAST => Some(SpellEffectMeta {
-            name: "Spell Exhaustion",
-            kind: SpellEffectKind::Positive,
-            color: Color::RGB(200, 140, 40),
-            icon_filename: "exhaustion_icon.png",
-        }),
-        skills::SK_CURSE => Some(SpellEffectMeta {
-            name: "Curse",
-            kind: SpellEffectKind::Negative,
-            color: Color::RGB(180, 40, 200),
-            icon_filename: "curse_icon.png",
-        }),
-        skills::SK_STUN => Some(SpellEffectMeta {
-            name: "Stun",
-            kind: SpellEffectKind::Negative,
-            color: Color::RGB(200, 60, 60),
-            icon_filename: "stun_icon.png",
-        }),
-        skills::SK_WIMPY => Some(SpellEffectMeta {
-            name: "Wimpy",
-            kind: SpellEffectKind::Negative,
-            color: Color::RGB(160, 80, 40),
-            icon_filename: "wimpy_icon.png",
-        }),
-        _ => None,
+    if skill_nr < 0 {
+        return None;
     }
+    let nr = skill_nr as usize;
+    let icon = active_spell_effect_icon_meta(nr)?;
+    let kind = match nr {
+        skills::SK_LIGHT
+        | skills::SK_PROTECT
+        | skills::SK_ENHANCE
+        | skills::SK_BLESS
+        | skills::SK_MSHIELD
+        | skills::SK_RECALL
+        | skills::SK_BLAST => SpellEffectKind::Positive,
+        skills::SK_CURSE | skills::SK_STUN | skills::SK_WIMPY => SpellEffectKind::Negative,
+        _ => return None,
+    };
+    Some(SpellEffectMeta { kind, icon })
 }
 
 /// Formats a duration in seconds as a human-readable string for hover text.
@@ -558,11 +509,11 @@ impl SpellEffectIcons {
         {
             return Some(format!(
                 "{} (~{})",
-                meta.name,
+                meta.icon.name,
                 format_duration(remaining_secs)
             ));
         }
-        Some(meta.name.to_owned())
+        Some(meta.icon.name.to_owned())
     }
 
     /// Renders all active spell-effect icons onto the canvas.
@@ -598,7 +549,7 @@ impl SpellEffectIcons {
         &mut self,
         ctx: &mut RenderContext<'_, '_>,
         skill_nr: i16,
-        meta: SpellEffectMeta,
+        meta: SpellIconMeta,
     ) -> Option<usize> {
         if let Some(id) = self.icon_texture_ids.get(&skill_nr) {
             return *id;
@@ -606,10 +557,7 @@ impl SpellEffectIcons {
 
         // TODO: Move spell-effect icon assets into the graphics cache/images archive
         // once the final icon set and sprite IDs are settled.
-        let path = filepaths::get_asset_directory()
-            .join("gfx")
-            .join("spells")
-            .join(meta.icon_filename);
+        let path = spell_icon_path(meta);
         let texture_id = match ctx.gfx.load_texture_from_path(&path) {
             Ok(id) => Some(id),
             Err(err) => {
@@ -655,11 +603,11 @@ impl SpellEffectIcons {
             ctx.canvas.set_draw_color(ICON_BG);
             ctx.canvas.fill_rect(rect)?;
 
-            if let Some(texture_id) = self.texture_id_for(ctx, entry.skill_nr, meta) {
+            if let Some(texture_id) = self.texture_id_for(ctx, entry.skill_nr, meta.icon) {
                 let texture = ctx.gfx.get_texture(texture_id);
                 ctx.canvas.copy(texture, None, Some(rect))?;
             } else {
-                ctx.canvas.set_draw_color(meta.color);
+                ctx.canvas.set_draw_color(meta.icon.color);
                 ctx.canvas.fill_rect(Rect::new(
                     rect.x() + 1,
                     rect.y() + 1,
@@ -886,7 +834,7 @@ mod tests {
 
         for skill_nr in displayable {
             let meta = spell_meta(skill_nr as i16).unwrap();
-            assert!(meta.icon_filename.ends_with("_icon.png"));
+            assert!(meta.icon.icon_filename.ends_with("_icon.png"));
         }
     }
 

@@ -2,13 +2,13 @@
 //!
 //! Renders a row of square skill-bind cells at a fixed position:
 //!
-//! - **Top row (13 cells):** Assignable skill slots. Each cell shows an
-//!   abbreviated skill name when bound. Left-clicking a bound slot casts the
-//!   skill; left-clicking an empty slot begins the skill-assignment flow.
+//! - **Top row (10 cells):** Assignable skill slots. Bound spell slots show
+//!   their icon with the slot number drawn over it. Legacy or unmapped saved
+//!   bindings fall back to abbreviated text. Left-clicking a bound slot casts
+//!   the skill; left-clicking an empty slot begins the skill-assignment flow.
 //!   Right-clicking a bound slot clears the binding.
-//!
-//! The widget also renders active spell/item-effect sprites in a configurable
-//! horizontal row, positioned and sized via [`SkillBarConfig`].
+
+use std::collections::HashMap;
 
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
@@ -20,6 +20,7 @@ use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::filepaths;
 use crate::font_cache;
 use crate::ui::RenderContext;
+use crate::ui::visuals::spell_icons::{SpellIconMeta, spell_icon_meta, spell_icon_path};
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
 
 // ---------------------------------------------------------------------------
@@ -90,7 +91,7 @@ const MAX_ABBREV: usize = 4;
 
 /// Per-frame data pushed into the skill bar by the game scene.
 pub struct SkillBarData {
-    /// Skill keybinds for keys 1–11 (index 0 = slot 1). `Some(skill_nr)` if bound.
+    /// Skill bindings for slots 1-10 (index 0 = slot 1). `Some(skill_nr)` if bound.
     pub keybinds: [Option<usize>; TOP_CELLS],
 }
 
@@ -107,9 +108,10 @@ pub struct SkillBar {
     actions: Vec<WidgetAction>,
     /// Lazily-loaded texture ID for the `skillbar.png` background image.
     bg_texture_id: Option<usize>,
-    /// Lazily-loaded texture ID for the test icon drawn in cell 0.
-    test_icon_texture_id: Option<usize>,
-    /// Controller-selected skill slot index (0..12), or `None` if no slot is highlighted.
+    /// Lazily-loaded texture IDs for spell icons. `None` means loading was
+    /// attempted and failed, so rendering should use the fallback tile.
+    icon_texture_ids: HashMap<usize, Option<usize>>,
+    /// Controller-selected skill slot index (0..TOP_CELLS), or `None` if no slot is highlighted.
     controller_selected_slot: Option<usize>,
 }
 
@@ -130,7 +132,7 @@ impl SkillBar {
             mouse_y: 0,
             actions: Vec::new(),
             bg_texture_id: None,
-            test_icon_texture_id: None,
+            icon_texture_ids: HashMap::new(),
             controller_selected_slot: None,
         }
     }
@@ -158,7 +160,7 @@ impl SkillBar {
     ///
     /// # Arguments
     ///
-    /// * `slot` - Slot index (0..12) to highlight, or `None` to clear.
+    /// * `slot` - Slot index (0..TOP_CELLS) to highlight, or `None` to clear.
     pub fn set_controller_selected_slot(&mut self, slot: Option<usize>) {
         self.controller_selected_slot = slot;
     }
@@ -176,7 +178,7 @@ impl SkillBar {
     // Hit-testing helpers
     // -----------------------------------------------------------------------
 
-    /// Returns which top-row cell index (0..12) the point is inside, if any.
+    /// Returns which top-row cell index (0..TOP_CELLS) the point is inside, if any.
     fn hit_top_cell(&self, px: i32, py: i32) -> Option<usize> {
         TOP_CELL_POSITIONS
             .iter()
@@ -197,6 +199,45 @@ impl SkillBar {
         }
         // Take the first MAX_ABBREV characters.
         name.chars().take(MAX_ABBREV).collect()
+    }
+
+    /// Lazily loads and returns the texture ID for the given spell icon.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Render context containing the graphics cache.
+    /// * `skill_nr` - Protocol skill number used as the texture cache key.
+    /// * `meta` - Spell icon metadata containing the asset filename.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(texture_id)` when the icon was loaded successfully, `None` otherwise.
+    fn texture_id_for(
+        &mut self,
+        ctx: &mut RenderContext<'_, '_>,
+        skill_nr: usize,
+        meta: SpellIconMeta,
+    ) -> Option<usize> {
+        if let Some(id) = self.icon_texture_ids.get(&skill_nr) {
+            return *id;
+        }
+
+        // TODO: Move spell skill-bar icon assets into the graphics cache/images archive
+        // once the final icon set and sprite IDs are settled.
+        let path = spell_icon_path(meta);
+        let texture_id = match ctx.gfx.load_texture_from_path(&path) {
+            Ok(id) => Some(id),
+            Err(err) => {
+                log::warn!(
+                    "Failed to load skill-bar spell icon {}: {}",
+                    path.display(),
+                    err
+                );
+                None
+            }
+        };
+        self.icon_texture_ids.insert(skill_nr, texture_id);
+        texture_id
     }
 }
 
@@ -269,8 +310,8 @@ impl Widget for SkillBar {
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
-        let data = match self.data.as_ref() {
-            Some(d) => d,
+        let keybinds = match self.data.as_ref() {
+            Some(d) => d.keybinds,
             None => return Ok(()),
         };
 
@@ -287,15 +328,6 @@ impl Widget for SkillBar {
             }
         }
 
-        // Lazy-load the test icon for cell 0.
-        if self.test_icon_texture_id.is_none() {
-            let path = filepaths::get_asset_directory()
-                .join("gfx")
-                .join("bless_icon.png");
-            if let Ok(id) = ctx.gfx.load_texture_from_path(&path) {
-                self.test_icon_texture_id = Some(id);
-            }
-        }
         if let Some(bg_id) = self.bg_texture_id {
             let tex = ctx.gfx.get_texture(bg_id);
             let dst = Rect::new(self.bounds.x, self.bounds.y, BAR_W, BAR_H);
@@ -316,11 +348,21 @@ impl Widget for SkillBar {
             ctx.canvas.set_draw_color(CELL_BORDER);
             ctx.canvas.draw_rect(rect)?;
 
-            // Cell 0: draw the test icon image instead of a plain fill.
-            if i == 0 {
-                if let Some(icon_id) = self.test_icon_texture_id {
+            let bound_skill = keybinds[i];
+            let bound_icon = bound_skill.and_then(spell_icon_meta);
+
+            if let (Some(skill_nr), Some(meta)) = (bound_skill, bound_icon) {
+                if let Some(icon_id) = self.texture_id_for(ctx, skill_nr, meta) {
                     let tex = ctx.gfx.get_texture(icon_id);
                     ctx.canvas.copy(tex, None, Some(rect))?;
+                } else {
+                    ctx.canvas.set_draw_color(meta.color);
+                    ctx.canvas.fill_rect(Rect::new(
+                        rect.x() + 1,
+                        rect.y() + 1,
+                        (CELL - 2) as u32,
+                        (CELL - 2) as u32,
+                    ))?;
                 }
             }
 
@@ -352,37 +394,39 @@ impl Widget for SkillBar {
                 &slot_label,
                 cx,
                 y + 1,
-                font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
-            )?;
-            // Skill name or "+" hint in the lower half of the cell.
-            // Cell 0 uses an icon image, so skip the text there.
-            if i != 0 {
-                let cy = y + 10; // 10 = glyph height; sits directly below the number
-                if let Some(skill_nr) = data.keybinds[i] {
-                    let name = skills::get_skill_name(skill_nr);
-                    let abbr = Self::abbreviate(name);
-                    font_cache::draw_text(
-                        ctx.canvas,
-                        ctx.gfx,
-                        UI_FONT,
-                        &abbr,
-                        cx,
-                        cy,
-                        font_cache::TextStyle::centered()
-                            .with_tint(SKILL_TEXT_COLOR)
-                            .with_drop_shadow(),
-                    )?;
+                if bound_skill.is_some() {
+                    font_cache::TextStyle::centered()
+                        .with_tint(SKILL_TEXT_COLOR)
+                        .with_drop_shadow()
                 } else {
-                    font_cache::draw_text(
-                        ctx.canvas,
-                        ctx.gfx,
-                        UI_FONT,
-                        "+",
-                        cx,
-                        cy,
-                        font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
-                    )?;
-                }
+                    font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR)
+                },
+            )?;
+            let cy = y + 10; // 10 = glyph height; sits directly below the number
+            if let Some(skill_nr) = bound_skill.filter(|_| bound_icon.is_none()) {
+                let name = skills::get_skill_name(skill_nr);
+                let abbr = Self::abbreviate(name);
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    UI_FONT,
+                    &abbr,
+                    cx,
+                    cy,
+                    font_cache::TextStyle::centered()
+                        .with_tint(SKILL_TEXT_COLOR)
+                        .with_drop_shadow(),
+                )?;
+            } else if bound_skill.is_none() {
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    UI_FONT,
+                    "+",
+                    cx,
+                    cy,
+                    font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
+                )?;
             }
         }
 
@@ -422,11 +466,15 @@ mod tests {
             Some(0)
         );
         // Second cell starts at its hard-coded x position.
-        assert_eq!(bar.hit_top_cell(10 + TOP_CELL_POSITIONS[1].0, oy), Some(1));
-        // Last cell.
         assert_eq!(
-            bar.hit_top_cell(10 + TOP_CELL_POSITIONS[10].0, oy),
-            Some(10)
+            bar.hit_top_cell(10 + TOP_CELL_POSITIONS[1].0 + 1, oy),
+            Some(1)
+        );
+        // Last cell.
+        let last = TOP_CELLS - 1;
+        assert_eq!(
+            bar.hit_top_cell(10 + TOP_CELL_POSITIONS[last].0 + 1, oy),
+            Some(last)
         );
     }
 
@@ -437,7 +485,7 @@ mod tests {
         let oy = 20 + CELLS_OFFSET_Y;
         assert_eq!(bar.hit_top_cell(ox - 1, oy), None); // left of cells
         assert_eq!(
-            bar.hit_top_cell(10 + TOP_CELL_POSITIONS[10].0 + CELL, oy),
+            bar.hit_top_cell(10 + TOP_CELL_POSITIONS[TOP_CELLS - 1].0 + CELL, oy),
             None
         ); // right of row
         assert_eq!(bar.hit_top_cell(ox, oy + CELL), None); // below top row

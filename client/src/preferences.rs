@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::types::controller::ControllerBindings;
 use crate::ui::widget::KeyBindings;
 
-/// Number of numeric-key skill binding slots (keys 1–9 plus 2 reserved).
+/// Number of skill-bar binding slots.
 pub const NUMBER_OF_KEYBINDS: usize = 10;
 
 // ---------------------------------------------------------------------------
@@ -24,7 +24,7 @@ pub const NUMBER_OF_KEYBINDS: usize = 10;
 /// keyboard action bindings, and remembered panel positions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterSettings {
-    /// Skill keybinds for slots 1–12. `Some(skill_nr)` if bound.
+    /// Skill keybinds for slots 1-10. `Some(skill_nr)` if bound.
     #[serde(default)]
     pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
     /// Saved position of the inventory panel, or `None` for default.
