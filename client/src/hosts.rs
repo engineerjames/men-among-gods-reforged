@@ -24,7 +24,7 @@ pub fn get_api_base_url() -> String {
 pub fn get_host_from_api_base_url(base_url: &str) -> Option<String> {
     reqwest::Url::parse(base_url)
         .ok()
-        .and_then(|url| url.host_str().map(ToString::to_string))
+        .and_then(|url| url.host_str().map(str::to_owned))
 }
 
 /// Builds the server base URL from `MAG_BASE_URL`, falling back to

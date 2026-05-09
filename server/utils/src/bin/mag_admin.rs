@@ -1789,7 +1789,7 @@ fn split_words(raw: &str) -> Vec<String> {
     raw.split(|character: char| character == ',' || character == '\n' || character == '\r')
         .map(str::trim)
         .filter(|word| !word.is_empty())
-        .map(ToString::to_string)
+        .map(str::to_owned)
         .collect()
 }
 
