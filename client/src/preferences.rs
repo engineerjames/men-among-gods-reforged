@@ -10,7 +10,7 @@ use crate::types::controller::ControllerBindings;
 use crate::ui::widget::KeyBindings;
 
 /// Number of numeric-key skill binding slots (keys 1–9 plus 2 reserved).
-pub const NUMBER_OF_KEYBINDS: usize = 11;
+pub const NUMBER_OF_KEYBINDS: usize = 10;
 
 // ---------------------------------------------------------------------------
 // Per-character settings
@@ -24,7 +24,7 @@ pub const NUMBER_OF_KEYBINDS: usize = 11;
 /// keyboard action bindings, and remembered panel positions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterSettings {
-    /// Skill keybinds for keys 1–11. Index 0 = key "1". `Some(skill_nr)` if bound.
+    /// Skill keybinds for slots 1–12. `Some(skill_nr)` if bound.
     #[serde(default)]
     pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
     /// Saved position of the inventory panel, or `None` for default.
@@ -496,7 +496,6 @@ mod tests {
             None,
             None,
             Some(7),
-            None,
             None,
             None,
             None,

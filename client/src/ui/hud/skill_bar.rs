@@ -30,7 +30,7 @@ use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, Wid
 const CELL: i32 = 29;
 
 /// Number of cells in the top (skill-bind) row.
-pub const TOP_CELLS: usize = 11;
+pub const TOP_CELLS: usize = 10;
 
 /// Vertical offset of all cells relative to the widget (background image)
 /// origin.  Increase to scoot cells downward.
@@ -38,17 +38,16 @@ const CELLS_OFFSET_Y: i32 = 67;
 
 /// Hard-coded cell origins relative to the widget background.
 pub const TOP_CELL_POSITIONS: [(i32, i32); TOP_CELLS] = [
-    (73, CELLS_OFFSET_Y),           // 1
-    (73 + 32, CELLS_OFFSET_Y),      // 2
-    (73 + 32 * 2, CELLS_OFFSET_Y),  // 3
-    (73 + 32 * 3, CELLS_OFFSET_Y),  // 4
-    (73 + 32 * 4, CELLS_OFFSET_Y),  // 5
-    (73 + 32 * 5, CELLS_OFFSET_Y),  // 6
-    (73 + 32 * 6, CELLS_OFFSET_Y),  // 7
-    (73 + 32 * 7, CELLS_OFFSET_Y),  // 8
-    (73 + 32 * 8, CELLS_OFFSET_Y),  // 9
-    (73 + 32 * 9, CELLS_OFFSET_Y),  // 10
-    (73 + 32 * 10, CELLS_OFFSET_Y), // 11
+    (73 - 1, CELLS_OFFSET_Y),          // 1
+    (73 + 29 - 1, CELLS_OFFSET_Y),     // 2
+    (73 + 29 * 2 - 1, CELLS_OFFSET_Y), // 3
+    (73 + 29 * 3 - 1, CELLS_OFFSET_Y), // 4
+    (73 + 29 * 4 - 1, CELLS_OFFSET_Y), // 5
+    (73 + 29 * 5 - 1, CELLS_OFFSET_Y), // 6
+    (73 + 29 * 6 - 1, CELLS_OFFSET_Y), // 7
+    (73 + 29 * 7 - 1, CELLS_OFFSET_Y), // 8
+    (73 + 29 * 8 - 1, CELLS_OFFSET_Y), // 9
+    (73 + 29 * 9 - 1, CELLS_OFFSET_Y), // 10
 ];
 
 /// Total widget width (determined by the wider top row).
