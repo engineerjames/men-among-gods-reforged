@@ -401,49 +401,49 @@ impl SkillsPanel {
     // TODO: Deduplicate these formulas into one place.
     /// Cost to raise attribute `n` by one from base value `v`.
     fn attrib_cost(data: &SkillsPanelData, n: usize, v: i32) -> i32 {
-        let max_v = data.attrib[n][2] as i32;
+        let max_v = i32::from(data.attrib[n][2]);
         if v >= max_v {
             return i32::MAX;
         }
-        let diff = data.attrib[n][3] as i32;
-        let v64 = v as i64;
-        ((v64 * v64 * v64) * (diff as i64) / 20).clamp(0, i32::MAX as i64) as i32
+        let diff = i32::from(data.attrib[n][3]);
+        let v64 = i64::from(v);
+        ((v64 * v64 * v64) * i64::from(diff) / 20).clamp(0, i64::from(i32::MAX)) as i32
     }
 
     /// Cost to raise skill `n` by one from base value `v`.
     fn skill_cost(data: &SkillsPanelData, n: usize, v: i32) -> i32 {
-        let max_v = data.skill[n][2] as i32;
+        let max_v = i32::from(data.skill[n][2]);
         if v >= max_v {
             return i32::MAX;
         }
-        let diff = data.skill[n][3] as i32;
-        let v64 = v as i64;
-        let cubic = ((v64 * v64 * v64) * (diff as i64) / 40).clamp(0, i32::MAX as i64) as i32;
+        let diff = i32::from(data.skill[n][3]);
+        let v64 = i64::from(v);
+        let cubic = ((v64 * v64 * v64) * i64::from(diff) / 40).clamp(0, i64::from(i32::MAX)) as i32;
         v.max(cubic)
     }
 
     /// Cost to raise HP by one from base value `v`.
     fn hp_cost(data: &SkillsPanelData, v: i32) -> i32 {
-        if v >= data.hp[2] as i32 {
+        if v >= i32::from(data.hp[2]) {
             return i32::MAX;
         }
-        (v as i64 * data.hp[3] as i64).clamp(0, i32::MAX as i64) as i32
+        (i64::from(v) * i64::from(data.hp[3])).clamp(0, i64::from(i32::MAX)) as i32
     }
 
     /// Cost to raise Endurance by one from base value `v`.
     fn end_cost(data: &SkillsPanelData, v: i32) -> i32 {
-        if v >= data.end[2] as i32 {
+        if v >= i32::from(data.end[2]) {
             return i32::MAX;
         }
-        (v as i64 * data.end[3] as i64 / 2).clamp(0, i32::MAX as i64) as i32
+        (i64::from(v) * i64::from(data.end[3]) / 2).clamp(0, i64::from(i32::MAX)) as i32
     }
 
     /// Cost to raise Mana by one from base value `v`.
     fn mana_cost(data: &SkillsPanelData, v: i32) -> i32 {
-        if v >= data.mana[2] as i32 {
+        if v >= i32::from(data.mana[2]) {
             return i32::MAX;
         }
-        (v as i64 * data.mana[3] as i64).clamp(0, i32::MAX as i64) as i32
+        (i64::from(v) * i64::from(data.mana[3])).clamp(0, i64::from(i32::MAX)) as i32
     }
 
     // ---- Click handling ---------------------------------------------------
@@ -536,7 +536,7 @@ impl SkillsPanel {
     /// Spend points to raise attribute `n` by one.
     fn raise_attrib(&mut self, data: &SkillsPanelData, n: usize) {
         let avail = data.points - self.stat_points_used;
-        let cur = data.attrib[n][0] as i32 + self.stat_raised[n];
+        let cur = i32::from(data.attrib[n][0]) + self.stat_raised[n];
         let need = Self::attrib_cost(data, n, cur);
         if need != i32::MAX && need <= avail {
             self.stat_points_used += need;
@@ -548,7 +548,7 @@ impl SkillsPanel {
     fn lower_attrib(&mut self, data: &SkillsPanelData, n: usize) {
         if self.stat_raised[n] > 0 {
             self.stat_raised[n] -= 1;
-            let cur = data.attrib[n][0] as i32 + self.stat_raised[n];
+            let cur = i32::from(data.attrib[n][0]) + self.stat_raised[n];
             let refund = Self::attrib_cost(data, n, cur);
             if refund != i32::MAX {
                 self.stat_points_used -= refund;
@@ -560,9 +560,9 @@ impl SkillsPanel {
     fn raise_pool(&mut self, data: &SkillsPanelData, stat_idx: usize, pool: usize) {
         let avail = data.points - self.stat_points_used;
         let (base, cost_fn): (i32, fn(&SkillsPanelData, i32) -> i32) = match pool {
-            0 => (data.hp[0] as i32, Self::hp_cost),
-            1 => (data.end[0] as i32, Self::end_cost),
-            _ => (data.mana[0] as i32, Self::mana_cost),
+            0 => (i32::from(data.hp[0]), Self::hp_cost),
+            1 => (i32::from(data.end[0]), Self::end_cost),
+            _ => (i32::from(data.mana[0]), Self::mana_cost),
         };
         let cur = base + self.stat_raised[stat_idx];
         let need = cost_fn(data, cur);
@@ -577,9 +577,9 @@ impl SkillsPanel {
         if self.stat_raised[stat_idx] > 0 {
             self.stat_raised[stat_idx] -= 1;
             let (base, cost_fn): (i32, fn(&SkillsPanelData, i32) -> i32) = match pool {
-                0 => (data.hp[0] as i32, Self::hp_cost),
-                1 => (data.end[0] as i32, Self::end_cost),
-                _ => (data.mana[0] as i32, Self::mana_cost),
+                0 => (i32::from(data.hp[0]), Self::hp_cost),
+                1 => (i32::from(data.end[0]), Self::end_cost),
+                _ => (i32::from(data.mana[0]), Self::mana_cost),
             };
             let cur = base + self.stat_raised[stat_idx];
             let refund = cost_fn(data, cur);
@@ -592,7 +592,7 @@ impl SkillsPanel {
     /// Spend points to raise skill `skill_id` by one.
     fn raise_skill(&mut self, data: &SkillsPanelData, skill_id: usize, raised_idx: usize) {
         let avail = data.points - self.stat_points_used;
-        let cur = data.skill[skill_id][0] as i32 + self.stat_raised[raised_idx];
+        let cur = i32::from(data.skill[skill_id][0]) + self.stat_raised[raised_idx];
         let need = Self::skill_cost(data, skill_id, cur);
         if need != i32::MAX && need <= avail {
             self.stat_points_used += need;
@@ -604,7 +604,7 @@ impl SkillsPanel {
     fn lower_skill(&mut self, data: &SkillsPanelData, skill_id: usize, raised_idx: usize) {
         if self.stat_raised[raised_idx] > 0 {
             self.stat_raised[raised_idx] -= 1;
-            let cur = data.skill[skill_id][0] as i32 + self.stat_raised[raised_idx];
+            let cur = i32::from(data.skill[skill_id][0]) + self.stat_raised[raised_idx];
             let refund = Self::skill_cost(data, skill_id, cur);
             if refund != i32::MAX {
                 self.stat_points_used -= refund;
@@ -879,8 +879,8 @@ impl Widget for SkillsPanel {
         for n in 0..5 {
             let y = self.attr_row_y(n);
             let raised = self.stat_raised[n];
-            let value_total = data.attrib[n][5] as i32 + raised;
-            let value_bare = data.attrib[n][0] as i32 + raised;
+            let value_total = i32::from(data.attrib[n][5]) + raised;
+            let value_bare = i32::from(data.attrib[n][0]) + raised;
             let cost = Self::attrib_cost(data, n, value_bare);
 
             let line = format!("{:<14} {:3}", ATTR_NAMES[n], value_total);
@@ -936,20 +936,20 @@ impl Widget for SkillsPanel {
         let pool_info: [(&str, i32, i32, usize); 3] = [
             (
                 "Hitpoints",
-                data.hp[5] as i32 + self.stat_raised[5],
-                Self::hp_cost(data, data.hp[0] as i32 + self.stat_raised[5]),
+                i32::from(data.hp[5]) + self.stat_raised[5],
+                Self::hp_cost(data, i32::from(data.hp[0]) + self.stat_raised[5]),
                 5,
             ),
             (
                 "Endurance",
-                data.end[5] as i32 + self.stat_raised[6],
-                Self::end_cost(data, data.end[0] as i32 + self.stat_raised[6]),
+                i32::from(data.end[5]) + self.stat_raised[6],
+                Self::end_cost(data, i32::from(data.end[0]) + self.stat_raised[6]),
                 6,
             ),
             (
                 "Mana",
-                data.mana[5] as i32 + self.stat_raised[7],
-                Self::mana_cost(data, data.mana[0] as i32 + self.stat_raised[7]),
+                i32::from(data.mana[5]) + self.stat_raised[7],
+                Self::mana_cost(data, i32::from(data.mana[0]) + self.stat_raised[7]),
                 7,
             ),
         ];
@@ -1032,8 +1032,8 @@ impl Widget for SkillsPanel {
                 }
 
                 let raised = self.stat_raised[raised_idx];
-                let value_total = data.skill[skill_id][5] as i32 + raised;
-                let value_bare = data.skill[skill_id][0] as i32 + raised;
+                let value_total = i32::from(data.skill[skill_id][5]) + raised;
+                let value_bare = i32::from(data.skill[skill_id][0]) + raised;
                 let cost = Self::skill_cost(data, skill_id, value_bare);
 
                 let line = format!("{:<14} {:3}", name, value_total);

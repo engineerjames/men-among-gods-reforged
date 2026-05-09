@@ -558,7 +558,7 @@ impl Widget for ChatBox {
         );
 
         // 1. Semi-transparent background (alpha-scaled by idle fade)
-        let bg_a = ((self.bg_color.a as f32) * (self.alpha as f32 / 255.0)) as u8;
+        let bg_a = (f32::from(self.bg_color.a) * (f32::from(self.alpha) / 255.0)) as u8;
         let bg_color = Color::RGBA(self.bg_color.r, self.bg_color.g, self.bg_color.b, bg_a);
         ctx.canvas.set_blend_mode(BlendMode::Blend);
         ctx.canvas.set_draw_color(bg_color);
@@ -588,7 +588,7 @@ impl Widget for ChatBox {
         }
 
         // 3. Separator line between log and input (alpha-scaled)
-        let sep_a = ((SEPARATOR_COLOR.a as f32) * (self.alpha as f32 / 255.0)) as u8;
+        let sep_a = (f32::from(SEPARATOR_COLOR.a) * (f32::from(self.alpha) / 255.0)) as u8;
         let sep_color = Color::RGBA(
             SEPARATOR_COLOR.r,
             SEPARATOR_COLOR.g,

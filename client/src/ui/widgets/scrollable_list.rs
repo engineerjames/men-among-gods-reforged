@@ -12,6 +12,7 @@ use sdl2::render::BlendMode;
 
 use crate::font_cache;
 use crate::ui::RenderContext;
+use crate::ui::visuals::rank_sigil::{self, RankSigil};
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 
 // ---------------------------------------------------------------------------
@@ -36,13 +37,15 @@ const FONT: usize = 1;
 /// Width of the scrollbar track.
 const SCROLLBAR_W: u32 = 6;
 
+/// Lowest rank index that should display a sigil (rank 0 is fully transparent).
+const FIRST_VISIBLE_RANK: usize = 1;
+
 /// Minimum scrollbar knob height.
 const SCROLLBAR_KNOB_MIN_H: u32 = 10;
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
 /// A single item in the list.
 #[derive(Clone, Debug)]
 pub struct ListItem {
@@ -52,6 +55,8 @@ pub struct ListItem {
     pub label: String,
     /// Optional sprite ID to render as a thumbnail.
     pub sprite_id: Option<usize>,
+    /// Optional rank index (0–23) to render a sigil after the label text.
+    pub rank_index: Option<usize>,
 }
 
 // ---------------------------------------------------------------------------
@@ -347,6 +352,28 @@ impl Widget for ScrollableList {
                 text_y,
                 font_cache::TextStyle::PLAIN,
             )?;
+
+            // Rank sigil (right-justified, vertically centered, rank 0 is invisible).
+            // Scale down proportionally so the sigil fits within 40px tall.
+            if let Some(rank_idx) = item.rank_index {
+                if rank_idx >= FIRST_VISIBLE_RANK {
+                    let sigil_sprite_id = 10 + rank_idx.min(20);
+                    let (trim_top, draw_h) = RankSigil::draw_metrics(rank_idx);
+                    let max_h = 40_u32;
+                    let (dest_w, dest_h) = if draw_h > max_h {
+                        let scaled_w = (rank_sigil::SIGIL_WIDTH as u32 * max_h / draw_h).max(1);
+                        (scaled_w, max_h)
+                    } else {
+                        (rank_sigil::SIGIL_WIDTH as u32, draw_h)
+                    };
+                    let sigil_x = self.bounds.x + content_w as i32 - dest_w as i32 - PAD_X;
+                    let sigil_y = row_y + (ROW_H - dest_h as i32) / 2;
+                    let tex = ctx.gfx.get_texture(sigil_sprite_id);
+                    let src = Rect::new(0, trim_top as i32, rank_sigil::SIGIL_WIDTH as u32, draw_h);
+                    let dst = Rect::new(sigil_x, sigil_y, dest_w, dest_h);
+                    let _ = ctx.canvas.copy(tex, Some(src), Some(dst));
+                }
+            }
         }
 
         // ── Scrollbar ───────────────────────────────────────────────────
@@ -387,6 +414,7 @@ mod tests {
                 id: i as u64,
                 label: format!("Item {}", i),
                 sprite_id: None,
+                rank_index: None,
             })
             .collect();
         list.set_items(items);

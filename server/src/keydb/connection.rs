@@ -1,3 +1,4 @@
+use core::ranks::points2rank;
 use core::traits::{Class, Sex, class_from_kindred, sex_from_kindred};
 use core::types::api::GameLoginTicketMetadata;
 use core::types::{Character, CharacterSummary};
@@ -53,7 +54,7 @@ fn keydb_url_with_dotenv(load_dotenv: bool) -> String {
             .collect();
         return format!("redis://:{encoded}@127.0.0.1:5556/");
     }
-    "redis://127.0.0.1:5556/".to_string()
+    "redis://127.0.0.1:5556/".to_owned()
 }
 
 /// Return the KeyDB connection URL.
@@ -146,7 +147,7 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
         .map_err(|err| format!("Failed to load character from KeyDB: {err}"))?;
 
     let character_map: HashMap<String, String> =
-        redis::from_redis_value(raw).map_err(|_| "Failed to parse character hash".to_string())?;
+        redis::from_redis_value(raw).map_err(|_| "Failed to parse character hash".to_owned())?;
 
     if character_map.is_empty() {
         return Ok(None);
@@ -164,15 +165,14 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
     let sex_value = character_map
         .get("sex")
         .and_then(|value| value.parse::<u32>().ok())
-        .ok_or_else(|| "Missing character sex".to_string())?;
-    let sex = Sex::from_u32(sex_value).ok_or_else(|| "Invalid character sex".to_string())?;
+        .ok_or_else(|| "Missing character sex".to_owned())?;
+    let sex = Sex::from_u32(sex_value).ok_or_else(|| "Invalid character sex".to_owned())?;
 
     let class_value = character_map
         .get("class")
         .and_then(|value| value.parse::<u32>().ok())
-        .ok_or_else(|| "Missing character class".to_string())?;
-    let class =
-        Class::from_u32(class_value).ok_or_else(|| "Invalid character class".to_string())?;
+        .ok_or_else(|| "Missing character class".to_owned())?;
+    let class = Class::from_u32(class_value).ok_or_else(|| "Invalid character class".to_owned())?;
 
     let server_id = character_map
         .get("server_id")
@@ -180,6 +180,9 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
     let selection_sprite_id = character_map
         .get("selection_sprite_id")
         .and_then(|value| value.parse::<u16>().ok());
+    let rank_index = character_map
+        .get("rank_index")
+        .and_then(|value| value.parse::<u8>().ok());
 
     Ok(Some(CharacterSummary {
         id: character_id,
@@ -189,6 +192,7 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
         class,
         selection_sprite_id,
         server_id,
+        rank_index,
     }))
 }
 
@@ -196,16 +200,18 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
 ///
 /// # Arguments
 ///
-/// * `character` - Live gameplay character whose class, sex, and sprite should be mirrored.
+/// * `character` - Live gameplay character whose class, sex, sprite, and rank should be mirrored.
 ///
 /// # Returns
 ///
-/// * `Some((class, sex, selection_sprite_id))` when the live character encodes both class and sex.
+/// * `Some((class, sex, selection_sprite_id, rank_index))` when the live character encodes both
+///   class and sex.
 /// * `None` when the live character does not contain enough metadata to build a selection record.
-fn derive_character_selection_metadata(character: &Character) -> Option<(Class, Sex, u16)> {
+fn derive_character_selection_metadata(character: &Character) -> Option<(Class, Sex, u16, u8)> {
     let class = class_from_kindred(character.kindred)?;
     let sex = sex_from_kindred(character.kindred)?;
-    Some((class, sex, character.sprite))
+    let rank_index = points2rank(character.points_tot.max(0) as u32) as u8;
+    Some((class, sex, character.sprite, rank_index))
 }
 
 /// Writes selection metadata fields for an API-side character hash.
@@ -216,6 +222,7 @@ fn derive_character_selection_metadata(character: &Character) -> Option<(Class, 
 /// * `class` - Current class to expose to the selection screen and login flow.
 /// * `sex` - Current sex to expose to the selection screen and login flow.
 /// * `selection_sprite_id` - Server-authored sprite ID for selection portraits.
+/// * `rank_index` - Rank index (0–23) derived from the character's total experience points.
 ///
 /// # Returns
 ///
@@ -226,6 +233,7 @@ fn set_character_selection_metadata(
     class: Class,
     sex: Sex,
     selection_sprite_id: u16,
+    rank_index: u8,
 ) -> Result<(), String> {
     let mut con = connect()?;
     let key = format!("character:{}", character_id);
@@ -237,6 +245,8 @@ fn set_character_selection_metadata(
         .arg(sex as u32)
         .arg("selection_sprite_id")
         .arg(selection_sprite_id)
+        .arg("rank_index")
+        .arg(rank_index)
         .query::<()>(&mut con)
         .map_err(|err| format!("Failed to set character selection metadata: {err}"))
 }
@@ -256,10 +266,11 @@ pub fn sync_character_selection_metadata(
     character_id: u64,
     character: &Character,
 ) -> Result<(), String> {
-    let (class, sex, selection_sprite_id) = derive_character_selection_metadata(character)
-        .ok_or_else(|| "Failed to derive live character selection metadata".to_string())?;
+    let (class, sex, selection_sprite_id, rank_index) =
+        derive_character_selection_metadata(character)
+            .ok_or_else(|| "Failed to derive live character selection metadata".to_owned())?;
 
-    set_character_selection_metadata(character_id, class, sex, selection_sprite_id)
+    set_character_selection_metadata(character_id, class, sex, selection_sprite_id, rank_index)
 }
 
 /// Persists the linked gameplay `server_id` for an API-side character hash.
@@ -428,11 +439,14 @@ mod tests {
         let mut character = Character::default();
         character.kindred = (traits::KIN_ARCHTEMPLAR | traits::KIN_FEMALE) as i32;
         character.sprite = 8144;
+        character.points_tot = 0;
 
-        assert_eq!(
-            derive_character_selection_metadata(&character),
-            Some((Class::ArchTemplar, Sex::Female, 8144))
-        );
+        let (class, sex, sprite, rank_index) =
+            derive_character_selection_metadata(&character).unwrap();
+        assert_eq!(class, Class::ArchTemplar);
+        assert_eq!(sex, Sex::Female);
+        assert_eq!(sprite, 8144);
+        assert_eq!(rank_index, 0);
     }
 
     #[test]
@@ -442,5 +456,22 @@ mod tests {
         character.sprite = 8144;
 
         assert_eq!(derive_character_selection_metadata(&character), None);
+    }
+
+    #[test]
+    fn derive_character_selection_metadata_rank_index_from_points_tot() {
+        let mut character = Character::default();
+        character.kindred = (traits::KIN_MERCENARY | traits::KIN_MALE) as i32;
+        character.sprite = 0;
+
+        // points_tot = 0 → rank 0 (Private).
+        character.points_tot = 0;
+        let (_, _, _, rank_index) = derive_character_selection_metadata(&character).unwrap();
+        assert_eq!(rank_index, 0);
+
+        // points_tot = 50 → rank 1 (Private First Class) per RANK_THRESHOLDS.
+        character.points_tot = 50;
+        let (_, _, _, rank_index) = derive_character_selection_metadata(&character).unwrap();
+        assert_eq!(rank_index, 1);
     }
 }

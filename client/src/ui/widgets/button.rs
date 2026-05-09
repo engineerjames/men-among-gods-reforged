@@ -308,9 +308,9 @@ impl CircleButton {
     ///
     /// `true` if inside or on the boundary.
     fn contains_point(&self, px: i32, py: i32) -> bool {
-        let dx = (px - self.center_x) as i64;
-        let dy = (py - self.center_y) as i64;
-        let r = self.radius as i64;
+        let dx = i64::from(px - self.center_x);
+        let dy = i64::from(py - self.center_y);
+        let r = i64::from(self.radius);
         dx * dx + dy * dy <= r * r
     }
 

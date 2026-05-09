@@ -325,7 +325,7 @@ pub(crate) async fn get_map_reload_status(
         Some(_) => "pending",
         None => "pending",
     }
-    .to_string();
+    .to_owned();
 
     Json(MapReloadStatusResponse {
         status,

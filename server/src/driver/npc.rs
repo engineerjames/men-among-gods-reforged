@@ -65,7 +65,7 @@ pub fn get_frust_y_off(f: i32) -> i32 {
 ///
 /// The maximum of the absolute X or Y distance as i32.
 pub fn npc_dist(cn: &Character, co: &Character) -> i32 {
-    std::cmp::max((cn.x - co.x).abs(), (cn.y - co.y).abs()) as i32
+    i32::from(std::cmp::max((cn.x - co.x).abs(), (cn.y - co.y).abs()))
 }
 
 // ****************************************************
@@ -108,7 +108,7 @@ pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> 
 
     let ticker = gs.globals.ticker;
     gs.characters[cn].data[76] =
-        gs.characters[co].x as i32 + gs.characters[co].y as i32 * SERVER_MAPX;
+        i32::from(gs.characters[co].x) + i32::from(gs.characters[co].y) * SERVER_MAPX;
     gs.characters[cn].data[77] = ticker;
 
     let cc = gs.characters[cn].attack_cn;
@@ -161,13 +161,13 @@ pub fn npc_is_enemy(cn: &Character, co: &Character, co_idx: usize) -> bool {
 }
 
 pub fn npc_list_enemies(gs: &mut GameState, npc: usize, cn: usize) -> bool {
-    let npc_name = c_string_to_str(&gs.characters[npc].name).to_string();
+    let npc_name = c_string_to_str(&gs.characters[npc].name).to_owned();
     let mut enemies = Vec::new();
 
     for n in 80..92 {
         let cv = (gs.characters[npc].data[n] & 0xFFFF) as usize;
         if cv > 0 && cv < MAXCHARS {
-            enemies.push(c_string_to_str(&gs.characters[cv].name).to_string());
+            enemies.push(c_string_to_str(&gs.characters[cv].name).to_owned());
         }
     }
 
@@ -230,7 +230,7 @@ pub fn npc_saytext_n(gs: &mut GameState, npc: usize, n: usize, name: Option<&str
     let text = if let Some(name_str) = name {
         base_text.replace("%s", name_str)
     } else {
-        base_text.to_string()
+        base_text.to_owned()
     };
 
     let temp = ch_npc.temp;
@@ -256,7 +256,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
         && (gs.characters[co].flags & CharacterFlags::Player.bits()) != 0
         && gs.characters[cn].alignment == 10000
         && (gs.characters[cn].get_name() != "Peacekeeper"
-            || gs.characters[cn].a_hp < (gs.characters[cn].hp[5] * 500) as i32)
+            || gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 500))
         && gs.characters[cn].data[70] < ticker
     {
         gs.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
@@ -264,8 +264,8 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
             gs,
             6,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         );
         gs.characters[cn].data[70] = ticker + (TICKS * 60);
@@ -303,39 +303,39 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
     // Help request for good aligned characters
     if gs.characters[cn].alignment > 1000
         && gs.characters[cn].data[70] < ticker
-        && gs.characters[cn].a_mana < gs.characters[cn].mana[5] as i32 * 333
+        && gs.characters[cn].a_mana < i32::from(gs.characters[cn].mana[5]) * 333
     {
         gs.do_sayx(cn, "Skua! Help me!");
         gs.characters[cn].data[70] = ticker + (TICKS * 60 * 2);
-        gs.characters[cn].a_mana = gs.characters[cn].mana[5] as i32 * 1000;
+        gs.characters[cn].a_mana = i32::from(gs.characters[cn].mana[5]) * 1000;
         EffectManager::fx_add_effect(
             gs,
             6,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         );
     }
 
     // Shout for help
     if gs.characters[cn].data[52] != 0
-        && gs.characters[cn].a_hp < gs.characters[cn].hp[5] as i32 * 666
+        && gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 666
     {
         if gs.characters[cn].data[55] + (TICKS * 60) < ticker {
             gs.characters[cn].data[54] = 0;
             gs.characters[cn].data[55] = ticker;
             if co < MAXCHARS {
-                let co_name = gs.characters[co].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_owned();
                 npc_saytext_n(gs, cn, 4, Some(&co_name));
             }
             gs.do_npc_shout(
                 cn,
-                NT_SHOUT as i32,
+                i32::from(NT_SHOUT),
                 cn as i32,
                 gs.characters[cn].data[52],
-                gs.characters[cn].x as i32,
-                gs.characters[cn].y as i32,
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
             );
         }
     }
@@ -349,8 +349,8 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
 
     // Fight back
     if co < MAXCHARS {
-        let co_name = gs.characters[co].get_name().to_string();
-        let cn_name = gs.characters[cn].get_name().to_string();
+        let co_name = gs.characters[co].get_name().to_owned();
+        let cn_name = gs.characters[cn].get_name().to_owned();
         if npc_add_enemy(gs, cn, co, true) {
             npc_saytext_n(gs, cn, 1, Some(&co_name));
             log::info!(
@@ -395,7 +395,7 @@ pub fn npc_killed(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     for n in 80..92 {
         if gs.characters[cn].data[n] == idx {
             if cn == cc && co < MAXCHARS {
-                let co_name = gs.characters[co].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_owned();
                 npc_saytext_n(gs, cn, 0, Some(&co_name));
                 gs.characters[cn].data[n] = 0;
             } else {
@@ -448,8 +448,8 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
         };
 
         if ret {
-            let c2_name = gs.characters[c2].get_name().to_string();
-            let c3_name = gs.characters[c3].get_name().to_string();
+            let c2_name = gs.characters[c2].get_name().to_owned();
+            let c3_name = gs.characters[c3].get_name().to_owned();
             npc_saytext_n(gs, cn, 1, Some(&c2_name));
             log::info!(
                 "NPC {} added {} to enemy list for attacking {}",
@@ -465,8 +465,8 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
     if gs.characters[cn].data[31] != 0 {
         if gs.characters[co].temp == gs.characters[cn].data[31] as u16 {
             if npc_add_enemy(gs, cn, cc, true) {
-                let cc_name = gs.characters[cc].get_name().to_string();
-                let co_name = gs.characters[co].get_name().to_string();
+                let cc_name = gs.characters[cc].get_name().to_owned();
+                let co_name = gs.characters[co].get_name().to_owned();
                 npc_saytext_n(gs, cn, 1, Some(&cc_name));
                 log::info!(
                     "NPC {} added {} to enemy list for attacking {} (protect char)",
@@ -485,8 +485,8 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
     if gs.characters[cn].data[63] != 0 {
         if co == gs.characters[cn].data[63] as usize {
             if npc_add_enemy(gs, cn, cc, true) {
-                let cc_name = gs.characters[cc].get_name().to_string();
-                let co_name = gs.characters[co].get_name().to_string();
+                let cc_name = gs.characters[cc].get_name().to_owned();
+                let co_name = gs.characters[co].get_name().to_owned();
                 npc_saytext_n(gs, cn, 1, Some(&cc_name));
                 log::info!(
                     "NPC {} added {} to enemy list for attacking {} (protect char)",
@@ -501,8 +501,8 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
         }
         if cc == gs.characters[cn].data[63] as usize {
             if npc_add_enemy(gs, cn, co, true) {
-                let co_name = gs.characters[co].get_name().to_string();
-                let cc_name = gs.characters[cc].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_owned();
+                let cc_name = gs.characters[cc].get_name().to_owned();
                 npc_saytext_n(gs, cn, 1, Some(&co_name));
                 log::info!(
                     "NPC {} added {} to enemy list for being attacked by {} (protect char)",
@@ -521,8 +521,8 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
     if gs.characters[cn].data[59] != 0 {
         if gs.characters[cn].data[59] == gs.characters[co].data[42] {
             if npc_add_enemy(gs, cn, cc, true) {
-                let cc_name = gs.characters[cc].get_name().to_string();
-                let co_name = gs.characters[co].get_name().to_string();
+                let cc_name = gs.characters[cc].get_name().to_owned();
+                let co_name = gs.characters[co].get_name().to_owned();
                 npc_saytext_n(gs, cn, 1, Some(&cc_name));
                 log::info!(
                     "NPC {} added {} to enemy list for attacking {} (protect group)",
@@ -537,8 +537,8 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
         }
         if gs.characters[cn].data[59] == gs.characters[cc].data[42] {
             if npc_add_enemy(gs, cn, co, true) {
-                let co_name = gs.characters[co].get_name().to_string();
-                let cc_name = gs.characters[cc].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_owned();
+                let cc_name = gs.characters[cc].get_name().to_owned();
                 npc_saytext_n(gs, cn, 1, Some(&co_name));
                 log::info!(
                     "NPC {} added {} to enemy list for being attacked by {} (protect group)",
@@ -610,7 +610,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
     }
 
     // Item given and matches what NPC wants
-    if in_item != 0 && gs.items[in_item].temp as i32 == gs.characters[cn].data[49] {
+    if in_item != 0 && i32::from(gs.items[in_item].temp) == gs.characters[cn].data[49] {
         // Black candle special-case
         if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
             gs.characters[co].data[43] += 1;
@@ -628,8 +628,8 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
             gs.do_area_log(
                 cn,
                 0,
-                gs.characters[cn].x as i32,
-                gs.characters[cn].y as i32,
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
                 core::types::FontColor::Yellow,
                 &format!(
                     "The Cityguard is impressed by {}'s deed.\n",
@@ -638,7 +638,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
             );
         } else {
             // Thank you message
-            let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
+            let ref_name = c_string_to_str(&gs.items[in_item].reference).to_owned();
             gs.do_sayx(
                 cn,
                 &format!(
@@ -718,7 +718,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                     &format!(
                         "{} did not accept the {}.\n",
                         gs.characters[cn].get_name(),
-                        gs.items[in_item].get_name().to_string()
+                        gs.items[in_item].get_name().to_owned()
                     ),
                 );
             } else {
@@ -756,7 +756,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                 cn,
                 &format!(
                     "Here is your {} in exchange.",
-                    c_string_to_str(&gs.item_templates[give_temp as usize].reference).to_string()
+                    c_string_to_str(&gs.item_templates[give_temp as usize].reference).to_owned()
                 ),
             );
             God::take_from_char(gs, in_item, cn);
@@ -779,7 +779,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                     cn,
                     &format!(
                         "I'm still riddling {}; please come back later!\n",
-                        gs.characters[still as usize].get_name().to_string()
+                        gs.characters[still as usize].get_name().to_owned()
                     ),
                 );
                 God::take_from_char(gs, in_item, cn);
@@ -809,7 +809,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
             &format!(
                 "{} did not accept the {}.\n",
                 gs.characters[cn].get_name(),
-                gs.items[in_item].get_name().to_string()
+                gs.items[in_item].get_name().to_owned()
             ),
         );
     }
@@ -832,7 +832,7 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
 /// * `true` when the item was accepted and consumed; `false` when the NPC would not take it.
 pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usize) -> bool {
     // Item must match what this NPC wants.
-    if in_item == 0 || gs.items[in_item].temp as i32 != gs.characters[cn].data[49] {
+    if in_item == 0 || i32::from(gs.items[in_item].temp) != gs.characters[cn].data[49] {
         return false;
     }
 
@@ -851,8 +851,8 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
         gs.do_area_log(
             cn,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             core::types::FontColor::Yellow,
             &format!(
                 "The Cityguard is impressed by {}'s deed.\n",
@@ -915,7 +915,7 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
             return false;
         }
 
-        let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
+        let ref_name = c_string_to_str(&gs.items[in_item].reference).to_owned();
         gs.do_sayx(
             cn,
             &format!(
@@ -953,7 +953,7 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
     }
 
     // "Thank you" message.
-    let ref_name = c_string_to_str(&gs.items[in_item].reference).to_string();
+    let ref_name = c_string_to_str(&gs.items[in_item].reference).to_owned();
     gs.do_sayx(
         cn,
         &format!(
@@ -970,7 +970,7 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
             cn,
             &format!(
                 "Here is your {} in exchange.",
-                c_string_to_str(&gs.item_templates[give_temp as usize].reference).to_string()
+                c_string_to_str(&gs.item_templates[give_temp as usize].reference).to_owned()
             ),
         );
         God::take_from_char(gs, in_item, co);
@@ -993,7 +993,7 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
                 cn,
                 &format!(
                     "I'm still riddling {}; please come back later!\n",
-                    gs.characters[still as usize].get_name().to_string()
+                    gs.characters[still as usize].get_name().to_owned()
                 ),
             );
             return false;
@@ -1060,7 +1060,7 @@ pub fn npc_died(gs: &mut GameState, cn: usize, co: usize) -> bool {
         let roll = helpers::random_mod_i32(100);
         if roll < chance {
             let co_name = if co < MAXCHARS {
-                gs.characters[co].get_name().to_string()
+                gs.characters[co].get_name().to_owned()
             } else {
                 String::new()
             };
@@ -1087,7 +1087,7 @@ pub fn npc_shout(gs: &mut GameState, cn: usize, co: usize, code: i32, x: i32, y:
         gs.characters[cn].data[55] = gs.globals.ticker;
 
         let co_name = if co < MAXCHARS {
-            gs.characters[co].get_name().to_string()
+            gs.characters[co].get_name().to_owned()
         } else {
             String::new()
         };
@@ -1150,20 +1150,20 @@ pub fn npc_msg(
     }
 
     match msg_type {
-        x if x == NT_GOTHIT as i32 => npc_gothit(gs, cn, dat1 as usize, dat2),
-        x if x == NT_GOTMISS as i32 => npc_gotmiss(gs, cn, dat1 as usize),
-        x if x == NT_DIDHIT as i32 => npc_didhit(cn, dat1 as usize, dat2),
-        x if x == NT_DIDMISS as i32 => npc_didmiss(cn, dat1 as usize),
-        x if x == NT_DIDKILL as i32 => npc_didkill(gs, cn, dat1 as usize),
-        x if x == NT_GOTEXP as i32 => npc_gotexp(cn, dat1),
-        x if x == NT_SEEKILL as i32 => npc_seekill(gs, cn, dat1 as usize, dat2 as usize),
-        x if x == NT_SEEHIT as i32 => npc_seehit(gs, cn, dat1 as usize, dat2 as usize),
-        x if x == NT_SEEMISS as i32 => npc_seemiss(gs, cn, dat1 as usize, dat2 as usize),
-        x if x == NT_GIVE as i32 => npc_give(gs, cn, dat1 as usize, dat2 as usize, dat3),
-        x if x == NT_SEE as i32 => npc_see(gs, cn, dat1 as usize),
-        x if x == NT_DIED as i32 => npc_died(gs, cn, dat1 as usize),
-        x if x == NT_SHOUT as i32 => npc_shout(gs, cn, dat1 as usize, dat2, dat3, dat4),
-        x if x == NT_HITME as i32 => npc_hitme(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_GOTHIT) => npc_gothit(gs, cn, dat1 as usize, dat2),
+        x if x == i32::from(NT_GOTMISS) => npc_gotmiss(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_DIDHIT) => npc_didhit(cn, dat1 as usize, dat2),
+        x if x == i32::from(NT_DIDMISS) => npc_didmiss(cn, dat1 as usize),
+        x if x == i32::from(NT_DIDKILL) => npc_didkill(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_GOTEXP) => npc_gotexp(cn, dat1),
+        x if x == i32::from(NT_SEEKILL) => npc_seekill(gs, cn, dat1 as usize, dat2 as usize),
+        x if x == i32::from(NT_SEEHIT) => npc_seehit(gs, cn, dat1 as usize, dat2 as usize),
+        x if x == i32::from(NT_SEEMISS) => npc_seemiss(gs, cn, dat1 as usize, dat2 as usize),
+        x if x == i32::from(NT_GIVE) => npc_give(gs, cn, dat1 as usize, dat2 as usize, dat3),
+        x if x == i32::from(NT_SEE) => npc_see(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_DIED) => npc_died(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_SHOUT) => npc_shout(gs, cn, dat1 as usize, dat2, dat3, dat4),
+        x if x == i32::from(NT_HITME) => npc_hitme(gs, cn, dat1 as usize),
         _ => {
             log::error!("Unknown NPC message for {}: {}", cn, msg_type);
             false
@@ -1176,7 +1176,7 @@ pub fn npc_msg(
 // ****************************************************
 
 pub fn get_spellcost(cn: &Character, spell: usize) -> i32 {
-    (match spell {
+    i32::from(match spell {
         skills::SK_BLAST => cn.skill[skills::SK_BLAST][5] / 5,
         skills::SK_IDENT => 50,
         skills::SK_CURSE => 35,
@@ -1190,7 +1190,7 @@ pub fn get_spellcost(cn: &Character, spell: usize) -> i32 {
         skills::SK_MSHIELD => 25,
         skills::SK_RECALL => 15,
         _ => 255, // Originally was 9999 which is invalid for a u8
-    }) as i32
+    })
 }
 
 pub fn spellflag(spell: usize) -> u32 {
@@ -1225,7 +1225,8 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
     }
 
     let map_item = map_item.unwrap();
-    if gs.map[m].flags & (core::constants::MF_MOVEBLOCK as u64 | core::constants::MF_NOMONST as u64)
+    if gs.map[m].flags
+        & (u64::from(core::constants::MF_MOVEBLOCK) | u64::from(core::constants::MF_NOMONST))
         != 0
         || gs.map[m].ch != 0
         || gs.map[m].to_ch != 0
@@ -1277,19 +1278,19 @@ pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize)
     if co.flags & CharacterFlags::Stoned.bits() != 0 {
         return false;
     }
-    if spell == skills::SK_BLAST && (cn.skill[skills::SK_BLAST][5] as i16 - co.armor) < 10 {
+    if spell == skills::SK_BLAST && (i16::from(cn.skill[skills::SK_BLAST][5]) - co.armor) < 10 {
         return false;
     }
     if spell == skills::SK_CURSE
-        && 10 * cn.skill[skills::SK_CURSE][5] as i32
-            / (std::cmp::max(1, co.skill[skills::SK_RESIST][5]) as i32)
+        && 10 * i32::from(cn.skill[skills::SK_CURSE][5])
+            / i32::from(std::cmp::max(1, co.skill[skills::SK_RESIST][5]))
             < 7
     {
         return false;
     }
     if spell == skills::SK_STUN
-        && 10 * cn.skill[skills::SK_STUN][5] as i32
-            / (std::cmp::max(1, co.skill[skills::SK_RESIST][5]) as i32)
+        && 10 * i32::from(cn.skill[skills::SK_STUN][5])
+            / i32::from(std::cmp::max(1, co.skill[skills::SK_RESIST][5]))
             < 5
     {
         return false;
@@ -1331,8 +1332,8 @@ pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> 
         let should_break = gs.items[item_index as usize].temp as usize == spell
             && gs.items[item_index as usize].power + 10
                 >= spell_immunity(
-                    gs.characters[cn].skill[spell][5] as i32,
-                    gs.characters[co].skill[skills::SK_IMMUN][5] as i32,
+                    i32::from(gs.characters[cn].skill[spell][5]),
+                    i32::from(gs.characters[co].skill[skills::SK_IMMUN][5]),
                 ) as u32
             && gs.items[item_index as usize].active > gs.items[item_index as usize].duration / 2;
 
@@ -1392,7 +1393,7 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
             continue;
         }
 
-        if gs.items[item_index as usize].temp as i32 == stemp {
+        if i32::from(gs.items[item_index as usize].temp) == stemp {
             return false;
         }
     }
@@ -1410,7 +1411,7 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
 
         if gs.items[idx as usize].temp == itemp as u16 {
             should_quaff = true;
-            name = gs.items[idx as usize].get_name().to_string();
+            name = gs.items[idx as usize].get_name().to_owned();
             item_index = idx as usize;
             break;
         }
@@ -1423,8 +1424,8 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
     gs.do_area_log(
         cn,
         0,
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         core::types::FontColor::Yellow,
         &format!("The {} uses a {}.\n", gs.characters[cn].get_name(), name),
     );
@@ -1439,8 +1440,8 @@ pub fn die_companion(gs: &mut GameState, cn: usize) {
         gs,
         7,
         0,
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         0,
     );
     God::destroy_items(gs, cn);
@@ -1547,7 +1548,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     {
         let a_hp = gs.characters[cn].a_hp;
         let hp5 = gs.characters[cn].hp[5];
-        if a_hp < hp5 as i32 * 600 {
+        if a_hp < i32::from(hp5) * 600 {
             if npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
                 return true;
             }
@@ -1603,7 +1604,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     {
         let a_mana = gs.characters[cn].a_mana;
         let med_skill = gs.characters[cn].skill[skills::SK_MEDIT][0];
-        if a_mana > (gs.characters[cn].mana[5] as i32) * 850 && med_skill != 0 {
+        if a_mana > i32::from(gs.characters[cn].mana[5]) * 850 && med_skill != 0 {
             if a_mana > 75000 && npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
                 return true;
             }
@@ -1668,7 +1669,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
         if co != 0 {
             let a_hp = gs.characters[co].a_hp;
             let hp5 = gs.characters[co].hp[5];
-            if a_hp < hp5 as i32 * 600 {
+            if a_hp < i32::from(hp5) * 600 {
                 if npc_try_spell(gs, cn, co, skills::SK_HEAL) {
                     return true;
                 }
@@ -1692,7 +1693,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                 }
             }
 
-            if gs.characters[co].a_hp < gs.characters[co].hp[5] as i32 * 600 {
+            if gs.characters[co].a_hp < i32::from(gs.characters[co].hp[5]) * 600 {
                 if npc_try_spell(gs, cn, co, skills::SK_HEAL) {
                     return true;
                 }
@@ -1715,7 +1716,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             }
 
             if cc != 0
-                && gs.characters[co].a_hp < gs.characters[co].hp[5] as i32 * 650
+                && gs.characters[co].a_hp < i32::from(gs.characters[co].hp[5]) * 650
                 && npc_is_enemy(&gs.characters[cn], &gs.characters[cc], cc)
             {
                 if npc_try_spell(gs, cn, cc, skills::SK_BLAST) {
@@ -1739,7 +1740,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             }
 
             if co != 0
-                && (gs.characters[cn].a_hp < gs.characters[cn].hp[5] as i32 * 600
+                && (gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 600
                     || helpers::random_mod_i32(10) == 0)
             {
                 if npc_try_spell(gs, cn, co, skills::SK_BLAST) {
@@ -1750,7 +1751,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             if co != 0 && gs.globals.ticker > gs.characters[cn].data[75] {
                 if npc_try_spell(gs, cn, co, skills::SK_STUN) {
                     gs.characters[cn].data[75] = gs.globals.ticker
-                        + gs.characters[cn].skill[skills::SK_STUN][5] as i32
+                        + i32::from(gs.characters[cn].skill[skills::SK_STUN][5])
                         + TICKS * 8;
                     return true;
                 }
@@ -1798,8 +1799,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
         let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
         let rx = helpers::random_mod_i32(10);
         let ry = helpers::random_mod_i32(10);
-        gs.characters[cn].goto_x = (x as i32 + 5 - rx) as u16;
-        gs.characters[cn].goto_y = (y as i32 + 5 - ry) as u16;
+        gs.characters[cn].goto_x = (i32::from(x) + 5 - rx) as u16;
+        gs.characters[cn].goto_y = (i32::from(y) + 5 - ry) as u16;
         return true;
     }
 
@@ -1841,12 +1842,12 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     // indoor detection
     let indoor1 = {
         let idx = ch_pos.0 as usize + ch_pos.1 as usize * SERVER_MAPX as usize;
-        (gs.map[idx].flags & MF_INDOORS as u64) != 0
+        (gs.map[idx].flags & u64::from(MF_INDOORS)) != 0
     };
-    let min_y = std::cmp::max(ch_pos.1 as i32 - 8, 1) as usize;
-    let max_y = std::cmp::min(ch_pos.1 as i32 + 8, SERVER_MAPY - 1) as usize;
-    let min_x = std::cmp::max(ch_pos.0 as i32 - 8, 1) as usize;
-    let max_x = std::cmp::min(ch_pos.0 as i32 + 8, SERVER_MAPX - 1) as usize;
+    let min_y = std::cmp::max(i32::from(ch_pos.1) - 8, 1) as usize;
+    let max_y = std::cmp::min(i32::from(ch_pos.1) + 8, SERVER_MAPY - 1) as usize;
+    let min_x = std::cmp::max(i32::from(ch_pos.0) - 8, 1) as usize;
+    let max_x = std::cmp::min(i32::from(ch_pos.0) + 8, SERVER_MAPX - 1) as usize;
 
     for y in min_y..=max_y {
         for x in min_x..=max_x {
@@ -1856,8 +1857,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                 continue;
             }
 
-            let indoor2 = (gs.map[m].flags & MF_INDOORS as u64) != 0;
-            let it_temp = gs.items[map_it].temp as i32;
+            let indoor2 = (gs.map[m].flags & u64::from(MF_INDOORS)) != 0;
+            let it_temp = i32::from(gs.items[map_it].temp);
 
             if it_temp == gs.characters[cn].data[41] {
                 // check active and light conditions - TODO: check actual map light/dlight
@@ -1876,7 +1877,10 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             if gs.characters[cn].data[47] != 0 && indoor1 == indoor2 {
                 let flags = gs.items[map_it].flags;
                 if flags & ItemFlags::IF_TAKE.bits() != 0 {
-                    let (ch_x, ch_y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+                    let (ch_x, ch_y) = (
+                        i32::from(gs.characters[cn].x),
+                        i32::from(gs.characters[cn].y),
+                    );
                     let can_reach = gs.can_go(ch_x, ch_y, x as i32, y as i32) != 0;
                     let can_see = gs.do_char_can_see_item(cn, map_it) != 0;
 
@@ -1890,7 +1894,10 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                     }
                 }
                 if gs.items[map_it].driver == 7 {
-                    let (ch_x, ch_y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+                    let (ch_x, ch_y) = (
+                        i32::from(gs.characters[cn].x),
+                        i32::from(gs.characters[cn].y),
+                    );
                     let can_reach = gs.can_go(ch_x, ch_y, x as i32, y as i32) != 0;
                     let can_see = gs.do_char_can_see_item(cn, map_it) != 0;
 
@@ -1999,7 +2006,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
     // We're hurt: rest
     let (a_hp, hp_5) = (gs.characters[cn].a_hp, gs.characters[cn].hp[5]);
 
-    if a_hp < (hp_5 as i32 * 750) {
+    if a_hp < (i32::from(hp_5) * 750) {
         return;
     }
 
@@ -2087,7 +2094,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
         let x = (m % SERVER_MAPX) + get_frust_x_off(data_36);
         let y = (m / SERVER_MAPX) + get_frust_y_off(data_36);
 
-        if data_36 > 20 || ((ch_x as i32 - x).abs() + (ch_y as i32 - y).abs()) < 4 {
+        if data_36 > 20 || ((i32::from(ch_x) - x).abs() + (i32::from(ch_y) - y).abs()) < 4 {
             if data_36 <= 20 && data_79 != 0 {
                 gs.characters[cn].data[57] = ticker + data_79;
             }
@@ -2136,8 +2143,8 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
 
             for attempt in 0..5 {
                 // TODO: Call RANDOM function (doesn't exist yet, use placeholder)
-                x = ch_x as i32 - 5 + (ticker % 11); // RANDOM(11)
-                y = ch_y as i32 - 5 + ((ticker / 11) % 11); // RANDOM(11)
+                x = i32::from(ch_x) - 5 + (ticker % 11); // RANDOM(11)
+                y = i32::from(ch_y) - 5 + ((ticker / 11) % 11); // RANDOM(11)
 
                 if !(1..SERVER_MAPX).contains(&x) || !(1..=SERVER_MAPX).contains(&y) {
                     panic = attempt + 1;
@@ -2175,10 +2182,9 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                             gs.characters[cn].goto_x = xo as u16;
                             gs.characters[cn].goto_y = (yo - 1) as u16;
                             return;
-                        } else {
-                            panic = attempt + 1;
-                            continue;
                         }
+                        panic = attempt + 1;
+                        continue;
                     }
                 }
 
@@ -2187,7 +2193,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                     continue;
                 }
 
-                if gs.can_go(ch_x as i32, ch_y as i32, x, y) == 0 {
+                if gs.can_go(i32::from(ch_x), i32::from(ch_y), x, y) == 0 {
                     panic = attempt + 1;
                     continue;
                 }
@@ -2203,10 +2209,9 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
             gs.characters[cn].goto_x = x as u16;
             gs.characters[cn].goto_y = y as u16;
             return;
-        } else {
-            gs.characters[cn].data[61] -= 1;
-            return;
         }
+        gs.characters[cn].data[61] -= 1;
+        return;
     }
 
     // Resting position, lowest prio
@@ -2232,7 +2237,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
             return;
         }
 
-        if ch_dir as i32 != data_30 {
+        if i32::from(ch_dir) != data_30 {
             {
                 gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
 
@@ -2242,23 +2247,23 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                 let mut target_y = y;
 
                 match data_30 {
-                    d if d == DX_UP as i32 => target_y -= 1,
-                    d if d == DX_DOWN as i32 => target_y += 1,
-                    d if d == DX_LEFT as i32 => target_x -= 1,
-                    d if d == DX_RIGHT as i32 => target_x += 1,
-                    d if d == DX_LEFTUP as i32 => {
+                    d if d == i32::from(DX_UP) => target_y -= 1,
+                    d if d == i32::from(DX_DOWN) => target_y += 1,
+                    d if d == i32::from(DX_LEFT) => target_x -= 1,
+                    d if d == i32::from(DX_RIGHT) => target_x += 1,
+                    d if d == i32::from(DX_LEFTUP) => {
                         target_x -= 1;
                         target_y -= 1;
                     }
-                    d if d == DX_LEFTDOWN as i32 => {
+                    d if d == i32::from(DX_LEFTDOWN) => {
                         target_x -= 1;
                         target_y += 1;
                     }
-                    d if d == DX_RIGHTUP as i32 => {
+                    d if d == i32::from(DX_RIGHTUP) => {
                         target_x += 1;
                         target_y -= 1;
                     }
-                    d if d == DX_RIGHTDOWN as i32 => {
+                    d if d == i32::from(DX_RIGHTDOWN) => {
                         target_x += 1;
                         target_y += 1;
                     }
@@ -2299,7 +2304,7 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
         gs.characters[cn].mana[5],
     );
 
-    if data_26 == 2 && a_mana > (mana_5 as i32 * 900) {
+    if data_26 == 2 && a_mana > (i32::from(mana_5) * 900) {
         // Count active monsters of type 27
         let mut m = 0;
         for n in 1..MAXCHARS {
@@ -2371,8 +2376,8 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                         gs,
                         6,
                         0,
-                        gs.characters[co].x as i32,
-                        gs.characters[co].y as i32,
+                        i32::from(gs.characters[co].x),
+                        i32::from(gs.characters[co].y),
                         0,
                     );
                 }
@@ -2381,8 +2386,8 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
                     gs,
                     7,
                     0,
-                    gs.characters[cn].x as i32,
-                    gs.characters[cn].y as i32,
+                    i32::from(gs.characters[cn].x),
+                    i32::from(gs.characters[cn].y),
                     0,
                 );
                 gs.do_sayx(cn, "Khuzak gurawin duskar!");
@@ -2458,13 +2463,13 @@ pub fn npc_item_value(it: &core::types::Item) -> i32 {
         // TODO: Do a deeper dive into what this is doing -- originally
         // the C code has it.attrib here which is clearly wrong since attrib
         // only has 5 entries.
-        score += it.skill[n][0] as i32 * 5;
+        score += i32::from(it.skill[n][0]) * 5;
     }
 
     score += (it.value / 10) as i32;
-    score += it.weapon[0] as i32 * 50;
-    score += it.armor[0] as i32 * 50;
-    score -= it.damage_state as i32;
+    score += i32::from(it.weapon[0]) * 50;
+    score += i32::from(it.armor[0]) * 50;
+    score -= i32::from(it.damage_state);
 
     score
 }
@@ -2556,9 +2561,11 @@ pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     let (it_x, it_y) = (gs.items[in_idx].x, gs.items[in_idx].y);
 
     // Check if we're adjacent and facing the grave
-    if ((ch_x as i32 - it_x as i32).abs() + (ch_y as i32 - it_y as i32).abs()) > 1
-        || helpers::drv_dcoor2dir(it_x as i32 - ch_x as i32, it_y as i32 - ch_y as i32)
-            != ch_dir as i32
+    if ((i32::from(ch_x) - i32::from(it_x)).abs() + (i32::from(ch_y) - i32::from(it_y)).abs()) > 1
+        || helpers::drv_dcoor2dir(
+            i32::from(it_x) - i32::from(ch_x),
+            i32::from(it_y) - i32::from(ch_y),
+        ) != i32::from(ch_dir)
     {
         if frust > 20 {
             log::debug!(
@@ -2607,8 +2614,8 @@ pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
         if worn_item != 0 {
             let in_item = worn_item as usize;
             if npc_equip_item(gs, cn, in_item) {
-                let item_name = gs.items[in_item].get_name().to_string();
-                let co_name = gs.characters[co].get_name().to_string();
+                let item_name = gs.items[in_item].get_name().to_owned();
+                let co_name = gs.characters[co].get_name().to_owned();
                 log::info!("got {} from {}'s grave", item_name, co_name);
                 gs.characters[co].worn[n] = 0;
                 return true;
@@ -2624,16 +2631,16 @@ pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
             let in_item = inv_item as usize;
 
             if npc_equip_item(gs, cn, in_item) {
-                let item_name = gs.items[in_item].get_name().to_string();
-                let co_name = gs.characters[co].get_name().to_string();
+                let item_name = gs.items[in_item].get_name().to_owned();
+                let co_name = gs.characters[co].get_name().to_owned();
                 log::info!("got {} from {}'s grave", item_name, co_name);
                 gs.characters[co].item[n] = 0;
                 return true;
             }
 
             if npc_want_item(gs, cn, in_item) {
-                let item_name = gs.items[in_item].get_name().to_string();
-                let co_name = gs.characters[co].get_name().to_string();
+                let item_name = gs.items[in_item].get_name().to_owned();
+                let co_name = gs.characters[co].get_name().to_owned();
                 log::info!("got {} from {}'s grave", item_name, co_name);
                 gs.characters[co].item[n] = 0;
                 return true;
@@ -2644,7 +2651,7 @@ pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     // Try to loot gold
     let co_gold = gs.characters[co].gold;
     if co_gold != 0 {
-        let co_name = gs.characters[co].get_name().to_string();
+        let co_name = gs.characters[co].get_name().to_owned();
         log::info!(
             "got {:.2}G from {}'s grave",
             co_gold as f32 / 100.0,
@@ -2694,10 +2701,10 @@ pub fn npc_add_searched_grave(gs: &mut GameState, cn: usize, in_idx: usize) {
 pub fn npc_grave_logic(gs: &mut GameState, cn: usize) -> bool {
     let (ch_x, ch_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
-    let min_y = std::cmp::max(ch_y as i32 - 8, 1);
-    let max_y = std::cmp::min(ch_y as i32 + 8, SERVER_MAPY - 1);
-    let min_x = std::cmp::max(ch_x as i32 - 8, 1);
-    let max_x = std::cmp::min(ch_x as i32 + 8, SERVER_MAPX - 1);
+    let min_y = std::cmp::max(i32::from(ch_y) - 8, 1);
+    let max_y = std::cmp::min(i32::from(ch_y) + 8, SERVER_MAPY - 1);
+    let min_x = std::cmp::max(i32::from(ch_x) - 8, 1);
+    let max_x = std::cmp::min(i32::from(ch_x) + 8, SERVER_MAPX - 1);
 
     for y in min_y..max_y {
         for x in min_x..max_x {
@@ -2712,8 +2719,12 @@ pub fn npc_grave_logic(gs: &mut GameState, cn: usize) -> bool {
                 if is_grave {
                     let (it_x, it_y) = (gs.items[in_idx].x, gs.items[in_idx].y);
 
-                    let can_reach =
-                        gs.can_go(ch_x as i32, ch_y as i32, it_x as i32, it_y as i32) != 0;
+                    let can_reach = gs.can_go(
+                        i32::from(ch_x),
+                        i32::from(ch_y),
+                        i32::from(it_x),
+                        i32::from(it_y),
+                    ) != 0;
 
                     let can_see = gs.do_char_can_see_item(cn, in_idx) != 0;
 
@@ -2864,16 +2875,20 @@ pub fn shiva_activate_candle(gs: &mut GameState, cn: usize, in_idx: usize) -> bo
     let it_y = gs.items[in_idx].y;
 
     if light_0 != light_1 && it_x > 0 {
-        gs.do_add_light(it_x as i32, it_y as i32, light_0 as i32 - light_1 as i32);
+        gs.do_add_light(
+            i32::from(it_x),
+            i32::from(it_y),
+            i32::from(light_0) - i32::from(light_1),
+        );
     }
 
-    EffectManager::fx_add_effect(gs, 6, 0, it_x as i32, it_y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, i32::from(it_x), i32::from(it_y), 0);
     EffectManager::fx_add_effect(
         gs,
         7,
         0,
-        gs.characters[cn].x as i32,
-        gs.characters[cn].y as i32,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
         0,
     );
 
@@ -2945,16 +2960,16 @@ pub fn npc_cityguard_see(gs: &mut GameState, cn: usize, co: usize, flag: i32) ->
             gs.characters[cn].data[54] = 0;
             gs.characters[cn].data[55] = ticker;
 
-            let co_name = gs.characters[co].get_name().to_string();
+            let co_name = gs.characters[co].get_name().to_owned();
 
             npc_saytext_n(gs, cn, 4, Some(&co_name));
             gs.do_npc_shout(
                 cn,
-                NT_SHOUT as i32,
+                i32::from(NT_SHOUT),
                 cn as i32,
                 data_52,
-                ch_x as i32,
-                ch_y as i32,
+                i32::from(ch_x),
+                i32::from(ch_y),
             );
 
             for n in 1..MAXCHARS {
@@ -3042,12 +3057,12 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
 
     let indoor1 = {
         let idx = cn_x as usize + cn_y as usize * SERVER_MAPX as usize;
-        (gs.map[idx].flags & MF_INDOORS as u64) != 0
+        (gs.map[idx].flags & u64::from(MF_INDOORS)) != 0
     };
 
     let indoor2 = {
         let idx = co_x as usize + co_y as usize * SERVER_MAPX as usize;
-        (gs.map[idx].flags & MF_INDOORS as u64) != 0
+        (gs.map[idx].flags & u64::from(MF_INDOORS)) != 0
     };
 
     let attack_cn = gs.characters[cn].attack_cn;
@@ -3102,8 +3117,10 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
             if data_95 == 2 && data_93 != 0 {
                 let rest_x = (data_29 % SERVER_MAPX) as i16;
                 let rest_y = (data_29 / SERVER_MAPX) as i16;
-                let dist =
-                    std::cmp::max((rest_x - co_x).abs() as i32, (rest_y - co_y).abs() as i32);
+                let dist = std::cmp::max(
+                    i32::from((rest_x - co_x).abs()),
+                    i32::from((rest_y - co_y).abs()),
+                );
 
                 if dist > data_93 {
                     should_attack = false;
@@ -3111,7 +3128,7 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
             }
 
             if should_attack && npc_add_enemy(gs, cn, co, false) {
-                let co_name = gs.characters[co].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_owned();
                 npc_saytext_n(gs, cn, 1, Some(&co_name));
                 log::info!(
                     "Added {} to kill list because he's not in my group",
@@ -3132,15 +3149,15 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
         && (co_flags & CharacterFlags::Player.bits()) != 0
         && ticker > data_27 + (TICKS * 120)
     {
-        let x1 = co_x as i32;
+        let x1 = i32::from(co_x);
         let x2 = data_29 % SERVER_MAPX;
-        let y1 = co_y as i32;
+        let y1 = i32::from(co_y);
         let y2 = data_29 / SERVER_MAPX;
         let dist = (x1 - x2).abs() + (y1 - y2).abs();
 
         if dist <= data_93 {
             if npc_add_enemy(gs, cn, co, false) {
-                let co_name = gs.characters[co].get_name().to_string();
+                let co_name = gs.characters[co].get_name().to_owned();
                 npc_saytext_n(gs, cn, 1, Some(&co_name));
                 log::info!(
                     "Added {} to kill list because he didn't say the password",
@@ -3175,8 +3192,8 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
 
         if !already_talked {
             let text_2 = gs.characters[cn].text[2];
-            let text_2_str = c_string_to_str(&text_2).to_string();
-            let co_name = gs.characters[co].get_name().to_string();
+            let text_2_str = c_string_to_str(&text_2).to_owned();
+            let co_name = gs.characters[co].get_name().to_owned();
 
             let co_kindred = gs.characters[co].kindred as u32;
             let co_skill_19 = gs.characters[co].skill[19][0];

@@ -434,9 +434,9 @@ impl Widget for ShopPanel {
 
         // Title.
         let title = if data.is_grave {
-            "Grave".to_string()
+            "Grave".to_owned()
         } else {
-            "Shop".to_string()
+            "Shop".to_owned()
         };
         font_cache::draw_text(
             ctx.canvas,

@@ -140,12 +140,10 @@ pub(crate) async fn create_ban(
         id: generate_request_id(),
         target: target.clone(),
         reason: request.reason.unwrap_or_default(),
-        created_by: request
-            .created_by
-            .unwrap_or_else(|| "admin_api".to_string()),
+        created_by: request.created_by.unwrap_or_else(|| "admin_api".to_owned()),
         created_at: now,
         expires_at,
-        source: "admin_api".to_string(),
+        source: "admin_api".to_owned(),
     };
 
     let lock_token = match acquire_ban_lock(&mut con).await {
@@ -264,7 +262,7 @@ pub(crate) async fn search_characters(
         .collect();
 
     Json(CharacterSearchResponse {
-        query: name.to_string(),
+        query: name.to_owned(),
         count: characters.len(),
         characters,
     })
@@ -522,7 +520,7 @@ async fn enqueue_live_action(
 ) -> Option<String> {
     let request_id = generate_request_id();
     let requested_at = now_secs();
-    let action_name = action.name().to_string();
+    let action_name = action.name().to_owned();
     let request = BanActionRequest {
         request_id: request_id.clone(),
         action,
@@ -609,21 +607,21 @@ fn record_response(record: BanRecord, now: u64) -> BanRecordResponse {
 fn target_response(target: &BanTarget) -> BanTargetResponse {
     match target {
         BanTarget::Account { account_id } => BanTargetResponse {
-            scope: target.scope().to_string(),
+            scope: target.scope().to_owned(),
             value: target.value(),
             account_id: Some(*account_id),
             character_id: None,
             address: None,
         },
         BanTarget::Character { character_id } => BanTargetResponse {
-            scope: target.scope().to_string(),
+            scope: target.scope().to_owned(),
             value: target.value(),
             account_id: None,
             character_id: Some(*character_id),
             address: None,
         },
         BanTarget::Ipv4 { .. } => BanTargetResponse {
-            scope: target.scope().to_string(),
+            scope: target.scope().to_owned(),
             value: target.value(),
             account_id: None,
             character_id: None,
@@ -645,25 +643,25 @@ fn format_status_value(status: &str, action: &str, message: &str, updated_at: u6
 fn parse_status(request_id: &str, stored: Option<String>) -> BanActionStatusResponse {
     let Some(raw) = stored else {
         return BanActionStatusResponse {
-            request_id: request_id.to_string(),
+            request_id: request_id.to_owned(),
             action: String::new(),
-            status: STATUS_PENDING.to_string(),
+            status: STATUS_PENDING.to_owned(),
             message: String::new(),
             updated_at: 0,
         };
     };
 
     let mut parts = raw.splitn(4, '|');
-    let status = parts.next().unwrap_or(STATUS_PENDING).to_string();
-    let action = parts.next().unwrap_or_default().to_string();
+    let status = parts.next().unwrap_or(STATUS_PENDING).to_owned();
+    let action = parts.next().unwrap_or_default().to_owned();
     let updated_at = parts
         .next()
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0);
-    let message = parts.next().unwrap_or_default().to_string();
+    let message = parts.next().unwrap_or_default().to_owned();
 
     BanActionStatusResponse {
-        request_id: request_id.to_string(),
+        request_id: request_id.to_owned(),
         action,
         status,
         message,

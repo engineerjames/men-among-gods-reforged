@@ -135,11 +135,11 @@ impl Scene for CharacterCreationScene {
                     class: _,
                     sex: _,
                 } => {
-                    let name = name.trim().to_string();
+                    let name = name.trim().to_owned();
 
                     if name.is_empty() {
                         self.form
-                            .set_error(Some("Character name is required".to_string()));
+                            .set_error(Some("Character name is required".to_owned()));
                         continue;
                     }
 
@@ -175,17 +175,17 @@ impl Scene for CharacterCreationScene {
         if self.is_busy && self.account_rx.is_none() && self.account_thread.is_none() {
             let Some(token) = app_state.api.token.as_deref() else {
                 self.form
-                    .set_error(Some("Missing account session token".to_string()));
+                    .set_error(Some("Missing account session token".to_owned()));
                 self.is_busy = false;
                 self.form.set_busy(false);
                 return None;
             };
 
             let base_url = app_state.api.base_url.clone();
-            let token = token.to_string();
+            let token = token.to_owned();
             let name = self.form.name_input_value().to_owned();
             let description = {
-                let d = self.form.description_input_value().trim().to_string();
+                let d = self.form.description_input_value().trim().to_owned();
                 if d.is_empty() { None } else { Some(d) }
             };
             let sex = self.form.selected_sex();
@@ -215,7 +215,7 @@ impl Scene for CharacterCreationScene {
                 Ok(result) => Some(result),
                 Err(TryRecvError::Empty) => None,
                 Err(TryRecvError::Disconnected) => {
-                    Some(Err("Character creation failed: channel closed".to_string()))
+                    Some(Err("Character creation failed: channel closed".to_owned()))
                 }
             }
         } else {

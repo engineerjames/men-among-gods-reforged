@@ -17,19 +17,19 @@ mag_core = { path = "../core", package = "core" }
 # SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –
 # no system SDL2 installation required.
 sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
-log = "0.4.29"
-log4rs = "1.4.0"
-zip = "0.6.6"
-flate2 = "1.1.5"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+log.workspace = true
+log4rs.workspace = true
+zip.workspace = true
+flate2.workspace = true
+reqwest.workspace = true
 argon2 = "0.5.3"
-rustls = "0.23"
-rustls-pemfile = "2"
+rustls = { workspace = true, default-features = true }
+rustls-pemfile.workspace = true
 sha2 = "0.10"
 webpki-roots = "0.26"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-rand = "0.8"
+serde.workspace = true
+serde_json.workspace = true
+rand.workspace = true
 
 [build-dependencies]
 embed-resource = "2"

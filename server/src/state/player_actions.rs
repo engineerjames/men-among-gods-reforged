@@ -68,7 +68,7 @@ impl GameState {
                             .copy_from_slice(&desc_bytes[..desc_bytes.len().min(200)]);
                     }
                 } else {
-                    let item_ref = c_string_to_str(&mut self.items[tmp].reference).to_string();
+                    let item_ref = c_string_to_str(&mut self.items[tmp].reference).to_owned();
                     self.do_character_log(
                         cn,
                         FontColor::Red,
@@ -298,7 +298,7 @@ impl GameState {
     /// Calculated integer score
     pub fn do_char_score(&mut self, cn: usize) -> i32 {
         let pts = self.characters[cn].points_tot;
-        let pts = if pts < 0 { 0 } else { pts } as f64;
+        let pts = f64::from(if pts < 0 { 0 } else { pts });
         ((pts.sqrt() as i32) / 7) + 7
     }
 
@@ -374,12 +374,12 @@ impl GameState {
                 .unwrap()
                 .as_secs() as i32;
 
-            let co_name = self.characters[co].get_name().to_string();
+            let co_name = self.characters[co].get_name().to_owned();
 
             // Format timestamps
             use chrono::{TimeZone, Utc};
-            let last_dt = Utc.timestamp_opt(last as i64, 0).unwrap();
-            let now_dt = Utc.timestamp_opt(now as i64, 0).unwrap();
+            let last_dt = Utc.timestamp_opt(i64::from(last), 0).unwrap();
+            let now_dt = Utc.timestamp_opt(i64::from(now), 0).unwrap();
 
             self.do_character_log(
                 cn,
@@ -415,9 +415,9 @@ impl GameState {
             let days = current_date - last_date;
 
             let when = match days {
-                0 => "earlier today".to_string(),
-                1 => "yesterday".to_string(),
-                2 => "the day before yesterday".to_string(),
+                0 => "earlier today".to_owned(),
+                1 => "yesterday".to_owned(),
+                2 => "the day before yesterday".to_owned(),
                 _ => format!("{} days ago", days),
             };
 
@@ -443,7 +443,7 @@ impl GameState {
         if name.is_empty() {
             let co = self.characters[cn].data[10] as usize;
             if co != 0 {
-                let target = self.characters[co].get_name().to_string();
+                let target = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -496,7 +496,7 @@ impl GameState {
         }
 
         self.characters[cn].data[10] = co as i32;
-        let target = self.characters[co].get_name().to_string();
+        let target = self.characters[co].get_name().to_owned();
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -527,7 +527,7 @@ impl GameState {
                 if co == 0 {
                     continue;
                 }
-                let nm = self.characters[co].get_name().to_string();
+                let nm = self.characters[co].get_name().to_owned();
                 self.do_character_log(cn, core::types::FontColor::Yellow, &format!("{}\n", nm));
             }
             return;
@@ -554,7 +554,7 @@ impl GameState {
         for n in base..(base + 10) {
             if self.characters[cn].data[n] as usize == co {
                 self.characters[cn].data[n] = 0;
-                let nm = self.characters[co].get_name().to_string();
+                let nm = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -576,7 +576,7 @@ impl GameState {
         for n in base..(base + 10) {
             if self.characters[cn].data[n] == 0 {
                 self.characters[cn].data[n] = co as i32;
-                let nm = self.characters[co].get_name().to_string();
+                let nm = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -699,7 +699,7 @@ impl GameState {
         let cn_invis_level = crate::helpers::invis_level(&self.characters[cn]);
         let co_invis_level = crate::helpers::invis_level(&self.characters[co]);
         if co_used != core::constants::USE_ACTIVE || (co_invis && cn_invis_level < co_invis_level) {
-            let nm = self.characters[co].get_name().to_string();
+            let nm = self.characters[co].get_name().to_owned();
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -721,13 +721,13 @@ impl GameState {
         for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
             if self.characters[cn].data[n] as usize == co {
                 self.characters[cn].data[n] = 0;
-                let nm = self.characters[co].get_name().to_string();
+                let nm = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("{} removed from your group.\n", nm),
                 );
-                let cn_name = self.characters[cn].get_name().to_string();
+                let cn_name = self.characters[cn].get_name().to_owned();
                 self.do_character_log(
                     co,
                     core::types::FontColor::Red,
@@ -750,7 +750,7 @@ impl GameState {
         };
         let diff = crate::helpers::rankdiff(&self.characters[cn], &self.characters[co]);
         if diff.abs() > allow {
-            let nm = self.characters[co].get_name().to_string();
+            let nm = self.characters[co].get_name().to_owned();
             let relation = if diff > 0 { "above" } else { "below" };
             self.do_character_log(
                 cn,
@@ -769,13 +769,13 @@ impl GameState {
         for n in core::constants::CHD_MINGROUP..=core::constants::CHD_MAXGROUP {
             if self.characters[cn].data[n] == 0 {
                 self.characters[cn].data[n] = co as i32;
-                let nm = self.characters[co].get_name().to_string();
+                let nm = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
                     &format!("{} added to your group.\n", nm),
                 );
-                let cn_name = self.characters[cn].get_name().to_string();
+                let cn_name = self.characters[cn].get_name().to_owned();
                 self.do_character_log(
                     co,
                     core::types::FontColor::Red,
@@ -794,7 +794,7 @@ impl GameState {
                         "Two way group established.\n",
                     );
                 } else {
-                    let nm = self.characters[cn].get_name().to_string();
+                    let nm = self.characters[cn].get_name().to_owned();
                     self.do_character_log(
                         co,
                         core::types::FontColor::Red,
@@ -823,7 +823,7 @@ impl GameState {
     pub(crate) fn do_allow(&mut self, cn: usize, co: usize) {
         self.characters[cn].data[core::constants::CHD_ALLOW] = co as i32;
         if co != 0 {
-            let name = self.characters[co].get_name().to_string();
+            let name = self.characters[co].get_name().to_owned();
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -880,8 +880,8 @@ impl GameState {
         }
         if msg.is_empty() {
             self.characters[co].text[3] = [0; 160];
-            let old = c_string_to_str(&mut self.characters[co].text[3]).to_string();
-            let co_name = self.characters[co].get_name().to_string();
+            let old = c_string_to_str(&mut self.characters[co].text[3]).to_owned();
+            let co_name = self.characters[co].get_name().to_owned();
             self.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -895,7 +895,7 @@ impl GameState {
         buf[..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
 
         self.characters[co].text[3] = buf;
-        let co_name = self.characters[co].get_name().to_string();
+        let co_name = self.characters[co].get_name().to_owned();
         self.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -927,7 +927,7 @@ impl GameState {
                 let len_to_copy = std::cmp::min(bytes.len(), 48);
                 self.characters[cn].text[0][..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
 
-                let afk_text = c_string_to_str(&mut self.characters[cn].text[0]).to_string();
+                let afk_text = c_string_to_str(&mut self.characters[cn].text[0]).to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Blue,

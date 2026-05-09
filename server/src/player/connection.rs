@@ -267,7 +267,7 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     }
 
     // announce
-    let name = gs.characters[cn].get_name().to_string();
+    let name = gs.characters[cn].get_name().to_owned();
     gs.do_announce(cn, 0, &format!("{} entered the game.\n", name));
 }
 
@@ -500,7 +500,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
     let valid_character = character_id > 0 && character_id < core::constants::MAXCHARS;
 
     if valid_character && reason != LogoutReason::Shutdown {
-        let character_name = gs.characters[character_id].get_name().to_string();
+        let character_name = gs.characters[character_id].get_name().to_owned();
         log::debug!(
             "Logging out character '{}' for reason: {:?}",
             character_name,
@@ -541,7 +541,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
         );
 
         if is_player && is_not_ccp {
-            let name = gs.characters[character_id].get_name().to_string();
+            let name = gs.characters[character_id].get_name().to_owned();
 
             // Handle exit punishment
             if reason == LogoutReason::Exit {
@@ -567,7 +567,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
                     damage_message.as_str(),
                 );
 
-                gs.characters[character_id].a_hp -= (hp5 * 800) as i32;
+                gs.characters[character_id].a_hp -= i32::from(hp5 * 800);
                 let a_hp = gs.characters[character_id].a_hp;
 
                 if a_hp < 500 {
@@ -622,7 +622,11 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
             if ch_was_here {
                 gs.map[map_index].ch = 0;
                 if light != 0 {
-                    gs.do_add_light(character_x as i32, character_y as i32, -(light as i32));
+                    gs.do_add_light(
+                        i32::from(character_x),
+                        i32::from(character_y),
+                        -i32::from(light),
+                    );
                 }
             }
             if gs.map[to_map_index].to_ch == character_id as u32 {
@@ -644,7 +648,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
                 );
 
                 let should_give = if !is_close_to_temple {
-                    gs.map[map_index].flags & core::constants::MF_NOLAG as u64 == 0
+                    gs.map[map_index].flags & u64::from(core::constants::MF_NOLAG) == 0
                 } else {
                     false
                 };
@@ -913,12 +917,13 @@ mod tests {
             setup_existing_character(gs, 5, 0, USE_NONACTIVE, "Stale Name");
             let existing = CharacterSummary {
                 id: 44,
-                name: "Fresh Name".to_string(),
-                description: "Updated description".to_string(),
+                name: "Fresh Name".to_owned(),
+                description: "Updated description".to_owned(),
                 sex: Sex::Female,
                 class: Class::Mercenary,
                 selection_sprite_id: None,
                 server_id: Some(5),
+                rank_index: None,
             };
 
             let (cn, is_new) = apply_api_login_character_record(gs, &existing).unwrap();
@@ -938,12 +943,13 @@ mod tests {
             );
             let created = CharacterSummary {
                 id: 45,
-                name: "Api Hero".to_string(),
+                name: "Api Hero".to_owned(),
                 description: String::new(),
                 sex: Sex::Male,
                 class: Class::Mercenary,
                 selection_sprite_id: None,
                 server_id: None,
+                rank_index: None,
             };
 
             let (new_cn, is_new) = apply_api_login_character_record(gs, &created).unwrap();
@@ -1001,12 +1007,13 @@ mod tests {
                 |_| {
                     Ok(Some(CharacterSummary {
                         id: 77,
-                        name: "Ticket Hero".to_string(),
-                        description: "Ticket description".to_string(),
+                        name: "Ticket Hero".to_owned(),
+                        description: "Ticket description".to_owned(),
                         sex: Sex::Male,
                         class: Class::Mercenary,
                         selection_sprite_id: None,
                         server_id: None,
+                        rank_index: None,
                     }))
                 },
                 |_, server_id| {
@@ -1045,7 +1052,7 @@ mod tests {
             Err(LogoutReason::PasswordIncorrect)
         );
         assert_eq!(
-            consume_api_login_ticket(999, |_| Err("decode failed".to_string())),
+            consume_api_login_ticket(999, |_| Err("decode failed".to_owned())),
             Err(LogoutReason::Failure)
         );
     }

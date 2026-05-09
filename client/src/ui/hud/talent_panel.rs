@@ -301,7 +301,7 @@ impl TalentPanel {
     fn fit_text(text: &str, max_width: i32) -> String {
         let max_chars = (max_width.max(0) as u32 / font_cache::BITMAP_GLYPH_ADVANCE) as usize;
         if text.len() <= max_chars {
-            return text.to_string();
+            return text.to_owned();
         }
         if max_chars == 0 {
             return String::new();
@@ -425,7 +425,7 @@ impl Widget for TalentPanel {
         let header_y = self.bounds.y + TITLE_BAR_H + 2;
         let (avail, spent, class_label) = match (self.talents.as_ref(), self.class) {
             (Some(t), Some(_)) => (
-                available_talent_points(t) as u32,
+                u32::from(available_talent_points(t)),
                 total_points_spent(t),
                 self.class
                     .and_then(|c| tree_for(c))

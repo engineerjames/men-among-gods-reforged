@@ -3,11 +3,12 @@ use crate::effect::EffectManager;
 use crate::game_state::GameState;
 use crate::god::God;
 use crate::helpers::{self};
+use crate::populate::pop_create_char;
 use crate::{chlog, driver, player, points, populate};
 use core::constants::{
     AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, ItemFlags, MAXITEM, MAXSKILL,
     MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
-    WN_RHAND,
+    WN_LHAND, WN_RHAND,
 };
 use core::skills::{self, attribute_name};
 use core::string_operations::c_string_to_str;
@@ -178,8 +179,8 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let (item_x, item_y, temp, active) = {
         let item = &gs.items[item_idx];
         (
-            item.x as i32,
-            item.y as i32,
+            i32::from(item.x),
+            i32::from(item.y),
             item.temp as usize,
             item.active,
         )
@@ -208,9 +209,9 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     gs.do_area_notify(
         cn as i32,
         0,
-        ch.x as i32,
-        ch.y as i32,
-        core::constants::NT_SEE as i32,
+        i32::from(ch.x),
+        i32::from(ch.y),
+        i32::from(core::constants::NT_SEE),
         cn as i32,
         0,
         0,
@@ -258,8 +259,8 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     let item_ref = gs.items[in2].reference;
-    let item_name = gs.items[in2].get_name().to_string();
-    let source_name = gs.items[item_idx].get_name().to_string();
+    let item_name = gs.items[in2].get_name().to_owned();
+    let source_name = gs.items[item_idx].get_name().to_owned();
     gs.do_character_log(
         cn,
         core::types::FontColor::Green,
@@ -271,8 +272,8 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let data1 = gs.items[item_idx].data[1];
 
     if data1 != 0 && driver == 53 {
-        let char_name = gs.characters[cn].get_name().to_string();
-        let item_ref = c_string_to_str(&gs.items[in2].reference).to_string();
+        let char_name = gs.characters[cn].get_name().to_owned();
+        let item_ref = c_string_to_str(&gs.items[in2].reference).to_owned();
         gs.do_character_log(
             cn,
             core::types::FontColor::Blue,
@@ -300,13 +301,16 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     if driver == 54 {
-        let (x, y) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+        let (x, y) = (
+            i32::from(gs.items[item_idx].x),
+            i32::from(gs.items[item_idx].y),
+        );
         gs.do_area_notify(
             cn as i32,
             0,
             x,
             y,
-            core::constants::NT_HITME as i32,
+            i32::from(core::constants::NT_HITME),
             cn as i32,
             0,
             0,
@@ -374,7 +378,7 @@ pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 
     let citem_temp = gs.items[citem].temp;
 
-    if citem_temp as u32 != required_temp {
+    if u32::from(citem_temp) != required_temp {
         return false;
     }
 
@@ -654,7 +658,10 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    let (current_temp, max_data) = (gs.items[item_idx].temp as i32, gs.items[item_idx].data[0]);
+    let (current_temp, max_data) = (
+        i32::from(gs.items[item_idx].temp),
+        gs.items[item_idx].data[0],
+    );
 
     if current_temp as u32 >= max_data {
         gs.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
@@ -720,7 +727,7 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     God::give_character_item(gs, cn, in2);
 
-    let item_ref = c_string_to_str(&gs.items[in2].reference).to_string();
+    let item_ref = c_string_to_str(&gs.items[in2].reference).to_owned();
     gs.do_character_log(
         cn,
         core::types::FontColor::Green,
@@ -753,14 +760,14 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
             ),
         );
 
-        gs.do_give_exp(cn, exp as i32, 0, -1)
+        gs.do_give_exp(cn, exp as i32, 0, -1);
     }
 
     let citem = gs.characters[cn].citem;
     if citem != 0 && (citem & 0x80000000) == 0 {
         let citem = citem as usize;
         if (gs.items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
-            let item_ref = c_string_to_str(&gs.items[citem].reference).to_string();
+            let item_ref = c_string_to_str(&gs.items[citem].reference).to_owned();
             gs.characters[cn].citem = 0;
             gs.items[citem].used = USE_EMPTY;
             gs.do_character_log(
@@ -775,7 +782,7 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
         let item_idx = gs.characters[cn].item[n] as usize;
         if item_idx != 0 {
             if (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
-                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_string();
+                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_owned();
                 gs.characters[cn].item[n] = 0;
                 gs.items[item_idx].used = USE_EMPTY;
                 gs.do_character_log(
@@ -791,7 +798,7 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
         let item_idx = gs.characters[cn].worn[n] as usize;
         if item_idx != 0 {
             if (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
-                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_string();
+                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_owned();
                 gs.characters[cn].worn[n] = 0;
                 gs.items[item_idx].used = USE_EMPTY;
                 gs.do_character_log(
@@ -806,7 +813,7 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
     for n in 0..20 {
         let spell_idx = gs.characters[cn].spell[n] as usize;
         if spell_idx != 0 {
-            let item_name = c_string_to_str(&gs.items[spell_idx].name).to_string();
+            let item_name = c_string_to_str(&gs.items[spell_idx].name).to_owned();
             gs.characters[cn].spell[n] = 0;
             gs.items[spell_idx].used = USE_EMPTY;
             gs.do_character_log(
@@ -818,7 +825,7 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
     }
 
     // Add effects and transfer character
-    EffectManager::fx_add_effect(gs, 6, 0, x as i32, y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, i32::from(x), i32::from(y), 0);
     God::transfer_char(gs, cn, 512, 512); // TODO: Shouldn't this be their temple coords?
     EffectManager::fx_add_effect(gs, 6, 0, 512_i32, 512_i32, 0);
 
@@ -863,7 +870,7 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let citem = gs.characters[cn].citem as usize;
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
     if citem != 0 && is_nolab_item(gs, citem) {
-        let item_ref = c_string_to_str(&gs.items[citem].reference).to_string();
+        let item_ref = c_string_to_str(&gs.items[citem].reference).to_owned();
         gs.characters[cn].citem = 0;
         gs.items[citem].used = USE_EMPTY;
         gs.do_character_log(
@@ -876,7 +883,7 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     for n in 0..40 {
         let inv_item = gs.characters[cn].item[n] as usize;
         if inv_item != 0 && is_nolab_item(gs, inv_item) {
-            let item_ref = c_string_to_str(&gs.items[inv_item].reference).to_string();
+            let item_ref = c_string_to_str(&gs.items[inv_item].reference).to_owned();
             gs.characters[cn].item[n] = 0;
             gs.items[inv_item].used = USE_EMPTY;
             gs.do_character_log(
@@ -907,7 +914,7 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let dest_x = gs.items[item_idx].data[0] as usize;
     let dest_y = gs.items[item_idx].data[1] as usize;
 
-    EffectManager::fx_add_effect(gs, 6, 0, x as i32, y as i32, 0);
+    EffectManager::fx_add_effect(gs, 6, 0, i32::from(x), i32::from(y), 0);
     God::transfer_char(gs, cn, dest_x, dest_y);
     EffectManager::fx_add_effect(gs, 6, 0, dest_x as i32, dest_y as i32, 0);
 
@@ -937,7 +944,7 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         log::info!(
             "Lag Scroll Time Difference: {} ticks ({:.2}s)",
             diff,
-            diff as f64 / TICKS as f64
+            f64::from(diff) / f64::from(TICKS)
         );
         gs.do_character_log(
             cn,
@@ -972,7 +979,7 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     let added = driver::add_spell(gs, cn, spell_item);
     if added == 0 {
-        let spell_name = c_string_to_str(&gs.items[spell_item].name).to_string();
+        let spell_name = c_string_to_str(&gs.items[spell_item].name).to_owned();
         gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -985,14 +992,14 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
-    crate::effect::EffectManager::fx_add_effect(gs, 7, 0, x as i32, y as i32, 0);
+    crate::effect::EffectManager::fx_add_effect(gs, 7, 0, i32::from(x), i32::from(y), 0);
     true
 }
 
 pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     let citem = gs.characters[cn].citem as usize;
     if citem != 0 && is_nolab_item(gs, citem) {
-        let item_ref = c_string_to_str(&gs.items[citem].reference).to_string();
+        let item_ref = c_string_to_str(&gs.items[citem].reference).to_owned();
         gs.characters[cn].citem = 0;
         gs.items[citem].used = USE_EMPTY;
         gs.do_character_log(
@@ -1005,7 +1012,7 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     for n in 0..40 {
         let inv_item = gs.characters[cn].item[n] as usize;
         if inv_item != 0 && is_nolab_item(gs, inv_item) {
-            let item_ref = c_string_to_str(&gs.items[inv_item].reference).to_string();
+            let item_ref = c_string_to_str(&gs.items[inv_item].reference).to_owned();
             gs.characters[cn].item[n] = 0;
             gs.items[inv_item].used = USE_EMPTY;
             gs.do_character_log(
@@ -1043,10 +1050,10 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     };
 
     let flag = if let Some((dest_x, dest_y)) = destination {
-        EffectManager::fx_add_effect(gs, 6, 0, x as i32, y as i32, 0);
+        EffectManager::fx_add_effect(gs, 6, 0, i32::from(x), i32::from(y), 0);
         let result = God::transfer_char(gs, cn, dest_x, dest_y);
         let (new_x, new_y) = (gs.characters[cn].x, gs.characters[cn].y);
-        EffectManager::fx_add_effect(gs, 6, 0, new_x as i32, new_y as i32, 0);
+        EffectManager::fx_add_effect(gs, 6, 0, i32::from(new_x), i32::from(new_y), 0);
         result
     } else {
         gs.do_character_log(
@@ -1097,7 +1104,7 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         let allowed_cn = gs.characters[owner].data[core::constants::CHD_ALLOW] as usize;
 
         if !may_attack && allowed_cn != cn {
-            let owner_name = c_string_to_str(&gs.characters[owner].name).to_string();
+            let owner_name = c_string_to_str(&gs.characters[owner].name).to_owned();
             let owner_is_male = (gs.characters[owner].kindred & traits::KIN_MALE as i32) != 0;
             let owner_pronoun = if owner_is_male { "his" } else { "her" };
 
@@ -1114,7 +1121,7 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             let owner_x = gs.characters[owner].x;
 
             if corpse_active && owner_x != 0 {
-                let cn_name = c_string_to_str(&gs.characters[cn].name).to_string();
+                let cn_name = c_string_to_str(&gs.characters[cn].name).to_owned();
                 gs.do_character_log(
                     owner,
                     core::types::FontColor::Green,
@@ -1129,7 +1136,7 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         }
     }
 
-    let co_ref = c_string_to_str(&gs.characters[co].reference).to_string();
+    let co_ref = c_string_to_str(&gs.characters[co].reference).to_owned();
     gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
@@ -1180,8 +1187,8 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             &format!("Raised {} by one.\n", name),
         );
 
-        let v = current_val as i32;
-        let diff = difficulty as i32;
+        let v = i32::from(current_val);
+        let diff = i32::from(difficulty);
         let pts = points::skill_needed(v, diff);
         gs.characters[cn].points_tot += pts;
         gs.characters[cn].skill[skill_nr][0] += 1;
@@ -1237,8 +1244,8 @@ pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     // Calculate points needed: v*v*v*diff/20
-    let v = current_val as i32;
-    let diff = difficulty as i32;
+    let v = i32::from(current_val);
+    let diff = i32::from(difficulty);
     let pts = (v * v * v * diff) / 20;
 
     gs.do_character_log(
@@ -1285,8 +1292,8 @@ pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         &format!("Raised Hitpoints by {}.\n", amount),
     );
 
-    let v = current_hp as i32;
-    let diff = difficulty as i32;
+    let v = i32::from(current_hp);
+    let diff = i32::from(difficulty);
     let mut pts = 0;
     for n in 0..amount {
         pts += (n + v) * diff;
@@ -1324,8 +1331,8 @@ pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         &format!("Raised Endurance by {}.\n", amount),
     );
 
-    let v = current_end as i32;
-    let diff = difficulty as i32;
+    let v = i32::from(current_end);
+    let diff = i32::from(difficulty);
     let mut pts = 0;
     for n in 0..amount {
         pts += ((n + v) * diff) / 2;
@@ -1363,8 +1370,8 @@ pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         &format!("Raised Mana by {}.\n", amount),
     );
 
-    let v = current_mana as i32;
-    let diff = difficulty as i32;
+    let v = i32::from(current_mana);
+    let diff = i32::from(difficulty);
     let mut pts = 0;
 
     for n in 0..amount {
@@ -1493,54 +1500,57 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
 
         for n in 0..5 {
             let mut t = base + helpers::random_mod_i32(15);
-            let diff = std::cmp::max(1, ch.attrib[n][3] as i32);
+            let diff = std::cmp::max(1, i32::from(ch.attrib[n][3]));
             t = t * 3 / diff;
-            let maxv = ch.attrib[n][2] as i32;
+            let maxv = i32::from(ch.attrib[n][2]);
             let v = std::cmp::max(10, std::cmp::min(maxv, t));
             ch.attrib[n][0] = v as u8;
         }
 
         for n in 0..50 {
             let mut t = base + helpers::random_mod_i32(15);
-            let diff = std::cmp::max(1, ch.skill[n][3] as i32);
+            let diff = std::cmp::max(1, i32::from(ch.skill[n][3]));
             t = t * 3 / diff;
             if ch.skill[n][2] != 0 {
-                let maxv = ch.skill[n][2] as i32;
+                let maxv = i32::from(ch.skill[n][2]);
                 ch.skill[n][0] = std::cmp::min(maxv, t) as u8;
             }
         }
 
         ch.hp[0] = std::cmp::max(
             50,
-            std::cmp::min(ch.hp[2] as i32, base * 5 + helpers::random_mod_i32(50)),
+            std::cmp::min(i32::from(ch.hp[2]), base * 5 + helpers::random_mod_i32(50)),
         ) as u16;
         ch.end[0] = std::cmp::max(
             50,
-            std::cmp::min(ch.end[2] as i32, base * 5 + helpers::random_mod_i32(50)),
+            std::cmp::min(i32::from(ch.end[2]), base * 5 + helpers::random_mod_i32(50)),
         ) as u16;
         ch.mana[0] = std::cmp::max(
             50,
-            std::cmp::min(ch.mana[2] as i32, base * 5 + helpers::random_mod_i32(50)),
+            std::cmp::min(
+                i32::from(ch.mana[2]),
+                base * 5 + helpers::random_mod_i32(50),
+            ),
         ) as u16;
 
         // calculate experience points
         let mut pts = 0i32;
         for z in 0..5 {
-            for m in 10..(ch.attrib[z][0] as i32) {
+            for m in 10..i32::from(ch.attrib[z][0]) {
                 pts += points::attrib_needed(m, 3);
             }
         }
-        for m in 50..(ch.hp[0] as i32) {
+        for m in 50..i32::from(ch.hp[0]) {
             pts += points::hp_needed(m, 3);
         }
-        for m in 50..(ch.end[0] as i32) {
+        for m in 50..i32::from(ch.end[0]) {
             pts += points::end_needed(m, 2);
         }
-        for m in 50..(ch.mana[0] as i32) {
+        for m in 50..i32::from(ch.mana[0]) {
             pts += points::mana_needed(m, 3);
         }
         for z in 0..50 {
-            for m in 1..(ch.skill[z][0] as i32) {
+            for m in 1..i32::from(ch.skill[z][0]) {
                 pts += points::skill_needed(m, 2);
             }
         }
@@ -1571,8 +1581,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         };
 
         {
-            if gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 90
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 90
+            if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 90
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 90
             {
                 let tmp = populate::pop_create_item(gs, 94, cc);
                 if tmp != 0 {
@@ -1604,8 +1614,9 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 72
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 72
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 72
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 72
             {
                 let tmp = populate::pop_create_item(gs, 75, cc);
                 if tmp != 0 {
@@ -1637,8 +1648,9 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 40
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 40
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 40
             {
                 let tmp = populate::pop_create_item(gs, 69, cc);
                 if tmp != 0 {
@@ -1670,8 +1682,9 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 24
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 24
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 24
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 24
             {
                 let tmp = populate::pop_create_item(gs, 63, cc);
                 if tmp != 0 {
@@ -1703,8 +1716,9 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 16
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 16
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 16
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 16
             {
                 let tmp = populate::pop_create_item(gs, 57, cc);
                 if tmp != 0 {
@@ -1736,8 +1750,9 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 12
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 12
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 12
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 12
             {
                 let tmp = populate::pop_create_item(gs, 51, cc);
                 if tmp != 0 {
@@ -1769,8 +1784,9 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 10
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 10
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 10
             {
                 let tmp = populate::pop_create_item(gs, 39, cc);
                 if tmp != 0 {
@@ -1806,45 +1822,45 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
 
             // choose weapon based on skills/attribs (partial port of original logic)
             helpers::sync_weapon_skill(&mut gs.characters[cc].skill);
-            if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 60
-                && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 50
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 75
+            if i32::from(gs.characters[cc].skill[skills::SK_WEAPON][0]) >= 60
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 50
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 75
             {
                 let tmp = populate::pop_create_item(gs, 125, cc);
                 if tmp != 0 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 45
-                && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 40
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 60
+            } else if i32::from(gs.characters[cc].skill[skills::SK_WEAPON][0]) >= 45
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 40
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 60
             {
                 let tmp = populate::pop_create_item(gs, 38, cc);
                 if tmp != 0 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 30
-                && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 30
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 40
+            } else if i32::from(gs.characters[cc].skill[skills::SK_WEAPON][0]) >= 30
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 30
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 40
             {
                 let tmp = populate::pop_create_item(gs, 37, cc);
                 if tmp != 0 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 15
-                && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 20
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 24
+            } else if i32::from(gs.characters[cc].skill[skills::SK_WEAPON][0]) >= 15
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 20
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 24
             {
                 let tmp = populate::pop_create_item(gs, 36, cc);
                 if tmp != 0 {
                     gs.characters[cc].worn[core::constants::WN_RHAND] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if gs.characters[cc].skill[skills::SK_WEAPON][0] as i32 >= 1
-                && gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0] as i32 >= 10
-                && gs.characters[cc].attrib[core::constants::AT_STREN as usize][0] as i32 >= 12
+            } else if i32::from(gs.characters[cc].skill[skills::SK_WEAPON][0]) >= 1
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 10
+                && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 12
             {
                 let tmp = populate::pop_create_item(gs, 35, cc);
                 if tmp != 0 {
@@ -2221,9 +2237,9 @@ pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     let light0 = gs.items[in2 as usize].light[0];
     let light1 = gs.items[in2 as usize].light[1];
     if light0 != light1 {
-        let x = gs.items[in2 as usize].x as i32;
-        let y = gs.items[in2 as usize].y as i32;
-        gs.do_add_light(x, y, light1 as i32 - light0 as i32);
+        let x = i32::from(gs.items[in2 as usize].x);
+        let y = i32::from(gs.items[in2 as usize].y);
+        gs.do_add_light(x, y, i32::from(light1) - i32::from(light0));
     }
 
     true
@@ -2270,8 +2286,8 @@ pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
                 gs,
                 2,
                 core::constants::TICKS * 10,
-                gs.character_templates[temp].x as i32,
-                gs.character_templates[temp].y as i32,
+                i32::from(gs.character_templates[temp].x),
+                i32::from(gs.character_templates[temp].y),
                 temp as i32,
             )
         };
@@ -2464,8 +2480,8 @@ pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let (temp, item_x, item_y, carried, should_rebuild) = {
         (
             gs.items[in_idx].data[0] as usize,
-            gs.items[in_idx].x as i32,
-            gs.items[in_idx].y as i32,
+            i32::from(gs.items[in_idx].x),
+            i32::from(gs.items[in_idx].y),
             gs.items[in_idx].carried,
             gs.items[in_idx].data[3] != 0,
         )
@@ -2481,7 +2497,7 @@ pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             core::constants::TICKS * 60 * 15,
             item_x,
             item_y,
-            temp_id as i32,
+            i32::from(temp_id),
         );
         log::info!("mine_wall: added rebuild effect (temp={})", temp_id);
     }
@@ -2507,7 +2523,7 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use core::constants::{AT_STREN, WN_RHAND};
 
     // Get character strength
-    let mut str = { gs.characters[cn].attrib[AT_STREN as usize][5] as i32 };
+    let mut str = { i32::from(gs.characters[cn].attrib[AT_STREN as usize][5]) };
 
     // Check and subtract endurance
     let insufficient_endurance = {
@@ -2556,8 +2572,8 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         gs.do_area_sound(
             cn,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             11,
         );
     } else {
@@ -2597,13 +2613,13 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if tmp <= 0 {
         // Wall destroyed
         let (x, y) = (gs.items[item_idx].x, gs.items[item_idx].y);
-        gs.reset_go(x as i32, y as i32);
-        gs.remove_lights(x as i32, y as i32);
+        gs.reset_go(i32::from(x), i32::from(y));
+        gs.remove_lights(i32::from(x), i32::from(y));
 
         let _result = mine_wall(gs, cn, item_idx);
 
-        gs.reset_go(x as i32, y as i32);
-        gs.add_lights(x as i32, y as i32);
+        gs.reset_go(i32::from(x), i32::from(y));
+        gs.add_lights(i32::from(x), i32::from(y));
     }
 
     false
@@ -2632,13 +2648,13 @@ pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         gs,
         10,
         core::constants::TICKS * 60 * 15,
-        x as i32,
-        y as i32,
-        temp as i32,
+        i32::from(x),
+        i32::from(y),
+        i32::from(temp),
     );
 
-    gs.reset_go(x as i32, y as i32);
-    gs.remove_lights(x as i32, y as i32);
+    gs.reset_go(i32::from(x), i32::from(y));
+    gs.remove_lights(i32::from(x), i32::from(y));
 
     // Remove item from map
     {
@@ -2649,8 +2665,8 @@ pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         gs.items[item_idx].used = USE_EMPTY;
     };
 
-    gs.reset_go(x as i32, y as i32);
-    gs.add_lights(x as i32, y as i32);
+    gs.reset_go(i32::from(x), i32::from(y));
+    gs.add_lights(i32::from(x), i32::from(y));
 
     true
 }
@@ -2927,10 +2943,10 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
     // Boost attributes
     {
         for n in 0..5 {
-            if gs.characters[cn].attrib[n][0] as i32 > divi as i32 {
-                let boost =
-                    crate::helpers::random_mod(gs.characters[cn].attrib[n][0] as u32 / divi as u32)
-                        as u8;
+            if i32::from(gs.characters[cn].attrib[n][0]) > divi as i32 {
+                let boost = crate::helpers::random_mod(
+                    u32::from(gs.characters[cn].attrib[n][0]) / divi as u32,
+                ) as u8;
                 gs.characters[cn].attrib[n][0] =
                     gs.characters[cn].attrib[n][0].saturating_add(boost);
             }
@@ -2938,10 +2954,10 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
 
         // Boost skills
         for n in 0..MAXSKILL {
-            if gs.characters[cn].skill[n][0] as i32 > divi as i32 {
-                let boost =
-                    crate::helpers::random_mod(gs.characters[cn].skill[n][0] as u32 / divi as u32)
-                        as u8;
+            if i32::from(gs.characters[cn].skill[n][0]) > divi as i32 {
+                let boost = crate::helpers::random_mod(
+                    u32::from(gs.characters[cn].skill[n][0]) / divi as u32,
+                ) as u8;
                 gs.characters[cn].skill[n][0] = gs.characters[cn].skill[n][0].saturating_add(boost);
             }
         }
@@ -3045,7 +3061,7 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
 
     {
         gs.characters[cn].data[0] = item_idx as i32;
-        gs.characters[cn].data[29] = x as i32 + y as i32 * core::constants::SERVER_MAPX;
+        gs.characters[cn].data[29] = i32::from(x) + i32::from(y) * core::constants::SERVER_MAPX;
         gs.characters[cn].data[60] = TICKS * 60 * 2;
         gs.characters[cn].data[73] = 8;
         gs.characters[cn].dir = DX_RIGHT;
@@ -3092,7 +3108,7 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 
     log::info!("Character {} solved pentagram quest", cn);
 
-    let cn_name = gs.characters[cn].get_name().to_string();
+    let cn_name = gs.characters[cn].get_name().to_owned();
     let mut characters_in_pents: usize = 0;
 
     // Notify all players and award pending exp
@@ -3152,9 +3168,9 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
             if gs.items[n].active == 0 {
                 if gs.items[n].light[0] != gs.items[n].light[1] && gs.items[n].x > 0 {
                     gs.do_add_light(
-                        gs.items[n].x as i32,
-                        gs.items[n].y as i32,
-                        gs.items[n].light[1] as i32 - gs.items[n].light[0] as i32,
+                        i32::from(gs.items[n].x),
+                        i32::from(gs.items[n].y),
+                        i32::from(gs.items[n].light[1]) - i32::from(gs.items[n].light[0]),
                     );
                 }
             }
@@ -3464,7 +3480,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
             if in2 >= gs.items.len() {
                 String::new()
             } else {
-                c_string_to_str(&gs.items[in2].description).to_string()
+                c_string_to_str(&gs.items[in2].description).to_owned()
             }
         };
 
@@ -3568,7 +3584,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
             gs.do_character_log(cn, core::types::FontColor::Yellow, " \n");
 
             if bestcount == 1 {
-                let name = { gs.characters[bestcn].get_name().to_string() };
+                let name = { gs.characters[bestcn].get_name().to_owned() };
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -3656,8 +3672,8 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     if val >= rank {
         // Restore mana
         let mana_restored = {
-            if gs.characters[cn].a_mana < gs.characters[cn].mana[5] as i32 * 1000 {
-                gs.characters[cn].a_mana = gs.characters[cn].mana[5] as i32 * 1000;
+            if gs.characters[cn].a_mana < i32::from(gs.characters[cn].mana[5]) * 1000 {
+                gs.characters[cn].a_mana = i32::from(gs.characters[cn].mana[5]) * 1000;
                 true
             } else {
                 false
@@ -3670,7 +3686,12 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
                 core::types::FontColor::Green,
                 "You feel the hand of the Goddess of Magic touch your mind.\n",
             );
-            let (x, y) = { (gs.characters[cn].x as i32, gs.characters[cn].y as i32) };
+            let (x, y) = {
+                (
+                    i32::from(gs.characters[cn].x),
+                    i32::from(gs.characters[cn].y),
+                )
+            };
 
             EffectManager::fx_add_effect(gs, 6, 0, x, y, 0);
         }
@@ -3763,14 +3784,19 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             gs,
             7,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         )
     };
 
     // Get character position
-    let (ch_x, ch_y) = { (gs.characters[cn].x as i32, gs.characters[cn].y as i32) };
+    let (ch_x, ch_y) = {
+        (
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+        )
+    };
 
     // Damage all undead in 8x8 area
     for y in (ch_y - 8)..(ch_y + 8) {
@@ -3875,8 +3901,8 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             gs,
             6,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         )
     };
@@ -3892,8 +3918,8 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             gs,
             6,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         )
     };
@@ -3903,7 +3929,7 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if citem != 0 && (citem & 0x80000000) == 0 {
         let has_flag = { (gs.items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 };
         if has_flag {
-            let item_ref = { c_string_to_str(&gs.items[citem].reference).to_string() };
+            let item_ref = { c_string_to_str(&gs.items[citem].reference).to_owned() };
             {
                 gs.characters[cn].citem = 0;
             };
@@ -4186,7 +4212,7 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
         (
             (gs.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) != 0,
             (gs.characters[cn].kindred & traits::KIN_MALE as i32) != 0,
-            gs.characters[cn].get_name().to_string(),
+            gs.characters[cn].get_name().to_owned(),
         )
     };
 
@@ -4299,8 +4325,8 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
             gs,
             6,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         )
     };
@@ -4316,8 +4342,8 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
             gs,
             6,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         )
     };
@@ -4394,7 +4420,7 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         }
         skills::SK_CURSE => {
             let target_resistance = gs.characters[co].skill[skills::SK_RESIST][5];
-            if driver::chance_base(gs, cn, power as i32, 10, target_resistance as i32) != 0 {
+            if driver::chance_base(gs, cn, power as i32, 10, i32::from(target_resistance)) != 0 {
                 true
             } else {
                 driver::spell_curse(gs, cn, co, power as i32)
@@ -4402,7 +4428,7 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         }
         skills::SK_STUN => {
             let target_resistance = gs.characters[co].skill[skills::SK_RESIST][5];
-            if driver::chance_base(gs, cn, power as i32, 12, target_resistance as i32) != 0 {
+            if driver::chance_base(gs, cn, power as i32, 12, i32::from(target_resistance)) != 0 {
                 true
             } else {
                 driver::spell_stun(gs, cn, co, power as i32)
@@ -4559,8 +4585,8 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Log the assembly
     let (item_name, citem_name) = {
         (
-            gs.items[item_idx].get_name().to_string(),
-            gs.items[citem].get_name().to_string(),
+            gs.items[item_idx].get_name().to_owned(),
+            gs.items[citem].get_name().to_owned(),
         )
     };
     log::info!("Added {} to {}", citem_name, item_name);
@@ -4609,7 +4635,7 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if offering is money or wrong item
     let (offer_temp, expected_temp) = (gs.items[offer].temp, gs.items[item_idx].data[0]);
 
-    if (offer & 0x80000000) != 0 || offer_temp as u32 != expected_temp {
+    if (offer & 0x80000000) != 0 || u32::from(offer_temp) != expected_temp {
         gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -4629,8 +4655,8 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Log the offering
     let (offer_ref, shrine_ref) = {
         (
-            c_string_to_str(&gs.items[offer].reference).to_string(),
-            c_string_to_str(&gs.items[item_idx].reference).to_string(),
+            c_string_to_str(&gs.items[offer].reference).to_owned(),
+            c_string_to_str(&gs.items[item_idx].reference).to_owned(),
         )
     };
     log::info!("Offered {} at {}", offer_ref, shrine_ref);
@@ -4649,7 +4675,7 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         };
     }
 
-    let gift_ref = { c_string_to_str(&gs.items[gift.unwrap()].reference).to_string() };
+    let gift_ref = { c_string_to_str(&gs.items[gift.unwrap()].reference).to_owned() };
     gs.do_character_log(
         cn,
         core::types::FontColor::Yellow,
@@ -4701,7 +4727,7 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> b
     }
 
     // Log offering
-    let shrine_ref = c_string_to_str(&gs.items[item_idx].reference).to_string();
+    let shrine_ref = c_string_to_str(&gs.items[item_idx].reference).to_owned();
     log::info!("offered {}G at {}", amount / 100, shrine_ref);
 
     // Accept money and teleport
@@ -4716,13 +4742,13 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> b
     let (a_mana, max_mana) = {
         (
             gs.characters[cn].a_mana,
-            gs.characters[cn].mana[5] as i32 * 1000,
+            i32::from(gs.characters[cn].mana[5]) * 1000,
         )
     };
 
     if a_mana < max_mana {
         {
-            gs.characters[cn].a_mana = gs.characters[cn].mana[5] as i32 * 1000;
+            gs.characters[cn].a_mana = i32::from(gs.characters[cn].mana[5]) * 1000;
         };
         gs.do_character_log(
             cn,
@@ -4734,8 +4760,8 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> b
                 gs,
                 6,
                 0,
-                gs.characters[cn].x as i32,
-                gs.characters[cn].y as i32,
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
                 0,
             )
         };
@@ -4771,7 +4797,7 @@ pub fn change_to_archtemplar(gs: &mut GameState, cn: usize) {
     let (is_male, name) = {
         (
             (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
-            gs.characters[cn].get_name().to_string(),
+            gs.characters[cn].get_name().to_owned(),
         )
     };
 
@@ -4814,7 +4840,7 @@ pub fn change_to_archharakim(gs: &mut GameState, cn: usize) {
     let (is_male, name) = {
         (
             (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
-            gs.characters[cn].get_name().to_string(),
+            gs.characters[cn].get_name().to_owned(),
         )
     };
 
@@ -4858,7 +4884,7 @@ pub fn change_to_warrior(gs: &mut GameState, cn: usize) {
     let (is_male, name) = {
         (
             (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
-            gs.characters[cn].get_name().to_string(),
+            gs.characters[cn].get_name().to_owned(),
         )
     };
 
@@ -4902,7 +4928,7 @@ pub fn change_to_sorcerer(gs: &mut GameState, cn: usize) {
     let (is_male, name) = {
         (
             (gs.characters[cn].kindred as u32 & traits::KIN_MALE) != 0,
-            gs.characters[cn].get_name().to_string(),
+            gs.characters[cn].get_name().to_owned(),
         )
     };
 
@@ -5059,7 +5085,7 @@ pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             points_tot
         );
 
-        gs.do_give_exp(cn, exp as i32, 0, -1)
+        gs.do_give_exp(cn, exp as i32, 0, -1);
     } else {
         gs.do_character_log(
             cn,
@@ -5104,7 +5130,7 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
         );
     } else {
         // Item
-        let reference = { c_string_to_str(&gs.items[citem as usize].reference).to_string() };
+        let reference = { c_string_to_str(&gs.items[citem as usize].reference).to_owned() };
 
         {
             gs.characters[cn].citem = 0;
@@ -5152,7 +5178,10 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
 
     // Check if tile is occupied (for non-carried items)
     if !carried {
-        let (it_x, it_y) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+        let (it_x, it_y) = (
+            i32::from(gs.items[item_idx].x),
+            i32::from(gs.items[item_idx].y),
+        );
         if it_x > 0 {
             let m = (it_x + it_y * core::constants::SERVER_MAPX) as usize;
             let occupied = gs.map[m].ch != 0 || gs.map[m].to_ch != 0;
@@ -5303,7 +5332,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         gs.items[item_idx].active = 0;
 
         if light0 != light1 && it_x > 0 {
-            gs.do_add_light(it_x as i32, it_y as i32, light0 as i32 - light1 as i32);
+            gs.do_add_light(
+                i32::from(it_x),
+                i32::from(it_y),
+                i32::from(light0) - i32::from(light1),
+            );
         }
 
         if carried {
@@ -5333,7 +5366,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         gs.items[item_idx].active = duration;
 
         if light0 != light1 && it_x > 0 {
-            gs.do_add_light(it_x as i32, it_y as i32, light1 as i32 - light0 as i32);
+            gs.do_add_light(
+                i32::from(it_x),
+                i32::from(it_y),
+                i32::from(light1) - i32::from(light0),
+            );
         }
 
         if carried {
@@ -5359,7 +5396,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             // Check min_rank requirement
             let min_rank = gs.items[item_idx].min_rank;
             let curr_rank = { core::ranks::points2rank(gs.characters[cn].points_tot as u32) };
-            if min_rank as i32 > curr_rank as i32 {
+            if i32::from(min_rank) > curr_rank as i32 {
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -5369,7 +5406,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             }
 
             // Log usage
-            let item_name = gs.items[item_idx].get_name().to_string();
+            let item_name = gs.items[item_idx].get_name().to_owned();
             log::info!("Used {}", item_name);
 
             // Apply hp/end/mana changes
@@ -5385,15 +5422,15 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                 let end = gs.items[item_idx].end[0];
                 let mana = gs.items[item_idx].mana[0];
 
-                gs.characters[cn].a_hp += hp as i32 * 1000;
+                gs.characters[cn].a_hp += i32::from(hp) * 1000;
                 if gs.characters[cn].a_hp < 0 {
                     gs.characters[cn].a_hp = 0;
                 }
-                gs.characters[cn].a_end += end as i32 * 1000;
+                gs.characters[cn].a_end += i32::from(end) * 1000;
                 if gs.characters[cn].a_end < 0 {
                     gs.characters[cn].a_end = 0;
                 }
-                gs.characters[cn].a_mana += mana as i32 * 1000;
+                gs.characters[cn].a_mana += i32::from(mana) * 1000;
                 if gs.characters[cn].a_mana < 0 {
                     gs.characters[cn].a_mana = 0;
                 }
@@ -5412,7 +5449,12 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             // If character died as a result, announce and handle death
             let a_hp = gs.characters[cn].a_hp;
             if a_hp < 500 {
-                let (x, y) = { (gs.characters[cn].x as i32, gs.characters[cn].y as i32) };
+                let (x, y) = {
+                    (
+                        i32::from(gs.characters[cn].x),
+                        i32::from(gs.characters[cn].y),
+                    )
+                };
                 gs.do_area_log(
                     cn,
                     0,
@@ -5421,8 +5463,8 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                     core::types::FontColor::Yellow,
                     &format!(
                         "{} was killed by {}.\n",
-                        gs.characters[cn].get_name().to_string(),
-                        c_string_to_str(&gs.items[item_idx].reference).to_string()
+                        gs.characters[cn].get_name().to_owned(),
+                        c_string_to_str(&gs.items[item_idx].reference).to_owned()
                     ),
                 );
                 gs.do_character_log(
@@ -5430,7 +5472,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
                     core::types::FontColor::Yellow,
                     &format!(
                         "You were killed by {}.\n",
-                        c_string_to_str(&gs.items[item_idx].reference).to_string()
+                        c_string_to_str(&gs.items[item_idx].reference).to_owned()
                     ),
                 );
                 gs.do_character_killed(cn, 0, true);
@@ -5795,7 +5837,7 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
         }
 
         // Get item name before destruction
-        let item_name = gs.items[item_idx].get_name().to_string();
+        let item_name = gs.items[item_idx].get_name().to_owned();
 
         // Update description
         let description = format!(
@@ -5834,7 +5876,7 @@ pub fn item_age(gs: &mut GameState, item_idx: usize) -> bool {
             gs.items[item_idx].value /= 2;
 
             if gs.items[item_idx].damage_state > 1 {
-                let st = std::cmp::max(0, 4 - gs.items[item_idx].damage_state as i32);
+                let st = std::cmp::max(0, 4 - i32::from(gs.items[item_idx].damage_state));
 
                 if gs.items[item_idx].armor[0] > st as i8 {
                     gs.items[item_idx].armor[0] -= 1;
@@ -5889,8 +5931,6 @@ pub fn item_age(gs: &mut GameState, item_idx: usize) -> bool {
 }
 
 pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
-    use core::constants::USE_EMPTY;
-
     let worn_idx = gs.characters[cn].worn[n] as usize;
     if worn_idx == 0 {
         return;
@@ -5901,15 +5941,13 @@ pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
         return;
     }
 
-    {
-        gs.items[worn_idx].current_damage += damage as u32;
-    };
+    gs.items[worn_idx].current_damage += damage as u32;
 
     if item_age(gs, worn_idx) {
         let (damage_state, reference) = {
             (
                 gs.items[worn_idx].damage_state,
-                c_string_to_str(&gs.items[worn_idx].reference).to_string(),
+                c_string_to_str(&gs.items[worn_idx].reference).to_owned(),
             )
         };
 
@@ -5983,7 +6021,7 @@ pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
         let (damage_state, reference) = {
             (
                 gs.items[citem_idx].damage_state,
-                c_string_to_str(&gs.items[citem_idx].reference).to_string(),
+                c_string_to_str(&gs.items[citem_idx].reference).to_owned(),
             )
         };
 
@@ -6036,10 +6074,6 @@ pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
 
 pub fn item_damage_armor(gs: &mut GameState, cn: usize, damage: i32) {
     let dam = damage / 4 + 1;
-
-    const WN_RHAND: usize = 8;
-    const WN_LHAND: usize = 17;
-
     for n in 0..20 {
         if n != WN_RHAND && n != WN_LHAND {
             if helpers::random_mod_i32(3) != 0 {
@@ -6050,7 +6084,6 @@ pub fn item_damage_armor(gs: &mut GameState, cn: usize, damage: i32) {
 }
 
 pub fn item_damage_weapon(gs: &mut GameState, cn: usize, damage: i32) {
-    const WN_RHAND: usize = 8;
     let dam = damage / 4 + 1;
     item_damage_worn(gs, cn, WN_RHAND, dam);
 }
@@ -6060,8 +6093,8 @@ pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
     let (carried, it_x, it_y, active) = {
         (
             gs.items[item_idx].carried,
-            gs.items[item_idx].x as i32,
-            gs.items[item_idx].y as i32,
+            i32::from(gs.items[item_idx].x),
+            i32::from(gs.items[item_idx].y),
             gs.items[item_idx].active,
         )
     };
@@ -6073,7 +6106,10 @@ pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
             if cn >= core::constants::MAXCHARS || gs.characters[cn].used == USE_EMPTY {
                 (it_x, it_y)
             } else {
-                (gs.characters[cn].x as i32, gs.characters[cn].y as i32)
+                (
+                    i32::from(gs.characters[cn].x),
+                    i32::from(gs.characters[cn].y),
+                )
             }
         }
     } else {
@@ -6088,7 +6124,7 @@ pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
     let m = (mx + my * SERVER_MAPX) as usize;
 
     // Read map light
-    let mut light = gs.map[m].light as i32;
+    let mut light = i32::from(gs.map[m].light);
     if light < 1 {
         return;
     }
@@ -6111,7 +6147,7 @@ pub fn age_message(gs: &mut GameState, cn: usize, item_idx: usize, where_is: &st
         (
             gs.items[item_idx].driver,
             gs.items[item_idx].damage_state,
-            c_string_to_str(&gs.items[item_idx].reference).to_string(),
+            c_string_to_str(&gs.items[item_idx].reference).to_owned(),
         )
     };
 
@@ -6203,9 +6239,7 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
             continue;
         }
 
-        {
-            gs.items[item_idx].current_age[active] += 1;
-        };
+        gs.items[item_idx].current_age[active] += 1;
 
         if has_lightage {
             lightage(gs, item_idx, 1);
@@ -6217,12 +6251,8 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
 
             let damage_state = gs.items[item_idx].damage_state;
             if damage_state == 5 {
-                {
-                    gs.characters[cn].item[n] = 0;
-                };
-                {
-                    gs.items[item_idx].used = USE_EMPTY;
-                };
+                gs.characters[cn].item[n] = 0;
+                gs.items[item_idx].used = USE_EMPTY;
             }
         }
     }
@@ -6249,9 +6279,7 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
             continue;
         }
 
-        {
-            gs.items[item_idx].current_age[active] += 1;
-        };
+        gs.items[item_idx].current_age[active] += 1;
 
         if has_lightage {
             lightage(gs, item_idx, 1);
@@ -6263,12 +6291,8 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
 
             if damage_state == 5 {
                 age_message(gs, cn, item_idx, "you were using");
-                {
-                    gs.characters[cn].worn[n] = 0;
-                };
-                {
-                    gs.items[item_idx].used = USE_EMPTY;
-                };
+                gs.characters[cn].worn[n] = 0;
+                gs.items[item_idx].used = USE_EMPTY;
             } else {
                 age_message(gs, cn, item_idx, "you are using");
             }
@@ -6291,9 +6315,7 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
 
         let should_age = (active == 0 && has_alwaysexp1) || (active == 1 && has_alwaysexp2);
         if should_age {
-            {
-                gs.items[item_idx].current_age[active] += 1;
-            };
+            gs.items[item_idx].current_age[active] += 1;
 
             if has_lightage {
                 lightage(gs, item_idx, 1);
@@ -6305,12 +6327,8 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
 
                 if damage_state == 5 {
                     age_message(gs, cn, item_idx, "you were using");
-                    {
-                        gs.characters[cn].citem = 0;
-                    };
-                    {
-                        gs.items[item_idx].used = USE_EMPTY;
-                    };
+                    gs.characters[cn].citem = 0;
+                    gs.items[item_idx].used = USE_EMPTY;
                 } else {
                     age_message(gs, cn, item_idx, "you are using");
                 }
@@ -6378,22 +6396,18 @@ pub fn pentagram(gs: &mut GameState, item_idx: usize) {
         let should_spawn = if stored_cn == 0 {
             true
         } else {
-            {
-                let cn = stored_cn as usize;
-                let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
-                    || gs.characters[cn].used == USE_EMPTY
-                    || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
-                dead_or_mismatch
-            }
+            let cn = stored_cn as usize;
+            let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
+                || gs.characters[cn].used == USE_EMPTY
+                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
+            dead_or_mismatch
         };
 
         if should_spawn {
             // Use the dedicated spawn helper which encapsulates template selection
             let new_cn = spawn_penta_enemy(gs, item_idx);
             if new_cn != 0 {
-                {
-                    gs.items[item_idx].data[n] = new_cn as u32;
-                };
+                gs.items[item_idx].data[n] = new_cn as u32;
             }
             break;
         }
@@ -6418,13 +6432,11 @@ pub fn spiderweb(gs: &mut GameState, item_idx: usize) {
         let should_spawn = if stored_cn == 0 {
             true
         } else {
-            {
-                let cn = stored_cn as usize;
-                let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
-                    || gs.characters[cn].used == USE_EMPTY
-                    || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
-                dead_or_mismatch
-            }
+            let cn = stored_cn as usize;
+            let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
+                || gs.characters[cn].used == USE_EMPTY
+                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
+            dead_or_mismatch
         };
 
         if should_spawn {
@@ -6437,25 +6449,19 @@ pub fn spiderweb(gs: &mut GameState, item_idx: usize) {
 
             let (x, y) = { (gs.items[item_idx].x as usize, gs.items[item_idx].y as usize) };
 
-            {
-                // Ensure respawn flag is cleared for this spawned instance
-                gs.characters[cn].flags &= !CharacterFlags::Respawn.bits();
-                gs.characters[cn].data[0] = item_idx as i32;
-                gs.characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
-                gs.characters[cn].data[60] = TICKS * 60 * 2;
-                gs.characters[cn].data[73] = 8;
-                gs.characters[cn].dir = DX_RIGHT;
-            };
+            // Ensure respawn flag is cleared for this spawned instance
+            gs.characters[cn].flags &= !CharacterFlags::Respawn.bits();
+            gs.characters[cn].data[0] = item_idx as i32;
+            gs.characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
+            gs.characters[cn].data[60] = TICKS * 60 * 2;
+            gs.characters[cn].data[73] = 8;
+            gs.characters[cn].dir = DX_RIGHT;
 
             if !God::drop_char_fuzzy(gs, cn, x, y) {
                 God::destroy_items(gs, cn);
-                {
-                    gs.characters[cn].used = USE_EMPTY;
-                };
+                gs.characters[cn].used = USE_EMPTY;
             } else {
-                {
-                    gs.items[item_idx].data[n] = cn as u32;
-                };
+                gs.items[item_idx].data[n] = cn as u32;
             }
             break;
         }
@@ -6480,13 +6486,11 @@ pub fn greenlingball(gs: &mut GameState, item_idx: usize) {
         let should_spawn = if stored_cn == 0 {
             true
         } else {
-            {
-                let cn = stored_cn as usize;
-                let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
-                    || gs.characters[cn].used == USE_EMPTY
-                    || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
-                dead_or_mismatch
-            }
+            let cn = stored_cn as usize;
+            let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
+                || gs.characters[cn].used == USE_EMPTY
+                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
+            dead_or_mismatch
         };
 
         if should_spawn {
@@ -6499,25 +6503,19 @@ pub fn greenlingball(gs: &mut GameState, item_idx: usize) {
 
             let (x, y) = { (gs.items[item_idx].x as usize, gs.items[item_idx].y as usize) };
 
-            {
-                // Ensure respawn flag is cleared for this spawned instance
-                gs.characters[cn].flags &= !CharacterFlags::Respawn.bits();
-                gs.characters[cn].data[0] = item_idx as i32;
-                gs.characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
-                gs.characters[cn].data[60] = TICKS * 60 * 2;
-                gs.characters[cn].data[73] = 8;
-                gs.characters[cn].dir = DX_RIGHT;
-            };
+            // Ensure respawn flag is cleared for this spawned instance
+            gs.characters[cn].flags &= !CharacterFlags::Respawn.bits();
+            gs.characters[cn].data[0] = item_idx as i32;
+            gs.characters[cn].data[29] = (x + y * core::constants::SERVER_MAPX as usize) as i32;
+            gs.characters[cn].data[60] = TICKS * 60 * 2;
+            gs.characters[cn].data[73] = 8;
+            gs.characters[cn].dir = DX_RIGHT;
 
             if !God::drop_char_fuzzy(gs, cn, x, y) {
                 God::destroy_items(gs, cn);
-                {
-                    gs.characters[cn].used = USE_EMPTY;
-                };
+                gs.characters[cn].used = USE_EMPTY;
             } else {
-                {
-                    gs.items[item_idx].data[n] = cn as u32;
-                };
+                gs.items[item_idx].data[n] = cn as u32;
             }
             break;
         }
@@ -6543,14 +6541,12 @@ pub fn expire_driver(gs: &mut GameState, item_idx: usize) {
     match driver {
         49 => expire_blood_penta(gs, item_idx),
         _ => {
-            {
-                log::error!(
-                    "unknown expire driver {} for item {} ({})",
-                    gs.items[item_idx].driver,
-                    gs.items[item_idx].get_name(),
-                    item_idx
-                );
-            };
+            log::error!(
+                "unknown expire driver {} for item {} ({})",
+                gs.items[item_idx].driver,
+                gs.items[item_idx].get_name(),
+                item_idx
+            );
         }
     }
 }
@@ -6584,7 +6580,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                     item.driver,
                     item.active,
                     item.duration,
-                    item.light[1] as i32 - item.light[0] as i32,
+                    i32::from(item.light[1]) - i32::from(item.light[0]),
                 )
             };
 
@@ -6592,9 +6588,8 @@ pub fn item_tick_expire(gs: &mut GameState) {
 
             if (flags & ItemFlags::IF_REACTIVATE.bits()) != 0 && active == 0 {
                 if !ch_present && !to_ch_present {
-                    {
-                        gs.items[in_idx].active = duration;
-                    };
+                    gs.items[in_idx].active = duration;
+
                     active = duration;
                     if light_diff != 0 {
                         gs.do_add_light(x as i32, y as i32, light_diff);
@@ -6607,18 +6602,14 @@ pub fn item_tick_expire(gs: &mut GameState) {
                 if active <= EXP_TIME as u32 {
                     if may_deactivate(gs, in_idx) && !ch_present && !to_ch_present {
                         use_driver(gs, 0, in_idx, false);
-                        {
-                            gs.items[in_idx].active = 0;
-                        };
+                        gs.items[in_idx].active = 0;
                         active = 0;
                         if light_diff != 0 {
                             gs.do_add_light(x as i32, y as i32, -light_diff);
                         }
                     }
                 } else {
-                    {
-                        gs.items[in_idx].active -= EXP_TIME as u32;
-                    };
+                    gs.items[in_idx].active -= EXP_TIME as u32;
                     active -= EXP_TIME as u32;
                 }
             }
@@ -6645,7 +6636,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
             // Check if item should expire
             let map_flags = gs.map[m].flags;
             if ((flags & ItemFlags::IF_TAKE.bits()) == 0 && driver != 7)
-                || ((map_flags & MF_NOEXPIRE as u64) != 0 && driver != 7)
+                || ((map_flags & u64::from(MF_NOEXPIRE)) != 0 && driver != 7)
                 || driver == 37
                 || (flags & ItemFlags::IF_NOEXPIRE.bits()) != 0
             {
@@ -6666,18 +6657,12 @@ pub fn item_tick_expire(gs: &mut GameState) {
                     if damage_state == 5 {
                         let light = gs.items[in_idx].light[act];
                         if light != 0 {
-                            gs.do_add_light(x as i32, y as i32, -(light as i32));
+                            gs.do_add_light(x as i32, y as i32, -i32::from(light));
                         }
 
-                        {
-                            gs.map[m].it = 0;
-                        };
-                        {
-                            gs.items[in_idx].used = USE_EMPTY;
-                        };
-                        {
-                            gs.globals.expire_cnt += 1;
-                        };
+                        gs.map[m].it = 0;
+                        gs.items[in_idx].used = USE_EMPTY;
+                        gs.globals.expire_cnt += 1;
 
                         // Handle tomb (driver == 7)
                         if driver == 7 {
@@ -6688,7 +6673,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                                 let (temp, name, respawn_flag) = {
                                     (
                                         gs.characters[co].temp as usize,
-                                        gs.characters[co].get_name().to_string(),
+                                        gs.characters[co].get_name().to_owned(),
                                         (gs.characters[co].flags & CharacterFlags::Respawn.bits())
                                             != 0,
                                     )
@@ -6696,9 +6681,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
 
                                 // Remove the character and its items
                                 God::destroy_items(gs, co);
-                                {
-                                    gs.characters[co].used = core::constants::USE_EMPTY;
-                                };
+                                gs.characters[co].used = core::constants::USE_EMPTY;
 
                                 if temp != 0 && respawn_flag {
                                     // Schedule a respawn effect (type 2 = RSPAWN)
@@ -6711,8 +6694,8 @@ pub fn item_tick_expire(gs: &mut GameState) {
                                     // Use the template's coordinates for the respawn location
                                     let (tx, ty) = {
                                         (
-                                            gs.character_templates[temp].x as i32,
-                                            gs.character_templates[temp].y as i32,
+                                            i32::from(gs.character_templates[temp].x),
+                                            i32::from(gs.character_templates[temp].y),
                                         )
                                     };
 
@@ -6741,12 +6724,8 @@ pub fn item_tick_expire(gs: &mut GameState) {
             };
             if ch_x != x as i16 || ch_y != y as i16 || ch_used != USE_ACTIVE {
                 log::error!("map[{},{}].ch reset from {} to 0", x, y, cn);
-                {
-                    gs.map[m].ch = 0;
-                };
-                {
-                    gs.globals.lost_cnt += 1;
-                };
+                gs.map[m].ch = 0;
+                gs.globals.lost_cnt += 1;
             }
         }
 
@@ -6782,42 +6761,37 @@ pub fn item_tick_expire(gs: &mut GameState) {
                 )
             };
             if it_x != x as u16 || it_y != y as u16 || it_used != USE_ACTIVE {
-                {
-                    if in_idx < gs.items.len() {
-                        let item = &gs.items[in_idx];
-                        let temp = item.temp;
-                        let carried = item.carried;
-                        let used = item.used;
-                        let item_x = item.x;
-                        let item_y = item.y;
-                        log::error!(
-                            "map[{},{}].it invalid -> item {} (temp={}, name='{}', carried={}, used={}, pos=({},{})); clearing map reference",
-                            x,
-                            y,
-                            in_idx,
-                            temp,
-                            item.get_name(),
-                            carried,
-                            used,
-                            item_x,
-                            item_y,
-                        );
-                    } else {
-                        log::error!(
-                            "map[{},{}].it invalid -> item index {} out of bounds; clearing map reference",
-                            x,
-                            y,
-                            in_idx
-                        );
-                    }
-                };
+                if in_idx < gs.items.len() {
+                    let item = &gs.items[in_idx];
+                    let temp = item.temp;
+                    let carried = item.carried;
+                    let used = item.used;
+                    let item_x = item.x;
+                    let item_y = item.y;
+                    log::error!(
+                        "map[{},{}].it invalid -> item {} (temp={}, name='{}', carried={}, used={}, pos=({},{})); clearing map reference",
+                        x,
+                        y,
+                        in_idx,
+                        temp,
+                        item.get_name(),
+                        carried,
+                        used,
+                        item_x,
+                        item_y,
+                    );
+                } else {
+                    log::error!(
+                        "map[{},{}].it invalid -> item index {} out of bounds; clearing map reference",
+                        x,
+                        y,
+                        in_idx
+                    );
+                }
+
                 log::error!("map[{},{}].it reset from {} to 0", x, y, in_idx);
-                {
-                    gs.map[m].it = 0;
-                };
-                {
-                    gs.globals.lost_cnt += 1;
-                };
+                gs.map[m].it = 0;
+                gs.globals.lost_cnt += 1;
             }
         }
     }
@@ -6825,10 +6799,9 @@ pub fn item_tick_expire(gs: &mut GameState) {
     // Advance to next row after processing the current row.
     y += 1;
     if y >= SERVER_MAPY as u32 {
-        {
-            gs.globals.expire_run += 1;
-            gs.globals.lost_run += 1;
-        };
+        gs.globals.expire_run += 1;
+        gs.globals.lost_run += 1;
+
         y = 0;
     }
     gs.item_tick_expire_counter = y;
@@ -6854,17 +6827,14 @@ pub fn item_tick_gc(gs: &mut GameState) {
         let (driver, data0) = (gs.items[n].driver, gs.items[n].data[0]);
         if driver == 40 && data0 == 0 {
             // Reset to template 683
-            {
-                {
-                    let (x, y, carried) = (gs.items[n].x, gs.items[n].y, gs.items[n].carried);
-                    gs.items[n] = gs.item_templates[683];
-                    gs.items[n].x = x;
-                    gs.items[n].y = y;
-                    gs.items[n].carried = carried;
-                    gs.items[n].temp = 683;
-                    gs.items[n].flags |= ItemFlags::IF_UPDATE.bits();
-                };
-            };
+
+            let (x, y, carried) = (gs.items[n].x, gs.items[n].y, gs.items[n].carried);
+            gs.items[n] = gs.item_templates[683];
+            gs.items[n].x = x;
+            gs.items[n].y = y;
+            gs.items[n].carried = carried;
+            gs.items[n].temp = 683;
+            gs.items[n].flags |= ItemFlags::IF_UPDATE.bits();
 
             let cn = gs.items[n].carried;
             if cn != 0 {
@@ -6914,7 +6884,7 @@ pub fn item_tick_gc(gs: &mut GameState) {
                     // Check depot for players
                     if !found {
                         let is_player =
-                            { (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 };
+                            (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
                         if is_player {
                             for z in 0..62 {
                                 let depot_id = { gs.characters[cn].depot[z] };
@@ -6944,13 +6914,8 @@ pub fn item_tick_gc(gs: &mut GameState) {
         }
 
         // Item is garbage - remove it
-        {
-            gs.items[n].used = USE_EMPTY;
-        };
-
-        {
-            gs.globals.gc_cnt += 1;
-        };
+        gs.items[n].used = USE_EMPTY;
+        gs.globals.gc_cnt += 1;
     }
 
     // Update OFF and possibly reset
@@ -6961,10 +6926,8 @@ pub fn item_tick_gc(gs: &mut GameState) {
     if current_off >= MAXITEM as u32 {
         gs.item_tick_gc_off = 0;
         let count = gs.item_tick_gc_count;
-        {
-            gs.globals.item_cnt = count as i32;
-            gs.globals.gc_run += 1;
-        };
+        gs.globals.item_cnt = count as i32;
+        gs.globals.gc_run += 1;
         gs.item_tick_gc_count = 0;
     }
 }
@@ -6998,7 +6961,7 @@ pub fn trap1(gs: &mut GameState, cn: usize, item_idx: usize) {
     let in_worn = gs.characters[cn].worn[slot];
 
     if in_worn != 0 {
-        let item_name = gs.items[in_worn as usize].get_name().to_string();
+        let item_name = gs.items[in_worn as usize].get_name().to_owned();
         gs.do_character_log(
             cn,
             core::types::FontColor::Red,
@@ -7013,12 +6976,8 @@ pub fn trap1(gs: &mut GameState, cn: usize, item_idx: usize) {
             item_name
         );
 
-        {
-            gs.items[in_worn as usize].used = USE_EMPTY;
-        };
-        {
-            gs.characters[cn].worn[slot] = 0;
-        };
+        gs.items[in_worn as usize].used = USE_EMPTY;
+        gs.characters[cn].worn[slot] = 0;
         gs.do_update_char(cn);
     } else {
         gs.do_character_log(
@@ -7032,10 +6991,6 @@ pub fn trap1(gs: &mut GameState, cn: usize, item_idx: usize) {
 }
 
 pub fn trap2(gs: &mut GameState, cn: usize, tmp: usize) {
-    use crate::god::God;
-    use crate::populate::pop_create_char;
-    use core::constants::USE_EMPTY;
-
     let cc = match pop_create_char(gs, tmp, false) {
         Some(cc) => cc,
         None => return,
@@ -7045,15 +7000,11 @@ pub fn trap2(gs: &mut GameState, cn: usize, tmp: usize) {
 
     if !God::drop_char_fuzzy(gs, cc, ch_x, ch_y) {
         log::error!("trap2: drop failed");
-        {
-            gs.characters[cc].used = USE_EMPTY;
-        };
+        gs.characters[cc].used = USE_EMPTY;
         return;
     }
 
-    {
-        gs.characters[cc].attack_cn = cn as u16;
-    };
+    gs.characters[cc].attack_cn = cn as u16;
     gs.do_update_char(cc);
 }
 
@@ -7064,11 +7015,14 @@ pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
     };
 
     if duration != 0 {
-        {
-            gs.items[item_idx].active = duration;
-        };
+        gs.items[item_idx].active = duration;
+
         if light0 != light1 && x > 0 {
-            gs.do_add_light(x as i32, y as i32, light1 as i32 - light0 as i32);
+            gs.do_add_light(
+                i32::from(x),
+                i32::from(y),
+                i32::from(light1) - i32::from(light0),
+            );
         }
     }
 
@@ -7090,9 +7044,9 @@ pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
             gs.do_area_notify(
                 cn as i32,
                 0,
-                x as i32,
-                y as i32,
-                NT_HITME as i32,
+                i32::from(x),
+                i32::from(y),
+                i32::from(NT_HITME),
                 cn as i32,
                 0,
                 0,
@@ -7113,7 +7067,7 @@ pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
 }
 
 pub fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
-    let is_player = { (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 };
+    let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
     if is_player {
         start_trap(gs, cn, item_idx);
@@ -7135,11 +7089,14 @@ pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
     };
 
     if active != 0 {
-        {
-            gs.items[item_idx].active = 0;
-        };
+        gs.items[item_idx].active = 0;
+
         if light0 != light1 && x > 0 {
-            gs.do_add_light(x as i32, y as i32, light0 as i32 - light1 as i32);
+            gs.do_add_light(
+                i32::from(x),
+                i32::from(y),
+                i32::from(light0) - i32::from(light1),
+            );
         }
     }
 }
@@ -7202,12 +7159,8 @@ pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
     for n in 0..20 {
         let spell_id = gs.characters[cn].spell[n];
         if spell_id != 0 {
-            {
-                gs.items[spell_id as usize].used = USE_EMPTY;
-            };
-            {
-                gs.characters[cn].spell[n] = 0;
-            };
+            gs.items[spell_id as usize].used = USE_EMPTY;
+            gs.characters[cn].spell[n] = 0;
         }
     }
 
@@ -7217,7 +7170,7 @@ pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
 }
 
 pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
-    let is_player = { (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 };
+    let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
     if !is_player {
         return -1;
     }
@@ -7230,7 +7183,7 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
             let co = gs.map[m].ch;
             if co != 0 && co != cn as u32 {
                 let is_other_player =
-                    { (gs.characters[co as usize].flags & CharacterFlags::Player.bits()) != 0 };
+                    gs.characters[co as usize].flags & CharacterFlags::Player.bits() != 0;
                 if is_other_player {
                     flag = 1;
                 }
@@ -7265,7 +7218,7 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
                 let co = gs.map[m].ch;
                 if co != 0 && co != cn as u32 {
                     let is_other_player =
-                        { (gs.characters[co as usize].flags & CharacterFlags::Player.bits()) != 0 };
+                        gs.characters[co as usize].flags & CharacterFlags::Player.bits() != 0;
                     if is_other_player {
                         flag = 1;
                     }
@@ -7329,7 +7282,7 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
         if temp != 51 {
             continue;
         }
-        if a_hp > (hp5 as i32 * 900) && a_mana > (mana5 as i32 * 900) {
+        if a_hp > (i32::from(hp5) * 900) && a_mana > (i32::from(mana5) * 900) {
             flag = 1;
         }
         break;
@@ -7359,12 +7312,8 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
     for n in 0..20 {
         let spell_id = gs.characters[cn].spell[n];
         if spell_id != 0 {
-            {
-                gs.items[spell_id as usize].used = USE_EMPTY;
-            };
-            {
-                gs.characters[cn].spell[n] = 0;
-            };
+            gs.items[spell_id as usize].used = USE_EMPTY;
+            gs.characters[cn].spell[n] = 0;
         }
     }
 
@@ -7374,12 +7323,8 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
         if item_id != 0 {
             let temp = gs.items[item_id as usize].temp;
             if temp == 664 {
-                {
-                    gs.characters[cn].item[n] = 0;
-                };
-                {
-                    gs.items[item_id as usize].used = USE_EMPTY;
-                };
+                gs.characters[cn].item[n] = 0;
+                gs.items[item_id as usize].used = USE_EMPTY;
             }
         }
     }
@@ -7388,12 +7333,8 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
     if citem != 0 && (citem & 0x80000000) == 0 {
         let temp = gs.items[citem as usize].temp;
         if temp == 664 {
-            {
-                gs.characters[cn].citem = 0;
-            };
-            {
-                gs.items[citem as usize].used = USE_EMPTY;
-            };
+            gs.characters[cn].citem = 0;
+            gs.items[citem as usize].used = USE_EMPTY;
         }
     }
     gs.do_update_char(cn);
@@ -7408,12 +7349,9 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
     if citem != 0 && (citem & 0x80000000) == 0 {
         let temp = gs.items[citem as usize].temp;
         if temp == 687 {
-            {
-                gs.characters[cn].citem = 0;
-            };
-            {
-                gs.items[citem as usize].used = USE_EMPTY;
-            };
+            gs.characters[cn].citem = 0;
+            gs.items[citem as usize].used = USE_EMPTY;
+
             flag = 1;
         }
     }
@@ -7425,12 +7363,9 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
             let temp = gs.items[item_id as usize].temp;
             if temp == 687 {
                 flag = 1;
-                {
-                    gs.characters[cn].item[n] = 0;
-                };
-                {
-                    gs.items[item_id as usize].used = USE_EMPTY;
-                };
+
+                gs.characters[cn].item[n] = 0;
+                gs.items[item_id as usize].used = USE_EMPTY;
             }
         }
     }
@@ -7441,10 +7376,10 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
             core::types::FontColor::Yellow,
             "A winner! You gain one arena-rank!",
         );
-        {
-            gs.characters[cn].data[22] += 1;
-            gs.characters[cn].data[23] = 1;
-        };
+
+        gs.characters[cn].data[22] += 1;
+        gs.characters[cn].data[23] = 1;
+
         return 1;
     }
 
@@ -7525,20 +7460,14 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
         return -1;
     }
 
-    {
-        {
-            gs.characters[co].data[64] = gs.globals.ticker + (core::constants::TICKS * 60 * 5);
-        };
-    };
+    gs.characters[co].data[64] = gs.globals.ticker + (core::constants::TICKS * 60 * 5);
 
     // Create arena token
     if let Some(in2) = God::create_item(gs, 687) {
         God::give_character_item(gs, co, in2);
     }
 
-    {
-        gs.characters[cn].data[23] = 0;
-    };
+    gs.characters[cn].data[23] = 0;
 
     1
 }
@@ -7580,7 +7509,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             gs.map[m2].it,
         );
 
-        if (map_flags & core::constants::MF_MOVEBLOCK as u64) != 0 {
+        if (map_flags & u64::from(core::constants::MF_MOVEBLOCK)) != 0 {
             continue;
         }
         if ch != 0 {
@@ -7595,7 +7524,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
                 continue;
             }
         }
-        if (map_flags & ((core::constants::MF_TAVERN | core::constants::MF_DEATHTRAP) as u64)) != 0
+        if (map_flags & u64::from(core::constants::MF_TAVERN | core::constants::MF_DEATHTRAP)) != 0
         {
             continue;
         }
@@ -7615,8 +7544,8 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
             gs,
             6,
             0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
             0,
         )
     };
@@ -7624,29 +7553,23 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     player::map::plr_map_remove(gs, cn);
 
     // Update character position
-    {
-        gs.characters[cn].status = 0;
-        gs.characters[cn].attack_cn = 0;
-        gs.characters[cn].skill_nr = 0;
-        gs.characters[cn].goto_x = 0;
-    };
+    gs.characters[cn].status = 0;
+    gs.characters[cn].attack_cn = 0;
+    gs.characters[cn].skill_nr = 0;
+    gs.characters[cn].goto_x = 0;
 
     // Set new position
-    {
-        gs.map[m3].ch = cn as u32;
-        gs.map[m3].to_ch = 0;
-    };
-    {
-        gs.characters[cn].x = (m3 % SERVER_MAPX as usize) as i16;
-        gs.characters[cn].y = (m3 / SERVER_MAPX as usize) as i16;
-    };
+    gs.map[m3].ch = cn as u32;
+    gs.map[m3].to_ch = 0;
+    gs.characters[cn].x = (m3 % SERVER_MAPX as usize) as i16;
+    gs.characters[cn].y = (m3 / SERVER_MAPX as usize) as i16;
 
     let (new_x, new_y) = (gs.characters[cn].x, gs.characters[cn].y);
     gs.do_area_notify(
         cn as i32,
         0,
-        new_x as i32,
-        new_y as i32,
+        i32::from(new_x),
+        i32::from(new_y),
         1,
         cn as i32,
         0,
@@ -7656,16 +7579,14 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // NT_SEE = 1
 
     // Add arrival effect
-    {
-        EffectManager::fx_add_effect(
-            gs,
-            6,
-            0,
-            gs.characters[cn].x as i32,
-            gs.characters[cn].y as i32,
-            0,
-        )
-    };
+    EffectManager::fx_add_effect(
+        gs,
+        6,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
 
     2 // TELEPORT_SUCCESS
 }
@@ -7678,21 +7599,18 @@ pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         None => return 0,
     };
 
-    {
-        gs.items[in2].name[..4].copy_from_slice(b"Fire");
-        gs.items[in2].reference[..4].copy_from_slice(b"fire");
-        gs.items[in2].description[..5].copy_from_slice(b"Fire.");
-        gs.items[in2].hp[0] = -5000;
-        gs.items[in2].active = 1;
-        gs.items[in2].duration = 1;
-        gs.items[in2].flags = ItemFlags::IF_SPELL.bits() | ItemFlags::IF_PERMSPELL.bits();
-    };
+    gs.items[in2].name[..4].copy_from_slice(b"Fire");
+    gs.items[in2].reference[..4].copy_from_slice(b"fire");
+    gs.items[in2].description[..5].copy_from_slice(b"Fire.");
+    gs.items[in2].hp[0] = -5000;
+    gs.items[in2].active = 1;
+    gs.items[in2].duration = 1;
+    gs.items[in2].flags = ItemFlags::IF_SPELL.bits() | ItemFlags::IF_PERMSPELL.bits();
 
     let (temp, sprite1) = (gs.items[item_idx].temp, gs.items[item_idx].sprite[1]);
-    {
-        gs.items[in2].temp = temp;
-        gs.items[in2].sprite[1] = sprite1;
-    };
+
+    gs.items[in2].temp = temp;
+    gs.items[in2].sprite[1] = sprite1;
 
     driver::add_spell(gs, cn, in2);
 
@@ -7707,12 +7625,9 @@ pub fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
         if in2 != 0 {
             let spell_temp = gs.items[in2 as usize].temp;
             if spell_temp == temp {
-                {
-                    gs.items[in2 as usize].used = USE_EMPTY;
-                };
-                {
-                    gs.characters[cn].spell[n] = 0;
-                };
+                gs.items[in2 as usize].used = USE_EMPTY;
+                gs.characters[cn].spell[n] = 0;
+
                 return;
             }
         }
@@ -7730,14 +7645,13 @@ pub fn step_driver(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
         62 => step_teleport(gs, cn, item_idx),
         69 => step_firefloor(gs, cn, item_idx),
         _ => {
-            {
-                log::error!(
-                    "unknown step driver {} for item {} ({})",
-                    gs.items[item_idx].driver,
-                    gs.items[item_idx].get_name(),
-                    item_idx
-                );
-            };
+            log::error!(
+                "unknown step driver {} for item {} ({})",
+                gs.items[item_idx].driver,
+                gs.items[item_idx].get_name(),
+                item_idx
+            );
+
             0
         }
     };
@@ -7756,14 +7670,12 @@ pub fn step_driver_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
         62 => {}
         69 => step_firefloor_remove(gs, cn, item_idx),
         _ => {
-            {
-                log::error!(
-                    "unknown step driver {} for item {} ({})",
-                    gs.items[item_idx].driver,
-                    gs.items[item_idx].get_name(),
-                    item_idx
-                );
-            };
+            log::error!(
+                "unknown step driver {} for item {} ({})",
+                gs.items[item_idx].driver,
+                gs.items[item_idx].get_name(),
+                item_idx
+            );
         }
     }
 }

@@ -112,7 +112,7 @@ impl KeybindingsPanel {
                 let label = bindings
                     .binding_for(*action)
                     .map(|kb| kb.to_string())
-                    .unwrap_or_else(|| "Unbound".to_string());
+                    .unwrap_or_else(|| "Unbound".to_owned());
                 RectButton::new(Bounds::new(btn_x, y, BTN_W, BTN_H), btn_bg)
                     .with_label(&label, 0)
                     .with_border(btn_border)
@@ -163,7 +163,7 @@ impl KeybindingsPanel {
                 .bindings
                 .binding_for(*action)
                 .map(|kb| kb.to_string())
-                .unwrap_or_else(|| "Unbound".to_string());
+                .unwrap_or_else(|| "Unbound".to_owned());
             if let Some(btn) = self.binding_buttons.get_mut(i) {
                 btn.set_label(&label);
             }

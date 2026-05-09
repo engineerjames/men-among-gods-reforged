@@ -47,7 +47,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
                 seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
                 seen[maxseen].is_friend = true;
                 seen[maxseen].stun = 0;
-                let low_hp = gs.characters[co].a_hp < (gs.characters[co].hp[5] as i32 * 400);
+                let low_hp = gs.characters[co].a_hp < (i32::from(gs.characters[co].hp[5]) * 400);
                 seen[maxseen].help = if low_hp { 1 } else { 0 };
                 help = help.max(seen[maxseen].help);
                 maxseen += 1;
@@ -139,7 +139,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
         }
     }
 
-    let low_mana = gs.characters[cn].a_mana < (gs.characters[cn].mana[5] as i32 * 125);
+    let low_mana = gs.characters[cn].a_mana < (i32::from(gs.characters[cn].mana[5]) * 125);
     if low_mana {
         stun -= 3;
         help -= 3;
@@ -154,7 +154,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
     gs.characters[cn].misc_action = 0;
     gs.characters[cn].cerrno = 0;
 
-    let low_hp = gs.characters[cn].a_hp < (gs.characters[cn].hp[5] as i32 * 666);
+    let low_hp = gs.characters[cn].a_hp < (i32::from(gs.characters[cn].hp[5]) * 666);
     if low_hp {
         flee += 5;
     }
@@ -189,16 +189,16 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             );
 
             if co_x > cn_x {
-                right += tmp / (co_x - cn_x) as i32;
+                right += tmp / i32::from(co_x - cn_x);
             }
             if co_x < cn_x {
-                left += tmp / (cn_x - co_x) as i32;
+                left += tmp / i32::from(cn_x - co_x);
             }
             if co_y > cn_y {
-                down += tmp / (co_y - cn_y) as i32;
+                down += tmp / i32::from(co_y - cn_y);
             }
             if co_y < cn_y {
-                up += tmp / (cn_y - co_y) as i32;
+                up += tmp / i32::from(cn_y - co_y);
             }
         }
 
@@ -386,7 +386,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             {
                 let needs_help = !driver::npc_is_blessed(&gs.characters[seen[n].co], &gs.items)
                     || gs.characters[seen[n].co].a_hp
-                        < (gs.characters[seen[n].co].hp[5] * 400) as i32;
+                        < i32::from(gs.characters[seen[n].co].hp[5] * 400);
                 if needs_help {
                     tmp = seen[n].help;
                     m = n;
@@ -395,7 +395,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
         }
         if tmp > 0 {
             let low_hp =
-                gs.characters[seen[m].co].a_hp < (gs.characters[seen[m].co].hp[5] * 400) as i32;
+                gs.characters[seen[m].co].a_hp < i32::from(gs.characters[seen[m].co].hp[5] * 400);
             if low_hp {
                 done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_HEAL);
             }
@@ -461,7 +461,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
                 }
             }
             let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
-            if (cn_x as i32 - 264).abs() + (cn_y as i32 - 317).abs() < 20 {
+            if (i32::from(cn_x) - 264).abs() + (i32::from(cn_y) - 317).abs() < 20 {
                 gs.characters[cn].data[22] = 2;
                 gs.characters[cn].data[23] = ticker;
             } else {
@@ -482,7 +482,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
 
         if state == 2 {
             let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
-            if (cn_x as i32 - 217).abs() + (cn_y as i32 - 349).abs() < 3 {
+            if (i32::from(cn_x) - 217).abs() + (i32::from(cn_y) - 349).abs() < 3 {
                 let ticker = gs.globals.ticker;
                 gs.characters[cn].data[22] = 0;
                 gs.characters[cn].data[23] = ticker;
@@ -618,7 +618,7 @@ pub fn npc_stunrun_msg(
         NT_SHOUT => false,
         NT_HITME => false,
         _ => {
-            let name = gs.characters[cn].get_name().to_string();
+            let name = gs.characters[cn].get_name().to_owned();
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             false
         }
@@ -626,12 +626,12 @@ pub fn npc_stunrun_msg(
 }
 
 pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
-    let low_hp = gs.characters[cn].a_hp < (gs.characters[cn].hp[5] * 600) as i32;
+    let low_hp = gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 600);
     if low_hp && driver::npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
         return true;
     }
 
-    let high_mana = gs.characters[cn].a_mana > (gs.characters[cn].mana[5] as i32 * 850);
+    let high_mana = gs.characters[cn].a_mana > (i32::from(gs.characters[cn].mana[5]) * 850);
     let has_medit = gs.characters[cn].skill[skills::SK_MEDIT][0] != 0;
     if high_mana && has_medit {
         let very_high_mana = gs.characters[cn].a_mana > 75000;
@@ -673,7 +673,7 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
 
     let co = gs.characters[cn].attack_cn;
     if co != 0 {
-        let losing = gs.characters[cn].a_hp < (gs.characters[cn].hp[5] * 600) as i32;
+        let losing = gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 600);
         if losing && driver::npc_try_spell(gs, cn, co as usize, skills::SK_BLAST) {
             return true;
         }
@@ -682,7 +682,7 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
         let data_75 = gs.characters[cn].data[75];
         if ticker > data_75 && driver::npc_try_spell(gs, cn, co as usize, skills::SK_STUN) {
             gs.characters[cn].data[75] =
-                ticker + gs.characters[cn].skill[skills::SK_STUN][5] as i32 + TICKS * 8;
+                ticker + i32::from(gs.characters[cn].skill[skills::SK_STUN][5]) + TICKS * 8;
             return true;
         }
 
@@ -726,7 +726,7 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
 pub fn npc_moveto(gs: &mut GameState, cn: usize, x: u16, y: u16) -> bool {
     let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
-    if (cn_x as i32 - x as i32).abs() < 3 && (cn_y as i32 - y as i32).abs() < 3 {
+    if (i32::from(cn_x) - i32::from(x)).abs() < 3 && (i32::from(cn_y) - i32::from(y)).abs() < 3 {
         gs.characters[cn].data[1] = 0;
         return true;
     }
@@ -857,26 +857,26 @@ pub fn npc_cityattack_msg(
     _dat4: i32,
 ) -> bool {
     match msg_type {
-        x if x == NT_GOTHIT as i32 => npc_cityattack_gotattack(cn, dat1 as usize),
-        x if x == NT_GOTMISS as i32 => npc_cityattack_gotattack(cn, dat1 as usize),
-        x if x == NT_DIDHIT as i32 => false,
-        x if x == NT_DIDMISS as i32 => false,
-        x if x == NT_DIDKILL as i32 => false,
-        x if x == NT_GOTEXP as i32 => false,
-        x if x == NT_SEEKILL as i32 => false,
-        x if x == NT_SEEHIT as i32 => {
+        x if x == i32::from(NT_GOTHIT) => npc_cityattack_gotattack(cn, dat1 as usize),
+        x if x == i32::from(NT_GOTMISS) => npc_cityattack_gotattack(cn, dat1 as usize),
+        x if x == i32::from(NT_DIDHIT) => false,
+        x if x == i32::from(NT_DIDMISS) => false,
+        x if x == i32::from(NT_DIDKILL) => false,
+        x if x == i32::from(NT_GOTEXP) => false,
+        x if x == i32::from(NT_SEEKILL) => false,
+        x if x == i32::from(NT_SEEHIT) => {
             npc_cityattack_seeattack(gs, cn, dat1 as usize, dat2 as usize)
         }
-        x if x == NT_SEEMISS as i32 => {
+        x if x == i32::from(NT_SEEMISS) => {
             npc_cityattack_seeattack(gs, cn, dat1 as usize, dat2 as usize)
         }
-        x if x == NT_GIVE as i32 => false,
-        x if x == NT_SEE as i32 => npc_cityattack_see(gs, cn, dat1 as usize),
-        x if x == NT_DIED as i32 => false,
-        x if x == NT_SHOUT as i32 => false,
-        x if x == NT_HITME as i32 => false,
+        x if x == i32::from(NT_GIVE) => false,
+        x if x == i32::from(NT_SEE) => npc_cityattack_see(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_DIED) => false,
+        x if x == i32::from(NT_SHOUT) => false,
+        x if x == i32::from(NT_HITME) => false,
         _ => {
-            let name = gs.characters[cn].get_name().to_string();
+            let name = gs.characters[cn].get_name().to_owned();
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             false
         }
@@ -899,14 +899,14 @@ pub fn npc_malte_low(gs: &mut GameState, cn: usize) -> bool {
 
     match state {
         0 => {
-            let co_name = gs.characters[co].get_name().to_string();
+            let co_name = gs.characters[co].get_name().to_owned();
             let message = format!("Thank you so much for saving me, {}!", co_name);
             gs.do_sayx(cn, &message);
 
             gs.characters[cn].data[2] = ticker + TICKS * 8;
             gs.characters[cn].data[1] += 1;
             gs.characters[cn].misc_action = DR_TURN as u16;
-            gs.characters[cn].misc_target1 = DX_DOWN as u16;
+            gs.characters[cn].misc_target1 = u16::from(DX_DOWN);
         }
         1 => {
             gs.do_sayx(
@@ -951,7 +951,7 @@ pub fn npc_malte_low(gs: &mut GameState, cn: usize) -> bool {
             gs.do_sayx(cn, "I will recall now. I have enough of this prison!");
 
             let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
-            EffectManager::fx_add_effect(gs, 7, 0, cn_x as i32, cn_y as i32, 0);
+            EffectManager::fx_add_effect(gs, 7, 0, i32::from(cn_x), i32::from(cn_y), 0);
 
             gs.characters[cn].data[2] = ticker + TICKS * 6;
             gs.characters[cn].data[1] += 1;
@@ -997,22 +997,22 @@ pub fn npc_malte_msg(
     _dat4: i32,
 ) -> bool {
     match msg_type {
-        x if x == NT_GOTHIT as i32 => npc_malte_gotattack(gs, cn, dat1 as usize),
-        x if x == NT_GOTMISS as i32 => npc_malte_gotattack(gs, cn, dat1 as usize),
-        x if x == NT_DIDHIT as i32 => false,
-        x if x == NT_DIDMISS as i32 => false,
-        x if x == NT_DIDKILL as i32 => false,
-        x if x == NT_GOTEXP as i32 => false,
-        x if x == NT_SEEKILL as i32 => false,
-        x if x == NT_SEEHIT as i32 => false,
-        x if x == NT_SEEMISS as i32 => false,
-        x if x == NT_GIVE as i32 => false,
-        x if x == NT_SEE as i32 => false,
-        x if x == NT_DIED as i32 => false,
-        x if x == NT_SHOUT as i32 => false,
-        x if x == NT_HITME as i32 => false,
+        x if x == i32::from(NT_GOTHIT) => npc_malte_gotattack(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_GOTMISS) => npc_malte_gotattack(gs, cn, dat1 as usize),
+        x if x == i32::from(NT_DIDHIT) => false,
+        x if x == i32::from(NT_DIDMISS) => false,
+        x if x == i32::from(NT_DIDKILL) => false,
+        x if x == i32::from(NT_GOTEXP) => false,
+        x if x == i32::from(NT_SEEKILL) => false,
+        x if x == i32::from(NT_SEEHIT) => false,
+        x if x == i32::from(NT_SEEMISS) => false,
+        x if x == i32::from(NT_GIVE) => false,
+        x if x == i32::from(NT_SEE) => false,
+        x if x == i32::from(NT_DIED) => false,
+        x if x == i32::from(NT_SHOUT) => false,
+        x if x == i32::from(NT_HITME) => false,
         _ => {
-            let name = gs.characters[cn].get_name().to_string();
+            let name = gs.characters[cn].get_name().to_owned();
             log::warn!("Unknown NPC message for {} ({}): {}", cn, name, msg_type);
             false
         }

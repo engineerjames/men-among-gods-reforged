@@ -45,7 +45,7 @@ impl GameState {
         // Send death notification
         self.do_notify_character(
             character_id as u32,
-            core::constants::NT_DIED as i32,
+            i32::from(core::constants::NT_DIED),
             killer_id as i32,
             0,
             0,
@@ -58,7 +58,7 @@ impl GameState {
                 "Character {} killed character {} ({})",
                 killer_id,
                 character_id,
-                self.characters[character_id].get_name().to_string()
+                self.characters[character_id].get_name().to_owned()
             );
         } else {
             log::info!("Character {} died", character_id);
@@ -85,19 +85,25 @@ impl GameState {
         // Play death sound effects
         // Hack for grolms (templates 364-374)
         if (364..=374).contains(&co_temp) {
-            self.do_area_sound(character_id, 0, co_x as i32, co_y as i32, 17);
+            self.do_area_sound(character_id, 0, i32::from(co_x), i32::from(co_y), 17);
             Self::char_play_sound(self, character_id, 17, -150, 0);
         }
         // Hack for gargoyles (templates 375-381)
         else if (375..=381).contains(&co_temp) {
-            self.do_area_sound(character_id, 0, co_x as i32, co_y as i32, 18);
+            self.do_area_sound(character_id, 0, i32::from(co_x), i32::from(co_y), 18);
             Self::char_play_sound(self, character_id, 18, -150, 0);
         }
         // Normal death sound
         else {
             let sound = co_sound + 2;
-            self.do_area_sound(character_id, 0, co_x as i32, co_y as i32, sound as i32);
-            Self::char_play_sound(self, character_id, sound as i32, -150, 0);
+            self.do_area_sound(
+                character_id,
+                0,
+                i32::from(co_x),
+                i32::from(co_y),
+                i32::from(sound),
+            );
+            Self::char_play_sound(self, character_id, i32::from(sound), -150, 0);
         }
 
         // Cleanup for ghost companions
@@ -115,7 +121,7 @@ impl GameState {
         if killer_id != 0 && killer_id != character_id {
             let is_killer_player =
                 self.characters[killer_id].flags & CharacterFlags::Player.bits() != 0;
-            let is_arena = map_flags & core::constants::MF_ARENA as u64 != 0;
+            let is_arena = map_flags & u64::from(core::constants::MF_ARENA) != 0;
             let co_alignment = self.characters[character_id].alignment;
             let co_temp = self.characters[character_id].temp;
             let co_is_player =
@@ -155,8 +161,8 @@ impl GameState {
                             self,
                             6,
                             0,
-                            self.characters[killer_id].x as i32,
-                            self.characters[killer_id].y as i32,
+                            i32::from(self.characters[killer_id].x),
+                            i32::from(self.characters[killer_id].y),
                             0,
                         );
                     }
@@ -279,9 +285,9 @@ impl GameState {
                 self.do_area_notify(
                     cc as i32,
                     character_id as i32,
-                    cc_x as i32,
-                    cc_y as i32,
-                    core::constants::NT_SEEHIT as i32,
+                    i32::from(cc_x),
+                    i32::from(cc_y),
+                    i32::from(core::constants::NT_SEEHIT),
                     cc as i32,
                     character_id as i32,
                     0,
@@ -314,7 +320,8 @@ impl GameState {
                 if is_killer_player {
                     self.characters[character_id].data[15] = killer_id as i32 | 0x10000;
                 } else {
-                    self.characters[character_id].data[15] = self.characters[killer_id].temp as i32;
+                    self.characters[character_id].data[15] =
+                        i32::from(self.characters[killer_id].temp);
                 }
             } else {
                 self.characters[character_id].data[15] = 0;
@@ -322,7 +329,7 @@ impl GameState {
 
             self.characters[character_id].data[16] = self.globals.mdday + self.globals.mdyear * 300;
             self.characters[character_id].data[17] =
-                co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX;
+                i32::from(co_x) + i32::from(co_y) * core::constants::SERVER_MAPX;
 
             corpse_id = self.handle_player_death(character_id, killer_id, map_flags, force_save);
             if force_save {
@@ -338,17 +345,22 @@ impl GameState {
 
                 self.handle_labkeeper_death(character_id, killer_id);
                 return;
-            } else {
-                self.handle_npc_death(character_id, killer_id);
             }
+            self.handle_npc_death(character_id, killer_id);
 
             corpse_id = character_id;
         }
 
         // Schedule respawn and show death animation
 
-        let fn_idx =
-            EffectManager::fx_add_effect(self, 3, 0, co_x as i32, co_y as i32, corpse_id as i32);
+        let fn_idx = EffectManager::fx_add_effect(
+            self,
+            3,
+            0,
+            i32::from(co_x),
+            i32::from(co_y),
+            corpse_id as i32,
+        );
         // Set data[3] = killer_id for the effect, if possible
         if fn_idx.unwrap() < self.effects.len() {
             self.effects[fn_idx.unwrap()].data[3] = killer_id as u32;
@@ -402,7 +414,7 @@ impl GameState {
             wimp_power
         };
 
-        let wimp = if map_flags & core::constants::MF_ARENA as u64 != 0 {
+        let wimp = if map_flags & u64::from(core::constants::MF_ARENA) != 0 {
             205
         } else {
             wimp
@@ -477,7 +489,7 @@ impl GameState {
 
         if !is_god && wimp == 0 && !force_save {
             self.apply_death_penalties(co);
-        } else if wimp != 0 && map_flags & core::constants::MF_ARENA as u64 == 0 {
+        } else if wimp != 0 && map_flags & u64::from(core::constants::MF_ARENA) == 0 {
             self.do_character_log(
                 co,
                 core::types::FontColor::Yellow,
@@ -842,8 +854,8 @@ impl GameState {
             return;
         }
 
-        let perm_hp = self.characters[co].hp[0] as i32;
-        let perm_mana = self.characters[co].mana[0] as i32;
+        let perm_hp = i32::from(self.characters[co].hp[0]);
+        let perm_mana = i32::from(self.characters[co].mana[0]);
 
         // HP penalty
         let mut hp_tmp = perm_hp / 10;

@@ -666,7 +666,7 @@ pub fn lab9_tick_riddle_timeout(gs: &mut GameState, riddler_id: usize) {
             }
             gs.lab9.guesser[guesser_index] = 0;
 
-            let riddler_name = gs.characters[riddler_id].get_name().to_string();
+            let riddler_name = gs.characters[riddler_id].get_name().to_owned();
             gs.do_character_log(
                 riddler_id,
                 core::types::FontColor::Yellow,
@@ -764,7 +764,7 @@ pub fn lab9_guesser_says(gs: &mut GameState, character_id: usize, text: &str) ->
     }
 
     if found {
-        let char_name = gs.characters[character_id].get_name().to_string();
+        let char_name = gs.characters[character_id].get_name().to_owned();
         gs.do_sayx(
             riddler as usize,
             format!(
@@ -900,7 +900,10 @@ fn lab9_check_door(gs: &mut GameState, bankno: i32) -> bool {
             gs.items[item_idx].active = gs.items[item_idx].duration;
             gs.items[item_idx].flags &=
                 !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
-            let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+            let (ix, iy) = (
+                i32::from(gs.items[item_idx].x),
+                i32::from(gs.items[item_idx].y),
+            );
             gs.do_area_sound(0, 0, ix, iy, 10);
             gs.reset_go(ix, iy);
             gs.add_lights(ix, iy);
@@ -915,7 +918,10 @@ fn lab9_check_door(gs: &mut GameState, bankno: i32) -> bool {
             let sightblock_flag =
                 gs.item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits();
             gs.items[item_idx].flags |= ItemFlags::IF_MOVEBLOCK.bits() | sightblock_flag;
-            let (ix, iy) = (gs.items[item_idx].x as i32, gs.items[item_idx].y as i32);
+            let (ix, iy) = (
+                i32::from(gs.items[item_idx].x),
+                i32::from(gs.items[item_idx].y),
+            );
             gs.do_area_sound(0, 0, ix, iy, 10);
             gs.reset_go(ix, iy);
             gs.add_lights(ix, iy);
@@ -1005,8 +1011,8 @@ pub fn lab9_use_switch(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
     } else {
         0
     };
-    let ix = gs.items[item_id as usize].x as i32;
-    let iy = gs.items[item_id as usize].y as i32;
+    let ix = i32::from(gs.items[item_id as usize].x);
+    let iy = i32::from(gs.items[item_id as usize].y);
     let bank_no = gs.items[item_id as usize].data[0] as i32;
 
     gs.do_area_sound(0, 0, ix, iy, 10);
@@ -1025,7 +1031,7 @@ pub fn lab9_use_switch(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
 pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
     let item_x = gs.items[item_id as usize].x;
     let item_y = gs.items[item_id as usize].y;
-    let m = (item_x as i32 + item_y as i32 * core::constants::SERVER_MAPX) as usize;
+    let m = (i32::from(item_x) + i32::from(item_y) * core::constants::SERVER_MAPX) as usize;
 
     let ch_at_door = gs.map[m].ch;
     if ch_at_door != 0 {
@@ -1040,7 +1046,8 @@ pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
         let character_y = gs.characters[cn].y;
 
         if is_active == 0
-            && ((character_x as i32) > (item_x as i32) || (character_y as i32) < (item_y as i32))
+            && (i32::from(character_x) > i32::from(item_x)
+                || i32::from(character_y) < i32::from(item_y))
         {
             gs.do_character_log(
                 cn,
@@ -1051,10 +1058,10 @@ pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
         }
     }
 
-    gs.reset_go(item_x as i32, item_y as i32);
-    gs.remove_lights(item_x as i32, item_y as i32);
+    gs.reset_go(i32::from(item_x), i32::from(item_y));
+    gs.remove_lights(i32::from(item_x), i32::from(item_y));
 
-    gs.do_area_sound(0, 0, item_x as i32, item_y as i32, 10);
+    gs.do_area_sound(0, 0, i32::from(item_x), i32::from(item_y), 10);
 
     let is_active = gs.items[item_id as usize].active;
 
@@ -1072,17 +1079,20 @@ pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
         lab9_reset_bank(gs, bank_no, false);
     }
 
-    gs.reset_go(item_x as i32, item_y as i32);
-    gs.add_lights(item_x as i32, item_y as i32);
+    gs.reset_go(i32::from(item_x), i32::from(item_y));
+    gs.add_lights(i32::from(item_x), i32::from(item_y));
 
     if cn != 0 {
-        let character_position = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+        let character_position = (
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+        );
         gs.do_area_notify(
             cn as i32,
             0,
             character_position.0,
             character_position.1,
-            core::constants::NT_SEE as i32,
+            i32::from(core::constants::NT_SEE),
             cn as i32,
             0,
             0,

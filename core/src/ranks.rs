@@ -310,13 +310,13 @@ pub fn rank_progress(points: u32) -> f64 {
     if idx >= 23 {
         return 1.0;
     }
-    let lo = RANK_THRESHOLDS[idx] as f64;
-    let hi = RANK_THRESHOLDS[idx + 1] as f64;
+    let lo = f64::from(RANK_THRESHOLDS[idx]);
+    let hi = f64::from(RANK_THRESHOLDS[idx + 1]);
     let span = hi - lo;
     if span <= 0.0 {
         return 1.0;
     }
-    ((points as f64 - lo) / span).clamp(0.0, 1.0)
+    ((f64::from(points) - lo) / span).clamp(0.0, 1.0)
 }
 
 #[cfg(test)]

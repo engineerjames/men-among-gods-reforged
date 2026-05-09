@@ -32,12 +32,12 @@ fn atoi_i32(s: &str) -> i32 {
         if !b.is_ascii_digit() {
             break;
         }
-        acc = acc.saturating_mul(10).saturating_add((b - b'0') as i64);
+        acc = acc.saturating_mul(10).saturating_add(i64::from(b - b'0'));
         i += 1;
     }
 
     let v = acc.saturating_mul(sign);
-    v.clamp(i32::MIN as i64, i32::MAX as i64) as i32
+    v.clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 fn atoi_u32(s: &str) -> u32 {
@@ -61,11 +61,11 @@ fn atoi_u32(s: &str) -> u32 {
         if !b.is_ascii_digit() {
             break;
         }
-        acc = acc.saturating_mul(10).saturating_add((b - b'0') as u64);
+        acc = acc.saturating_mul(10).saturating_add(u64::from(b - b'0'));
         i += 1;
     }
 
-    acc.min(u32::MAX as u64) as u32
+    acc.min(u64::from(u32::MAX)) as u32
 }
 
 fn atoi_usize(s: &str) -> usize {
@@ -88,7 +88,7 @@ fn atoi_usize(s: &str) -> usize {
         if !b.is_ascii_digit() {
             break;
         }
-        acc = acc.saturating_mul(10).saturating_add((b - b'0') as u128);
+        acc = acc.saturating_mul(10).saturating_add(u128::from(b - b'0'));
         i += 1;
     }
 
@@ -416,19 +416,19 @@ impl GameState {
             self.do_area_log(
                 0,
                 0,
-                self.characters[cn].x as i32,
-                self.characters[cn].y as i32,
+                i32::from(self.characters[cn].x),
+                i32::from(self.characters[cn].y),
                 core::types::FontColor::Green,
                 &format!("Somebody {}.\n", text),
             );
             log::info!("emote(inv): {}", text);
         } else {
-            let name = self.characters[cn].get_name().to_string();
+            let name = self.characters[cn].get_name().to_owned();
             self.do_area_log(
                 0,
                 0,
-                self.characters[cn].x as i32,
-                self.characters[cn].y as i32,
+                i32::from(self.characters[cn].x),
+                i32::from(self.characters[cn].y),
                 core::types::FontColor::Green,
                 &format!("{} {}.\n", name, text),
             );
@@ -487,7 +487,7 @@ impl GameState {
 
         chlog!(cn, "Converted to skua. ({} days elapsed)", days);
 
-        EffectManager::fx_add_effect(self, 5, 0, x as i32, y as i32, 0);
+        EffectManager::fx_add_effect(self, 5, 0, i32::from(x), i32::from(y), 0);
     }
 
     /// Port of `do_make_soulstone(int cn, int cexp)` from `svr_do.cpp`
@@ -544,7 +544,7 @@ impl GameState {
             };
 
             if show {
-                let name = self.characters[n].get_name().to_string();
+                let name = self.characters[n].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -663,8 +663,8 @@ impl GameState {
 
             if matched {
                 foundalive += 1;
-                let n_name = self.characters[n].get_name().to_string();
-                let n_desc = c_string_to_str(&mut self.characters[n].description).to_string();
+                let n_name = self.characters[n].get_name().to_owned();
+                let n_desc = c_string_to_str(&mut self.characters[n].description).to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -687,9 +687,9 @@ impl GameState {
 
             if matched {
                 foundtemp += 1;
-                let t_name = self.character_templates[n].get_name().to_string();
+                let t_name = self.character_templates[n].get_name().to_owned();
                 let t_desc =
-                    c_string_to_str(&mut self.character_templates[n].description).to_string();
+                    c_string_to_str(&mut self.character_templates[n].description).to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -715,7 +715,7 @@ impl GameState {
     ///
     /// Make character leave current location/mode.
     pub(crate) fn do_leave(&mut self, cn: usize) {
-        let name = self.characters[cn].get_name().to_string();
+        let name = self.characters[cn].get_name().to_owned();
         self.do_announce(cn, 0, &format!("{} left the game.\n", name));
         self.characters[cn].flags |=
             CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits();
@@ -727,7 +727,7 @@ impl GameState {
     pub(crate) fn do_enter(&mut self, cn: usize) {
         self.characters[cn].flags &=
             !(CharacterFlags::NoWho.bits() | CharacterFlags::Invisible.bits());
-        let name = self.characters[cn].get_name().to_string();
+        let name = self.characters[cn].get_name().to_owned();
         self.do_announce(cn, 0, &format!("{} entered the game.\n", name));
     }
 
@@ -863,7 +863,7 @@ impl GameState {
 
             chlog!(cn, "Converted to purple. ({} days elapsed)", 0);
 
-            EffectManager::fx_add_effect(self, 5, 0, x as i32, y as i32, 0);
+            EffectManager::fx_add_effect(self, 5, 0, i32::from(x), i32::from(y), 0);
         } else {
             self.do_character_log(cn, FontColor::Red, "Hmm. Nothing happened.\n");
         }
@@ -1943,14 +1943,14 @@ mod tests {
         assert_eq!(
             format_talent_bonus_lines(&bonuses),
             vec![
-                "  Strength: +5".to_string(),
-                "  Weapon Skill: +3".to_string(),
-                "  Dodge chance: +10%".to_string(),
-                "  Armor: +7%".to_string(),
-                "  Weapon: -4%".to_string(),
-                "  HP: +12".to_string(),
-                "  Mana: -3".to_string(),
-                "  Endurance: +8".to_string(),
+                "  Strength: +5".to_owned(),
+                "  Weapon Skill: +3".to_owned(),
+                "  Dodge chance: +10%".to_owned(),
+                "  Armor: +7%".to_owned(),
+                "  Weapon: -4%".to_owned(),
+                "  HP: +12".to_owned(),
+                "  Mana: -3".to_owned(),
+                "  Endurance: +8".to_owned(),
             ]
         );
     }

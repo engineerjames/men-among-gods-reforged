@@ -34,7 +34,7 @@ impl GameScene {
                 net.send(ClientCommand::new_skill(
                     skill_nr as u32,
                     Self::default_skill_target(ps),
-                    ps.character_info().attrib[0][0] as u32,
+                    u32::from(ps.character_info().attrib[0][0]),
                 ));
             }
         }
@@ -96,9 +96,9 @@ impl GameScene {
 
         let (sx, sy) = snapped;
         let tile = ps.map().tile_at_xy(sx, sy);
-        let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
+        let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
         let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
-        let (world_x, world_y) = tile.map(|t| (t.x as i16, t.y as i32)).unwrap_or((0, 0));
+        let (world_x, world_y) = tile.map(|t| (t.x as i16, i32::from(t.y))).unwrap_or((0, 0));
         // citem already read above.
         let selected_char = ps.selected_char();
 

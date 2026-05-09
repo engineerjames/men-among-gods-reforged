@@ -4,11 +4,14 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.100"
-bitflags = "2.10.0"
-bincode = { version = "2.0", features = ["derive"] }
-flate2 = "1.1.5"
-log = "0.4.29"
-log4rs = "1.4.0"
-rand = "0.8"
-serde = { version = "1.0.228", features = ["derive"] }
+anyhow.workspace = true
+bitflags.workspace = true
+bincode.workspace = true
+flate2.workspace = true
+log.workspace = true
+log4rs.workspace = true
+rand.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -69,13 +69,13 @@ pub fn load_tls_config() -> Result<Arc<rustls::ServerConfig>, String> {
         .ok()
         .filter(|p| !p.trim().is_empty())
         .ok_or_else(|| {
-            "SERVER_TLS_CERT environment variable is required (TLS is mandatory)".to_string()
+            "SERVER_TLS_CERT environment variable is required (TLS is mandatory)".to_owned()
         })?;
     let key_path = std::env::var("SERVER_TLS_KEY")
         .ok()
         .filter(|p| !p.trim().is_empty())
         .ok_or_else(|| {
-            "SERVER_TLS_KEY environment variable is required (TLS is mandatory)".to_string()
+            "SERVER_TLS_KEY environment variable is required (TLS is mandatory)".to_owned()
         })?;
 
     let cert_file = std::fs::File::open(&cert_path)
@@ -128,7 +128,7 @@ pub fn accept_tls(
 
     // Check that the handshake actually completed
     if tls_stream.conn.is_handshaking() {
-        return Err("TLS handshake did not complete".to_string());
+        return Err("TLS handshake did not complete".to_owned());
     }
 
     // Switch back to non-blocking for the game loop

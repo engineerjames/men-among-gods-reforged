@@ -233,7 +233,7 @@ impl WeatherState {
             | WeatherKind::Aurora
             | WeatherKind::Earthquake => 0,
         };
-        let scaled = (max as u32 * self.intensity as u32) / 255;
+        let scaled = (max as u32 * u32::from(self.intensity)) / 255;
         (scaled as usize).min(MAX_PARTICLES)
     }
 
@@ -514,7 +514,7 @@ impl WeatherState {
 
         // Earthquake camera shake amplitude scales with intensity.
         if self.kind == WeatherKind::Earthquake {
-            let amp = (self.intensity as f32 / 255.0) * 6.0;
+            let amp = (f32::from(self.intensity) / 255.0) * 6.0;
             let dx = (self.rand_range(-1.0, 1.0) * amp) as i32;
             let dy = (self.rand_range(-1.0, 1.0) * amp) as i32;
             self.shake_offset = (dx, dy);

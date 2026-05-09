@@ -15,7 +15,7 @@ use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 const UNFILLED_COLOR: Color = Color::RGBA(60, 60, 80, 120);
 
 /// Default color for the filled (progress) portion of the line.
-const FILLED_COLOR: Color = Color::RGBA(220, 180, 50, 220);
+const FILLED_COLOR: Color = Color::RGBA(220, 180, 50, 255);
 
 /// A horizontal progress bar that visualises rank progress.
 ///
@@ -133,7 +133,7 @@ impl Widget for RankProgressLine {
     /// `Ok(())` on success, or an SDL2 error string.
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
         let total_w = self.bounds.width;
-        let filled_w = ((self.progress * total_w as f64).round() as u32).min(total_w);
+        let filled_w = ((self.progress * f64::from(total_w)).round() as u32).min(total_w);
         let unfilled_w = total_w.saturating_sub(filled_w);
 
         ctx.canvas.set_blend_mode(BlendMode::Blend);

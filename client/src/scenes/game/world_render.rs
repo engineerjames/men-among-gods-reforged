@@ -66,7 +66,7 @@ impl GameScene {
         // Apply darkness modulation from tile light value.
         // C formula: channel = channel * LEFFECT / (darkness² + LEFFECT)
         // Bits 0-3 of light = darkness level, higher bits are special effects (TODO).
-        let darkness = (light & 0x0F) as i32;
+        let darkness = i32::from(light & 0x0F);
         if darkness > 0 {
             let factor = (255 * Self::LEFFECT / (darkness * darkness + Self::LEFFECT)) as u8;
             texture.set_color_mod(factor, factor, factor);
@@ -361,11 +361,11 @@ impl GameScene {
             let sprite_id = if tile.obj1 > 0 {
                 tile.obj1
             } else if tile.it_sprite > 0 {
-                tile.it_sprite as i32
+                i32::from(tile.it_sprite)
             } else if tile.back > 0 {
                 tile.back
             } else {
-                tile.ba_sprite as i32
+                i32::from(tile.ba_sprite)
             };
             let alpha = if (tile.flags & ISUSABLE) != 0 {
                 150
@@ -388,7 +388,7 @@ impl GameScene {
             let sprite_id = if tile.back > 0 {
                 tile.back
             } else {
-                tile.ba_sprite as i32
+                i32::from(tile.ba_sprite)
             };
 
             Some(HoverHighlight::Floor {
@@ -515,7 +515,16 @@ impl GameScene {
                 }
 
                 Self::draw_world_sprite(
-                    canvas, gfx, ba as i32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    canvas,
+                    gfx,
+                    i32::from(ba),
+                    x,
+                    y,
+                    cam_xoff,
+                    cam_yoff,
+                    0,
+                    0,
+                    tile.light,
                 )?;
 
                 if let Some(HoverHighlight::Floor {
@@ -532,7 +541,7 @@ impl GameScene {
                     }
                 }
 
-                if ci.goto_x == tile.x as i32 && ci.goto_y == tile.y as i32 {
+                if ci.goto_x == i32::from(tile.x) && ci.goto_y == i32::from(tile.y) {
                     Self::draw_world_sprite(
                         canvas, gfx, 31, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                     )?;
@@ -638,7 +647,7 @@ impl GameScene {
                 let ch = if tile.obj2 > 0 {
                     tile.obj2
                 } else {
-                    tile.ch_sprite as i32
+                    i32::from(tile.ch_sprite)
                 };
                 Self::draw_world_sprite(
                     canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
@@ -673,13 +682,13 @@ impl GameScene {
                     )?;
                 }
 
-                if ci.attack_cn != 0 && ci.attack_cn == tile.ch_nr as i32 {
+                if ci.attack_cn != 0 && ci.attack_cn == i32::from(tile.ch_nr) {
                     Self::draw_world_sprite(
                         canvas, gfx, 34, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
                 }
 
-                if ci.misc_action == DR_GIVE as i32 && ci.misc_target1 == tile.ch_id as i32 {
+                if ci.misc_action == DR_GIVE as i32 && ci.misc_target1 == i32::from(tile.ch_id) {
                     Self::draw_world_sprite(
                         canvas, gfx, 45, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, tile.light,
                     )?;
@@ -695,13 +704,12 @@ impl GameScene {
                                 &ps.character_info().name,
                             );
                             if !own.is_empty() {
-                                Some(own.to_string())
+                                Some(own.to_owned())
                             } else {
                                 None
                             }
                         } else {
-                            ps.lookup_name(tile.ch_nr, tile.ch_id)
-                                .map(|s| s.to_string())
+                            ps.lookup_name(tile.ch_nr, tile.ch_id).map(|s| s.to_owned())
                         }
                     } else {
                         None
@@ -718,7 +726,7 @@ impl GameScene {
                             format!("{} {}%", n, p)
                         }
                         (true, true, _, Some(p)) => format!("{}%", p),
-                        (true, _, Some(n), _) if !n.is_empty() => n.to_string(),
+                        (true, _, Some(n), _) if !n.is_empty() => n.to_owned(),
                         (false, true, _, Some(p)) => format!("{}%", p),
                         _ => String::new(),
                     };
@@ -742,24 +750,24 @@ impl GameScene {
                 }
 
                 if ci.misc_action == DR_DROP as i32
-                    && ci.misc_target1 == tile.x as i32
-                    && ci.misc_target2 == tile.y as i32
+                    && ci.misc_target1 == i32::from(tile.x)
+                    && ci.misc_target2 == i32::from(tile.y)
                 {
                     Self::draw_world_sprite(
                         canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                     )?;
                 }
                 if ci.misc_action == DR_PICKUP as i32
-                    && ci.misc_target1 == tile.x as i32
-                    && ci.misc_target2 == tile.y as i32
+                    && ci.misc_target1 == i32::from(tile.x)
+                    && ci.misc_target2 == i32::from(tile.y)
                 {
                     Self::draw_world_sprite(
                         canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                     )?;
                 }
                 if ci.misc_action == DR_USE as i32
-                    && ci.misc_target1 == tile.x as i32
-                    && ci.misc_target2 == tile.y as i32
+                    && ci.misc_target1 == i32::from(tile.x)
+                    && ci.misc_target2 == i32::from(tile.y)
                 {
                     Self::draw_world_sprite(
                         canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,

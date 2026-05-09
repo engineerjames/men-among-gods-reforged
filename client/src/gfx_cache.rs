@@ -71,7 +71,7 @@ impl<'tc> GraphicsCache<'tc> {
         let mut index_to_filename = HashMap::new();
         for i in 0..archive.len() {
             if let Ok(file) = archive.by_index(i) {
-                let name = file.name().to_string();
+                let name = file.name().to_owned();
                 // Skip directory entries
                 if !name.ends_with('/') {
                     // Our sprite IDs are numeric filenames (e.g. 00031.png). Some zip builds
@@ -300,9 +300,9 @@ impl<'tc> GraphicsCache<'tc> {
                 continue; // Skip fully transparent pixels
             }
 
-            let r = pixel[0] as u64;
-            let g = pixel[1] as u64;
-            let b = pixel[2] as u64;
+            let r = u64::from(pixel[0]);
+            let g = u64::from(pixel[1]);
+            let b = u64::from(pixel[2]);
 
             total_r += r;
             total_g += g;

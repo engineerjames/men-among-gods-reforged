@@ -1,5 +1,9 @@
 use core::{
-    constants::{AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, CharacterFlags},
+    constants::{
+        AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, ATTACK_RANGE, CharacterFlags, DX_DOWN,
+        DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, GROUP_RANGE,
+        MAXCHARS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
+    },
     skills::{self, SkillIndex},
     string_operations::c_string_to_str,
     types::{Character, FontColor},
@@ -188,11 +192,7 @@ pub(crate) fn skill_aoe_tiles(center_x: i32, center_y: i32, base: i32) -> Vec<(i
         for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
             let x = center_x + dx;
             let y = center_y + dy;
-            if x >= 0
-                && y >= 0
-                && x < core::constants::SERVER_MAPX
-                && y < core::constants::SERVER_MAPY
-            {
+            if x >= 0 && y >= 0 && x < SERVER_MAPX && y < SERVER_MAPY {
                 tiles.push((x, y));
             }
         }
@@ -201,9 +201,9 @@ pub(crate) fn skill_aoe_tiles(center_x: i32, center_y: i32, base: i32) -> Vec<(i
 
     let radius = skill_aoe_radius(base);
     let min_x = (center_x - radius).max(0);
-    let max_x = (center_x + radius).min(core::constants::SERVER_MAPX - 1);
+    let max_x = (center_x + radius).min(SERVER_MAPX - 1);
     let min_y = (center_y - radius).max(0);
-    let max_y = (center_y + radius).min(core::constants::SERVER_MAPY - 1);
+    let max_y = (center_y + radius).min(SERVER_MAPY - 1);
 
     let mut tiles = Vec::with_capacity(((max_x - min_x + 1) * (max_y - min_y + 1)) as usize);
     for y in min_y..=max_y {
@@ -242,12 +242,12 @@ pub(crate) fn skill_aoe_targets(
     let mut targets = Vec::new();
 
     for (x, y) in skill_aoe_tiles(center_x, center_y, base) {
-        let idx = (x + y * core::constants::SERVER_MAPX) as usize;
+        let idx = (x + y * SERVER_MAPX) as usize;
         let target = gs.map[idx].ch as usize;
-        if target == 0 || target >= core::constants::MAXCHARS {
+        if target == 0 || target >= MAXCHARS {
             continue;
         }
-        if gs.characters[target].used != core::constants::USE_ACTIVE {
+        if gs.characters[target].used != USE_ACTIVE {
             continue;
         }
         if (gs.characters[target].flags & CharacterFlags::Body.bits()) != 0 {
@@ -373,7 +373,7 @@ pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
 /// * `nr` - Lab number (determines enemy template)
 /// * `exp` - Experience reward associated with the lab
 pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool {
-    use core::constants::{CharacterFlags, SERVER_MAPX};
+    use {CharacterFlags, SERVER_MAPX};
     // 1. Check if area is busy (any player or labkeeper in 164..184 x 159..178)
     let mut busy_name: Option<String> = None;
     'outer: for y in 159..179 {
@@ -382,7 +382,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
             if co != 0 {
                 let flags = gs.characters[co].flags;
                 if flags & (CharacterFlags::Player.bits() | CharacterFlags::LabKeeper.bits()) != 0 {
-                    let name = gs.characters[co].get_name().to_string();
+                    let name = gs.characters[co].get_name().to_owned();
                     busy_name = Some(name);
                     break 'outer;
                 }
@@ -397,7 +397,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
         );
         log::info!(
             "Player {} attempted to enter lab {}, but area is busy with {}",
-            gs.characters[cn].get_name().to_string(),
+            gs.characters[cn].get_name().to_owned(),
             nr,
             name
         );
@@ -435,7 +435,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
             log::error!(
                 "use_labtransfer: pop_create_char({}) failed for player {}",
                 template,
-                gs.characters[cn].get_name().to_string()
+                gs.characters[cn].get_name().to_owned()
             );
             return false;
         }
@@ -446,15 +446,15 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
         log::error!(
             "use_labtransfer: god_drop_char({}, 174, 172) failed for player {}",
             co,
-            gs.characters[cn].get_name().to_string()
+            gs.characters[cn].get_name().to_owned()
         );
         God::destroy_items(gs, co);
-        gs.characters[co].used = core::constants::USE_EMPTY;
+        gs.characters[co].used = USE_EMPTY;
         return false;
     }
 
     // Set up enemy data fields and flags
-    gs.characters[co].data[64] = gs.globals.ticker + 5 * 60 * core::constants::TICKS; // die in 2 min
+    gs.characters[co].data[64] = gs.globals.ticker + 5 * 60 * TICKS; // die in 2 min
     gs.characters[co].data[24] = 0; // do not interfere in fights
     gs.characters[co].data[36] = 0; // no walking around
     gs.characters[co].data[43] = 0; // don't attack anyone
@@ -477,10 +477,10 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
         );
         log::error!(
             "use_labtransfer: god_transfer_char({}, 174, 166) failed",
-            gs.characters[cn].get_name().to_string()
+            gs.characters[cn].get_name().to_owned()
         );
         God::destroy_items(gs, co);
-        gs.characters[co].used = core::constants::USE_EMPTY;
+        gs.characters[co].used = USE_EMPTY;
         return false;
     }
     chlog!(cn, "Entered Labkeeper room for lab {}", nr);
@@ -621,9 +621,9 @@ pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
 /// # Arguments
 /// * `dt` - Delta in server ticks
 pub fn ago_string(dt: u128) -> String {
-    let minutes = dt / (60 * core::constants::TICKS as u128);
+    let minutes = dt / (60 * TICKS as u128);
     if minutes <= 0 {
-        return "just now".to_string();
+        return "just now".to_owned();
     }
     if minutes < 60 {
         return format!("{} minutes ago", minutes);
@@ -699,7 +699,7 @@ pub fn char_id(ch: &Character) -> i32 {
     let mut id = 0;
 
     for n in (0..40).step_by(std::mem::size_of::<i32>()) {
-        id ^= ch.name[n] as u32;
+        id ^= u32::from(ch.name[n]);
     }
 
     id ^= ch.pass1;
@@ -778,9 +778,8 @@ pub fn absrankdiff(cn: &Character, co: &Character) -> u32 {
 /// # Arguments
 /// * `cn` - First character.
 /// * `co` - Second character.
-#[allow(dead_code)]
 pub fn in_attackrange(cn: &Character, co: &Character) -> bool {
-    absrankdiff(cn, co) <= core::constants::ATTACK_RANGE as u32
+    absrankdiff(cn, co) <= ATTACK_RANGE as u32
 }
 
 /// Check whether two characters are within group range (unused helper).
@@ -788,9 +787,8 @@ pub fn in_attackrange(cn: &Character, co: &Character) -> bool {
 /// # Arguments
 /// * `cn` - First character.
 /// * `co` - Second character.
-#[allow(dead_code)]
 pub fn in_grouprange(cn: &Character, co: &Character) -> bool {
-    absrankdiff(cn, co) <= core::constants::GROUP_RANGE as u32
+    absrankdiff(cn, co) <= GROUP_RANGE as u32
 }
 
 /// Scale experience `exp` according to relative rank difference.
@@ -979,22 +977,14 @@ pub fn ch_base_status(n: u8) -> u8 {
 /// * `dy` - Delta Y
 pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
     match (dx.cmp(&0), dy.cmp(&0)) {
-        (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => {
-            core::constants::DX_RIGHTDOWN as i32
-        }
-        (std::cmp::Ordering::Greater, std::cmp::Ordering::Equal) => {
-            core::constants::DX_RIGHT as i32
-        }
-        (std::cmp::Ordering::Greater, std::cmp::Ordering::Less) => {
-            core::constants::DX_RIGHTUP as i32
-        }
-        (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => core::constants::DX_DOWN as i32,
-        (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => core::constants::DX_UP as i32,
-        (std::cmp::Ordering::Less, std::cmp::Ordering::Greater) => {
-            core::constants::DX_LEFTDOWN as i32
-        }
-        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => core::constants::DX_LEFT as i32,
-        (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => core::constants::DX_LEFTUP as i32,
+        (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => i32::from(DX_RIGHTDOWN),
+        (std::cmp::Ordering::Greater, std::cmp::Ordering::Equal) => i32::from(DX_RIGHT),
+        (std::cmp::Ordering::Greater, std::cmp::Ordering::Less) => i32::from(DX_RIGHTUP),
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Greater) => i32::from(DX_DOWN),
+        (std::cmp::Ordering::Equal, std::cmp::Ordering::Less) => i32::from(DX_UP),
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Greater) => i32::from(DX_LEFTDOWN),
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Equal) => i32::from(DX_LEFT),
+        (std::cmp::Ordering::Less, std::cmp::Ordering::Less) => i32::from(DX_LEFTUP),
         _ => -1,
     }
 }
@@ -1042,15 +1032,15 @@ pub fn get_distance(gs: &GameState, cn: usize, co: usize) -> f32 {
     let ch = &gs.characters[cn];
     let co = &gs.characters[co];
 
-    let dx = (ch.x - co.x) as f32;
-    let dy = (ch.y - co.y) as f32;
+    let dx = f32::from(ch.x - co.x);
+    let dy = f32::from(ch.y - co.y);
 
     (dx * dx + dy * dy).sqrt()
 }
 
 #[cfg(test)]
 mod tests {
-    use core::constants::TICKS;
+    use TICKS;
     use core::skills::{self, SkillIndex};
 
     use super::*;
@@ -1118,6 +1108,30 @@ mod tests {
         for _ in 0..10_000 {
             let v = random_mod_usize(7);
             assert!(v < 7);
+        }
+    }
+
+    #[test]
+    fn test_d20_behavior() {
+        let mut samples: Vec<i32> = Vec::new();
+        for _ in 0..10_000 {
+            let v = random_mod_i32(20) + 1;
+            samples.push(v);
+        }
+
+        for v in 1..=20 {
+            assert!(samples.contains(&v), "D20 roll did not produce value {}", v);
+        }
+
+        // Print distribution for manual inspection (not an automated test)
+        let mut counts = [0; 20];
+        for v in samples {
+            counts[(v - 1) as usize] += 1;
+        }
+
+        println!("D20 distribution over 10,000 rolls:");
+        for (i, count) in counts.iter().enumerate() {
+            println!("{}: {}", i + 1, count);
         }
     }
 
@@ -1200,18 +1214,17 @@ mod tests {
         let tiles = skill_aoe_tiles(0, 0, 12);
 
         assert_eq!(tiles.len(), 15);
-        assert!(tiles.iter().all(|(x, y)| {
-            *x >= 0
-                && *y >= 0
-                && *x < core::constants::SERVER_MAPX
-                && *y < core::constants::SERVER_MAPY
-        }));
+        assert!(
+            tiles
+                .iter()
+                .all(|(x, y)| { *x >= 0 && *y >= 0 && *x < SERVER_MAPX && *y < SERVER_MAPY })
+        );
     }
 
     #[test]
     fn skill_aoe_targets_optionally_filter_by_visibility() {
         std::thread::Builder::new()
-            .name("skill_aoe_targets".to_string())
+            .name("skill_aoe_targets".to_owned())
             .stack_size(8 * 1024 * 1024)
             .spawn(|| {
                 let mut gs = GameState::new();
@@ -1219,23 +1232,23 @@ mod tests {
                 let visible_target = 2;
                 let hidden_target = 3;
 
-                gs.characters[viewer].used = core::constants::USE_ACTIVE;
+                gs.characters[viewer].used = USE_ACTIVE;
                 gs.characters[viewer].x = 10;
                 gs.characters[viewer].y = 10;
                 gs.characters[viewer].flags = CharacterFlags::Infrared.bits();
 
-                gs.characters[visible_target].used = core::constants::USE_ACTIVE;
+                gs.characters[visible_target].used = USE_ACTIVE;
                 gs.characters[visible_target].x = 11;
                 gs.characters[visible_target].y = 10;
 
-                gs.characters[hidden_target].used = core::constants::USE_ACTIVE;
+                gs.characters[hidden_target].used = USE_ACTIVE;
                 gs.characters[hidden_target].x = 12;
                 gs.characters[hidden_target].y = 10;
                 gs.characters[hidden_target].flags =
                     (CharacterFlags::Invisible | CharacterFlags::Staff).bits();
 
-                let visible_map_idx = 11 + 10 * core::constants::SERVER_MAPX as usize;
-                let hidden_map_idx = 12 + 10 * core::constants::SERVER_MAPX as usize;
+                let visible_map_idx = 11 + 10 * SERVER_MAPX as usize;
+                let hidden_map_idx = 12 + 10 * SERVER_MAPX as usize;
                 gs.map[visible_map_idx].ch = visible_target as u32;
                 gs.map[hidden_map_idx].ch = hidden_target as u32;
 
@@ -1388,23 +1401,23 @@ mod tests {
     #[test]
     fn test_drv_dcoor2dir() {
         // Test cardinal directions
-        assert_eq!(drv_dcoor2dir(1, 0), core::constants::DX_RIGHT as i32);
-        assert_eq!(drv_dcoor2dir(-1, 0), core::constants::DX_LEFT as i32);
-        assert_eq!(drv_dcoor2dir(0, 1), core::constants::DX_DOWN as i32);
-        assert_eq!(drv_dcoor2dir(0, -1), core::constants::DX_UP as i32);
+        assert_eq!(drv_dcoor2dir(1, 0), i32::from(DX_RIGHT));
+        assert_eq!(drv_dcoor2dir(-1, 0), i32::from(DX_LEFT));
+        assert_eq!(drv_dcoor2dir(0, 1), i32::from(DX_DOWN));
+        assert_eq!(drv_dcoor2dir(0, -1), i32::from(DX_UP));
 
         // Test diagonal directions
-        assert_eq!(drv_dcoor2dir(1, 1), core::constants::DX_RIGHTDOWN as i32);
-        assert_eq!(drv_dcoor2dir(1, -1), core::constants::DX_RIGHTUP as i32);
-        assert_eq!(drv_dcoor2dir(-1, 1), core::constants::DX_LEFTDOWN as i32);
-        assert_eq!(drv_dcoor2dir(-1, -1), core::constants::DX_LEFTUP as i32);
+        assert_eq!(drv_dcoor2dir(1, 1), i32::from(DX_RIGHTDOWN));
+        assert_eq!(drv_dcoor2dir(1, -1), i32::from(DX_RIGHTUP));
+        assert_eq!(drv_dcoor2dir(-1, 1), i32::from(DX_LEFTDOWN));
+        assert_eq!(drv_dcoor2dir(-1, -1), i32::from(DX_LEFTUP));
 
         // Test no movement
         assert_eq!(drv_dcoor2dir(0, 0), -1);
 
         // Test larger values (should still work due to signum)
-        assert_eq!(drv_dcoor2dir(100, 0), core::constants::DX_RIGHT as i32);
-        assert_eq!(drv_dcoor2dir(-50, 25), core::constants::DX_LEFTDOWN as i32);
+        assert_eq!(drv_dcoor2dir(100, 0), i32::from(DX_RIGHT));
+        assert_eq!(drv_dcoor2dir(-50, 25), i32::from(DX_LEFTDOWN));
     }
 
     #[test]

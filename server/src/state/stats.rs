@@ -57,7 +57,8 @@ impl GameState {
         let wears_481 = self.char_wears_item(cn, 481);
 
         let map_index = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
-        let has_nomagic_flag = self.map[map_index].flags & core::constants::MF_NOMAGIC as u64 != 0;
+        let has_nomagic_flag =
+            self.map[map_index].flags & u64::from(core::constants::MF_NOMAGIC) != 0;
 
         if has_nomagic_flag && !wears_466 && !wears_481 {
             let already_has_nomagic =
@@ -124,36 +125,36 @@ impl GameState {
                 // Add magical bonuses
                 for z in 0..5 {
                     attrib_bonus[z] += if item.active != 0 {
-                        item.attrib[z][1] as i32
+                        i32::from(item.attrib[z][1])
                     } else {
-                        item.attrib[z][0] as i32
+                        i32::from(item.attrib[z][0])
                     };
                 }
 
                 hp_bonus += if item.active != 0 {
-                    item.hp[1] as i32
+                    i32::from(item.hp[1])
                 } else {
-                    item.hp[0] as i32
+                    i32::from(item.hp[0])
                 };
 
                 end_bonus += if item.active != 0 {
-                    item.end[1] as i32
+                    i32::from(item.end[1])
                 } else {
-                    item.end[0] as i32
+                    i32::from(item.end[0])
                 };
 
                 mana_bonus += if item.active != 0 {
-                    item.mana[1] as i32
+                    i32::from(item.mana[1])
                 } else {
-                    item.mana[0] as i32
+                    i32::from(item.mana[0])
                 };
 
                 for z in 0..50 {
                     let skill_idx = skills::canonicalize_weapon_skill(z);
                     let bonus = if item.active != 0 {
-                        item.skill[z][1] as i32
+                        i32::from(item.skill[z][1])
                     } else {
-                        item.skill[z][0] as i32
+                        i32::from(item.skill[z][0])
                     };
                     skill_bonus[skill_idx] += bonus;
                 }
@@ -161,35 +162,35 @@ impl GameState {
 
             // Add physical bonuses (always apply)
             if item.active != 0 {
-                armor += item.armor[1] as i32;
-                gethit += item.gethit_dam[1] as i32;
-                if item.weapon[1] as i32 > weapon {
-                    weapon = item.weapon[1] as i32;
+                armor += i32::from(item.armor[1]);
+                gethit += i32::from(item.gethit_dam[1]);
+                if i32::from(item.weapon[1]) > weapon {
+                    weapon = i32::from(item.weapon[1]);
                 }
-                if item.light[1] as i32 > light {
-                    light = item.light[1] as i32;
+                if i32::from(item.light[1]) > light {
+                    light = i32::from(item.light[1]);
                 } else if item.light[1] < 0 {
-                    sublight -= item.light[1] as i32;
+                    sublight -= i32::from(item.light[1]);
                 }
             } else {
-                armor += item.armor[0] as i32;
-                gethit += item.gethit_dam[0] as i32;
-                if item.weapon[0] as i32 > weapon {
-                    weapon = item.weapon[0] as i32;
+                armor += i32::from(item.armor[0]);
+                gethit += i32::from(item.gethit_dam[0]);
+                if i32::from(item.weapon[0]) > weapon {
+                    weapon = i32::from(item.weapon[0]);
                 }
-                if item.light[0] as i32 > light {
-                    light = item.light[0] as i32;
+                if i32::from(item.light[0]) > light {
+                    light = i32::from(item.light[0]);
                 } else if item.light[0] < 0 {
-                    sublight -= item.light[0] as i32;
+                    sublight -= i32::from(item.light[0]);
                 }
             }
         }
 
         // Add permanent bonuses
-        armor += self.characters[cn].armor_bonus as i32;
-        weapon += self.characters[cn].weapon_bonus as i32;
-        gethit += self.characters[cn].gethit_bonus as i32;
-        light += self.characters[cn].light_bonus as i32;
+        armor += i32::from(self.characters[cn].armor_bonus);
+        weapon += i32::from(self.characters[cn].weapon_bonus);
+        gethit += i32::from(self.characters[cn].gethit_bonus);
+        light += i32::from(self.characters[cn].light_bonus);
 
         // Calculate bonuses from active spells
         if !char_has_nomagic {
@@ -202,24 +203,24 @@ impl GameState {
                 let spell = &mut self.items[spell_idx as usize];
 
                 for z in 0..5 {
-                    attrib_bonus[z] += spell.attrib[z][1] as i32;
+                    attrib_bonus[z] += i32::from(spell.attrib[z][1]);
                 }
 
-                hp_bonus += spell.hp[1] as i32;
-                end_bonus += spell.end[1] as i32;
-                mana_bonus += spell.mana[1] as i32;
+                hp_bonus += i32::from(spell.hp[1]);
+                end_bonus += i32::from(spell.end[1]);
+                mana_bonus += i32::from(spell.mana[1]);
 
                 for z in 0..50 {
                     let skill_idx = skills::canonicalize_weapon_skill(z);
-                    skill_bonus[skill_idx] += spell.skill[z][1] as i32;
+                    skill_bonus[skill_idx] += i32::from(spell.skill[z][1]);
                 }
 
-                armor += spell.armor[1] as i32;
-                weapon += spell.weapon[1] as i32;
-                if spell.light[1] as i32 > light {
-                    light = spell.light[1] as i32;
+                armor += i32::from(spell.armor[1]);
+                weapon += i32::from(spell.weapon[1]);
+                if i32::from(spell.light[1]) > light {
+                    light = i32::from(spell.light[1]);
                 } else if spell.light[1] < 0 {
-                    sublight -= spell.light[1] as i32;
+                    sublight -= i32::from(spell.light[1]);
                 }
 
                 // Check for special spell effects
@@ -275,8 +276,8 @@ impl GameState {
 
         // Calculate final attributes
         for z in 0..5 {
-            let mut final_attrib = self.characters[cn].attrib[z][0] as i32
-                + self.characters[cn].attrib[z][1] as i32
+            let mut final_attrib = i32::from(self.characters[cn].attrib[z][0])
+                + i32::from(self.characters[cn].attrib[z][1])
                 + attrib_bonus[z];
 
             final_attrib = final_attrib.clamp(1, 250);
@@ -285,19 +286,21 @@ impl GameState {
 
         // Calculate final HP
         let mut final_hp =
-            self.characters[cn].hp[0] as i32 + self.characters[cn].hp[1] as i32 + hp_bonus;
+            i32::from(self.characters[cn].hp[0]) + i32::from(self.characters[cn].hp[1]) + hp_bonus;
         final_hp = final_hp.clamp(10, 999);
         self.characters[cn].hp[5] = final_hp as u16;
 
         // Calculate final endurance
-        let mut final_end =
-            self.characters[cn].end[0] as i32 + self.characters[cn].end[1] as i32 + end_bonus;
+        let mut final_end = i32::from(self.characters[cn].end[0])
+            + i32::from(self.characters[cn].end[1])
+            + end_bonus;
         final_end = final_end.clamp(10, 999);
         self.characters[cn].end[5] = final_end as u16;
 
         // Calculate final mana
-        let mut final_mana =
-            self.characters[cn].mana[0] as i32 + self.characters[cn].mana[1] as i32 + mana_bonus;
+        let mut final_mana = i32::from(self.characters[cn].mana[0])
+            + i32::from(self.characters[cn].mana[1])
+            + mana_bonus;
         final_mana = final_mana.clamp(10, 999);
         self.characters[cn].mana[5] = final_mana as u16;
 
@@ -326,15 +329,15 @@ impl GameState {
 
         // Calculate final skills (with attribute bonuses)
         for z in 0..50 {
-            let mut final_skill = self.characters[cn].skill[z][0] as i32
-                + self.characters[cn].skill[z][1] as i32
+            let mut final_skill = i32::from(self.characters[cn].skill[z][0])
+                + i32::from(self.characters[cn].skill[z][1])
                 + skill_bonus[z];
 
             // Add attribute bonuses using the proper skill->attribute mapping from `skills`
             let attrs = skills::get_skill_attribs(z);
-            let attrib_contribution = (self.characters[cn].attrib[attrs[0]][5] as i32
-                + self.characters[cn].attrib[attrs[1]][5] as i32
-                + self.characters[cn].attrib[attrs[2]][5] as i32)
+            let attrib_contribution = (i32::from(self.characters[cn].attrib[attrs[0]][5])
+                + i32::from(self.characters[cn].attrib[attrs[1]][5])
+                + i32::from(self.characters[cn].attrib[attrs[2]][5]))
                 / 5;
             final_skill += attrib_contribution;
             final_skill = final_skill.clamp(1, 250);
@@ -371,9 +374,9 @@ impl GameState {
         // Calculate speed based on mode
         let mut speed_calc = 10i32;
         let mode = self.characters[cn].mode;
-        let agil = self.characters[cn].attrib[core::constants::AT_AGIL as usize][5] as i32;
-        let stren = self.characters[cn].attrib[core::constants::AT_STREN as usize][5] as i32;
-        let speed_mod = self.characters[cn].speed_mod as i32;
+        let agil = i32::from(self.characters[cn].attrib[core::constants::AT_AGIL as usize][5]);
+        let stren = i32::from(self.characters[cn].attrib[core::constants::AT_STREN as usize][5]);
+        let speed_mod = i32::from(self.characters[cn].speed_mod);
 
         if mode == 0 {
             // Sneak mode
@@ -392,14 +395,14 @@ impl GameState {
             .clamp(MIN_SPEEDTAB_INDEX as i16, MAX_SPEEDTAB_SPEED_INDEX as i16);
 
         // Cap current stats at their maximums
-        if self.characters[cn].a_hp > self.characters[cn].hp[5] as i32 * 1000 {
-            self.characters[cn].a_hp = self.characters[cn].hp[5] as i32 * 1000;
+        if self.characters[cn].a_hp > i32::from(self.characters[cn].hp[5]) * 1000 {
+            self.characters[cn].a_hp = i32::from(self.characters[cn].hp[5]) * 1000;
         }
-        if self.characters[cn].a_end > self.characters[cn].end[5] as i32 * 1000 {
-            self.characters[cn].a_end = self.characters[cn].end[5] as i32 * 1000;
+        if self.characters[cn].a_end > i32::from(self.characters[cn].end[5]) * 1000 {
+            self.characters[cn].a_end = i32::from(self.characters[cn].end[5]) * 1000;
         }
-        if self.characters[cn].a_mana > self.characters[cn].mana[5] as i32 * 1000 {
-            self.characters[cn].a_mana = self.characters[cn].mana[5] as i32 * 1000;
+        if self.characters[cn].a_mana > i32::from(self.characters[cn].mana[5]) * 1000 {
+            self.characters[cn].a_mana = i32::from(self.characters[cn].mana[5]) * 1000;
         }
 
         // Update light if it changed
@@ -415,11 +418,15 @@ impl GameState {
                 && y > 0
                 && y < core::constants::SERVER_MAPY as i16
             {
-                let idx = (x as i32 + y as i32 * core::constants::SERVER_MAPX) as usize;
+                let idx = (i32::from(x) + i32::from(y) * core::constants::SERVER_MAPX) as usize;
                 let map_char = self.map[idx].ch;
 
                 if map_char == cn as u32 {
-                    self.do_add_light(x as i32, y as i32, new_light as i32 - old_light as i32);
+                    self.do_add_light(
+                        i32::from(x),
+                        i32::from(y),
+                        i32::from(new_light) - i32::from(old_light),
+                    );
                 }
             }
         }
@@ -469,7 +476,7 @@ impl GameState {
         let x = self.characters[cn].x as usize;
         let y = self.characters[cn].y as usize;
         let map_idx = x + y * core::constants::SERVER_MAPX as usize;
-        let uwater = self.map[map_idx].flags & core::constants::MF_UWATER as u64 != 0;
+        let uwater = self.map[map_idx].flags & u64::from(core::constants::MF_UWATER) != 0;
 
         let mut uwater_active = uwater;
         let mut hp_regen = false;
@@ -496,7 +503,7 @@ impl GameState {
                         // Add bonus from Rest skill
                         if self.characters[cn].skill[skills::SK_REST][0] != 0 {
                             self.characters[cn].a_end += scale(
-                                self.characters[cn].skill[skills::SK_REST][5] as i32 * moonmult
+                                i32::from(self.characters[cn].skill[skills::SK_REST][5]) * moonmult
                                     / 30,
                             );
                         }
@@ -511,7 +518,8 @@ impl GameState {
                         // Add bonus from Regen skill
                         if self.characters[cn].skill[skills::SK_REGEN][0] != 0 {
                             let regen_bonus = scale(
-                                self.characters[cn].skill[skills::SK_REGEN][5] as i32 * moonmult
+                                i32::from(self.characters[cn].skill[skills::SK_REGEN][5])
+                                    * moonmult
                                     / 30,
                             );
                             self.characters[cn].a_hp += regen_bonus;
@@ -526,7 +534,8 @@ impl GameState {
                             mana_regen = true;
                             self.characters[cn].a_mana += scale(moonmult);
                             self.characters[cn].a_mana += scale(
-                                self.characters[cn].skill[skills::SK_MEDIT][5] as i32 * moonmult
+                                i32::from(self.characters[cn].skill[skills::SK_MEDIT][5])
+                                    * moonmult
                                     / 30,
                             );
                         }
@@ -600,42 +609,44 @@ impl GameState {
 
                 if has_regen {
                     self.characters[cn].a_hp += scale(
-                        self.characters[cn].skill[skills::SK_REGEN][5] as i32 * moonmult / 60,
+                        i32::from(self.characters[cn].skill[skills::SK_REGEN][5]) * moonmult / 60,
                     );
                 }
                 if has_rest {
-                    self.characters[cn].a_end +=
-                        scale(self.characters[cn].skill[skills::SK_REST][5] as i32 * moonmult / 60);
+                    self.characters[cn].a_end += scale(
+                        i32::from(self.characters[cn].skill[skills::SK_REST][5]) * moonmult / 60,
+                    );
                 }
                 if has_medit {
                     self.characters[cn].a_mana += scale(
-                        self.characters[cn].skill[skills::SK_MEDIT][5] as i32 * moonmult / 60,
+                        i32::from(self.characters[cn].skill[skills::SK_MEDIT][5]) * moonmult / 60,
                     );
                 }
             }
         }
 
         // Cap accumulated stats at their maximums (max * 1000)
-        if self.characters[cn].a_hp > self.characters[cn].hp[5] as i32 * 1000 {
-            self.characters[cn].a_hp = self.characters[cn].hp[5] as i32 * 1000;
+        if self.characters[cn].a_hp > i32::from(self.characters[cn].hp[5]) * 1000 {
+            self.characters[cn].a_hp = i32::from(self.characters[cn].hp[5]) * 1000;
         }
-        if self.characters[cn].a_end > self.characters[cn].end[5] as i32 * 1000 {
-            self.characters[cn].a_end = self.characters[cn].end[5] as i32 * 1000;
+        if self.characters[cn].a_end > i32::from(self.characters[cn].end[5]) * 1000 {
+            self.characters[cn].a_end = i32::from(self.characters[cn].end[5]) * 1000;
         }
-        if self.characters[cn].a_mana > self.characters[cn].mana[5] as i32 * 1000 {
-            self.characters[cn].a_mana = self.characters[cn].mana[5] as i32 * 1000;
+        if self.characters[cn].a_mana > i32::from(self.characters[cn].mana[5]) * 1000 {
+            self.characters[cn].a_mana = i32::from(self.characters[cn].mana[5]) * 1000;
         }
 
         // Set timer when regenerating below 90% of max
         if hp_regen {
-            let needs_timer = self.characters[cn].a_hp < self.characters[cn].hp[5] as i32 * 900;
+            let needs_timer = self.characters[cn].a_hp < i32::from(self.characters[cn].hp[5]) * 900;
             if needs_timer {
                 self.characters[cn].data[92] = core::constants::TICKS * 60;
             }
         }
 
         if mana_regen {
-            let needs_timer = self.characters[cn].a_mana < self.characters[cn].mana[5] as i32 * 900;
+            let needs_timer =
+                self.characters[cn].a_mana < i32::from(self.characters[cn].mana[5]) * 900;
             if needs_timer {
                 self.characters[cn].data[92] = core::constants::TICKS * 60;
             }
@@ -679,20 +690,20 @@ impl GameState {
                 let mut mana_depleted = false;
 
                 if hp_change != -1 {
-                    self.characters[cn].a_hp += hp_change as i32;
+                    self.characters[cn].a_hp += i32::from(hp_change);
                     if self.characters[cn].a_hp < 500 {
                         killed = true;
                     }
                 }
                 if end_change != -1 {
-                    self.characters[cn].a_end += end_change as i32;
+                    self.characters[cn].a_end += i32::from(end_change);
                     if self.characters[cn].a_end < 500 {
                         self.characters[cn].a_end = 500;
                         end_depleted = true;
                     }
                 }
                 if mana_change != -1 {
-                    self.characters[cn].a_mana += mana_change as i32;
+                    self.characters[cn].a_mana += i32::from(mana_change);
                     if self.characters[cn].a_mana < 500 {
                         self.characters[cn].a_mana = 500;
                         mana_depleted = true;
@@ -700,7 +711,7 @@ impl GameState {
                 }
 
                 if killed {
-                    let spell_name = self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_owned();
                     log::info!("Character {} killed by spell: {}", cn, spell_name);
                     self.do_character_log(
                         cn,
@@ -720,7 +731,7 @@ impl GameState {
                 }
 
                 if end_depleted {
-                    let spell_name = self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_owned();
                     self.items[spell_item as usize].active = 0;
                     log::info!(
                         "{} ran out due to lack of endurance for cn={}",
@@ -730,7 +741,7 @@ impl GameState {
                 }
 
                 if mana_depleted {
-                    let spell_name = self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_owned();
                     self.items[spell_item as usize].active = 0;
                     log::info!("{} ran out due to lack of mana for cn={}", spell_name, cn);
                 }
@@ -744,7 +755,7 @@ impl GameState {
 
                 // Warn when spell is about to run out
                 if active == core::constants::TICKS as u32 * 30 {
-                    let spell_name = self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_owned();
                     let is_player_or_usurp = self.characters[cn].flags
                         & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())
                         != 0;
@@ -772,7 +783,7 @@ impl GameState {
                                     || item_temp == skills::SK_PROTECT as u16
                                     || item_temp == skills::SK_ENHANCE as u16
                                 {
-                                    let co_name = self.characters[co].get_name().to_string();
+                                    let co_name = self.characters[co].get_name().to_owned();
 
                                     self.do_sayx(
                                         cn,
@@ -812,7 +823,7 @@ impl GameState {
 
                 // Handle spell expiration
                 if active == 0 {
-                    let spell_name = self.items[spell_item as usize].get_name().to_string();
+                    let spell_name = self.items[spell_item as usize].get_name().to_owned();
 
                     // Recall spell - teleport character
                     if item_temp == skills::SK_RECALL as u16 {
@@ -832,8 +843,8 @@ impl GameState {
                                         self,
                                         12,
                                         0,
-                                        old_x as i32,
-                                        old_y as i32,
+                                        i32::from(old_x),
+                                        i32::from(old_y),
                                         0,
                                     );
 
@@ -947,7 +958,7 @@ impl GameState {
         }
 
         // Calculate points needed to raise this attribute
-        let points_needed = points::attrib_needed(current_val as i32, diff as i32);
+        let points_needed = points::attrib_needed(i32::from(current_val), i32::from(diff));
 
         if points_needed > available_points {
             return false;
@@ -980,7 +991,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = points::hp_needed(current_val as i32, diff as i32);
+        let points_needed = points::hp_needed(i32::from(current_val), i32::from(diff));
 
         if points_needed > available_points {
             return false;
@@ -1012,7 +1023,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = points::end_needed(current_val as i32, diff as i32);
+        let points_needed = points::end_needed(i32::from(current_val), i32::from(diff));
 
         if points_needed > available_points {
             return false;
@@ -1046,7 +1057,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = points::mana_needed(current_val as i32, diff as i32);
+        let points_needed = points::mana_needed(i32::from(current_val), i32::from(diff));
 
         if points_needed > available_points {
             return false;
@@ -1088,7 +1099,7 @@ impl GameState {
             return false;
         }
 
-        let points_needed = points::skill_needed(current_val as i32, diff as i32);
+        let points_needed = points::skill_needed(i32::from(current_val), i32::from(diff));
 
         if points_needed > available_points {
             return false;
@@ -1123,7 +1134,7 @@ impl GameState {
         let new_val = self.characters[cn].hp[0];
         let diff = self.characters[cn].hp[3];
 
-        let points_lost = points::hp_needed(new_val as i32, diff as i32);
+        let points_lost = points::hp_needed(i32::from(new_val), i32::from(diff));
 
         self.characters[cn].points_tot -= points_lost;
 
@@ -1154,7 +1165,7 @@ impl GameState {
         let new_val = self.characters[cn].mana[0];
         let diff = self.characters[cn].mana[3];
 
-        let points_lost = points::mana_needed(new_val as i32, diff as i32);
+        let points_lost = points::mana_needed(i32::from(new_val), i32::from(diff));
 
         self.characters[cn].points_tot -= points_lost;
         self.do_update_char(cn);
@@ -1277,7 +1288,7 @@ impl GameState {
 
             // Have the herald yell it out
             if herald_cn != 0 {
-                let char_name = self.characters[cn].get_name().to_string();
+                let char_name = self.characters[cn].get_name().to_owned();
                 let rank_name = ranks::rank_name_by_index(rank);
                 let message = format!(
                     "Hear ye, hear ye! {} has attained the rank of {}!",
@@ -1367,7 +1378,7 @@ impl GameState {
             if item_temp == skills::SK_MSHIELD as u16 {
                 let active = item_active as i32;
                 let mut tmp = active / 1024 + 1;
-                tmp = (dam + tmp - co_armor as i32) * 5;
+                tmp = (dam + tmp - i32::from(co_armor)) * 5;
 
                 if tmp > 0 {
                     if tmp >= active {
@@ -1405,7 +1416,7 @@ impl GameState {
         // Compute damage scaling by type
         let mut dam = dam;
         if type_hurt == 0 {
-            dam -= co_armor as i32;
+            dam -= i32::from(co_armor);
             if dam < 0 {
                 dam = 0;
             } else {
@@ -1414,7 +1425,7 @@ impl GameState {
         } else if type_hurt == 3 {
             dam *= 1000;
         } else {
-            dam -= co_armor as i32;
+            dam -= i32::from(co_armor);
             if dam < 0 {
                 dam = 0;
             } else {
@@ -1435,9 +1446,9 @@ impl GameState {
             self.do_area_notify(
                 cn as i32,
                 co as i32,
-                cn_x as i32,
-                cn_y as i32,
-                core::constants::NT_SEEHIT as i32,
+                i32::from(cn_x),
+                i32::from(cn_y),
+                i32::from(core::constants::NT_SEEHIT),
                 cn as i32,
                 co as i32,
                 0,
@@ -1445,7 +1456,7 @@ impl GameState {
             );
             self.do_notify_character(
                 co as u32,
-                core::constants::NT_GOTHIT as i32,
+                i32::from(core::constants::NT_GOTHIT),
                 cn as i32,
                 dam / 1000,
                 0,
@@ -1453,7 +1464,7 @@ impl GameState {
             );
             self.do_notify_character(
                 cn as u32,
-                core::constants::NT_DIDHIT as i32,
+                i32::from(core::constants::NT_DIDHIT),
                 co as i32,
                 dam / 1000,
                 0,
@@ -1482,7 +1493,7 @@ impl GameState {
         if type_hurt != 1 {
             let co_x = self.characters[co].x;
             let co_y = self.characters[co].y;
-            let idx = (co_x as i32 + co_y as i32 * core::constants::SERVER_MAPX) as usize;
+            let idx = (i32::from(co_x) + i32::from(co_y) * core::constants::SERVER_MAPX) as usize;
             if dam < 10000 {
                 self.map[idx].flags |= core::constants::MF_GFX_INJURED;
             } else if dam < 30000 {
@@ -1498,22 +1509,22 @@ impl GameState {
             }
             crate::effect::EffectManager::fx_add_effect(
                 self,
-                core::constants::FX_INJURED as i32,
+                i32::from(core::constants::FX_INJURED),
                 8,
-                co_x as i32,
-                co_y as i32,
+                i32::from(co_x),
+                i32::from(co_y),
                 0,
             );
         }
 
         // Combined map flags for arena checks (C includes both co/cn positions).
-        let co_idx = (self.characters[co].x as i32
-            + self.characters[co].y as i32 * core::constants::SERVER_MAPX)
+        let co_idx = (i32::from(self.characters[co].x)
+            + i32::from(self.characters[co].y) * core::constants::SERVER_MAPX)
             as usize;
         let mut mf_flags = self.map[co_idx].flags;
         if cn != 0 {
-            let cn_idx = (self.characters[cn].x as i32
-                + self.characters[cn].y as i32 * core::constants::SERVER_MAPX)
+            let cn_idx = (i32::from(self.characters[cn].x)
+                + i32::from(self.characters[cn].y) * core::constants::SERVER_MAPX)
                 as usize;
             mf_flags |= self.map[cn_idx].flags;
         }
@@ -1523,11 +1534,11 @@ impl GameState {
         let saved_by_god = (will_die_hp < 500) && (self.characters[co].luck >= 100);
 
         if saved_by_god {
-            if (mf_flags & core::constants::MF_ARENA as u64) == 0
+            if (mf_flags & u64::from(core::constants::MF_ARENA)) == 0
                 && helpers::random_mod_i32(10000) < 5000 + self.characters[co].luck
             {
                 // Save the character
-                self.characters[co].a_hp = self.characters[co].hp[5] as i32 * 500;
+                self.characters[co].a_hp = i32::from(self.characters[co].hp[5]) * 500;
                 self.characters[co].luck /= 2;
                 self.characters[co].data[44] += 1; // saved counter
 
@@ -1537,20 +1548,20 @@ impl GameState {
                 self.do_area_log(
                     co,
                     0,
-                    co_x as i32,
-                    co_y as i32,
+                    i32::from(co_x),
+                    i32::from(co_y),
                     core::types::FontColor::Yellow,
                     &format!(
                         "A god reached down and saved {} from the killing blow.\n",
-                        self.characters[co].get_name().to_string()
+                        self.characters[co].get_name().to_owned()
                     ),
                 );
                 crate::effect::EffectManager::fx_add_effect(
                     self,
                     6,
                     0,
-                    co_x as i32,
-                    co_y as i32,
+                    i32::from(co_x),
+                    i32::from(co_y),
                     0,
                 );
                 let temple_x = self.characters[co].temple_x as usize;
@@ -1562,27 +1573,27 @@ impl GameState {
                     self,
                     6,
                     0,
-                    new_x as i32,
-                    new_y as i32,
+                    i32::from(new_x),
+                    i32::from(new_y),
                     0,
                 );
 
                 self.do_notify_character(
                     cn as u32,
-                    core::constants::NT_DIDKILL as i32,
+                    i32::from(core::constants::NT_DIDKILL),
                     co as i32,
                     0,
                     0,
                     0,
                 );
-                let cn_x = self.characters[cn].x as i32;
-                let cn_y = self.characters[cn].y as i32;
+                let cn_x = i32::from(self.characters[cn].x);
+                let cn_y = i32::from(self.characters[cn].y);
                 self.do_area_notify(
                     cn as i32,
                     co as i32,
                     cn_x,
                     cn_y,
-                    core::constants::NT_SEEKILL as i32,
+                    i32::from(core::constants::NT_SEEKILL),
                     cn as i32,
                     co as i32,
                     0,
@@ -1607,9 +1618,9 @@ impl GameState {
 
         // Handle death
         if cur_hp < 500 {
-            let cn_x = self.characters[cn].x as i32;
-            let cn_y = self.characters[cn].y as i32;
-            let co_name = self.characters[co].get_name().to_string();
+            let cn_x = i32::from(self.characters[cn].x);
+            let cn_y = i32::from(self.characters[cn].y);
+            let co_name = self.characters[co].get_name().to_owned();
             self.do_area_log(
                 cn,
                 co,
@@ -1618,7 +1629,7 @@ impl GameState {
                 core::types::FontColor::Red,
                 &format!("{} is dead!\n", co_name),
             );
-            let cn_name = self.characters[cn].get_name().to_string();
+            let cn_name = self.characters[cn].get_name().to_owned();
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1641,20 +1652,20 @@ impl GameState {
 
             self.do_notify_character(
                 cn as u32,
-                core::constants::NT_DIDKILL as i32,
+                i32::from(core::constants::NT_DIDKILL),
                 co as i32,
                 0,
                 0,
                 0,
             );
-            let cn_x = self.characters[cn].x as i32;
-            let cn_y = self.characters[cn].y as i32;
+            let cn_x = i32::from(self.characters[cn].x);
+            let cn_y = i32::from(self.characters[cn].y);
             self.do_area_notify(
                 cn as i32,
                 co as i32,
                 cn_x,
                 cn_y,
-                core::constants::NT_SEEKILL as i32,
+                i32::from(core::constants::NT_SEEKILL),
                 cn as i32,
                 co as i32,
                 0,
@@ -1664,7 +1675,7 @@ impl GameState {
             // Score and EXP handing (defer to helpers/stubs)
             if type_hurt != 2
                 && cn != 0
-                && (mf_flags & core::constants::MF_ARENA as u64) == 0
+                && (mf_flags & u64::from(core::constants::MF_ARENA)) == 0
                 && noexp == 0
             {
                 let tmp = self.do_char_score(co);
@@ -1702,7 +1713,7 @@ impl GameState {
             if type_hurt == 0 {
                 let gethit = self.characters[co].gethit_dam;
                 if gethit > 0 {
-                    let odam = helpers::random_mod_i32(gethit as i32) + 1;
+                    let odam = helpers::random_mod_i32(i32::from(gethit)) + 1;
                     // call do_hurt on attacker
                     self.do_hurt(co, cn, odam, 3);
                 }

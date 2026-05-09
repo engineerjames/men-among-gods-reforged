@@ -243,15 +243,15 @@ impl God {
                 };
 
                 if light_value != 0 {
-                    gs.do_add_light(old_x as i32, old_y as i32, -(light_value as i32));
+                    gs.do_add_light(i32::from(old_x), i32::from(old_y), -i32::from(light_value));
                 }
 
                 gs.map[map_index].it = 0;
             }
         }
 
-        let item_name = gs.items[item_id].get_name().to_string();
-        let char_name = gs.characters[character_id].get_name().to_string();
+        let item_name = gs.items[item_id].get_name().to_owned();
+        let char_name = gs.characters[character_id].get_name().to_owned();
         log::debug!(
             "Attempting to give item '{}' to character '{}'",
             item_name,
@@ -652,7 +652,7 @@ impl God {
             || gs.map[map_index].to_ch != 0
             || gs.map[map_index].it != 0
             || (gs.map[map_index].flags
-                & (core::constants::MF_MOVEBLOCK | core::constants::MF_DEATHTRAP) as u64)
+                & u64::from(core::constants::MF_MOVEBLOCK | core::constants::MF_DEATHTRAP))
                 != 0
             || gs.map[map_index].fsprite != 0);
 
@@ -671,7 +671,7 @@ impl God {
             gs.items[item_id].light[0]
         };
         if light_value != 0 {
-            gs.do_add_light(x as i32, y as i32, light_value as i32);
+            gs.do_add_light(x as i32, y as i32, i32::from(light_value));
         }
 
         // Write the map reference last.
@@ -694,9 +694,9 @@ impl God {
                 && gs.items[item_on_tile as usize].flags
                     & core::constants::ItemFlags::IF_MOVEBLOCK.bits()
                     != 0)
-            || gs.map[map_index].flags & core::constants::MF_MOVEBLOCK as u64 != 0
-            || gs.map[map_index].flags & core::constants::MF_TAVERN as u64 != 0
-            || gs.map[map_index].flags & core::constants::MF_DEATHTRAP as u64 != 0);
+            || gs.map[map_index].flags & u64::from(core::constants::MF_MOVEBLOCK) != 0
+            || gs.map[map_index].flags & u64::from(core::constants::MF_TAVERN) != 0
+            || gs.map[map_index].flags & u64::from(core::constants::MF_DEATHTRAP) != 0);
 
         if !move_is_valid {
             return false;
@@ -730,21 +730,21 @@ impl God {
         let pass1 = pass_hash
             .iter()
             .take(4)
-            .fold(0u32, |acc, &b| (acc << 8) | b as u32);
+            .fold(0u32, |acc, &b| (acc << 8) | u32::from(b));
         let pass2 = pass_hash
             .iter()
             .skip(4)
             .take(4)
-            .fold(0u32, |acc, &b| (acc << 8) | b as u32);
+            .fold(0u32, |acc, &b| (acc << 8) | u32::from(b));
         let char_name = {
             let character = &mut gs.characters[co];
             character.pass1 = pass1;
             character.pass2 = pass2;
             character.set_do_update_flags();
-            character.get_name().to_string()
+            character.get_name().to_owned()
         };
         log::info!("Password changed for character {}", char_name);
-        let target_name = gs.characters[co].get_name().to_string();
+        let target_name = gs.characters[co].get_name().to_owned();
         gs.do_character_log(
             cn,
             core::types::FontColor::Green,
@@ -860,7 +860,7 @@ impl God {
             return;
         }
 
-        let character_name = gs.characters[co].get_name().to_string();
+        let character_name = gs.characters[co].get_name().to_owned();
         let character_visible = gs.characters[co].flags & CharacterFlags::Invisible.bits() == 0
             && gs.characters[co].flags & CharacterFlags::GreaterInv.bits() == 0;
         let target = Self::goto_cardinal_length(gs, cn, cx, cy)
@@ -888,7 +888,7 @@ impl God {
 
             let new_pos = {
                 let character = &gs.characters[co];
-                (character.x as i32, character.y as i32)
+                (i32::from(character.x), i32::from(character.y))
             };
             if character_visible {
                 EffectManager::fx_add_effect(gs, 12, 0, new_pos.0, new_pos.1, 0);
@@ -1173,8 +1173,8 @@ impl God {
             a_mana,
         ) = {
             let t = &gs.characters[co];
-            let posx = t.x as i32;
-            let posy = t.y as i32;
+            let posx = i32::from(t.x);
+            let posy = i32::from(t.y);
             let p = t.points_tot;
             let need = helpers::points_tolevel(t.points_tot as u32) as i32;
             let player_flag = (t.flags & CharacterFlags::Player.bits()) != 0;
@@ -1184,22 +1184,22 @@ impl God {
                 p,
                 need,
                 player_flag,
-                t.temp as i32,
-                t.hp[5] as i32,
-                t.end[5] as i32,
-                t.mana[5] as i32,
-                t.speed as i32,
+                i32::from(t.temp),
+                i32::from(t.hp[5]),
+                i32::from(t.end[5]),
+                i32::from(t.mana[5]),
+                i32::from(t.speed),
                 t.gold,
                 t.data[13],
                 t.kindred,
                 t.data,
                 t.luck,
-                t.gethit_dam as i32,
+                i32::from(t.gethit_dam),
                 t.current_online_time as i32,
                 t.total_online_time as i32,
-                t.alignment as i32,
-                t.armor as i32,
-                t.weapon as i32,
+                i32::from(t.alignment),
+                i32::from(t.armor),
+                i32::from(t.weapon),
                 t.a_hp,
                 t.a_end,
                 t.a_mana,
@@ -1251,7 +1251,7 @@ impl God {
         // Print header line depending on player or NPC
         if player_flag {
             let rank_short = ranks::rank_name_shortened(pts as u32);
-            let target_name = gs.characters[co].get_name().to_string();
+            let target_name = gs.characters[co].get_name().to_owned();
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1278,7 +1278,7 @@ impl God {
                 }
             };
             let rank_short = ranks::rank_name_shortened(pts as u32);
-            let target_name = gs.characters[co].get_name().to_string();
+            let target_name = gs.characters[co].get_name().to_owned();
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -1322,7 +1322,7 @@ impl God {
             if (gs.characters[cn].flags & CharacterFlags::Imp.bits()) != 0 {
                 let victim = gs.characters[co].data[core::constants::CHD_ATTACKVICT] as usize;
                 if Character::is_sane_character(victim) {
-                    let victim_name = gs.characters[victim].get_name().to_string();
+                    let victim_name = gs.characters[victim].get_name().to_owned();
                     gs.do_character_log(
                         cn,
                         core::types::FontColor::Yellow,
@@ -1595,12 +1595,12 @@ impl God {
                 showarea = false;
             }
 
-            let name = c.get_name().to_string();
+            let name = c.get_name().to_owned();
             let points_str = helpers::format_number(c.points_tot);
             let area_str = if showarea {
-                area::get_area_m(c.x as i32, c.y as i32, false)
+                area::get_area_m(i32::from(c.x), i32::from(c.y), false)
             } else {
-                "--------".to_string()
+                "--------".to_owned()
             };
 
             let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
@@ -1633,8 +1633,8 @@ impl God {
             }
 
             let rank_short = ranks::rank_name_shortened(c.points_tot as u32);
-            let name = c.get_name().to_string();
-            let area_str = area::get_area_m(c.x as i32, c.y as i32, false);
+            let name = c.get_name().to_owned();
+            let area_str = area::get_area_m(i32::from(c.x), i32::from(c.y), false);
             let n_is_purple = (c.kindred as u32 & traits::KIN_PURPLE) != 0;
             let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
             let is_poh_leader = (n_flags & CharacterFlags::PohLeader.bits()) != 0;
@@ -1720,12 +1720,12 @@ impl God {
                 showarea = false;
             }
 
-            let name = c.get_name().to_string();
+            let name = c.get_name().to_owned();
             let points_str = helpers::format_number(c.points_tot);
             let area_str = if showarea {
-                area::get_area_m(c.x as i32, c.y as i32, false)
+                area::get_area_m(i32::from(c.x), i32::from(c.y), false)
             } else {
-                "--------".to_string()
+                "--------".to_owned()
             };
 
             let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
@@ -1815,11 +1815,11 @@ impl God {
             }
 
             let rank_short = ranks::rank_name_shortened(c.points_tot as u32);
-            let name = c.get_name().to_string();
+            let name = c.get_name().to_owned();
             let area_str = if showarea {
-                area::get_area_m(c.x as i32, c.y as i32, false)
+                area::get_area_m(i32::from(c.x), i32::from(c.y), false)
             } else {
-                "--------".to_string()
+                "--------".to_owned()
             };
 
             let is_poh = (n_flags & CharacterFlags::Poh.bits()) != 0;
@@ -1842,11 +1842,11 @@ impl God {
 
         let gc = gs.characters[cn].data[core::constants::CHD_COMPANION] as usize;
         if Character::is_sane_character(gc) && gs.characters[gc].is_living_character(gc) {
-            let gc_name = gs.characters[gc].get_name().to_string();
+            let gc_name = gs.characters[gc].get_name().to_owned();
             let points_str = helpers::format_number(gs.characters[gc].points_tot);
             let area_str = area::get_area_m(
-                gs.characters[gc].x as i32,
-                gs.characters[gc].y as i32,
+                i32::from(gs.characters[gc].x),
+                i32::from(gs.characters[gc].y),
                 false,
             );
             gs.do_character_log(
@@ -1892,7 +1892,7 @@ impl God {
             if c.is_living_character(i) && c.is_player() {
                 if c.points > 100000 {
                     let points_to_print = c.points;
-                    let name = c.get_name().to_string();
+                    let name = c.get_name().to_owned();
                     gs.do_character_log(
                         cn,
                         core::types::FontColor::Green,
@@ -1952,7 +1952,7 @@ impl God {
                 return;
             }
 
-            let item_name = gs.items[item_id].get_name().to_string();
+            let item_name = gs.items[item_id].get_name().to_owned();
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -2129,8 +2129,8 @@ impl God {
             return;
         }
 
-        let helmet_name = gs.items[created[0]].get_name().to_string();
-        let armor_name = gs.items[created[1]].get_name().to_string();
+        let helmet_name = gs.items[created[0]].get_name().to_owned();
+        let armor_name = gs.items[created[1]].get_name().to_owned();
 
         gs.do_character_log(
             cn,
@@ -2330,8 +2330,8 @@ impl God {
         // At this point we have a target `co` to summon
         let (x, y, xo, yo) = {
             let summoner = &gs.characters[cn];
-            let mut target_x = summoner.x as i32;
-            let mut target_y = summoner.y as i32;
+            let mut target_x = i32::from(summoner.x);
+            let mut target_y = i32::from(summoner.y);
 
             // position in front of summoner based on direction
             match summoner.dir {
@@ -2361,8 +2361,8 @@ impl God {
             let tx = (target_x).clamp(1, core::constants::SERVER_MAPX - 2) as usize;
             let ty = (target_y).clamp(1, core::constants::SERVER_MAPY - 2) as usize;
 
-            let xo = gs.characters[co].x as i32;
-            let yo = gs.characters[co].y as i32;
+            let xo = i32::from(gs.characters[co].x);
+            let yo = i32::from(gs.characters[co].y);
 
             (tx, ty, xo, yo)
         };
@@ -2381,7 +2381,7 @@ impl God {
             return;
         }
 
-        let character_name = gs.characters[co].get_name().to_string();
+        let character_name = gs.characters[co].get_name().to_owned();
         gs.do_character_log(
             cn,
             core::types::FontColor::Green,
@@ -2439,7 +2439,7 @@ impl God {
         }
 
         if !gs.characters[co].is_player() {
-            let target_name = gs.characters[co].get_name().to_string();
+            let target_name = gs.characters[co].get_name().to_owned();
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -2512,15 +2512,15 @@ impl God {
                 != 0
             {
                 // TH -> hand2hand (str,str,agi)
-                mirror.skill[0][0] = (target_skill[skills::SK_WEAPON][0] as i32
+                mirror.skill[0][0] = (i32::from(target_skill[skills::SK_WEAPON][0])
                     + bonus
-                    + (target_attrib[4][0] as i32 - target_attrib[0][0] as i32) / 5)
+                    + (i32::from(target_attrib[4][0]) - i32::from(target_attrib[0][0])) / 5)
                     .clamp(0, 255) as u8;
             } else if target_kindred & (traits::KIN_HARAKIM | traits::KIN_ARCHHARAKIM) != 0 {
                 // Dag-> hand2hand (wil,agi,int)
-                mirror.skill[0][0] = (target_skill[skills::SK_WEAPON][0] as i32
+                mirror.skill[0][0] = (i32::from(target_skill[skills::SK_WEAPON][0])
                     + bonus
-                    + (target_attrib[2][0] as i32 - target_attrib[4][0] as i32) / 5)
+                    + (i32::from(target_attrib[2][0]) - i32::from(target_attrib[4][0])) / 5)
                     .clamp(0, 255) as u8;
             } else if target_kindred
                 & (traits::KIN_MERCENARY | traits::KIN_SORCERER | traits::KIN_WARRIOR)
@@ -2528,7 +2528,7 @@ impl God {
             {
                 // Swo-> hand2hand (wil,agi,str)
                 mirror.skill[0][0] =
-                    (target_skill[skills::SK_WEAPON][0] as i32 + bonus).clamp(0, 255) as u8;
+                    (i32::from(target_skill[skills::SK_WEAPON][0]) + bonus).clamp(0, 255) as u8;
             }
 
             mirror.weapon = caster_weapon;
@@ -2629,7 +2629,7 @@ impl God {
         // Validate target
         let validation_failed = {
             if gs.characters[co].is_player() {
-                let target_name = gs.characters[co].get_name().to_string();
+                let target_name = gs.characters[co].get_name().to_owned();
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -2641,7 +2641,7 @@ impl God {
                 true
             } else if gs.characters[co].data[42] > 65536 {
                 // Check if already a companion/thrall (data[42] is group, companions have group 65536+cn)
-                let target_name = gs.characters[co].get_name().to_string();
+                let target_name = gs.characters[co].get_name().to_owned();
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -2663,8 +2663,8 @@ impl God {
         // Calculate position in front of summoner
         let (x, y) = {
             let summoner = &gs.characters[cn];
-            let mut x = summoner.x as i32;
-            let mut y = summoner.y as i32;
+            let mut x = i32::from(summoner.x);
+            let mut y = i32::from(summoner.y);
 
             match summoner.dir {
                 DX_RIGHT => x += 1,
@@ -3241,7 +3241,7 @@ impl God {
 
         let skill_name = core::skills::get_skill_name(n as usize);
 
-        let target_name = gs.characters[co].get_name().to_string();
+        let target_name = gs.characters[co].get_name().to_owned();
         let target = &mut gs.characters[co];
         target.skill[n as usize][0] = val as u8;
         target.skill[n as usize][1] = val as u8;
@@ -3317,7 +3317,7 @@ impl God {
             // Default to own character if argument wasn't provided
             cn.to_string()
         } else {
-            arg1.to_string()
+            arg1.to_owned()
         };
 
         if let Some((co, name)) = Self::find_character_by_name_or_id(gs, &query) {
@@ -3351,8 +3351,8 @@ impl God {
             gs.characters[co].set_do_update_flags();
 
             if flag == CharacterFlags::Invisible.bits() {
-                let x = gs.characters[co].x as i32;
-                let y = gs.characters[co].y as i32;
+                let x = i32::from(gs.characters[co].x);
+                let y = i32::from(gs.characters[co].y);
                 EffectManager::fx_add_effect(gs, 12, 0, x, y, 0);
             }
         } else {
@@ -3373,7 +3373,7 @@ impl God {
             let co = arg.parse::<usize>().unwrap_or(0);
             if Character::is_sane_character(co) {
                 let name_str = c_string_to_str(&gs.characters[co].name);
-                Some((co, name_str.to_string()))
+                Some((co, name_str.to_owned()))
             } else {
                 None
             }
@@ -3383,7 +3383,7 @@ impl God {
             for (i, character) in gs.characters.iter().enumerate() {
                 let name_str = c_string_to_str(&character.name);
                 if name_str.to_lowercase() == arg_lower {
-                    return Some((i, name_str.to_string()));
+                    return Some((i, name_str.to_owned()));
                 }
             }
             None
@@ -3427,7 +3427,7 @@ impl God {
         // Toggle purple (PK) status
         // Assuming there's a PK flag in constants
         let pk_flag = 0x1000000u64; // Example PK flag
-        let target_name = gs.characters[co].get_name().to_string();
+        let target_name = gs.characters[co].get_name().to_owned();
 
         if gs.characters[co].flags & pk_flag != 0 {
             gs.characters[co].flags &= !pk_flag;
@@ -3632,7 +3632,7 @@ impl God {
             return false;
         }
 
-        let target_name = gs.characters[co].get_name().to_string();
+        let target_name = gs.characters[co].get_name().to_owned();
         gs.do_character_log(
             cn,
             core::types::FontColor::Green,
@@ -3653,10 +3653,10 @@ impl God {
             let target = &mut gs.characters[co];
 
             let damage = (target.hp[0] / 10).max(1);
-            target.hp[5] = (target.hp[5] as i32 - damage as i32).max(1) as u16;
+            target.hp[5] = (i32::from(target.hp[5]) - i32::from(damage)).max(1) as u16;
             target.set_do_update_flags();
 
-            (damage, target.get_name().to_string())
+            (damage, target.get_name().to_owned())
         };
 
         gs.do_character_log(
@@ -3687,7 +3687,7 @@ impl God {
             let target = &mut gs.characters[co];
             target.sprite = sprite as u16;
             target.set_do_update_flags();
-            target.get_name().to_string()
+            target.get_name().to_owned()
         };
 
         gs.do_character_log(
@@ -3712,7 +3712,7 @@ impl God {
             let target = &mut gs.characters[co];
             target.luck = value;
             target.set_do_update_flags();
-            target.get_name().to_string()
+            target.get_name().to_owned()
         };
 
         gs.do_character_log(
@@ -3742,7 +3742,7 @@ impl God {
                 .try_into()
                 .unwrap_or([0; 200]);
             target.set_do_update_flags();
-            target.get_name().to_string()
+            target.get_name().to_owned()
         };
 
         gs.do_character_log(
@@ -3771,7 +3771,7 @@ impl God {
 
         let old_name = {
             let target = &mut gs.characters[co];
-            let old_name = target.get_name().to_string();
+            let old_name = target.get_name().to_owned();
             target.name = name
                 .bytes()
                 .take(40)
@@ -3965,7 +3965,8 @@ impl God {
         };
 
         let ticker = gs.globals.ticker;
-        let timer_minutes = (ticker - data_23) as f64 / (core::constants::TICKS as f64 * 60.0);
+        let timer_minutes =
+            f64::from(ticker - data_23) / (f64::from(core::constants::TICKS) * 60.0);
 
         gs.do_character_log(
             cn,
@@ -4217,8 +4218,8 @@ impl God {
             return;
         }
 
-        let creator_name = gs.characters[cn].get_name().to_string();
-        let victim_name = gs.characters[co].get_name().to_string();
+        let creator_name = gs.characters[cn].get_name().to_owned();
+        let victim_name = gs.characters[co].get_name().to_owned();
 
         if gs.ban_list.len() >= 250 {
             gs.do_character_log(cn, core::types::FontColor::Red, "Ban list is full\n");
@@ -4281,7 +4282,7 @@ impl God {
         let reason = if reason.is_empty() {
             None
         } else {
-            Some(reason.to_string())
+            Some(reason.to_owned())
         };
         Self::persist_ban_and_kick(gs, cn, target, reason);
     }
@@ -4394,7 +4395,7 @@ impl God {
         target: BanTarget,
         reason: Option<String>,
     ) {
-        let created_by = gs.characters[cn].get_name().to_string();
+        let created_by = gs.characters[cn].get_name().to_owned();
         let now = keydb_ban::now_secs();
         let record = BanRecord {
             id: format!("game-{}-{}-{}", now, target.scope(), target.value()),
@@ -4403,7 +4404,7 @@ impl God {
             created_by,
             created_at: now,
             expires_at: None,
-            source: "game_command".to_string(),
+            source: "game_command".to_owned(),
         };
 
         match keydb_ban::upsert_ban_record(&record) {
@@ -4530,7 +4531,7 @@ impl God {
                 target.flags |= CharacterFlags::ShutUp.bits();
             }
             target.set_do_update_flags();
-            (target.get_name().to_string(), was_shut_up)
+            (target.get_name().to_owned(), was_shut_up)
         };
 
         let msg = if was_shut_up {
@@ -4615,7 +4616,7 @@ impl God {
             return;
         }
 
-        let target_name = gs.characters[target_cn].get_name().to_string();
+        let target_name = gs.characters[target_cn].get_name().to_owned();
         let player_id = gs.characters[target_cn].player;
         let is_player = (gs.characters[target_cn].flags & CharacterFlags::Player.bits()) != 0;
 
@@ -4650,7 +4651,7 @@ impl God {
             None
         } else {
             let lag_ticks = ltick.wrapping_sub(rtick);
-            Some((lag_ticks as f64 * 1000.0) / core::constants::TICKS as f64)
+            Some((f64::from(lag_ticks) * 1000.0) / f64::from(core::constants::TICKS))
         };
 
         gs.do_character_log(
@@ -4666,7 +4667,7 @@ impl God {
 
         let lag_str = match lag_ms {
             Some(ms) => format!("{ms:>7.0}"),
-            None => "   n/a".to_string(),
+            None => "   n/a".to_owned(),
         };
 
         gs.do_character_log(
@@ -4722,10 +4723,10 @@ impl God {
                     None
                 } else {
                     let lag_ticks = ltick.wrapping_sub(rtick);
-                    Some((lag_ticks as f64 * 1000.0) / core::constants::TICKS as f64)
+                    Some((f64::from(lag_ticks) * 1000.0) / f64::from(core::constants::TICKS))
                 };
 
-                out.push((gs.characters[usnr].get_name().to_string(), lag_ms));
+                out.push((gs.characters[usnr].get_name().to_owned(), lag_ms));
             }
             out
         };
@@ -4744,7 +4745,7 @@ impl God {
         for (name, lag_ms) in rows {
             let lag_str = match lag_ms {
                 Some(ms) => format!("{ms:>7.0}"),
-                None => "   n/a".to_string(),
+                None => "   n/a".to_owned(),
             };
             gs.do_character_log(
                 cn,
@@ -4817,7 +4818,8 @@ impl God {
             duration_arg.parse::<i64>().unwrap_or(60).max(0)
         };
         // Cap to u16 ticks at 36 TPS (~30 minutes).
-        let duration_ticks: u16 = (duration_secs.saturating_mul(36)).min(u16::MAX as i64) as u16;
+        let duration_ticks: u16 =
+            (duration_secs.saturating_mul(36)).min(i64::from(u16::MAX)) as u16;
 
         let target = if target_arg.is_empty() {
             "self"

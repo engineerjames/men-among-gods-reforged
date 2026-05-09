@@ -85,7 +85,7 @@ fn main() -> Result<(), String> {
             .is_ok()
         && sdl2::mixer::init(sdl2::mixer::InitFlag::MP3)
             .map_err(|e| {
-                log::warn!("Failed to initialise SDL2_mixer (audio will be disabled): {e}")
+                log::warn!("Failed to initialise SDL2_mixer (audio will be disabled): {e}");
             })
             .is_ok();
 

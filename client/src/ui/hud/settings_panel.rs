@@ -196,7 +196,7 @@ fn keybinding_button_label(bindings: &KeyBindings, action: GameAction) -> String
     bindings
         .binding_for(action)
         .map(|binding| binding.to_string())
-        .unwrap_or_else(|| "Unbound".to_string())
+        .unwrap_or_else(|| "Unbound".to_owned())
 }
 
 /// Draw a sub-panel background and border rectangle.
@@ -737,7 +737,7 @@ impl DiagnosticsSubPanel {
     fn update_ping(&mut self, rtt_ms: Option<u32>) {
         let text = match rtt_ms {
             Some(ms) => format!("Ping: {} ms", ms),
-            None => "Ping: N/A".to_string(),
+            None => "Ping: N/A".to_owned(),
         };
         self.lbl_ping.set_text(&text);
     }

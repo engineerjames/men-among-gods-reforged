@@ -153,7 +153,7 @@ impl MapViewerApp {
                 let status = if let Some(path) = self.data_source.snapshot_path() {
                     format!("Loaded snapshot: {}", path.display())
                 } else {
-                    "Loaded world state".to_string()
+                    "Loaded world state".to_owned()
                 };
                 log::info!(
                     "Loaded world for map viewer: map={} items={} templates={} source={}",
@@ -173,7 +173,7 @@ impl MapViewerApp {
 
     fn sync_loaded_world_from_views(&mut self) -> Result<(), String> {
         let Some(world) = self.loaded_world.as_mut() else {
-            return Err("No world loaded".to_string());
+            return Err("No world loaded".to_owned());
         };
 
         world.map = self.map_tiles.clone();
@@ -187,7 +187,7 @@ impl MapViewerApp {
         let world = self
             .loaded_world
             .as_ref()
-            .ok_or_else(|| "No world loaded".to_string())?;
+            .ok_or_else(|| "No world loaded".to_owned())?;
 
         save_world_snapshot(world, path)?;
         self.data_source = DataSource::SnapshotFile(path.to_path_buf());
@@ -311,7 +311,7 @@ impl MapViewerApp {
         self.load_current_source();
         self.dirty = false;
         self.dirty_tiles.clear();
-        self.save_status = Some("Reverted (discarded unsaved changes)".to_string());
+        self.save_status = Some("Reverted (discarded unsaved changes)".to_owned());
     }
 
     /// Mark tile `(x, y)` as having unsaved static-field changes.
@@ -340,7 +340,7 @@ impl MapViewerApp {
             return;
         }
         let Some(client) = self.admin_client.as_ref().cloned() else {
-            self.save_status = Some("Admin client not initialized".to_string());
+            self.save_status = Some("Admin client not initialized".to_owned());
             return;
         };
 
@@ -398,7 +398,7 @@ impl MapViewerApp {
             _ => {
                 if self.connect_form_base_url.is_empty() {
                     self.connect_form_base_url = std::env::var("MAG_API_BASE_URL")
-                        .unwrap_or_else(|_| "https://127.0.0.1:5554".to_string());
+                        .unwrap_or_else(|_| "https://127.0.0.1:5554".to_owned());
                 }
                 if self.connect_form_token.is_empty() {
                     self.connect_form_token =
@@ -413,15 +413,15 @@ impl MapViewerApp {
     /// Switch the data source to LiveApi using the values in the connect
     /// dialog form, build the admin client, and reload the world.
     fn connect_to_api_from_form(&mut self) {
-        let base_url = self.connect_form_base_url.trim().to_string();
-        let token = self.connect_form_token.trim().to_string();
+        let base_url = self.connect_form_base_url.trim().to_owned();
+        let token = self.connect_form_token.trim().to_owned();
 
         if base_url.is_empty() {
-            self.connect_dialog_error = Some("Base URL is required".to_string());
+            self.connect_dialog_error = Some("Base URL is required".to_owned());
             return;
         }
         if token.is_empty() {
-            self.connect_dialog_error = Some("Admin token is required".to_string());
+            self.connect_dialog_error = Some("Admin token is required".to_owned());
             return;
         }
 
@@ -448,13 +448,13 @@ impl MapViewerApp {
 
         self.connect_dialog_open = false;
         self.connect_dialog_error = None;
-        self.save_status = Some("Connected to admin API".to_string());
+        self.save_status = Some("Connected to admin API".to_owned());
     }
 
     /// Fire a server-side map reload and remember the request id.
     fn request_server_map_reload(&mut self) {
         let Some(client) = self.admin_client.as_ref().cloned() else {
-            self.save_status = Some("Admin client not initialized".to_string());
+            self.save_status = Some("Admin client not initialized".to_owned());
             return;
         };
         match client.request_map_reload() {
@@ -924,7 +924,7 @@ impl eframe::App for MapViewerApp {
                 self.pending_reload_since = None;
                 self.last_reload_poll = None;
                 self.save_status =
-                    Some("Map reload status: timed out waiting for server".to_string());
+                    Some("Map reload status: timed out waiting for server".to_owned());
             } else {
                 let should_poll = self
                     .last_reload_poll
@@ -1342,18 +1342,21 @@ impl eframe::App for MapViewerApp {
 
                             // Keep this list aligned with `core/src/constants.rs` map flags.
                             let defs: &[(u64, &str)] = &[
-                                (mag_core::constants::MF_MOVEBLOCK as u64, "MF_MOVEBLOCK"),
-                                (mag_core::constants::MF_SIGHTBLOCK as u64, "MF_SIGHTBLOCK"),
-                                (mag_core::constants::MF_INDOORS as u64, "MF_INDOORS"),
-                                (mag_core::constants::MF_UWATER as u64, "MF_UWATER"),
-                                (mag_core::constants::MF_NOLAG as u64, "MF_NOLAG"),
-                                (mag_core::constants::MF_NOMONST as u64, "MF_NOMONST"),
-                                (mag_core::constants::MF_BANK as u64, "MF_BANK"),
-                                (mag_core::constants::MF_TAVERN as u64, "MF_TAVERN"),
-                                (mag_core::constants::MF_NOMAGIC as u64, "MF_NOMAGIC"),
-                                (mag_core::constants::MF_DEATHTRAP as u64, "MF_DEATHTRAP"),
-                                (mag_core::constants::MF_ARENA as u64, "MF_ARENA"),
-                                (mag_core::constants::MF_NOEXPIRE as u64, "MF_NOEXPIRE"),
+                                (u64::from(mag_core::constants::MF_MOVEBLOCK), "MF_MOVEBLOCK"),
+                                (
+                                    u64::from(mag_core::constants::MF_SIGHTBLOCK),
+                                    "MF_SIGHTBLOCK",
+                                ),
+                                (u64::from(mag_core::constants::MF_INDOORS), "MF_INDOORS"),
+                                (u64::from(mag_core::constants::MF_UWATER), "MF_UWATER"),
+                                (u64::from(mag_core::constants::MF_NOLAG), "MF_NOLAG"),
+                                (u64::from(mag_core::constants::MF_NOMONST), "MF_NOMONST"),
+                                (u64::from(mag_core::constants::MF_BANK), "MF_BANK"),
+                                (u64::from(mag_core::constants::MF_TAVERN), "MF_TAVERN"),
+                                (u64::from(mag_core::constants::MF_NOMAGIC), "MF_NOMAGIC"),
+                                (u64::from(mag_core::constants::MF_DEATHTRAP), "MF_DEATHTRAP"),
+                                (u64::from(mag_core::constants::MF_ARENA), "MF_ARENA"),
+                                (u64::from(mag_core::constants::MF_NOEXPIRE), "MF_NOEXPIRE"),
                                 (mag_core::constants::MF_NOFIGHT, "MF_NOFIGHT"),
                                 (mag_core::constants::MF_GFX_INJURED, "MF_GFX_INJURED"),
                                 (mag_core::constants::MF_GFX_INJURED1, "MF_GFX_INJURED1"),

@@ -445,12 +445,12 @@ fn run(cli: Cli) -> Result<(), CliError> {
     if cli.command.is_some() && !cli.auto {
         return Err(CliError::Runtime(
             "subcommands are automation mode; pass --auto or run `mag-admin` for the menu"
-                .to_string(),
+                .to_owned(),
         ));
     }
     if cli.auto && cli.command.is_none() {
         return Err(CliError::Runtime(
-            "--auto requires a subcommand; run `mag-admin --help` for command help".to_string(),
+            "--auto requires a subcommand; run `mag-admin --help` for command help".to_owned(),
         ));
     }
 
@@ -461,7 +461,7 @@ fn run(cli: Cli) -> Result<(), CliError> {
         .filter(|t| !t.is_empty())
         .ok_or_else(|| {
             CliError::Runtime(
-                "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_string(),
+                "admin token is empty; pass --admin-token or set MAG_ADMIN_API_TOKEN".to_owned(),
             )
         })?;
 
@@ -473,7 +473,7 @@ fn run(cli: Cli) -> Result<(), CliError> {
 
     let Some(command) = &cli.command else {
         return Err(CliError::Runtime(
-            "no command provided; pass --menu or run `mag-admin help`".to_string(),
+            "no command provided; pass --menu or run `mag-admin help`".to_owned(),
         ));
     };
 
@@ -584,13 +584,13 @@ fn run_world_effects_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result
     loop {
         match choose_world_menu_action(theme)? {
             WorldMenuAction::Populate => {
-                menu_request_world_action(client, theme, WorldActionKind::PopulateMissing, None)?
+                menu_request_world_action(client, theme, WorldActionKind::PopulateMissing, None)?;
             }
             WorldMenuAction::RebuildLights => {
-                menu_request_world_action(client, theme, WorldActionKind::RebuildLights, None)?
+                menu_request_world_action(client, theme, WorldActionKind::RebuildLights, None)?;
             }
             WorldMenuAction::SyncSkills => {
-                menu_request_world_action(client, theme, WorldActionKind::SyncPlayerSkills, None)?
+                menu_request_world_action(client, theme, WorldActionKind::SyncPlayerSkills, None)?;
             }
             WorldMenuAction::ResetChar => menu_reset_char(client, theme)?,
             WorldMenuAction::ResetItem => menu_reset_item(client, theme)?,
@@ -681,16 +681,16 @@ fn run_templates_menu(client: &AdminClient, theme: &ColorfulTheme) -> Result<(),
     loop {
         match choose_templates_menu_action(theme)? {
             TemplatesMenuAction::SearchItemTemplates => {
-                menu_search_templates(client, theme, TemplateKindArg::Items)?
+                menu_search_templates(client, theme, TemplateKindArg::Items)?;
             }
             TemplatesMenuAction::SearchCharacterTemplates => {
-                menu_search_templates(client, theme, TemplateKindArg::Characters)?
+                menu_search_templates(client, theme, TemplateKindArg::Characters)?;
             }
             TemplatesMenuAction::ShowItemTemplate => {
-                menu_show_template(client, theme, TemplateKindArg::Items)?
+                menu_show_template(client, theme, TemplateKindArg::Items)?;
             }
             TemplatesMenuAction::ShowCharacterTemplate => {
-                menu_show_template(client, theme, TemplateKindArg::Characters)?
+                menu_show_template(client, theme, TemplateKindArg::Characters)?;
             }
             TemplatesMenuAction::Back => break,
         }
@@ -952,7 +952,7 @@ fn menu_add_account_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(
             reason,
             expires_at: None,
             duration_seconds: None,
-            created_by: Some(CREATED_BY.to_string()),
+            created_by: Some(CREATED_BY.to_owned()),
             kick_online: Some(true),
         })
         .map_err(CliError::Runtime)?;
@@ -971,7 +971,7 @@ fn menu_add_character_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result
             reason,
             expires_at: None,
             duration_seconds: None,
-            created_by: Some(CREATED_BY.to_string()),
+            created_by: Some(CREATED_BY.to_owned()),
             kick_online: Some(true),
         })
         .map_err(CliError::Runtime)?;
@@ -1013,12 +1013,12 @@ fn format_character_search_result(character: &CharacterSearchResult) -> String {
         (Some(username), Some(account_id)) => format!("{} ({})", username, account_id),
         (Some(username), None) => username.clone(),
         (None, Some(account_id)) => account_id.to_string(),
-        (None, None) => "unknown".to_string(),
+        (None, None) => "unknown".to_owned(),
     };
     let server = character
         .server_id
         .map(|value| value.to_string())
-        .unwrap_or_else(|| "offline".to_string());
+        .unwrap_or_else(|| "offline".to_owned());
     format!(
         "{} (api id {}, /who id {}, account {})",
         character.name, character.id, server, account
@@ -1034,7 +1034,7 @@ fn menu_add_ip_ban(client: &AdminClient, theme: &ColorfulTheme) -> Result<(), Cl
             reason,
             expires_at: None,
             duration_seconds: None,
-            created_by: Some(CREATED_BY.to_string()),
+            created_by: Some(CREATED_BY.to_owned()),
             kick_online: Some(true),
         })
         .map_err(CliError::Runtime)?;
@@ -1071,7 +1071,7 @@ fn format_ban_choice(ban: &server_utils::admin_client::BanRecordResponse) -> Str
     let expires_at = ban
         .expires_at
         .map(|value| value.to_string())
-        .unwrap_or_else(|| "permanent".to_string());
+        .unwrap_or_else(|| "permanent".to_owned());
     let reason = if ban.reason.trim().is_empty() {
         "no reason"
     } else {
@@ -1109,9 +1109,9 @@ fn prompt_text(
     prompt: &str,
     default: Option<&str>,
 ) -> Result<String, CliError> {
-    let mut input = Input::<String>::with_theme(theme).with_prompt(prompt.to_string());
+    let mut input = Input::<String>::with_theme(theme).with_prompt(prompt.to_owned());
     if let Some(default) = default {
-        input = input.default(default.to_string());
+        input = input.default(default.to_owned());
     }
     input
         .interact_text()
@@ -1129,7 +1129,7 @@ fn prompt_optional_text(theme: &ColorfulTheme, prompt: &str) -> Result<Option<St
     if trimmed.is_empty() {
         Ok(None)
     } else {
-        Ok(Some(trimmed.to_string()))
+        Ok(Some(trimmed.to_owned()))
     }
 }
 
@@ -1143,7 +1143,7 @@ fn prompt_timeout_seconds(theme: &ColorfulTheme) -> Result<u64, CliError> {
 
 fn prompt_usize(theme: &ColorfulTheme, prompt: &str) -> Result<usize, CliError> {
     Input::<usize>::with_theme(theme)
-        .with_prompt(prompt.to_string())
+        .with_prompt(prompt.to_owned())
         .interact_text()
         .map_err(|error| CliError::Runtime(format!("menu prompt failed: {error}")))
 }
@@ -1266,7 +1266,7 @@ fn run_bans(cli: &Cli, client: &AdminClient, command: &BansCommand) -> Result<()
                 reason: reason.clone(),
                 expires_at: *expires_at,
                 duration_seconds: *duration_seconds,
-                created_by: Some(CREATED_BY.to_string()),
+                created_by: Some(CREATED_BY.to_owned()),
                 kick_online: Some(!*no_kick),
             },
             *wait,
@@ -1290,7 +1290,7 @@ fn run_bans(cli: &Cli, client: &AdminClient, command: &BansCommand) -> Result<()
                 reason: reason.clone(),
                 expires_at: *expires_at,
                 duration_seconds: *duration_seconds,
-                created_by: Some(CREATED_BY.to_string()),
+                created_by: Some(CREATED_BY.to_owned()),
                 kick_online: Some(!*no_kick),
             },
             *wait,
@@ -1314,7 +1314,7 @@ fn run_bans(cli: &Cli, client: &AdminClient, command: &BansCommand) -> Result<()
                 reason: reason.clone(),
                 expires_at: *expires_at,
                 duration_seconds: *duration_seconds,
-                created_by: Some(CREATED_BY.to_string()),
+                created_by: Some(CREATED_BY.to_owned()),
                 kick_online: Some(!*no_kick),
             },
             *wait,
@@ -1593,7 +1593,7 @@ fn rank_template_summaries(
                 used: summary.used,
                 name: summary.name.clone(),
                 reference: summary.reference.clone(),
-                matched_field: matched_field.to_string(),
+                matched_field: matched_field.to_owned(),
             })
         })
         .collect();
@@ -1789,7 +1789,7 @@ fn split_words(raw: &str) -> Vec<String> {
     raw.split(|character: char| character == ',' || character == '\n' || character == '\r')
         .map(str::trim)
         .filter(|word| !word.is_empty())
-        .map(ToString::to_string)
+        .map(str::to_owned)
         .collect()
 }
 
@@ -1983,7 +1983,7 @@ fn print_ban_list(response: &BanListResponse, format: OutputFormat) -> Result<()
                 let expires_at = ban
                     .expires_at
                     .map(|value| value.to_string())
-                    .unwrap_or_else(|| "permanent".to_string());
+                    .unwrap_or_else(|| "permanent".to_owned());
                 println!(
                     "{}  {}  {}  {}  {}  {}",
                     ban.target.scope,
@@ -2030,7 +2030,7 @@ fn print_ban_mutation(
                 let expires_at = ban
                     .expires_at
                     .map(|value| value.to_string())
-                    .unwrap_or_else(|| "permanent".to_string());
+                    .unwrap_or_else(|| "permanent".to_owned());
                 println!(
                     "{}  {}  {}  {}  {}  {}",
                     ban.target.scope,
@@ -2175,7 +2175,7 @@ fn print_character_template_detail(
 ) -> Result<(), CliError> {
     match format {
         OutputFormat::Json => {
-            println!("{}", json_string(&character_template_value(id, character))?)
+            println!("{}", json_string(&character_template_value(id, character))?);
         }
         OutputFormat::Plain | OutputFormat::Table => {
             println!("CHARACTER TEMPLATE {id}");
@@ -2228,7 +2228,7 @@ fn print_character_template_detail(
                 format!(
                     "{} ({})",
                     character.points_tot,
-                    ranks::rank_name((character.points_tot as i64).max(0) as u32)
+                    ranks::rank_name(i64::from(character.points_tot).max(0) as u32)
                 ),
             );
             print_detail_line("armor", character.armor);
@@ -2438,7 +2438,7 @@ fn character_template_value(id: usize, character: &Character) -> Value {
         "speed": character.speed,
         "points": character.points,
         "points_tot": character.points_tot,
-        "rank": ranks::rank_name((character.points_tot as i64).max(0) as u32),
+        "rank": ranks::rank_name(i64::from(character.points_tot).max(0) as u32),
         "armor": character.armor,
         "weapon": character.weapon,
         "position": { "x": character.x, "y": character.y },
@@ -2551,7 +2551,7 @@ fn format_gold_silver_i32(value: i32) -> String {
 
 fn rank_label(min_rank: i8) -> String {
     if min_rank < 0 {
-        return "-1: None".to_string();
+        return "-1: None".to_owned();
     }
     let rank_index = min_rank as usize;
     format!("{}: {}", rank_index, ranks::rank_name_by_index(rank_index))
@@ -2576,7 +2576,7 @@ fn placement_label(placement: u16) -> String {
     ];
     labels
         .iter()
-        .find_map(|(value, label)| (*value == placement).then(|| (*label).to_string()))
+        .find_map(|(value, label)| (*value == placement).then(|| (*label).to_owned()))
         .unwrap_or_else(|| format!("Unknown (0x{placement:04X})"))
 }
 
@@ -2714,7 +2714,7 @@ fn character_text(character: &Character) -> Vec<String> {
     character
         .text
         .iter()
-        .map(|line| c_string_to_str(line).to_string())
+        .map(|line| c_string_to_str(line).to_owned())
         .collect()
 }
 
@@ -2730,19 +2730,19 @@ mod tests {
     #[test]
     fn parse_words_input_accepts_json_array() {
         let words = parse_words_input(r#"["alpha","bravo"]"#).unwrap();
-        assert_eq!(words, vec!["alpha".to_string(), "bravo".to_string()]);
+        assert_eq!(words, vec!["alpha".to_owned(), "bravo".to_owned()]);
     }
 
     #[test]
     fn parse_words_input_accepts_json_object() {
         let words = parse_words_input(r#"{"words":["alpha"]}"#).unwrap();
-        assert_eq!(words, vec!["alpha".to_string()]);
+        assert_eq!(words, vec!["alpha".to_owned()]);
     }
 
     #[test]
     fn parse_words_input_accepts_newline_list() {
         let words = parse_words_input("alpha\n\nbravo\n").unwrap();
-        assert_eq!(words, vec!["alpha".to_string(), "bravo".to_string()]);
+        assert_eq!(words, vec!["alpha".to_owned(), "bravo".to_owned()]);
     }
 
     #[test]
@@ -2750,18 +2750,14 @@ mod tests {
         let words = parse_words_input("alpha, bravo,,charlie").unwrap();
         assert_eq!(
             words,
-            vec![
-                "alpha".to_string(),
-                "bravo".to_string(),
-                "charlie".to_string()
-            ]
+            vec!["alpha".to_owned(), "bravo".to_owned(), "charlie".to_owned()]
         );
     }
 
     #[test]
     fn command_without_auto_is_rejected_before_token_check() {
         let cli = Cli {
-            api: DEFAULT_API_URL.to_string(),
+            api: DEFAULT_API_URL.to_owned(),
             admin_token: None,
             format: OutputFormat::Table,
             quiet: false,
@@ -2786,26 +2782,26 @@ mod tests {
             TemplateSummary {
                 id: 30,
                 used: true,
-                name: "Long Silver Sword".to_string(),
-                reference: "".to_string(),
+                name: "Long Silver Sword".to_owned(),
+                reference: "".to_owned(),
             },
             TemplateSummary {
                 id: 10,
                 used: true,
-                name: "Sword".to_string(),
-                reference: "blade".to_string(),
+                name: "Sword".to_owned(),
+                reference: "blade".to_owned(),
             },
             TemplateSummary {
                 id: 20,
                 used: true,
-                name: "Sword of Dawn".to_string(),
-                reference: "".to_string(),
+                name: "Sword of Dawn".to_owned(),
+                reference: "".to_owned(),
             },
             TemplateSummary {
                 id: 40,
                 used: true,
-                name: "Sturdy Ward".to_string(),
-                reference: "".to_string(),
+                name: "Sturdy Ward".to_owned(),
+                reference: "".to_owned(),
             },
         ];
 
@@ -2823,14 +2819,14 @@ mod tests {
             TemplateSummary {
                 id: 1,
                 used: false,
-                name: "Unused Sword".to_string(),
-                reference: "".to_string(),
+                name: "Unused Sword".to_owned(),
+                reference: "".to_owned(),
             },
             TemplateSummary {
                 id: 2,
                 used: true,
-                name: "Used Sword".to_string(),
-                reference: "".to_string(),
+                name: "Used Sword".to_owned(),
+                reference: "".to_owned(),
             },
         ];
 

@@ -79,14 +79,14 @@ pub fn trust_fingerprint(host: &str, fingerprint: &str) -> Result<(), String> {
     let fingerprint = fingerprint.trim().to_ascii_lowercase();
 
     if host.is_empty() {
-        return Err("Host is empty".to_string());
+        return Err("Host is empty".to_owned());
     }
     if fingerprint.is_empty() {
-        return Err("Fingerprint is empty".to_string());
+        return Err("Fingerprint is empty".to_owned());
     }
 
     let mut store = KnownHostsStore::load();
-    store.hosts.insert(host.to_string(), fingerprint);
+    store.hosts.insert(host.to_owned(), fingerprint);
     store.save()
 }
 
@@ -106,7 +106,7 @@ fn ensure_crypto_provider_installed() -> Result<(), String> {
         return Ok(());
     }
 
-    Err("Failed to initialize rustls crypto provider".to_string())
+    Err("Failed to initialize rustls crypto provider".to_owned())
 }
 
 // ---------------------------------------------------------------------------
@@ -194,9 +194,9 @@ impl ServerCertVerifier for TofuVerifier {
     ) -> Result<ServerCertVerified, Error> {
         let fp = Self::fingerprint(end_entity);
         let key = match server_name {
-            ServerName::DnsName(dns) => dns.as_ref().to_string(),
+            ServerName::DnsName(dns) => dns.as_ref().to_owned(),
             ServerName::IpAddress(ip) => format!("{}", std::net::IpAddr::from(*ip)),
-            _ => "unknown".to_string(),
+            _ => "unknown".to_owned(),
         };
 
         let mut store = self.store.lock().unwrap();
@@ -306,7 +306,7 @@ pub fn build_reqwest_client() -> Result<reqwest::blocking::Client, String> {
 /// Build a `rustls::ClientConnection` for wrapping a game-server TCP stream.
 pub fn build_game_tls_connector(host: &str) -> Result<rustls::ClientConnection, String> {
     let config = Arc::new(build_rustls_client_config());
-    let server_name = rustls::pki_types::ServerName::try_from(host.to_string())
+    let server_name = rustls::pki_types::ServerName::try_from(host.to_owned())
         .map_err(|e| format!("Invalid server name '{host}': {e}"))?;
     rustls::ClientConnection::new(config, server_name)
         .map_err(|e| format!("TLS ClientConnection::new failed: {e}"))

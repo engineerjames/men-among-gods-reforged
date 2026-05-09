@@ -193,8 +193,8 @@ fn character_summary(id: usize, ch: &Character) -> WorldEntitySummary {
     WorldEntitySummary {
         id,
         used: ch.used != 0,
-        name: string_operations::c_string_to_str(&ch.name).to_string(),
-        reference: string_operations::c_string_to_str(&ch.reference).to_string(),
+        name: string_operations::c_string_to_str(&ch.name).to_owned(),
+        reference: string_operations::c_string_to_str(&ch.reference).to_owned(),
     }
 }
 
@@ -410,7 +410,7 @@ pub(crate) async fn get_characters_reload_status(
         Some(_) => "pending",
         None => "pending",
     }
-    .to_string();
+    .to_owned();
 
     Json(WorldEntityReloadStatusResponse {
         status,

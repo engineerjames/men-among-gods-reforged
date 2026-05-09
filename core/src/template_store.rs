@@ -270,7 +270,7 @@ pub fn encode_character_template(character: &Character) -> Result<Vec<u8>, Templ
 /// * `Ok(Item)` on success.
 /// * `Err(TemplateError::Decode)` when bincode decoding fails.
 pub fn decode_item_template(bytes: &[u8]) -> Result<Item, TemplateError> {
-    Item::from_bytes(bytes).ok_or_else(|| TemplateError::Decode("invalid item bytes".to_string()))
+    Item::from_bytes(bytes).ok_or_else(|| TemplateError::Decode("invalid item bytes".to_owned()))
 }
 
 /// Decode a character template from raw KeyDB bytes.
@@ -285,7 +285,7 @@ pub fn decode_item_template(bytes: &[u8]) -> Result<Item, TemplateError> {
 /// * `Err(TemplateError::Decode)` when bincode decoding fails.
 pub fn decode_character_template(bytes: &[u8]) -> Result<Character, TemplateError> {
     Character::from_bytes(bytes)
-        .ok_or_else(|| TemplateError::Decode("invalid character bytes".to_string()))
+        .ok_or_else(|| TemplateError::Decode("invalid character bytes".to_owned()))
 }
 
 #[cfg(test)]

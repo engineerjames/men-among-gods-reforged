@@ -231,7 +231,7 @@ impl GameScene {
                 }
                 net.send(ClientCommand::new_autoloot_graves(
                     tile.x as i16,
-                    tile.y as i32,
+                    i32::from(tile.y),
                 ));
                 self.autoloot_visited.insert(key);
                 // One command per tick to avoid flooding the server.
@@ -314,7 +314,7 @@ impl GameScene {
                         (app_state.network.as_ref(), app_state.player_state.as_ref())
                     {
                         let target = Self::default_skill_target(ps);
-                        let a0 = ps.character_info().attrib[0][5] as u32;
+                        let a0 = u32::from(ps.character_info().attrib[0][5]);
                         net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
                 }
@@ -363,7 +363,7 @@ impl GameScene {
                     {
                         self.play_click_sound(app_state);
                         let target = Self::default_skill_target(ps);
-                        let a0 = ps.character_info().attrib[0][5] as u32;
+                        let a0 = u32::from(ps.character_info().attrib[0][5]);
                         net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
                 }
@@ -620,9 +620,12 @@ impl GameScene {
         self.rank_progress_line.handle_event(ui_event);
 
         self.vitality_bars.handle_event(ui_event);
+        self.spell_effect_icons.handle_event(ui_event);
 
         // --- StatusPanel (WV/AV display, right of skill bar) ---
-        if self.status_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+        if self.weapon_armor_panel.handle_event(ui_event)
+            == crate::ui::widget::EventResponse::Consumed
+        {
             return UiHandleResult::Consumed;
         }
 

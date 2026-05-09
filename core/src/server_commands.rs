@@ -95,19 +95,19 @@ pub enum ServerCommandType {
 /// * `Err(msg)` on truncated input.
 fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String> {
     if bytes.len() < 2 {
-        return Err("SV_SETMAP truncated (need at least 2 bytes)".to_string());
+        return Err("SV_SETMAP truncated (need at least 2 bytes)".to_owned());
     }
 
     let mut p: usize;
     let n: i32;
     if off != 0 {
-        n = *lastn + off as i32;
+        n = *lastn + i32::from(off);
         p = 2;
     } else {
         if bytes.len() < 4 {
-            return Err("SV_SETMAP truncated (need 4 bytes for index)".to_string());
+            return Err("SV_SETMAP truncated (need 4 bytes for index)".to_owned());
         }
-        n = u16::from_le_bytes([bytes[2], bytes[3]]) as i32;
+        n = i32::from(u16::from_le_bytes([bytes[2], bytes[3]]));
         p = 4;
     }
 
@@ -115,7 +115,7 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
 
     let flags = bytes[1];
     if flags == 0 {
-        return Err("SV_SETMAP has zero flags".to_string());
+        return Err("SV_SETMAP has zero flags".to_owned());
     }
 
     if flags & 1 != 0 {
@@ -164,7 +164,7 @@ fn sv_setmap3_len(cnt: usize) -> usize {
 impl ServerCommandType {
     pub fn get_expected_length(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
         if bytes.is_empty() {
-            return Err("sv_cmd_len called with empty buffer".to_string());
+            return Err("sv_cmd_len called with empty buffer".to_owned());
         }
 
         let op = bytes[0];
@@ -193,7 +193,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
             ServerCommandType::SetCharWorn => 9,
-            ServerCommandType::SetCharSpell => 9,
+            ServerCommandType::SetCharSpell => 11,
             ServerCommandType::SetCharObj => 5,
             ServerCommandType::SetMap3 => sv_setmap3_len(26),
             ServerCommandType::SetMap4 => sv_setmap3_len(0),
@@ -221,7 +221,7 @@ impl ServerCommandType {
             }
             ServerCommandType::Ignore => {
                 if bytes.len() < 5 {
-                    return Err("SV_IGNORE truncated (need 5 bytes for size)".to_string());
+                    return Err("SV_IGNORE truncated (need 5 bytes for size)".to_owned());
                 }
                 u32::from_le_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]) as usize
             }
@@ -413,6 +413,8 @@ pub enum ServerCommandData {
         index: u32,
         spell: i16,
         active: i16,
+        /// Template number of the skill that created this effect (matches `SK_*` constants).
+        skill_nr: i16,
     },
     SetCharObj {
         citem: i16,
@@ -663,19 +665,19 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         3 => Some((
             ServerCommandType::SetCharName1,
             ServerCommandData::SetCharName1 {
-                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         4 => Some((
             ServerCommandType::SetCharName2,
             ServerCommandData::SetCharName2 {
-                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         5 => Some((
             ServerCommandType::SetCharName3,
             ServerCommandData::SetCharName3 {
-                chunk: c_string_to_str(bytes.get(1..11)?).to_string(),
+                chunk: c_string_to_str(bytes.get(1..11)?).to_owned(),
                 race: read_u32(bytes, 11)?,
             },
         )),
@@ -888,6 +890,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 index: read_u32(bytes, 1)?,
                 spell: read_i16(bytes, 5)?,
                 active: read_i16(bytes, 7)?,
+                skill_nr: read_i16(bytes, 9)?,
             },
         )),
         47 => Some((
@@ -904,7 +907,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 reason: if bytes.len() >= 5 {
                     u32::from_le_bytes(bytes.get(1..5)?.try_into().ok()?)
                 } else {
-                    *bytes.get(1)? as u32
+                    u32::from(*bytes.get(1)?)
                 },
             },
         )),
@@ -912,7 +915,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         50 => Some((
             ServerCommandType::Look5,
             ServerCommandData::Look5 {
-                name: c_string_to_str(bytes.get(1..16)?).to_string(),
+                name: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         51 => {
@@ -938,28 +941,28 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             ServerCommandType::Log0,
             ServerCommandData::Log {
                 font: 0,
-                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         53 => Some((
             ServerCommandType::Log1,
             ServerCommandData::Log {
                 font: 1,
-                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         54 => Some((
             ServerCommandType::Log2,
             ServerCommandData::Log {
                 font: 2,
-                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         55 => Some((
             ServerCommandType::Log3,
             ServerCommandData::Log {
                 font: 3,
-                chunk: c_string_to_str(bytes.get(1..16)?).to_string(),
+                chunk: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         56 => Some((
@@ -972,49 +975,49 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         58 => Some((
             ServerCommandType::Mod1,
             ServerCommandData::Mod1 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         59 => Some((
             ServerCommandType::Mod2,
             ServerCommandData::Mod2 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         60 => Some((
             ServerCommandType::Mod3,
             ServerCommandData::Mod3 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         61 => Some((
             ServerCommandType::Mod4,
             ServerCommandData::Mod4 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         62 => Some((
             ServerCommandType::Mod5,
             ServerCommandData::Mod5 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         63 => Some((
             ServerCommandType::Mod6,
             ServerCommandData::Mod6 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         64 => Some((
             ServerCommandType::Mod7,
             ServerCommandData::Mod7 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         65 => Some((
             ServerCommandType::Mod8,
             ServerCommandData::Mod8 {
-                text: c_string_to_str(bytes.get(1..16)?).to_string(),
+                text: c_string_to_str(bytes.get(1..16)?).to_owned(),
             },
         )),
         66 => {

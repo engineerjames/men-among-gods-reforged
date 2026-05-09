@@ -189,7 +189,7 @@ pub(crate) async fn create_new_character(
                     Json(types::CharacterSummary::default()),
                 );
             }
-            value.to_string()
+            value.to_owned()
         }
         _ => {
             let fallback = helpers::default_character_description(&name);
@@ -276,6 +276,7 @@ pub(crate) async fn create_new_character(
                         class, sex,
                     ) as u16),
                     server_id: None,
+                    rank_index: None,
                 }),
             )
         }
@@ -382,7 +383,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::UNAUTHORIZED,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Unauthorized".to_string()),
+                    error: Some("Unauthorized".to_owned()),
                 }),
             );
         }
@@ -396,7 +397,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::UNAUTHORIZED,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Unauthorized".to_string()),
+                    error: Some("Unauthorized".to_owned()),
                 }),
             );
         }
@@ -416,7 +417,7 @@ pub(crate) async fn create_game_login_ticket(
             StatusCode::BAD_REQUEST,
             Json(types::CreateGameLoginTicketResponse {
                 ticket: None,
-                error: Some("Unsupported client version".to_string()),
+                error: Some("Unsupported client version".to_owned()),
             }),
         );
     }
@@ -428,7 +429,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::UNAUTHORIZED,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Unauthorized".to_string()),
+                    error: Some("Unauthorized".to_owned()),
                 }),
             );
         }
@@ -438,7 +439,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Server error".to_string()),
+                    error: Some("Server error".to_owned()),
                 }),
             );
         }
@@ -452,7 +453,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Server error".to_string()),
+                    error: Some("Server error".to_owned()),
                 }),
             );
         }
@@ -467,7 +468,7 @@ pub(crate) async fn create_game_login_ticket(
             StatusCode::UNAUTHORIZED,
             Json(types::CreateGameLoginTicketResponse {
                 ticket: None,
-                error: Some("Unauthorized".to_string()),
+                error: Some("Unauthorized".to_owned()),
             }),
         );
     }
@@ -482,7 +483,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::FORBIDDEN,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Account banned".to_string()),
+                    error: Some("Account banned".to_owned()),
                 }),
             );
         }
@@ -493,7 +494,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Server error".to_string()),
+                    error: Some("Server error".to_owned()),
                 }),
             );
         }
@@ -509,7 +510,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::FORBIDDEN,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Character banned".to_string()),
+                    error: Some("Character banned".to_owned()),
                 }),
             );
         }
@@ -520,7 +521,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Server error".to_string()),
+                    error: Some("Server error".to_owned()),
                 }),
             );
         }
@@ -538,7 +539,7 @@ pub(crate) async fn create_game_login_ticket(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(types::CreateGameLoginTicketResponse {
                         ticket: None,
-                        error: Some("Server error".to_string()),
+                        error: Some("Server error".to_owned()),
                     }),
                 );
             }
@@ -548,7 +549,7 @@ pub(crate) async fn create_game_login_ticket(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(types::CreateGameLoginTicketResponse {
                         ticket: None,
-                        error: Some("Server error".to_string()),
+                        error: Some("Server error".to_owned()),
                     }),
                 );
             }
@@ -568,7 +569,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Server error".to_string()),
+                    error: Some("Server error".to_owned()),
                 }),
             );
         }
@@ -585,7 +586,7 @@ pub(crate) async fn create_game_login_ticket(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::CreateGameLoginTicketResponse {
                     ticket: None,
-                    error: Some("Server error".to_string()),
+                    error: Some("Server error".to_owned()),
                 }),
             );
         }
@@ -611,7 +612,7 @@ pub(crate) async fn create_game_login_ticket(
                     StatusCode::INTERNAL_SERVER_ERROR,
                     Json(types::CreateGameLoginTicketResponse {
                         ticket: None,
-                        error: Some("Server error".to_string()),
+                        error: Some("Server error".to_owned()),
                     }),
                 );
             }
@@ -670,7 +671,7 @@ pub(crate) async fn create_account(
         return (
             StatusCode::BAD_REQUEST,
             Json(types::CreateAccountResponse {
-                error: Some("Invalid email".to_string()),
+                error: Some("Invalid email".to_owned()),
                 ..response
             }),
         );
@@ -681,7 +682,7 @@ pub(crate) async fn create_account(
         return (
             StatusCode::BAD_REQUEST,
             Json(types::CreateAccountResponse {
-                error: Some("Invalid username".to_string()),
+                error: Some("Invalid username".to_owned()),
                 ..response
             }),
         );
@@ -692,7 +693,7 @@ pub(crate) async fn create_account(
         return (
             StatusCode::BAD_REQUEST,
             Json(types::CreateAccountResponse {
-                error: Some("Invalid password".to_string()),
+                error: Some("Invalid password".to_owned()),
                 ..response
             }),
         );
@@ -738,7 +739,7 @@ pub(crate) async fn create_account(
         return (
             StatusCode::CONFLICT,
             Json(types::CreateAccountResponse {
-                error: Some("Username is already in use".to_string()),
+                error: Some("Username is already in use".to_owned()),
                 ..response
             }),
         );
@@ -764,7 +765,7 @@ pub(crate) async fn create_account(
         return (
             StatusCode::CONFLICT,
             Json(types::CreateAccountResponse {
-                error: Some("Email is already in use".to_string()),
+                error: Some("Email is already in use".to_owned()),
                 ..response
             }),
         );
@@ -885,10 +886,10 @@ pub(crate) async fn update_character(
     };
 
     let description_for_validation = match payload.description.as_deref() {
-        Some(description) => Some(description.trim().to_string()),
+        Some(description) => Some(description.trim().to_owned()),
         None if normalized_name.is_some() => {
             match pipelines::get_character_description(&mut con, character_id).await {
-                Ok(Some(value)) => Some(value.trim().to_string()),
+                Ok(Some(value)) => Some(value.trim().to_owned()),
                 Ok(None) => {
                     warn!(
                         "Update character rejected: missing stored description for character {}",
@@ -907,9 +908,9 @@ pub(crate) async fn update_character(
 
     if let Some(description) = description_for_validation.as_deref() {
         let name_for_validation = match normalized_name.as_deref() {
-            Some(value) => value.to_string(),
+            Some(value) => value.to_owned(),
             None => match pipelines::get_character_name(&mut con, character_id).await {
-                Ok(Some(value)) => value.trim().to_string(),
+                Ok(Some(value)) => value.trim().to_owned(),
                 Ok(None) => {
                     warn!(
                         "Update character rejected: missing stored name for character {}",
@@ -1202,7 +1203,7 @@ pub(crate) async fn login(
 fn login_response(token: impl Into<String>, error: Option<&str>) -> Json<types::LoginResponse> {
     Json(types::LoginResponse {
         token: token.into(),
-        error: error.map(str::to_string),
+        error: error.map(str::to_owned),
     })
 }
 
@@ -1238,7 +1239,7 @@ pub(crate) async fn request_password_reset(
 
     let generic_ok = types::ResetPasswordRequestResponse {
         message: "If an account with that username and email exists, a reset code has been sent."
-            .to_string(),
+            .to_owned(),
     };
 
     // ── Validate SMTP availability ───────────────────────────────────
@@ -1249,7 +1250,7 @@ pub(crate) async fn request_password_reset(
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
                 Json(types::ResetPasswordRequestResponse {
-                    message: "Password reset is not available at this time.".to_string(),
+                    message: "Password reset is not available at this time.".to_owned(),
                 }),
             );
         }
@@ -1282,7 +1283,7 @@ pub(crate) async fn request_password_reset(
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(types::ResetPasswordRequestResponse {
-                message: "Too many reset attempts. Please try again later.".to_string(),
+                message: "Too many reset attempts. Please try again later.".to_owned(),
             }),
         );
     }
@@ -1374,7 +1375,7 @@ pub(crate) async fn confirm_password_reset(
         (
             StatusCode::BAD_REQUEST,
             Json(types::ResetPasswordConfirmResponse {
-                message: msg.to_string(),
+                message: msg.to_owned(),
             }),
         )
     };
@@ -1407,7 +1408,7 @@ pub(crate) async fn confirm_password_reset(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::ResetPasswordConfirmResponse {
-                    message: "Server error".to_string(),
+                    message: "Server error".to_owned(),
                 }),
             );
         }
@@ -1422,7 +1423,7 @@ pub(crate) async fn confirm_password_reset(
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(types::ResetPasswordConfirmResponse {
-                    message: "Server error".to_string(),
+                    message: "Server error".to_owned(),
                 }),
             );
         }
@@ -1455,7 +1456,7 @@ pub(crate) async fn confirm_password_reset(
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(types::ResetPasswordConfirmResponse {
-                message: "Server error".to_string(),
+                message: "Server error".to_owned(),
             }),
         );
     }
@@ -1467,7 +1468,7 @@ pub(crate) async fn confirm_password_reset(
     (
         StatusCode::OK,
         Json(types::ResetPasswordConfirmResponse {
-            message: "Password has been reset successfully.".to_string(),
+            message: "Password has been reset successfully.".to_owned(),
         }),
     )
 }

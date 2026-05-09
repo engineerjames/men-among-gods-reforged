@@ -97,7 +97,7 @@ impl GameLoginTicketMetadata {
             bincode::decode_from_slice(bytes, bincode::config::standard())?;
         if consumed != bytes.len() {
             return Err(bincode::error::DecodeError::OtherString(
-                "trailing bytes in game login ticket metadata".to_string(),
+                "trailing bytes in game login ticket metadata".to_owned(),
             ));
         }
         Ok(metadata)
@@ -131,6 +131,12 @@ pub struct CharacterSummary {
 
     /// Server id
     pub server_id: Option<u32>,
+
+    /// Rank index (0–23) derived from `points_tot` by the server, written to the
+    /// `character:{id}` hash when selection metadata is synced.  `None` for
+    /// characters that have never been loaded by the game server.
+    #[serde(default)]
+    pub rank_index: Option<u8>,
 }
 
 impl Default for CharacterSummary {
@@ -143,6 +149,7 @@ impl Default for CharacterSummary {
             class: Class::Mercenary,
             selection_sprite_id: None,
             server_id: None,
+            rank_index: None,
         }
     }
 }
@@ -218,9 +225,55 @@ pub struct ResetPasswordConfirmResponse {
     pub message: String,
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn character_summary_rank_index_serde_roundtrip() {
+        let original = CharacterSummary {
+            id: 42,
+            name: "TestChar".to_owned(),
+            description: "desc".to_owned(),
+            sex: Sex::Female,
+            class: Class::Harakim,
+            selection_sprite_id: Some(4048),
+            server_id: Some(7),
+            rank_index: Some(5),
+        };
+        let json = serde_json::to_string(&original).expect("serialize");
+        let decoded: CharacterSummary = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.rank_index, Some(5));
+        assert_eq!(decoded.id, 42);
+    }
+
+    #[test]
+    fn character_summary_rank_index_none_serde_roundtrip() {
+        let original = CharacterSummary::default();
+        let json = serde_json::to_string(&original).expect("serialize");
+        let decoded: CharacterSummary = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(decoded.rank_index, None);
+    }
+
+    #[test]
+    fn character_summary_missing_rank_index_deserializes_as_none() {
+        // Simulate an older API response that omits rank_index.
+        let json = r#"{
+            "id": 1,
+            "name": "OldChar",
+            "description": "",
+            "sex": "Male",
+            "class": "Mercenary",
+            "selection_sprite_id": null,
+            "server_id": null
+        }"#;
+        let decoded: CharacterSummary = serde_json::from_str(json).expect("deserialize");
+        assert_eq!(decoded.rank_index, None);
+    }
 
     #[test]
     fn game_login_ticket_metadata_bincode_roundtrip() {

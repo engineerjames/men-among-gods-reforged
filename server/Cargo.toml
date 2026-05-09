@@ -17,14 +17,14 @@ path = "src/bin/world_snapshot.rs"
 
 [dependencies]
 core = { path = "../core" }
-flate2 = "1.0"
+flate2.workspace = true
 chrono = "0.4"
-bitflags = "2.4"
-log = "0.4.29"
-bincode = { version = "2.0", features = ["derive"] }
-rand = "0.8"
+bitflags.workspace = true
+log.workspace = true
+bincode.workspace = true
+rand.workspace = true
 ctrlc = { version = "3.5.1", features = ["termination"] }
-redis = "1.0.3"
+redis.workspace = true
 dotenvy = "0.15"
-rustls = "0.23"
-rustls-pemfile = "2"
+rustls = { workspace = true, default-features = true }
+rustls-pemfile.workspace = true

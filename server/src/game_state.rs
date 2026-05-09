@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn normalize_motd_short_unchanged() {
-        let input = "Hello world!".to_string();
+        let input = "Hello world!".to_owned();
         let result = GameState::normalize_message_of_the_day(input.clone());
         assert_eq!(result, input);
     }

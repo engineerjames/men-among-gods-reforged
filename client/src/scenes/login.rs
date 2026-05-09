@@ -160,7 +160,7 @@ impl LoginScene {
         let entered_host = ip.trim();
         if entered_host.is_empty() {
             self.login_form
-                .set_error(Some("Please enter an IP address or hostname".to_string()));
+                .set_error(Some("Please enter an IP address or hostname".to_owned()));
             return;
         }
 
@@ -168,7 +168,7 @@ impl LoginScene {
             format!("https://{}", rest.trim_end_matches('/'))
         } else if entered_host.starts_with("http://") {
             self.login_form.set_error(Some(
-                "Server URL must use https:// (TLS required)".to_string(),
+                "Server URL must use https:// (TLS required)".to_owned(),
             ));
             return;
         } else {
@@ -288,7 +288,7 @@ impl Scene for LoginScene {
                             let retry_url = app_state.api.base_url.clone();
                             if retry_url.trim().is_empty() {
                                 self.login_form.set_error(Some(
-                                    "Accepted new certificate. Click Login again.".to_string(),
+                                    "Accepted new certificate. Click Login again.".to_owned(),
                                 ));
                             } else {
                                 let username = self.login_form.username().to_owned();
@@ -368,7 +368,7 @@ impl Scene for LoginScene {
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
                         app_state.api.token = None;
-                        Some(Err("Login task failed unexpectedly".to_string()))
+                        Some(Err("Login task failed unexpectedly".to_owned()))
                     }
                 }
             } else {

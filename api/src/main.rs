@@ -56,19 +56,19 @@ fn resolve_log_file() -> Option<String> {
             if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
                 None
             } else {
-                Some(trimmed.to_string())
+                Some(trimmed.to_owned())
             }
         }
-        Err(_) => Some("api.log".to_string()),
+        Err(_) => Some("api.log".to_owned()),
     }
 }
 
 fn resolve_keydb_url() -> String {
-    env::var("MAG_KEYDB_URL").unwrap_or_else(|_| "redis://127.0.0.1:5556/".to_string())
+    env::var("MAG_KEYDB_URL").unwrap_or_else(|_| "redis://127.0.0.1:5556/".to_owned())
 }
 
 fn resolve_api_bind_addr() -> String {
-    env::var("API_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0".to_string())
+    env::var("API_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0".to_owned())
 }
 
 fn resolve_api_port() -> u16 {
@@ -222,10 +222,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Listening on {}", bind_address);
 
     let tls_cert = std::env::var("API_TLS_CERT").map_err(|_| {
-        "API_TLS_CERT environment variable is required (TLS is mandatory)".to_string()
+        "API_TLS_CERT environment variable is required (TLS is mandatory)".to_owned()
     })?;
     let tls_key = std::env::var("API_TLS_KEY").map_err(|_| {
-        "API_TLS_KEY environment variable is required (TLS is mandatory)".to_string()
+        "API_TLS_KEY environment variable is required (TLS is mandatory)".to_owned()
     })?;
 
     info!("HTTPS enabled (cert={}, key={})", tls_cert, tls_key);

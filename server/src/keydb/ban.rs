@@ -130,13 +130,13 @@ mod tests {
     #[test]
     fn expired_record_is_inactive_by_model() {
         let record = BanRecord {
-            id: "ban-1".to_string(),
+            id: "ban-1".to_owned(),
             target: BanTarget::Account { account_id: 1 },
             reason: String::new(),
-            created_by: "test".to_string(),
+            created_by: "test".to_owned(),
             created_at: 1,
             expires_at: Some(2),
-            source: "test".to_string(),
+            source: "test".to_owned(),
         };
 
         assert!(!record.is_active_at(2));

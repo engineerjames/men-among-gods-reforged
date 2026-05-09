@@ -140,7 +140,7 @@ fn character_summary(id: usize, ch: &Character) -> TemplateSummary {
 }
 
 fn c_str_owned(bytes: &[u8]) -> String {
-    string_operations::c_string_to_str(bytes).to_string()
+    string_operations::c_string_to_str(bytes).to_owned()
 }
 
 // ---------------------------------------------------------------------------
@@ -422,7 +422,7 @@ pub(crate) async fn get_reload_status(
             "pending"
         }
     }
-    .to_string();
+    .to_owned();
 
     Json(ReloadStatusResponse {
         status,

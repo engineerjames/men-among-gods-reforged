@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use crate::types::controller::ControllerBindings;
 use crate::ui::widget::KeyBindings;
 
-/// Number of numeric-key skill binding slots (keys 1–9 plus 4 reserved).
-pub const NUMBER_OF_KEYBINDS: usize = 13;
+/// Number of skill-bar binding slots.
+pub const NUMBER_OF_KEYBINDS: usize = 10;
 
 // ---------------------------------------------------------------------------
 // Per-character settings
@@ -24,7 +24,7 @@ pub const NUMBER_OF_KEYBINDS: usize = 13;
 /// keyboard action bindings, and remembered panel positions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterSettings {
-    /// Skill keybinds for keys 1–13. Index 0 = key "1". `Some(skill_nr)` if bound.
+    /// Skill keybinds for slots 1-10. `Some(skill_nr)` if bound.
     #[serde(default)]
     pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
     /// Saved position of the inventory panel, or `None` for default.
@@ -501,9 +501,6 @@ mod tests {
             None,
             None,
             None,
-            None,
-            None,
-            None,
         ];
 
         let json = serde_json::to_string(&s).unwrap();
@@ -550,8 +547,8 @@ mod tests {
     fn profile_key_with_username() {
         let identity = CharacterIdentity {
             id: 99,
-            name: "TestChar".to_string(),
-            account_username: Some("alice".to_string()),
+            name: "TestChar".to_owned(),
+            account_username: Some("alice".to_owned()),
         };
         assert_eq!(profile_key(&identity), "alice:99");
     }
@@ -560,7 +557,7 @@ mod tests {
     fn profile_key_without_username() {
         let identity = CharacterIdentity {
             id: 7,
-            name: "NoAccount".to_string(),
+            name: "NoAccount".to_owned(),
             account_username: None,
         };
         assert_eq!(profile_key(&identity), "unknown_account:7");
@@ -570,7 +567,7 @@ mod tests {
     fn profile_storage_serde_roundtrip() {
         let storage = ProfileStorage {
             version: 1,
-            last_username: Some("bob".to_string()),
+            last_username: Some("bob".to_owned()),
             global: Settings {
                 music_enabled: false,
                 vsync_enabled: true,

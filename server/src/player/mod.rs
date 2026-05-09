@@ -135,7 +135,7 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
         );
     }
 
-    let character_name = gs.characters[cn].get_name().to_string();
+    let character_name = gs.characters[cn].get_name().to_owned();
 
     // Handle commands that show stun message but still execute
     match parsed_cmd {
@@ -238,14 +238,14 @@ pub fn plr_cmd(gs: &mut GameState, nr: usize) {
 /// * `gs` - Active game state used for notification dispatch.
 /// * `cn` - Character index being announced.
 fn notify_character_tile(gs: &mut GameState, cn: usize) {
-    let x = gs.characters[cn].x as i32;
-    let y = gs.characters[cn].y as i32;
+    let x = i32::from(gs.characters[cn].x);
+    let y = i32::from(gs.characters[cn].y);
     gs.do_area_notify(
         cn as i32,
         0,
         x,
         y,
-        core::constants::NT_SEE as i32,
+        i32::from(core::constants::NT_SEE),
         cn as i32,
         0,
         0,

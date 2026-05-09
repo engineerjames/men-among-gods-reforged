@@ -43,7 +43,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
     let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
     let max_tick = (SPEEDTAB[0].len() - 1) as i32;
 
-    let hard_step = (ch_status as i32) - d;
+    let hard_step = i32::from(ch_status) - d;
 
     if !update {
         return 32 * hard_step / s;
@@ -122,7 +122,7 @@ fn do_idle(idle_ani: i32, sprite: u16) -> i32 {
 /// # Returns
 /// * The sprite ID to render this frame.
 fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i32 {
-    let base = it_sprite as i32;
+    let base = i32::from(it_sprite);
     let tick = ctick.min(SPEEDTAB[0].len() - 1);
 
     match *it_status {
@@ -260,7 +260,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
     let update = (tile.flags & STUNNED) == 0;
 
     let ch_status = tile.ch_status;
-    let base = tile.ch_sprite as i32;
+    let base = i32::from(tile.ch_sprite);
 
     match ch_status {
         0..=7 => {
@@ -272,13 +272,13 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
                     tile.idle_ani = 0;
                 }
             }
-            base + (ch_status as i32) * 8 + do_idle(tile.idle_ani, tile.ch_sprite)
+            base + i32::from(ch_status) * 8 + do_idle(tile.idle_ani, tile.ch_sprite)
         }
 
         16..=23 => {
             tile.obj_xoff = -speedstep(tile.ch_speed, tile.ch_status, 16, 8, update, ctick) / 2;
             tile.obj_yoff = speedstep(tile.ch_speed, tile.ch_status, 16, 8, update, ctick) / 4;
-            let tmp = base + (tile.ch_status as i32 - 16) + 64;
+            let tmp = base + (i32::from(tile.ch_status) - 16) + 64;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 23 {
                     16
@@ -291,7 +291,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         24..=31 => {
             tile.obj_xoff = speedstep(tile.ch_speed, tile.ch_status, 24, 8, update, ctick) / 2;
             tile.obj_yoff = -speedstep(tile.ch_speed, tile.ch_status, 24, 8, update, ctick) / 4;
-            let tmp = base + (tile.ch_status as i32 - 24) + 72;
+            let tmp = base + (i32::from(tile.ch_status) - 24) + 72;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 31 {
                     24
@@ -304,7 +304,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         32..=39 => {
             tile.obj_xoff = -speedstep(tile.ch_speed, tile.ch_status, 32, 8, update, ctick) / 2;
             tile.obj_yoff = -speedstep(tile.ch_speed, tile.ch_status, 32, 8, update, ctick) / 4;
-            let tmp = base + (tile.ch_status as i32 - 32) + 80;
+            let tmp = base + (i32::from(tile.ch_status) - 32) + 80;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 39 {
                     32
@@ -317,7 +317,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         40..=47 => {
             tile.obj_xoff = speedstep(tile.ch_speed, tile.ch_status, 40, 8, update, ctick) / 2;
             tile.obj_yoff = speedstep(tile.ch_speed, tile.ch_status, 40, 8, update, ctick) / 4;
-            let tmp = base + (tile.ch_status as i32 - 40) + 88;
+            let tmp = base + (i32::from(tile.ch_status) - 40) + 88;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 47 {
                     40
@@ -331,7 +331,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         48..=59 => {
             tile.obj_xoff = -speedstep(tile.ch_speed, tile.ch_status, 48, 12, update, ctick);
             tile.obj_yoff = 0;
-            let tmp = base + ((tile.ch_status as i32 - 48) * 8 / 12) + 96;
+            let tmp = base + ((i32::from(tile.ch_status) - 48) * 8 / 12) + 96;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 59 {
                     48
@@ -344,7 +344,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         60..=71 => {
             tile.obj_xoff = 0;
             tile.obj_yoff = -speedstep(tile.ch_speed, tile.ch_status, 60, 12, update, ctick) / 2;
-            let tmp = base + ((tile.ch_status as i32 - 60) * 8 / 12) + 104;
+            let tmp = base + ((i32::from(tile.ch_status) - 60) * 8 / 12) + 104;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 71 {
                     60
@@ -357,7 +357,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         72..=83 => {
             tile.obj_xoff = 0;
             tile.obj_yoff = speedstep(tile.ch_speed, tile.ch_status, 72, 12, update, ctick) / 2;
-            let tmp = base + ((tile.ch_status as i32 - 72) * 8 / 12) + 112;
+            let tmp = base + ((i32::from(tile.ch_status) - 72) * 8 / 12) + 112;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 83 {
                     72
@@ -370,7 +370,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         84..=95 => {
             tile.obj_xoff = speedstep(tile.ch_speed, tile.ch_status, 84, 12, update, ctick);
             tile.obj_yoff = 0;
-            let tmp = base + ((tile.ch_status as i32 - 84) * 8 / 12) + 120;
+            let tmp = base + ((i32::from(tile.ch_status) - 84) * 8 / 12) + 120;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 95 {
                     84
@@ -385,7 +385,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tile.obj_xoff = 0;
             tile.obj_yoff = 0;
 
-            let status = tile.ch_status as i32;
+            let status = i32::from(tile.ch_status);
             let (start, base_add, wrap) = if (96..=99).contains(&tile.ch_status) {
                 (96, 128, 96)
             } else if (100..=103).contains(&tile.ch_status) {
@@ -444,7 +444,7 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
                 } else {
                     start + 3
                 };
-                if tile.ch_status as i32 >= max {
+                if i32::from(tile.ch_status) >= max {
                     tile.ch_status = wrap;
                 } else {
                     tile.ch_status = tile.ch_status.saturating_add(1);
@@ -490,7 +490,7 @@ pub fn engine_tick(player_state: &mut PlayerState, ticker: u32, ctick: usize) {
             continue;
         };
 
-        tile.back = tile.ba_sprite as i32;
+        tile.back = i32::from(tile.ba_sprite);
 
         if tile.it_sprite != 0 {
             tile.obj1 = eng_item(tile.it_sprite, &mut tile.it_status, ctick, ticker);

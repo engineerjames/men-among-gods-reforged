@@ -15,8 +15,8 @@
 //! - [`x`]: horizontal centre of the chevron group (tip x).
 //! - [`y`]: bottom of the chevron group (feet y).
 //!
-//! [`x`]: VitalityBars::x
-//! [`y`]: VitalityBars::y
+//! [`x`]: VitalityChevrons::x
+//! [`y`]: VitalityChevrons::y
 
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
@@ -69,7 +69,7 @@ enum HoveredChevron {
 }
 
 // ---------------------------------------------------------------------------
-// VitalityBars
+// VitalityChevrons
 // ---------------------------------------------------------------------------
 
 /// HUD overlay that renders the player's HP, Endurance, and Mana as three
@@ -79,9 +79,9 @@ enum HoveredChevron {
 /// always visible.  Fill sweeps left-to-right.  Modify the public [`x`] and
 /// [`y`] fields to reposition the widget without recreating it.
 ///
-/// [`x`]: VitalityBars::x
-/// [`y`]: VitalityBars::y
-pub struct VitalityBars {
+/// [`x`]: VitalityChevrons::x
+/// [`y`]: VitalityChevrons::y
+pub struct VitalityChevrons {
     /// Horizontal centre of the chevron group in logical pixels.
     pub x: i32,
     /// Bottom of the chevron group (feet y) in logical pixels.
@@ -108,8 +108,8 @@ pub struct VitalityBars {
     hovered: Option<HoveredChevron>,
 }
 
-impl VitalityBars {
-    /// Create a new `VitalityBars` widget centred at `x` with its bottom
+impl VitalityChevrons {
+    /// Create a new `VitalityChevrons` widget centred at `x` with its bottom
     /// feet at `y`.
     ///
     /// All chevrons start fully filled (1.0) until [`sync`] is called with
@@ -122,7 +122,7 @@ impl VitalityBars {
     ///
     /// # Returns
     ///
-    /// * A new `VitalityBars` with all chevrons at 100 % fill.
+    /// * A new `VitalityChevrons` with all chevrons at 100 % fill.
     ///
     /// [`sync`]: Self::sync
     pub fn new(x: i32, y: i32) -> Self {
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn new_defaults_to_full_fill() {
-        let bars = VitalityBars::new(100, 200);
+        let bars = VitalityChevrons::new(100, 200);
         assert_eq!(bars.x, 100);
         assert_eq!(bars.y, 200);
         assert_eq!(bars.hp_fill, 1.0);
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn sync_clamps_fill_to_zero_when_max_is_zero() {
-        let mut bars = VitalityBars::new(0, 0);
+        let mut bars = VitalityChevrons::new(0, 0);
         bars.sync(100, 0, 100, 0, 100, 0);
         assert_eq!(bars.hp_fill, 0.0);
         assert_eq!(bars.end_fill, 0.0);
@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn sync_clamps_negative_current_to_zero() {
-        let mut bars = VitalityBars::new(0, 0);
+        let mut bars = VitalityChevrons::new(0, 0);
         bars.sync(-10, 100, -5, 100, -1, 100);
         assert_eq!(bars.hp_fill, 0.0);
         assert_eq!(bars.end_fill, 0.0);
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn sync_sets_half_fill() {
-        let mut bars = VitalityBars::new(0, 0);
+        let mut bars = VitalityChevrons::new(0, 0);
         bars.sync(50, 100, 50, 100, 50, 100);
         assert!((bars.hp_fill - 0.5).abs() < f32::EPSILON);
         assert!((bars.end_fill - 0.5).abs() < f32::EPSILON);
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn sync_does_not_exceed_one() {
-        let mut bars = VitalityBars::new(0, 0);
+        let mut bars = VitalityChevrons::new(0, 0);
         bars.sync(200, 100, 200, 100, 200, 100);
         assert_eq!(bars.hp_fill, 1.0);
         assert_eq!(bars.end_fill, 1.0);
@@ -513,7 +513,7 @@ mod tests {
 
     #[test]
     fn position_is_center_and_bottom() {
-        let bars = VitalityBars::new(480, 270);
+        let bars = VitalityChevrons::new(480, 270);
         // x is horizontal centre (tip x), y is bottom (feet y)
         assert_eq!(bars.x, 480);
         assert_eq!(bars.y, 270);
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn hover_text_reports_hp_values() {
-        let mut bars = VitalityBars::new(100, 200);
+        let mut bars = VitalityChevrons::new(100, 200);
         bars.sync(34, 80, 21, 50, 12, 40);
         bars.handle_event(&UiEvent::MouseMove { x: 64, y: 199 });
         assert_eq!(bars.hover_text().as_deref(), Some("HP: 34 / 80"));
@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn hover_text_reports_endurance_values() {
-        let mut bars = VitalityBars::new(100, 200);
+        let mut bars = VitalityChevrons::new(100, 200);
         bars.sync(34, 80, 21, 50, 12, 40);
         bars.handle_event(&UiEvent::MouseMove { x: 72, y: 199 });
         assert_eq!(bars.hover_text().as_deref(), Some("Endurance: 21 / 50"));
@@ -537,7 +537,7 @@ mod tests {
 
     #[test]
     fn hover_text_reports_mana_values() {
-        let mut bars = VitalityBars::new(100, 200);
+        let mut bars = VitalityChevrons::new(100, 200);
         bars.sync(34, 80, 21, 50, 12, 40);
         bars.handle_event(&UiEvent::MouseMove { x: 80, y: 199 });
         assert_eq!(bars.hover_text().as_deref(), Some("Mana: 12 / 40"));
@@ -545,7 +545,7 @@ mod tests {
 
     #[test]
     fn hover_text_clears_when_cursor_leaves_chevrons() {
-        let mut bars = VitalityBars::new(100, 200);
+        let mut bars = VitalityChevrons::new(100, 200);
         bars.sync(34, 80, 21, 50, 12, 40);
         bars.handle_event(&UiEvent::MouseMove { x: 10, y: 10 });
         assert_eq!(bars.hover_text(), None);

@@ -45,7 +45,7 @@ use crate::{
     ui::{
         self, RenderContext,
         forms::cert_dialog::CertDialog,
-        hud::button_arc::HudButtonBar,
+        hud::button_bar::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::inventory_panel::InventoryPanel,
         hud::look_panel::LookPanel,
@@ -56,12 +56,13 @@ use crate::{
         hud::skill_bar::SkillBar,
         hud::skill_picker_popup::SkillPickerPopup,
         hud::skills_panel::SkillsPanel,
-        hud::status_panel::StatusPanel,
         hud::talent_panel::TalentPanel,
+        hud::weapon_armor_panel::WeaponArmorPanel,
         style::Padding,
         visuals::rank_progress_line::RankProgressLine,
         visuals::rank_sigil::RankSigil,
-        visuals::vitality_bars::VitalityBars,
+        visuals::spell_effect_icons::SpellEffectIcons,
+        visuals::vitality_bars::VitalityChevrons,
         widget::{Bounds, GameAction, KeyBindings, KeyModifiers, UiEvent, Widget, WidgetAction},
         widgets::on_screen_keyboard::OnScreenKeyboard,
     },
@@ -108,10 +109,10 @@ pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32
     - ((TILEX / 2) as i32 * (FLOOR_TILE_WIDTH / 4) - (TILEY / 2) as i32 * (FLOOR_TILE_WIDTH / 4))
     + MAP_Y_TWEAK;
 
-const CHATBOX_X: i32 = 0;
-const CHATBOX_Y: i32 = TARGET_HEIGHT_INT as i32 - CHATBOX_H as i32;
+const CHATBOX_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - CHATBOX_W as i32 - 4;
+const CHATBOX_Y: i32 = 4;
 const CHATBOX_W: u32 = 300;
-const CHATBOX_H: u32 = 200;
+const CHATBOX_H: u32 = 192;
 
 // ---- HUD button bar layout ---- //
 
@@ -148,8 +149,8 @@ const HUD_PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
 
 /// X center of the minimap toggle button (near top-right of screen).
 const MINIMAP_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
-/// Y center of the minimap toggle button.
-const MINIMAP_BTN_CY: i32 = 30;
+/// Y center of the minimap toggle button (one spacing above the top HUD button).
+const MINIMAP_BTN_CY: i32 = HUD_BTN_BOTTOM_CY - 4 * HUD_BTN_SPACING as i32;
 /// Radius of the minimap toggle button.
 const MINIMAP_BTN_RADIUS: u32 = 14;
 
@@ -196,15 +197,15 @@ const RANK_SIGIL_Y: i32 = 4;
 
 // ---- Status panel (WV/AV, right of skill bar) ---- //
 
-/// X position of the status panel (8 px to the right of the skill bar's right edge).
-const STATUS_PANEL_X: i32 = TARGET_WIDTH_INT as i32 - 280;
-/// Y position of the status panel (same row as the rank progress line).
-const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 37;
+/// X position of the weapon/armor panel (8 px to the right of the skill bar's right edge).
+const WEAPON_ARMOR_PANEL_X: i32 = TARGET_WIDTH_INT as i32 - 368;
+/// Y position of the weapon/armor panel (same row as the rank progress line).
+const WEAPON_ARMOR_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 33;
 
 /// X position of the vitality chevrons (horizontal centre of the player sprite).
 const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
 /// Y position of the vitality chevron feet.
-const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 60;
+const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 
 // ---------------------------------------------------------------------------
 // GameScene struct
@@ -216,7 +217,7 @@ const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 60;
 /// scroll positions, pending stat raises, minimap pixel buffer, and escape
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
-    pub(super) status_panel: StatusPanel,
+    pub(super) weapon_armor_panel: WeaponArmorPanel,
     pub(super) rank_sigil: RankSigil,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
@@ -229,7 +230,8 @@ pub struct GameScene {
     pub(super) mode_button: ModeButton,
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
-    pub(super) vitality_bars: VitalityBars,
+    pub(super) vitality_bars: VitalityChevrons,
+    pub(super) spell_effect_icons: SpellEffectIcons,
     pub(super) skill_bar: SkillBar,
     pub(super) skill_picker: SkillPickerPopup,
     pub(super) last_synced_log_len: usize,
@@ -332,7 +334,11 @@ impl GameScene {
         keyboard.set_position(keyboard.bounds().x, keyboard_y);
 
         Self {
-            status_panel: StatusPanel::new(STATUS_PANEL_X, STATUS_PANEL_Y, HUD_PANEL_BG),
+            weapon_armor_panel: WeaponArmorPanel::new(
+                WEAPON_ARMOR_PANEL_X,
+                WEAPON_ARMOR_PANEL_Y,
+                HUD_PANEL_BG,
+            ),
             rank_sigil: RankSigil::new(RANK_SIGIL_X, RANK_SIGIL_Y, HUD_PANEL_BG),
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
@@ -347,10 +353,10 @@ impl GameScene {
                 HUD_SPRITE_IDS,
             ),
             rank_progress_line: RankProgressLine::new(
-                (TARGET_WIDTH_INT as i32 - 380) / 2,
-                TARGET_HEIGHT_INT as i32 - 38,
-                400,
-                2,
+                (TARGET_WIDTH_INT as i32 - 370) / 2,
+                TARGET_HEIGHT_INT as i32 - 40,
+                370,
+                4,
             ),
             skills_panel: SkillsPanel::new(
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
@@ -380,7 +386,8 @@ impl GameScene {
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
-            vitality_bars: VitalityBars::new(VITALITY_BARS_X, VITALITY_BARS_Y),
+            vitality_bars: VitalityChevrons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
+            spell_effect_icons: SpellEffectIcons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
             look_panel: LookPanel::new(
                 Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
                 HUD_PANEL_BG,
@@ -389,12 +396,7 @@ impl GameScene {
                 Bounds::new(SHOP_PANEL_X, SHOP_PANEL_Y, SHOP_PANEL_W, SHOP_PANEL_H),
                 HUD_PANEL_BG,
             ),
-            skill_bar: SkillBar::new(crate::ui::hud::skill_bar::SkillBarConfig {
-                spell_x: 295,
-                spell_y: TARGET_HEIGHT_INT as i32 - 57,
-                spell_width: 24,
-                spell_height: 24,
-            }),
+            skill_bar: SkillBar::new(),
             skill_picker: SkillPickerPopup::new(),
             last_synced_log_len: 0,
             pending_exit: None,
@@ -448,7 +450,7 @@ impl GameScene {
     pub(super) fn own_ch_nr(ps: &PlayerState) -> u32 {
         ps.map()
             .tile_at_xy(TILEX / 2, TILEY / 2)
-            .map(|t| t.ch_nr as u32)
+            .map(|t| u32::from(t.ch_nr))
             .unwrap_or(0)
     }
 
@@ -459,7 +461,7 @@ impl GameScene {
     /// 2) Current attack target (`attack_cn`)
     /// 3) No target (0)
     pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
-        let selected = ps.selected_char() as u32;
+        let selected = u32::from(ps.selected_char());
         if selected != 0 && selected != Self::own_ch_nr(ps) {
             return selected;
         }
@@ -714,7 +716,10 @@ impl GameScene {
         if self.vitality_bars.contains_point(mx, my) {
             return true;
         }
-        if self.status_panel.bounds().contains_point(mx, my) {
+        if self.spell_effect_icons.contains_point(mx, my) {
+            return true;
+        }
+        if self.weapon_armor_panel.bounds().contains_point(mx, my) {
             return true;
         }
         if self.hud_buttons.bounds().contains_point(mx, my) {
@@ -808,6 +813,32 @@ impl GameScene {
             );
         }
         if let Some(text) = self.vitality_bars.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
+        if let Some(text) = self.spell_effect_icons.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
+        if let Some(text) = self.skill_bar.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
             return crate::font_cache::draw_text(
@@ -989,7 +1020,7 @@ impl GameScene {
             .api
             .login_target
             .clone()
-            .ok_or_else(|| "No login target".to_string())?;
+            .ok_or_else(|| "No login target".to_owned())?;
 
         let host = crate::hosts::get_host_from_api_base_url(&app_state.api.base_url)
             .unwrap_or_else(crate::hosts::get_server_ip);
@@ -1069,7 +1100,7 @@ impl Scene for GameScene {
             Some(t) => t,
             None => {
                 log::error!("GameScene on_enter: no login_target set");
-                self.pending_exit = Some("No login target".to_string());
+                self.pending_exit = Some("No login target".to_owned());
                 return;
             }
         };
@@ -1308,7 +1339,7 @@ impl Scene for GameScene {
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
         self.chat_box.update(dt);
-        self.status_panel.update(dt);
+        self.weapon_armor_panel.update(dt);
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
@@ -1347,8 +1378,8 @@ impl Scene for GameScene {
 
             let dt_secs = dt.as_secs_f32();
 
-            let raw_x = self.left_stick_x as f32;
-            let raw_y = self.left_stick_y as f32;
+            let raw_x = f32::from(self.left_stick_x);
+            let raw_y = f32::from(self.left_stick_y);
 
             let norm_x = if raw_x.abs() > DEADZONE {
                 ((raw_x.abs() - DEADZONE) / (MAX_AXIS - DEADZONE))
@@ -1401,7 +1432,7 @@ impl Scene for GameScene {
 
             const RS_DEADZONE: f32 = 8000.0;
             if self.skill_picker.is_visible() {
-                let rs_y = self.right_stick_y as f32;
+                let rs_y = f32::from(self.right_stick_y);
                 if self.right_stick_cooldown <= 0.0 && rs_y.abs() > RS_DEADZONE {
                     self.skill_picker
                         .controller_move_selection(if rs_y > 0.0 { 1 } else { -1 });
@@ -1410,7 +1441,7 @@ impl Scene for GameScene {
             } else {
                 use crate::ui::hud::skill_bar::TOP_CELLS;
 
-                let rs_x = self.right_stick_x as f32;
+                let rs_x = f32::from(self.right_stick_x);
 
                 if self.right_stick_cooldown <= 0.0 && rs_x.abs() > RS_DEADZONE {
                     let current = self.skill_bar.controller_selected_slot();
@@ -1444,7 +1475,7 @@ impl Scene for GameScene {
                             if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
                             {
                                 let tile = ps.map().tile_at_xy(sx, sy);
-                                let target_cn = tile.map(|t| t.ch_nr as u32).unwrap_or(0);
+                                let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
                                 if target_cn != 0 {
                                     if let Some(net) = app_state.network.as_ref() {
                                         self.play_click_sound(app_state);
@@ -1581,17 +1612,19 @@ impl Scene for GameScene {
                 let ci = ps.character_info();
                 let rank_index = ranks::points2rank(ci.points_tot as u32);
                 self.rank_sigil.sync(rank_index as usize);
-                self.status_panel.sync(ci.weapon, ci.armor);
+                self.weapon_armor_panel.sync(ci.weapon, ci.armor);
                 self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);
                 self.vitality_bars.sync(
                     ci.a_hp,
-                    ci.hp[5] as i32,
+                    i32::from(ci.hp[5]),
                     ci.a_end,
-                    ci.end[5] as i32,
+                    i32::from(ci.end[5]),
                     ci.a_mana,
-                    ci.mana[5] as i32,
+                    i32::from(ci.mana[5]),
                 );
+                self.spell_effect_icons
+                    .sync(&ci.spell, &ci.active, &ci.spell_type);
                 use crate::ui::hud::skills_panel::{SkillsPanel as SP, SkillsPanelData};
                 let sorted = SP::build_sorted_skills(&ci.skill);
                 self.skills_panel.update_data(SkillsPanelData {
@@ -1617,7 +1650,7 @@ impl Scene for GameScene {
                     selected_char: ps.selected_char(),
                 });
 
-                // Skill bar: 13 keybinds plus all 20 active spell/activity slots.
+                // Skill bar: keybinds for the 11 assignable skill slots.
                 {
                     use crate::preferences::NUMBER_OF_KEYBINDS;
                     use crate::ui::hud::skill_bar::SkillBarData;
@@ -1625,11 +1658,7 @@ impl Scene for GameScene {
                     keybinds.copy_from_slice(
                         &app_state.settings.character.skill_keybinds[..NUMBER_OF_KEYBINDS],
                     );
-                    self.skill_bar.update_data(SkillBarData {
-                        keybinds,
-                        spell: ci.spell,
-                        active: ci.active,
-                    });
+                    self.skill_bar.update_data(SkillBarData { keybinds });
                 }
 
                 // Update minimap xmap buffer, then push viewport pixels to the widget.
@@ -1645,8 +1674,9 @@ impl Scene for GameScene {
             if self.rank_sigil.is_visible() {
                 self.rank_sigil.render(&mut ctx)?;
             }
-            self.status_panel.render(&mut ctx)?;
+            self.weapon_armor_panel.render(&mut ctx)?;
             self.vitality_bars.render(&mut ctx)?;
+            self.spell_effect_icons.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::SyncAndDrawStatus);
 
@@ -1665,7 +1695,7 @@ impl Scene for GameScene {
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
-            self.status_panel.render(&mut ctx)?;
+            self.weapon_armor_panel.render(&mut ctx)?;
             self.rank_progress_line.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }

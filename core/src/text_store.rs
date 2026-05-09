@@ -240,20 +240,16 @@ mod tests {
 
     #[test]
     fn normalize_badwords_deduplicates_stably() {
-        let raw = vec![
-            "Alpha".to_string(),
-            "bravo".to_string(),
-            "al pha".to_string(),
-        ];
+        let raw = vec!["Alpha".to_owned(), "bravo".to_owned(), "al pha".to_owned()];
 
         let words = normalize_badwords(&raw).unwrap();
 
-        assert_eq!(words, vec!["alpha".to_string(), "bravo".to_string()]);
+        assert_eq!(words, vec!["alpha".to_owned(), "bravo".to_owned()]);
     }
 
     #[test]
     fn encode_decode_badwords_roundtrips() {
-        let words = vec!["alpha".to_string(), "bravo".to_string()];
+        let words = vec!["alpha".to_owned(), "bravo".to_owned()];
 
         let bytes = encode_badwords(&words).unwrap();
         let decoded = decode_badwords(&bytes).unwrap();

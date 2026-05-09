@@ -17,9 +17,9 @@ use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 // ---------------------------------------------------------------------------
 
 /// Width of the rank sigil sprite in pixels.
-const SIGIL_WIDTH: i32 = 32;
+pub(crate) const SIGIL_WIDTH: i32 = 32;
 /// Full height of the rank sigil sprite in pixels (before per-rank trimming).
-const SIGIL_HEIGHT: i32 = 96;
+pub(crate) const SIGIL_HEIGHT: i32 = 96;
 /// Padding between the panel edge and the sigil sprite.
 const PANEL_PADDING: i32 = 4;
 
@@ -127,7 +127,7 @@ impl RankSigil {
     ///
     /// * `trim_top` — pixel rows to skip from the top of the sprite.
     /// * `draw_height` — pixel rows to actually render, always at least 1.
-    fn draw_metrics(rank_index: usize) -> (u32, u32) {
+    pub(crate) fn draw_metrics(rank_index: usize) -> (u32, u32) {
         let idx = rank_index.min(SIGIL_TRIM_ROWS.len() - 1);
         let (trim_top, trim_bottom) = SIGIL_TRIM_ROWS[idx];
         let max = SIGIL_HEIGHT as u32;

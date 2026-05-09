@@ -488,7 +488,7 @@ mod tests {
         dialog.show(99, "Hero");
         // Type something wrong
         dialog.handle_event(&UiEvent::TextInput {
-            text: "Wrong".to_string(),
+            text: "Wrong".to_owned(),
         });
         dialog.handle_event(&UiEvent::KeyDown {
             keycode: Keycode::Return,

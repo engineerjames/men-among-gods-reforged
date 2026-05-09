@@ -476,7 +476,7 @@ impl AdminClient {
             .build()
             .map_err(|e| format!("admin client build failed: {e}"))?;
         Ok(Self {
-            base_url: base_url.into().trim_end_matches('/').to_string(),
+            base_url: base_url.into().trim_end_matches('/').to_owned(),
             token: token.into(),
             client,
         })
@@ -1047,7 +1047,7 @@ impl AdminClient {
         let url = self.url("/admin/bans");
         let mut query = vec![("include_expired", include_expired.to_string())];
         if let Some(scope) = scope {
-            query.push(("scope", scope.to_string()));
+            query.push(("scope", scope.to_owned()));
         }
         let resp = self
             .client
@@ -1083,7 +1083,7 @@ impl AdminClient {
         let resp = self
             .client
             .get(&url)
-            .query(&[("name", name.to_string()), ("limit", limit.to_string())])
+            .query(&[("name", name.to_owned()), ("limit", limit.to_string())])
             .header(AUTHORIZATION, format!("Bearer {}", self.token))
             .send()
             .map_err(|e| format!("GET {url}: {e}"))?;

@@ -74,10 +74,10 @@ impl RequestResetScene {
         let email = email.trim();
 
         if username.is_empty() {
-            return Err("Username is required".to_string());
+            return Err("Username is required".to_owned());
         }
         if email.is_empty() {
-            return Err("E-mail is required".to_string());
+            return Err("E-mail is required".to_owned());
         }
 
         account_api::request_password_reset(base_url, username, email)
@@ -258,7 +258,7 @@ impl Scene for RequestResetScene {
                     Ok(result) => Some(result),
                     Err(TryRecvError::Empty) => None,
                     Err(TryRecvError::Disconnected) => {
-                        Some(Err("Reset request task failed unexpectedly".to_string()))
+                        Some(Err("Reset request task failed unexpectedly".to_owned()))
                     }
                 }
             } else {

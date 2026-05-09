@@ -19,6 +19,8 @@
 //! | `3`   | Toggle Settings panel         |
 //! | `4`   | Toggle Shop panel             |
 //! | `5`   | Toggle Look panel             |
+//! | `P`   | Print render timing stats     |
+//! | `C`   | Toggle coordinate overlay     |
 //! | `Esc` | Quit                          |
 
 use std::time::{Duration, Instant};
@@ -28,13 +30,14 @@ use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 
-use mag_core::stat_buffer::StatisticsBuffer;
+use mag_core::{skills, stat_buffer::StatisticsBuffer};
 
 use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
+use client::font_cache::{self, TextStyle};
 use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
-use client::ui::hud::button_arc::HudButtonBar;
+use client::ui::hud::button_bar::HudButtonBar;
 use client::ui::hud::chat_box::ChatBox;
 use client::ui::hud::inventory_panel::{InventoryPanel, InventoryPanelData};
 use client::ui::hud::look_panel::LookPanel;
@@ -42,11 +45,10 @@ use client::ui::hud::minimap_widget::MinimapWidget;
 use client::ui::hud::mode_button::ModeButton;
 use client::ui::hud::settings_panel::{SETTINGS_PANEL_H, SettingsPanel};
 use client::ui::hud::shop_panel::ShopPanel;
-use client::ui::hud::skill_bar::SkillBarConfig;
 use client::ui::hud::skill_bar::{SkillBar, SkillBarData};
 use client::ui::hud::skills_panel::{SkillsPanel, SkillsPanelData};
 use client::ui::style::{Background, Border, Padding};
-use client::ui::visuals::rank_progress_arc::RankArc;
+use client::ui::visuals::spell_effect_icons::SpellEffectIcons;
 use client::ui::widget::{Bounds, EventResponse, HudPanel, Widget, WidgetAction};
 use client::ui::widgets::button::{CircleButton, RectButton};
 use client::ui::widgets::checkbox::Checkbox;
@@ -84,6 +86,10 @@ const HUD_BTN_CX: i32 = TARGET_WIDTH_INT as i32 - 30;
 const HUD_BTN_BOTTOM_CY: i32 = TARGET_HEIGHT_INT as i32 - 60;
 /// Vertical spacing between adjacent HUD button centers.
 const HUD_BTN_SPACING: u32 = 40;
+/// X center for the spell-effect icon demo.
+const SPELL_ICONS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
+/// Bottom Y for the spell-effect icon demo.
+const SPELL_ICONS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 
 const HUD_PANEL_W: u32 = 300;
 const HUD_PANEL_H: u32 = 250;
@@ -186,9 +192,6 @@ fn main() -> Result<(), String> {
         0,
     );
 
-    let mut rank_arc = RankArc::new(COL1_X + 100, 280, 30, 2);
-    rank_arc.set_progress(0.65);
-
     let mut demo_panel = Panel::new(Bounds::new(COL1_X, 320, 200, 60))
         .with_background(Background::SolidColor(Color::RGBA(40, 40, 70, 200)))
         .with_border(Border {
@@ -200,7 +203,7 @@ fn main() -> Result<(), String> {
 
     // Column 2: Stateful/interactive widgets
     let mut chat_box = ChatBox::new(
-        Bounds::new(COL2_X, 10, 230, 200),
+        Bounds::new(TARGET_WIDTH_INT as i32 - 290, 4, 230, 192),
         Color::RGBA(10, 10, 30, 200),
         Padding::uniform(4),
     );
@@ -224,7 +227,11 @@ fn main() -> Result<(), String> {
 
     let mut mode_button = ModeButton::new(COL3_X + 30, 250, 18);
 
-    let mut minimap_widget = MinimapWidget::new(TARGET_WIDTH_INT as i32 - 30, 30, 14);
+    let mut minimap_widget = MinimapWidget::new(
+        HUD_BTN_CX,
+        HUD_BTN_BOTTOM_CY - 4 * HUD_BTN_SPACING as i32,
+        14,
+    );
 
     // HUD button bar (lower-right column — same position as in-game).
     let mut hud_buttons = HudButtonBar::new(
@@ -240,7 +247,8 @@ fn main() -> Result<(), String> {
     let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
     let panel_y = panel_bottom - HUD_PANEL_H as i32;
 
-    let mut status_panel = client::ui::hud::status_panel::StatusPanel::new(COL2_X, 230, PANEL_BG);
+    let mut status_panel =
+        client::ui::hud::weapon_armor_panel::WeaponArmorPanel::new(COL2_X, 230, PANEL_BG);
 
     let mut skills_panel = SkillsPanel::new(
         Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
@@ -299,12 +307,7 @@ fn main() -> Result<(), String> {
         PANEL_BG,
     );
 
-    let mut skill_bar = SkillBar::new(SkillBarConfig {
-        spell_x: 10,
-        spell_y: 10,
-        spell_width: 24,
-        spell_height: 24,
-    });
+    let mut skill_bar = SkillBar::new();
     skill_bar.update_data(SkillBarData {
         keybinds: [
             Some(3),
@@ -317,13 +320,26 @@ fn main() -> Result<(), String> {
             Some(10),
             None,
             None,
-            None,
-            None,
-            None,
         ],
-        spell: [0; 20],
-        active: [0; 20],
     });
+
+    let mut spell_effect_icons = SpellEffectIcons::new(SPELL_ICONS_X, SPELL_ICONS_Y);
+    let mut demo_spell = [0i32; 20];
+    let mut demo_active = [0i8; 20];
+    let mut demo_spell_type = [0i16; 20];
+    demo_spell[0] = 1;
+    demo_active[0] = 16;
+    demo_spell_type[0] = skills::SK_BLESS as i16;
+    demo_spell[1] = 1;
+    demo_active[1] = 9;
+    demo_spell_type[1] = skills::SK_MSHIELD as i16;
+    demo_spell[2] = 1;
+    demo_active[2] = 6;
+    demo_spell_type[2] = skills::SK_CURSE as i16;
+    demo_spell[3] = 1;
+    demo_active[3] = 12;
+    demo_spell_type[3] = skills::SK_WIMPY as i16;
+    spell_effect_icons.sync(&demo_spell, &demo_active, &demo_spell_type);
 
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).
     let mut t_label: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
@@ -332,7 +348,6 @@ fn main() -> Result<(), String> {
     let mut t_checkbox: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_slider: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_dropdown: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
-    let mut t_rank_arc: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_demo_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_chat_box: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_mode_button: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
@@ -347,6 +362,7 @@ fn main() -> Result<(), String> {
     let mut t_text_input_normal: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_text_input_password: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_skill_bar: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_spell_effect_icons: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
 
     // Track modifier state for UiEvent generation.
     let mut ctrl_held = false;
@@ -354,10 +370,13 @@ fn main() -> Result<(), String> {
     let mut alt_held = false;
     let mut mouse_x: i32 = 0;
     let mut mouse_y: i32 = 0;
+    let mut show_coords = true;
 
     let mut last_frame = Instant::now();
 
-    println!("UI Integration Test running — press 1-5 to toggle panels, Esc to quit.");
+    println!(
+        "UI Integration Test running — press 1-5 to toggle panels, C to toggle coordinate overlay, Esc to quit."
+    );
 
     // --- Main loop -------------------------------------------------------
     'running: loop {
@@ -379,6 +398,13 @@ fn main() -> Result<(), String> {
                         Keycode::LShift | Keycode::RShift => shift_held = true,
                         Keycode::LAlt | Keycode::RAlt => alt_held = true,
                         Keycode::Escape => break 'running,
+                        Keycode::C => {
+                            show_coords = !show_coords;
+                            println!(
+                                "[Key] Coordinate overlay {}",
+                                if show_coords { "on" } else { "off" }
+                            );
+                        }
                         Keycode::P => {
                             print_render_stats(&[
                                 ("Label", &t_label),
@@ -387,7 +413,6 @@ fn main() -> Result<(), String> {
                                 ("Checkbox", &t_checkbox),
                                 ("Slider", &t_slider),
                                 ("Dropdown", &t_dropdown),
-                                ("RankArc", &t_rank_arc),
                                 ("Panel", &t_demo_panel),
                                 ("ChatBox", &t_chat_box),
                                 ("ModeButton", &t_mode_button),
@@ -402,6 +427,7 @@ fn main() -> Result<(), String> {
                                 ("TextInput (normal)", &t_text_input_normal),
                                 ("TextInput (password)", &t_text_input_password),
                                 ("SkillBar", &t_skill_bar),
+                                ("SpellEffectIcons", &t_spell_effect_icons),
                             ]);
                         }
                         // Toggle overlay panels.
@@ -452,6 +478,8 @@ fn main() -> Result<(), String> {
                 alt: alt_held,
             };
             if let Some(ui_event) = sdl_to_ui_event(&event, mouse_x, mouse_y, modifiers) {
+                spell_effect_icons.handle_event(&ui_event);
+
                 // Dispatch to overlay panels first (topmost), then base widgets.
                 let widgets: Vec<&mut dyn Widget> = vec![
                     &mut shop_panel,
@@ -473,7 +501,6 @@ fn main() -> Result<(), String> {
                     &mut rect_button,
                     &mut demo_panel,
                     &mut status_panel,
-                    &mut rank_arc,
                     &mut label,
                 ];
 
@@ -498,7 +525,6 @@ fn main() -> Result<(), String> {
         drain_and_log(&mut mode_button, "ModeButton");
         drain_and_log(&mut minimap_widget, "MinimapWidget");
         drain_and_log(&mut status_panel, "StatusPanel");
-        drain_and_log(&mut rank_arc, "RankArc");
 
         // HudButtonBar actions --> toggle panels.
         for action in hud_buttons.take_actions() {
@@ -533,7 +559,6 @@ fn main() -> Result<(), String> {
             &mut text_input_normal,
             &mut text_input_password,
             &mut dropdown,
-            &mut rank_arc,
             &mut demo_panel,
             &mut chat_box,
             &mut mode_button,
@@ -570,7 +595,6 @@ fn main() -> Result<(), String> {
             &mut t_text_input_password,
         );
         timed_render(&mut dropdown, &mut ctx, &mut t_dropdown);
-        timed_render(&mut rank_arc, &mut ctx, &mut t_rank_arc);
         timed_render(&mut demo_panel, &mut ctx, &mut t_demo_panel);
         timed_render(&mut chat_box, &mut ctx, &mut t_chat_box);
         timed_render(&mut mode_button, &mut ctx, &mut t_mode_button);
@@ -578,6 +602,9 @@ fn main() -> Result<(), String> {
         timed_render(&mut status_panel, &mut ctx, &mut t_status_panel);
         timed_render(&mut hud_buttons, &mut ctx, &mut t_hud_buttons);
         timed_render(&mut skill_bar, &mut ctx, &mut t_skill_bar);
+        let t0 = Instant::now();
+        let _ = spell_effect_icons.render(&mut ctx);
+        t_spell_effect_icons.push(t0.elapsed().as_micros() as f32);
 
         // Render overlay panels (order matches visual stacking).
         timed_render(&mut skills_panel, &mut ctx, &mut t_skills_panel);
@@ -585,6 +612,52 @@ fn main() -> Result<(), String> {
         timed_render(&mut settings_panel, &mut ctx, &mut t_settings_panel);
         timed_render(&mut look_panel, &mut ctx, &mut t_look_panel);
         timed_render(&mut shop_panel, &mut ctx, &mut t_shop_panel);
+
+        if let Some(text) = spell_effect_icons.hover_text() {
+            let _ = font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                1,
+                &text,
+                mouse_x + 12,
+                mouse_y + 16,
+                TextStyle::drop_shadow(),
+            );
+        }
+
+        // Coordinate overlay — rendered last so it appears on top of everything.
+        if show_coords {
+            let coord_text = format!("x={mouse_x}  y={mouse_y}");
+            let text_w = font_cache::text_width(&coord_text);
+            let text_h = font_cache::BITMAP_GLYPH_H;
+            // Background pill behind the text so it's readable over any widget.
+            ctx.canvas.set_draw_color(Color::RGBA(0, 0, 0, 180));
+            let _ = ctx.canvas.fill_rect(sdl2::rect::Rect::new(
+                mouse_x - text_w as i32 / 2 - 3,
+                mouse_y - text_h as i32 - 6,
+                text_w + 6,
+                text_h + 4,
+            ));
+            let _ = font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                0,
+                &coord_text,
+                mouse_x - text_w as i32 / 2,
+                mouse_y - text_h as i32 - 4,
+                TextStyle::tinted(Color::RGB(255, 255, 100)),
+            );
+            // Small crosshair at the cursor position.
+            ctx.canvas.set_draw_color(Color::RGBA(255, 255, 100, 200));
+            let _ = ctx.canvas.draw_line(
+                sdl2::rect::Point::new(mouse_x - 6, mouse_y),
+                sdl2::rect::Point::new(mouse_x + 6, mouse_y),
+            );
+            let _ = ctx.canvas.draw_line(
+                sdl2::rect::Point::new(mouse_x, mouse_y - 6),
+                sdl2::rect::Point::new(mouse_x, mouse_y + 6),
+            );
+        }
 
         ctx.canvas.present();
 
@@ -624,13 +697,12 @@ fn update_all(
     text_input_normal: &mut TextInput,
     text_input_password: &mut TextInput,
     dropdown: &mut Dropdown,
-    rank_arc: &mut RankArc,
     demo_panel: &mut Panel,
     chat_box: &mut ChatBox,
     mode_button: &mut ModeButton,
     minimap_widget: &mut MinimapWidget,
     hud_buttons: &mut HudButtonBar,
-    status_panel: &mut client::ui::hud::status_panel::StatusPanel,
+    status_panel: &mut client::ui::hud::weapon_armor_panel::WeaponArmorPanel,
     skills_panel: &mut SkillsPanel,
     inventory_panel: &mut InventoryPanel,
     settings_panel: &mut SettingsPanel,
@@ -646,7 +718,6 @@ fn update_all(
     text_input_normal.update(dt);
     text_input_password.update(dt);
     dropdown.update(dt);
-    rank_arc.update(dt);
     demo_panel.update(dt);
     chat_box.update(dt);
     mode_button.update(dt);

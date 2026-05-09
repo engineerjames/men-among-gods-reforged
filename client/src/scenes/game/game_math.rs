@@ -121,7 +121,7 @@ impl GameScene {
 
             // Mirror C lookup() behavior: unknown if we don't have a known name for this nr/id.
             if ps.lookup_name(tile.ch_nr, tile.ch_id).is_none() {
-                return Some(tile.ch_nr as u32);
+                return Some(u32::from(tile.ch_nr));
             }
         }
 

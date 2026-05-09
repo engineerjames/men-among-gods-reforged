@@ -41,7 +41,7 @@ impl GraphicsZipCache {
                 continue;
             };
 
-            let name = file.name().to_string();
+            let name = file.name().to_owned();
             if name.ends_with('/') {
                 continue;
             }

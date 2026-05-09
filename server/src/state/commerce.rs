@@ -20,7 +20,7 @@ impl GameState {
     ///
     /// Adjusted price after applying barter skill.
     pub(crate) fn barter(&mut self, cn: usize, opr: i32, flag: i32) -> i32 {
-        let barter_skill = self.characters[cn].skill[skills::SK_BARTER][5] as i32;
+        let barter_skill = i32::from(self.characters[cn].skill[skills::SK_BARTER][5]);
 
         let pr = if flag != 0 {
             // Merchant is selling (player is buying)
@@ -74,10 +74,10 @@ impl GameState {
 
         // For corpses, check distance (must be adjacent)
         if is_body {
-            let cn_x = self.characters[cn].x as i32;
-            let cn_y = self.characters[cn].y as i32;
-            let co_x = self.characters[co].x as i32;
-            let co_y = self.characters[co].y as i32;
+            let cn_x = i32::from(self.characters[cn].x);
+            let cn_y = i32::from(self.characters[cn].y);
+            let co_x = i32::from(self.characters[co].x);
+            let co_y = i32::from(self.characters[co].y);
 
             let dx = (cn_x - co_x).abs();
             let dy = (cn_y - co_y).abs();
@@ -132,7 +132,7 @@ impl GameState {
             }
 
             if !accepts {
-                let merchant_name = self.characters[co].get_name().to_string();
+                let merchant_name = self.characters[co].get_name().to_owned();
                 self.do_character_log(
                     cn,
                     FontColor::Green,
@@ -148,7 +148,7 @@ impl GameState {
             // Check if merchant can afford it
             let merchant_gold = self.characters[co].gold;
             if merchant_gold < price {
-                let merchant_ref = self.characters[co].get_reference().to_string();
+                let merchant_ref = self.characters[co].get_reference().to_owned();
                 self.do_character_log(
                     cn,
                     FontColor::Green,
@@ -171,9 +171,9 @@ impl GameState {
                 return;
             }
 
-            let item_name = self.items[item_idx].get_name().to_string();
+            let item_name = self.items[item_idx].get_name().to_owned();
 
-            let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_string();
+            let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
             chlog!(
                 cn,
@@ -246,9 +246,9 @@ impl GameState {
                                 self.characters[cn].gold -= price;
                                 self.characters[co].gold += price;
 
-                                let item_name = self.items[item_idx].get_name().to_string();
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
-                                    .to_string();
+                                let item_name = self.items[item_idx].get_name().to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 chlog!(
                                     cn,
@@ -280,7 +280,7 @@ impl GameState {
                                     // self.item_templates[temp_id].t_bought += 1;
                                 }
                             } else {
-                                let item_name = self.items[item_idx].get_name().to_string();
+                                let item_name = self.items[item_idx].get_name().to_owned();
 
                                 self.do_character_log(
                                     cn,
@@ -293,7 +293,7 @@ impl GameState {
                             God::give_character_item(self, co, item_idx);
 
                             let item_ref =
-                                c_string_to_str(&mut self.items[item_idx].reference).to_string();
+                                c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                             if is_merchant {
                                 self.do_character_log(
@@ -328,9 +328,9 @@ impl GameState {
                             let gave_success = God::give_character_item(self, cn, item_idx);
 
                             if gave_success {
-                                let item_name = self.items[item_idx].get_name().to_string();
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
-                                    .to_string();
+                                let item_name = self.items[item_idx].get_name().to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 chlog!(cn, "Took {} from corpse", item_name);
 
@@ -343,8 +343,8 @@ impl GameState {
                                 // Failed to give item - put it back
                                 God::give_character_item(self, co, item_idx);
 
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
-                                    .to_string();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 self.do_character_log(
                                     cn,
@@ -375,9 +375,9 @@ impl GameState {
                             let gave_success = God::give_character_item(self, cn, item_idx);
 
                             if gave_success {
-                                let item_name = self.items[item_idx].get_name().to_string();
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
-                                    .to_string();
+                                let item_name = self.items[item_idx].get_name().to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 chlog!(cn, "Took {} from corpse", item_name);
 
@@ -395,8 +395,8 @@ impl GameState {
                                     );
                                 }
 
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference)
-                                    .to_string();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 self.do_character_log(
                                     cn,
@@ -446,9 +446,9 @@ impl GameState {
                     let item_idx = self.characters[co].item[exam_nr as usize] as usize;
 
                     if item_idx != 0 {
-                        let item_name = self.items[item_idx].get_name().to_string();
+                        let item_name = self.items[item_idx].get_name().to_owned();
                         let item_desc =
-                            c_string_to_str(&mut self.items[item_idx].description).to_string();
+                            c_string_to_str(&mut self.items[item_idx].description).to_owned();
 
                         self.do_character_log(cn, FontColor::Yellow, &format!("{}:\n", item_name));
                         self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", item_desc));
@@ -462,9 +462,9 @@ impl GameState {
                         let item_idx = self.characters[co].worn[worn_slot] as usize;
 
                         if item_idx != 0 {
-                            let item_name = self.items[item_idx].get_name().to_string();
+                            let item_name = self.items[item_idx].get_name().to_owned();
                             let item_desc =
-                                c_string_to_str(&mut self.items[item_idx].description).to_string();
+                                c_string_to_str(&mut self.items[item_idx].description).to_owned();
 
                             self.do_character_log(
                                 cn,
@@ -484,9 +484,9 @@ impl GameState {
                         let item_idx = self.characters[co].citem as usize;
 
                         if item_idx != 0 {
-                            let item_name = self.items[item_idx].get_name().to_string();
+                            let item_name = self.items[item_idx].get_name().to_owned();
                             let item_desc =
-                                c_string_to_str(&mut self.items[item_idx].description).to_string();
+                                c_string_to_str(&mut self.items[item_idx].description).to_owned();
 
                             self.do_character_log(
                                 cn,
@@ -637,7 +637,7 @@ impl GameState {
                 self.characters[cn].depot[slot] = 0;
                 self.characters[cn].depot_sold += 1;
 
-                let item_name = self.items[item_idx as usize].get_name().to_string();
+                let item_name = self.items[item_idx as usize].get_name().to_owned();
 
                 chlog!(
                     cn,
@@ -706,7 +706,7 @@ impl GameState {
 
         if !is_god {
             let map_idx = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
-            let in_bank = self.map[map_idx].flags & core::constants::MF_BANK as u64 != 0;
+            let in_bank = self.map[map_idx].flags & u64::from(core::constants::MF_BANK) != 0;
 
             if !in_bank {
                 self.do_character_log(
@@ -753,9 +753,9 @@ impl GameState {
             if self.do_add_depot(co, item_idx) {
                 self.characters[cn].citem = 0;
 
-                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_string();
+                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
-                let item_name = self.items[item_idx].get_name().to_string();
+                let item_name = self.items[item_idx].get_name().to_owned();
 
                 // Calculate costs per day (Astonian and Earth)
                 let astonian_cost = storage_cost;
@@ -796,9 +796,9 @@ impl GameState {
 
                         let item_ref =
                             c_string_to_str(&mut self.items[item_idx as usize].reference)
-                                .to_string();
+                                .to_owned();
 
-                        let item_name = self.items[item_idx as usize].get_name().to_string();
+                        let item_name = self.items[item_idx as usize].get_name().to_owned();
 
                         self.do_character_log(
                             cn,
@@ -810,7 +810,7 @@ impl GameState {
                     } else {
                         let item_ref =
                             c_string_to_str(&mut self.items[item_idx as usize].reference)
-                                .to_string();
+                                .to_owned();
 
                         self.do_character_log(
                             cn,
@@ -828,9 +828,9 @@ impl GameState {
                 let item_idx = self.characters[co].depot[exam_slot];
 
                 if item_idx != 0 {
-                    let item_name = self.items[item_idx as usize].get_name().to_string();
+                    let item_name = self.items[item_idx as usize].get_name().to_owned();
                     let item_desc =
-                        c_string_to_str(&mut self.items[item_idx as usize].description).to_string();
+                        c_string_to_str(&mut self.items[item_idx as usize].description).to_owned();
 
                     self.do_character_log(cn, FontColor::Yellow, &format!("{}:\n", item_name));
                     self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", item_desc));

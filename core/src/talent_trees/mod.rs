@@ -63,10 +63,10 @@ impl TalentRef {
     pub fn from_wire(layer: u8, mask: u8) -> Result<Self, String> {
         let slot = Self { layer, mask };
         if !slot.has_valid_layer() {
-            return Err("Invalid talent layer".to_string());
+            return Err("Invalid talent layer".to_owned());
         }
         if !slot.has_valid_mask() {
-            return Err("Talent mask must have exactly one bit set".to_string());
+            return Err("Talent mask must have exactly one bit set".to_owned());
         }
         Ok(slot)
     }
@@ -382,24 +382,24 @@ pub fn talent_prereqs_met(talents: &[u8; 25], node: &TalentNode) -> bool {
 /// * `Err` describing the rejection reason.
 pub fn apply_talent_point(talents: &mut [u8; 25], slot: TalentRef) -> Result<(), String> {
     if !slot.has_valid_layer() {
-        return Err("Invalid talent layer".to_string());
+        return Err("Invalid talent layer".to_owned());
     }
 
     if !slot.has_valid_mask() {
-        return Err("Talent mask must have exactly one bit set".to_string());
+        return Err("Talent mask must have exactly one bit set".to_owned());
     }
 
     let talent_layer = slot.layer as usize;
     if talents[talent_layer] & slot.mask != 0 {
-        return Err("Talent already learned".to_string());
+        return Err("Talent already learned".to_owned());
     }
 
     if is_talent_layer_spent(talents, talent_layer) {
-        return Err("A talent is already learned in this layer".to_string());
+        return Err("A talent is already learned in this layer".to_owned());
     }
 
     if talents[TALENT_POINTS_INDEX] < 1 {
-        return Err("Not enough points to spend".to_string());
+        return Err("Not enough points to spend".to_owned());
     }
 
     talents[TALENT_POINTS_INDEX] -= 1;
@@ -537,7 +537,7 @@ fn accumulate_stat_bonus(
             );
             for (skill, amount) in skills.iter().zip(amounts.iter()) {
                 let skill_idx = skills::canonicalize_weapon_skill(*skill as usize);
-                bonuses.skill[skill_idx] += *amount as i32;
+                bonuses.skill[skill_idx] += i32::from(*amount);
             }
         }
         TalentEffect::SkillsPercent { skills, percents } => {
@@ -559,7 +559,7 @@ fn accumulate_stat_bonus(
                 "AttributesFlat: attrs and amounts must have equal length",
             );
             for (attr, amount) in attrs.iter().zip(amounts.iter()) {
-                bonuses.attrib[*attr as usize] += *amount as i32;
+                bonuses.attrib[*attr as usize] += i32::from(*amount);
             }
         }
         TalentEffect::AttributesPercent { attrs, percents } => {
@@ -602,7 +602,7 @@ fn accumulate_stat_bonus(
 ///
 /// * Rounded bonus amount, clamped into `0..=u8::MAX`.
 fn percent_bonus(base: u8, percent: i32) -> i32 {
-    ((base as f32 * (percent as f32 / 100.0)).round() as i32).clamp(0, u8::MAX as i32)
+    ((f32::from(base) * (percent as f32 / 100.0)).round() as i32).clamp(0, i32::from(u8::MAX))
 }
 
 #[cfg(test)]

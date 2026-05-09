@@ -187,7 +187,7 @@ mod tests {
     #[test]
     fn encode_decode_request_roundtrip() {
         let request = BanActionRequest {
-            request_id: "ban-action-1".to_string(),
+            request_id: "ban-action-1".to_owned(),
             action: BanActionKind::ApplyBan {
                 target: BanTarget::Account { account_id: 5 },
                 kick_online: true,

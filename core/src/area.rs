@@ -1092,7 +1092,7 @@ mod tests {
     fn get_area_m_returns_single_name_when_in_one_area() {
         // Inside the large "Aston" bounding box (481..=633, 407..=596) and not
         // inside the narrower street/POI boxes.
-        assert_eq!(get_area_m(500, 500), Some("Aston".to_string()));
+        assert_eq!(get_area_m(500, 500), Some("Aston".to_owned()));
     }
 
     #[test]
@@ -1100,7 +1100,7 @@ mod tests {
         // (533, 450) is within "Aston" and also within "Temple Street".
         assert_eq!(
             get_area_m(533, 450),
-            Some("Aston, Temple Street".to_string())
+            Some("Aston, Temple Street".to_owned())
         );
     }
 }

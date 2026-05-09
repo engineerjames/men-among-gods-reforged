@@ -18,10 +18,63 @@ use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 
 /// Padding inside the panel background on each side.
 const PANEL_PADDING: i32 = 4;
-/// Width of the text content area (fits "WV: 9999  AV: 9999").
-const PANEL_WIDTH: i32 = 34;
+/// Shared label-column width for status text.
+const STATUS_LABEL_WIDTH: usize = "Weapon:".len();
+/// Minimum right-aligned number-column width for status text.
+const MIN_STATUS_VALUE_WIDTH: usize = 3;
 /// Bitmap font index used for value text (yellow font).
 const FONT: usize = 1;
+
+/// Formats one status row with a fixed label column and right-aligned value.
+///
+/// # Arguments
+///
+/// * `label` - Label shown before the numeric value.
+/// * `value` - Numeric value to display.
+/// * `value_width` - Width of the numeric column.
+///
+/// # Returns
+///
+/// * A formatted status row with deterministic alignment.
+fn format_status_line(label: &str, value: i32, value_width: usize) -> String {
+    format!(
+        "{:<label_width$} {:>value_width$}",
+        label,
+        value,
+        label_width = STATUS_LABEL_WIDTH,
+        value_width = value_width
+    )
+}
+
+/// Returns the value-column width needed for the current status values.
+///
+/// # Arguments
+///
+/// * `weapon` - Current weapon value.
+/// * `armor` - Current armor value.
+///
+/// # Returns
+///
+/// * The shared right-aligned number-column width.
+fn status_value_width(weapon: i32, armor: i32) -> usize {
+    MIN_STATUS_VALUE_WIDTH
+        .max(weapon.to_string().len())
+        .max(armor.to_string().len())
+}
+
+/// Returns the panel width needed for a status row with `value_width` digits.
+///
+/// # Arguments
+///
+/// * `value_width` - Width of the numeric column.
+///
+/// # Returns
+///
+/// * Width in logical pixels, including panel padding.
+fn panel_width_for_value_width(value_width: usize) -> u32 {
+    let chars = STATUS_LABEL_WIDTH + 1 + value_width;
+    (PANEL_PADDING * 2) as u32 + chars as u32 * font_cache::BITMAP_GLYPH_ADVANCE
+}
 
 // ---------------------------------------------------------------------------
 // Widget
@@ -29,10 +82,10 @@ const FONT: usize = 1;
 
 /// A compact panel displaying the player's weapon and armor values.
 ///
-/// Renders a single `"WV: xx  AV: xx"` text line on a semi-transparent
-/// background. The panel is read-only; clicks within its bounds are consumed
-/// to prevent world interaction from passing through.
-pub struct StatusPanel {
+/// Renders two aligned text rows on a semi-transparent background. The panel is
+/// read-only; clicks within its bounds are consumed to prevent world
+/// interaction from passing through.
+pub struct WeaponArmorPanel {
     /// Bounding rectangle of the panel.
     bounds: Bounds,
     /// Semi-transparent background fill color.
@@ -43,8 +96,8 @@ pub struct StatusPanel {
     armor: i32,
 }
 
-impl StatusPanel {
-    /// Create a new `StatusPanel` positioned at `(x, y)`.
+impl WeaponArmorPanel {
+    /// Create a new `WeaponArmorPanel` positioned at `(x, y)`.
     ///
     /// # Arguments
     ///
@@ -54,9 +107,9 @@ impl StatusPanel {
     ///
     /// # Returns
     ///
-    /// * A new `StatusPanel` with zeroed weapon and armor values.
+    /// * A new `WeaponArmorPanel` with zeroed weapon and armor values.
     pub fn new(x: i32, y: i32, bg_color: Color) -> Self {
-        let w = (PANEL_PADDING * 2 + PANEL_WIDTH) as u32;
+        let w = panel_width_for_value_width(MIN_STATUS_VALUE_WIDTH);
         let h = (PANEL_PADDING * 2 + font_cache::BITMAP_GLYPH_H as i32 * 2) as u32;
         Self {
             bounds: Bounds::new(x, y, w, h),
@@ -80,10 +133,24 @@ impl StatusPanel {
     pub fn sync(&mut self, weapon: i32, armor: i32) {
         self.weapon = weapon;
         self.armor = armor;
+        self.bounds.width = panel_width_for_value_width(status_value_width(weapon, armor));
+    }
+
+    /// Returns the formatted weapon and armor lines for rendering.
+    ///
+    /// # Returns
+    ///
+    /// * A pair of equal-length status strings.
+    fn formatted_lines(&self) -> (String, String) {
+        let value_width = status_value_width(self.weapon, self.armor);
+        (
+            format_status_line("Weapon:", self.weapon, value_width),
+            format_status_line("Armor:", self.armor, value_width),
+        )
     }
 }
 
-impl Widget for StatusPanel {
+impl Widget for WeaponArmorPanel {
     /// Returns the bounding rectangle of the panel.
     fn bounds(&self) -> &Bounds {
         &self.bounds
@@ -140,8 +207,7 @@ impl Widget for StatusPanel {
             self.bounds.height,
         ))?;
 
-        let wv_text = format!("WV: {}", self.weapon);
-        let av_text = format!("AV: {}", self.armor);
+        let (wv_text, av_text) = self.formatted_lines();
         let text_x = self.bounds.x + PANEL_PADDING;
         let text_y = self.bounds.y + PANEL_PADDING;
         font_cache::draw_text(
@@ -159,7 +225,7 @@ impl Widget for StatusPanel {
             ctx.gfx,
             FONT,
             &av_text,
-            text_x, // Adjust spacing as needed
+            text_x,
             text_y + font_cache::BITMAP_GLYPH_H as i32 + 2,
             font_cache::TextStyle::PLAIN,
         )?;
@@ -178,14 +244,14 @@ mod tests {
 
     #[test]
     fn new_initialises_with_zeroed_values() {
-        let panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        let panel = WeaponArmorPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
         assert_eq!(panel.weapon, 0);
         assert_eq!(panel.armor, 0);
     }
 
     #[test]
     fn sync_updates_weapon_and_armor() {
-        let mut panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        let mut panel = WeaponArmorPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
         panel.sync(42, 17);
         assert_eq!(panel.weapon, 42);
         assert_eq!(panel.armor, 17);
@@ -193,7 +259,7 @@ mod tests {
 
     #[test]
     fn click_inside_is_consumed() {
-        let mut panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        let mut panel = WeaponArmorPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
         let click = UiEvent::MouseClick {
             x: 20,
             y: 8,
@@ -205,7 +271,7 @@ mod tests {
 
     #[test]
     fn click_outside_is_ignored() {
-        let mut panel = StatusPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
+        let mut panel = WeaponArmorPanel::new(4, 4, Color::RGBA(10, 10, 30, 180));
         let click = UiEvent::MouseClick {
             x: 500,
             y: 500,
@@ -217,10 +283,33 @@ mod tests {
 
     #[test]
     fn bounds_have_expected_dimensions() {
-        let panel = StatusPanel::new(0, 0, Color::RGBA(10, 10, 30, 180));
-        let w = (PANEL_PADDING * 2 + PANEL_WIDTH) as u32;
+        let panel = WeaponArmorPanel::new(0, 0, Color::RGBA(10, 10, 30, 180));
+        let w = panel_width_for_value_width(MIN_STATUS_VALUE_WIDTH);
         let h = (PANEL_PADDING * 2 + font_cache::BITMAP_GLYPH_H as i32 * 2) as u32;
         assert_eq!(panel.bounds().width, w);
         assert_eq!(panel.bounds().height, h);
+    }
+
+    #[test]
+    fn formatted_lines_align_values_and_lengths() {
+        let mut panel = WeaponArmorPanel::new(0, 0, Color::RGBA(10, 10, 30, 180));
+        panel.sync(42, 1700);
+
+        let (weapon, armor) = panel.formatted_lines();
+
+        assert_eq!(weapon, "Weapon:   42");
+        assert_eq!(armor, "Armor:  1700");
+        assert_eq!(weapon.len(), armor.len());
+    }
+
+    #[test]
+    fn sync_expands_bounds_for_wider_values() {
+        let mut panel = WeaponArmorPanel::new(0, 0, Color::RGBA(10, 10, 30, 180));
+        let original_width = panel.bounds().width;
+
+        panel.sync(123_456, 7);
+
+        assert!(panel.bounds().width > original_width);
+        assert_eq!(panel.bounds().width, panel_width_for_value_width(6));
     }
 }

@@ -39,19 +39,19 @@ pub fn execute_world_action(
     let message = match action {
         WorldActionKind::PopulateMissing => {
             populate(gs);
-            "populate completed".to_string()
+            "populate completed".to_owned()
         }
         WorldActionKind::WipeRuntime => {
             pop_wipe(gs);
-            "runtime world state wiped".to_string()
+            "runtime world state wiped".to_owned()
         }
         WorldActionKind::RebuildLights => {
             init_lights(gs);
-            "map lighting rebuilt".to_string()
+            "map lighting rebuilt".to_owned()
         }
         WorldActionKind::SyncPlayerSkills => {
             pop_skill(gs);
-            "player skills synchronized".to_string()
+            "player skills synchronized".to_owned()
         }
         WorldActionKind::ResetChar { template_id } => {
             if !(1..MAXTCHARS).contains(template_id) {
@@ -69,7 +69,7 @@ pub fn execute_world_action(
         }
         WorldActionKind::ResetAll => {
             pop_reset_all(gs);
-            "all templates reset".to_string()
+            "all templates reset".to_owned()
         }
     };
 
@@ -97,7 +97,7 @@ pub fn init_lights(gs: &mut GameState) {
             let m = x + y * SERVER_MAPX as usize;
 
             // Compute daylight for indoor tiles first
-            let is_indoors = gs.map[m].flags & MF_INDOORS as u64 != 0;
+            let is_indoors = gs.map[m].flags & u64::from(MF_INDOORS) != 0;
 
             if is_indoors {
                 gs.compute_dlight(x as i32, y as i32);
@@ -117,12 +117,12 @@ pub fn init_lights(gs: &mut GameState) {
 
             if active != 0 {
                 if light_active != 0 {
-                    gs.do_add_light(x as i32, y as i32, light_active as i32);
+                    gs.do_add_light(x as i32, y as i32, i32::from(light_active));
                     cnt1 += 1;
                 }
             } else {
                 if light_inactive != 0 {
-                    gs.do_add_light(x as i32, y as i32, light_inactive as i32);
+                    gs.do_add_light(x as i32, y as i32, i32::from(light_inactive));
                     cnt1 += 1;
                 }
             }
@@ -252,8 +252,8 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
             }
         }
     } else {
-        let char_name = gs.characters[cn].get_name().to_string();
-        let item_name = gs.items[in_id].get_name().to_string();
+        let char_name = gs.characters[cn].get_name().to_owned();
+        let item_name = gs.items[in_id].get_name().to_owned();
         log::info!("{} got unique item {}.", char_name, item_name);
     }
 
@@ -340,8 +340,8 @@ pub fn pop_create_bonus(gs: &mut GameState, cn: usize, _chance: i32) -> i32 {
     let in_id = God::create_item(gs, template);
 
     if let Some(in_id) = in_id {
-        let char_name = gs.characters[cn].get_name().to_string();
-        let item_name = gs.items[in_id].get_name().to_string();
+        let char_name = gs.characters[cn].get_name().to_owned();
+        let item_name = gs.items[in_id].get_name().to_owned();
         log::info!("{} got {} (template={})", char_name, item_name, template);
         in_id as i32
     } else {
@@ -363,7 +363,7 @@ pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
     let rank = if points_tot < 1000 {
         0
     } else {
-        ((points_tot as f64).ln() / 10.0) as i32
+        (f64::from(points_tot).ln() / 10.0) as i32
     };
 
     if rank == 0 {
@@ -961,7 +961,7 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
         return;
     }
 
-    let name = gs.character_templates[n].get_name().to_string();
+    let name = gs.character_templates[n].get_name().to_owned();
     log::info!("Resetting char {} ({})", n, name);
 
     let points_tot = points::calculate_points_tot(&gs.character_templates[n]);
@@ -973,7 +973,7 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
     for cn in 1..MAXCHARS {
         let temp = gs.characters[cn].temp;
         let used = gs.characters[cn].used;
-        let char_name = gs.characters[cn].get_name().to_string();
+        let char_name = gs.characters[cn].get_name().to_owned();
         let x = gs.characters[cn].x;
         let y = gs.characters[cn].y;
 
@@ -1038,8 +1038,8 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
             gs,
             2,          // Effect type 2 = respawn timer
             TICKS * 10, // 10 seconds delay
-            template_x as i32,
-            template_y as i32,
+            i32::from(template_x),
+            i32::from(template_y),
             n as i32,
         );
         log::info!("Scheduled respawn for template {}", n);
@@ -1082,9 +1082,9 @@ pub fn pop_skill(gs: &mut GameState) {
 
             if temp_skill[2] < ch.skill[n][0] {
                 let p = skillcost(
-                    ch.skill[n][0] as i32,
-                    ch.skill[n][3] as i32,
-                    temp_skill[2] as i32,
+                    i32::from(ch.skill[n][0]),
+                    i32::from(ch.skill[n][3]),
+                    i32::from(temp_skill[2]),
                 );
                 log::info!(
                     "reduced {} on {} from {} to {}, added {} exp",
@@ -1115,7 +1115,7 @@ pub fn reset_item(gs: &mut GameState, n: usize) {
         return; // Never reset blank template (1)
     }
 
-    let name = gs.item_templates[n].get_name().to_string();
+    let name = gs.item_templates[n].get_name().to_owned();
     log::info!("Resetting item {} ({})", n, name);
 
     for in_id in 1..MAXITEM {
@@ -1136,7 +1136,7 @@ pub fn reset_item(gs: &mut GameState, n: usize) {
             continue;
         }
 
-        let item_name = gs.items[in_id].get_name().to_string();
+        let item_name = gs.items[in_id].get_name().to_owned();
         let carried = gs.items[in_id].carried;
         let x = gs.items[in_id].x;
         let y = gs.items[in_id].y;
@@ -1177,10 +1177,10 @@ pub fn reset_item(gs: &mut GameState, n: usize) {
             gs.map[map_index].fsprite = template_sprite as u16;
 
             if (template_flags & ItemFlags::IF_MOVEBLOCK.bits()) != 0 {
-                gs.map[map_index].flags |= MF_MOVEBLOCK as u64;
+                gs.map[map_index].flags |= u64::from(MF_MOVEBLOCK);
             }
             if (template_flags & ItemFlags::IF_SIGHTBLOCK.bits()) != 0 {
-                gs.map[map_index].flags |= MF_SIGHTBLOCK as u64;
+                gs.map[map_index].flags |= u64::from(MF_SIGHTBLOCK);
             }
 
             gs.items[in_id].used = USE_EMPTY;
