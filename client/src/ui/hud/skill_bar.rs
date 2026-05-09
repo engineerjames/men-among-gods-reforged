@@ -174,6 +174,23 @@ impl SkillBar {
         self.controller_selected_slot
     }
 
+    /// Returns helper text for the currently hovered bound slot.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(String)` with the bound spell name when hovering a bound slot,
+    ///   `None` otherwise.
+    pub fn hover_text(&self) -> Option<String> {
+        let slot = self.hit_top_cell(self.mouse_x, self.mouse_y)?;
+        let skill_nr = self.data.as_ref()?.keybinds[slot]?;
+        if let Some(meta) = spell_icon_meta(skill_nr) {
+            return Some(meta.name.to_owned());
+        }
+
+        let name = skills::get_skill_name(skill_nr);
+        (!name.is_empty()).then(|| name.to_owned())
+    }
+
     // -----------------------------------------------------------------------
     // Hit-testing helpers
     // -----------------------------------------------------------------------
@@ -499,6 +516,46 @@ mod tests {
         bar.update_data(data);
         let snapshot = bar.data.as_ref().expect("skill bar data should exist");
         assert_eq!(snapshot.keybinds[0], Some(14));
+    }
+
+    #[test]
+    fn hover_text_reports_bound_spell_name() {
+        let mut bar = bar_at(0, 0);
+        let mut data = test_data();
+        data.keybinds[0] = Some(skills::SK_BLESS);
+        bar.update_data(data);
+        bar.handle_event(&UiEvent::MouseMove {
+            x: TOP_CELL_POSITIONS[0].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+        });
+
+        assert_eq!(bar.hover_text().as_deref(), Some("Bless"));
+    }
+
+    #[test]
+    fn hover_text_ignores_empty_slots() {
+        let mut bar = bar_at(0, 0);
+        bar.update_data(test_data());
+        bar.handle_event(&UiEvent::MouseMove {
+            x: TOP_CELL_POSITIONS[0].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+        });
+
+        assert_eq!(bar.hover_text(), None);
+    }
+
+    #[test]
+    fn hover_text_uses_skill_name_for_unmapped_binding() {
+        let mut bar = bar_at(0, 0);
+        let mut data = test_data();
+        data.keybinds[0] = Some(skills::SK_WEAPON);
+        bar.update_data(data);
+        bar.handle_event(&UiEvent::MouseMove {
+            x: TOP_CELL_POSITIONS[0].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+        });
+
+        assert_eq!(bar.hover_text().as_deref(), Some("Weapon Skill"));
     }
 
     #[test]

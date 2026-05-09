@@ -838,6 +838,19 @@ impl GameScene {
                 crate::font_cache::TextStyle::drop_shadow(),
             );
         }
+        if let Some(text) = self.skill_bar.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
         if self.is_mouse_over_ui() {
             return Ok(());
         }
