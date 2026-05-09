@@ -623,7 +623,9 @@ impl GameScene {
         self.spell_effect_icons.handle_event(ui_event);
 
         // --- StatusPanel (WV/AV display, right of skill bar) ---
-        if self.status_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+        if self.weapon_armor_panel.handle_event(ui_event)
+            == crate::ui::widget::EventResponse::Consumed
+        {
             return UiHandleResult::Consumed;
         }
 

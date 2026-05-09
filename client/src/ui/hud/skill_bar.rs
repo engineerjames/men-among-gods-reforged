@@ -27,7 +27,7 @@ use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, Wid
 // ---------------------------------------------------------------------------
 
 /// Side length of each square cell in pixels.
-const CELL: i32 = 29;
+const CELL: i32 = 30;
 
 /// Number of cells in the top (skill-bind) row.
 pub const TOP_CELLS: usize = 10;

@@ -56,8 +56,8 @@ use crate::{
         hud::skill_bar::SkillBar,
         hud::skill_picker_popup::SkillPickerPopup,
         hud::skills_panel::SkillsPanel,
-        hud::status_panel::StatusPanel,
         hud::talent_panel::TalentPanel,
+        hud::weapon_armor_panel::WeaponArmorPanel,
         style::Padding,
         visuals::rank_progress_line::RankProgressLine,
         visuals::rank_sigil::RankSigil,
@@ -197,10 +197,10 @@ const RANK_SIGIL_Y: i32 = 4;
 
 // ---- Status panel (WV/AV, right of skill bar) ---- //
 
-/// X position of the status panel (8 px to the right of the skill bar's right edge).
-const STATUS_PANEL_X: i32 = TARGET_WIDTH_INT as i32 - 280;
-/// Y position of the status panel (same row as the rank progress line).
-const STATUS_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 37;
+/// X position of the weapon/armor panel (8 px to the right of the skill bar's right edge).
+const WEAPON_ARMOR_PANEL_X: i32 = TARGET_WIDTH_INT as i32 - 368;
+/// Y position of the weapon/armor panel (same row as the rank progress line).
+const WEAPON_ARMOR_PANEL_Y: i32 = TARGET_HEIGHT_INT as i32 - 33;
 
 /// X position of the vitality chevrons (horizontal centre of the player sprite).
 const VITALITY_BARS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
@@ -217,7 +217,7 @@ const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 /// scroll positions, pending stat raises, minimap pixel buffer, and escape
 /// menu state. Created fresh each time the player enters the game world.
 pub struct GameScene {
-    pub(super) status_panel: StatusPanel,
+    pub(super) weapon_armor_panel: WeaponArmorPanel,
     pub(super) rank_sigil: RankSigil,
     pub(super) chat_box: ChatBox,
     pub(super) hud_buttons: HudButtonBar,
@@ -334,7 +334,11 @@ impl GameScene {
         keyboard.set_position(keyboard.bounds().x, keyboard_y);
 
         Self {
-            status_panel: StatusPanel::new(STATUS_PANEL_X, STATUS_PANEL_Y, HUD_PANEL_BG),
+            weapon_armor_panel: WeaponArmorPanel::new(
+                WEAPON_ARMOR_PANEL_X,
+                WEAPON_ARMOR_PANEL_Y,
+                HUD_PANEL_BG,
+            ),
             rank_sigil: RankSigil::new(RANK_SIGIL_X, RANK_SIGIL_Y, HUD_PANEL_BG),
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
@@ -715,7 +719,7 @@ impl GameScene {
         if self.spell_effect_icons.contains_point(mx, my) {
             return true;
         }
-        if self.status_panel.bounds().contains_point(mx, my) {
+        if self.weapon_armor_panel.bounds().contains_point(mx, my) {
             return true;
         }
         if self.hud_buttons.bounds().contains_point(mx, my) {
@@ -1322,7 +1326,7 @@ impl Scene for GameScene {
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
         self.chat_box.update(dt);
-        self.status_panel.update(dt);
+        self.weapon_armor_panel.update(dt);
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
@@ -1595,7 +1599,7 @@ impl Scene for GameScene {
                 let ci = ps.character_info();
                 let rank_index = ranks::points2rank(ci.points_tot as u32);
                 self.rank_sigil.sync(rank_index as usize);
-                self.status_panel.sync(ci.weapon, ci.armor);
+                self.weapon_armor_panel.sync(ci.weapon, ci.armor);
                 self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);
                 self.vitality_bars.sync(
@@ -1657,7 +1661,7 @@ impl Scene for GameScene {
             if self.rank_sigil.is_visible() {
                 self.rank_sigil.render(&mut ctx)?;
             }
-            self.status_panel.render(&mut ctx)?;
+            self.weapon_armor_panel.render(&mut ctx)?;
             self.vitality_bars.render(&mut ctx)?;
             self.spell_effect_icons.render(&mut ctx)?;
         }
@@ -1678,7 +1682,7 @@ impl Scene for GameScene {
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
-            self.status_panel.render(&mut ctx)?;
+            self.weapon_armor_panel.render(&mut ctx)?;
             self.rank_progress_line.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }

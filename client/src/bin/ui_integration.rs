@@ -247,7 +247,8 @@ fn main() -> Result<(), String> {
     let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
     let panel_y = panel_bottom - HUD_PANEL_H as i32;
 
-    let mut status_panel = client::ui::hud::status_panel::StatusPanel::new(COL2_X, 230, PANEL_BG);
+    let mut status_panel =
+        client::ui::hud::weapon_armor_panel::WeaponArmorPanel::new(COL2_X, 230, PANEL_BG);
 
     let mut skills_panel = SkillsPanel::new(
         Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
@@ -701,7 +702,7 @@ fn update_all(
     mode_button: &mut ModeButton,
     minimap_widget: &mut MinimapWidget,
     hud_buttons: &mut HudButtonBar,
-    status_panel: &mut client::ui::hud::status_panel::StatusPanel,
+    status_panel: &mut client::ui::hud::weapon_armor_panel::WeaponArmorPanel,
     skills_panel: &mut SkillsPanel,
     inventory_panel: &mut InventoryPanel,
     settings_panel: &mut SettingsPanel,
