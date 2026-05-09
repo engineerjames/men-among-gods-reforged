@@ -61,7 +61,7 @@ use crate::{
         style::Padding,
         visuals::rank_progress_line::RankProgressLine,
         visuals::rank_sigil::RankSigil,
-        visuals::spell_effect_bars::SpellEffectBars,
+        visuals::spell_effect_icons::SpellEffectIcons,
         visuals::vitality_bars::VitalityChevrons,
         widget::{Bounds, GameAction, KeyBindings, KeyModifiers, UiEvent, Widget, WidgetAction},
         widgets::on_screen_keyboard::OnScreenKeyboard,
@@ -231,7 +231,7 @@ pub struct GameScene {
     pub(super) look_panel: LookPanel,
     pub(super) shop_panel: ShopPanel,
     pub(super) vitality_bars: VitalityChevrons,
-    pub(super) spell_effect_bars: SpellEffectBars,
+    pub(super) spell_effect_icons: SpellEffectIcons,
     pub(super) skill_bar: SkillBar,
     pub(super) skill_picker: SkillPickerPopup,
     pub(super) last_synced_log_len: usize,
@@ -383,7 +383,7 @@ impl GameScene {
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
             vitality_bars: VitalityChevrons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
-            spell_effect_bars: SpellEffectBars::new(VITALITY_BARS_X, VITALITY_BARS_Y),
+            spell_effect_icons: SpellEffectIcons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
             look_panel: LookPanel::new(
                 Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
                 HUD_PANEL_BG,
@@ -712,7 +712,7 @@ impl GameScene {
         if self.vitality_bars.contains_point(mx, my) {
             return true;
         }
-        if self.spell_effect_bars.contains_point(mx, my) {
+        if self.spell_effect_icons.contains_point(mx, my) {
             return true;
         }
         if self.status_panel.bounds().contains_point(mx, my) {
@@ -821,7 +821,7 @@ impl GameScene {
                 crate::font_cache::TextStyle::drop_shadow(),
             );
         }
-        if let Some(text) = self.spell_effect_bars.hover_text() {
+        if let Some(text) = self.spell_effect_icons.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
             return crate::font_cache::draw_text(
@@ -1606,7 +1606,7 @@ impl Scene for GameScene {
                     ci.a_mana,
                     i32::from(ci.mana[5]),
                 );
-                self.spell_effect_bars
+                self.spell_effect_icons
                     .sync(&ci.spell, &ci.active, &ci.spell_type);
                 use crate::ui::hud::skills_panel::{SkillsPanel as SP, SkillsPanelData};
                 let sorted = SP::build_sorted_skills(&ci.skill);
@@ -1659,7 +1659,7 @@ impl Scene for GameScene {
             }
             self.status_panel.render(&mut ctx)?;
             self.vitality_bars.render(&mut ctx)?;
-            self.spell_effect_bars.render(&mut ctx)?;
+            self.spell_effect_icons.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::SyncAndDrawStatus);
 

@@ -30,7 +30,7 @@ use sdl2::image::InitFlag;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 
-use mag_core::stat_buffer::StatisticsBuffer;
+use mag_core::{skills, stat_buffer::StatisticsBuffer};
 
 use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
@@ -48,6 +48,7 @@ use client::ui::hud::shop_panel::ShopPanel;
 use client::ui::hud::skill_bar::{SkillBar, SkillBarData};
 use client::ui::hud::skills_panel::{SkillsPanel, SkillsPanelData};
 use client::ui::style::{Background, Border, Padding};
+use client::ui::visuals::spell_effect_icons::SpellEffectIcons;
 use client::ui::widget::{Bounds, EventResponse, HudPanel, Widget, WidgetAction};
 use client::ui::widgets::button::{CircleButton, RectButton};
 use client::ui::widgets::checkbox::Checkbox;
@@ -85,6 +86,10 @@ const HUD_BTN_CX: i32 = TARGET_WIDTH_INT as i32 - 30;
 const HUD_BTN_BOTTOM_CY: i32 = TARGET_HEIGHT_INT as i32 - 60;
 /// Vertical spacing between adjacent HUD button centers.
 const HUD_BTN_SPACING: u32 = 40;
+/// X center for the spell-effect icon demo.
+const SPELL_ICONS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
+/// Bottom Y for the spell-effect icon demo.
+const SPELL_ICONS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 
 const HUD_PANEL_W: u32 = 300;
 const HUD_PANEL_H: u32 = 250;
@@ -318,6 +323,24 @@ fn main() -> Result<(), String> {
         ],
     });
 
+    let mut spell_effect_icons = SpellEffectIcons::new(SPELL_ICONS_X, SPELL_ICONS_Y);
+    let mut demo_spell = [0i32; 20];
+    let mut demo_active = [0i8; 20];
+    let mut demo_spell_type = [0i16; 20];
+    demo_spell[0] = 1;
+    demo_active[0] = 16;
+    demo_spell_type[0] = skills::SK_BLESS as i16;
+    demo_spell[1] = 1;
+    demo_active[1] = 9;
+    demo_spell_type[1] = skills::SK_MSHIELD as i16;
+    demo_spell[2] = 1;
+    demo_active[2] = 6;
+    demo_spell_type[2] = skills::SK_CURSE as i16;
+    demo_spell[3] = 1;
+    demo_active[3] = 12;
+    demo_spell_type[3] = skills::SK_WIMPY as i16;
+    spell_effect_icons.sync(&demo_spell, &demo_active, &demo_spell_type);
+
     // Per-widget render-timing statistics (capacity: last 1 000 frames, µs).
     let mut t_label: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_rect_button: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
@@ -339,6 +362,7 @@ fn main() -> Result<(), String> {
     let mut t_text_input_normal: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_text_input_password: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_skill_bar: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
+    let mut t_spell_effect_icons: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
 
     // Track modifier state for UiEvent generation.
     let mut ctrl_held = false;
@@ -403,6 +427,7 @@ fn main() -> Result<(), String> {
                                 ("TextInput (normal)", &t_text_input_normal),
                                 ("TextInput (password)", &t_text_input_password),
                                 ("SkillBar", &t_skill_bar),
+                                ("SpellEffectIcons", &t_spell_effect_icons),
                             ]);
                         }
                         // Toggle overlay panels.
@@ -453,6 +478,8 @@ fn main() -> Result<(), String> {
                 alt: alt_held,
             };
             if let Some(ui_event) = sdl_to_ui_event(&event, mouse_x, mouse_y, modifiers) {
+                spell_effect_icons.handle_event(&ui_event);
+
                 // Dispatch to overlay panels first (topmost), then base widgets.
                 let widgets: Vec<&mut dyn Widget> = vec![
                     &mut shop_panel,
@@ -575,6 +602,9 @@ fn main() -> Result<(), String> {
         timed_render(&mut status_panel, &mut ctx, &mut t_status_panel);
         timed_render(&mut hud_buttons, &mut ctx, &mut t_hud_buttons);
         timed_render(&mut skill_bar, &mut ctx, &mut t_skill_bar);
+        let t0 = Instant::now();
+        let _ = spell_effect_icons.render(&mut ctx);
+        t_spell_effect_icons.push(t0.elapsed().as_micros() as f32);
 
         // Render overlay panels (order matches visual stacking).
         timed_render(&mut skills_panel, &mut ctx, &mut t_skills_panel);
@@ -582,6 +612,18 @@ fn main() -> Result<(), String> {
         timed_render(&mut settings_panel, &mut ctx, &mut t_settings_panel);
         timed_render(&mut look_panel, &mut ctx, &mut t_look_panel);
         timed_render(&mut shop_panel, &mut ctx, &mut t_shop_panel);
+
+        if let Some(text) = spell_effect_icons.hover_text() {
+            let _ = font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                1,
+                &text,
+                mouse_x + 12,
+                mouse_y + 16,
+                TextStyle::drop_shadow(),
+            );
+        }
 
         // Coordinate overlay — rendered last so it appears on top of everything.
         if show_coords {
