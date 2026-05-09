@@ -732,7 +732,7 @@ mod tests {
 
         // Empty inventory
         for i in 0..40 {
-            character.item[i] = USE_EMPTY as u32;
+            character.item[i] = u32::from(USE_EMPTY);
         }
         assert_eq!(character.get_next_inventory_slot(), Some(0));
 

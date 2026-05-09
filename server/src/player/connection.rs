@@ -622,7 +622,11 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
             if ch_was_here {
                 gs.map[map_index].ch = 0;
                 if light != 0 {
-                    gs.do_add_light(i32::from(character_x), i32::from(character_y), -i32::from(light));
+                    gs.do_add_light(
+                        i32::from(character_x),
+                        i32::from(character_y),
+                        -i32::from(light),
+                    );
                 }
             }
             if gs.map[to_map_index].to_ch == character_id as u32 {
@@ -913,8 +917,8 @@ mod tests {
             setup_existing_character(gs, 5, 0, USE_NONACTIVE, "Stale Name");
             let existing = CharacterSummary {
                 id: 44,
-                name: "Fresh Name".to_string(),
-                description: "Updated description".to_string(),
+                name: "Fresh Name".to_owned(),
+                description: "Updated description".to_owned(),
                 sex: Sex::Female,
                 class: Class::Mercenary,
                 selection_sprite_id: None,
@@ -939,7 +943,7 @@ mod tests {
             );
             let created = CharacterSummary {
                 id: 45,
-                name: "Api Hero".to_string(),
+                name: "Api Hero".to_owned(),
                 description: String::new(),
                 sex: Sex::Male,
                 class: Class::Mercenary,
@@ -1003,8 +1007,8 @@ mod tests {
                 |_| {
                     Ok(Some(CharacterSummary {
                         id: 77,
-                        name: "Ticket Hero".to_string(),
-                        description: "Ticket description".to_string(),
+                        name: "Ticket Hero".to_owned(),
+                        description: "Ticket description".to_owned(),
                         sex: Sex::Male,
                         class: Class::Mercenary,
                         selection_sprite_id: None,
@@ -1048,7 +1052,7 @@ mod tests {
             Err(LogoutReason::PasswordIncorrect)
         );
         assert_eq!(
-            consume_api_login_ticket(999, |_| Err("decode failed".to_string())),
+            consume_api_login_ticket(999, |_| Err("decode failed".to_owned())),
             Err(LogoutReason::Failure)
         );
     }

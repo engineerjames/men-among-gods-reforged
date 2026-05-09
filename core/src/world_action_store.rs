@@ -218,7 +218,7 @@ mod tests {
     #[test]
     fn world_action_request_roundtrip() {
         let request = WorldActionRequest {
-            request_id: "req123".to_string(),
+            request_id: "req123".to_owned(),
             action: WorldActionKind::ResetChar { template_id: 17 },
             requested_at: 12345,
         };
@@ -230,7 +230,7 @@ mod tests {
     #[test]
     fn world_action_request_decode_rejects_trailing_bytes() {
         let request = WorldActionRequest {
-            request_id: "req123".to_string(),
+            request_id: "req123".to_owned(),
             action: WorldActionKind::RebuildLights,
             requested_at: 12345,
         };

@@ -1081,7 +1081,7 @@ mod tests {
     #[test]
     fn twohand_blocks_lhand() {
         let mut worn_p = [0i32; 20];
-        worn_p[WN_RHAND] = PL_TWOHAND as i32;
+        worn_p[WN_RHAND] = i32::from(PL_TWOHAND);
         let blocked = InventoryPanel::compute_blocked(PL_WEAPON, &worn_p);
         assert!(blocked[WN_LHAND]);
     }

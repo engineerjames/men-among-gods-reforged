@@ -752,7 +752,7 @@ mod tests {
     #[test]
     fn set_error_shown_and_cleared() {
         let mut form = make_form();
-        form.set_error(Some("bad password".to_string()));
+        form.set_error(Some("bad password".to_owned()));
         assert!(form.error_text.is_some());
         form.set_error(None);
         assert!(form.error_text.is_none());
@@ -761,7 +761,7 @@ mod tests {
     #[test]
     fn set_submitting_clears_error() {
         let mut form = make_form();
-        form.set_error(Some("oops".to_string()));
+        form.set_error(Some("oops".to_owned()));
         form.set_submitting(true);
         assert!(form.show_submitting);
         assert!(form.error_text.is_none());

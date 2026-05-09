@@ -236,9 +236,9 @@ mod tests {
             vec![core::types::v1::Character::default(); 1],
             vec![core::types::v1::Effect::default(); 2],
             core::types::v1::Global::default(),
-            vec!["badname".to_string()],
-            vec!["badword".to_string()],
-            "Hello world!".to_string(),
+            vec!["badname".to_owned()],
+            vec!["badword".to_owned()],
+            "Hello world!".to_owned(),
         );
 
         let bytes = bincode::encode_to_vec(&original, bincode::config::standard())
@@ -255,8 +255,8 @@ mod tests {
         assert_eq!(decoded.characters.len(), 2);
         assert_eq!(decoded.character_templates.len(), 1);
         assert_eq!(decoded.effects.len(), 2);
-        assert_eq!(decoded.bad_names, vec!["badname".to_string()]);
-        assert_eq!(decoded.bad_words, vec!["badword".to_string()]);
+        assert_eq!(decoded.bad_names, vec!["badname".to_owned()]);
+        assert_eq!(decoded.bad_words, vec!["badword".to_owned()]);
         assert_eq!(decoded.motd, "Hello world!");
     }
 
@@ -275,7 +275,7 @@ mod tests {
             core::types::v1::Global::default(),
             vec![],
             vec![],
-            "Test MOTD".to_string(),
+            "Test MOTD".to_owned(),
         );
 
         original.to_file(&tmp).expect("to_file should succeed");

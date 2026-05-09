@@ -390,7 +390,8 @@ pub struct GameData {
 pub fn load_all(con: &mut Connection) -> Result<GameData, String> {
     if !has_game_data(con)? {
         return Err("No game data found in KeyDB (game:meta:version missing). \
-             Seed KeyDB with world-snapshot import first.".to_owned());
+             Seed KeyDB with world-snapshot import first."
+            .to_owned());
     }
 
     let version: u32 = con
@@ -942,11 +943,7 @@ mod tests {
     /// Round-trip encode/decode for a `Vec<String>` (used for bad_names / bad_words).
     #[test]
     fn encode_decode_roundtrip_string_vec() {
-        let original = vec![
-            "alpha".to_string(),
-            "bravo".to_string(),
-            "charlie".to_string(),
-        ];
+        let original = vec!["alpha".to_owned(), "bravo".to_owned(), "charlie".to_owned()];
         let bytes = encode(&original).expect("encode Vec<String>");
         let (decoded, _): (Vec<String>, _) =
             bincode::decode_from_slice(&bytes, bincode::config::standard())

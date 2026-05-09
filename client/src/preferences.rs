@@ -548,8 +548,8 @@ mod tests {
     fn profile_key_with_username() {
         let identity = CharacterIdentity {
             id: 99,
-            name: "TestChar".to_string(),
-            account_username: Some("alice".to_string()),
+            name: "TestChar".to_owned(),
+            account_username: Some("alice".to_owned()),
         };
         assert_eq!(profile_key(&identity), "alice:99");
     }
@@ -558,7 +558,7 @@ mod tests {
     fn profile_key_without_username() {
         let identity = CharacterIdentity {
             id: 7,
-            name: "NoAccount".to_string(),
+            name: "NoAccount".to_owned(),
             account_username: None,
         };
         assert_eq!(profile_key(&identity), "unknown_account:7");
@@ -568,7 +568,7 @@ mod tests {
     fn profile_storage_serde_roundtrip() {
         let storage = ProfileStorage {
             version: 1,
-            last_username: Some("bob".to_string()),
+            last_username: Some("bob".to_owned()),
             global: Settings {
                 music_enabled: false,
                 vsync_enabled: true,

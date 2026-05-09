@@ -550,7 +550,8 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].ch_id = helpers::char_id(&char_co) as u16;
 
                     if tmp_see <= 75 && char_co.hp[5] > 0 {
-                        smap[n].ch_proz = (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
+                        smap[n].ch_proz =
+                            (((char_co.a_hp + 5) / 10) / i32::from(char_co.hp[5])) as u8;
                     } else {
                         smap[n].ch_proz = 0;
                     }
@@ -1059,8 +1060,8 @@ mod tests {
         const YSCUT: i32 = 3;
         const XSCUT: i32 = 2;
 
-        let ys = gs.characters[cn].y as i32 - (TILEY as i32 / 2) + YSCUT;
-        let xs = gs.characters[cn].x as i32 - (TILEX as i32 / 2) + XSCUT;
+        let ys = i32::from(gs.characters[cn].y) - (TILEY as i32 / 2) + YSCUT;
+        let xs = i32::from(gs.characters[cn].x) - (TILEX as i32 / 2) + XSCUT;
         let base = (YSCUT * TILEX as i32 + XSCUT) as usize;
         base + (y - ys) as usize * TILEX + (x - xs) as usize
     }
@@ -1104,7 +1105,7 @@ mod tests {
             let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
             gs.characters[cn].flags &= !CharacterFlags::NoMagic.bits();
             gs.characters[cn].light = 4;
-            gs.map[tile].flags = MF_NOMAGIC as u64;
+            gs.map[tile].flags = u64::from(MF_NOMAGIC);
 
             plr_map_set(gs, cn);
 
@@ -1128,7 +1129,7 @@ mod tests {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
             let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
-            gs.map[tile].flags = MF_TAVERN as u64;
+            gs.map[tile].flags = u64::from(MF_TAVERN);
 
             plr_map_set(gs, cn);
 
@@ -1145,7 +1146,7 @@ mod tests {
             let tile = map_index(gs.characters[cn].x, gs.characters[cn].y);
             gs.characters[cn].temple_x = 20;
             gs.characters[cn].temple_y = 20;
-            gs.map[tile].flags = MF_DEATHTRAP as u64;
+            gs.map[tile].flags = u64::from(MF_DEATHTRAP);
 
             plr_map_set(gs, cn);
 

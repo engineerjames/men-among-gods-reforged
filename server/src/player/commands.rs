@@ -172,8 +172,14 @@ pub fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the request
 pub fn plr_cmd_look_item(gs: &mut GameState, nr: usize) {
-    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
-    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
+    let x = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+    ]));
+    let y = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]));
     let cn = gs.players[nr].usnr;
 
     if !(0..core::constants::SERVER_MAPX).contains(&x)
@@ -228,8 +234,14 @@ pub fn plr_cmd_give(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the turn
 pub fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
-    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
-    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
+    let x = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+    ]));
+    let y = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]));
     let cn = gs.players[nr].usnr;
 
     log::info!("plr_cmd_turn: cn={} turning to {},{}", cn, x, y);
@@ -254,8 +266,14 @@ pub fn plr_cmd_turn(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index performing the drop
 pub fn plr_cmd_drop(gs: &mut GameState, nr: usize) {
-    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
-    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
+    let x = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+    ]));
+    let y = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]));
     let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
@@ -277,8 +295,14 @@ pub fn plr_cmd_drop(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the pickup
 pub fn plr_cmd_pickup(gs: &mut GameState, nr: usize) {
-    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
-    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
+    let x = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+    ]));
+    let y = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]));
     let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
@@ -480,8 +504,14 @@ pub fn plr_cmd_inv_look(gs: &mut GameState, nr: usize) {
 /// # Arguments
 /// * `nr` - Player slot index issuing the use
 pub fn plr_cmd_use(gs: &mut GameState, nr: usize) {
-    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
-    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
+    let x = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+    ]));
+    let y = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]));
     let cn = gs.players[nr].usnr;
 
     let ticker = gs.globals.ticker;
@@ -510,8 +540,14 @@ pub fn plr_cmd_use(gs: &mut GameState, nr: usize) {
 /// * `gs` - Mutable reference to the full game state.
 /// * `nr` - Player slot index issuing the command.
 pub fn plr_cmd_autoloot(gs: &mut GameState, nr: usize) {
-    let x = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]));
-    let y = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
+    let x = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[1],
+        gs.players[nr].inbuf[2],
+    ]));
+    let y = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]));
     let cn = gs.players[nr].usnr;
 
     // Bounds-check the incoming world coordinates.
@@ -764,7 +800,10 @@ pub fn plr_cmd_exit(gs: &mut GameState, nr: usize) {
 /// * `nr` - Player slot index issuing the shop command
 pub fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
     let co = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]) as usize;
-    let n = i32::from(u16::from_le_bytes([gs.players[nr].inbuf[3], gs.players[nr].inbuf[4]]));
+    let n = i32::from(u16::from_le_bytes([
+        gs.players[nr].inbuf[3],
+        gs.players[nr].inbuf[4],
+    ]));
     let cn = gs.players[nr].usnr;
 
     if (co & 0x8000) != 0 {
@@ -1902,7 +1941,7 @@ mod tests {
             assert_eq!(gs.characters[cn].data[71], 0);
 
             reset_packets(gs, nr);
-            gs.map[map_index(10, 10)].flags |= MF_BANK as u64;
+            gs.map[map_index(10, 10)].flags |= u64::from(MF_BANK);
             write_inbuf(gs, nr, &build_u16_packet((cn as u16) | 0x8000));
             plr_cmd_look(gs, nr, false);
             assert!(gs.players[nr].tptr >= 16);
@@ -1972,7 +2011,7 @@ mod tests {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
 
-            gs.god_password = "test-god-pw".to_string();
+            gs.god_password = "test-god-pw".to_owned();
             let input = b"test-god-pw";
             for part in 1..=8u8 {
                 let start = ((part - 1) as usize) * 15;
@@ -2168,7 +2207,7 @@ mod tests {
                 Some((12, 10)),
             );
             gs.map[map_index(12, 10)].fsprite = 55;
-            gs.map[map_index(12, 10)].flags |= MF_MOVEBLOCK as u64 | MF_SIGHTBLOCK as u64;
+            gs.map[map_index(12, 10)].flags |= u64::from(MF_MOVEBLOCK) | u64::from(MF_SIGHTBLOCK);
 
             let mut packet = [0u8; 5];
             packet[1..3].copy_from_slice(&(12u16).to_le_bytes());
@@ -2537,7 +2576,7 @@ mod tests {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
-            gs.map[map_index(10, 10)].flags |= MF_BANK as u64;
+            gs.map[map_index(10, 10)].flags |= u64::from(MF_BANK);
 
             configure_item(
                 gs,
@@ -2796,7 +2835,7 @@ mod tests {
                 None,
             );
             gs.characters[cn].citem = 10;
-            gs.map[map_index(11, 10)].flags |= MF_MOVEBLOCK as u64;
+            gs.map[map_index(11, 10)].flags |= u64::from(MF_MOVEBLOCK);
             plr_drop(gs, cn);
             assert_eq!(gs.characters[cn].citem, 10);
             assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);

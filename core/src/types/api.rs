@@ -237,8 +237,8 @@ mod tests {
     fn character_summary_rank_index_serde_roundtrip() {
         let original = CharacterSummary {
             id: 42,
-            name: "TestChar".to_string(),
-            description: "desc".to_string(),
+            name: "TestChar".to_owned(),
+            description: "desc".to_owned(),
             sex: Sex::Female,
             class: Class::Harakim,
             selection_sprite_id: Some(4048),

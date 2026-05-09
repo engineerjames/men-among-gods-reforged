@@ -383,11 +383,18 @@ impl GameState {
             s2 -= 10;
         }
 
-        // Now compute diff -> chance/bonus mapping per original C++ table
+        // Now compute diff --> chance/bonus mapping per original C++ table
         let diff = s1 - s2;
         let chance: i32;
         let mut bonus: i32 = 0;
-        if diff < -40 {
+
+        if diff < -120 {
+            chance = 1;
+            bonus = -64;
+        } else if diff < -80 {
+            chance = 1;
+            bonus = -32;
+        } else if diff < -40 {
             chance = 1;
             bonus = -16;
         } else if diff < -36 {
@@ -467,8 +474,9 @@ impl GameState {
             return;
         }
 
-        let strn =
-            i32::from(self.characters[attacker_index].attrib[core::constants::AT_STREN as usize][5]);
+        let strn = i32::from(
+            self.characters[attacker_index].attrib[core::constants::AT_STREN as usize][5],
+        );
 
         let base_weapon = i32::from(self.characters[attacker_index].weapon);
         let mut dam = base_weapon + helpers::random_mod_i32(6) + 1;
@@ -521,7 +529,8 @@ impl GameState {
             // so using `[5] > 0` would incorrectly enable surround for everyone.
             let surround_base =
                 i32::from(self.characters[attacker_index].skill[skills::SK_SURROUND][0]);
-            let surround_eff = i32::from(self.characters[attacker_index].skill[skills::SK_SURROUND][5]);
+            let surround_eff =
+                i32::from(self.characters[attacker_index].skill[skills::SK_SURROUND][5]);
             if surround_base != 0 {
                 let aoe_base = if attacker_is_player { surround_base } else { 1 };
                 let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
@@ -926,7 +935,8 @@ impl GameState {
     /// * `co` - Victim character index
     pub fn remember_pvp(&mut self, cn: usize, co: usize) {
         let m = (i32::from(self.characters[cn].x)
-            + i32::from(self.characters[cn].y) * core::constants::SERVER_MAPX) as usize;
+            + i32::from(self.characters[cn].y) * core::constants::SERVER_MAPX)
+            as usize;
 
         // Arena attacks don't count
         if (self.map[m].flags & u64::from(core::constants::MF_ARENA)) != 0 {

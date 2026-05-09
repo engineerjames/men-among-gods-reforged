@@ -833,7 +833,7 @@ mod tests {
             ServerCommand {
                 header: ServerCommandType::Look5,
                 structured_data: ServerCommandData::Look5 {
-                    name: "Corpse".to_string(),
+                    name: "Corpse".to_owned(),
                 },
                 _payload: Vec::new(),
             },
