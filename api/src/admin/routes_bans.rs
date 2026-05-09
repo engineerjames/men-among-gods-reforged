@@ -140,9 +140,7 @@ pub(crate) async fn create_ban(
         id: generate_request_id(),
         target: target.clone(),
         reason: request.reason.unwrap_or_default(),
-        created_by: request
-            .created_by
-            .unwrap_or_else(|| "admin_api".to_owned()),
+        created_by: request.created_by.unwrap_or_else(|| "admin_api".to_owned()),
         created_at: now,
         expires_at,
         source: "admin_api".to_owned(),

@@ -3421,8 +3421,8 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
 
             let char_name_lower = characters[n].get_name().to_lowercase();
             if char_name_lower == target_name_lower {
-                let dist =
-                    (cn_x - i32::from(characters[n].x)).abs() + (cn_y - i32::from(characters[n].y)).abs();
+                let dist = (cn_x - i32::from(characters[n].x)).abs()
+                    + (cn_y - i32::from(characters[n].y)).abs();
                 if dist < best {
                     best = dist;
                     bestn = n;
@@ -3473,7 +3473,14 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
         );
 
         // Notify target
-        gs.do_notify_character(best_target as u32, i32::from(NT_GOTMISS), co as i32, 0, 0, 0);
+        gs.do_notify_character(
+            best_target as u32,
+            i32::from(NT_GOTMISS),
+            co as i32,
+            0,
+            0,
+            0,
+        );
     }
 }
 

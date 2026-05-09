@@ -301,7 +301,10 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     if driver == 54 {
-        let (x, y) = (i32::from(gs.items[item_idx].x), i32::from(gs.items[item_idx].y));
+        let (x, y) = (
+            i32::from(gs.items[item_idx].x),
+            i32::from(gs.items[item_idx].y),
+        );
         gs.do_area_notify(
             cn as i32,
             0,
@@ -655,7 +658,10 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    let (current_temp, max_data) = (i32::from(gs.items[item_idx].temp), gs.items[item_idx].data[0]);
+    let (current_temp, max_data) = (
+        i32::from(gs.items[item_idx].temp),
+        gs.items[item_idx].data[0],
+    );
 
     if current_temp as u32 >= max_data {
         gs.do_character_log(cn, core::types::FontColor::Blue, "It won't fit anymore.\n");
@@ -1521,7 +1527,10 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         ) as u16;
         ch.mana[0] = std::cmp::max(
             50,
-            std::cmp::min(i32::from(ch.mana[2]), base * 5 + helpers::random_mod_i32(50)),
+            std::cmp::min(
+                i32::from(ch.mana[2]),
+                base * 5 + helpers::random_mod_i32(50),
+            ),
         ) as u16;
 
         // calculate experience points
@@ -1605,7 +1614,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 72
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 72
                 && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 72
             {
                 let tmp = populate::pop_create_item(gs, 75, cc);
@@ -1638,7 +1648,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 40
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 40
                 && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 40
             {
                 let tmp = populate::pop_create_item(gs, 69, cc);
@@ -1671,7 +1682,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 24
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 24
                 && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 24
             {
                 let tmp = populate::pop_create_item(gs, 63, cc);
@@ -1704,7 +1716,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 16
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 16
                 && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 16
             {
                 let tmp = populate::pop_create_item(gs, 57, cc);
@@ -1737,7 +1750,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 12
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 12
                 && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 12
             {
                 let tmp = populate::pop_create_item(gs, 51, cc);
@@ -1770,7 +1784,8 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
                     gs.characters[cc].worn[core::constants::WN_CLOAK] = tmp as u32;
                     gs.items[tmp].carried = cc as u16;
                 }
-            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0]) >= 10
+            } else if i32::from(gs.characters[cc].attrib[core::constants::AT_AGIL as usize][0])
+                >= 10
                 && i32::from(gs.characters[cc].attrib[core::constants::AT_STREN as usize][0]) >= 10
             {
                 let tmp = populate::pop_create_item(gs, 39, cc);
@@ -2929,9 +2944,9 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
     {
         for n in 0..5 {
             if i32::from(gs.characters[cn].attrib[n][0]) > divi as i32 {
-                let boost =
-                    crate::helpers::random_mod(u32::from(gs.characters[cn].attrib[n][0]) / divi as u32)
-                        as u8;
+                let boost = crate::helpers::random_mod(
+                    u32::from(gs.characters[cn].attrib[n][0]) / divi as u32,
+                ) as u8;
                 gs.characters[cn].attrib[n][0] =
                     gs.characters[cn].attrib[n][0].saturating_add(boost);
             }
@@ -2940,9 +2955,9 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
         // Boost skills
         for n in 0..MAXSKILL {
             if i32::from(gs.characters[cn].skill[n][0]) > divi as i32 {
-                let boost =
-                    crate::helpers::random_mod(u32::from(gs.characters[cn].skill[n][0]) / divi as u32)
-                        as u8;
+                let boost = crate::helpers::random_mod(
+                    u32::from(gs.characters[cn].skill[n][0]) / divi as u32,
+                ) as u8;
                 gs.characters[cn].skill[n][0] = gs.characters[cn].skill[n][0].saturating_add(boost);
             }
         }
@@ -3671,7 +3686,12 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
                 core::types::FontColor::Green,
                 "You feel the hand of the Goddess of Magic touch your mind.\n",
             );
-            let (x, y) = { (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y)) };
+            let (x, y) = {
+                (
+                    i32::from(gs.characters[cn].x),
+                    i32::from(gs.characters[cn].y),
+                )
+            };
 
             EffectManager::fx_add_effect(gs, 6, 0, x, y, 0);
         }
@@ -3771,7 +3791,12 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     };
 
     // Get character position
-    let (ch_x, ch_y) = { (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y)) };
+    let (ch_x, ch_y) = {
+        (
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+        )
+    };
 
     // Damage all undead in 8x8 area
     for y in (ch_y - 8)..(ch_y + 8) {
@@ -5153,7 +5178,10 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
 
     // Check if tile is occupied (for non-carried items)
     if !carried {
-        let (it_x, it_y) = (i32::from(gs.items[item_idx].x), i32::from(gs.items[item_idx].y));
+        let (it_x, it_y) = (
+            i32::from(gs.items[item_idx].x),
+            i32::from(gs.items[item_idx].y),
+        );
         if it_x > 0 {
             let m = (it_x + it_y * core::constants::SERVER_MAPX) as usize;
             let occupied = gs.map[m].ch != 0 || gs.map[m].to_ch != 0;
@@ -5304,7 +5332,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         gs.items[item_idx].active = 0;
 
         if light0 != light1 && it_x > 0 {
-            gs.do_add_light(i32::from(it_x), i32::from(it_y), i32::from(light0) - i32::from(light1));
+            gs.do_add_light(
+                i32::from(it_x),
+                i32::from(it_y),
+                i32::from(light0) - i32::from(light1),
+            );
         }
 
         if carried {
@@ -5334,7 +5366,11 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         gs.items[item_idx].active = duration;
 
         if light0 != light1 && it_x > 0 {
-            gs.do_add_light(i32::from(it_x), i32::from(it_y), i32::from(light1) - i32::from(light0));
+            gs.do_add_light(
+                i32::from(it_x),
+                i32::from(it_y),
+                i32::from(light1) - i32::from(light0),
+            );
         }
 
         if carried {
@@ -5413,7 +5449,12 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             // If character died as a result, announce and handle death
             let a_hp = gs.characters[cn].a_hp;
             if a_hp < 500 {
-                let (x, y) = { (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y)) };
+                let (x, y) = {
+                    (
+                        i32::from(gs.characters[cn].x),
+                        i32::from(gs.characters[cn].y),
+                    )
+                };
                 gs.do_area_log(
                     cn,
                     0,
@@ -6065,7 +6106,10 @@ pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
             if cn >= core::constants::MAXCHARS || gs.characters[cn].used == USE_EMPTY {
                 (it_x, it_y)
             } else {
-                (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y))
+                (
+                    i32::from(gs.characters[cn].x),
+                    i32::from(gs.characters[cn].y),
+                )
             }
         }
     } else {
@@ -6974,7 +7018,11 @@ pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
         gs.items[item_idx].active = duration;
 
         if light0 != light1 && x > 0 {
-            gs.do_add_light(i32::from(x), i32::from(y), i32::from(light1) - i32::from(light0));
+            gs.do_add_light(
+                i32::from(x),
+                i32::from(y),
+                i32::from(light1) - i32::from(light0),
+            );
         }
     }
 
@@ -7044,7 +7092,11 @@ pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
         gs.items[item_idx].active = 0;
 
         if light0 != light1 && x > 0 {
-            gs.do_add_light(i32::from(x), i32::from(y), i32::from(light0) - i32::from(light1));
+            gs.do_add_light(
+                i32::from(x),
+                i32::from(y),
+                i32::from(light0) - i32::from(light1),
+            );
         }
     }
 }

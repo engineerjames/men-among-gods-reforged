@@ -272,8 +272,8 @@ impl LookPanel {
             .fill_rect(sdl2::rect::Rect::new(x, y, BAR_W as u32, BAR_H as u32))?;
 
         if max > 0 {
-            let filled =
-                ((i64::from(current) * i64::from(BAR_W)) / i64::from(max)).clamp(0, i64::from(BAR_W)) as u32;
+            let filled = ((i64::from(current) * i64::from(BAR_W)) / i64::from(max))
+                .clamp(0, i64::from(BAR_W)) as u32;
             if filled > 0 {
                 ctx.canvas.set_draw_color(fill);
                 ctx.canvas

@@ -1343,7 +1343,10 @@ impl eframe::App for MapViewerApp {
                             // Keep this list aligned with `core/src/constants.rs` map flags.
                             let defs: &[(u64, &str)] = &[
                                 (u64::from(mag_core::constants::MF_MOVEBLOCK), "MF_MOVEBLOCK"),
-                                (u64::from(mag_core::constants::MF_SIGHTBLOCK), "MF_SIGHTBLOCK"),
+                                (
+                                    u64::from(mag_core::constants::MF_SIGHTBLOCK),
+                                    "MF_SIGHTBLOCK",
+                                ),
                                 (u64::from(mag_core::constants::MF_INDOORS), "MF_INDOORS"),
                                 (u64::from(mag_core::constants::MF_UWATER), "MF_UWATER"),
                                 (u64::from(mag_core::constants::MF_NOLAG), "MF_NOLAG"),

@@ -139,7 +139,8 @@ impl GameState {
 
                 let m = (x + y * core::constants::SERVER_MAPX) as usize;
 
-                let should_continue = self.map[m].flags & u64::from(core::constants::MF_INDOORS) != 0;
+                let should_continue =
+                    self.map[m].flags & u64::from(core::constants::MF_INDOORS) != 0;
 
                 if should_continue {
                     continue;
@@ -473,8 +474,9 @@ impl GameState {
             adjusted_light = 1;
         }
 
-        adjusted_light =
-            adjusted_light * std::cmp::min(i32::from(character.skill[skills::SK_PERCEPT][5]), 10) / 10;
+        adjusted_light = adjusted_light
+            * std::cmp::min(i32::from(character.skill[skills::SK_PERCEPT][5]), 10)
+            / 10;
 
         if adjusted_light > 255 {
             adjusted_light = 255;

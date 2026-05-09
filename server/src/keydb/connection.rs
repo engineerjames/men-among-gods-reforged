@@ -172,8 +172,7 @@ pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, Str
         .get("class")
         .and_then(|value| value.parse::<u32>().ok())
         .ok_or_else(|| "Missing character class".to_owned())?;
-    let class =
-        Class::from_u32(class_value).ok_or_else(|| "Invalid character class".to_owned())?;
+    let class = Class::from_u32(class_value).ok_or_else(|| "Invalid character class".to_owned())?;
 
     let server_id = character_map
         .get("server_id")

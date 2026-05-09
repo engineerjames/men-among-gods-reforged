@@ -258,14 +258,14 @@ struct HoveredBar {
 /// [`y`]: SpellEffectBars::y
 pub struct SpellEffectBars {
     /// Horizontal centre of the vitality chevron group (shared with
-    /// [`VitalityBars::x`]).
+    /// [`VitalityChevrons::x`]).
     ///
-    /// [`VitalityBars::x`]: crate::ui::visuals::vitality_bars::VitalityBars::x
+    /// [`VitalityChevrons::x`]: crate::ui::visuals::vitality_bars::VitalityChevrons::x
     pub x: i32,
     /// Bottom y coordinate of the vitality chevron group (shared with
-    /// [`VitalityBars::y`]).
+    /// [`VitalityChevrons::y`]).
     ///
-    /// [`VitalityBars::y`]: crate::ui::visuals::vitality_bars::VitalityBars::y
+    /// [`VitalityChevrons::y`]: crate::ui::visuals::vitality_bars::VitalityChevrons::y
     pub y: i32,
     /// Active positive effects, ordered bottom-up.
     positives: Vec<SpellSlotEntry>,

@@ -393,7 +393,8 @@ pub(crate) async fn get_items_reload_status(
         Some(s) if s.starts_with("applied") => "applied",
         Some(_) => "pending",
         None => "pending",
-    }.to_owned();
+    }
+    .to_owned();
 
     Json(WorldEntityReloadStatusResponse {
         status,

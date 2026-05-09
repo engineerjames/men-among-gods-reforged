@@ -1238,7 +1238,8 @@ pub(crate) async fn request_password_reset(
     let mut con = state.con.clone();
 
     let generic_ok = types::ResetPasswordRequestResponse {
-        message: "If an account with that username and email exists, a reset code has been sent.".to_owned(),
+        message: "If an account with that username and email exists, a reset code has been sent."
+            .to_owned(),
     };
 
     // ── Validate SMTP availability ───────────────────────────────────

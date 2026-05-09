@@ -421,7 +421,8 @@ pub(crate) async fn get_reload_status(
             // expired. Caller distinguishes by elapsed time.
             "pending"
         }
-    }.to_owned();
+    }
+    .to_owned();
 
     Json(ReloadStatusResponse {
         status,

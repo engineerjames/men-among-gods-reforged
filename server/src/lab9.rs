@@ -900,7 +900,10 @@ fn lab9_check_door(gs: &mut GameState, bankno: i32) -> bool {
             gs.items[item_idx].active = gs.items[item_idx].duration;
             gs.items[item_idx].flags &=
                 !(ItemFlags::IF_MOVEBLOCK | ItemFlags::IF_SIGHTBLOCK).bits();
-            let (ix, iy) = (i32::from(gs.items[item_idx].x), i32::from(gs.items[item_idx].y));
+            let (ix, iy) = (
+                i32::from(gs.items[item_idx].x),
+                i32::from(gs.items[item_idx].y),
+            );
             gs.do_area_sound(0, 0, ix, iy, 10);
             gs.reset_go(ix, iy);
             gs.add_lights(ix, iy);
@@ -915,7 +918,10 @@ fn lab9_check_door(gs: &mut GameState, bankno: i32) -> bool {
             let sightblock_flag =
                 gs.item_templates[temp as usize].flags & ItemFlags::IF_SIGHTBLOCK.bits();
             gs.items[item_idx].flags |= ItemFlags::IF_MOVEBLOCK.bits() | sightblock_flag;
-            let (ix, iy) = (i32::from(gs.items[item_idx].x), i32::from(gs.items[item_idx].y));
+            let (ix, iy) = (
+                i32::from(gs.items[item_idx].x),
+                i32::from(gs.items[item_idx].y),
+            );
             gs.do_area_sound(0, 0, ix, iy, 10);
             gs.reset_go(ix, iy);
             gs.add_lights(ix, iy);
@@ -1040,7 +1046,8 @@ pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
         let character_y = gs.characters[cn].y;
 
         if is_active == 0
-            && (i32::from(character_x) > i32::from(item_x) || i32::from(character_y) < i32::from(item_y))
+            && (i32::from(character_x) > i32::from(item_x)
+                || i32::from(character_y) < i32::from(item_y))
         {
             gs.do_character_log(
                 cn,
@@ -1076,7 +1083,10 @@ pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
     gs.add_lights(i32::from(item_x), i32::from(item_y));
 
     if cn != 0 {
-        let character_position = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+        let character_position = (
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+        );
         gs.do_area_notify(
             cn as i32,
             0,

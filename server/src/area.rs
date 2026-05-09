@@ -6,7 +6,10 @@ pub fn is_in_pentagram_quest(gs: &mut GameState, cn: usize) -> bool {
         return false;
     }
 
-    let coords = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+    let coords = (
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+    );
     let x = coords.0;
     let y = coords.1;
 

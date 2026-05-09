@@ -48,7 +48,6 @@ use client::ui::hud::shop_panel::ShopPanel;
 use client::ui::hud::skill_bar::{SkillBar, SkillBarData};
 use client::ui::hud::skills_panel::{SkillsPanel, SkillsPanelData};
 use client::ui::style::{Background, Border, Padding};
-use client::ui::visuals::rank_progress_arc::RankArc;
 use client::ui::widget::{Bounds, EventResponse, HudPanel, Widget, WidgetAction};
 use client::ui::widgets::button::{CircleButton, RectButton};
 use client::ui::widgets::checkbox::Checkbox;
@@ -188,9 +187,6 @@ fn main() -> Result<(), String> {
         0,
     );
 
-    let mut rank_arc = RankArc::new(COL1_X + 100, 280, 30, 2);
-    rank_arc.set_progress(0.65);
-
     let mut demo_panel = Panel::new(Bounds::new(COL1_X, 320, 200, 60))
         .with_background(Background::SolidColor(Color::RGBA(40, 40, 70, 200)))
         .with_border(Border {
@@ -329,7 +325,6 @@ fn main() -> Result<(), String> {
     let mut t_checkbox: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_slider: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_dropdown: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
-    let mut t_rank_arc: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_demo_panel: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_chat_box: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
     let mut t_mode_button: StatisticsBuffer<f32> = StatisticsBuffer::new(1_000);
@@ -394,7 +389,6 @@ fn main() -> Result<(), String> {
                                 ("Checkbox", &t_checkbox),
                                 ("Slider", &t_slider),
                                 ("Dropdown", &t_dropdown),
-                                ("RankArc", &t_rank_arc),
                                 ("Panel", &t_demo_panel),
                                 ("ChatBox", &t_chat_box),
                                 ("ModeButton", &t_mode_button),
@@ -480,7 +474,6 @@ fn main() -> Result<(), String> {
                     &mut rect_button,
                     &mut demo_panel,
                     &mut status_panel,
-                    &mut rank_arc,
                     &mut label,
                 ];
 
@@ -505,7 +498,6 @@ fn main() -> Result<(), String> {
         drain_and_log(&mut mode_button, "ModeButton");
         drain_and_log(&mut minimap_widget, "MinimapWidget");
         drain_and_log(&mut status_panel, "StatusPanel");
-        drain_and_log(&mut rank_arc, "RankArc");
 
         // HudButtonBar actions --> toggle panels.
         for action in hud_buttons.take_actions() {
@@ -540,7 +532,6 @@ fn main() -> Result<(), String> {
             &mut text_input_normal,
             &mut text_input_password,
             &mut dropdown,
-            &mut rank_arc,
             &mut demo_panel,
             &mut chat_box,
             &mut mode_button,
@@ -577,7 +568,6 @@ fn main() -> Result<(), String> {
             &mut t_text_input_password,
         );
         timed_render(&mut dropdown, &mut ctx, &mut t_dropdown);
-        timed_render(&mut rank_arc, &mut ctx, &mut t_rank_arc);
         timed_render(&mut demo_panel, &mut ctx, &mut t_demo_panel);
         timed_render(&mut chat_box, &mut ctx, &mut t_chat_box);
         timed_render(&mut mode_button, &mut ctx, &mut t_mode_button);
@@ -665,7 +655,6 @@ fn update_all(
     text_input_normal: &mut TextInput,
     text_input_password: &mut TextInput,
     dropdown: &mut Dropdown,
-    rank_arc: &mut RankArc,
     demo_panel: &mut Panel,
     chat_box: &mut ChatBox,
     mode_button: &mut ModeButton,
@@ -687,7 +676,6 @@ fn update_all(
     text_input_normal.update(dt);
     text_input_password.update(dt);
     dropdown.update(dt);
-    rank_arc.update(dt);
     demo_panel.update(dt);
     chat_box.update(dt);
     mode_button.update(dt);

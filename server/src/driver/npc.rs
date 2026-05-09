@@ -1190,7 +1190,7 @@ pub fn get_spellcost(cn: &Character, spell: usize) -> i32 {
         skills::SK_MSHIELD => 25,
         skills::SK_RECALL => 15,
         _ => 255, // Originally was 9999 which is invalid for a u8
-    } )
+    })
 }
 
 pub fn spellflag(spell: usize) -> u32 {
@@ -1225,7 +1225,8 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
     }
 
     let map_item = map_item.unwrap();
-    if gs.map[m].flags & (u64::from(core::constants::MF_MOVEBLOCK) | u64::from(core::constants::MF_NOMONST))
+    if gs.map[m].flags
+        & (u64::from(core::constants::MF_MOVEBLOCK) | u64::from(core::constants::MF_NOMONST))
         != 0
         || gs.map[m].ch != 0
         || gs.map[m].to_ch != 0
@@ -1876,7 +1877,10 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             if gs.characters[cn].data[47] != 0 && indoor1 == indoor2 {
                 let flags = gs.items[map_it].flags;
                 if flags & ItemFlags::IF_TAKE.bits() != 0 {
-                    let (ch_x, ch_y) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+                    let (ch_x, ch_y) = (
+                        i32::from(gs.characters[cn].x),
+                        i32::from(gs.characters[cn].y),
+                    );
                     let can_reach = gs.can_go(ch_x, ch_y, x as i32, y as i32) != 0;
                     let can_see = gs.do_char_can_see_item(cn, map_it) != 0;
 
@@ -1890,7 +1894,10 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                     }
                 }
                 if gs.items[map_it].driver == 7 {
-                    let (ch_x, ch_y) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+                    let (ch_x, ch_y) = (
+                        i32::from(gs.characters[cn].x),
+                        i32::from(gs.characters[cn].y),
+                    );
                     let can_reach = gs.can_go(ch_x, ch_y, x as i32, y as i32) != 0;
                     let can_see = gs.do_char_can_see_item(cn, map_it) != 0;
 
@@ -2555,8 +2562,10 @@ pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
 
     // Check if we're adjacent and facing the grave
     if ((i32::from(ch_x) - i32::from(it_x)).abs() + (i32::from(ch_y) - i32::from(it_y)).abs()) > 1
-        || helpers::drv_dcoor2dir(i32::from(it_x) - i32::from(ch_x), i32::from(it_y) - i32::from(ch_y))
-            != i32::from(ch_dir)
+        || helpers::drv_dcoor2dir(
+            i32::from(it_x) - i32::from(ch_x),
+            i32::from(it_y) - i32::from(ch_y),
+        ) != i32::from(ch_dir)
     {
         if frust > 20 {
             log::debug!(
@@ -2710,8 +2719,12 @@ pub fn npc_grave_logic(gs: &mut GameState, cn: usize) -> bool {
                 if is_grave {
                     let (it_x, it_y) = (gs.items[in_idx].x, gs.items[in_idx].y);
 
-                    let can_reach =
-                        gs.can_go(i32::from(ch_x), i32::from(ch_y), i32::from(it_x), i32::from(it_y)) != 0;
+                    let can_reach = gs.can_go(
+                        i32::from(ch_x),
+                        i32::from(ch_y),
+                        i32::from(it_x),
+                        i32::from(it_y),
+                    ) != 0;
 
                     let can_see = gs.do_char_can_see_item(cn, in_idx) != 0;
 
@@ -2862,7 +2875,11 @@ pub fn shiva_activate_candle(gs: &mut GameState, cn: usize, in_idx: usize) -> bo
     let it_y = gs.items[in_idx].y;
 
     if light_0 != light_1 && it_x > 0 {
-        gs.do_add_light(i32::from(it_x), i32::from(it_y), i32::from(light_0) - i32::from(light_1));
+        gs.do_add_light(
+            i32::from(it_x),
+            i32::from(it_y),
+            i32::from(light_0) - i32::from(light_1),
+        );
     }
 
     EffectManager::fx_add_effect(gs, 6, 0, i32::from(it_x), i32::from(it_y), 0);
@@ -3100,8 +3117,10 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
             if data_95 == 2 && data_93 != 0 {
                 let rest_x = (data_29 % SERVER_MAPX) as i16;
                 let rest_y = (data_29 / SERVER_MAPX) as i16;
-                let dist =
-                    std::cmp::max(i32::from((rest_x - co_x).abs()), i32::from((rest_y - co_y).abs()));
+                let dist = std::cmp::max(
+                    i32::from((rest_x - co_x).abs()),
+                    i32::from((rest_y - co_y).abs()),
+                );
 
                 if dist > data_93 {
                     should_attack = false;

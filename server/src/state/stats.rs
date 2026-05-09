@@ -57,7 +57,8 @@ impl GameState {
         let wears_481 = self.char_wears_item(cn, 481);
 
         let map_index = char_x as usize + char_y as usize * core::constants::SERVER_MAPX as usize;
-        let has_nomagic_flag = self.map[map_index].flags & u64::from(core::constants::MF_NOMAGIC) != 0;
+        let has_nomagic_flag =
+            self.map[map_index].flags & u64::from(core::constants::MF_NOMAGIC) != 0;
 
         if has_nomagic_flag && !wears_466 && !wears_481 {
             let already_has_nomagic =
@@ -290,14 +291,16 @@ impl GameState {
         self.characters[cn].hp[5] = final_hp as u16;
 
         // Calculate final endurance
-        let mut final_end =
-            i32::from(self.characters[cn].end[0]) + i32::from(self.characters[cn].end[1]) + end_bonus;
+        let mut final_end = i32::from(self.characters[cn].end[0])
+            + i32::from(self.characters[cn].end[1])
+            + end_bonus;
         final_end = final_end.clamp(10, 999);
         self.characters[cn].end[5] = final_end as u16;
 
         // Calculate final mana
-        let mut final_mana =
-            i32::from(self.characters[cn].mana[0]) + i32::from(self.characters[cn].mana[1]) + mana_bonus;
+        let mut final_mana = i32::from(self.characters[cn].mana[0])
+            + i32::from(self.characters[cn].mana[1])
+            + mana_bonus;
         final_mana = final_mana.clamp(10, 999);
         self.characters[cn].mana[5] = final_mana as u16;
 
@@ -419,7 +422,11 @@ impl GameState {
                 let map_char = self.map[idx].ch;
 
                 if map_char == cn as u32 {
-                    self.do_add_light(i32::from(x), i32::from(y), i32::from(new_light) - i32::from(old_light));
+                    self.do_add_light(
+                        i32::from(x),
+                        i32::from(y),
+                        i32::from(new_light) - i32::from(old_light),
+                    );
                 }
             }
         }
@@ -511,7 +518,8 @@ impl GameState {
                         // Add bonus from Regen skill
                         if self.characters[cn].skill[skills::SK_REGEN][0] != 0 {
                             let regen_bonus = scale(
-                                i32::from(self.characters[cn].skill[skills::SK_REGEN][5]) * moonmult
+                                i32::from(self.characters[cn].skill[skills::SK_REGEN][5])
+                                    * moonmult
                                     / 30,
                             );
                             self.characters[cn].a_hp += regen_bonus;
@@ -526,7 +534,8 @@ impl GameState {
                             mana_regen = true;
                             self.characters[cn].a_mana += scale(moonmult);
                             self.characters[cn].a_mana += scale(
-                                i32::from(self.characters[cn].skill[skills::SK_MEDIT][5]) * moonmult
+                                i32::from(self.characters[cn].skill[skills::SK_MEDIT][5])
+                                    * moonmult
                                     / 30,
                             );
                         }
@@ -604,8 +613,9 @@ impl GameState {
                     );
                 }
                 if has_rest {
-                    self.characters[cn].a_end +=
-                        scale(i32::from(self.characters[cn].skill[skills::SK_REST][5]) * moonmult / 60);
+                    self.characters[cn].a_end += scale(
+                        i32::from(self.characters[cn].skill[skills::SK_REST][5]) * moonmult / 60,
+                    );
                 }
                 if has_medit {
                     self.characters[cn].a_mana += scale(
@@ -635,7 +645,8 @@ impl GameState {
         }
 
         if mana_regen {
-            let needs_timer = self.characters[cn].a_mana < i32::from(self.characters[cn].mana[5]) * 900;
+            let needs_timer =
+                self.characters[cn].a_mana < i32::from(self.characters[cn].mana[5]) * 900;
             if needs_timer {
                 self.characters[cn].data[92] = core::constants::TICKS * 60;
             }

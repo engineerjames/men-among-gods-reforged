@@ -515,7 +515,16 @@ impl GameScene {
                 }
 
                 Self::draw_world_sprite(
-                    canvas, gfx, i32::from(ba), x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                    canvas,
+                    gfx,
+                    i32::from(ba),
+                    x,
+                    y,
+                    cam_xoff,
+                    cam_yoff,
+                    0,
+                    0,
+                    tile.light,
                 )?;
 
                 if let Some(HoverHighlight::Floor {
@@ -700,8 +709,7 @@ impl GameScene {
                                 None
                             }
                         } else {
-                            ps.lookup_name(tile.ch_nr, tile.ch_id)
-                                .map(|s| s.to_owned())
+                            ps.lookup_name(tile.ch_nr, tile.ch_id).map(|s| s.to_owned())
                         }
                     } else {
                         None

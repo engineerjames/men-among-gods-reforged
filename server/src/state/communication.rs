@@ -119,9 +119,10 @@ impl GameState {
                     }
 
                     // TODO: This distance calculation seems incorrect potentially -- doublecheck
-                    let distance = (i32::from(self.characters[cn].x) - i32::from(self.characters[co].x))
-                        .abs()
-                        + (i32::from(self.characters[cn].y) - i32::from(self.characters[co].y)).abs();
+                    let distance =
+                        (i32::from(self.characters[cn].x) - i32::from(self.characters[co].x)).abs()
+                            + (i32::from(self.characters[cn].y) - i32::from(self.characters[co].y))
+                                .abs();
 
                     if distance < best[0] {
                         best[2] = best[1];
@@ -909,7 +910,10 @@ impl GameState {
 
             self.do_character_log(cn, FontColor::Red, "Yes, Sire, I recognise you!\n");
 
-            let (x, y) = (i32::from(self.characters[cn].x), i32::from(self.characters[cn].y));
+            let (x, y) = (
+                i32::from(self.characters[cn].x),
+                i32::from(self.characters[cn].y),
+            );
             self.do_area_log(
                 cn,
                 0,

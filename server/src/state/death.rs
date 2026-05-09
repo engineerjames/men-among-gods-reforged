@@ -96,7 +96,13 @@ impl GameState {
         // Normal death sound
         else {
             let sound = co_sound + 2;
-            self.do_area_sound(character_id, 0, i32::from(co_x), i32::from(co_y), i32::from(sound));
+            self.do_area_sound(
+                character_id,
+                0,
+                i32::from(co_x),
+                i32::from(co_y),
+                i32::from(sound),
+            );
             Self::char_play_sound(self, character_id, i32::from(sound), -150, 0);
         }
 
@@ -314,7 +320,8 @@ impl GameState {
                 if is_killer_player {
                     self.characters[character_id].data[15] = killer_id as i32 | 0x10000;
                 } else {
-                    self.characters[character_id].data[15] = i32::from(self.characters[killer_id].temp);
+                    self.characters[character_id].data[15] =
+                        i32::from(self.characters[killer_id].temp);
                 }
             } else {
                 self.characters[character_id].data[15] = 0;
@@ -346,8 +353,14 @@ impl GameState {
 
         // Schedule respawn and show death animation
 
-        let fn_idx =
-            EffectManager::fx_add_effect(self, 3, 0, i32::from(co_x), i32::from(co_y), corpse_id as i32);
+        let fn_idx = EffectManager::fx_add_effect(
+            self,
+            3,
+            0,
+            i32::from(co_x),
+            i32::from(co_y),
+            corpse_id as i32,
+        );
         // Set data[3] = killer_id for the effect, if possible
         if fn_idx.unwrap() < self.effects.len() {
             self.effects[fn_idx.unwrap()].data[3] = killer_id as u32;

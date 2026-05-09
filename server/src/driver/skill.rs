@@ -953,10 +953,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         gs.do_character_log(
             cn,
             FontColor::Yellow,
-            &format!(
-                "{} was blessed.\n",
-                gs.characters[co].get_name().to_owned()
-            ),
+            &format!("{} was blessed.\n", gs.characters[co].get_name().to_owned()),
         );
         let sound = gs.characters[cn].sound;
         GameState::char_play_sound(gs, co, i32::from(sound) + 1, -150, 0);
@@ -3230,10 +3227,14 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         }
     }
 
-    gs.characters[cc].hp[0] =
-        std::cmp::max(50, std::cmp::min(i32::from(gs.characters[cc].hp[2]), base * 5)) as u16;
-    gs.characters[cc].end[0] =
-        std::cmp::max(50, std::cmp::min(i32::from(gs.characters[cc].end[2]), base * 5)) as u16;
+    gs.characters[cc].hp[0] = std::cmp::max(
+        50,
+        std::cmp::min(i32::from(gs.characters[cc].hp[2]), base * 5),
+    ) as u16;
+    gs.characters[cc].end[0] = std::cmp::max(
+        50,
+        std::cmp::min(i32::from(gs.characters[cc].end[2]), base * 5),
+    ) as u16;
     gs.characters[cc].mana[0] = 0;
 
     let mut pts = 0i32;
@@ -3332,9 +3333,15 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
 
     add_exhaust(gs, cn, TICKS * 4);
 
-    let (cc_x, cc_y) = (i32::from(gs.characters[cc].x), i32::from(gs.characters[cc].y));
+    let (cc_x, cc_y) = (
+        i32::from(gs.characters[cc].x),
+        i32::from(gs.characters[cc].y),
+    );
     EffectManager::fx_add_effect(gs, 6, 0, cc_x, cc_y, 0);
-    let (cn_x, cn_y) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+    let (cn_x, cn_y) = (
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+    );
     EffectManager::fx_add_effect(gs, 7, 0, cn_x, cn_y, 0);
 }
 

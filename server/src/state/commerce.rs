@@ -247,7 +247,8 @@ impl GameState {
                                 self.characters[co].gold += price;
 
                                 let item_name = self.items[item_idx].get_name().to_owned();
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 chlog!(
                                     cn,
@@ -328,7 +329,8 @@ impl GameState {
 
                             if gave_success {
                                 let item_name = self.items[item_idx].get_name().to_owned();
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 chlog!(cn, "Took {} from corpse", item_name);
 
@@ -341,7 +343,8 @@ impl GameState {
                                 // Failed to give item - put it back
                                 God::give_character_item(self, co, item_idx);
 
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 self.do_character_log(
                                     cn,
@@ -373,7 +376,8 @@ impl GameState {
 
                             if gave_success {
                                 let item_name = self.items[item_idx].get_name().to_owned();
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 chlog!(cn, "Took {} from corpse", item_name);
 
@@ -391,7 +395,8 @@ impl GameState {
                                     );
                                 }
 
-                                let item_ref = c_string_to_str(&mut self.items[item_idx].reference).to_owned();
+                                let item_ref =
+                                    c_string_to_str(&mut self.items[item_idx].reference).to_owned();
 
                                 self.do_character_log(
                                     cn,
@@ -790,7 +795,8 @@ impl GameState {
                         self.characters[co].depot[nr as usize] = 0;
 
                         let item_ref =
-                            c_string_to_str(&mut self.items[item_idx as usize].reference).to_owned();
+                            c_string_to_str(&mut self.items[item_idx as usize].reference)
+                                .to_owned();
 
                         let item_name = self.items[item_idx as usize].get_name().to_owned();
 
@@ -803,7 +809,8 @@ impl GameState {
                         chlog!(cn, "Took {} from depot", item_name);
                     } else {
                         let item_ref =
-                            c_string_to_str(&mut self.items[item_idx as usize].reference).to_owned();
+                            c_string_to_str(&mut self.items[item_idx as usize].reference)
+                                .to_owned();
 
                         self.do_character_log(
                             cn,

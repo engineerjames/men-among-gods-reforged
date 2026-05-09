@@ -13,7 +13,10 @@ use crate::{core, driver, helpers};
 pub fn act_idle(gs: &mut GameState, cn: usize) {
     let should_notify = (gs.globals.ticker & 15) == (cn as i32 & 15);
     if should_notify {
-        let (x, y) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+        let (x, y) = (
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+        );
         gs.do_area_notify(
             cn as i32,
             0,
@@ -1387,7 +1390,10 @@ pub fn char_moveto(
     x2: i32,
     y2: i32,
 ) -> i32 {
-    let (cx, cy) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+    let (cx, cy) = (
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+    );
     if cx == x && cy == y && flag != 1 && flag != 3 {
         return 1;
     }
@@ -1771,7 +1777,9 @@ pub fn driver_msg(
     }
 
     match msg_type as u32 {
-        x if x == u32::from(core::constants::NT_GOTHIT) || x == u32::from(core::constants::NT_GOTMISS) => {
+        x if x == u32::from(core::constants::NT_GOTHIT)
+            || x == u32::from(core::constants::NT_GOTMISS) =>
+        {
             let attack_cn = i32::from(gs.characters[cn].attack_cn);
             let fightback = gs.characters[cn].data[core::constants::CHD_FIGHTBACK];
             let misc_action = gs.characters[cn].misc_action;
@@ -1850,7 +1858,10 @@ pub fn follow_driver(gs: &mut GameState, cn: usize, co: usize) -> bool {
             return true;
         }
         gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
-        let (x, y) = (i32::from(gs.characters[cn].x), i32::from(gs.characters[cn].y));
+        let (x, y) = (
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+        );
         match dir_val {
             core::constants::DX_UP => {
                 gs.characters[cn].misc_target1 = x as u16;

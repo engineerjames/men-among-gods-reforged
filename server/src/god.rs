@@ -3965,7 +3965,8 @@ impl God {
         };
 
         let ticker = gs.globals.ticker;
-        let timer_minutes = f64::from(ticker - data_23) / (f64::from(core::constants::TICKS) * 60.0);
+        let timer_minutes =
+            f64::from(ticker - data_23) / (f64::from(core::constants::TICKS) * 60.0);
 
         gs.do_character_log(
             cn,
@@ -4817,7 +4818,8 @@ impl God {
             duration_arg.parse::<i64>().unwrap_or(60).max(0)
         };
         // Cap to u16 ticks at 36 TPS (~30 minutes).
-        let duration_ticks: u16 = (duration_secs.saturating_mul(36)).min(i64::from(u16::MAX)) as u16;
+        let duration_ticks: u16 =
+            (duration_secs.saturating_mul(36)).min(i64::from(u16::MAX)) as u16;
 
         let target = if target_arg.is_empty() {
             "self"
