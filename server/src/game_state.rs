@@ -1,7 +1,9 @@
+use crate::network_manager::PacketStats;
 use crate::path_finding::PathFinder;
 use crate::types::server_player::ServerPlayer;
 use core::constants::{CharacterFlags, USE_EMPTY};
 use core::talent_trees::total_points_spent;
+
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -24,6 +26,7 @@ use core::talent_trees::total_points_spent;
 /// export or import the complete world state as a portable `.wsnap` file.
 use server::keydb::connection as keydb;
 use server::keydb::store;
+use std::collections::HashMap;
 
 /// The unified in-memory game state for the server.
 ///
@@ -118,6 +121,8 @@ pub struct GameState {
     /// Any player who types this string in chat is immediately granted all god-level flags.
     /// The server refuses to start if this field is empty (i.e. the env var was not provided).
     pub god_password: String,
+
+    pub packet_stats: HashMap<usize, PacketStats>,
 }
 
 impl GameState {
@@ -200,6 +205,7 @@ impl GameState {
             // Runtime mode flags
             playtest_mode: false,
             god_password: String::new(),
+            packet_stats: HashMap::new(),
         }
     }
 

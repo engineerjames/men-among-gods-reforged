@@ -7,7 +7,7 @@ use crate::{game_state::GameState, player};
 
 static PACKET_STATS: OnceLock<RwLock<PacketStats>> = OnceLock::new();
 
-struct PacketStats {
+pub struct PacketStats {
     cnt: [usize; 256],
     pkt_mapshort: usize,
     pkt_light: usize,
@@ -70,24 +70,27 @@ pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
         gs.players[player_id].tbuf[start..end].copy_from_slice(&data[..send_len]);
         gs.players[player_id].tptr = end;
 
-        if let Some(stats_lock) = PACKET_STATS.get() {
-            let mut stats = stats_lock.write().unwrap();
-            let pnr = if !data.is_empty() {
-                data[0] as usize
-            } else {
-                0
-            };
-            if pnr < stats.cnt.len() {
-                stats.cnt[pnr] = stats.cnt[pnr].saturating_add(send_len);
-                if pnr > 128 {
-                    stats.pkt_mapshort = stats.pkt_mapshort.saturating_add(send_len);
-                } else if pnr == ServerCommandType::SetMap3 as usize
-                    || pnr == ServerCommandType::SetMap4 as usize
-                    || pnr == ServerCommandType::SetMap5 as usize
-                    || pnr == ServerCommandType::SetMap6 as usize
-                {
-                    stats.pkt_light = stats.pkt_light.saturating_add(send_len);
-                }
+        let pnr = if !data.is_empty() {
+            data[0] as usize
+        } else {
+            0
+        };
+
+        let packet_stats = gs
+            .packet_stats
+            .entry(player_id)
+            .or_insert(PacketStats::new());
+
+        if pnr < packet_stats.cnt.len() {
+            packet_stats.cnt[pnr] = packet_stats.cnt[pnr].saturating_add(send_len);
+            if pnr > 128 {
+                packet_stats.pkt_mapshort = packet_stats.pkt_mapshort.saturating_add(send_len);
+            } else if pnr == ServerCommandType::SetMap3 as usize
+                || pnr == ServerCommandType::SetMap4 as usize
+                || pnr == ServerCommandType::SetMap5 as usize
+                || pnr == ServerCommandType::SetMap6 as usize
+            {
+                packet_stats.pkt_light = packet_stats.pkt_light.saturating_add(send_len);
             }
         }
     } else {
