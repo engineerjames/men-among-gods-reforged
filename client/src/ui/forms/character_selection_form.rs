@@ -13,6 +13,7 @@ use sdl2::render::BlendMode;
 
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
+use crate::text::{self, FontHandle};
 use crate::ui::RenderContext;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
@@ -429,21 +430,24 @@ impl Widget for CharacterSelectionForm {
         ctx.canvas.set_draw_color(Color::RGBA(100, 100, 160, 200));
         ctx.canvas.draw_rect(panel_rect)?;
 
-        // Title.
+        // Title (TrueType, bold).
         let title = "Character Selection";
+        let title_handle = FontHandle::ttf(text::UI_BOLD, 20);
         let title_cx = self.bounds.x + self.bounds.width as i32 / 2;
         let title_y = self.bounds.y + 10;
-        font_cache::draw_text(
+        let title_line_h = text::line_height(ctx.text, &title_handle);
+        text::draw_text(
             ctx.canvas,
+            ctx.text,
             ctx.gfx,
-            FONT,
+            &title_handle,
             title,
             title_cx,
             title_y,
-            font_cache::TextStyle::centered(),
+            text::Style::centered(),
         )?;
 
-        let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 6;
+        let mut cursor_y = title_y + title_line_h as i32 + 6;
 
         // Username label.
         if let Some(ref username) = self.username {

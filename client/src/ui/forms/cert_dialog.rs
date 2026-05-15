@@ -8,6 +8,7 @@ use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
 use crate::font_cache;
+use crate::text::{self, FontHandle};
 use crate::ui::RenderContext;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
@@ -219,17 +220,20 @@ impl Widget for CertDialog {
         let mut y = self.bounds.y + PAD;
         let x = self.bounds.x + PAD;
 
-        // Title
-        font_cache::draw_text(
+        // Title (TrueType, bold).
+        let title_handle = FontHandle::ttf(text::UI_BOLD, 18);
+        let title_line_h = text::line_height(ctx.text, &title_handle);
+        text::draw_text(
             ctx.canvas,
+            ctx.text,
             ctx.gfx,
-            FONT,
+            &title_handle,
             "Server Certificate Changed",
             x,
             y,
-            font_cache::TextStyle::tinted(Color::RGB(255, 200, 200)),
+            text::Style::tinted(Color::RGB(255, 200, 200)),
         )?;
-        y += font_cache::BITMAP_GLYPH_H as i32 + 6;
+        y += title_line_h as i32 + 6;
 
         // Warning
         font_cache::draw_text(
