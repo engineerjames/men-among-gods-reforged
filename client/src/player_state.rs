@@ -53,6 +53,22 @@ pub struct PlayerState {
     /// `talents[0]` is the unspent points pool; `talents[1..24]` are the
     /// per-layer bit fields (8 nodes per byte). See `core::talent_trees`.
     talents: [u8; 25],
+
+    /// Latest server snapshot of the player's quest log.
+    ///
+    /// Each entry is `(npc_template_id, npc_x, npc_y)` for an NPC that has
+    /// a quest item assigned to this player. Capped at 16 entries by the
+    /// wire format.
+    quest_log_entries: Vec<(u16, u16, u16)>,
+    /// NPC template ID of the quest currently focused (selected in the
+    /// quest panel). `0` = no focused quest.
+    active_quest_template_id: u16,
+    /// Index of the currently active step within the focused quest's
+    /// walkthrough. Valid only when `active_quest_template_id != 0`.
+    active_quest_step_idx: u8,
+    /// Tile coordinates of the currently focused NPC, when known. Used
+    /// by `QuestStep::ReturnToQuestGiver` to drive the minimap pin.
+    active_quest_npc_pos: Option<(u16, u16)>,
 }
 
 /// A cached (nr --> name) entry used by the auto-look name overlay.
@@ -94,6 +110,11 @@ impl Default for PlayerState {
             exit_requested_reason: None,
 
             talents: [0; 25],
+
+            quest_log_entries: Vec::new(),
+            active_quest_template_id: 0,
+            active_quest_step_idx: 0,
+            active_quest_npc_pos: None,
         }
     }
 }
@@ -141,6 +162,29 @@ impl PlayerState {
     /// fields (8 nodes per byte). See `core::talent_trees`.
     pub fn talents(&self) -> &[u8; 25] {
         &self.talents
+    }
+
+    /// Returns the latest server-reported quest log entries
+    /// (`(npc_template_id, npc_x, npc_y)`).
+    pub fn quest_log_entries(&self) -> &[(u16, u16, u16)] {
+        &self.quest_log_entries
+    }
+
+    /// Returns the NPC template ID of the currently focused quest, or `0`
+    /// when none is focused.
+    pub fn active_quest_template_id(&self) -> u16 {
+        self.active_quest_template_id
+    }
+
+    /// Returns the active step index within the focused quest's walkthrough.
+    pub fn active_quest_step_idx(&self) -> u8 {
+        self.active_quest_step_idx
+    }
+
+    /// Returns the cached tile position of the focused quest's NPC, when
+    /// known. Used to drive the minimap pin for `ReturnToQuestGiver` steps.
+    pub fn active_quest_npc_pos(&self) -> Option<(u16, u16)> {
+        self.active_quest_npc_pos
     }
 
     /// Returns `true` when the shop overlay should be displayed.
@@ -466,6 +510,22 @@ impl PlayerState {
             }
             ServerCommandData::SetCharTalents { values } => {
                 self.talents = *values;
+            }
+            ServerCommandData::SetQuestLog {
+                entries,
+                active_template_id,
+                active_step_idx,
+                active_npc_x,
+                active_npc_y,
+            } => {
+                self.quest_log_entries = entries.clone();
+                self.active_quest_template_id = *active_template_id;
+                self.active_quest_step_idx = *active_step_idx;
+                self.active_quest_npc_pos = if *active_template_id == 0 {
+                    None
+                } else {
+                    Some((*active_npc_x, *active_npc_y))
+                };
             }
             ServerCommandData::SetCharHp { values } => {
                 self.character_info.hp = *values;

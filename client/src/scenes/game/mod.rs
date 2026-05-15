@@ -125,7 +125,7 @@ const HUD_ARC_RADIUS: u32 = 60;
 /// Radius of each individual HUD button.
 const HUD_BUTTON_RADIUS: u32 = 16;
 /// Sprite IDs for [Skills, Talents, Inventory, Settings] buttons.
-const HUD_SPRITE_IDS: [usize; 4] = [267, 1004, 128, 35];
+const HUD_SPRITE_IDS: [usize; 5] = [1232, 267, 1004, 128, 35];
 /// X center of the HUD button column (lower-right, aligned with minimap).
 const HUD_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
 /// Center Y of the bottom-most HUD button (above the mode button).
@@ -211,6 +211,41 @@ const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 // GameScene struct
 // ---------------------------------------------------------------------------
 
+/// Resolves the world-tile destination for the currently focused quest's
+/// active step.
+///
+/// Falls back to the cached NPC quest-giver position for
+/// `ReturnToQuestGiver` steps or whenever the static quest definition is
+/// missing or the step index is out of range.
+///
+/// # Arguments
+///
+/// * `template_id`     - NPC template ID of the focused quest.
+/// * `step_idx`        - Server-reported active step index within the quest's
+///   walkthrough.
+/// * `npc_pos_fallback` - World tile position of the NPC quest giver, used as
+///   a fallback when no `FixedLocation` step applies.
+///
+/// # Returns
+///
+/// * `Some((x, y))` when a destination tile can be resolved, or `None` when
+///   no fallback NPC position is known and no `FixedLocation` step applies.
+fn active_quest_destination(
+    template_id: u16,
+    step_idx: usize,
+    npc_pos_fallback: Option<(u16, u16)>,
+) -> Option<(u16, u16)> {
+    if let Some(def) = mag_core::quest_defs::find_quest_def(template_id) {
+        if let Some(step) = def.steps.get(step_idx) {
+            return match step {
+                mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
+                mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
+            };
+        }
+    }
+    npc_pos_fallback
+}
+
 /// The primary in-game scene.
 ///
 /// Holds all transient gameplay state: input buffer, modifier-key flags,
@@ -224,6 +259,7 @@ pub struct GameScene {
     pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
     pub(super) talent_panel: TalentPanel,
+    pub(super) quest_log_panel: crate::ui::hud::quest_log_panel::QuestLogPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
@@ -381,6 +417,10 @@ impl GameScene {
                 HUD_PANEL_BG,
             ),
             talent_panel: TalentPanel::new(
+                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                HUD_PANEL_BG,
+            ),
+            quest_log_panel: crate::ui::hud::quest_log_panel::QuestLogPanel::new(
                 Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
                 HUD_PANEL_BG,
             ),
@@ -738,6 +778,11 @@ impl GameScene {
             return true;
         }
         if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
+
+        if self.quest_log_panel.is_visible() && self.quest_log_panel.bounds().contains_point(mx, my)
+        {
             return true;
         }
 
@@ -1189,6 +1234,10 @@ impl Scene for GameScene {
             if self.skills_panel.is_visible() {
                 self.skills_panel.toggle();
                 self.skills_panel.clear_controller_focus();
+            }
+
+            if self.quest_log_panel.is_visible() {
+                self.quest_log_panel.toggle();
             }
 
             if self.minimap_widget.is_visible() {
@@ -1666,6 +1715,72 @@ impl Scene for GameScene {
                     self.minimap_widget
                         .update_viewport(&self.minimap_xmap, cx, cy);
                 }
+
+                // --- Quest log panel data + minimap quest markers ---
+                {
+                    use crate::ui::hud::quest_log_panel::{QuestEntryDisplay, QuestLogPanelData};
+                    let entries_raw = ps.quest_log_entries();
+                    let active_template = ps.active_quest_template_id();
+                    let active_step_idx = ps.active_quest_step_idx() as usize;
+                    let active_npc_pos = ps.active_quest_npc_pos();
+
+                    let mut display_entries: Vec<QuestEntryDisplay> =
+                        Vec::with_capacity(entries_raw.len());
+                    for (template_id, npc_x, npc_y) in entries_raw {
+                        let (title, description, steps) =
+                            match mag_core::quest_defs::find_quest_def(*template_id) {
+                                Some(def) => {
+                                    let steps_str: Vec<String> = def
+                                        .steps
+                                        .iter()
+                                        .map(|s| {
+                                            match s {
+                                            mag_core::quest_defs::QuestStep::FixedLocation {
+                                                x,
+                                                y,
+                                                desc,
+                                            } => format!("• {desc} ({x},{y})"),
+                                            mag_core::quest_defs::QuestStep::ReturnToQuestGiver {
+                                                desc,
+                                            } => format!("• {desc}"),
+                                        }
+                                        })
+                                        .collect();
+                                    (def.title.to_owned(), def.description.to_owned(), steps_str)
+                                }
+                                None => (
+                                    mag_core::quest_defs::fallback_title(&format!(
+                                        "template {template_id}"
+                                    )),
+                                    String::new(),
+                                    Vec::new(),
+                                ),
+                            };
+                        display_entries.push(QuestEntryDisplay {
+                            template_id: *template_id,
+                            title,
+                            description,
+                            steps,
+                            npc_x: *npc_x,
+                            npc_y: *npc_y,
+                        });
+                    }
+
+                    self.quest_log_panel.update_data(QuestLogPanelData {
+                        entries: display_entries,
+                        active_template_id: active_template,
+                    });
+
+                    // Minimap markers.
+                    let givers: Vec<(u16, u16)> =
+                        entries_raw.iter().map(|(_, x, y)| (*x, *y)).collect();
+                    let active_marker = if active_template == 0 {
+                        None
+                    } else {
+                        active_quest_destination(active_template, active_step_idx, active_npc_pos)
+                    };
+                    self.minimap_widget.set_quest_markers(givers, active_marker);
+                }
             }
             let mut ctx = RenderContext {
                 canvas,
@@ -1691,6 +1806,7 @@ impl Scene for GameScene {
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
             self.talent_panel.render(&mut ctx)?;
+            self.quest_log_panel.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;

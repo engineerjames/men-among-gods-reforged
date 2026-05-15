@@ -79,6 +79,14 @@ pub enum ServerCommandType {
     /// (u16 LE) + tint_r (1) + tint_g (1) + tint_b (1) + tint_a (1) + flags
     /// (1) = **10 bytes total**. See [`crate::weather::WeatherKind`].
     SetWeather = 76,
+    /// Per-player quest log snapshot.
+    ///
+    /// Wire format: opcode (1) + count (1) + 16 × `[u16 npc_template_id,
+    /// u16 npc_x, u16 npc_y]` (96) + active_template_id (u16, 2)
+    /// + active_step_idx (u8, 1) + active_npc_x (u16, 2) + active_npc_y
+    /// (u16, 2) = **105 bytes total**. Entries beyond `count` are zero
+    /// padding. `active_template_id == 0` means "no active quest".
+    SetQuestLog = 77,
     SetMap = 128,
 }
 
@@ -189,6 +197,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharDir => 2,
             ServerCommandType::SetCharTalents => 26,
             ServerCommandType::SetWeather => 10,
+            ServerCommandType::SetQuestLog => 105,
             ServerCommandType::SetCharPts => 13,
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
@@ -299,6 +308,7 @@ impl From<u8> for ServerCommandType {
             74 => ServerCommandType::Pong,
             75 => ServerCommandType::SetCharTalents,
             76 => ServerCommandType::SetWeather,
+            77 => ServerCommandType::SetQuestLog,
             128 => ServerCommandType::SetMap,
             _ => {
                 log::error!("Unknown server command opcode: {value}");
@@ -499,6 +509,21 @@ pub enum ServerCommandData {
         duration_ticks: u16,
         tint: [u8; 4],
         flags: u8,
+    },
+    /// Per-player quest log snapshot.
+    ///
+    /// `entries` lists up to 16 active quest givers as
+    /// `(npc_template_id, npc_x, npc_y)` triples. `active_template_id`
+    /// is the NPC the player has currently focused (0 = none).
+    /// `active_step_idx` is the current step index for the active quest;
+    /// `active_npc_x` / `active_npc_y` echo the active NPC's tile so the
+    /// minimap can pin a "return to giver" step without a separate lookup.
+    SetQuestLog {
+        entries: Vec<(u16, u16, u16)>,
+        active_template_id: u16,
+        active_step_idx: u8,
+        active_npc_x: u16,
+        active_npc_y: u16,
     },
     Load {
         load: u32,
@@ -1105,6 +1130,33 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 flags: *bytes.get(9)?,
             },
         )),
+        77 => {
+            let count = (*bytes.get(1)?).min(16) as usize;
+            let mut entries = Vec::with_capacity(count);
+            for i in 0..count {
+                let off = 2 + i * 6;
+                let template = read_u16(bytes, off)?;
+                let x = read_u16(bytes, off + 2)?;
+                let y = read_u16(bytes, off + 4)?;
+                entries.push((template, x, y));
+            }
+            // Trailing fields sit immediately after the fixed 16-entry slot
+            // table (16 * 6 = 96 bytes), starting at byte 98.
+            let active_template_id = read_u16(bytes, 98)?;
+            let active_step_idx = *bytes.get(100)?;
+            let active_npc_x = read_u16(bytes, 101)?;
+            let active_npc_y = read_u16(bytes, 103)?;
+            Some((
+                ServerCommandType::SetQuestLog,
+                ServerCommandData::SetQuestLog {
+                    entries,
+                    active_template_id,
+                    active_step_idx,
+                    active_npc_x,
+                    active_npc_y,
+                },
+            ))
+        }
         _ => None,
     }
 }
@@ -1341,5 +1393,109 @@ mod tests {
     #[test]
     fn set_weather_opcode_decodes_from_u8() {
         assert_eq!(ServerCommandType::from(76), ServerCommandType::SetWeather);
+    }
+
+    // -- SV_SETQUESTLOG (opcode 77) --
+
+    /// Encode a quest-log packet identically to the server's helper.
+    fn encode_quest_log(
+        entries: &[(u16, u16, u16)],
+        active_template_id: u16,
+        active_step_idx: u8,
+        active_npc_x: u16,
+        active_npc_y: u16,
+    ) -> [u8; 105] {
+        let mut buf = [0u8; 105];
+        buf[0] = ServerCommandType::SetQuestLog as u8;
+        let count = entries.len().min(16) as u8;
+        buf[1] = count;
+        for (i, (t, x, y)) in entries.iter().take(16).enumerate() {
+            let off = 2 + i * 6;
+            buf[off..off + 2].copy_from_slice(&t.to_le_bytes());
+            buf[off + 2..off + 4].copy_from_slice(&x.to_le_bytes());
+            buf[off + 4..off + 6].copy_from_slice(&y.to_le_bytes());
+        }
+        buf[98..100].copy_from_slice(&active_template_id.to_le_bytes());
+        buf[100] = active_step_idx;
+        buf[101..103].copy_from_slice(&active_npc_x.to_le_bytes());
+        buf[103..105].copy_from_slice(&active_npc_y.to_le_bytes());
+        buf
+    }
+
+    #[test]
+    fn set_quest_log_opcode_decodes_from_u8() {
+        assert_eq!(ServerCommandType::from(77), ServerCommandType::SetQuestLog);
+    }
+
+    #[test]
+    fn set_quest_log_expected_length_is_105() {
+        let buf = encode_quest_log(&[], 0, 0, 0, 0);
+        let mut last_n = 0i32;
+        let len = ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap();
+        assert_eq!(len, 105);
+    }
+
+    #[test]
+    fn set_quest_log_roundtrip_empty() {
+        let buf = encode_quest_log(&[], 0, 0, 0, 0);
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        assert_eq!(cmd.header, ServerCommandType::SetQuestLog);
+        match cmd.structured_data {
+            ServerCommandData::SetQuestLog {
+                entries,
+                active_template_id,
+                active_step_idx,
+                active_npc_x,
+                active_npc_y,
+            } => {
+                assert!(entries.is_empty());
+                assert_eq!(active_template_id, 0);
+                assert_eq!(active_step_idx, 0);
+                assert_eq!(active_npc_x, 0);
+                assert_eq!(active_npc_y, 0);
+            }
+            _ => panic!("expected SetQuestLog variant"),
+        }
+    }
+
+    #[test]
+    fn set_quest_log_roundtrip_multiple_entries() {
+        let entries = vec![(101, 1234, 5678), (202, 11, 22), (303, 4000, 4001)];
+        let buf = encode_quest_log(&entries, 202, 3, 11, 22);
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetQuestLog {
+                entries: out,
+                active_template_id,
+                active_step_idx,
+                active_npc_x,
+                active_npc_y,
+            } => {
+                assert_eq!(out, entries);
+                assert_eq!(active_template_id, 202);
+                assert_eq!(active_step_idx, 3);
+                assert_eq!(active_npc_x, 11);
+                assert_eq!(active_npc_y, 22);
+            }
+            _ => panic!("expected SetQuestLog variant"),
+        }
+    }
+
+    #[test]
+    fn set_quest_log_truncates_to_sixteen_entries() {
+        let mut entries = Vec::new();
+        for i in 0..20u16 {
+            entries.push((i + 1, i, i));
+        }
+        let buf = encode_quest_log(&entries, 0, 0, 0, 0);
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetQuestLog { entries: out, .. } => {
+                assert_eq!(out.len(), 16);
+                assert_eq!(out[0].0, 1);
+                assert_eq!(out[15].0, 16);
+            }
+            _ => panic!("expected SetQuestLog variant"),
+        }
     }
 }

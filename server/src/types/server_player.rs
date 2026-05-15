@@ -82,6 +82,18 @@ pub struct ServerPlayer {
     /// Wire flags currently applied to the active weather, including the
     /// admin-override bit (`core::weather::WEATHER_FLAG_OVERRIDE`).
     pub weather_flags: u8,
+
+    /// NPC template ID of the quest the player has currently focused
+    /// (set via `CmdSetActiveQuest`). `0` = no quest focused. Transient,
+    /// not persisted.
+    pub active_quest_template_id: u16,
+    /// Last quest-log snapshot transmitted to this player. Used by
+    /// [`crate::player::quest_log::plr_send_quest_log`] to avoid resending
+    /// unchanged state every tick. Transient, not persisted.
+    pub last_sent_quest_log: Vec<(u16, u16, u16)>,
+    /// Last `active_quest_template_id` echoed back in an `SV_SETQUESTLOG`
+    /// packet. Transient, not persisted.
+    pub last_sent_active_quest: u16,
 }
 
 impl ServerPlayer {
@@ -133,6 +145,9 @@ impl ServerPlayer {
             weather_expire_tick: 0,
             weather_tint: [0; 4],
             weather_flags: 0,
+            active_quest_template_id: 0,
+            last_sent_quest_log: Vec::new(),
+            last_sent_active_quest: 0,
         }
     }
 

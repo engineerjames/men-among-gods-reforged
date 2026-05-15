@@ -1833,6 +1833,23 @@ pub fn plr_cmd_reset_talents(gs: &mut GameState, nr: usize) {
     send_set_char_talents(gs, nr);
 }
 
+/// Handler for [`core::client_commands::ClientCommandType::CmdSetActiveQuest`].
+///
+/// Reads the focused NPC template ID from `inbuf[1..3]` (little-endian
+/// `u16`) and stores it on the player so the next quest-log push echoes
+/// the new selection back. An immediate quest-log send is triggered so the
+/// client doesn't have to wait for the next regular tick.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `nr` - Player slot index issuing the command.
+pub fn plr_cmd_set_active_quest(gs: &mut GameState, nr: usize) {
+    let template_id = u16::from_le_bytes([gs.players[nr].inbuf[1], gs.players[nr].inbuf[2]]);
+    gs.players[nr].active_quest_template_id = template_id;
+    crate::player::quest_log::plr_send_quest_log(gs, nr);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
