@@ -315,11 +315,13 @@ impl Scene for NewAccountScene {
         let AppState {
             panning_background,
             gfx_cache,
+            text_engine,
             ..
         } = app_state;
         let mut ctx = RenderContext {
             canvas,
             gfx: gfx_cache,
+            text: text_engine,
         };
 
         panning_background.render(&mut ctx)?;

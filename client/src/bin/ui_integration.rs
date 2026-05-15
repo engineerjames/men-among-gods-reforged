@@ -36,6 +36,7 @@ use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
 use client::font_cache::{self, TextStyle};
 use client::gfx_cache::GraphicsCache;
+use client::text::{self, TextEngine};
 use client::types::log_message::{LogMessage, LogMessageColor};
 use client::ui::hud::button_bar::HudButtonBar;
 use client::ui::hud::chat_box::ChatBox;
@@ -130,6 +131,14 @@ fn main() -> Result<(), String> {
     let texture_creator = canvas.texture_creator();
 
     let mut gfx = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
+
+    // TrueType text engine (single static TTF context).
+    let ttf_ctx_static: &'static sdl2::ttf::Sdl2TtfContext =
+        Box::leak(Box::new(sdl2::ttf::init().map_err(|e| e.to_string())?));
+    let mut text_engine = TextEngine::new(ttf_ctx_static, &texture_creator, 1.0);
+    let fonts_dir = filepaths::get_fonts_directory();
+    text_engine.register_font(text::UI_REGULAR, fonts_dir.join("NotoSans-Regular.ttf"));
+    text_engine.register_font(text::UI_BOLD, fonts_dir.join("NotoSans-Bold.ttf"));
 
     // --- Instantiate every widget ----------------------------------------
 
@@ -580,6 +589,7 @@ fn main() -> Result<(), String> {
         let mut ctx = RenderContext {
             canvas: &mut canvas,
             gfx: &mut gfx,
+            text: &mut text_engine,
         };
 
         // Render base-layer widgets.

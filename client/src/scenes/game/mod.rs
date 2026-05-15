@@ -1540,6 +1540,7 @@ impl Scene for GameScene {
         // Split borrow: gfx_cache (mut) and player_state (ref) are separate fields.
         let AppState {
             ref mut gfx_cache,
+            ref mut text_engine,
             ref player_state,
             ref settings,
             ..
@@ -1598,6 +1599,7 @@ impl Scene for GameScene {
             let mut ctx = RenderContext {
                 canvas,
                 gfx: gfx_cache,
+                text: text_engine,
             };
             self.chat_box.render(&mut ctx)?;
             self.keyboard.render(&mut ctx)?;
@@ -1670,6 +1672,7 @@ impl Scene for GameScene {
             let mut ctx = RenderContext {
                 canvas,
                 gfx: gfx_cache,
+                text: text_engine,
             };
             if self.rank_sigil.is_visible() {
                 self.rank_sigil.render(&mut ctx)?;
@@ -1686,6 +1689,7 @@ impl Scene for GameScene {
             let mut ctx = RenderContext {
                 canvas,
                 gfx: gfx_cache,
+                text: text_engine,
             };
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
@@ -1708,6 +1712,7 @@ impl Scene for GameScene {
             let mut ctx = RenderContext {
                 canvas,
                 gfx: gfx_cache,
+                text: text_engine,
             };
             self.look_panel.render(&mut ctx)?;
         }
@@ -1738,6 +1743,7 @@ impl Scene for GameScene {
             let mut ctx = RenderContext {
                 canvas,
                 gfx: gfx_cache,
+                text: text_engine,
             };
             self.shop_panel.render(&mut ctx)?;
         }
@@ -1780,6 +1786,7 @@ impl Scene for GameScene {
             let mut ctx = RenderContext {
                 canvas,
                 gfx: gfx_cache,
+                text: text_engine,
             };
             if let Some(ref mut dialog) = self.cert_dialog {
                 dialog.render(&mut ctx)?;

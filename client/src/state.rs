@@ -5,6 +5,7 @@ use crate::{
     player_state::PlayerState,
     preferences::{DisplayMode, Settings},
     sfx_cache::SoundCache,
+    text::TextEngine,
     ui::visuals::panning_background::PanningBackground,
 };
 
@@ -65,6 +66,9 @@ impl ApiTokenState {
 /// [`TextureCreator`](sdl2::render::TextureCreator) that lives in `main()`.
 pub struct AppState<'tc> {
     pub gfx_cache: GraphicsCache<'tc>,
+    /// TrueType text rendering engine. Borrows the static SDL TTF context
+    /// (set up in `main`) and the same `TextureCreator` as `gfx_cache`.
+    pub text_engine: TextEngine<'static, 'tc>,
     pub sfx_cache: SoundCache,
     pub api: ApiTokenState,
     pub network: Option<NetworkRuntime>,
@@ -95,6 +99,7 @@ impl<'tc> AppState<'tc> {
     ///
     /// # Arguments
     /// * `gfx_cache` - Pre-loaded sprite / texture cache.
+    /// * `text_engine` - TrueType text rendering engine.
     /// * `sfx_cache` - Pre-loaded sound effect and music cache.
     /// * `api` - Initialized API token state.
     /// * `panning_background` - Pre-built panning background for pre-game scenes.
@@ -104,6 +109,7 @@ impl<'tc> AppState<'tc> {
     /// * A new `AppState` ready for use in the scene manager.
     pub fn new(
         gfx_cache: GraphicsCache<'tc>,
+        text_engine: TextEngine<'static, 'tc>,
         sfx_cache: SoundCache,
         api: ApiTokenState,
         panning_background: PanningBackground,
@@ -111,6 +117,7 @@ impl<'tc> AppState<'tc> {
     ) -> Self {
         Self {
             gfx_cache,
+            text_engine,
             sfx_cache,
             api,
             network: None,

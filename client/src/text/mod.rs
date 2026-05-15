@@ -198,7 +198,7 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
 
     /// Converts a logical point size to its DPI-scaled pixel size.
     fn size_pt_to_px(&self, size_pt: u16) -> u16 {
-        ((size_pt as f32) * self.dpi_scale).round().max(1.0) as u16
+        (f32::from(size_pt) * self.dpi_scale).round().max(1.0) as u16
     }
 
     /// Returns the loaded `Font` for `(id, size_pt)`, loading it on demand.
@@ -629,7 +629,7 @@ mod tests {
         // Line widths: "abc def" = 7*6 = 42, "abc def ghi" = 11*6 = 66.
         // With max_width = 50 we expect ["abc def", "ghi"].
         let lines = bitmap_wrap_for_test("abc def ghi", 50);
-        assert_eq!(lines, vec!["abc def".to_string(), "ghi".to_string()]);
+        assert_eq!(lines, vec!["abc def".to_owned(), "ghi".to_owned()]);
     }
 
     #[test]
@@ -637,7 +637,7 @@ mod tests {
         // "abcdefgh" = 8*6 = 48. With max_width = 30 (=5 chars), expect
         // ["abcde", "fgh"].
         let lines = bitmap_wrap_for_test("abcdefgh", 30);
-        assert_eq!(lines, vec!["abcde".to_string(), "fgh".to_string()]);
+        assert_eq!(lines, vec!["abcde".to_owned(), "fgh".to_owned()]);
     }
 
     #[test]

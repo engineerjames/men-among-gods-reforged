@@ -12,6 +12,7 @@ use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
+use client::text::{self, TextEngine};
 use client::ui::visuals::panning_background::PanningBackground;
 use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
@@ -113,6 +114,17 @@ fn main() -> Result<(), String> {
     log::info!("Initializing graphics and sound caches (audio_available={audio_available})...");
     let texture_creator = canvas.texture_creator();
     let gfx_cache = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
+
+    // SDL TTF context: leak to 'static so AppState only needs the existing
+    // 'tc lifetime (matching gfx_cache). Single-process resource that lives
+    // for the entire run, so leaking is acceptable.
+    let ttf_ctx_static: &'static sdl2::ttf::Sdl2TtfContext =
+        Box::leak(Box::new(sdl2::ttf::init().map_err(|e| e.to_string())?));
+    let mut text_engine = TextEngine::new(ttf_ctx_static, &texture_creator, 1.0);
+    let fonts_dir = filepaths::get_fonts_directory();
+    text_engine.register_font(text::UI_REGULAR, fonts_dir.join("NotoSans-Regular.ttf"));
+    text_engine.register_font(text::UI_BOLD, fonts_dir.join("NotoSans-Bold.ttf"));
+
     let sfx_cache = if audio_available {
         SoundCache::new(
             filepaths::get_sfx_directory(),
@@ -147,6 +159,7 @@ fn main() -> Result<(), String> {
 
     let mut app_state = AppState::new(
         gfx_cache,
+        text_engine,
         sfx_cache,
         api_state,
         panning_background,
