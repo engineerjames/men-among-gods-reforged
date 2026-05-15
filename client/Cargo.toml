@@ -16,7 +16,7 @@ path = "src/bin/ui_integration.rs"
 mag_core = { path = "../core", package = "core" }
 # SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –
 # no system SDL2 installation required.
-sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "use-vcpkg", "static-link"] }
+sdl2 = { version = "0.38.0", default-features = false, features = ["gfx", "image", "mixer", "ttf", "use-vcpkg", "static-link"] }
 log.workspace = true
 log4rs.workspace = true
 zip.workspace = true
@@ -39,8 +39,8 @@ git = "https://github.com/microsoft/vcpkg"
 rev = "2026.01.16"
 
 [package.metadata.vcpkg.target]
-x86_64-pc-windows-msvc    = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx"] }
-x86_64-unknown-linux-gnu  = { triplet = "x64-linux",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx"] }
-aarch64-unknown-linux-gnu = { triplet = "arm64-linux",            dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx"] }
-x86_64-apple-darwin       = { triplet = "x64-osx",                dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx"] }
-aarch64-apple-darwin      = { triplet = "arm64-osx",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx"] }
+x86_64-pc-windows-msvc    = { triplet = "x64-windows-static-md", dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
+x86_64-unknown-linux-gnu  = { triplet = "x64-linux",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
+aarch64-unknown-linux-gnu = { triplet = "arm64-linux",            dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
+x86_64-apple-darwin       = { triplet = "x64-osx",                dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
+aarch64-apple-darwin      = { triplet = "arm64-osx",              dependencies = ["sdl2", "sdl2-image", "sdl2-mixer[mpg123]", "sdl2-gfx", "sdl2-ttf"] }
