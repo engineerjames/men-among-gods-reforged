@@ -32,3 +32,41 @@ cargo run -p client
 
 Controls:
 - `Esc` or close window to quit.
+
+## Text rendering
+
+The client supports two text-rendering paths that coexist:
+
+- **Legacy bitmap fonts** (`client/src/font_cache.rs`) — fixed-pitch glyphs
+  packed in the gfx atlas. Used by the bulk of the existing UI. Constants:
+  `BITMAP_GLYPH_H = 10`, `BITMAP_GLYPH_ADVANCE = 6`.
+- **TrueType fonts** (`client/src/text/mod.rs`) — SDL2_ttf-backed engine that
+  rasterises glyphs once per `(font, size, char)` and tints/alphas them at
+  draw time. The shipped faces are **Noto Sans Regular/Bold** under
+  `client/assets/fonts/` (SIL OFL 1.1, see `OFL.txt`).
+
+To draw TrueType text from a widget you already have a `RenderContext`:
+
+```rust
+use crate::text::{self, FontHandle};
+let handle = FontHandle::ttf(text::UI_BOLD, 18);
+text::draw_text(
+    ctx.canvas,
+    ctx.text,
+    ctx.gfx,
+    &handle,
+    "Hello",
+    x,
+    y,
+    text::Style::centered(),
+)?;
+```
+
+`FontHandle::bitmap(id)` keeps the legacy path available; the engine measures
+and renders both kinds through the same free functions (`text::text_size`,
+`text::line_height`, `text::draw_text`, `text::draw_wrapped_text`).
+
+The `Sdl2TtfContext` is created once in `main` and leaked to `'static`, so
+the new `text_engine` field on `AppState` only carries the existing texture
+lifetime. Logical coordinates are unchanged (1920×1080); the engine handles
+DPI scaling internally.
