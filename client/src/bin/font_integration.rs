@@ -64,6 +64,7 @@ fn main() -> Result<(), String> {
         filepaths::get_fonts_directory(),
         1.0,
     );
+    text_engine.sync_dpi_scale_from_canvas(&canvas)?;
 
     let stems: Vec<String> = text_engine.ttf_stems().to_vec();
     if stems.is_empty() {

@@ -24,7 +24,7 @@ use std::path::PathBuf;
 
 use sdl2::pixels::Color;
 use sdl2::render::{Canvas, Texture, TextureCreator};
-use sdl2::ttf::{Font, Sdl2TtfContext};
+use sdl2::ttf::{Font, Hinting, Sdl2TtfContext};
 use sdl2::video::{Window, WindowContext};
 
 /// Sprite ID of the first bitmap font sheet (yellow/default).
@@ -613,6 +613,40 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
         self.dpi_scale
     }
 
+    /// Auto-detects the canvas's logical-to-physical pixel ratio and uses
+    /// it as the DPI scale.
+    ///
+    /// On a HiDPI display with `allow_highdpi` and a logical size set,
+    /// the renderer scales destination rects up from logical to physical
+    /// pixels. Rasterizing TTF glyphs at only the logical size and letting
+    /// SDL upscale them produces blurry text; calling this method picks
+    /// the scale factor that lets [`draw_text_handle`] rasterize at full
+    /// physical resolution and blit 1:1 to the screen.
+    ///
+    /// Call this once after creating the canvas (and again whenever the
+    /// canvas's logical size changes).
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - Canvas whose output / logical sizes are sampled.
+    ///
+    /// # Returns
+    ///
+    /// * The resulting DPI scale (clamped to >= 0.1), or an SDL error.
+    pub fn sync_dpi_scale_from_canvas(&mut self, canvas: &Canvas<Window>) -> Result<f32, String> {
+        let (out_w, out_h) = canvas.output_size()?;
+        let (logical_w, logical_h) = canvas.logical_size();
+        let scale = if logical_w > 0 && logical_h > 0 {
+            (out_w as f32 / logical_w as f32).max(out_h as f32 / logical_h as f32)
+        } else {
+            // Logical size disabled: caller draws in raw physical pixels,
+            // so no extra rasterization scaling is required.
+            1.0
+        };
+        self.set_dpi_scale(scale);
+        Ok(self.dpi_scale)
+    }
+
     /// Converts a logical point size to its DPI-scaled pixel size.
     fn size_pt_to_px(&self, size_pt: u16) -> u16 {
         (f32::from(size_pt) * self.dpi_scale).round().max(1.0) as u16
@@ -627,7 +661,7 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
                 .get(&id)
                 .ok_or_else(|| format!("font_cache: TtfId({}) is not registered", id.0))?
                 .clone();
-            let font = self.ttf_ctx.load_font(&path, size_px).map_err(|e| {
+            let mut font = self.ttf_ctx.load_font(&path, size_px).map_err(|e| {
                 format!(
                     "font_cache: failed to load {} @ {}px: {}",
                     path.display(),
@@ -635,6 +669,10 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
                     e
                 )
             })?;
+            // Light hinting keeps small sizes crisp without the heavy
+            // pixel-snapping of full hinting (which distorts glyph
+            // proportions at large sizes).
+            font.set_hinting(Hinting::Light);
             self.loaded_fonts.insert((id, size_px), font);
         }
         Ok(&self.loaded_fonts[&(id, size_px)])
@@ -857,14 +895,21 @@ fn draw_ttf_text_impl(
     alpha: Option<u8>,
     scale: f32,
 ) -> Result<(), String> {
+    // Glyph textures are rasterized at `size_px = size_pt * scale` physical
+    // pixels, but the caller passes `x`/`y` in their canvas coordinate space
+    // (logical units when `set_logical_size` is active, or raw pixels when
+    // it isn't). To blit the high-resolution texture 1:1 against the screen,
+    // we keep the destination rect in caller coordinates and shrink its
+    // width/height by `scale` so SDL's logical-to-physical scaling restores
+    // them to the full `size_px` on the backbuffer.
+    let inv_scale = 1.0_f32 / scale.max(0.1);
     let size_px = engine.size_pt_to_px(size_pt);
-    let mut cursor_x_px: f32 = (x as f32) * scale;
-    let y_px = ((y as f32) * scale).round() as i32;
+    let mut cursor_x: f32 = x as f32;
     let mut first_error: Option<String> = None;
 
     for ch in text.chars() {
         if engine.ensure_glyph(id, size_pt, ch)?.is_none() {
-            cursor_x_px += scale * (BITMAP_GLYPH_ADVANCE as f32);
+            cursor_x += BITMAP_GLYPH_ADVANCE as f32;
             continue;
         }
 
@@ -877,14 +922,14 @@ fn draw_ttf_text_impl(
             .glyph_cache
             .get_mut(&key)
             .expect("glyph just ensured to be cached");
-        let w_px = glyph.width_px;
-        let h_px = glyph.height_px;
-        let dst_x = cursor_x_px.round() as i32;
-        cursor_x_px += w_px as f32;
+        let w_caller = ((glyph.width_px as f32) * inv_scale).round().max(1.0) as u32;
+        let h_caller = ((glyph.height_px as f32) * inv_scale).round().max(1.0) as u32;
+        let dst_x = cursor_x.round() as i32;
+        cursor_x += (glyph.width_px as f32) * inv_scale;
 
         glyph.texture.set_color_mod(color.r, color.g, color.b);
         glyph.texture.set_alpha_mod(alpha.unwrap_or(255));
-        let dst = sdl2::rect::Rect::new(dst_x, y_px, w_px, h_px);
+        let dst = sdl2::rect::Rect::new(dst_x, y, w_caller, h_caller);
         let res = canvas.copy(&glyph.texture, None, Some(dst));
         glyph.texture.set_color_mod(255, 255, 255);
         glyph.texture.set_alpha_mod(255);

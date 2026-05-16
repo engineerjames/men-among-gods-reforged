@@ -120,12 +120,13 @@ fn main() -> Result<(), String> {
     // for the entire run, so leaking is acceptable.
     let ttf_ctx_static: &'static sdl2::ttf::Sdl2TtfContext =
         Box::leak(Box::new(sdl2::ttf::init().map_err(|e| e.to_string())?));
-    let text_engine = TextEngine::new(
+    let mut text_engine = TextEngine::new(
         ttf_ctx_static,
         &texture_creator,
         filepaths::get_fonts_directory(),
         1.0,
     );
+    text_engine.sync_dpi_scale_from_canvas(&canvas)?;
 
     let sfx_cache = if audio_available {
         SoundCache::new(
