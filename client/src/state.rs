@@ -4,8 +4,8 @@ use crate::{
     platform::PlatformProfile,
     player_state::PlayerState,
     preferences::{DisplayMode, Settings},
+    font_cache::TextEngine,
     sfx_cache::SoundCache,
-    text::TextEngine,
     ui::visuals::panning_background::PanningBackground,
 };
 

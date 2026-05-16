@@ -12,6 +12,10 @@ path = "src/main.rs"
 name = "ui-integration"
 path = "src/bin/ui_integration.rs"
 
+[[bin]]
+name = "font-integration"
+path = "src/bin/font_integration.rs"
+
 [dependencies]
 mag_core = { path = "../core", package = "core" }
 # SDL2 is sourced via cargo-vcpkg and statically linked on all platforms –

@@ -16,8 +16,8 @@ pub mod widgets;
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};
 
 use crate::{
+    font_cache::TextEngine,
     gfx_cache::GraphicsCache,
-    text::TextEngine,
     ui::widget::{KeyModifiers, MouseButton as UiMouseButton, UiEvent},
 };
 

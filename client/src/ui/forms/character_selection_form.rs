@@ -13,7 +13,6 @@ use sdl2::render::BlendMode;
 
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use crate::font_cache;
-use crate::text::{self, FontHandle};
 use crate::ui::RenderContext;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
@@ -432,11 +431,11 @@ impl Widget for CharacterSelectionForm {
 
         // Title (TrueType, bold).
         let title = "Character Selection";
-        let title_handle = FontHandle::ttf(text::UI_BOLD, 20);
+        let title_handle = ctx.text.handle("MatrixSansVideo-Regular", 20);
         let title_cx = self.bounds.x + self.bounds.width as i32 / 2;
         let title_y = self.bounds.y + 10;
-        let title_line_h = text::line_height(ctx.text, &title_handle);
-        text::draw_text(
+        let title_line_h = font_cache::line_height(ctx.text, &title_handle);
+        font_cache::draw_text_handle(
             ctx.canvas,
             ctx.text,
             ctx.gfx,
@@ -444,7 +443,7 @@ impl Widget for CharacterSelectionForm {
             title,
             title_cx,
             title_y,
-            text::Style::centered(),
+            font_cache::TextStyle::centered(),
         )?;
 
         let mut cursor_y = title_y + title_line_h as i32 + 6;

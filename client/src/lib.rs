@@ -19,6 +19,5 @@ pub mod preferences;
 pub mod scenes;
 pub mod sfx_cache;
 pub mod state;
-pub mod text;
 pub mod types;
 pub mod ui;

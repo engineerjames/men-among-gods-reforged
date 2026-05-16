@@ -6,13 +6,13 @@ use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 use sdl2::video::FullscreenType;
 
+use client::font_cache::TextEngine;
 use client::gfx_cache::GraphicsCache;
 use client::platform::PlatformProfile;
 use client::preferences::DisplayMode;
 use client::scenes::scene::SceneType;
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
-use client::text::{self, TextEngine};
 use client::ui::visuals::panning_background::PanningBackground;
 use client::ui::widget::Bounds;
 use client::{constants, dpi_scaling, filepaths, hosts, preferences, scenes};
@@ -120,10 +120,12 @@ fn main() -> Result<(), String> {
     // for the entire run, so leaking is acceptable.
     let ttf_ctx_static: &'static sdl2::ttf::Sdl2TtfContext =
         Box::leak(Box::new(sdl2::ttf::init().map_err(|e| e.to_string())?));
-    let mut text_engine = TextEngine::new(ttf_ctx_static, &texture_creator, 1.0);
-    let fonts_dir = filepaths::get_fonts_directory();
-    text_engine.register_font(text::UI_REGULAR, fonts_dir.join("NotoSans-Regular.ttf"));
-    text_engine.register_font(text::UI_BOLD, fonts_dir.join("NotoSans-Bold.ttf"));
+    let text_engine = TextEngine::new(
+        ttf_ctx_static,
+        &texture_creator,
+        filepaths::get_fonts_directory(),
+        1.0,
+    );
 
     let sfx_cache = if audio_available {
         SoundCache::new(
