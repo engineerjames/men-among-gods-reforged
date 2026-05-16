@@ -1,10 +1,10 @@
 use crate::{
+    font_cache::TextEngine,
     gfx_cache::GraphicsCache,
     network::NetworkRuntime,
     platform::PlatformProfile,
     player_state::PlayerState,
     preferences::{DisplayMode, Settings},
-    font_cache::TextEngine,
     sfx_cache::SoundCache,
     ui::visuals::panning_background::PanningBackground,
 };
