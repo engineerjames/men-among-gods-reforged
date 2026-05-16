@@ -429,24 +429,21 @@ impl Widget for CharacterSelectionForm {
         ctx.canvas.set_draw_color(Color::RGBA(100, 100, 160, 200));
         ctx.canvas.draw_rect(panel_rect)?;
 
-        // Title (TrueType, bold).
+        // Title.
         let title = "Character Selection";
-        let title_handle = ctx.text.handle("MatrixSansVideo-Regular", 20);
         let title_cx = self.bounds.x + self.bounds.width as i32 / 2;
         let title_y = self.bounds.y + 10;
-        let title_line_h = font_cache::line_height(ctx.text, &title_handle);
-        font_cache::draw_text_handle(
+        font_cache::draw_text(
             ctx.canvas,
-            ctx.text,
             ctx.gfx,
-            &title_handle,
+            FONT,
             title,
             title_cx,
             title_y,
             font_cache::TextStyle::centered(),
         )?;
 
-        let mut cursor_y = title_y + title_line_h as i32 + 6;
+        let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 6;
 
         // Username label.
         if let Some(ref username) = self.username {
