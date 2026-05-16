@@ -80,5 +80,6 @@ Every public function, struct, enum, trait, and constant **must** have a `///` d
 - KeyDB game-data persistence: `server/src/keydb/store.rs`, `server/src/keydb/background_saver.rs`
 - Auth/account routes and key schema assumptions: `api/src/routes.rs`, `api/src/pipelines.rs`, `api/README.md`
 - Client state machine and scene management: `client/src/main.rs`, `client/src/network/mod.rs`
+- Client text rendering (legacy bitmap + new TrueType): `client/src/font_cache.rs`, `client/src/text/mod.rs`
 - Release packaging/CI: `.github/workflows/rust.yml`, `.github/workflows/release.yml`, `pipelines/README.md`
 - World snapshot tool: `server/src/bin/world_snapshot.rs`, `server/src/keydb/snapshot.rs`

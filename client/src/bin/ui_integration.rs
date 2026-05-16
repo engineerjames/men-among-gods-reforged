@@ -34,7 +34,7 @@ use mag_core::{skills, stat_buffer::StatisticsBuffer};
 
 use client::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 use client::filepaths;
-use client::font_cache::{self, TextStyle};
+use client::font_cache::{self, TextEngine, TextStyle};
 use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
 use client::ui::hud::button_bar::HudButtonBar;
@@ -130,6 +130,17 @@ fn main() -> Result<(), String> {
     let texture_creator = canvas.texture_creator();
 
     let mut gfx = GraphicsCache::new(filepaths::get_gfx_zipfile(), &texture_creator);
+
+    // TrueType text engine (single static TTF context).
+    let ttf_ctx_static: &'static sdl2::ttf::Sdl2TtfContext =
+        Box::leak(Box::new(sdl2::ttf::init().map_err(|e| e.to_string())?));
+    let mut text_engine = TextEngine::new(
+        ttf_ctx_static,
+        &texture_creator,
+        filepaths::get_fonts_directory(),
+        1.0,
+    );
+    text_engine.sync_dpi_scale_from_canvas(&canvas)?;
 
     // --- Instantiate every widget ----------------------------------------
 
@@ -581,6 +592,7 @@ fn main() -> Result<(), String> {
         let mut ctx = RenderContext {
             canvas: &mut canvas,
             gfx: &mut gfx,
+            text: &mut text_engine,
         };
 
         // Render base-layer widgets.

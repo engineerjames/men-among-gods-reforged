@@ -61,3 +61,13 @@ pub fn get_music_directory() -> PathBuf {
     log::info!("Using music directory at: {}", music_directory.display());
     music_directory
 }
+
+/// Returns the path to the directory containing TrueType font files.
+///
+/// # Returns
+/// * `PathBuf` pointing to `<asset_dir>/fonts/`.
+pub fn get_fonts_directory() -> PathBuf {
+    let fonts_directory = get_asset_directory().join("fonts");
+    log::info!("Using fonts directory at: {}", fonts_directory.display());
+    fonts_directory
+}
