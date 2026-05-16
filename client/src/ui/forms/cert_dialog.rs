@@ -219,17 +219,20 @@ impl Widget for CertDialog {
         let mut y = self.bounds.y + PAD;
         let x = self.bounds.x + PAD;
 
-        // Title
-        font_cache::draw_text(
+        // Title (TrueType, bold).
+        let title_handle = ctx.text.handle("MatrixSansVideo-Regular", 18);
+        let title_line_h = font_cache::line_height(ctx.text, &title_handle);
+        font_cache::draw_text_handle(
             ctx.canvas,
+            ctx.text,
             ctx.gfx,
-            FONT,
+            &title_handle,
             "Server Certificate Changed",
             x,
             y,
             font_cache::TextStyle::tinted(Color::RGB(255, 200, 200)),
         )?;
-        y += font_cache::BITMAP_GLYPH_H as i32 + 6;
+        y += title_line_h as i32 + 6;
 
         // Warning
         font_cache::draw_text(

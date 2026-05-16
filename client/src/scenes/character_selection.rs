@@ -509,12 +509,14 @@ impl Scene for CharacterSelectionScene {
         let AppState {
             panning_background,
             gfx_cache,
+            text_engine,
             ..
         } = app_state;
 
         let mut render_ctx = RenderContext {
             canvas,
             gfx: gfx_cache,
+            text: text_engine,
         };
 
         panning_background.render(&mut render_ctx)?;

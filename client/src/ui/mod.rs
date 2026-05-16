@@ -16,14 +16,15 @@ pub mod widgets;
 use sdl2::{event::Event, mouse::MouseButton, render::Canvas, video::Window};
 
 use crate::{
+    font_cache::TextEngine,
     gfx_cache::GraphicsCache,
     ui::widget::{KeyModifiers, MouseButton as UiMouseButton, UiEvent},
 };
 
 /// Mutable rendering context passed to [`Widget::render`].
 ///
-/// Bundles the SDL2 canvas and the sprite/texture cache so that widgets can
-/// draw without needing direct access to `AppState`.
+/// Bundles the SDL2 canvas, sprite/texture cache, and TrueType text engine
+/// so that widgets can draw without needing direct access to `AppState`.
 ///
 /// Two lifetimes avoid the `&'a mut T<'a>` invariance footgun:
 /// * `'f` — frame/function borrow (how long this context reference lives).
@@ -33,6 +34,9 @@ pub struct RenderContext<'f, 'tc> {
     pub canvas: &'f mut Canvas<Window>,
     /// The lazy-loading sprite cache (fonts, sprites, minimap texture).
     pub gfx: &'f mut GraphicsCache<'tc>,
+    /// TrueType text rendering engine. The `'static` first lifetime reflects
+    /// that the underlying `Sdl2TtfContext` is leaked once at startup.
+    pub text: &'f mut TextEngine<'static, 'tc>,
 }
 
 /// Translate an SDL2 event into a UI-framework `UiEvent`, if applicable.
