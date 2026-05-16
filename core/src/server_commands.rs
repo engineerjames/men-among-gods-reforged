@@ -81,11 +81,14 @@ pub enum ServerCommandType {
     SetWeather = 76,
     /// Per-player quest log snapshot.
     ///
-    /// Wire format: opcode (1) + count (1) + 16 × `[u16 npc_template_id,
-    /// u16 npc_x, u16 npc_y]` (96) + active_template_id (u16, 2)
-    /// + active_step_idx (u8, 1) + active_npc_x (u16, 2) + active_npc_y
-    /// (u16, 2) = **105 bytes total**. Entries beyond `count` are zero
-    /// padding. `active_template_id == 0` means "no active quest".
+    /// Wire format: opcode (1) + count (1) + 16 × entry (48 bytes each)
+    /// + active_template_id (u16, 2) + active_step_idx (u8, 1)
+    /// + active_npc_x (u16, 2) + active_npc_y (u16, 2) = **777 bytes total**.
+    ///
+    /// Each entry is laid out as: `[u16 npc_template_id, u16 npc_x, u16 npc_y,
+    /// u16 item_template_id, [u8; 16] npc_name, [u8; 24] item_name]` with the
+    /// name buffers NUL-padded. Entries beyond `count` are zero padding.
+    /// `active_template_id == 0` means "no active quest".
     SetQuestLog = 77,
     SetMap = 128,
 }
@@ -197,7 +200,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharDir => 2,
             ServerCommandType::SetCharTalents => 26,
             ServerCommandType::SetWeather => 10,
-            ServerCommandType::SetQuestLog => 105,
+            ServerCommandType::SetQuestLog => 777,
             ServerCommandType::SetCharPts => 13,
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
@@ -316,6 +319,47 @@ impl From<u8> for ServerCommandType {
             }
         }
     }
+}
+
+/// Maximum NPC name length carried in a [`QuestLogEntry`] (NUL-padded).
+pub const QUEST_LOG_NPC_NAME_LEN: usize = 16;
+
+/// Maximum item name length carried in a [`QuestLogEntry`] (NUL-padded).
+pub const QUEST_LOG_ITEM_NAME_LEN: usize = 24;
+
+/// On-wire size of a single quest log entry inside `SetQuestLog`.
+///
+/// Layout: `npc_template_id (u16) + npc_x (u16) + npc_y (u16) +
+/// item_template_id (u16) + npc_name ([u8; 16]) + item_name ([u8; 24])`
+/// = 48 bytes.
+pub const QUEST_LOG_ENTRY_LEN: usize =
+    2 + 2 + 2 + 2 + QUEST_LOG_NPC_NAME_LEN + QUEST_LOG_ITEM_NAME_LEN;
+
+/// Maximum number of entries carried in a single `SetQuestLog` packet.
+pub const QUEST_LOG_MAX_ENTRIES: usize = 16;
+
+/// Total `SetQuestLog` packet size in bytes.
+///
+/// Layout: opcode (1) + count (1) + 16 × entry (48) + active_template_id
+/// (u16) + active_step_idx (u8) + active_npc_x (u16) + active_npc_y (u16).
+pub const QUEST_LOG_PACKET_LEN: usize =
+    2 + QUEST_LOG_MAX_ENTRIES * QUEST_LOG_ENTRY_LEN + 2 + 1 + 2 + 2;
+
+/// One quest entry inside a [`ServerCommandData::SetQuestLog`] payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuestLogEntry {
+    /// Template ID of the NPC quest giver.
+    pub npc_template_id: u16,
+    /// World tile X of the NPC quest giver.
+    pub npc_x: u16,
+    /// World tile Y of the NPC quest giver.
+    pub npc_y: u16,
+    /// Template ID of the item the NPC wants (0 when unknown).
+    pub item_template_id: u16,
+    /// Display name of the NPC quest giver (already trimmed of NUL padding).
+    pub npc_name: String,
+    /// Display name of the wanted item (already trimmed of NUL padding).
+    pub item_name: String,
 }
 
 /// Parsed payload variants for each [`ServerCommandType`].
@@ -512,14 +556,15 @@ pub enum ServerCommandData {
     },
     /// Per-player quest log snapshot.
     ///
-    /// `entries` lists up to 16 active quest givers as
-    /// `(npc_template_id, npc_x, npc_y)` triples. `active_template_id`
-    /// is the NPC the player has currently focused (0 = none).
-    /// `active_step_idx` is the current step index for the active quest;
-    /// `active_npc_x` / `active_npc_y` echo the active NPC's tile so the
-    /// minimap can pin a "return to giver" step without a separate lookup.
+    /// `entries` lists up to 16 active quest givers, including the NPC name,
+    /// the template ID of the wanted item and the item's name (already
+    /// resolved server-side for display). `active_template_id` is the NPC the
+    /// player has currently focused (0 = none). `active_step_idx` is the
+    /// current step index for the active quest; `active_npc_x` /
+    /// `active_npc_y` echo the active NPC's tile so the minimap can pin a
+    /// "return to giver" step without a separate lookup.
     SetQuestLog {
-        entries: Vec<(u16, u16, u16)>,
+        entries: Vec<QuestLogEntry>,
         active_template_id: u16,
         active_step_idx: u8,
         active_npc_x: u16,
@@ -1131,21 +1176,35 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             },
         )),
         77 => {
-            let count = (*bytes.get(1)?).min(16) as usize;
+            let count = (*bytes.get(1)?).min(QUEST_LOG_MAX_ENTRIES as u8) as usize;
             let mut entries = Vec::with_capacity(count);
             for i in 0..count {
-                let off = 2 + i * 6;
-                let template = read_u16(bytes, off)?;
-                let x = read_u16(bytes, off + 2)?;
-                let y = read_u16(bytes, off + 4)?;
-                entries.push((template, x, y));
+                let off = 2 + i * QUEST_LOG_ENTRY_LEN;
+                let npc_template_id = read_u16(bytes, off)?;
+                let npc_x = read_u16(bytes, off + 2)?;
+                let npc_y = read_u16(bytes, off + 4)?;
+                let item_template_id = read_u16(bytes, off + 6)?;
+                let npc_name_slice = bytes.get(off + 8..off + 8 + QUEST_LOG_NPC_NAME_LEN)?;
+                let item_name_slice = bytes.get(
+                    off + 8 + QUEST_LOG_NPC_NAME_LEN
+                        ..off + 8 + QUEST_LOG_NPC_NAME_LEN + QUEST_LOG_ITEM_NAME_LEN,
+                )?;
+                entries.push(QuestLogEntry {
+                    npc_template_id,
+                    npc_x,
+                    npc_y,
+                    item_template_id,
+                    npc_name: c_string_to_str(npc_name_slice).to_owned(),
+                    item_name: c_string_to_str(item_name_slice).to_owned(),
+                });
             }
             // Trailing fields sit immediately after the fixed 16-entry slot
-            // table (16 * 6 = 96 bytes), starting at byte 98.
-            let active_template_id = read_u16(bytes, 98)?;
-            let active_step_idx = *bytes.get(100)?;
-            let active_npc_x = read_u16(bytes, 101)?;
-            let active_npc_y = read_u16(bytes, 103)?;
+            // table.
+            let trailer_off = 2 + QUEST_LOG_MAX_ENTRIES * QUEST_LOG_ENTRY_LEN;
+            let active_template_id = read_u16(bytes, trailer_off)?;
+            let active_step_idx = *bytes.get(trailer_off + 2)?;
+            let active_npc_x = read_u16(bytes, trailer_off + 3)?;
+            let active_npc_y = read_u16(bytes, trailer_off + 5)?;
             Some((
                 ServerCommandType::SetQuestLog,
                 ServerCommandData::SetQuestLog {
@@ -1399,27 +1458,47 @@ mod tests {
 
     /// Encode a quest-log packet identically to the server's helper.
     fn encode_quest_log(
-        entries: &[(u16, u16, u16)],
+        entries: &[QuestLogEntry],
         active_template_id: u16,
         active_step_idx: u8,
         active_npc_x: u16,
         active_npc_y: u16,
-    ) -> [u8; 105] {
-        let mut buf = [0u8; 105];
+    ) -> [u8; QUEST_LOG_PACKET_LEN] {
+        let mut buf = [0u8; QUEST_LOG_PACKET_LEN];
         buf[0] = ServerCommandType::SetQuestLog as u8;
-        let count = entries.len().min(16) as u8;
+        let count = entries.len().min(QUEST_LOG_MAX_ENTRIES) as u8;
         buf[1] = count;
-        for (i, (t, x, y)) in entries.iter().take(16).enumerate() {
-            let off = 2 + i * 6;
-            buf[off..off + 2].copy_from_slice(&t.to_le_bytes());
-            buf[off + 2..off + 4].copy_from_slice(&x.to_le_bytes());
-            buf[off + 4..off + 6].copy_from_slice(&y.to_le_bytes());
+        for (i, e) in entries.iter().take(QUEST_LOG_MAX_ENTRIES).enumerate() {
+            let off = 2 + i * QUEST_LOG_ENTRY_LEN;
+            buf[off..off + 2].copy_from_slice(&e.npc_template_id.to_le_bytes());
+            buf[off + 2..off + 4].copy_from_slice(&e.npc_x.to_le_bytes());
+            buf[off + 4..off + 6].copy_from_slice(&e.npc_y.to_le_bytes());
+            buf[off + 6..off + 8].copy_from_slice(&e.item_template_id.to_le_bytes());
+            let npc_bytes = e.npc_name.as_bytes();
+            let n = npc_bytes.len().min(QUEST_LOG_NPC_NAME_LEN - 1);
+            buf[off + 8..off + 8 + n].copy_from_slice(&npc_bytes[..n]);
+            let item_bytes = e.item_name.as_bytes();
+            let m = item_bytes.len().min(QUEST_LOG_ITEM_NAME_LEN - 1);
+            let item_off = off + 8 + QUEST_LOG_NPC_NAME_LEN;
+            buf[item_off..item_off + m].copy_from_slice(&item_bytes[..m]);
         }
-        buf[98..100].copy_from_slice(&active_template_id.to_le_bytes());
-        buf[100] = active_step_idx;
-        buf[101..103].copy_from_slice(&active_npc_x.to_le_bytes());
-        buf[103..105].copy_from_slice(&active_npc_y.to_le_bytes());
+        let trailer_off = 2 + QUEST_LOG_MAX_ENTRIES * QUEST_LOG_ENTRY_LEN;
+        buf[trailer_off..trailer_off + 2].copy_from_slice(&active_template_id.to_le_bytes());
+        buf[trailer_off + 2] = active_step_idx;
+        buf[trailer_off + 3..trailer_off + 5].copy_from_slice(&active_npc_x.to_le_bytes());
+        buf[trailer_off + 5..trailer_off + 7].copy_from_slice(&active_npc_y.to_le_bytes());
         buf
+    }
+
+    fn make_entry(npc_template_id: u16, x: u16, y: u16, item_template_id: u16) -> QuestLogEntry {
+        QuestLogEntry {
+            npc_template_id,
+            npc_x: x,
+            npc_y: y,
+            item_template_id,
+            npc_name: format!("npc{npc_template_id}"),
+            item_name: format!("item{item_template_id}"),
+        }
     }
 
     #[test]
@@ -1428,11 +1507,11 @@ mod tests {
     }
 
     #[test]
-    fn set_quest_log_expected_length_is_105() {
+    fn set_quest_log_expected_length_matches_constant() {
         let buf = encode_quest_log(&[], 0, 0, 0, 0);
         let mut last_n = 0i32;
         let len = ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap();
-        assert_eq!(len, 105);
+        assert_eq!(len, QUEST_LOG_PACKET_LEN as i32);
     }
 
     #[test]
@@ -1460,7 +1539,11 @@ mod tests {
 
     #[test]
     fn set_quest_log_roundtrip_multiple_entries() {
-        let entries = vec![(101, 1234, 5678), (202, 11, 22), (303, 4000, 4001)];
+        let entries = vec![
+            make_entry(101, 1234, 5678, 7),
+            make_entry(202, 11, 22, 8),
+            make_entry(303, 4000, 4001, 9),
+        ];
         let buf = encode_quest_log(&entries, 202, 3, 11, 22);
         let cmd = ServerCommand::from_bytes(&buf).unwrap();
         match cmd.structured_data {
@@ -1485,15 +1568,15 @@ mod tests {
     fn set_quest_log_truncates_to_sixteen_entries() {
         let mut entries = Vec::new();
         for i in 0..20u16 {
-            entries.push((i + 1, i, i));
+            entries.push(make_entry(i + 1, i, i, 0));
         }
         let buf = encode_quest_log(&entries, 0, 0, 0, 0);
         let cmd = ServerCommand::from_bytes(&buf).unwrap();
         match cmd.structured_data {
             ServerCommandData::SetQuestLog { entries: out, .. } => {
-                assert_eq!(out.len(), 16);
-                assert_eq!(out[0].0, 1);
-                assert_eq!(out[15].0, 16);
+                assert_eq!(out.len(), QUEST_LOG_MAX_ENTRIES);
+                assert_eq!(out[0].npc_template_id, 1);
+                assert_eq!(out[15].npc_template_id, 16);
             }
             _ => panic!("expected SetQuestLog variant"),
         }

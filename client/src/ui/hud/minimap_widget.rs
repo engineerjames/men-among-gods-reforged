@@ -377,14 +377,16 @@ impl MinimapWidget {
             return None;
         }
 
-        // The viewport's pixel layout in `update_viewport` is:
-        //   row -> world_y axis, col -> world_x axis (xo = mapy, yo = mapx).
-        // So screen X derives from world X (col), screen Y from world Y (row).
+        // The xmap is column-major (`cell = (gy + gx * STRIDE)`), and
+        // `update_viewport` reads it with `src_row = mapx + row_offset`,
+        // `src_col = mapy + col_offset`. So the screen Y axis (rows) tracks
+        // world X, and the screen X axis (columns) tracks world Y — the
+        // minimap is rotated 90° clockwise relative to the world.
         let inset = (PANEL_PADDING + PANEL_BORDER) as i32;
         let map_x = self.panel_x + inset;
         let map_y = self.panel_y + inset;
-        let sx = map_x + (rel_x * view) / sample;
-        let sy = map_y + (rel_y * view) / sample;
+        let sx = map_x + (rel_y * view) / sample;
+        let sy = map_y + (rel_x * view) / sample;
         Some((sx, sy))
     }
 

@@ -90,7 +90,7 @@ pub struct ServerPlayer {
     /// Last quest-log snapshot transmitted to this player. Used by
     /// [`crate::player::quest_log::plr_send_quest_log`] to avoid resending
     /// unchanged state every tick. Transient, not persisted.
-    pub last_sent_quest_log: Vec<(u16, u16, u16)>,
+    pub last_sent_quest_log: Vec<core::server_commands::QuestLogEntry>,
     /// Last `active_quest_template_id` echoed back in an `SV_SETQUESTLOG`
     /// packet. Transient, not persisted.
     pub last_sent_active_quest: u16,

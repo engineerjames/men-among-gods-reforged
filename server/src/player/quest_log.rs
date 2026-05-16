@@ -10,19 +10,14 @@
 //! [`crate::types::server_player::ServerPlayer`] let us skip retransmission
 //! when nothing changed, mirroring the weather subsystem.
 
-use core::constants::{MAXCHARS, USE_ACTIVE};
-use core::server_commands::ServerCommandType;
+use core::constants::{MAXCHARS, MAXTITEM, USE_ACTIVE};
+use core::server_commands::{
+    QUEST_LOG_ENTRY_LEN, QUEST_LOG_ITEM_NAME_LEN, QUEST_LOG_MAX_ENTRIES, QUEST_LOG_NPC_NAME_LEN,
+    QUEST_LOG_PACKET_LEN, QuestLogEntry, ServerCommandType,
+};
 
 use crate::game_state::GameState;
 use crate::network_manager::xsend;
-
-/// Maximum number of quest entries the wire format carries in a single
-/// `SV_SETQUESTLOG` packet.
-const MAX_QUEST_ENTRIES: usize = 16;
-
-/// Total `SV_SETQUESTLOG` packet size in bytes (matches
-/// `ServerCommandType::SetQuestLog` in `core::server_commands`).
-const QUEST_LOG_PACKET_LEN: usize = 105;
 
 /// Slot on `Character::data` that legacy NPC quests use to record the
 /// template ID of the quest item the NPC is currently waiting for.
@@ -42,9 +37,9 @@ pub fn plr_send_quest_log(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let mut entries: Vec<(u16, u16, u16)> = Vec::with_capacity(MAX_QUEST_ENTRIES);
+    let mut entries: Vec<QuestLogEntry> = Vec::with_capacity(QUEST_LOG_MAX_ENTRIES);
     for cn in 1..MAXCHARS {
-        if entries.len() >= MAX_QUEST_ENTRIES {
+        if entries.len() >= QUEST_LOG_MAX_ENTRIES {
             break;
         }
         let ch = &gs.characters[cn];
@@ -61,17 +56,37 @@ pub fn plr_send_quest_log(gs: &mut GameState, nr: usize) {
         }
         let x = ch.x.max(0) as u16;
         let y = ch.y.max(0) as u16;
-        entries.push((template, x, y));
+        let npc_name = ch.get_name().to_owned();
+
+        let item_template_id = quest_item as u16;
+        let item_name = if (quest_item as usize) < MAXTITEM
+            && gs.item_templates[quest_item as usize].used != core::constants::USE_EMPTY
+        {
+            gs.item_templates[quest_item as usize].get_name().to_owned()
+        } else {
+            String::new()
+        };
+
+        entries.push(QuestLogEntry {
+            npc_template_id: template,
+            npc_x: x,
+            npc_y: y,
+            item_template_id,
+            npc_name,
+            item_name,
+        });
     }
 
     let active_template_id = gs.players[nr].active_quest_template_id;
     let mut active_npc_x: u16 = 0;
     let mut active_npc_y: u16 = 0;
-    if active_template_id != 0 {
-        if let Some((_, x, y)) = entries.iter().find(|(t, _, _)| *t == active_template_id) {
-            active_npc_x = *x;
-            active_npc_y = *y;
-        }
+    if active_template_id != 0
+        && let Some(e) = entries
+            .iter()
+            .find(|e| e.npc_template_id == active_template_id)
+    {
+        active_npc_x = e.npc_x;
+        active_npc_y = e.npc_y;
     }
     let active_step_idx: u8 = 0;
 
@@ -83,18 +98,29 @@ pub fn plr_send_quest_log(gs: &mut GameState, nr: usize) {
 
     let mut buf = [0u8; QUEST_LOG_PACKET_LEN];
     buf[0] = ServerCommandType::SetQuestLog as u8;
-    let count = entries.len().min(MAX_QUEST_ENTRIES) as u8;
+    let count = entries.len().min(QUEST_LOG_MAX_ENTRIES) as u8;
     buf[1] = count;
-    for (i, (t, x, y)) in entries.iter().take(MAX_QUEST_ENTRIES).enumerate() {
-        let off = 2 + i * 6;
-        buf[off..off + 2].copy_from_slice(&t.to_le_bytes());
-        buf[off + 2..off + 4].copy_from_slice(&x.to_le_bytes());
-        buf[off + 4..off + 6].copy_from_slice(&y.to_le_bytes());
+    for (i, e) in entries.iter().take(QUEST_LOG_MAX_ENTRIES).enumerate() {
+        let off = 2 + i * QUEST_LOG_ENTRY_LEN;
+        buf[off..off + 2].copy_from_slice(&e.npc_template_id.to_le_bytes());
+        buf[off + 2..off + 4].copy_from_slice(&e.npc_x.to_le_bytes());
+        buf[off + 4..off + 6].copy_from_slice(&e.npc_y.to_le_bytes());
+        buf[off + 6..off + 8].copy_from_slice(&e.item_template_id.to_le_bytes());
+        write_padded_name(
+            &mut buf[off + 8..off + 8 + QUEST_LOG_NPC_NAME_LEN],
+            &e.npc_name,
+        );
+        let item_off = off + 8 + QUEST_LOG_NPC_NAME_LEN;
+        write_padded_name(
+            &mut buf[item_off..item_off + QUEST_LOG_ITEM_NAME_LEN],
+            &e.item_name,
+        );
     }
-    buf[98..100].copy_from_slice(&active_template_id.to_le_bytes());
-    buf[100] = active_step_idx;
-    buf[101..103].copy_from_slice(&active_npc_x.to_le_bytes());
-    buf[103..105].copy_from_slice(&active_npc_y.to_le_bytes());
+    let trailer_off = 2 + QUEST_LOG_MAX_ENTRIES * QUEST_LOG_ENTRY_LEN;
+    buf[trailer_off..trailer_off + 2].copy_from_slice(&active_template_id.to_le_bytes());
+    buf[trailer_off + 2] = active_step_idx;
+    buf[trailer_off + 3..trailer_off + 5].copy_from_slice(&active_npc_x.to_le_bytes());
+    buf[trailer_off + 5..trailer_off + 7].copy_from_slice(&active_npc_y.to_le_bytes());
 
     {
         let p = &mut gs.players[nr];
@@ -103,4 +129,18 @@ pub fn plr_send_quest_log(gs: &mut GameState, nr: usize) {
     }
 
     xsend(gs, nr, &buf, QUEST_LOG_PACKET_LEN as u8);
+}
+
+/// Copy `name` into `dst`, truncating to `dst.len() - 1` to leave at least one
+/// trailing NUL. Bytes past the copied prefix remain zero-initialized.
+///
+/// # Arguments
+///
+/// * `dst`  - Destination slice (assumed to be zero-initialized).
+/// * `name` - Source UTF-8 string; the byte slice is copied verbatim.
+fn write_padded_name(dst: &mut [u8], name: &str) {
+    let max = dst.len().saturating_sub(1);
+    let bytes = name.as_bytes();
+    let n = bytes.len().min(max);
+    dst[..n].copy_from_slice(&bytes[..n]);
 }
