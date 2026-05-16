@@ -33,17 +33,58 @@ pub const VISIBLE_QUEST_ROWS: usize = 8;
 /// Highlight color for the currently focused quest row.
 const ACTIVE_HIGHLIGHT: Color = Color::RGBA(80, 80, 30, 200);
 
+/// Color used to highlight the item name inside a fallback
+/// `Bring <item> to <npc>` quest title.
+const ITEM_NAME_COLOR: Color = Color::RGBA(255, 220, 0, 255);
+
+/// Title text for a single quest row. `Plain` is used when a static quest
+/// definition supplies a hand-authored title; `BringItemToNpc` is the
+/// fallback for NPCs without an authored entry — it is rendered as
+/// "Bring <item> to <npc>" with the item name highlighted in
+/// [`ITEM_NAME_COLOR`].
+#[derive(Clone, Debug)]
+pub enum QuestTitle {
+    /// Pre-formatted plain title (e.g. from a static quest definition).
+    Plain(String),
+    /// Render-time formatted title that colors the item name distinctly.
+    BringItemToNpc {
+        /// Display name of the wanted item.
+        item_name: String,
+        /// Display name of the NPC quest giver.
+        npc_name: String,
+    },
+}
+
+impl QuestTitle {
+    /// Returns the matching text used for click-target detection and the
+    /// non-colored highlight check (currently just the active row tint).
+    /// Useful only for tests / debugging; the renderer does not call it.
+    pub fn as_display_string(&self) -> String {
+        match self {
+            QuestTitle::Plain(s) => s.clone(),
+            QuestTitle::BringItemToNpc {
+                item_name,
+                npc_name,
+            } => {
+                let item = if item_name.is_empty() { "?" } else { item_name };
+                let npc = if npc_name.is_empty() { "NPC" } else { npc_name };
+                format!("Bring {item} to {npc}")
+            }
+        }
+    }
+}
+
 /// One quest entry as displayed in the panel.
 ///
-/// Built by GameScene from a `(npc_template_id, npc_x, npc_y)` triple
-/// reported by the server, optionally enriched with a static definition
-/// from [`mag_core::quest_defs::QUEST_DEFS`].
+/// Built by GameScene from a `QuestLogEntry` reported by the server,
+/// optionally enriched with a static definition from
+/// [`mag_core::quest_defs::QUEST_DEFS`].
 #[derive(Clone, Debug)]
 pub struct QuestEntryDisplay {
     /// NPC template ID — also the wire identifier used by `SetActiveQuest`.
     pub template_id: u16,
     /// Title shown on the quest row.
-    pub title: String,
+    pub title: QuestTitle,
     /// Multi-line description shown for the active quest.
     pub description: String,
     /// Walkthrough steps shown for the active quest.
@@ -132,6 +173,98 @@ impl QuestLogPanel {
     /// Y coordinate of the first description line below the rows.
     fn desc_y(&self) -> i32 {
         self.row_y(VISIBLE_QUEST_ROWS) + 6
+    }
+
+    /// Render a [`QuestTitle`] inline at `(x, y)`, optionally coloring the
+    /// item name distinctly for fallback titles.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx`   - Active render context.
+    /// * `title` - Title to render.
+    /// * `x`     - Left edge of the first glyph.
+    /// * `y`     - Baseline-aligned top edge.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success; SDL error string on failure.
+    fn render_title(
+        ctx: &mut RenderContext<'_, '_>,
+        title: &QuestTitle,
+        x: i32,
+        y: i32,
+    ) -> Result<(), String> {
+        match title {
+            QuestTitle::Plain(s) => {
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    s,
+                    x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
+            }
+            QuestTitle::BringItemToNpc {
+                item_name,
+                npc_name,
+            } => {
+                let item = if item_name.is_empty() {
+                    "?".to_owned()
+                } else {
+                    item_name.clone()
+                };
+                let npc = if npc_name.is_empty() {
+                    "NPC".to_owned()
+                } else {
+                    npc_name.clone()
+                };
+                let prefix = "Bring ";
+                let middle = " to ";
+                let mut cursor = x;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    prefix,
+                    cursor,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
+                cursor += font_cache::text_width(prefix) as i32;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    &item,
+                    cursor,
+                    y,
+                    font_cache::TextStyle::tinted(ITEM_NAME_COLOR),
+                )?;
+                cursor += font_cache::text_width(&item) as i32;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    middle,
+                    cursor,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
+                cursor += font_cache::text_width(middle) as i32;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    &npc,
+                    cursor,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -262,15 +395,7 @@ impl Widget for QuestLogPanel {
                 ctx.canvas.fill_rect(hl)?;
             }
 
-            font_cache::draw_text(
-                ctx.canvas,
-                ctx.gfx,
-                PANEL_FONT,
-                &entry.title,
-                text_x,
-                row_top + 2,
-                font_cache::TextStyle::PLAIN,
-            )?;
+            Self::render_title(ctx, &entry.title, text_x, row_top + 2)?;
         }
 
         // Active quest description block under the rows.
@@ -326,7 +451,7 @@ mod tests {
             entries: vec![
                 QuestEntryDisplay {
                     template_id: 11,
-                    title: "Quest A".to_owned(),
+                    title: QuestTitle::Plain("Quest A".to_owned()),
                     description: String::new(),
                     steps: Vec::new(),
                     npc_x: 1,
@@ -334,7 +459,7 @@ mod tests {
                 },
                 QuestEntryDisplay {
                     template_id: 22,
-                    title: "Quest B".to_owned(),
+                    title: QuestTitle::Plain("Quest B".to_owned()),
                     description: String::new(),
                     steps: Vec::new(),
                     npc_x: 3,

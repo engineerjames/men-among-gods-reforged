@@ -59,7 +59,7 @@ pub struct PlayerState {
     /// Each entry describes an NPC that has a quest item assigned to this
     /// player, including the NPC name, the wanted item template ID and the
     /// item's display name. Capped at 16 entries by the wire format.
-    quest_log_entries: Vec<core::server_commands::QuestLogEntry>,
+    quest_log_entries: Vec<mag_core::server_commands::QuestLogEntry>,
     /// NPC template ID of the quest currently focused (selected in the
     /// quest panel). `0` = no focused quest.
     active_quest_template_id: u16,
@@ -165,7 +165,7 @@ impl PlayerState {
     }
 
     /// Returns the latest server-reported quest log entries.
-    pub fn quest_log_entries(&self) -> &[core::server_commands::QuestLogEntry] {
+    pub fn quest_log_entries(&self) -> &[mag_core::server_commands::QuestLogEntry] {
         &self.quest_log_entries
     }
 

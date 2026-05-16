@@ -1511,7 +1511,7 @@ mod tests {
         let buf = encode_quest_log(&[], 0, 0, 0, 0);
         let mut last_n = 0i32;
         let len = ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap();
-        assert_eq!(len, QUEST_LOG_PACKET_LEN as i32);
+        assert_eq!(len, QUEST_LOG_PACKET_LEN);
     }
 
     #[test]

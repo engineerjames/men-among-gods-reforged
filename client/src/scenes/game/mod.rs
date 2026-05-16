@@ -1720,7 +1720,9 @@ impl Scene for GameScene {
 
                 // --- Quest log panel data + minimap quest markers ---
                 {
-                    use crate::ui::hud::quest_log_panel::{QuestEntryDisplay, QuestLogPanelData};
+                    use crate::ui::hud::quest_log_panel::{
+                        QuestEntryDisplay, QuestLogPanelData, QuestTitle,
+                    };
                     let entries_raw = ps.quest_log_entries();
                     let active_template = ps.active_quest_template_id();
                     let active_step_idx = ps.active_quest_step_idx() as usize;
@@ -1728,9 +1730,9 @@ impl Scene for GameScene {
 
                     let mut display_entries: Vec<QuestEntryDisplay> =
                         Vec::with_capacity(entries_raw.len());
-                    for (template_id, npc_x, npc_y) in entries_raw {
+                    for entry in entries_raw {
                         let (title, description, steps) =
-                            match mag_core::quest_defs::find_quest_def(*template_id) {
+                            match mag_core::quest_defs::find_quest_def(entry.npc_template_id) {
                                 Some(def) => {
                                     let steps_str: Vec<String> = def
                                         .steps
@@ -1748,23 +1750,28 @@ impl Scene for GameScene {
                                         }
                                         })
                                         .collect();
-                                    (def.title.to_owned(), def.description.to_owned(), steps_str)
+                                    (
+                                        QuestTitle::Plain(def.title.to_owned()),
+                                        def.description.to_owned(),
+                                        steps_str,
+                                    )
                                 }
                                 None => (
-                                    mag_core::quest_defs::fallback_title(&format!(
-                                        "template {template_id}"
-                                    )),
+                                    QuestTitle::BringItemToNpc {
+                                        item_name: entry.item_name.clone(),
+                                        npc_name: entry.npc_name.clone(),
+                                    },
                                     String::new(),
                                     Vec::new(),
                                 ),
                             };
                         display_entries.push(QuestEntryDisplay {
-                            template_id: *template_id,
+                            template_id: entry.npc_template_id,
                             title,
                             description,
                             steps,
-                            npc_x: *npc_x,
-                            npc_y: *npc_y,
+                            npc_x: entry.npc_x,
+                            npc_y: entry.npc_y,
                         });
                     }
 
@@ -1775,7 +1782,7 @@ impl Scene for GameScene {
 
                     // Minimap markers.
                     let givers: Vec<(u16, u16)> =
-                        entries_raw.iter().map(|(_, x, y)| (*x, *y)).collect();
+                        entries_raw.iter().map(|e| (e.npc_x, e.npc_y)).collect();
                     let active_marker = if active_template == 0 {
                         None
                     } else {
