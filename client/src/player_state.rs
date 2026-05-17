@@ -113,7 +113,7 @@ impl Default for PlayerState {
             talents: [0; 25],
 
             quest_catalog: Vec::new(),
-            quest_completion_counts: [0; mag_core::quest_defs::MAX_QUEST_CATALOG],
+            quest_completion_counts: [-1; mag_core::quest_defs::MAX_QUEST_CATALOG],
             active_quest_template_id: 0,
             active_quest_step_idx: 0,
             active_quest_npc_pos: None,
