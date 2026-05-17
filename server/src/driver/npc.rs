@@ -611,6 +611,10 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
 
     // Item given and matches what NPC wants
     if in_item != 0 && i32::from(gs.items[in_item].temp) == gs.characters[cn].data[49] {
+        // Record completion for the player; safe to call even when no
+        // catalog index matches (no-op in that case).
+        let npc_temp = gs.characters[cn].temp;
+        crate::player::quest_log::record_turn_in(gs, co, npc_temp);
         // Black candle special-case
         if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
             gs.characters[co].data[43] += 1;
@@ -835,6 +839,14 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
     if in_item == 0 || i32::from(gs.items[in_item].temp) != gs.characters[cn].data[49] {
         return false;
     }
+
+    // Record completion for the player; safe to call even when no catalog
+    // index matches (no-op in that case). We record on the early "would
+    // accept" decision rather than per-branch to mirror the original
+    // `npc_give` semantics (which records once even when the
+    // teach-skill branch is short-circuited by "already knows skill").
+    let npc_temp = gs.characters[cn].temp;
+    crate::player::quest_log::record_turn_in(gs, co, npc_temp);
 
     // Black candle special-case (repeatable).
     if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {

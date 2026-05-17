@@ -1725,16 +1725,27 @@ impl Scene for GameScene {
                     use crate::ui::hud::quest_log_panel::{
                         QuestEntryDisplay, QuestLogPanelData, QuestTitle,
                     };
-                    let entries_raw = ps.quest_log_entries();
+                    let catalog = ps.quest_catalog();
+                    let counts = ps.quest_completion_counts();
                     let active_template = ps.active_quest_template_id();
                     let active_step_idx = ps.active_quest_step_idx() as usize;
                     let active_npc_pos = ps.active_quest_npc_pos();
 
-                    let mut display_entries: Vec<QuestEntryDisplay> =
-                        Vec::with_capacity(entries_raw.len());
-                    for entry in entries_raw {
+                    let mut display_entries: Vec<QuestEntryDisplay> = Vec::new();
+                    for (idx, entry) in catalog.iter().enumerate() {
+                        let count = counts.get(idx).copied().unwrap_or(0);
+                        // Decide how many "open" stage rows to emit for this NPC.
+                        let stage_rows: u8 = if entry.repeatable {
+                            1
+                        } else {
+                            let stages = entry.stages.max(1);
+                            (0..stages).filter(|s| count <= i16::from(*s)).count() as u8
+                        };
+                        if stage_rows == 0 {
+                            continue;
+                        }
                         let (title, description, steps) =
-                            match mag_core::quest_defs::find_quest_def(entry.npc_template_id) {
+                            match mag_core::quest_defs::find_quest_def(entry.template_id) {
                                 Some(def) => {
                                     let steps_str: Vec<String> = def
                                         .steps
@@ -1767,14 +1778,16 @@ impl Scene for GameScene {
                                     Vec::new(),
                                 ),
                             };
-                        display_entries.push(QuestEntryDisplay {
-                            template_id: entry.npc_template_id,
-                            title,
-                            description,
-                            steps,
-                            npc_x: entry.npc_x,
-                            npc_y: entry.npc_y,
-                        });
+                        for _ in 0..stage_rows {
+                            display_entries.push(QuestEntryDisplay {
+                                template_id: entry.template_id,
+                                title: title.clone(),
+                                description: description.clone(),
+                                steps: steps.clone(),
+                                npc_x: entry.npc_x,
+                                npc_y: entry.npc_y,
+                            });
+                        }
                     }
 
                     self.quest_log_panel.update_data(QuestLogPanelData {
@@ -1782,9 +1795,9 @@ impl Scene for GameScene {
                         active_template_id: active_template,
                     });
 
-                    // Minimap markers.
+                    // Minimap markers: every quest giver in the catalog.
                     let givers: Vec<(u16, u16)> =
-                        entries_raw.iter().map(|e| (e.npc_x, e.npc_y)).collect();
+                        catalog.iter().map(|e| (e.npc_x, e.npc_y)).collect();
                     let active_marker = if active_template == 0 {
                         None
                     } else {

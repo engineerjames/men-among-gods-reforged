@@ -517,19 +517,19 @@ impl GameScene {
         }
     }
 
-    /// Drain pending `WidgetAction`s from the quest log panel and forward
-    /// `SetActiveQuest` commands to the server.
+    /// Drain pending `WidgetAction`s from the quest log panel and apply
+    /// `SetActiveQuest` selections locally (pure UI state).
     ///
     /// # Arguments
     ///
-    /// * `app_state` - Shared application state (network access).
+    /// * `app_state` - Shared application state.
     pub(crate) fn process_quest_log_panel_actions(&mut self, app_state: &mut AppState<'_>) {
         for action in self.quest_log_panel.take_actions() {
             match action {
                 WidgetAction::SetActiveQuest { npc_template_id } => {
-                    if let Some(net) = app_state.network.as_ref() {
-                        self.play_click_sound(app_state);
-                        net.send(ClientCommand::new_set_active_quest(npc_template_id));
+                    self.play_click_sound(app_state);
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.set_active_quest(npc_template_id);
                     }
                 }
                 WidgetAction::TogglePanel(_) => {

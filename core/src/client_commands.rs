@@ -49,15 +49,6 @@ pub enum ClientCommandType {
     CmdLearnTalent = 37,
     /// Refund all spent talent points.  No payload (all-zero past the opcode).
     CmdResetTalents = 38,
-    /// Tell the server which NPC quest the player has currently focused.
-    ///
-    /// Wire format:
-    /// * byte 0: opcode `39`
-    /// * bytes 1..3: `npc_template_id: u16` (little-endian)
-    /// * bytes 3..16: zero-padding
-    ///
-    /// Sending `0` clears the focused quest.
-    CmdSetActiveQuest = 39,
     CmdCTick = 255,
 }
 
@@ -96,7 +87,6 @@ impl From<u8> for ClientCommandType {
             36 => ClientCommandType::CmdAutoloot,
             37 => ClientCommandType::CmdLearnTalent,
             38 => ClientCommandType::CmdResetTalents,
-            39 => ClientCommandType::CmdSetActiveQuest,
             255 => ClientCommandType::CmdCTick,
             _ => {
                 log::error!("Unknown client command type: {}", value);
@@ -388,19 +378,6 @@ impl ClientCommand {
     pub fn new_reset_talents() -> Self {
         Self::new(ClientCommandType::CmdResetTalents, Vec::new())
     }
-
-    /// Creates a "set active quest" command focusing the quest given by NPC
-    /// `npc_template_id`. Pass `0` to clear the focus.
-    ///
-    /// # Arguments
-    ///
-    /// * `npc_template_id` - Template ID of the NPC quest giver to focus.
-    pub fn new_set_active_quest(npc_template_id: u16) -> Self {
-        let payload = npc_template_id.to_le_bytes().to_vec();
-        let mut cmd = Self::new(ClientCommandType::CmdSetActiveQuest, payload);
-        cmd.context = Some(format!("npc_template_id={npc_template_id}"));
-        cmd
-    }
 }
 
 #[cfg(test)]
@@ -613,36 +590,5 @@ mod tests {
     fn retired_opcodes_decode_as_empty() {
         assert_eq!(ClientCommandType::from(4u8), ClientCommandType::_Empty);
         assert_eq!(ClientCommandType::from(19u8), ClientCommandType::_Empty);
-    }
-
-    #[test]
-    fn set_active_quest_opcode_and_payload() {
-        let cmd = ClientCommand::new_set_active_quest(0xBEEF);
-        let bytes = cmd.to_bytes();
-        assert_eq!(bytes.len(), 16);
-        assert_eq!(bytes[0], 39u8, "CmdSetActiveQuest must be opcode 39");
-        assert_eq!(bytes[0], ClientCommandType::CmdSetActiveQuest as u8);
-        assert_eq!(u16::from_le_bytes([bytes[1], bytes[2]]), 0xBEEF);
-        for b in &bytes[3..] {
-            assert_eq!(*b, 0, "trailing bytes must be zero-padded");
-        }
-    }
-
-    #[test]
-    fn set_active_quest_zero_clears_focus() {
-        let cmd = ClientCommand::new_set_active_quest(0);
-        let bytes = cmd.to_bytes();
-        assert_eq!(bytes[0], ClientCommandType::CmdSetActiveQuest as u8);
-        for b in &bytes[1..] {
-            assert_eq!(*b, 0);
-        }
-    }
-
-    #[test]
-    fn set_active_quest_from_u8_roundtrip() {
-        assert_eq!(
-            ClientCommandType::from(39u8),
-            ClientCommandType::CmdSetActiveQuest
-        );
     }
 }

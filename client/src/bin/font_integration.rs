@@ -22,7 +22,7 @@ use client::gfx_cache::GraphicsCache;
 const SAMPLE: &str = "The quick brown fox jumps over the lazy dog. 0123456789 ?!@#";
 
 /// TTF sample sizes (in logical points) rendered top-to-bottom.
-const TTF_SIZES: &[u16] = &[6, 8, 10];
+const TTF_SIZES: &[u16] = &[10, 12, 14, 16];
 
 /// Application entry point for the font integration test binary.
 ///

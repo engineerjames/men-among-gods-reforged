@@ -17,7 +17,6 @@ use crate::{
         },
         connection::{plr_login, plr_logout},
         map::{plr_change_light, plr_change_map, plr_change_position},
-        quest_log::plr_send_quest_log,
     },
 };
 
@@ -556,8 +555,13 @@ pub fn plr_change(gs: &mut GameState, nr: usize) {
     // Send target updates
     plr_change_target(gs, nr, cn);
 
-    // Send quest log updates (cached, only resent on change).
-    plr_send_quest_log(gs, nr);
+    // Send the one-shot quest catalog + full completion snapshot on the
+    // first tick after login finalisation.
+    if !gs.players[nr].sent_quest_init {
+        crate::player::quest_log::plr_send_quest_catalog(gs, nr);
+        crate::player::quest_log::plr_send_quest_completion_full(gs, nr);
+        gs.players[nr].sent_quest_init = true;
+    }
 }
 
 /// Send full stats update to player

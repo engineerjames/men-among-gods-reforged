@@ -1,20 +1,57 @@
 //! Static client-side definitions for NPC quests.
 //!
-//! The server only tells the client *which* NPC currently has an outstanding
-//! quest item assigned to the player (via the `SV_SETQUESTLOG` packet that
-//! carries `(npc_template_id, npc_x, npc_y)` triples). The actual quest title,
-//! description and step-by-step walkthrough are authored statically and
-//! shipped with the client; the entries in [`QUEST_DEFS`] are looked up by
+//! The server ships a one-shot [`SV_SETQUESTCATALOG`] packet at login time
+//! enumerating every NPC quest that exists in the world. Per-player
+//! completion progress is then streamed as
+//! [`SV_SETQUESTCOMPLETION`](crate::server_commands::ServerCommandType::SetQuestCompletion)
+//! snapshots and deltas. The actual quest title, description and
+//! step-by-step walkthrough are authored statically and shipped with the
+//! client; the entries in [`QUEST_DEFS`] are looked up by
 //! `npc_template_id` to render the quest log panel.
 //!
 //! When a quest giver is reported by the server but no matching definition
 //! exists in [`QUEST_DEFS`], the client falls back to a generic
 //! [`fallback_title`] so the entry remains visible.
 
-/// One step in a quest walkthrough.
+/// Maximum number of distinct quests carried in a single
+/// [`SV_SETQUESTCATALOG`](crate::server_commands::ServerCommandType::SetQuestCatalog)
+/// packet. Matches the width of `Character::future2` so per-player
+/// completion counts have a guaranteed home.
+pub const MAX_QUEST_CATALOG: usize = 49;
+
+/// One entry in the static quest catalog.
 ///
-/// Steps are ordered; the `active_step_idx` field of `SV_SETQUESTLOG` selects
-/// which step the minimap pin should point at.
+/// Built once on the server immediately after world load and broadcast to
+/// each connecting client as a one-shot snapshot. Catalog index is the
+/// position inside the broadcast `Vec` and doubles as the key into the
+/// per-player completion vector stored in `Character::future2`.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct QuestCatalogEntry {
+    /// Template ID of the NPC quest giver.
+    pub template_id: u16,
+    /// Template ID of the item the NPC wants.
+    pub item_template_id: u16,
+    /// World tile X of the NPC quest giver at the time the catalog was
+    /// built.
+    pub npc_x: u16,
+    /// World tile Y of the NPC quest giver at the time the catalog was
+    /// built.
+    pub npc_y: u16,
+    /// Number of successful turn-ins required to mark the quest fully
+    /// completed (defaults to `1`; e.g. Seyan Du quest-givers set this to
+    /// `2` to model the SK_STUN → SK_IMMUN progression).
+    pub stages: u8,
+    /// `true` for infinitely repeatable quests (e.g. black candle): the
+    /// row never disappears and the server stops incrementing the
+    /// completion counter once it reaches `1`.
+    pub repeatable: bool,
+    /// Display name of the NPC quest giver.
+    pub npc_name: String,
+    /// Display name of the wanted item.
+    pub item_name: String,
+}
+
+/// One step in a quest walkthrough.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QuestStep {
     /// Step that points at a fixed world tile (e.g. "Search the cave at
@@ -28,8 +65,7 @@ pub enum QuestStep {
         desc: &'static str,
     },
     /// Step that says "return the item to the quest giver". The minimap pin
-    /// is driven by the `active_npc_x` / `active_npc_y` fields of the
-    /// `SV_SETQUESTLOG` packet rather than a fixed coordinate.
+    /// is driven by the NPC's catalog-recorded `(npc_x, npc_y)` tile.
     ReturnToQuestGiver {
         /// Human-readable instruction shown in the quest panel.
         desc: &'static str,

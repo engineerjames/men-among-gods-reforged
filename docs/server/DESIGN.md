@@ -209,6 +209,8 @@ Here is a full list of the op-codes with a brief description of each:
 - `SV_SETCHAR_AMANA (70)`: “Active/augmented” mana update; server sends when derived mana changes.
 - `SV_SETCHAR_DIR (71)`: Facing direction update; server sends when direction changes.
 - `SV_IGNORE (73)`: Ignore-list update; server sends when ignore state changes.
+- `SV_SETQUESTCATALOG (100)`: Immutable per-session quest catalog (up to 49 entries: NPC template id, item template id, NPC tile pos, stage count, repeatable flag, NPC + item names). Sent once at login.
+- `SV_SETQUESTCOMPLETION (101)`: Per-player quest completion counters. Mode byte selects payload: `0` = full 49×i16 snapshot (sent at login), `1` = single-entry delta `(idx:u8, count:i16)` (sent on each turn-in).
 - `SV_SETMAP (128+)`: Bulk/short map update opcodes (128–255 reserved); server sends high-volume tile updates efficiently.
 
 ## `SV_TICK` and Client Tick Reporting

@@ -33,8 +33,8 @@ pub fn initialize_packet_stats() -> Result<(), String> {
 ///
 /// Copies up to `length` bytes from `data` into the player's `tbuf`.
 /// If the buffer overflows the player is disconnected.
-pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
-    let send_len = std::cmp::min(length as usize, data.len());
+pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: usize) {
+    let send_len = std::cmp::min(length, data.len());
 
     if player_id < 1 || player_id >= gs.players.len() {
         log::warn!("xsend: invalid player id {}", player_id);

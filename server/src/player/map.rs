@@ -934,7 +934,7 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
             // Only send if we actually found changes (matching C++ if (buf[1]))
             let did_update = buf[1] != 0;
             if did_update {
-                network_manager::xsend(gs, nr, &buf, p as u8);
+                network_manager::xsend(gs, nr, &buf, p);
             }
 
             gs.players[nr].cmap[n] = gs.players[nr].smap[n];
