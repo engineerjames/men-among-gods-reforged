@@ -1,11 +1,9 @@
+use jsonwebtoken::{DecodingKey, TokenData, Validation};
 use lazy_static::lazy_static;
+use log::error;
+use mag_core::types::JwtClaims;
 use regex::Regex;
 use std::env;
-
-use crate::types;
-
-use jsonwebtoken::{DecodingKey, TokenData, Validation};
-use log::error;
 
 /// Verifies the provided JWT token using the secret key from the environment variable `API_JWT_SECRET`.
 ///
@@ -13,9 +11,9 @@ use log::error;
 /// * `token` - The JWT token to verify.
 ///
 /// # Returns
-/// * `Ok(TokenData<types::JwtClaims>)` if the token is valid, containing the decoded claims.
+/// * `Ok(TokenData<JwtClaims>)` if the token is valid, containing the decoded claims.
 /// * `Err(String)` if the token is invalid or if the secret key is missing.
-pub async fn verify_token(token: &str) -> Result<TokenData<types::JwtClaims>, String> {
+pub async fn verify_token(token: &str) -> Result<TokenData<JwtClaims>, String> {
     let secret = match env::var("API_JWT_SECRET") {
         Ok(value) if !value.trim().is_empty() => value,
         _ => {
@@ -24,7 +22,7 @@ pub async fn verify_token(token: &str) -> Result<TokenData<types::JwtClaims>, St
         }
     };
 
-    let token_data = match jsonwebtoken::decode::<types::JwtClaims>(
+    let token_data = match jsonwebtoken::decode::<JwtClaims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
         &Validation::default(),
@@ -257,8 +255,8 @@ mod tests {
         is_valid_password, is_valid_reset_code, is_valid_username, normalize_character_name,
         validate_character_description, validate_character_name_bad_patterns,
     };
-    use crate::types;
     use jsonwebtoken::{EncodingKey, Header};
+    use mag_core::types::JwtClaims;
     use std::sync::Mutex;
 
     use super::verify_token;
@@ -350,7 +348,7 @@ mod tests {
             let _lock = ENV_LOCK.lock().unwrap();
             let previous = set_env_var("API_JWT_SECRET", Some("test-secret"));
 
-            let claims = types::JwtClaims {
+            let claims = JwtClaims {
                 sub: "tester".to_owned(),
                 exp: 1_999_999_999,
             };

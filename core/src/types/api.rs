@@ -10,6 +10,18 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+#[derive(Deserialize, Serialize)]
+pub struct JwtClaims {
+    pub sub: String,
+    pub exp: usize,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateCharacterRequest {
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
 /// JWT token returned on successful login.
 #[derive(Serialize, Deserialize)]
 pub struct LoginResponse {
