@@ -149,7 +149,7 @@ fn main() -> Result<(), String> {
                 &mut text_engine,
                 &mut gfx,
                 &handle,
-                &format!("{size_pt}pt — {SAMPLE}"),
+                &format!("{SAMPLE} - {size_pt}"),
                 10,
                 y,
                 TextStyle::tinted(body_color),

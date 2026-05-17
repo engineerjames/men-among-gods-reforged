@@ -672,7 +672,7 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
             // Light hinting keeps small sizes crisp without the heavy
             // pixel-snapping of full hinting (which distorts glyph
             // proportions at large sizes).
-            font.set_hinting(Hinting::Light);
+            font.set_hinting(Hinting::None);
             self.loaded_fonts.insert((id, size_px), font);
         }
         Ok(&self.loaded_fonts[&(id, size_px)])
