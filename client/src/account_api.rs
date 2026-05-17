@@ -4,7 +4,6 @@ use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
 use mag_core::traits::{Class, Sex};
 use reqwest::StatusCode;
-use reqwest::blocking::Client;
 
 use crate::cert_trust;
 
@@ -15,12 +14,6 @@ use mag_core::types::api::{
     LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,
     ResetPasswordRequest, ResetPasswordRequestResponse,
 };
-
-/// Build an HTTP client that uses TOFU certificate verification for HTTPS
-/// requests against the API.
-fn build_http_client() -> Result<Client, String> {
-    cert_trust::build_reqwest_client()
-}
 
 /// Hashes a password into Argon2 PHC format using a deterministic salt.
 ///
@@ -60,7 +53,7 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
         username
     );
     let password_hash = hash_password(username, password)?;
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!("{}/login", base_url.trim_end_matches('/'));
     let resp = client
@@ -128,7 +121,7 @@ pub fn create_account(
         email
     );
     let password_hash = hash_password(username, password)?;
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!("{}/accounts", base_url.trim_end_matches('/'));
     let resp = client
@@ -189,7 +182,7 @@ pub fn create_character(
         class
     );
 
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!("{}/characters", base_url.trim_end_matches('/'));
     let resp = client
@@ -236,7 +229,7 @@ pub fn create_character(
 pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummary>, String> {
     log::info!("Retrieving characters using API at {}", base_url,);
 
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!("{}/characters", base_url.trim_end_matches('/'));
     // The API is configured with a global rate limit (currently ~10 req/sec).
@@ -291,7 +284,7 @@ pub fn get_characters(base_url: &str, token: &str) -> Result<Vec<CharacterSummar
 /// * `Ok(())` on success.
 /// * `Err(String)` when the request fails.
 pub fn delete_character(base_url: &str, token: &str, character_id: u64) -> Result<(), String> {
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!(
         "{}/characters/{}",
@@ -332,7 +325,7 @@ pub fn create_game_login_ticket(
         base_url,
         character_id
     );
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!("{}/game/login_ticket", base_url.trim_end_matches('/'));
     let resp = client
@@ -390,7 +383,7 @@ pub fn request_password_reset(
         base_url,
         username,
     );
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!(
         "{}/accounts/reset-password/request",
@@ -449,7 +442,7 @@ pub fn confirm_password_reset(
         username,
     );
     let password_hash = hash_password(username, new_password)?;
-    let client = build_http_client()?;
+    let client = cert_trust::build_reqwest_client()?;
 
     let url = format!(
         "{}/accounts/reset-password/confirm",

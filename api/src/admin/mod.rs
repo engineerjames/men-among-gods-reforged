@@ -10,13 +10,13 @@
 //! [`/memories/session/plan.md`] for full design.
 
 pub mod auth;
-pub mod routes;
 pub mod routes_badwords;
 pub mod routes_bans;
 pub mod routes_characters;
 pub mod routes_globals;
 pub mod routes_items;
 pub mod routes_map;
+pub mod routes_templates;
 pub mod routes_world_actions;
 pub mod types;
 
@@ -45,22 +45,27 @@ pub fn build_admin_router(state: ApiState) -> Option<Router> {
     let router = Router::new()
         .route(
             "/templates/items",
-            get(routes::list_item_templates).put(routes::put_item_templates_bulk_unsupported),
+            get(routes_templates::list_item_templates)
+                .put(routes_templates::put_item_templates_bulk_unsupported),
         )
         .route(
             "/templates/items/{id}",
-            get(routes::get_item_template).put(routes::put_item_template),
+            get(routes_templates::get_item_template).put(routes_templates::put_item_template),
         )
         .route(
             "/templates/characters",
-            get(routes::list_character_templates),
+            get(routes_templates::list_character_templates),
         )
         .route(
             "/templates/characters/{id}",
-            get(routes::get_character_template).put(routes::put_character_template),
+            get(routes_templates::get_character_template)
+                .put(routes_templates::put_character_template),
         )
-        .route("/templates/reload", post(routes::request_reload))
-        .route("/templates/reload/status", get(routes::get_reload_status))
+        .route("/templates/reload", post(routes_templates::request_reload))
+        .route(
+            "/templates/reload/status",
+            get(routes_templates::get_reload_status),
+        )
         .route("/world/map", get(routes_map::get_map_bulk))
         .route("/world/globals", get(routes_globals::get_globals))
         .route("/world/map/version", get(routes_map::get_map_version))
