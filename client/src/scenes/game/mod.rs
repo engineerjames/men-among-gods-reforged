@@ -1733,7 +1733,13 @@ impl Scene for GameScene {
 
                     let mut display_entries: Vec<QuestEntryDisplay> = Vec::new();
                     for (idx, entry) in catalog.iter().enumerate() {
-                        let count = counts.get(idx).copied().unwrap_or(0);
+                        let count = counts.get(idx).copied().unwrap_or(-1);
+                        // Skip quests the player has not yet discovered
+                        // (server uses -1 sentinel until the player gets
+                        // close enough for the NPC to sight them).
+                        if count < 0 {
+                            continue;
+                        }
                         // Decide how many "open" stage rows to emit for this NPC.
                         let stage_rows: u8 = if entry.repeatable {
                             1

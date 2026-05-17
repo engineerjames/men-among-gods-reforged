@@ -6,10 +6,22 @@
 //! metadata. The catalog is broadcast once per session via
 //! `SV_SETQUESTCATALOG` (opcode 100).
 //!
-//! Per-player completion progress lives in `Character::future2[idx]` (a
-//! signed 16-bit counter, saturating-added) and is broadcast either as a
-//! full snapshot at login or as a single-entry delta whenever the server
-//! bumps a counter on a turn-in (`SV_SETQUESTCOMPLETION`, opcode 101).
+//! Per-player quest state lives in `Character::future2[idx]` as a signed
+//! 16-bit tri-state:
+//!
+//! * `-1` — quest is **undiscovered**; the player has not yet been close
+//!   enough to the quest-giver NPC for it to surface in the quest log.
+//!   Minimap markers still show the giver's location.
+//! * `0` — quest is **discovered** (player has been sighted by the NPC)
+//!   but no turn-ins have been accepted yet.
+//! * `1..=stages` — number of accepted turn-ins (saturating).
+//!
+//! Discovery is recorded via [`record_discovery`] when an NPC sights the
+//! player (see `npc_see` in `server/src/driver/npc.rs`). Turn-ins are
+//! recorded via [`record_turn_in`] which also implicitly discovers (the
+//! [`bump_completion`] floor treats `-1` as `0`). Both helpers emit a
+//! single-entry `SV_SETQUESTCOMPLETION` delta; a full snapshot is sent at
+//! login (`SV_SETQUESTCOMPLETION` opcode 101).
 //!
 //! Heuristics for the catalog:
 //! * `repeatable = true` when the NPC is the black-candle guard
@@ -220,7 +232,9 @@ pub fn get_completion(ch: &core::types::Character, idx: u8) -> i16 {
 
 /// Increment the per-player completion counter at `idx` per the rules of
 /// `entry`. Repeatable quests are clamped at `1`; multi-stage quests
-/// saturate at `entry.stages`; everything else saturates at `1`.
+/// saturate at `entry.stages`; everything else saturates at `1`. An
+/// undiscovered slot (`-1`) is treated as `0` before incrementing, so a
+/// turn-in implicitly discovers the quest.
 ///
 /// # Arguments
 ///
@@ -245,11 +259,47 @@ pub fn bump_completion(
     } else {
         i16::from(entry.stages.max(1))
     };
-    if *slot >= cap {
+    let current = (*slot).max(0);
+    if current >= cap {
         return false;
     }
-    *slot = slot.saturating_add(1).min(cap);
+    *slot = current.saturating_add(1).min(cap);
     true
+}
+
+/// Record that player character `cn` has discovered the quest belonging
+/// to NPC template `npc_template_id`. Flips the slot from the `-1`
+/// undiscovered sentinel to `0` and emits a single-entry
+/// `SV_SETQUESTCOMPLETION` delta. No-op when the NPC is not a known
+/// quest giver or the slot was already `>= 0` (already discovered).
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `cn` - Character that observed the NPC.
+/// * `npc_template_id` - Template id of the NPC that was sighted.
+pub fn record_discovery(gs: &mut GameState, cn: usize, npc_template_id: u16) {
+    if cn == 0 || cn >= MAXCHARS {
+        return;
+    }
+    if QUEST_CATALOG.get().is_none() {
+        return;
+    }
+    let idx = match with_catalog(|cat| cat.index_of(npc_template_id)) {
+        Some(i) => i,
+        None => return,
+    };
+    let Some(slot) = gs.characters[cn].future2.get_mut(idx as usize) else {
+        return;
+    };
+    if *slot >= 0 {
+        return;
+    }
+    *slot = 0;
+    let player_slot = gs.characters[cn].player as usize;
+    if player_slot != 0 && player_slot < gs.players.len() {
+        plr_send_quest_completion_delta(gs, player_slot, idx, 0);
+    }
 }
 
 /// Send `SV_SETQUESTCATALOG` to player `nr`.
@@ -427,10 +477,56 @@ mod tests {
     }
 
     #[test]
+    fn default_character_future2_is_undiscovered_sentinel() {
+        let ch = core::types::Character::default();
+        assert!(ch.future2.iter().all(|&v| v == -1));
+    }
+
+    #[test]
+    fn bump_from_undiscovered_floors_at_zero_then_increments() {
+        // Single-stage: -1 -> 1 (one bump, since 0 was the implicit floor).
+        let mut ch = core::types::Character::default();
+        let e = entry(1, false);
+        assert_eq!(ch.future2[0], -1);
+        assert!(bump_completion(&mut ch, 0, &e));
+        assert_eq!(ch.future2[0], 1);
+    }
+
+    #[test]
+    fn bump_from_undiscovered_multi_stage_walks_to_cap() {
+        // Two-stage: -1 -> 1 -> 2 -> cap.
+        let mut ch = core::types::Character::default();
+        let e = entry(2, false);
+        assert!(bump_completion(&mut ch, 4, &e));
+        assert_eq!(ch.future2[4], 1);
+        assert!(bump_completion(&mut ch, 4, &e));
+        assert_eq!(ch.future2[4], 2);
+        assert!(!bump_completion(&mut ch, 4, &e));
+    }
+
+    #[test]
     fn stage_count_uses_skill_canonicalisation() {
         assert_eq!(stage_count_for(0), 1);
         assert_eq!(stage_count_for(skills::SK_STUN as i32), 2);
         assert_eq!(stage_count_for(skills::SK_CURSE as i32), 2);
         assert_eq!(stage_count_for(skills::SK_RECALL as i32), 1);
+    }
+
+    #[test]
+    fn record_discovery_is_noop_when_catalog_uninitialised() {
+        // When QUEST_CATALOG has never been set, record_discovery must not
+        // panic and must not mutate state. We can't reliably clear the
+        // global between tests, so only assert the no-op invariants on
+        // the character side rather than the global state.
+        crate::test_helpers::with_test_gs(|gs| {
+            // Pick a template id extremely unlikely to be in any catalog
+            // that earlier tests in the process might have initialised.
+            let cn = 1;
+            gs.characters[cn] = core::types::Character::default();
+            gs.characters[cn].used = core::constants::USE_ACTIVE;
+            let before = gs.characters[cn].future2;
+            record_discovery(gs, cn, u16::MAX);
+            assert_eq!(gs.characters[cn].future2, before);
+        });
     }
 }

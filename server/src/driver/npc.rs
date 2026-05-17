@@ -3036,10 +3036,22 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     // 2. Player can see NPC (checked below)
     // 3. NPC is close enough to the player (3.5 tiles or less)
     // 4. NPC wants an item that the player is carrying
-    if gs.do_char_can_see(co, cn) != 0
-        && helpers::get_distance(gs, cn, co) < 3.5
-        && npc_scan_player_items(gs, cn, co)
+    let in_talk_range = gs.do_char_can_see(co, cn) != 0 && helpers::get_distance(gs, cn, co) < 3.5;
+
+    // Quest discovery: same sight/distance gate as auto turn-in, but
+    // independent of the player carrying any item. The NPC only needs to
+    // be a quest giver (data[49] != 0) and the observer must be a
+    // player/usurp. Flips `Character::future2[idx]` from -1 to 0 and
+    // emits a SV_SETQUESTCOMPLETION delta when discovery fires.
+    if in_talk_range
+        && gs.characters[cn].data[49] != 0
+        && (co_flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
     {
+        let npc_temp = gs.characters[cn].temp;
+        crate::player::quest_log::record_discovery(gs, co, npc_temp);
+    }
+
+    if in_talk_range && npc_scan_player_items(gs, cn, co) {
         return true;
     }
 

@@ -266,7 +266,11 @@ impl Default for Character {
             lastattack: 0,
             future1: [0; 25],
             sprite_override: 0,
-            future2: [0; 49],
+            // `future2` carries per-player quest discovery + completion state.
+            // Sentinel `-1` = quest undiscovered; `0` = discovered with no
+            // turn-ins yet; `1..=stages` = number of accepted turn-ins. See
+            // `server/src/player/quest_log.rs` for the full semantics.
+            future2: [-1; 49],
             depot: [0; 62],
             depot_cost: 0,
             luck: 0,
