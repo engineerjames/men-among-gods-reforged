@@ -54,7 +54,7 @@ const TEXT_COLOR: Color = Color::RGB(200, 200, 220);
 
 /// Offset from the skill bar cell vertically
 /// (negative = above, positive = below).
-pub const ANCHOR_Y_OFFSET: i32 = -20;
+pub const ANCHOR_Y_OFFSET: i32 = 20;
 
 // ---------------------------------------------------------------------------
 // Bindable skills allow-list

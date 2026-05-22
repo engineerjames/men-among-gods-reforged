@@ -32,7 +32,7 @@ use mag_core::skills;
 const HP_HALF_W: i32 = 40;
 
 /// Side length of each square spell-effect icon in pixels.
-const ICON_SIZE: i32 = 29;
+const ICON_SIZE: i32 = 20;
 
 /// Gap between consecutive spell-effect icons.
 const ICON_GAP: i32 = 3;
