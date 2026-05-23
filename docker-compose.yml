@@ -22,9 +22,7 @@ services:
       - --requirepass
       - ${KEYDB_PASSWORD:?KEYDB_PASSWORD is required}
       - --appendonly
-      - "yes"
-      - --appendfsync
-      - everysec
+      - "no"
       - --save
       - "900"
       - "1"
