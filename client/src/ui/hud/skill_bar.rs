@@ -78,9 +78,6 @@ const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
 /// Bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
 
-/// Maximum characters of a skill name to show in a cell.
-const MAX_ABBREV: usize = 4;
-
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -207,15 +204,6 @@ impl SkillBar {
                 let within_y = (top..top + CELL).contains(&py);
                 within_x.then_some(index).filter(|_| within_y)
             })
-    }
-
-    /// Abbreviate a skill name to fit inside a cell.
-    fn abbreviate(name: &str) -> String {
-        if name.len() <= MAX_ABBREV {
-            return name.to_owned();
-        }
-        // Take the first MAX_ABBREV characters.
-        name.chars().take(MAX_ABBREV).collect()
     }
 
     /// Lazily loads and returns the texture ID for the given spell icon.
@@ -352,7 +340,6 @@ impl Widget for SkillBar {
         }
 
         // ── Top row: skill-bind cells ──────────────────────────────────────
-
         for i in 0..TOP_CELLS {
             let (cell_x, cell_y) = TOP_CELL_POSITIONS[i];
             let x = self.bounds.x + cell_x;
@@ -401,7 +388,13 @@ impl Widget for SkillBar {
             }
 
             // Content: slot number on top row, skill name / "+" hint on bottom row.
-            let cx = x + CELL / 2;
+            let mut cx = x + CELL / 4;
+
+            // Nudge the last slot a little bit more
+            if i == TOP_CELLS - 1 {
+                cx += 1;
+            }
+
             // Slot number (1-based) always shown near the top of the cell.
             let slot_label = (i + 1).to_string();
             font_cache::draw_text(
@@ -419,32 +412,6 @@ impl Widget for SkillBar {
                     font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR)
                 },
             )?;
-            let cy = y + 10; // 10 = glyph height; sits directly below the number
-            if let Some(skill_nr) = bound_skill.filter(|_| bound_icon.is_none()) {
-                let name = skills::get_skill_name(skill_nr);
-                let abbr = Self::abbreviate(name);
-                font_cache::draw_text(
-                    ctx.canvas,
-                    ctx.gfx,
-                    UI_FONT,
-                    &abbr,
-                    cx,
-                    cy,
-                    font_cache::TextStyle::centered()
-                        .with_tint(SKILL_TEXT_COLOR)
-                        .with_drop_shadow(),
-                )?;
-            } else if bound_skill.is_none() {
-                font_cache::draw_text(
-                    ctx.canvas,
-                    ctx.gfx,
-                    UI_FONT,
-                    "+",
-                    cx,
-                    cy,
-                    font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
-                )?;
-            }
         }
 
         Ok(())
@@ -637,18 +604,6 @@ mod tests {
         });
         assert_eq!(resp, EventResponse::Ignored);
         assert!(bar.take_actions().is_empty());
-    }
-
-    #[test]
-    fn abbreviate_short_name() {
-        assert_eq!(SkillBar::abbreviate("Heal"), "Heal");
-        assert_eq!(SkillBar::abbreviate("Axe"), "Axe");
-    }
-
-    #[test]
-    fn abbreviate_long_name() {
-        assert_eq!(SkillBar::abbreviate("Magic Shield"), "Magi");
-        assert_eq!(SkillBar::abbreviate("Hand to Hand"), "Hand");
     }
 
     #[test]
