@@ -105,12 +105,12 @@ struct SpellEffectMeta {
 /// # Returns
 ///
 /// * `Some(SpellEffectMeta)` for known displayable effects, `None` otherwise.
-fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
+fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
     if skill_nr < 0 {
         return None;
     }
     let nr = skill_nr as usize;
-    let icon = active_spell_effect_icon_meta(nr)?;
+    let icon = active_spell_effect_icon_meta(nr, sprite)?;
     let kind = match nr {
         skills::SK_LIGHT
         | skills::SK_PROTECT
@@ -120,6 +120,8 @@ fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
         | skills::SK_RECALL
         | skills::SK_BLAST => SpellEffectKind::Positive,
         skills::SK_CURSE | skills::SK_STUN | skills::SK_WIMPY => SpellEffectKind::Negative,
+        // Eye potions and Potion of Golem are positive buffs.
+        254 | 449 => SpellEffectKind::Positive,
         _ => return None,
     };
     Some(SpellEffectMeta { kind, icon })
@@ -163,6 +165,9 @@ struct SpellSlotEntry {
     slot_index: usize,
     /// Skill template number matching `SK_*` constants.
     skill_nr: i16,
+    /// Sprite tile number from the `SetCharSpell` packet; used to
+    /// disambiguate effects that share a `skill_nr` (e.g. eye potions).
+    sprite: i16,
     /// Remaining fill fraction in `[0.0, 1.0]` (`active / 16.0`).
     fill: f32,
 }
@@ -343,7 +348,8 @@ impl SpellEffectIcons {
                 continue;
             }
             let nr = spell_type[i];
-            let Some(meta) = spell_meta(nr) else {
+            let sprite = spell[i] as i16;
+            let Some(meta) = spell_meta(nr, sprite) else {
                 continue;
             };
             let fill = (f32::from(active[i]) / 16.0).clamp(0.0, 1.0);
@@ -352,6 +358,7 @@ impl SpellEffectIcons {
             let entry = SpellSlotEntry {
                 slot_index: i,
                 skill_nr: nr,
+                sprite,
                 fill,
             };
             match meta.kind {
@@ -501,7 +508,7 @@ impl SpellEffectIcons {
             SpellEffectKind::Positive => self.positives.get(hov.index)?,
             SpellEffectKind::Negative => self.negatives.get(hov.index)?,
         };
-        let meta = spell_meta(entry.skill_nr)?;
+        let meta = spell_meta(entry.skill_nr, entry.sprite)?;
         if let Some(remaining_secs) = self
             .duration_trackers
             .get(&entry.slot_index)
@@ -591,7 +598,7 @@ impl SpellEffectIcons {
         entries: &[SpellSlotEntry],
     ) -> Result<(), String> {
         for (i, entry) in entries.iter().enumerate() {
-            let Some(meta) = spell_meta(entry.skill_nr) else {
+            let Some(meta) = spell_meta(entry.skill_nr, entry.sprite) else {
                 continue;
             };
             let rect = self.icon_rect(kind, i);
@@ -833,7 +840,7 @@ mod tests {
         ];
 
         for skill_nr in displayable {
-            let meta = spell_meta(skill_nr as i16).unwrap();
+            let meta = spell_meta(skill_nr as i16, 0).unwrap();
             assert!(meta.icon.icon_filename.ends_with("_icon.png"));
         }
     }
@@ -851,7 +858,7 @@ mod tests {
         ];
 
         for skill_nr in passive {
-            assert!(spell_meta(skill_nr as i16).is_none());
+            assert!(spell_meta(skill_nr as i16, 0).is_none());
         }
     }
 }
