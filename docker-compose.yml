@@ -14,7 +14,7 @@ services:
     restart: "no"
 
   keydb:
-    image: eqalpha/keydb:latest
+    image: eqalpha/keydb:latest@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac # v6.3.4
     command:
       - keydb-server
       - --port
