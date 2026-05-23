@@ -78,9 +78,6 @@ const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
 /// Bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
 
-/// Maximum characters of a skill name to show in a cell.
-const MAX_ABBREV: usize = 4;
-
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -91,8 +88,12 @@ const MAX_ABBREV: usize = 4;
 
 /// Per-frame data pushed into the skill bar by the game scene.
 pub struct SkillBarData {
-    /// Skill bindings for slots 1-10 (index 0 = slot 1). `Some(skill_nr)` if bound.
+    /// Skill bindings for the primary bar slots 1-10 (index 0 = slot 1). `Some(skill_nr)` if bound.
     pub keybinds: [Option<usize>; TOP_CELLS],
+    /// Skill bindings for the secondary bar slots 1-10. Active when `show_secondary` is true.
+    pub secondary_keybinds: [Option<usize>; TOP_CELLS],
+    /// When `true` the bar displays and operates on the secondary page (Shift / LT held).
+    pub show_secondary: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -113,6 +114,9 @@ pub struct SkillBar {
     icon_texture_ids: HashMap<usize, Option<usize>>,
     /// Controller-selected skill slot index (0..TOP_CELLS), or `None` if no slot is highlighted.
     controller_selected_slot: Option<usize>,
+    /// Mirrors the `show_secondary` flag from the most-recent [`SkillBarData`] push.
+    /// Used by event handlers which run independently of `update_data`.
+    show_secondary: bool,
 }
 
 impl SkillBar {
@@ -134,6 +138,7 @@ impl SkillBar {
             bg_texture_id: None,
             icon_texture_ids: HashMap::new(),
             controller_selected_slot: None,
+            show_secondary: false,
         }
     }
 
@@ -153,6 +158,7 @@ impl SkillBar {
     ///
     /// * `data` - Current skill-bind and spell/effect state.
     pub fn update_data(&mut self, data: SkillBarData) {
+        self.show_secondary = data.show_secondary;
         self.data = Some(data);
     }
 
@@ -182,7 +188,12 @@ impl SkillBar {
     ///   `None` otherwise.
     pub fn hover_text(&self) -> Option<String> {
         let slot = self.hit_top_cell(self.mouse_x, self.mouse_y)?;
-        let skill_nr = self.data.as_ref()?.keybinds[slot]?;
+        let data = self.data.as_ref()?;
+        let skill_nr = if self.show_secondary {
+            data.secondary_keybinds[slot]
+        } else {
+            data.keybinds[slot]
+        }?;
         if let Some(meta) = spell_icon_meta(skill_nr) {
             return Some(meta.name.to_owned());
         }
@@ -207,15 +218,6 @@ impl SkillBar {
                 let within_y = (top..top + CELL).contains(&py);
                 within_x.then_some(index).filter(|_| within_y)
             })
-    }
-
-    /// Abbreviate a skill name to fit inside a cell.
-    fn abbreviate(name: &str) -> String {
-        if name.len() <= MAX_ABBREV {
-            return name.to_owned();
-        }
-        // Take the first MAX_ABBREV characters.
-        name.chars().take(MAX_ABBREV).collect()
     }
 
     /// Lazily loads and returns the texture ID for the given spell icon.
@@ -286,7 +288,21 @@ impl Widget for SkillBar {
 
                 // --- Top row (skill binds) ---
                 if let Some(slot) = self.hit_top_cell(*x, *y) {
-                    let bound_skill = self.data.as_ref().and_then(|d| d.keybinds[slot]);
+                    let bound_skill = self.data.as_ref().and_then(|d| {
+                        if self.show_secondary {
+                            d.secondary_keybinds[slot]
+                        } else {
+                            d.keybinds[slot]
+                        }
+                    });
+                    // When the secondary page is active, key_slot values 10-19
+                    // represent secondary slots 0-9. Action handlers route them
+                    // to `skill_keybinds_secondary` instead of `skill_keybinds`.
+                    let key_slot = if self.show_secondary {
+                        slot + TOP_CELLS
+                    } else {
+                        slot
+                    } as u8;
 
                     match button {
                         MouseButton::Left => {
@@ -295,8 +311,9 @@ impl Widget for SkillBar {
                                 self.actions.push(WidgetAction::CastSkill { skill_nr });
                             } else {
                                 // Empty slot — begin skill assignment.
-                                self.actions
-                                    .push(WidgetAction::BeginSkillAssign { skill_id: slot });
+                                self.actions.push(WidgetAction::BeginSkillAssign {
+                                    skill_id: key_slot as usize,
+                                });
                             }
                         }
                         MouseButton::Right => {
@@ -307,7 +324,7 @@ impl Widget for SkillBar {
                                 // the "clear" signal handled downstream.
                                 self.actions.push(WidgetAction::BindSkillKey {
                                     skill_nr: 0,
-                                    key_slot: slot as u8,
+                                    key_slot,
                                 });
                             }
                         }
@@ -327,9 +344,14 @@ impl Widget for SkillBar {
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
-        let keybinds = match self.data.as_ref() {
-            Some(d) => d.keybinds,
+        let (keybinds, secondary_keybinds) = match self.data.as_ref() {
+            Some(d) => (d.keybinds, d.secondary_keybinds),
             None => return Ok(()),
+        };
+        let active_keybinds = if self.show_secondary {
+            secondary_keybinds
+        } else {
+            keybinds
         };
 
         ctx.canvas.set_blend_mode(BlendMode::Blend);
@@ -352,7 +374,6 @@ impl Widget for SkillBar {
         }
 
         // ── Top row: skill-bind cells ──────────────────────────────────────
-
         for i in 0..TOP_CELLS {
             let (cell_x, cell_y) = TOP_CELL_POSITIONS[i];
             let x = self.bounds.x + cell_x;
@@ -365,7 +386,7 @@ impl Widget for SkillBar {
             ctx.canvas.set_draw_color(CELL_BORDER);
             ctx.canvas.draw_rect(rect)?;
 
-            let bound_skill = keybinds[i];
+            let bound_skill = active_keybinds[i];
             let bound_icon = bound_skill.and_then(spell_icon_meta);
 
             if let (Some(skill_nr), Some(meta)) = (bound_skill, bound_icon) {
@@ -401,7 +422,13 @@ impl Widget for SkillBar {
             }
 
             // Content: slot number on top row, skill name / "+" hint on bottom row.
-            let cx = x + CELL / 2;
+            let mut cx = x + CELL / 4;
+
+            // Nudge the last slot a little bit more
+            if i == TOP_CELLS - 1 {
+                cx += 1;
+            }
+
             // Slot number (1-based) always shown near the top of the cell.
             let slot_label = (i + 1).to_string();
             font_cache::draw_text(
@@ -419,32 +446,6 @@ impl Widget for SkillBar {
                     font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR)
                 },
             )?;
-            let cy = y + 10; // 10 = glyph height; sits directly below the number
-            if let Some(skill_nr) = bound_skill.filter(|_| bound_icon.is_none()) {
-                let name = skills::get_skill_name(skill_nr);
-                let abbr = Self::abbreviate(name);
-                font_cache::draw_text(
-                    ctx.canvas,
-                    ctx.gfx,
-                    UI_FONT,
-                    &abbr,
-                    cx,
-                    cy,
-                    font_cache::TextStyle::centered()
-                        .with_tint(SKILL_TEXT_COLOR)
-                        .with_drop_shadow(),
-                )?;
-            } else if bound_skill.is_none() {
-                font_cache::draw_text(
-                    ctx.canvas,
-                    ctx.gfx,
-                    UI_FONT,
-                    "+",
-                    cx,
-                    cy,
-                    font_cache::TextStyle::centered().with_tint(EMPTY_HINT_COLOR),
-                )?;
-            }
         }
 
         Ok(())
@@ -469,6 +470,8 @@ mod tests {
     fn test_data() -> SkillBarData {
         SkillBarData {
             keybinds: [None; TOP_CELLS],
+            secondary_keybinds: [None; TOP_CELLS],
+            show_secondary: false,
         }
     }
 
@@ -640,18 +643,6 @@ mod tests {
     }
 
     #[test]
-    fn abbreviate_short_name() {
-        assert_eq!(SkillBar::abbreviate("Heal"), "Heal");
-        assert_eq!(SkillBar::abbreviate("Axe"), "Axe");
-    }
-
-    #[test]
-    fn abbreviate_long_name() {
-        assert_eq!(SkillBar::abbreviate("Magic Shield"), "Magi");
-        assert_eq!(SkillBar::abbreviate("Hand to Hand"), "Hand");
-    }
-
-    #[test]
     fn no_render_without_data() {
         let bar = bar_at(0, 0);
         assert!(bar.data.is_none());
@@ -661,5 +652,118 @@ mod tests {
     fn widget_dimensions() {
         assert_eq!(SkillBar::width(), BAR_W);
         assert_eq!(SkillBar::height(), BAR_H);
+    }
+
+    // -----------------------------------------------------------------------
+    // Secondary bar tests
+    // -----------------------------------------------------------------------
+
+    fn secondary_data(secondary_keybinds: [Option<usize>; TOP_CELLS]) -> SkillBarData {
+        SkillBarData {
+            keybinds: [None; TOP_CELLS],
+            secondary_keybinds,
+            show_secondary: true,
+        }
+    }
+
+    #[test]
+    fn secondary_empty_slot_click_emits_offset_skill_id() {
+        let mut bar = bar_at(0, 0);
+        bar.update_data(secondary_data([None; TOP_CELLS]));
+        let resp = bar.handle_event(&UiEvent::MouseClick {
+            x: TOP_CELL_POSITIONS[0].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        let actions = bar.take_actions();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            WidgetAction::BeginSkillAssign { skill_id } => {
+                assert_eq!(*skill_id, TOP_CELLS); // slot 0 + TOP_CELLS = 10
+            }
+            other => panic!("Expected BeginSkillAssign, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn secondary_bound_slot_casts_skill() {
+        let mut bar = bar_at(0, 0);
+        let mut sec = [None; TOP_CELLS];
+        sec[1] = Some(26); // Heal in secondary slot 1
+        bar.update_data(secondary_data(sec));
+        let resp = bar.handle_event(&UiEvent::MouseClick {
+            x: TOP_CELL_POSITIONS[1].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        let actions = bar.take_actions();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            WidgetAction::CastSkill { skill_nr } => assert_eq!(*skill_nr, 26),
+            other => panic!("Expected CastSkill, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn secondary_right_click_unbinds_with_offset_key_slot() {
+        let mut bar = bar_at(0, 0);
+        let mut sec = [None; TOP_CELLS];
+        sec[0] = Some(3);
+        bar.update_data(secondary_data(sec));
+        let resp = bar.handle_event(&UiEvent::MouseClick {
+            x: TOP_CELL_POSITIONS[0].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+            button: MouseButton::Right,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        let actions = bar.take_actions();
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            WidgetAction::BindSkillKey { skill_nr, key_slot } => {
+                assert_eq!(*skill_nr, 0);
+                assert_eq!(*key_slot as usize, TOP_CELLS); // secondary slot 0 = key_slot 10
+            }
+            other => panic!("Expected BindSkillKey, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn secondary_hover_text_reads_secondary_bindings() {
+        let mut bar = bar_at(0, 0);
+        let mut sec = [None; TOP_CELLS];
+        sec[0] = Some(skills::SK_BLESS);
+        bar.update_data(secondary_data(sec));
+        bar.handle_event(&UiEvent::MouseMove {
+            x: TOP_CELL_POSITIONS[0].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+        });
+        assert_eq!(bar.hover_text().as_deref(), Some("Bless"));
+    }
+
+    #[test]
+    fn primary_slot_click_unaffected_when_secondary_inactive() {
+        // Confirm the primary path still uses key_slot 0..9 when show_secondary is false.
+        let mut bar = bar_at(0, 0);
+        let mut data = test_data();
+        data.keybinds[3] = Some(14);
+        bar.update_data(data);
+        bar.handle_event(&UiEvent::MouseClick {
+            x: TOP_CELL_POSITIONS[3].0 + 1,
+            y: CELLS_OFFSET_Y + 1,
+            button: MouseButton::Right,
+            modifiers: KeyModifiers::default(),
+        });
+        let actions = bar.take_actions();
+        match &actions[0] {
+            WidgetAction::BindSkillKey { key_slot, .. } => {
+                assert_eq!(*key_slot, 3); // no offset when primary page
+            }
+            other => panic!("Expected BindSkillKey, got {:?}", other),
+        }
     }
 }

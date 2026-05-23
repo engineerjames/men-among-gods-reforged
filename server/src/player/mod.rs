@@ -17,6 +17,7 @@ use crate::{
 pub mod commands;
 pub mod connection;
 pub mod map;
+pub mod quest_log;
 pub mod talent_trees;
 pub mod tick;
 

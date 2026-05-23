@@ -1,4 +1,4 @@
-//! A composite widget that arranges three circular buttons in a vertical
+//! A composite widget that arranges five circular buttons in a vertical
 //! column. Each button toggles a corresponding HUD panel.
 
 use sdl2::pixels::Color;
@@ -13,15 +13,17 @@ const BUTTON_FILL: Color = Color::RGBA(20, 20, 40, 200);
 /// Default border color for the HUD buttons.
 const BUTTON_BORDER: Color = Color::RGBA(140, 140, 160, 220);
 
-/// Four circular buttons arranged in a vertical column.
+pub const NUMBER_OF_BUTTONS: usize = 4;
+
+/// Five circular buttons arranged in a vertical column.
 ///
 /// Clicking a button produces a [`WidgetAction::TogglePanel`] action that the
 /// owning scene can drain to toggle the corresponding panel's visibility.
 pub struct HudButtonBar {
-    buttons: [CircleButton; 4],
-    panel_kinds: [HudPanel; 4],
+    buttons: [CircleButton; NUMBER_OF_BUTTONS],
+    panel_kinds: [HudPanel; NUMBER_OF_BUTTONS],
     pending_actions: Vec<WidgetAction>,
-    /// Cached bounding box that encloses all four buttons.
+    /// Cached bounding box that encloses all five buttons.
     bounds: Bounds,
 }
 
@@ -34,7 +36,7 @@ impl HudButtonBar {
     /// * `bottom_cy` - Center Y of the bottom-most button.
     /// * `spacing` - Vertical distance between adjacent button centers.
     /// * `button_radius` - Radius of each individual circular button.
-    /// * `sprite_ids` - Sprite IDs for [Skills, Talents, Inventory, Settings] buttons.
+    /// * `sprite_ids` - Sprite IDs for [QuestLog, Skills, Talents, Inventory, Settings] buttons.
     ///
     /// # Returns
     ///
@@ -44,9 +46,11 @@ impl HudButtonBar {
         bottom_cy: i32,
         spacing: u32,
         button_radius: u32,
-        sprite_ids: [usize; 4],
+        sprite_ids: [usize; NUMBER_OF_BUTTONS],
     ) -> Self {
         let panel_kinds = [
+            // TODO: Further develop QuestLog panel once we have a server-side quest tracking system in place
+            // HudPanel::QuestLog,
             HudPanel::Skills,
             HudPanel::Talents,
             HudPanel::Inventory,
@@ -55,20 +59,11 @@ impl HudButtonBar {
 
         let positions = Self::compute_positions(cx, bottom_cy, spacing);
 
-        let buttons = [
-            CircleButton::new(positions[0].0, positions[0].1, button_radius, BUTTON_FILL)
+        let buttons = std::array::from_fn(|i| {
+            CircleButton::new(positions[i].0, positions[i].1, button_radius, BUTTON_FILL)
                 .with_border_color(BUTTON_BORDER)
-                .with_sprite(sprite_ids[0]),
-            CircleButton::new(positions[1].0, positions[1].1, button_radius, BUTTON_FILL)
-                .with_border_color(BUTTON_BORDER)
-                .with_sprite(sprite_ids[1]),
-            CircleButton::new(positions[2].0, positions[2].1, button_radius, BUTTON_FILL)
-                .with_border_color(BUTTON_BORDER)
-                .with_sprite(sprite_ids[2]),
-            CircleButton::new(positions[3].0, positions[3].1, button_radius, BUTTON_FILL)
-                .with_border_color(BUTTON_BORDER)
-                .with_sprite(sprite_ids[3]),
-        ];
+                .with_sprite(sprite_ids[i])
+        });
 
         let bounds = Self::enclosing_bounds(&positions, button_radius);
 
@@ -94,20 +89,20 @@ impl HudButtonBar {
     ///
     /// # Returns
     ///
-    /// An array of four `(i32, i32)` center positions, ordered top to bottom.
-    fn compute_positions(cx: i32, bottom_cy: i32, spacing: u32) -> [(i32, i32); 4] {
+    /// An array of five `(i32, i32)` center positions, ordered top to bottom.
+    fn compute_positions(cx: i32, bottom_cy: i32, spacing: u32) -> [(i32, i32); NUMBER_OF_BUTTONS] {
         let s = spacing as i32;
         [
-            (cx, bottom_cy - 3 * s), // top (Skills)
+            // (cx, bottom_cy - 4 * s), // top (QuestLog)
+            (cx, bottom_cy - 3 * s), // (Skills)
             (cx, bottom_cy - 2 * s), // (Talents)
             (cx, bottom_cy - s),     // (Inventory)
             (cx, bottom_cy),         // bottom (Settings)
         ]
     }
 
-    /// Computes the smallest axis-aligned bounding box that encloses all three
-    /// button circles.
-    fn enclosing_bounds(positions: &[(i32, i32); 4], button_r: u32) -> Bounds {
+    /// Computes the smallest axis-aligned bounding box that encloses all button circles.
+    fn enclosing_bounds(positions: &[(i32, i32); NUMBER_OF_BUTTONS], button_r: u32) -> Bounds {
         let r = button_r as i32;
         let min_x = positions.iter().map(|(x, _)| x - r).min().unwrap();
         let min_y = positions.iter().map(|(_, y)| y - r).min().unwrap();
@@ -165,16 +160,13 @@ mod tests {
         let positions = HudButtonBar::compute_positions(100, 300, 40);
 
         // All buttons share the same X.
-        assert_eq!(positions[0].0, 100);
-        assert_eq!(positions[1].0, 100);
-        assert_eq!(positions[2].0, 100);
-        assert_eq!(positions[3].0, 100);
+        assert!(positions.iter().all(|(x, _)| *x == 100));
 
         // Ordered top to bottom with equal spacing.
-        assert_eq!(positions[0].1, 180); // 300 - 3*40
-        assert_eq!(positions[1].1, 220); // 300 - 2*40
-        assert_eq!(positions[2].1, 260); // 300 - 40
-        assert_eq!(positions[3].1, 300); // bottom
+        assert_eq!(positions[0].1, 180); // 300 - 3*40 (Skills)
+        assert_eq!(positions[1].1, 220); // 300 - 2*40 (Talents)
+        assert_eq!(positions[2].1, 260); // 300 - 40   (Inventory)
+        assert_eq!(positions[3].1, 300); // 300         (Settings)
     }
 
     #[test]
@@ -191,7 +183,7 @@ mod tests {
     fn click_produces_toggle_action() {
         let bar = HudButtonBar::new(200, 300, 40, 16, [267, 267, 128, 35]);
         let positions = HudButtonBar::compute_positions(200, 300, 40);
-        let (cx, cy) = positions[2]; // Inventory button (third from top)
+        let (cx, cy) = positions[2]; // Inventory button (index 2: Skills, Talents, Inventory, Settings)
 
         let mut bar = bar;
         let resp = bar.handle_event(&UiEvent::MouseClick {
@@ -227,7 +219,7 @@ mod tests {
     fn take_actions_drains() {
         let mut bar = HudButtonBar::new(200, 300, 40, 16, [267, 267, 128, 35]);
         let positions = HudButtonBar::compute_positions(200, 300, 40);
-        let (cx, cy) = positions[0]; // Skills button
+        let (cx, cy) = positions[0]; // Skills button (first active button)
 
         bar.handle_event(&UiEvent::MouseClick {
             x: cx,

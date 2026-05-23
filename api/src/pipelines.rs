@@ -1,8 +1,7 @@
-use mag_core::traits::{self, Class, Sex};
-use mag_core::{constants, template_store};
-
-use crate::types;
 use log::info;
+use mag_core::traits::{self, Class, Sex};
+use mag_core::types::CharacterSummary;
+use mag_core::{constants, template_store};
 use redis::AsyncCommands;
 
 /// Builds the KeyDB claim key used to enforce username uniqueness and resolve usernames
@@ -829,9 +828,9 @@ pub(crate) async fn search_characters_by_name_scan(
 pub(crate) async fn list_characters_for_account_scan(
     con: &mut redis::aio::MultiplexedConnection,
     account_id: u64,
-) -> Result<Vec<types::CharacterSummary>, redis::RedisError> {
+) -> Result<Vec<CharacterSummary>, redis::RedisError> {
     let keys = scan_keys_matching(con, "character:*", 400).await?;
-    let mut characters: Vec<types::CharacterSummary> = Vec::new();
+    let mut characters: Vec<CharacterSummary> = Vec::new();
 
     for key in keys {
         if key == "character:next_id" {
@@ -908,7 +907,7 @@ pub(crate) async fn list_characters_for_account_scan(
             .get("rank_index")
             .and_then(|value| value.parse::<u8>().ok());
 
-        characters.push(types::CharacterSummary {
+        characters.push(CharacterSummary {
             id: character_id,
             name,
             description,

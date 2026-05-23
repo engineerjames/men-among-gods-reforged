@@ -5,6 +5,7 @@ pub mod keybindings_panel;
 pub mod look_panel;
 pub mod minimap_widget;
 pub mod mode_button;
+pub mod quest_log_panel;
 pub mod settings_panel;
 pub mod shop_panel;
 pub mod skill_bar;

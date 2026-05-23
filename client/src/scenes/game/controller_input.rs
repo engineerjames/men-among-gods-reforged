@@ -293,7 +293,13 @@ impl GameScene {
                         return None;
                     }
                     if let Some(slot) = self.skill_bar.controller_selected_slot() {
-                        if slot < app_state.settings.character.skill_keybinds.len() {
+                        // LT held → clear the secondary slot; otherwise the primary slot.
+                        if self.lt_held {
+                            if slot < app_state.settings.character.skill_keybinds_secondary.len() {
+                                app_state.settings.character.skill_keybinds_secondary[slot] = None;
+                                self.save_active_profile(app_state);
+                            }
+                        } else if slot < app_state.settings.character.skill_keybinds.len() {
                             app_state.settings.character.skill_keybinds[slot] = None;
                             self.save_active_profile(app_state);
                         }
@@ -301,10 +307,23 @@ impl GameScene {
                     return None;
                 }
 
-                // Right stick press (R3) → activate highlighted skill or assign empty slot
+                // Right stick press (R3) → activate highlighted skill or assign empty slot.
+                // When LT is held, operate on the secondary bar page.
                 if *button == Btn::RightStick && self.controller_mode {
                     if let Some(slot) = self.skill_bar.controller_selected_slot() {
-                        if let Some(skill_nr) = app_state.settings.character.skill_keybinds[slot] {
+                        let skill_nr = if self.lt_held {
+                            app_state.settings.character.skill_keybinds_secondary[slot]
+                        } else {
+                            app_state.settings.character.skill_keybinds[slot]
+                        };
+                        // The slot index passed to the skill picker includes the
+                        // +TOP_CELLS offset so handlers route to secondary storage.
+                        let picker_slot = if self.lt_held {
+                            slot + crate::ui::hud::skill_bar::TOP_CELLS
+                        } else {
+                            slot
+                        } as u8;
+                        if let Some(skill_nr) = skill_nr {
                             // Slot is bound → cast the skill.
                             if let (Some(net), Some(ps)) =
                                 (app_state.network.as_ref(), app_state.player_state.as_ref())
@@ -334,7 +353,7 @@ impl GameScene {
                                 .map(|ps| ps.character_info().skill.as_slice())
                                 .unwrap_or(&[]);
                             self.skill_picker
-                                .show(slot as u8, anchor_x, anchor_y, player_skills);
+                                .show(picker_slot, anchor_x, anchor_y, player_skills);
                         }
                     }
                     return None;
@@ -368,9 +387,13 @@ impl GameScene {
                             if let (Some(net), Some(ps)) =
                                 (app_state.network.as_ref(), app_state.player_state.as_ref())
                             {
-                                if let Some(skill_nr) =
+                                // LT held → secondary bar; RT held → primary bar.
+                                let skill_nr = if self.lt_held {
+                                    app_state.settings.character.skill_keybinds_secondary[slot]
+                                } else {
                                     app_state.settings.character.skill_keybinds[slot]
-                                {
+                                };
+                                if let Some(skill_nr) = skill_nr {
                                     self.play_click_sound(app_state);
                                     net.send(ClientCommand::new_skill(
                                         skill_nr as u32,
@@ -516,9 +539,13 @@ impl GameScene {
                         if let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
-                            if let Some(skill_nr) =
+                            // LT held → secondary bar; otherwise primary.
+                            let skill_nr = if self.lt_held {
+                                app_state.settings.character.skill_keybinds_secondary[slot]
+                            } else {
                                 app_state.settings.character.skill_keybinds[slot]
-                            {
+                            };
+                            if let Some(skill_nr) = skill_nr {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     skill_nr as u32,
@@ -659,8 +686,10 @@ impl GameScene {
                     }
                 }
 
-                // Trigger axis → skill dispatch
+                // Trigger axis → skill dispatch.
+                // Lt fires from the secondary bar; Rt fires from the primary bar.
                 if let Some(cb) = ControllerButton::from_trigger_axis(*axis, *value) {
+                    let use_secondary = matches!(cb, ControllerButton::Lt);
                     if let Some(slot) = app_state
                         .settings
                         .character
@@ -670,9 +699,12 @@ impl GameScene {
                         if let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
-                            if let Some(skill_nr) =
+                            let skill_nr = if use_secondary {
+                                app_state.settings.character.skill_keybinds_secondary[slot]
+                            } else {
                                 app_state.settings.character.skill_keybinds[slot]
-                            {
+                            };
+                            if let Some(skill_nr) = skill_nr {
                                 self.play_click_sound(app_state);
                                 net.send(ClientCommand::new_skill(
                                     skill_nr as u32,

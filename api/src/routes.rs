@@ -8,12 +8,27 @@ use crate::ApiState;
 use crate::admin::routes_bans;
 use crate::helpers;
 use crate::pipelines;
-use crate::types;
 
 use axum::{Json, extract::ConnectInfo, extract::Path, extract::State, http::StatusCode};
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
 use log::{error, info, warn};
+use mag_core::types::CharacterSummary;
+use mag_core::types::CreateAccountRequest;
+use mag_core::types::CreateAccountResponse;
+use mag_core::types::CreateCharacterRequest;
+use mag_core::types::CreateGameLoginTicketRequest;
+use mag_core::types::CreateGameLoginTicketResponse;
+use mag_core::types::GameLoginTicketMetadata;
+use mag_core::types::GetCharactersResponse;
+use mag_core::types::JwtClaims;
+use mag_core::types::LoginRequest;
+use mag_core::types::LoginResponse;
+use mag_core::types::ResetPasswordConfirm;
+use mag_core::types::ResetPasswordConfirmResponse;
+use mag_core::types::ResetPasswordRequest;
+use mag_core::types::ResetPasswordRequestResponse;
+use mag_core::types::UpdateCharacterRequest;
 use mag_core::{constants, traits};
 use rand::RngCore;
 use rand::rngs::OsRng;
@@ -131,17 +146,14 @@ fn character_name_error_status(context: &str, err: CharacterNameValidationError)
 pub(crate) async fn create_new_character(
     State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
-    Json(payload): Json<types::CreateCharacterRequest>,
-) -> (StatusCode, Json<types::CharacterSummary>) {
+    Json(payload): Json<CreateCharacterRequest>,
+) -> (StatusCode, Json<CharacterSummary>) {
     let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
         None => {
             warn!("Unauthorized access attempt: missing Authorization header");
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(types::CharacterSummary::default()),
-            );
+            return (StatusCode::UNAUTHORIZED, Json(CharacterSummary::default()));
         }
     };
 
@@ -149,21 +161,15 @@ pub(crate) async fn create_new_character(
         Ok(token_data) => token_data,
         Err(err) => {
             warn!("Unauthorized access attempt: {}", err);
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(types::CharacterSummary::default()),
-            );
+            return (StatusCode::UNAUTHORIZED, Json(CharacterSummary::default()));
         }
     };
 
     if !payload.validate() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(types::CharacterSummary::default()),
-        );
+        return (StatusCode::BAD_REQUEST, Json(CharacterSummary::default()));
     }
 
-    let types::CreateCharacterRequest {
+    let CreateCharacterRequest {
         name,
         description,
         sex,
@@ -175,7 +181,7 @@ pub(crate) async fn create_new_character(
         Err(err) => {
             return (
                 character_name_error_status("Create character", err),
-                Json(types::CharacterSummary::default()),
+                Json(CharacterSummary::default()),
             );
         }
     };
@@ -184,10 +190,7 @@ pub(crate) async fn create_new_character(
         Some(value) if !value.is_empty() => {
             if let Err(err) = helpers::validate_character_description(&name, value) {
                 warn!("Create character rejected: invalid description: {err}");
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(types::CharacterSummary::default()),
-                );
+                return (StatusCode::BAD_REQUEST, Json(CharacterSummary::default()));
             }
             value.to_owned()
         }
@@ -198,7 +201,7 @@ pub(crate) async fn create_new_character(
                 error!("Default description template invalid: {err}");
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::CharacterSummary::default()),
+                    Json(CharacterSummary::default()),
                 );
             }
             fallback
@@ -213,16 +216,13 @@ pub(crate) async fn create_new_character(
                 "Create character rejected: account not found for {}",
                 token_data.claims.sub
             );
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(types::CharacterSummary::default()),
-            );
+            return (StatusCode::UNAUTHORIZED, Json(CharacterSummary::default()));
         }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CharacterSummary::default()),
+                Json(CharacterSummary::default()),
             );
         }
     };
@@ -239,7 +239,7 @@ pub(crate) async fn create_new_character(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CharacterSummary::default()),
+                Json(CharacterSummary::default()),
             );
         }
     };
@@ -248,10 +248,7 @@ pub(crate) async fn create_new_character(
             "Create character rejected: account {} already has {} characters",
             user_id, character_count
         );
-        return (
-            StatusCode::CONFLICT,
-            Json(types::CharacterSummary::default()),
-        );
+        return (StatusCode::CONFLICT, Json(CharacterSummary::default()));
     }
 
     let result =
@@ -266,7 +263,7 @@ pub(crate) async fn create_new_character(
             );
             (
                 StatusCode::OK,
-                Json(types::CharacterSummary {
+                Json(CharacterSummary {
                     id: character_id,
                     name,
                     description,
@@ -285,7 +282,7 @@ pub(crate) async fn create_new_character(
 
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CharacterSummary::default()),
+                Json(CharacterSummary::default()),
             )
         }
     }
@@ -306,7 +303,7 @@ pub(crate) async fn create_new_character(
 pub(crate) async fn get_characters(
     State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
-) -> (StatusCode, Json<types::GetCharactersResponse>) {
+) -> (StatusCode, Json<GetCharactersResponse>) {
     let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
@@ -314,7 +311,7 @@ pub(crate) async fn get_characters(
             warn!("Unauthorized access attempt: missing Authorization header");
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::GetCharactersResponse { characters: vec![] }),
+                Json(GetCharactersResponse { characters: vec![] }),
             );
         }
     };
@@ -325,7 +322,7 @@ pub(crate) async fn get_characters(
             warn!("Unauthorized access attempt: {}", err);
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::GetCharactersResponse { characters: vec![] }),
+                Json(GetCharactersResponse { characters: vec![] }),
             );
         }
     };
@@ -336,14 +333,14 @@ pub(crate) async fn get_characters(
         Ok(None) => {
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::GetCharactersResponse { characters: vec![] }),
+                Json(GetCharactersResponse { characters: vec![] }),
             );
         }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::GetCharactersResponse { characters: vec![] }),
+                Json(GetCharactersResponse { characters: vec![] }),
             );
         }
     };
@@ -354,15 +351,12 @@ pub(crate) async fn get_characters(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::GetCharactersResponse { characters: vec![] }),
+                Json(GetCharactersResponse { characters: vec![] }),
             );
         }
     };
 
-    (
-        StatusCode::OK,
-        Json(types::GetCharactersResponse { characters }),
-    )
+    (StatusCode::OK, Json(GetCharactersResponse { characters }))
 }
 
 /// Creates a short-lived, one-time login ticket for the game server.
@@ -372,8 +366,8 @@ pub(crate) async fn get_characters(
 pub(crate) async fn create_game_login_ticket(
     State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
-    Json(payload): Json<types::CreateGameLoginTicketRequest>,
-) -> (StatusCode, Json<types::CreateGameLoginTicketResponse>) {
+    Json(payload): Json<CreateGameLoginTicketRequest>,
+) -> (StatusCode, Json<CreateGameLoginTicketResponse>) {
     let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
         Some(value) => value,
@@ -381,7 +375,7 @@ pub(crate) async fn create_game_login_ticket(
             warn!("Unauthorized access attempt: missing Authorization header");
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Unauthorized".to_owned()),
                 }),
@@ -395,7 +389,7 @@ pub(crate) async fn create_game_login_ticket(
             warn!("Unauthorized access attempt: {}", err);
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Unauthorized".to_owned()),
                 }),
@@ -415,7 +409,7 @@ pub(crate) async fn create_game_login_ticket(
         );
         return (
             StatusCode::BAD_REQUEST,
-            Json(types::CreateGameLoginTicketResponse {
+            Json(CreateGameLoginTicketResponse {
                 ticket: None,
                 error: Some("Unsupported client version".to_owned()),
             }),
@@ -427,7 +421,7 @@ pub(crate) async fn create_game_login_ticket(
         Ok(None) => {
             return (
                 StatusCode::UNAUTHORIZED,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Unauthorized".to_owned()),
                 }),
@@ -437,7 +431,7 @@ pub(crate) async fn create_game_login_ticket(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Server error".to_owned()),
                 }),
@@ -451,7 +445,7 @@ pub(crate) async fn create_game_login_ticket(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Server error".to_owned()),
                 }),
@@ -466,7 +460,7 @@ pub(crate) async fn create_game_login_ticket(
         );
         return (
             StatusCode::UNAUTHORIZED,
-            Json(types::CreateGameLoginTicketResponse {
+            Json(CreateGameLoginTicketResponse {
                 ticket: None,
                 error: Some("Unauthorized".to_owned()),
             }),
@@ -481,7 +475,7 @@ pub(crate) async fn create_game_login_ticket(
             );
             return (
                 StatusCode::FORBIDDEN,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Account banned".to_owned()),
                 }),
@@ -492,7 +486,7 @@ pub(crate) async fn create_game_login_ticket(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Server error".to_owned()),
                 }),
@@ -508,7 +502,7 @@ pub(crate) async fn create_game_login_ticket(
             );
             return (
                 StatusCode::FORBIDDEN,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Character banned".to_owned()),
                 }),
@@ -519,7 +513,7 @@ pub(crate) async fn create_game_login_ticket(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Server error".to_owned()),
                 }),
@@ -537,7 +531,7 @@ pub(crate) async fn create_game_login_ticket(
                 );
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::CreateGameLoginTicketResponse {
+                    Json(CreateGameLoginTicketResponse {
                         ticket: None,
                         error: Some("Server error".to_owned()),
                     }),
@@ -547,7 +541,7 @@ pub(crate) async fn create_game_login_ticket(
                 error!("Redis read failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::CreateGameLoginTicketResponse {
+                    Json(CreateGameLoginTicketResponse {
                         ticket: None,
                         error: Some("Server error".to_owned()),
                     }),
@@ -555,7 +549,7 @@ pub(crate) async fn create_game_login_ticket(
             }
         };
     let race = traits::get_race_integer(sex == traits::Sex::Male, class);
-    let ticket_metadata = types::GameLoginTicketMetadata {
+    let ticket_metadata = GameLoginTicketMetadata {
         account_id,
         character_id: payload.character_id,
         client_version: payload.client_version,
@@ -567,7 +561,7 @@ pub(crate) async fn create_game_login_ticket(
             error!("Failed to encode game login ticket metadata: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Server error".to_owned()),
                 }),
@@ -584,7 +578,7 @@ pub(crate) async fn create_game_login_ticket(
             error!("Failed to allocate a unique login ticket after retries");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: None,
                     error: Some("Server error".to_owned()),
                 }),
@@ -610,7 +604,7 @@ pub(crate) async fn create_game_login_ticket(
                 error!("Redis write failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(types::CreateGameLoginTicketResponse {
+                    Json(CreateGameLoginTicketResponse {
                         ticket: None,
                         error: Some("Server error".to_owned()),
                     }),
@@ -625,7 +619,7 @@ pub(crate) async fn create_game_login_ticket(
             );
             return (
                 StatusCode::OK,
-                Json(types::CreateGameLoginTicketResponse {
+                Json(CreateGameLoginTicketResponse {
                     ticket: Some(ticket),
                     error: None,
                 }),
@@ -649,8 +643,8 @@ pub(crate) async fn create_game_login_ticket(
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, CreateAccountResponse)` on KeyDB or internal failures.
 pub(crate) async fn create_account(
     State(state): State<ApiState>,
-    Json(payload): Json<types::CreateAccountRequest>,
-) -> (StatusCode, Json<types::CreateAccountResponse>) {
+    Json(payload): Json<CreateAccountRequest>,
+) -> (StatusCode, Json<CreateAccountResponse>) {
     let mut con = state.con.clone();
     let email_lc = payload.email.trim().to_lowercase();
     let username_lc = payload.username.trim().to_lowercase();
@@ -659,7 +653,7 @@ pub(crate) async fn create_account(
         "Create account request: username={}, email={}",
         username_lc, email_lc
     );
-    let response = types::CreateAccountResponse {
+    let response = CreateAccountResponse {
         id: None,
         error: None,
         username: username_lc.clone(),
@@ -670,7 +664,7 @@ pub(crate) async fn create_account(
         warn!("Create account rejected: invalid email {}", email_lc);
         return (
             StatusCode::BAD_REQUEST,
-            Json(types::CreateAccountResponse {
+            Json(CreateAccountResponse {
                 error: Some("Invalid email".to_owned()),
                 ..response
             }),
@@ -681,7 +675,7 @@ pub(crate) async fn create_account(
         warn!("Create account rejected: invalid username {}", username_lc);
         return (
             StatusCode::BAD_REQUEST,
-            Json(types::CreateAccountResponse {
+            Json(CreateAccountResponse {
                 error: Some("Invalid username".to_owned()),
                 ..response
             }),
@@ -692,7 +686,7 @@ pub(crate) async fn create_account(
         warn!("Create account rejected: invalid password format");
         return (
             StatusCode::BAD_REQUEST,
-            Json(types::CreateAccountResponse {
+            Json(CreateAccountResponse {
                 error: Some("Invalid password".to_owned()),
                 ..response
             }),
@@ -706,7 +700,7 @@ pub(crate) async fn create_account(
             error!("Redis INCR failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateAccountResponse {
+                Json(CreateAccountResponse {
                     error: Some(format!("Redis error: {}", err)),
                     ..response
                 }),
@@ -724,7 +718,7 @@ pub(crate) async fn create_account(
             error!("Redis claim failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateAccountResponse {
+                Json(CreateAccountResponse {
                     error: Some(format!("Redis error: {}", err)),
                     ..response
                 }),
@@ -738,7 +732,7 @@ pub(crate) async fn create_account(
         );
         return (
             StatusCode::CONFLICT,
-            Json(types::CreateAccountResponse {
+            Json(CreateAccountResponse {
                 error: Some("Username is already in use".to_owned()),
                 ..response
             }),
@@ -752,7 +746,7 @@ pub(crate) async fn create_account(
             error!("Redis claim failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::CreateAccountResponse {
+                Json(CreateAccountResponse {
                     error: Some(format!("Redis error: {}", err)),
                     ..response
                 }),
@@ -764,7 +758,7 @@ pub(crate) async fn create_account(
         info!("Create account rejected: duplicate email {}", email_lc);
         return (
             StatusCode::CONFLICT,
-            Json(types::CreateAccountResponse {
+            Json(CreateAccountResponse {
                 error: Some("Email is already in use".to_owned()),
                 ..response
             }),
@@ -780,7 +774,7 @@ pub(crate) async fn create_account(
         error!("Redis write failed: {}", err);
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(types::CreateAccountResponse {
+            Json(CreateAccountResponse {
                 error: Some(format!("Redis error: {}", err)),
                 ..response
             }),
@@ -789,7 +783,7 @@ pub(crate) async fn create_account(
 
     (
         StatusCode::CREATED,
-        Json(types::CreateAccountResponse {
+        Json(CreateAccountResponse {
             id: Some(id),
             error: None,
             username: username_lc,
@@ -817,7 +811,7 @@ pub(crate) async fn update_character(
     State(state): State<ApiState>,
     headers: axum::http::HeaderMap,
     Path(character_id): Path<u64>,
-    Json(payload): Json<types::UpdateCharacterRequest>,
+    Json(payload): Json<UpdateCharacterRequest>,
 ) -> StatusCode {
     let mut con = state.con.clone();
     let token = match helpers::get_token_from_headers(&headers).await {
@@ -1079,8 +1073,8 @@ pub(crate) async fn delete_character(
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, LoginResponse)` when KeyDB fails or `API_JWT_SECRET` is missing.
 pub(crate) async fn login(
     State(state): State<ApiState>,
-    Json(payload): Json<types::LoginRequest>,
-) -> (StatusCode, Json<types::LoginResponse>) {
+    Json(payload): Json<LoginRequest>,
+) -> (StatusCode, Json<LoginResponse>) {
     let mut con = state.con.clone();
     let username_lc = payload.username.trim().to_lowercase();
     info!("Login request for username={}", username_lc);
@@ -1177,7 +1171,7 @@ pub(crate) async fn login(
         .duration_since(UNIX_EPOCH)
         .unwrap_or(Duration::from_secs(0))
         .as_secs();
-    let claims = types::JwtClaims {
+    let claims = JwtClaims {
         sub: username_lc,
         exp: (now + 3600) as usize,
     };
@@ -1200,8 +1194,8 @@ pub(crate) async fn login(
     (StatusCode::OK, login_response(token, None))
 }
 
-fn login_response(token: impl Into<String>, error: Option<&str>) -> Json<types::LoginResponse> {
-    Json(types::LoginResponse {
+fn login_response(token: impl Into<String>, error: Option<&str>) -> Json<LoginResponse> {
+    Json(LoginResponse {
         token: token.into(),
         error: error.map(str::to_owned),
     })
@@ -1233,11 +1227,11 @@ const RESET_TTL_SECS: u64 = 900;
 pub(crate) async fn request_password_reset(
     State(state): State<ApiState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(payload): Json<types::ResetPasswordRequest>,
-) -> (StatusCode, Json<types::ResetPasswordRequestResponse>) {
+    Json(payload): Json<ResetPasswordRequest>,
+) -> (StatusCode, Json<ResetPasswordRequestResponse>) {
     let mut con = state.con.clone();
 
-    let generic_ok = types::ResetPasswordRequestResponse {
+    let generic_ok = ResetPasswordRequestResponse {
         message: "If an account with that username and email exists, a reset code has been sent."
             .to_owned(),
     };
@@ -1249,7 +1243,7 @@ pub(crate) async fn request_password_reset(
             warn!("Password reset requested but SMTP is not configured");
             return (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(types::ResetPasswordRequestResponse {
+                Json(ResetPasswordRequestResponse {
                     message: "Password reset is not available at this time.".to_owned(),
                 }),
             );
@@ -1282,7 +1276,7 @@ pub(crate) async fn request_password_reset(
         warn!("Password reset rate limited for IP {}", addr.ip());
         return (
             StatusCode::TOO_MANY_REQUESTS,
-            Json(types::ResetPasswordRequestResponse {
+            Json(ResetPasswordRequestResponse {
                 message: "Too many reset attempts. Please try again later.".to_owned(),
             }),
         );
@@ -1367,14 +1361,14 @@ pub(crate) async fn request_password_reset(
 /// * `(500, message)` on internal failure.
 pub(crate) async fn confirm_password_reset(
     State(state): State<ApiState>,
-    Json(payload): Json<types::ResetPasswordConfirm>,
-) -> (StatusCode, Json<types::ResetPasswordConfirmResponse>) {
+    Json(payload): Json<ResetPasswordConfirm>,
+) -> (StatusCode, Json<ResetPasswordConfirmResponse>) {
     let mut con = state.con.clone();
 
     let fail = |msg: &str| {
         (
             StatusCode::BAD_REQUEST,
-            Json(types::ResetPasswordConfirmResponse {
+            Json(ResetPasswordConfirmResponse {
                 message: msg.to_owned(),
             }),
         )
@@ -1407,7 +1401,7 @@ pub(crate) async fn confirm_password_reset(
             error!("Redis read failed during password reset confirm: {err}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::ResetPasswordConfirmResponse {
+                Json(ResetPasswordConfirmResponse {
                     message: "Server error".to_owned(),
                 }),
             );
@@ -1422,7 +1416,7 @@ pub(crate) async fn confirm_password_reset(
             error!("Redis read failed during password reset confirm: {err}");
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(types::ResetPasswordConfirmResponse {
+                Json(ResetPasswordConfirmResponse {
                     message: "Server error".to_owned(),
                 }),
             );
@@ -1455,7 +1449,7 @@ pub(crate) async fn confirm_password_reset(
         error!("Redis write failed during password reset: {err}");
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(types::ResetPasswordConfirmResponse {
+            Json(ResetPasswordConfirmResponse {
                 message: "Server error".to_owned(),
             }),
         );
@@ -1467,7 +1461,7 @@ pub(crate) async fn confirm_password_reset(
     info!("Password successfully reset for account {account_id}");
     (
         StatusCode::OK,
-        Json(types::ResetPasswordConfirmResponse {
+        Json(ResetPasswordConfirmResponse {
             message: "Password has been reset successfully.".to_owned(),
         }),
     )

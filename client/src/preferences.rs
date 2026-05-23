@@ -24,9 +24,13 @@ pub const NUMBER_OF_KEYBINDS: usize = 10;
 /// keyboard action bindings, and remembered panel positions.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CharacterSettings {
-    /// Skill keybinds for slots 1-10. `Some(skill_nr)` if bound.
+    /// Skill keybinds for the primary bar slots 1-10. `Some(skill_nr)` if bound.
     #[serde(default)]
     pub skill_keybinds: [Option<usize>; NUMBER_OF_KEYBINDS],
+    /// Skill keybinds for the secondary bar slots 1-10, accessed by holding
+    /// Shift (keyboard/mouse) or LT (controller). `Some(skill_nr)` if bound.
+    #[serde(default)]
+    pub skill_keybinds_secondary: [Option<usize>; NUMBER_OF_KEYBINDS],
     /// Saved position of the inventory panel, or `None` for default.
     #[serde(default)]
     pub inventory_panel_pos: Option<(i32, i32)>,
@@ -58,6 +62,7 @@ impl Default for CharacterSettings {
     fn default() -> Self {
         Self {
             skill_keybinds: [None; NUMBER_OF_KEYBINDS],
+            skill_keybinds_secondary: [None; NUMBER_OF_KEYBINDS],
             inventory_panel_pos: None,
             skills_panel_pos: None,
             settings_panel_pos: None,

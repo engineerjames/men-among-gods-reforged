@@ -13,7 +13,11 @@ use crate::{scenes::scene::SceneType, state::AppState};
 use super::GameScene;
 
 impl GameScene {
-    /// Dispatch a `KeyDown` Num1–Num9 event to the appropriate skill keybind slot.
+    /// Dispatch a `KeyDown` Num0–Num9 event to the appropriate skill keybind slot.
+    ///
+    /// `Num0` maps to primary slot 9 (the 10th slot). `Num1`–`Num9` map to
+    /// primary slots 0–8. When Shift is held the corresponding secondary slot
+    /// is used instead (`skill_keybinds_secondary`).
     ///
     /// Silently no-ops when chat is focused or no network/player-state is
     /// available, so callers do not need to pre-check those conditions.
@@ -21,15 +25,25 @@ impl GameScene {
     /// # Arguments
     ///
     /// * `app_state` - Shared application state.
-    /// * `kc` - The number keycode (`Num1`–`Num9`).
+    /// * `kc` - The number keycode (`Num0`–`Num9`).
     pub(super) fn handle_num_hotkey(&mut self, app_state: &mut AppState<'_>, kc: Keycode) {
         if self.chat_box.is_focused() {
             return;
         }
-        let key_slot = (i32::from(kc) - i32::from(Keycode::Num1)) as usize;
+        // Num0 → slot 9 (10th slot); Num1 → slot 0, …, Num9 → slot 8.
+        let key_slot = if kc == Keycode::Num0 {
+            9
+        } else {
+            (i32::from(kc) - i32::from(Keycode::Num1)) as usize
+        };
         if let (Some(net), Some(ps)) = (app_state.network.as_ref(), app_state.player_state.as_ref())
         {
-            if let Some(skill_nr) = app_state.settings.character.skill_keybinds[key_slot] {
+            let skill_nr = if self.shift_held {
+                app_state.settings.character.skill_keybinds_secondary[key_slot]
+            } else {
+                app_state.settings.character.skill_keybinds[key_slot]
+            };
+            if let Some(skill_nr) = skill_nr {
                 self.play_click_sound(app_state);
                 net.send(ClientCommand::new_skill(
                     skill_nr as u32,

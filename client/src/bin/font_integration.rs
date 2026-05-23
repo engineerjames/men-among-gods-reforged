@@ -22,7 +22,7 @@ use client::gfx_cache::GraphicsCache;
 const SAMPLE: &str = "The quick brown fox jumps over the lazy dog. 0123456789 ?!@#";
 
 /// TTF sample sizes (in logical points) rendered top-to-bottom.
-const TTF_SIZES: &[u16] = &[6, 8, 10];
+const TTF_SIZES: &[u16] = &[10, 12, 14, 16];
 
 /// Application entry point for the font integration test binary.
 ///
@@ -149,7 +149,7 @@ fn main() -> Result<(), String> {
                 &mut text_engine,
                 &mut gfx,
                 &handle,
-                &format!("{size_pt}pt — {SAMPLE}"),
+                &format!("{SAMPLE} - {size_pt}"),
                 10,
                 y,
                 TextStyle::tinted(body_color),

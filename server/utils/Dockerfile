@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Stage 1: builder — use the official Rust image so cargo is pre-installed.
-FROM rust:slim-bookworm AS builder
+FROM rust:1.95-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \

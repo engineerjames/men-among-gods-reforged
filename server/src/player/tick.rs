@@ -554,6 +554,14 @@ pub fn plr_change(gs: &mut GameState, nr: usize) {
 
     // Send target updates
     plr_change_target(gs, nr, cn);
+
+    // Send the one-shot quest catalog + full completion snapshot on the
+    // first tick after login finalisation.
+    if !gs.players[nr].sent_quest_init {
+        crate::player::quest_log::plr_send_quest_catalog(gs, nr);
+        crate::player::quest_log::plr_send_quest_completion_full(gs, nr);
+        gs.players[nr].sent_quest_init = true;
+    }
 }
 
 /// Send full stats update to player

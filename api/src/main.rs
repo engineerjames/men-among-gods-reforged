@@ -3,7 +3,6 @@ pub mod email;
 pub mod helpers;
 pub mod pipelines;
 pub mod routes;
-pub mod types;
 
 use axum::Router;
 use axum::routing::{delete, get, post, put};

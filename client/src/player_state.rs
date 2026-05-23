@@ -53,6 +53,23 @@ pub struct PlayerState {
     /// `talents[0]` is the unspent points pool; `talents[1..24]` are the
     /// per-layer bit fields (8 nodes per byte). See `core::talent_trees`.
     talents: [u8; 25],
+
+    /// Immutable per-session catalog of NPC quests. Sent once at login
+    /// via `SV_SETQUESTCATALOG`.
+    quest_catalog: Vec<mag_core::quest_defs::QuestCatalogEntry>,
+    /// Per-quest completion counters, indexed by catalog index. Updated
+    /// at login (full snapshot) and incrementally on turn-in via
+    /// `SV_SETQUESTCOMPLETION` deltas.
+    quest_completion_counts: [i16; mag_core::quest_defs::MAX_QUEST_CATALOG],
+    /// NPC template ID of the quest currently focused (selected in the
+    /// quest panel). `0` = no focused quest. Pure client-local UI state.
+    active_quest_template_id: u16,
+    /// Index of the currently active step within the focused quest's
+    /// walkthrough. Valid only when `active_quest_template_id != 0`.
+    active_quest_step_idx: u8,
+    /// Tile coordinates of the currently focused NPC, when known. Used
+    /// by `QuestStep::ReturnToQuestGiver` to drive the minimap pin.
+    active_quest_npc_pos: Option<(u16, u16)>,
 }
 
 /// A cached (nr --> name) entry used by the auto-look name overlay.
@@ -94,6 +111,12 @@ impl Default for PlayerState {
             exit_requested_reason: None,
 
             talents: [0; 25],
+
+            quest_catalog: Vec::new(),
+            quest_completion_counts: [-1; mag_core::quest_defs::MAX_QUEST_CATALOG],
+            active_quest_template_id: 0,
+            active_quest_step_idx: 0,
+            active_quest_npc_pos: None,
         }
     }
 }
@@ -141,6 +164,59 @@ impl PlayerState {
     /// fields (8 nodes per byte). See `core::talent_trees`.
     pub fn talents(&self) -> &[u8; 25] {
         &self.talents
+    }
+
+    /// Returns the immutable per-session quest catalog snapshot.
+    pub fn quest_catalog(&self) -> &[mag_core::quest_defs::QuestCatalogEntry] {
+        &self.quest_catalog
+    }
+
+    /// Returns the per-quest completion counters, indexed by catalog index.
+    pub fn quest_completion_counts(&self) -> &[i16; mag_core::quest_defs::MAX_QUEST_CATALOG] {
+        &self.quest_completion_counts
+    }
+
+    /// Sets the focused quest to `npc_template_id` (or `0` to clear).
+    /// Resolves the NPC tile position and step index from the local
+    /// catalog. Pure client-local action — no network traffic.
+    ///
+    /// # Arguments
+    ///
+    /// * `npc_template_id` - Template id of the NPC, or `0` to clear focus.
+    pub fn set_active_quest(&mut self, npc_template_id: u16) {
+        self.active_quest_template_id = npc_template_id;
+        if npc_template_id == 0 {
+            self.active_quest_step_idx = 0;
+            self.active_quest_npc_pos = None;
+            return;
+        }
+        if let Some(e) = self
+            .quest_catalog
+            .iter()
+            .find(|e| e.template_id == npc_template_id)
+        {
+            self.active_quest_npc_pos = Some((e.npc_x, e.npc_y));
+        } else {
+            self.active_quest_npc_pos = None;
+        }
+        self.active_quest_step_idx = 0;
+    }
+
+    /// Returns the NPC template ID of the currently focused quest, or `0`
+    /// when none is focused.
+    pub fn active_quest_template_id(&self) -> u16 {
+        self.active_quest_template_id
+    }
+
+    /// Returns the active step index within the focused quest's walkthrough.
+    pub fn active_quest_step_idx(&self) -> u8 {
+        self.active_quest_step_idx
+    }
+
+    /// Returns the cached tile position of the focused quest's NPC, when
+    /// known. Used to drive the minimap pin for `ReturnToQuestGiver` steps.
+    pub fn active_quest_npc_pos(&self) -> Option<(u16, u16)> {
+        self.active_quest_npc_pos
     }
 
     /// Returns `true` when the shop overlay should be displayed.
@@ -466,6 +542,22 @@ impl PlayerState {
             }
             ServerCommandData::SetCharTalents { values } => {
                 self.talents = *values;
+            }
+            ServerCommandData::SetQuestCatalog { entries } => {
+                self.quest_catalog = entries.clone();
+            }
+            ServerCommandData::SetQuestCompletion(payload) => {
+                use mag_core::server_commands::QuestCompletionPayload;
+                match payload {
+                    QuestCompletionPayload::Full(counts) => {
+                        self.quest_completion_counts = *counts;
+                    }
+                    QuestCompletionPayload::Delta { idx, count } => {
+                        if let Some(slot) = self.quest_completion_counts.get_mut(*idx as usize) {
+                            *slot = *count;
+                        }
+                    }
+                }
             }
             ServerCommandData::SetCharHp { values } => {
                 self.character_info.hp = *values;

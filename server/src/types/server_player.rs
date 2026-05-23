@@ -82,6 +82,11 @@ pub struct ServerPlayer {
     /// Wire flags currently applied to the active weather, including the
     /// admin-override bit (`core::weather::WEATHER_FLAG_OVERRIDE`).
     pub weather_flags: u8,
+
+    /// `false` until the one-shot `SV_SETQUESTCATALOG` /
+    /// `SV_SETQUESTCOMPLETION` snapshots have been dispatched to this
+    /// player. Set to `true` immediately after that first send.
+    pub sent_quest_init: bool,
 }
 
 impl ServerPlayer {
@@ -133,6 +138,7 @@ impl ServerPlayer {
             weather_expire_tick: 0,
             weather_tint: [0; 4],
             weather_flags: 0,
+            sent_quest_init: false,
         }
     }
 

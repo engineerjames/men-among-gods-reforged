@@ -1,3 +1,4 @@
+use crate::quest_defs::{MAX_QUEST_CATALOG, QuestCatalogEntry};
 use crate::string_operations::c_string_to_str;
 
 /// Opcode values for incoming server commands.
@@ -79,6 +80,21 @@ pub enum ServerCommandType {
     /// (u16 LE) + tint_r (1) + tint_g (1) + tint_b (1) + tint_a (1) + flags
     /// (1) = **10 bytes total**. See [`crate::weather::WeatherKind`].
     SetWeather = 76,
+    /// One-shot snapshot of the entire static quest catalog.
+    ///
+    /// Wire format: opcode (1) + count (1) + count × entry
+    /// ([`QUEST_CATALOG_ENTRY_LEN`] bytes) padded to
+    /// [`QUEST_CATALOG_PACKET_LEN`]. Sent exactly once per session right
+    /// after login.
+    SetQuestCatalog = 100,
+    /// Per-player quest completion counter update.
+    ///
+    /// Wire format starts with `opcode (1) + mode (1)` where `mode == 0`
+    /// indicates a full 49 × i16 snapshot (`QUEST_COMPLETION_FULL_LEN`
+    /// bytes) and `mode == 1` indicates a single-entry delta
+    /// (`opcode + mode + idx (u8) + count (i16 LE)` =
+    /// `QUEST_COMPLETION_DELTA_LEN` bytes).
+    SetQuestCompletion = 101,
     SetMap = 128,
 }
 
@@ -189,6 +205,21 @@ impl ServerCommandType {
             ServerCommandType::SetCharDir => 2,
             ServerCommandType::SetCharTalents => 26,
             ServerCommandType::SetWeather => 10,
+            ServerCommandType::SetQuestCatalog => QUEST_CATALOG_PACKET_LEN,
+            ServerCommandType::SetQuestCompletion => {
+                if bytes.len() < 2 {
+                    return Err("SV_SETQUESTCOMPLETION truncated (need mode byte)".to_owned());
+                }
+                match bytes[1] {
+                    0 => QUEST_COMPLETION_FULL_LEN,
+                    1 => QUEST_COMPLETION_DELTA_LEN,
+                    other => {
+                        return Err(format!(
+                            "SV_SETQUESTCOMPLETION has unknown mode byte {other}"
+                        ));
+                    }
+                }
+            }
             ServerCommandType::SetCharPts => 13,
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
@@ -299,6 +330,8 @@ impl From<u8> for ServerCommandType {
             74 => ServerCommandType::Pong,
             75 => ServerCommandType::SetCharTalents,
             76 => ServerCommandType::SetWeather,
+            100 => ServerCommandType::SetQuestCatalog,
+            101 => ServerCommandType::SetQuestCompletion,
             128 => ServerCommandType::SetMap,
             _ => {
                 log::error!("Unknown server command opcode: {value}");
@@ -306,6 +339,50 @@ impl From<u8> for ServerCommandType {
             }
         }
     }
+}
+
+/// Maximum NPC name length carried in a [`QuestCatalogEntry`] on the wire
+/// (NUL-padded).
+pub const QUEST_CATALOG_NPC_NAME_LEN: usize = 16;
+
+/// Maximum item name length carried in a [`QuestCatalogEntry`] on the wire
+/// (NUL-padded).
+pub const QUEST_CATALOG_ITEM_NAME_LEN: usize = 24;
+
+/// On-wire size of a single quest catalog entry inside `SetQuestCatalog`.
+///
+/// Layout: `template_id (u16) + item_template_id (u16) + npc_x (u16) +
+/// npc_y (u16) + stages (u8) + repeatable (u8) + npc_name ([u8; 16]) +
+/// item_name ([u8; 24])` = 50 bytes.
+pub const QUEST_CATALOG_ENTRY_LEN: usize =
+    2 + 2 + 2 + 2 + 1 + 1 + QUEST_CATALOG_NPC_NAME_LEN + QUEST_CATALOG_ITEM_NAME_LEN;
+
+/// Total `SetQuestCatalog` packet size in bytes (fixed regardless of how
+/// many entries are populated; remainder is zero padding).
+pub const QUEST_CATALOG_PACKET_LEN: usize = 2 + MAX_QUEST_CATALOG * QUEST_CATALOG_ENTRY_LEN;
+
+/// Total `SetQuestCompletion` packet size in bytes when carrying a full
+/// snapshot: opcode (1) + mode (1) + 49 × i16 = 100 bytes.
+pub const QUEST_COMPLETION_FULL_LEN: usize = 2 + MAX_QUEST_CATALOG * 2;
+
+/// Total `SetQuestCompletion` packet size in bytes when carrying a single
+/// delta: opcode (1) + mode (1) + idx (u8) + count (i16 LE) = 5 bytes.
+pub const QUEST_COMPLETION_DELTA_LEN: usize = 2 + 1 + 2;
+
+/// Parsed payload of a [`ServerCommandType::SetQuestCompletion`] packet.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QuestCompletionPayload {
+    /// Full snapshot of all 49 per-quest completion counters in catalog
+    /// order. Sent once per session at login.
+    Full([i16; MAX_QUEST_CATALOG]),
+    /// Single-entry delta. Sent whenever the server bumps a counter as a
+    /// result of a quest turn-in.
+    Delta {
+        /// Catalog index whose counter changed.
+        idx: u8,
+        /// New absolute counter value after the bump.
+        count: i16,
+    },
 }
 
 /// Parsed payload variants for each [`ServerCommandType`].
@@ -500,6 +577,18 @@ pub enum ServerCommandData {
         tint: [u8; 4],
         flags: u8,
     },
+    /// One-shot snapshot of the static quest catalog (sent once per
+    /// session at login).
+    SetQuestCatalog {
+        /// Catalog entries in stable order; index is the key into
+        /// per-player completion vectors.
+        entries: Vec<QuestCatalogEntry>,
+    },
+    /// Per-player quest completion counter update.
+    ///
+    /// Either a `Full` snapshot of all 49 counters (sent at login) or a
+    /// `Delta` update for a single catalog index (sent on turn-in).
+    SetQuestCompletion(QuestCompletionPayload),
     Load {
         load: u32,
     },
@@ -1105,6 +1194,69 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 flags: *bytes.get(9)?,
             },
         )),
+        100 => {
+            let count = (*bytes.get(1)?).min(MAX_QUEST_CATALOG as u8) as usize;
+            let mut entries = Vec::with_capacity(count);
+            for i in 0..count {
+                let off = 2 + i * QUEST_CATALOG_ENTRY_LEN;
+                let template_id = read_u16(bytes, off)?;
+                let item_template_id = read_u16(bytes, off + 2)?;
+                let npc_x = read_u16(bytes, off + 4)?;
+                let npc_y = read_u16(bytes, off + 6)?;
+                let stages = *bytes.get(off + 8)?;
+                let repeatable = *bytes.get(off + 9)? != 0;
+                let npc_name_slice = bytes.get(off + 10..off + 10 + QUEST_CATALOG_NPC_NAME_LEN)?;
+                let item_name_slice = bytes.get(
+                    off + 10 + QUEST_CATALOG_NPC_NAME_LEN
+                        ..off + 10 + QUEST_CATALOG_NPC_NAME_LEN + QUEST_CATALOG_ITEM_NAME_LEN,
+                )?;
+                entries.push(QuestCatalogEntry {
+                    template_id,
+                    item_template_id,
+                    npc_x,
+                    npc_y,
+                    stages,
+                    repeatable,
+                    npc_name: c_string_to_str(npc_name_slice).to_owned(),
+                    item_name: c_string_to_str(item_name_slice).to_owned(),
+                });
+            }
+            Some((
+                ServerCommandType::SetQuestCatalog,
+                ServerCommandData::SetQuestCatalog { entries },
+            ))
+        }
+        101 => {
+            let mode = *bytes.get(1)?;
+            match mode {
+                0 => {
+                    let mut counts = [0i16; MAX_QUEST_CATALOG];
+                    for (i, slot) in counts.iter_mut().enumerate() {
+                        let off = 2 + i * 2;
+                        let lo = *bytes.get(off)?;
+                        let hi = *bytes.get(off + 1)?;
+                        *slot = i16::from_le_bytes([lo, hi]);
+                    }
+                    Some((
+                        ServerCommandType::SetQuestCompletion,
+                        ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Full(counts)),
+                    ))
+                }
+                1 => {
+                    let idx = *bytes.get(2)?;
+                    let lo = *bytes.get(3)?;
+                    let hi = *bytes.get(4)?;
+                    Some((
+                        ServerCommandType::SetQuestCompletion,
+                        ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Delta {
+                            idx,
+                            count: i16::from_le_bytes([lo, hi]),
+                        }),
+                    ))
+                }
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
@@ -1341,5 +1493,168 @@ mod tests {
     #[test]
     fn set_weather_opcode_decodes_from_u8() {
         assert_eq!(ServerCommandType::from(76), ServerCommandType::SetWeather);
+    }
+
+    // -- SV_SETQUESTCATALOG (opcode 100) --
+
+    /// Encode a quest-catalog packet identically to the server's helper.
+    fn encode_quest_catalog(entries: &[QuestCatalogEntry]) -> [u8; QUEST_CATALOG_PACKET_LEN] {
+        let mut buf = [0u8; QUEST_CATALOG_PACKET_LEN];
+        buf[0] = ServerCommandType::SetQuestCatalog as u8;
+        let count = entries.len().min(MAX_QUEST_CATALOG) as u8;
+        buf[1] = count;
+        for (i, e) in entries.iter().take(MAX_QUEST_CATALOG).enumerate() {
+            let off = 2 + i * QUEST_CATALOG_ENTRY_LEN;
+            buf[off..off + 2].copy_from_slice(&e.template_id.to_le_bytes());
+            buf[off + 2..off + 4].copy_from_slice(&e.item_template_id.to_le_bytes());
+            buf[off + 4..off + 6].copy_from_slice(&e.npc_x.to_le_bytes());
+            buf[off + 6..off + 8].copy_from_slice(&e.npc_y.to_le_bytes());
+            buf[off + 8] = e.stages;
+            buf[off + 9] = u8::from(e.repeatable);
+            let npc_bytes = e.npc_name.as_bytes();
+            let n = npc_bytes.len().min(QUEST_CATALOG_NPC_NAME_LEN - 1);
+            buf[off + 10..off + 10 + n].copy_from_slice(&npc_bytes[..n]);
+            let item_bytes = e.item_name.as_bytes();
+            let m = item_bytes.len().min(QUEST_CATALOG_ITEM_NAME_LEN - 1);
+            let item_off = off + 10 + QUEST_CATALOG_NPC_NAME_LEN;
+            buf[item_off..item_off + m].copy_from_slice(&item_bytes[..m]);
+        }
+        buf
+    }
+
+    fn make_catalog_entry(template_id: u16, item_template_id: u16) -> QuestCatalogEntry {
+        QuestCatalogEntry {
+            template_id,
+            item_template_id,
+            npc_x: template_id,
+            npc_y: template_id.wrapping_add(1),
+            stages: 1,
+            repeatable: false,
+            npc_name: format!("npc{template_id}"),
+            item_name: format!("item{item_template_id}"),
+        }
+    }
+
+    #[test]
+    fn set_quest_catalog_opcode_decodes_from_u8() {
+        assert_eq!(
+            ServerCommandType::from(100),
+            ServerCommandType::SetQuestCatalog
+        );
+    }
+
+    #[test]
+    fn set_quest_catalog_expected_length_matches_constant() {
+        let buf = encode_quest_catalog(&[]);
+        let mut last_n = 0i32;
+        let len = ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap();
+        assert_eq!(len, QUEST_CATALOG_PACKET_LEN);
+    }
+
+    #[test]
+    fn set_quest_catalog_roundtrip_empty() {
+        let buf = encode_quest_catalog(&[]);
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        assert_eq!(cmd.header, ServerCommandType::SetQuestCatalog);
+        match cmd.structured_data {
+            ServerCommandData::SetQuestCatalog { entries } => assert!(entries.is_empty()),
+            _ => panic!("expected SetQuestCatalog variant"),
+        }
+    }
+
+    #[test]
+    fn set_quest_catalog_roundtrip_one_entry() {
+        let entries = vec![QuestCatalogEntry {
+            template_id: 42,
+            item_template_id: 7,
+            npc_x: 100,
+            npc_y: 200,
+            stages: 2,
+            repeatable: true,
+            npc_name: "Seyan".into(),
+            item_name: "Stunning gem".into(),
+        }];
+        let buf = encode_quest_catalog(&entries);
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetQuestCatalog { entries: out } => assert_eq!(out, entries),
+            _ => panic!("expected SetQuestCatalog variant"),
+        }
+    }
+
+    #[test]
+    fn set_quest_catalog_roundtrip_full() {
+        let entries: Vec<_> = (0..MAX_QUEST_CATALOG as u16)
+            .map(|i| make_catalog_entry(i + 1, i + 100))
+            .collect();
+        let buf = encode_quest_catalog(&entries);
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetQuestCatalog { entries: out } => assert_eq!(out, entries),
+            _ => panic!("expected SetQuestCatalog variant"),
+        }
+    }
+
+    // -- SV_SETQUESTCOMPLETION (opcode 101) --
+
+    fn encode_quest_completion_full(
+        counts: &[i16; MAX_QUEST_CATALOG],
+    ) -> [u8; QUEST_COMPLETION_FULL_LEN] {
+        let mut buf = [0u8; QUEST_COMPLETION_FULL_LEN];
+        buf[0] = ServerCommandType::SetQuestCompletion as u8;
+        buf[1] = 0;
+        for (i, c) in counts.iter().enumerate() {
+            let off = 2 + i * 2;
+            buf[off..off + 2].copy_from_slice(&c.to_le_bytes());
+        }
+        buf
+    }
+
+    fn encode_quest_completion_delta(idx: u8, count: i16) -> [u8; QUEST_COMPLETION_DELTA_LEN] {
+        let mut buf = [0u8; QUEST_COMPLETION_DELTA_LEN];
+        buf[0] = ServerCommandType::SetQuestCompletion as u8;
+        buf[1] = 1;
+        buf[2] = idx;
+        buf[3..5].copy_from_slice(&count.to_le_bytes());
+        buf
+    }
+
+    #[test]
+    fn set_quest_completion_full_roundtrip() {
+        let mut counts = [0i16; MAX_QUEST_CATALOG];
+        for (i, c) in counts.iter_mut().enumerate() {
+            *c = (i as i16) - 10;
+        }
+        let buf = encode_quest_completion_full(&counts);
+        let mut last_n = 0i32;
+        assert_eq!(
+            ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap(),
+            QUEST_COMPLETION_FULL_LEN
+        );
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Full(out)) => {
+                assert_eq!(out, counts);
+            }
+            _ => panic!("expected SetQuestCompletion(Full)"),
+        }
+    }
+
+    #[test]
+    fn set_quest_completion_delta_roundtrip() {
+        let buf = encode_quest_completion_delta(7, 3);
+        let mut last_n = 0i32;
+        assert_eq!(
+            ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap(),
+            QUEST_COMPLETION_DELTA_LEN
+        );
+        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+        match cmd.structured_data {
+            ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Delta { idx, count }) => {
+                assert_eq!(idx, 7);
+                assert_eq!(count, 3);
+            }
+            _ => panic!("expected SetQuestCompletion(Delta)"),
+        }
     }
 }

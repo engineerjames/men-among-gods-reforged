@@ -111,6 +111,15 @@ pub struct MinimapWidget {
     bounds_expanded: Bounds,
     /// Bounds enclosing only the button when collapsed.
     bounds_collapsed: Bounds,
+    /// World-tile positions of all NPC quest givers in the player's quest log.
+    quest_giver_markers: Vec<(u16, u16)>,
+    /// World-tile position of the destination of the focused quest, if any.
+    active_quest_marker: Option<(u16, u16)>,
+    /// World tile X of the most recent viewport center, captured by
+    /// `update_viewport` and reused when projecting quest markers.
+    last_center_x: u16,
+    /// World tile Y of the most recent viewport center.
+    last_center_y: u16,
 }
 
 impl MinimapWidget {
@@ -155,6 +164,10 @@ impl MinimapWidget {
             panel_h,
             bounds_expanded: bounds_collapsed,
             bounds_collapsed,
+            quest_giver_markers: Vec::new(),
+            active_quest_marker: None,
+            last_center_x: 0,
+            last_center_y: 0,
         };
         widget.recompute_layout();
         widget
@@ -282,6 +295,8 @@ impl MinimapWidget {
     /// * `center_x` - Player X in world-map coordinates.
     /// * `center_y` - Player Y in world-map coordinates.
     pub fn update_viewport(&mut self, xmap: &[u8], center_x: u16, center_y: u16) {
+        self.last_center_x = center_x;
+        self.last_center_y = center_y;
         // Always update the pixel buffer even when hidden, so the minimap
         // displays current data immediately when opened.
         let view = MINIMAP_WIDGET_VIEW_SIZE as usize;
@@ -321,6 +336,83 @@ impl MinimapWidget {
             && py >= self.panel_y
             && px < self.panel_x + self.panel_w as i32
             && py < self.panel_y + self.panel_h as i32
+    }
+
+    /// Updates the quest marker overlays drawn on top of the minimap.
+    ///
+    /// # Arguments
+    ///
+    /// * `givers` - World-tile positions of every NPC quest giver to mark.
+    /// * `active` - World-tile position of the destination of the currently
+    ///   focused quest, drawn in a distinct color. `None` clears the active
+    ///   marker.
+    pub fn set_quest_markers(&mut self, givers: Vec<(u16, u16)>, active: Option<(u16, u16)>) {
+        self.quest_giver_markers = givers;
+        self.active_quest_marker = active;
+    }
+
+    /// Projects a world tile position into screen-space coordinates inside the
+    /// minimap viewport, mirroring the math performed by `update_viewport`.
+    ///
+    /// # Arguments
+    ///
+    /// * `world_x` - World tile X coordinate.
+    /// * `world_y` - World tile Y coordinate.
+    ///
+    /// # Returns
+    ///
+    /// * `Some((sx, sy))` when the tile falls inside the visible window;
+    ///   `None` when it lies outside the current zoom level's window.
+    fn project_world_to_screen(&self, world_x: u16, world_y: u16) -> Option<(i32, i32)> {
+        let view = MINIMAP_WIDGET_VIEW_SIZE as i32;
+        let sample = self.current_sample_size() as i32;
+        let half = sample / 2;
+        let mapx = (i32::from(self.last_center_x) - half).clamp(0, WORLD_SIZE as i32 - sample);
+        let mapy = (i32::from(self.last_center_y) - half).clamp(0, WORLD_SIZE as i32 - sample);
+
+        // World -> sample-window relative coords.
+        let rel_x = i32::from(world_x) - mapx;
+        let rel_y = i32::from(world_y) - mapy;
+        if rel_x < 0 || rel_y < 0 || rel_x >= sample || rel_y >= sample {
+            return None;
+        }
+
+        // The xmap is column-major (`cell = (gy + gx * STRIDE)`), and
+        // `update_viewport` reads it with `src_row = mapx + row_offset`,
+        // `src_col = mapy + col_offset`. So the screen Y axis (rows) tracks
+        // world X, and the screen X axis (columns) tracks world Y — the
+        // minimap is rotated 90° clockwise relative to the world.
+        let inset = (PANEL_PADDING + PANEL_BORDER) as i32;
+        let map_x = self.panel_x + inset;
+        let map_y = self.panel_y + inset;
+        let sx = map_x + (rel_y * view) / sample;
+        let sy = map_y + (rel_x * view) / sample;
+        Some((sx, sy))
+    }
+
+    /// Renders all quest marker overlays on top of the minimap pixels.
+    fn render_quest_markers(&self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        ctx.canvas.set_blend_mode(sdl2::render::BlendMode::Blend);
+
+        // Quest giver markers (yellow).
+        ctx.canvas.set_draw_color(Color::RGBA(255, 220, 0, 255));
+        for (wx, wy) in &self.quest_giver_markers {
+            if let Some((sx, sy)) = self.project_world_to_screen(*wx, *wy) {
+                ctx.canvas
+                    .fill_rect(sdl2::rect::Rect::new(sx - 1, sy - 1, 2, 2))?;
+            }
+        }
+
+        // Active quest marker (magenta) drawn on top so it is always visible.
+        if let Some((wx, wy)) = self.active_quest_marker {
+            if let Some((sx, sy)) = self.project_world_to_screen(wx, wy) {
+                ctx.canvas.set_draw_color(Color::RGBA(255, 0, 255, 255));
+                ctx.canvas
+                    .fill_rect(sdl2::rect::Rect::new(sx - 1, sy - 1, 2, 2))?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -422,6 +514,9 @@ impl Widget for MinimapWidget {
                 )?;
             }
         }
+
+        // Draw quest markers on top of the minimap pixels.
+        self.render_quest_markers(ctx)?;
 
         self.zoom_in_button.render(ctx)?;
         self.zoom_out_button.render(ctx)?;
