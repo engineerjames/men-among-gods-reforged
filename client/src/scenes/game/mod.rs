@@ -1348,14 +1348,15 @@ impl Scene for GameScene {
             return self.handle_controller_event(app_state, event);
         }
 
-        // --- Num1-9 hotkeys ---
+        // --- Num0-9 hotkeys ---
         if let Event::KeyDown {
             keycode: Some(kc), ..
         } = event
         {
             if matches!(
                 *kc,
-                Keycode::Num1
+                Keycode::Num0
+                    | Keycode::Num1
                     | Keycode::Num2
                     | Keycode::Num3
                     | Keycode::Num4
@@ -1711,7 +1712,17 @@ impl Scene for GameScene {
                     keybinds.copy_from_slice(
                         &app_state.settings.character.skill_keybinds[..NUMBER_OF_KEYBINDS],
                     );
-                    self.skill_bar.update_data(SkillBarData { keybinds });
+                    let mut secondary_keybinds = [None; NUMBER_OF_KEYBINDS];
+                    secondary_keybinds.copy_from_slice(
+                        &app_state.settings.character.skill_keybinds_secondary
+                            [..NUMBER_OF_KEYBINDS],
+                    );
+                    let show_secondary = self.shift_held || (self.controller_mode && self.lt_held);
+                    self.skill_bar.update_data(SkillBarData {
+                        keybinds,
+                        secondary_keybinds,
+                        show_secondary,
+                    });
                 }
 
                 // Update minimap xmap buffer, then push viewport pixels to the widget.

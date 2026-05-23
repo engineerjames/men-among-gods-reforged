@@ -332,6 +332,8 @@ fn main() -> Result<(), String> {
             None,
             None,
         ],
+        secondary_keybinds: [None; client::ui::hud::skill_bar::TOP_CELLS],
+        show_secondary: false,
     });
 
     let mut spell_effect_icons = SpellEffectIcons::new(SPELL_ICONS_X, SPELL_ICONS_Y);

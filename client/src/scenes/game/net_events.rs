@@ -322,13 +322,32 @@ impl GameScene {
                     self.pending_skill_assignment = Some(skill_id);
                 }
                 WidgetAction::BindSkillKey { skill_nr, key_slot } => {
-                    // Clear any previous slot that had the same skill_nr.
-                    for slot in app_state.settings.character.skill_keybinds.iter_mut() {
-                        if *slot == Some(skill_nr) {
-                            *slot = None;
+                    use crate::ui::hud::skill_bar::TOP_CELLS;
+                    let slot = key_slot as usize;
+                    if slot >= TOP_CELLS {
+                        // Secondary bar slot.
+                        let sec_slot = slot - TOP_CELLS;
+                        for s in app_state
+                            .settings
+                            .character
+                            .skill_keybinds_secondary
+                            .iter_mut()
+                        {
+                            if *s == Some(skill_nr) {
+                                *s = None;
+                            }
                         }
+                        app_state.settings.character.skill_keybinds_secondary[sec_slot] =
+                            Some(skill_nr);
+                    } else {
+                        // Primary bar slot — clear any previous slot with the same skill_nr.
+                        for s in app_state.settings.character.skill_keybinds.iter_mut() {
+                            if *s == Some(skill_nr) {
+                                *s = None;
+                            }
+                        }
+                        app_state.settings.character.skill_keybinds[slot] = Some(skill_nr);
                     }
-                    app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let name = skills::get_skill_name(skill_nr);
                         ps.tlog(1, &format!("Bound {} to key {}.", name, key_slot + 1));
@@ -369,9 +388,13 @@ impl GameScene {
                 }
                 WidgetAction::BeginSkillAssign { skill_id } => {
                     // Open the skill picker popup anchored above the clicked cell.
+                    // When skill_id >= TOP_CELLS (secondary bar), still anchor visually
+                    // to the corresponding primary position (same column).
+                    use crate::ui::hud::skill_bar::TOP_CELLS;
                     let bar = self.skill_bar.bounds();
+                    let visual_slot = skill_id.min(TOP_CELLS - 1);
                     let (cx, _cy) = crate::ui::hud::skill_bar::TOP_CELL_POSITIONS
-                        .get(skill_id)
+                        .get(visual_slot)
                         .copied()
                         .unwrap_or((0, 0));
                     let anchor_x = bar.x + cx;
@@ -389,19 +412,43 @@ impl GameScene {
                     key_slot,
                 } => {
                     // Clear (unbind) the slot.
+                    use crate::ui::hud::skill_bar::TOP_CELLS;
                     let slot = key_slot as usize;
-                    if slot < app_state.settings.character.skill_keybinds.len() {
+                    if slot >= TOP_CELLS {
+                        let sec_slot = slot - TOP_CELLS;
+                        if sec_slot < app_state.settings.character.skill_keybinds_secondary.len() {
+                            app_state.settings.character.skill_keybinds_secondary[sec_slot] = None;
+                        }
+                    } else if slot < app_state.settings.character.skill_keybinds.len() {
                         app_state.settings.character.skill_keybinds[slot] = None;
                     }
                     self.save_active_profile(app_state);
                 }
                 WidgetAction::BindSkillKey { skill_nr, key_slot } => {
-                    for slot in app_state.settings.character.skill_keybinds.iter_mut() {
-                        if *slot == Some(skill_nr) {
-                            *slot = None;
+                    use crate::ui::hud::skill_bar::TOP_CELLS;
+                    let slot = key_slot as usize;
+                    if slot >= TOP_CELLS {
+                        let sec_slot = slot - TOP_CELLS;
+                        for s in app_state
+                            .settings
+                            .character
+                            .skill_keybinds_secondary
+                            .iter_mut()
+                        {
+                            if *s == Some(skill_nr) {
+                                *s = None;
+                            }
                         }
+                        app_state.settings.character.skill_keybinds_secondary[sec_slot] =
+                            Some(skill_nr);
+                    } else {
+                        for s in app_state.settings.character.skill_keybinds.iter_mut() {
+                            if *s == Some(skill_nr) {
+                                *s = None;
+                            }
+                        }
+                        app_state.settings.character.skill_keybinds[slot] = Some(skill_nr);
                     }
-                    app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
                     self.save_active_profile(app_state);
                 }
                 _ => {}
@@ -421,13 +468,32 @@ impl GameScene {
         for action in self.skill_picker.take_actions() {
             match action {
                 WidgetAction::BindSkillKey { skill_nr, key_slot } => {
-                    // Clear any previous slot that had the same skill_nr.
-                    for slot in app_state.settings.character.skill_keybinds.iter_mut() {
-                        if *slot == Some(skill_nr) {
-                            *slot = None;
+                    use crate::ui::hud::skill_bar::TOP_CELLS;
+                    let slot = key_slot as usize;
+                    if slot >= TOP_CELLS {
+                        // Secondary bar slot.
+                        let sec_slot = slot - TOP_CELLS;
+                        for s in app_state
+                            .settings
+                            .character
+                            .skill_keybinds_secondary
+                            .iter_mut()
+                        {
+                            if *s == Some(skill_nr) {
+                                *s = None;
+                            }
                         }
+                        app_state.settings.character.skill_keybinds_secondary[sec_slot] =
+                            Some(skill_nr);
+                    } else {
+                        // Primary bar slot — clear any previous slot with the same skill_nr.
+                        for s in app_state.settings.character.skill_keybinds.iter_mut() {
+                            if *s == Some(skill_nr) {
+                                *s = None;
+                            }
+                        }
+                        app_state.settings.character.skill_keybinds[slot] = Some(skill_nr);
                     }
-                    app_state.settings.character.skill_keybinds[key_slot as usize] = Some(skill_nr);
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let name = skills::get_skill_name(skill_nr);
                         ps.tlog(1, &format!("Bound {} to key {}.", name, key_slot + 1));
