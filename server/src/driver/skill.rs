@@ -4,9 +4,18 @@ use core::{
         CharacterFlags, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, ItemFlags, MAXSAY, NT_DIDHIT, NT_GOTHIT,
         NT_GOTMISS, TICKS, USE_EMPTY,
     },
-    skills,
+    skills::{
+        self, SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_DISPEL, SK_ENHANCE,
+        SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PROTECT,
+        SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_SENSE, SK_STAFF, SK_STUN,
+        SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY,
+        attribute_name, get_skill_name,
+    },
     string_operations::c_string_to_str,
-    traits,
+    traits::{
+        self, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_MONSTER,
+        KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
+    },
     types::FontColor,
 };
 
@@ -33,9 +42,9 @@ pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     // Ported from C++ spellcost(int cn, int cost)
     // concentrate:
     let mut cost = cost;
-    let concen_skill = gs.characters[cn].skill[skills::SK_CONCEN][0];
+    let concen_skill = gs.characters[cn].skill[SK_CONCEN][0];
     if concen_skill != 0 {
-        let concen_val = gs.characters[cn].skill[skills::SK_CONCEN][5];
+        let concen_val = gs.characters[cn].skill[SK_CONCEN][5];
         let t = cost * i32::from(concen_val) / 300;
         if t > cost {
             cost = 1;
@@ -103,21 +112,21 @@ pub fn spell_race_mod(gs: &GameState, power: i32, kindred: i32) -> i32 {
     // Ported from C++ spell_race_mod(int power, int kindred)
 
     let mut modf;
-    if (kindred & traits::KIN_ARCHHARAKIM as i32) != 0 {
+    if (kindred & KIN_ARCHHARAKIM as i32) != 0 {
         modf = 1.05;
-    } else if (kindred & traits::KIN_ARCHTEMPLAR as i32) != 0 {
+    } else if (kindred & KIN_ARCHTEMPLAR as i32) != 0 {
         modf = 0.95;
-    } else if (kindred & traits::KIN_SORCERER as i32) != 0 {
+    } else if (kindred & KIN_SORCERER as i32) != 0 {
         modf = 1.10;
-    } else if (kindred & traits::KIN_WARRIOR as i32) != 0 {
+    } else if (kindred & KIN_WARRIOR as i32) != 0 {
         modf = 1.10;
-    } else if (kindred & traits::KIN_SEYAN_DU as i32) != 0 {
+    } else if (kindred & KIN_SEYAN_DU as i32) != 0 {
         modf = 0.95;
-    } else if (kindred & traits::KIN_HARAKIM as i32) != 0 {
+    } else if (kindred & KIN_HARAKIM as i32) != 0 {
         modf = 1.00;
-    } else if (kindred & traits::KIN_MERCENARY as i32) != 0 {
+    } else if (kindred & KIN_MERCENARY as i32) != 0 {
         modf = 1.05;
-    } else if (kindred & traits::KIN_TEMPLAR as i32) != 0 {
+    } else if (kindred & KIN_TEMPLAR as i32) != 0 {
         modf = 0.90;
     } else {
         modf = 1.00;
@@ -216,7 +225,7 @@ pub fn is_exhausted(gs: &mut GameState, cn: usize) -> bool {
         let in_ = gs.characters[cn].spell[n] as usize;
         if in_ != 0 {
             let temp = gs.items[in_].temp;
-            if temp == skills::SK_BLAST as u16 {
+            if temp == SK_BLAST as u16 {
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -247,7 +256,7 @@ pub fn add_exhaust(gs: &mut GameState, cn: usize, exhaust_length: i32) {
         item.sprite[1] = 97;
         item.duration = exhaust_length as u32;
         item.active = exhaust_length as u32;
-        item.temp = skills::SK_BLAST as u16;
+        item.temp = SK_BLAST as u16;
         item.power = 255;
     }
     add_spell(gs, cn, in_.unwrap());
@@ -337,7 +346,7 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         gs.items[in_idx].sprite[1] = 85;
         gs.items[in_idx].duration = (TICKS * 60 * 30) as u32;
         gs.items[in_idx].active = (TICKS * 60 * 30) as u32;
-        gs.items[in_idx].temp = skills::SK_LIGHT as u16;
+        gs.items[in_idx].temp = SK_LIGHT as u16;
         gs.items[in_idx].power = power as u32;
     }
     if cn != co {
@@ -350,7 +359,7 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
             );
             return false;
         }
-        let sense = gs.characters[co].skill[skills::SK_SENSE][5];
+        let sense = gs.characters[co].skill[SK_SENSE][5];
         if sense + 10 > power as u8 {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -442,8 +451,8 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
 
     if chance(gs, cn, 18) != 0 {
         if cn != co {
-            let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-            let light_skill = gs.characters[cn].skill[skills::SK_LIGHT][5];
+            let sense = gs.characters[co].skill[SK_SENSE][5];
+            let light_skill = gs.characters[cn].skill[SK_LIGHT][5];
             if sense > (light_skill + 5) {
                 let reference = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -459,7 +468,7 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let light_skill = gs.characters[cn].skill[skills::SK_LIGHT][5];
+    let light_skill = gs.characters[cn].skill[SK_LIGHT][5];
     spell_light(gs, cn, co, i32::from(light_skill));
 
     add_exhaust(gs, cn, TICKS / 4);
@@ -519,7 +528,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
         gs.items[in_].sprite[1] = 86;
         gs.items[in_].duration = (TICKS * 60 * 10) as u32;
         gs.items[in_].active = (TICKS * 60 * 10) as u32;
-        gs.items[in_].temp = skills::SK_PROTECT as u16;
+        gs.items[in_].temp = SK_PROTECT as u16;
         gs.items[in_].power = power as u32;
     }
 
@@ -534,7 +543,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
             return false;
         }
 
-        let sense = gs.characters[co].skill[skills::SK_SENSE][5];
+        let sense = gs.characters[co].skill[SK_SENSE][5];
         if i32::from(sense) + 10 > power {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -599,7 +608,7 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
 }
 
 pub fn skill_protect(gs: &mut GameState, cn: usize) {
-    let has_skill = gs.characters[cn].skill[skills::SK_PROTECT][5] != 0;
+    let has_skill = gs.characters[cn].skill[SK_PROTECT][5] != 0;
     if !has_skill {
         return;
     }
@@ -638,8 +647,8 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
     }
     if chance(gs, cn, 18) != 0 {
         if cn != co {
-            let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-            let prot_skill = gs.characters[cn].skill[skills::SK_PROTECT][5];
+            let sense = gs.characters[co].skill[SK_SENSE][5];
+            let prot_skill = gs.characters[cn].skill[SK_PROTECT][5];
             if sense > (prot_skill + 5) {
                 let reference = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -655,7 +664,7 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let power = i32::from(gs.characters[cn].skill[skills::SK_PROTECT][5]);
+    let power = i32::from(gs.characters[cn].skill[SK_PROTECT][5]);
     spell_protect(gs, cn, co, power);
 
     add_exhaust(gs, cn, TICKS / 2);
@@ -706,7 +715,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
         gs.items[in_].sprite[1] = 87;
         gs.items[in_].duration = (TICKS * 60 * 10) as u32;
         gs.items[in_].active = (TICKS * 60 * 10) as u32;
-        gs.items[in_].temp = skills::SK_ENHANCE as u16;
+        gs.items[in_].temp = SK_ENHANCE as u16;
         gs.items[in_].power = power as u32;
     }
 
@@ -720,7 +729,7 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
             );
             return false;
         }
-        let sense = gs.characters[co].skill[skills::SK_SENSE][5];
+        let sense = gs.characters[co].skill[SK_SENSE][5];
         if i32::from(sense) + 10 > power {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -830,8 +839,8 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
         }
         if chance(gs, cn, 18) != 0 {
             if cn != co {
-                let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-                let enh_skill = gs.characters[cn].skill[skills::SK_ENHANCE][5];
+                let sense = gs.characters[co].skill[SK_SENSE][5];
+                let enh_skill = gs.characters[cn].skill[SK_ENHANCE][5];
                 if sense > (enh_skill + 5) {
                     let reference = gs.characters[cn].reference;
                     gs.do_character_log(
@@ -846,7 +855,7 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
             }
             return;
         }
-        let power = i32::from(gs.characters[cn].skill[skills::SK_ENHANCE][5]);
+        let power = i32::from(gs.characters[cn].skill[SK_ENHANCE][5]);
         spell_enhance(gs, cn, co, power);
         add_exhaust(gs, cn, TICKS / 2);
         return;
@@ -857,8 +866,8 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
     }
     if chance(gs, cn, 18) != 0 {
         if cn != co {
-            let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-            let enh_skill = gs.characters[cn].skill[skills::SK_ENHANCE][5];
+            let sense = gs.characters[co].skill[SK_SENSE][5];
+            let enh_skill = gs.characters[cn].skill[SK_ENHANCE][5];
             if sense > (enh_skill + 5) {
                 let reference = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -874,7 +883,7 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let power = i32::from(gs.characters[cn].skill[skills::SK_ENHANCE][5]);
+    let power = i32::from(gs.characters[cn].skill[SK_ENHANCE][5]);
     spell_enhance(gs, cn, co, power);
     add_exhaust(gs, cn, TICKS / 2);
 }
@@ -925,7 +934,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         gs.items[in_].sprite[1] = 88;
         gs.items[in_].duration = (TICKS * 60 * 10) as u32;
         gs.items[in_].active = (TICKS * 60 * 10) as u32;
-        gs.items[in_].temp = skills::SK_BLESS as u16;
+        gs.items[in_].temp = SK_BLESS as u16;
         gs.items[in_].power = power as u32;
     }
 
@@ -939,7 +948,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
             );
             return false;
         }
-        let sense = gs.characters[co].skill[skills::SK_SENSE][5];
+        let sense = gs.characters[co].skill[SK_SENSE][5];
         if i32::from(sense) + 10 > power {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -1044,8 +1053,8 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
         }
         if chance(gs, cn, 18) != 0 {
             if cn != co {
-                let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-                let bless_skill = gs.characters[cn].skill[skills::SK_BLESS][5];
+                let sense = gs.characters[co].skill[SK_SENSE][5];
+                let bless_skill = gs.characters[cn].skill[SK_BLESS][5];
                 if sense > (bless_skill + 5) {
                     let reference = gs.characters[cn].reference;
                     gs.do_character_log(
@@ -1060,12 +1069,7 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
             }
             return;
         }
-        spell_bless(
-            gs,
-            cn,
-            co,
-            i32::from(gs.characters[cn].skill[skills::SK_BLESS][5]),
-        );
+        spell_bless(gs, cn, co, i32::from(gs.characters[cn].skill[SK_BLESS][5]));
         add_exhaust(gs, cn, TICKS);
         return;
     }
@@ -1075,8 +1079,8 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
     }
     if chance(gs, cn, 18) != 0 {
         if cn != co {
-            let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-            let bless_skill = gs.characters[cn].skill[skills::SK_BLESS][5];
+            let sense = gs.characters[co].skill[SK_SENSE][5];
+            let bless_skill = gs.characters[cn].skill[SK_BLESS][5];
             if sense > (bless_skill + 5) {
                 let reference = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -1092,12 +1096,7 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    spell_bless(
-        gs,
-        cn,
-        co,
-        i32::from(gs.characters[cn].skill[skills::SK_BLESS][5]),
-    );
+    spell_bless(gs, cn, co, i32::from(gs.characters[cn].skill[SK_BLESS][5]));
     add_exhaust(gs, cn, TICKS);
 }
 
@@ -1107,7 +1106,7 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
         let in_idx = gs.characters[cn].spell[n];
         if in_idx != 0 {
             let temp = gs.items[in_idx as usize].temp;
-            if temp == skills::SK_WIMPY as u16 {
+            if temp == SK_WIMPY as u16 {
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Green,
@@ -1154,8 +1153,8 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
         gs.items[in_idx].sprite[1] = 94;
         gs.items[in_idx].duration = (TICKS * 60 * 60 * 2) as u32;
         gs.items[in_idx].active = (TICKS * 60 * 60 * 2) as u32;
-        gs.items[in_idx].temp = skills::SK_WIMPY as u16;
-        gs.items[in_idx].power = u32::from(gs.characters[cn].skill[skills::SK_WIMPY][5]);
+        gs.items[in_idx].temp = SK_WIMPY as u16;
+        gs.items[in_idx].power = u32::from(gs.characters[cn].skill[SK_WIMPY][5]);
     }
 
     if add_spell(gs, cn, in_idx) == 0 {
@@ -1215,7 +1214,7 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
         gs.items[in_].duration = dur as u32;
         gs.items[in_].active = dur as u32;
         gs.items[in_].armor[1] = (gs.items[in_].active / 1024) as i8 + 1;
-        gs.items[in_].temp = skills::SK_MSHIELD as u16;
+        gs.items[in_].temp = SK_MSHIELD as u16;
         gs.items[in_].power = gs.items[in_].active / 256;
     }
 
@@ -1229,7 +1228,7 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
             );
             return false;
         }
-        let sense = gs.characters[co].skill[skills::SK_SENSE][5];
+        let sense = gs.characters[co].skill[SK_SENSE][5];
         if i32::from(sense) + 10 > power {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -1322,7 +1321,7 @@ pub fn skill_mshield(gs: &mut GameState, cn: usize) {
         gs,
         cn,
         cn,
-        i32::from(gs.characters[cn].skill[skills::SK_MSHIELD][5]),
+        i32::from(gs.characters[cn].skill[SK_MSHIELD][5]),
     );
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
@@ -1333,7 +1332,7 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
         if gs.characters[co].a_hp > i32::from(gs.characters[co].hp[5]) * 1000 {
             gs.characters[co].a_hp = i32::from(gs.characters[co].hp[5]) * 1000;
         }
-        let sense = gs.characters[co].skill[skills::SK_SENSE][5];
+        let sense = gs.characters[co].skill[SK_SENSE][5];
         if i32::from(sense) + 10 > power {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -1432,8 +1431,8 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
         }
         if chance(gs, cn, 18) != 0 {
             if cn != co {
-                let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-                let heal_skill = gs.characters[cn].skill[skills::SK_HEAL][5];
+                let sense = gs.characters[co].skill[SK_SENSE][5];
+                let heal_skill = gs.characters[cn].skill[SK_HEAL][5];
                 if sense > (heal_skill + 5) {
                     let reference = gs.characters[cn].reference;
                     gs.do_character_log(
@@ -1448,12 +1447,7 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
             }
             return;
         }
-        spell_heal(
-            gs,
-            cn,
-            co,
-            i32::from(gs.characters[cn].skill[skills::SK_HEAL][5]),
-        );
+        spell_heal(gs, cn, co, i32::from(gs.characters[cn].skill[SK_HEAL][5]));
         add_exhaust(gs, cn, TICKS * 2);
         return;
     }
@@ -1463,8 +1457,8 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
     }
     if chance(gs, cn, 18) != 0 {
         if cn != co {
-            let sense = gs.characters[co].skill[skills::SK_SENSE][5];
-            let heal_skill = gs.characters[cn].skill[skills::SK_HEAL][5];
+            let sense = gs.characters[co].skill[SK_SENSE][5];
+            let heal_skill = gs.characters[cn].skill[SK_HEAL][5];
             if sense > (heal_skill + 5) {
                 let reference = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -1480,12 +1474,7 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    spell_heal(
-        gs,
-        cn,
-        co,
-        i32::from(gs.characters[cn].skill[skills::SK_HEAL][5]),
-    );
+    spell_heal(gs, cn, co, i32::from(gs.characters[cn].skill[SK_HEAL][5]));
 
     add_exhaust(gs, cn, TICKS * 2);
 }
@@ -1504,11 +1493,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
     let in_idx = in_opt.unwrap();
 
     let mut power = power;
-    power = spell_immunity(
-        gs,
-        power,
-        i32::from(gs.characters[co].skill[skills::SK_IMMUN][5]),
-    );
+    power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
     {
@@ -1524,7 +1509,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         gs.items[in_idx].sprite[1] = 89;
         gs.items[in_idx].duration = (TICKS * 60 * 2) as u32;
         gs.items[in_idx].active = (TICKS * 60 * 2) as u32;
-        gs.items[in_idx].temp = skills::SK_CURSE as u16;
+        gs.items[in_idx].temp = SK_CURSE as u16;
         gs.items[in_idx].power = power as u32;
     }
 
@@ -1540,7 +1525,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         return false;
     }
 
-    let sense = gs.characters[co].skill[skills::SK_SENSE][5];
+    let sense = gs.characters[co].skill[SK_SENSE][5];
     if (i32::from(sense) + 10) > power {
         let reference = gs.characters[cn].reference;
         gs.do_character_log(
@@ -1629,14 +1614,13 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
     if chance_base(
         gs,
         cn,
-        i32::from(gs.characters[cn].skill[skills::SK_CURSE][5]),
+        i32::from(gs.characters[cn].skill[SK_CURSE][5]),
         10,
-        i32::from(gs.characters[co].skill[skills::SK_RESIST][5]),
+        i32::from(gs.characters[co].skill[SK_RESIST][5]),
     ) != 0
     {
         if cn != co
-            && gs.characters[co].skill[skills::SK_SENSE][5]
-                > (gs.characters[cn].skill[skills::SK_CURSE][5] + 5)
+            && gs.characters[co].skill[SK_SENSE][5] > (gs.characters[cn].skill[SK_CURSE][5] + 5)
         {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -1666,16 +1650,11 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    spell_curse(
-        gs,
-        cn,
-        co,
-        i32::from(gs.characters[cn].skill[skills::SK_CURSE][5]),
-    );
+    spell_curse(gs, cn, co, i32::from(gs.characters[cn].skill[SK_CURSE][5]));
 
     let co_orig = co;
-    let curse_base = i32::from(gs.characters[cn].skill[skills::SK_CURSE][0]);
-    let curse_power = i32::from(gs.characters[cn].skill[skills::SK_CURSE][5]);
+    let curse_base = i32::from(gs.characters[cn].skill[SK_CURSE][0]);
+    let curse_power = i32::from(gs.characters[cn].skill[SK_CURSE][5]);
     let aoe_base = if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
         curse_base
     } else {
@@ -1696,8 +1675,7 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
             continue;
         }
         if curse_power + helpers::random_mod_i32(20)
-            > i32::from(gs.characters[maybe_co].skill[skills::SK_RESIST][5])
-                + helpers::random_mod_i32(20)
+            > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + helpers::random_mod_i32(20)
             && spell_curse(gs, cn, maybe_co, curse_power)
         {
             gs.remember_pvp(cn, maybe_co);
@@ -1725,7 +1703,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         return false;
     }
 
-    if power < i32::from(gs.characters[co].skill[skills::SK_RESIST][5]) {
+    if power < i32::from(gs.characters[co].skill[SK_RESIST][5]) {
         return false;
     }
 
@@ -1767,7 +1745,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         gs.items[in_idx].sprite[1] = 91;
         gs.items[in_idx].duration = core::constants::TICKS as u32 * 3;
         gs.items[in_idx].active = core::constants::TICKS as u32 * 3;
-        gs.items[in_idx].temp = skills::SK_WARCRY2 as u16;
+        gs.items[in_idx].temp = SK_WARCRY2 as u16;
         gs.items[in_idx].power = power as u32;
     }
 
@@ -1792,7 +1770,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         gs.items[in2].sprite[1] = 89;
         gs.items[in2].duration = (TICKS * 60) as u32;
         gs.items[in2].active = (TICKS * 60) as u32;
-        gs.items[in2].temp = skills::SK_WARCRY as u16;
+        gs.items[in2].temp = SK_WARCRY as u16;
         gs.items[in2].power = (power / 2) as u32;
     }
 
@@ -1821,7 +1799,7 @@ pub fn skill_warcry(gs: &mut GameState, cn: usize) {
 
     gs.characters[cn].a_end -= 150 * 1000;
 
-    let power = i32::from(gs.characters[cn].skill[skills::SK_WARCRY][5]);
+    let power = i32::from(gs.characters[cn].skill[SK_WARCRY][5]);
 
     let xf = std::cmp::max(1, i32::from(gs.characters[cn].x) - 10);
     let yf = std::cmp::max(1, i32::from(gs.characters[cn].y) - 10);
@@ -1902,7 +1880,7 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
             FontColor::Green,
             &format!(
                 "{:<12.12} {:+4} {:+4} {:3}\n",
-                skills::attribute_name(n),
+                attribute_name(n),
                 a0,
                 a1,
                 a2
@@ -1960,7 +1938,7 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
         if s0 == 0 && s1 == 0 && s2 == 0 {
             continue;
         }
-        let skill_label = skills::get_skill_name(n);
+        let skill_label = get_skill_name(n);
         gs.do_character_log(
             cn,
             FontColor::Green,
@@ -2064,8 +2042,8 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
             let s1_5 = gs.characters[co].skill[n1 as usize][5];
             let s2_0 = gs.characters[co].skill[n2 as usize][0];
             let s2_5 = gs.characters[co].skill[n2 as usize][5];
-            let name1 = skills::get_skill_name(n1 as usize);
-            let name2 = skills::get_skill_name(n2 as usize);
+            let name1 = get_skill_name(n1 as usize);
+            let name2 = get_skill_name(n2 as usize);
             gs.do_character_log(
                 cn,
                 FontColor::Green,
@@ -2082,7 +2060,7 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
     if n1 != -1 {
         let s1_0 = gs.characters[co].skill[n1 as usize][0];
         let s1_5 = gs.characters[co].skill[n1 as usize][5];
-        let name1 = skills::get_skill_name(n1 as usize);
+        let name1 = get_skill_name(n1 as usize);
         gs.do_character_log(
             cn,
             FontColor::Green,
@@ -2100,10 +2078,10 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
         FontColor::Green,
         &format!(
             "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
-            skills::attribute_name(0),
+            attribute_name(0),
             a0_0,
             a0_5,
-            skills::attribute_name(1),
+            attribute_name(1),
             a1_0,
             a1_5
         ),
@@ -2117,10 +2095,10 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
         FontColor::Green,
         &format!(
             "{:<12.12} {:3}/{:3}  !  {:<12.12} {:3}/{:3}\n",
-            skills::attribute_name(2),
+            attribute_name(2),
             a2_0,
             a2_5,
-            skills::attribute_name(3),
+            attribute_name(3),
             a3_0,
             a3_5
         ),
@@ -2130,12 +2108,7 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
     gs.do_character_log(
         cn,
         FontColor::Green,
-        &format!(
-            "{:<12.12} {:3}/{:3}\n",
-            skills::attribute_name(4),
-            a4_0,
-            a4_5
-        ),
+        &format!("{:<12.12} {:3}/{:3}\n", attribute_name(4), a4_0, a4_5),
     );
 
     gs.do_character_log(cn, FontColor::Green, " \n");
@@ -2168,7 +2141,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
         let target = gs.characters[cn].skill_target1 as usize;
         if target != 0 {
             co = target;
-            power = i32::from(gs.characters[co].skill[skills::SK_RESIST][5]);
+            power = i32::from(gs.characters[co].skill[SK_RESIST][5]);
         } else {
             co = cn;
             power = 10;
@@ -2179,7 +2152,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
     if chance_base(
         gs,
         cn,
-        i32::from(gs.characters[cn].skill[skills::SK_IDENT][5]),
+        i32::from(gs.characters[cn].skill[SK_IDENT][5]),
         18,
         power,
     ) != 0
@@ -2276,20 +2249,15 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let mut power = i32::from(gs.characters[cn].skill[skills::SK_BLAST][5]);
-    power = spell_immunity(
-        gs,
-        power,
-        i32::from(gs.characters[co].skill[skills::SK_IMMUN][5]),
-    );
+    let mut power = i32::from(gs.characters[cn].skill[SK_BLAST][5]);
+    power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
     let mut dam = power * 2;
 
     let mut cost = dam / 8 + 5;
     if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
-        && ((gs.characters[cn].kindred as u32) & (traits::KIN_HARAKIM | traits::KIN_ARCHHARAKIM)
-            != 0)
+        && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
     {
         cost /= 3;
     }
@@ -2300,8 +2268,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
 
     if chance(gs, cn, 18) != 0 {
         if cn != co
-            && gs.characters[co].skill[skills::SK_SENSE][5]
-                > gs.characters[cn].skill[skills::SK_BLAST][5] + 5
+            && gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_BLAST][5] + 5
         {
             gs.do_character_log(
                 co,
@@ -2368,7 +2335,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
     let co_orig = co;
     dam = dam / 2 + dam / 4;
 
-    let blast_base = i32::from(gs.characters[cn].skill[skills::SK_BLAST][0]);
+    let blast_base = i32::from(gs.characters[cn].skill[SK_BLAST][0]);
     let aoe_base = if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
         blast_base
     } else {
@@ -2437,7 +2404,7 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    if gs.items[in_idx].power as i32 > i32::from(gs.characters[cn].skill[skills::SK_REPAIR][5])
+    if gs.items[in_idx].power as i32 > i32::from(gs.characters[cn].skill[SK_REPAIR][5])
         || (gs.items[in_idx].flags & ItemFlags::IF_NOREPAIR.bits()) != 0
     {
         gs.do_character_log(
@@ -2461,7 +2428,7 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
     gs.characters[cn].a_end -= cost * 1000;
 
     let mut chan: i32 = if gs.items[in_idx].power != 0 {
-        let skill = i32::from(gs.characters[cn].skill[skills::SK_REPAIR][5]);
+        let skill = i32::from(gs.characters[cn].skill[SK_REPAIR][5]);
         let power = gs.items[in_idx].power as i32;
         skill * 15 / power
     } else {
@@ -2530,12 +2497,12 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
         gs.items[in_idx].name = name_bytes;
         gs.items[in_idx].flags |= ItemFlags::IF_SPELL.bits();
         gs.items[in_idx].sprite[1] = 90;
-        let base_dur = 60 - i32::from(gs.characters[cn].skill[skills::SK_RECALL][5] / 4);
+        let base_dur = 60 - i32::from(gs.characters[cn].skill[SK_RECALL][5] / 4);
         let dur = std::cmp::max(TICKS / 2, base_dur * TICKS / LEGACY_TICKS);
         gs.items[in_idx].duration = dur as u32;
         gs.items[in_idx].active = gs.items[in_idx].duration;
-        gs.items[in_idx].temp = skills::SK_RECALL as u16;
-        gs.items[in_idx].power = u32::from(gs.characters[cn].skill[skills::SK_RECALL][5]);
+        gs.items[in_idx].temp = SK_RECALL as u16;
+        gs.items[in_idx].power = u32::from(gs.characters[cn].skill[SK_RECALL][5]);
         gs.items[in_idx].data[0] = u32::from(gs.characters[cn].temple_x);
         gs.items[in_idx].data[1] = u32::from(gs.characters[cn].temple_y);
     }
@@ -2568,11 +2535,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
     }
     let in_idx = in_opt.unwrap();
 
-    let mut power = spell_immunity(
-        gs,
-        power,
-        i32::from(gs.characters[co].skill[skills::SK_IMMUN][5]),
-    );
+    let mut power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
 
     {
@@ -2585,11 +2548,11 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
         gs.items[in_idx].sprite[1] = 91;
         gs.items[in_idx].duration = (power + core::constants::TICKS) as u32;
         gs.items[in_idx].active = gs.items[in_idx].duration;
-        gs.items[in_idx].temp = skills::SK_STUN as u16;
+        gs.items[in_idx].temp = SK_STUN as u16;
         gs.items[in_idx].power = power as u32;
     }
 
-    if gs.characters[co].skill[skills::SK_SENSE][5] + 10 > power as u8 {
+    if gs.characters[co].skill[SK_SENSE][5] + 10 > power as u8 {
         gs.do_character_log(
             co,
             FontColor::Green,
@@ -2711,14 +2674,13 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     if chance_base(
         gs,
         cn,
-        i32::from(gs.characters[cn].skill[skills::SK_STUN][5]),
+        i32::from(gs.characters[cn].skill[SK_STUN][5]),
         12,
-        i32::from(gs.characters[co].skill[skills::SK_RESIST][5]),
+        i32::from(gs.characters[co].skill[SK_RESIST][5]),
     ) != 0
     {
         if cn != co
-            && gs.characters[co].skill[skills::SK_SENSE][5]
-                > gs.characters[cn].skill[skills::SK_STUN][5] + 5
+            && gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_STUN][5] + 5
         {
             gs.do_character_log(
                 co,
@@ -2747,7 +2709,7 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let power = i32::from(gs.characters[cn].skill[skills::SK_STUN][5]);
+    let power = i32::from(gs.characters[cn].skill[SK_STUN][5]);
     spell_stun(gs, cn, co, power);
 
     let co_orig = co;
@@ -2766,14 +2728,14 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
         if maybe_co != 0 && gs.characters[maybe_co].attack_cn == cn as u16 && maybe_co != co_orig {
             let s_rand = helpers::random_mod_i32(20);
             let o_rand = helpers::random_mod_i32(20);
-            if i32::from(gs.characters[cn].skill[skills::SK_STUN][5]) + s_rand
-                > i32::from(gs.characters[maybe_co].skill[skills::SK_RESIST][5]) + o_rand
+            if i32::from(gs.characters[cn].skill[SK_STUN][5]) + s_rand
+                > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
             {
                 spell_stun(
                     gs,
                     cn,
                     maybe_co,
-                    i32::from(gs.characters[cn].skill[skills::SK_STUN][5]),
+                    i32::from(gs.characters[cn].skill[SK_STUN][5]),
                 );
             }
         }
@@ -2825,7 +2787,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
         if in_idx == 0 {
             continue;
         }
-        if gs.items[in_idx].temp == skills::SK_CURSE as u16 {
+        if gs.items[in_idx].temp == SK_CURSE as u16 {
             slot = Some(n);
             break;
         }
@@ -2839,7 +2801,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
                 continue;
             }
             let temp = gs.items[in_idx].temp;
-            if temp == skills::SK_WIMPY as u16 {
+            if temp == SK_WIMPY as u16 {
                 continue;
             }
             slot = Some(n);
@@ -2882,11 +2844,11 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let dispel_skill = i32::from(gs.characters[cn].skill[skills::SK_DISPEL][5]);
+    let dispel_skill = i32::from(gs.characters[cn].skill[SK_DISPEL][5]);
     let kindred = gs.characters[cn].kindred;
     if chance_base(gs, cn, spell_race_mod(gs, dispel_skill, kindred), 12, pwr) != 0 {
         if cn != co {
-            let sense = i32::from(gs.characters[co].skill[skills::SK_SENSE][5]);
+            let sense = i32::from(gs.characters[co].skill[SK_SENSE][5]);
             if sense > dispel_skill + 5 {
                 let reference = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -2906,19 +2868,19 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
     let removed_name = gs.items[in_idx].get_name().to_owned();
 
     // Remove the spell item and unlink it from the target.
-    gs.items[in_idx].used = core::constants::USE_EMPTY;
+    gs.items[in_idx].used = USE_EMPTY;
     gs.characters[co].spell[slot] = 0;
     gs.do_update_char(co);
 
     // Remember PvP attacks when dispelling non-curse from someone else.
-    if target != 0 && removed_temp != skills::SK_CURSE as u16 {
+    if target != 0 && removed_temp != SK_CURSE as u16 {
         gs.remember_pvp(cn, co);
     }
 
     let sound = i32::from(gs.characters[cn].sound);
 
     if target != 0 {
-        let sense = i32::from(gs.characters[co].skill[skills::SK_SENSE][5]);
+        let sense = i32::from(gs.characters[co].skill[SK_SENSE][5]);
         if sense + 10 > dispel_skill {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
@@ -2945,7 +2907,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
         );
 
         let target_is_player = (gs.characters[co].flags & CharacterFlags::Player.bits()) != 0;
-        if removed_temp != skills::SK_CURSE as u16 && !target_is_player {
+        if removed_temp != SK_CURSE as u16 && !target_is_player {
             if (gs.characters[co].flags & CharacterFlags::SpellIgnore.bits()) == 0 {
                 gs.do_notify_character(co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
             }
@@ -3074,8 +3036,8 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     // Chance check
     if chance(gs, cn, 15) != 0 {
         if co != 0 && cn != co {
-            let sense = i32::from(gs.characters[co].skill[skills::SK_SENSE][5]);
-            let ghost_skill = i32::from(gs.characters[cn].skill[skills::SK_GHOST][5]);
+            let sense = i32::from(gs.characters[co].skill[SK_SENSE][5]);
+            let ghost_skill = i32::from(gs.characters[cn].skill[SK_GHOST][5]);
             if sense > ghost_skill + 5 {
                 let cn_ref = gs.characters[cn].reference;
                 gs.do_character_log(
@@ -3165,7 +3127,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         gs.characters[cn].data[CHD_COMPANION] = cc as i32;
     }
 
-    let mut base = (i32::from(gs.characters[cn].skill[skills::SK_GHOST][5]) * 4) / 11;
+    let mut base = (i32::from(gs.characters[cn].skill[SK_GHOST][5]) * 4) / 11;
     let kindred = gs.characters[cn].kindred;
     base = spell_race_mod(gs, base, kindred);
 
@@ -3179,7 +3141,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
 
     gs.characters[cc].data[29] = 0;
     gs.characters[cc].data[42] = 65536 + cn as i32;
-    gs.characters[cc].kindred &= !(traits::KIN_MONSTER as i32);
+    gs.characters[cc].kindred &= !(KIN_MONSTER as i32);
     gs.characters[cc].flags &= !CharacterFlags::Player.bits();
 
     if co != 0 {
@@ -3393,129 +3355,129 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
     }
 
     match nr {
-        x if x == skills::SK_LIGHT as i32 => {
+        x if x == SK_LIGHT as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_light(gs, cn);
             }
         }
-        x if x == skills::SK_PROTECT as i32 => {
+        x if x == SK_PROTECT as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_protect(gs, cn);
             }
         }
-        x if x == skills::SK_ENHANCE as i32 => {
+        x if x == SK_ENHANCE as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_enhance(gs, cn);
             }
         }
-        x if x == skills::SK_BLESS as i32 => {
+        x if x == SK_BLESS as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_bless(gs, cn);
             }
         }
-        x if x == skills::SK_CURSE as i32 => {
+        x if x == SK_CURSE as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_curse(gs, cn);
             }
         }
-        x if x == skills::SK_IDENT as i32 => {
+        x if x == SK_IDENT as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_identify(gs, cn);
             }
         }
-        x if x == skills::SK_BLAST as i32 => {
+        x if x == SK_BLAST as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_blast(gs, cn);
             }
         }
-        x if x == skills::SK_REPAIR as i32 => skill_repair(gs, cn),
-        x if x == skills::SK_LOCK as i32 => gs.do_character_log(
+        x if x == SK_REPAIR as i32 => skill_repair(gs, cn),
+        x if x == SK_LOCK as i32 => gs.do_character_log(
             cn,
             FontColor::Green,
             "You cannot use this skill directly. Hold a lock-pick under your mouse cursor and click on the door.\n",
         ),
-        x if x == skills::SK_RECALL as i32 => {
+        x if x == SK_RECALL as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_recall(gs, cn);
             }
         }
-        x if x == skills::SK_STUN as i32 => {
+        x if x == SK_STUN as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_stun(gs, cn);
             }
         }
-        x if x == skills::SK_DISPEL as i32 => {
+        x if x == SK_DISPEL as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_dispel(gs, cn);
             }
         }
-        x if x == skills::SK_WIMPY as i32 => {
+        x if x == SK_WIMPY as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_wimp(gs, cn);
             }
         }
-        x if x == skills::SK_HEAL as i32 => {
+        x if x == SK_HEAL as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_heal(gs, cn);
             }
         }
-        x if x == skills::SK_GHOST as i32 => {
+        x if x == SK_GHOST as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_ghost(gs, cn);
             }
         }
-        x if x == skills::SK_MSHIELD as i32 => {
+        x if x == SK_MSHIELD as i32 => {
             if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
                 nomagic(gs, cn);
             } else {
                 skill_mshield(gs, cn);
             }
         }
-        x if x == skills::SK_IMMUN as i32 => gs.do_character_log(
+        x if x == SK_IMMUN as i32 => gs.do_character_log(
             cn,
             FontColor::Green,
             "You use this skill automatically when someone casts evil spells on you.\n",
         ),
-        x if x == skills::SK_REGEN as i32 || x == skills::SK_REST as i32 || x == skills::SK_MEDIT as i32 => {
+        x if x == SK_REGEN as i32 || x == SK_REST as i32 || x == SK_MEDIT as i32 => {
             gs.do_character_log(
                 cn,
                 FontColor::Green,
                 "You use this skill automatically when you stand still.\n",
             );
         }
-        x if x == skills::SK_WEAPON as i32
-            || x == skills::SK_DAGGER as i32
-            || x == skills::SK_SWORD as i32
-            || x == skills::SK_AXE as i32
-            || x == skills::SK_STAFF as i32
-            || x == skills::SK_TWOHAND as i32
-            || x == skills::SK_SURROUND as i32 =>
+        x if x == SK_WEAPON as i32
+            || x == SK_DAGGER as i32
+            || x == SK_SWORD as i32
+            || x == SK_AXE as i32
+            || x == SK_STAFF as i32
+            || x == SK_TWOHAND as i32
+            || x == SK_SURROUND as i32 =>
         {
             gs.do_character_log(
                 cn,
@@ -3523,12 +3485,12 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 "You use this skill automatically when you fight.\n",
             );
         }
-        x if x == skills::SK_CONCEN as i32 => gs.do_character_log(
+        x if x == SK_CONCEN as i32 => gs.do_character_log(
             cn,
             FontColor::Green,
             "You use this skill automatically when you cast spells.\n",
         ),
-        x if x == skills::SK_WARCRY as i32 => skill_warcry(gs, cn),
+        x if x == SK_WARCRY as i32 => skill_warcry(gs, cn),
         _ => {
             gs.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n");
         }
