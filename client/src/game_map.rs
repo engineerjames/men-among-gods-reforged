@@ -55,6 +55,12 @@ impl GameMap {
         self.tiles.len()
     }
 
+    /// Returns `true` if the tile grid is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.tiles.is_empty()
+    }
+
     /// Resets the delta-index tracker used by [`apply_set_map`](Self::apply_set_map)
     /// so the next update must carry an absolute tile index.
     #[inline]
@@ -126,6 +132,7 @@ impl GameMap {
     /// * `off` - Delta offset from the previous `SV_SETMAP` target (0 = absolute).
     /// * `absolute_tile_index` - Flat tile index used when `off` is 0.
     /// * `ba_sprite` .. `ch_proz` - Optional field updates for the target tile.
+    #[allow(clippy::too_many_arguments)]
     pub fn apply_set_map(
         &mut self,
         off: u8,
@@ -146,7 +153,7 @@ impl GameMap {
         let next_index = if off == 0 {
             absolute_tile_index
         } else {
-            let base = self.last_setmap_index.map(|v| i32::from(v)).unwrap_or(-1);
+            let base = self.last_setmap_index.map(i32::from).unwrap_or(-1);
             let next = base + i32::from(off);
             if next < 0 { None } else { Some(next as u16) }
         };

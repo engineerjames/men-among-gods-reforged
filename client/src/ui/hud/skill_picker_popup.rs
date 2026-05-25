@@ -109,6 +109,12 @@ pub struct SkillPickerPopup {
     actions: Vec<WidgetAction>,
 }
 
+impl Default for SkillPickerPopup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkillPickerPopup {
     /// Creates a new, initially hidden skill picker popup.
     ///
@@ -170,7 +176,7 @@ impl SkillPickerPopup {
                 name: mag_core::skills::get_skill_name(nr),
             })
             .filter(|e| {
-                !e.name.is_empty() && player_skills.get(e.skill_nr).map_or(false, |s| s[0] > 0)
+                !e.name.is_empty() && player_skills.get(e.skill_nr).is_some_and(|s| s[0] > 0)
             })
             .collect();
         self.selected_index = (!self.entries.is_empty()).then_some(0);
@@ -359,8 +365,8 @@ impl Widget for SkillPickerPopup {
                     return EventResponse::Consumed;
                 }
 
-                if *button == MouseButton::Left {
-                    if let Some(idx) = self.hit_row(*x, *y) {
+                if *button == MouseButton::Left
+                    && let Some(idx) = self.hit_row(*x, *y) {
                         self.selected_index = Some(idx);
                         let entry = &self.entries[idx];
                         self.actions.push(WidgetAction::BindSkillKey {
@@ -369,7 +375,6 @@ impl Widget for SkillPickerPopup {
                         });
                         self.hide();
                     }
-                }
                 EventResponse::Consumed
             }
             UiEvent::MouseWheel { delta, .. } => {

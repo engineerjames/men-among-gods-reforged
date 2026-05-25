@@ -101,6 +101,12 @@ pub struct EnterResetCodeForm {
     controller_focused: Option<usize>,
 }
 
+impl Default for EnterResetCodeForm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnterResetCodeForm {
     /// Creates a new enter-reset-code form, centered on screen.
     ///
@@ -400,12 +406,11 @@ impl Widget for EnterResetCodeForm {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 
@@ -438,12 +443,10 @@ impl Widget for EnterResetCodeForm {
             button: MouseButton::Left,
             ..
         } = event
-        {
-            if let Some(idx) = self.field_index_at(*x, *y) {
+            && let Some(idx) = self.field_index_at(*x, *y) {
                 self.focused_field = idx;
                 self.apply_focus();
             }
-        }
 
         // Forward to buttons.
         if self.submit_button.handle_event(event) == EventResponse::Consumed {
@@ -461,11 +464,10 @@ impl Widget for EnterResetCodeForm {
         self.confirm_input.handle_event(event);
 
         // Consume if inside panel.
-        if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event {
-            if self.bounds.contains_point(*x, *y) {
+        if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event
+            && self.bounds.contains_point(*x, *y) {
                 return EventResponse::Consumed;
             }
-        }
 
         match event {
             UiEvent::TextInput { .. } | UiEvent::KeyDown { .. } => EventResponse::Consumed,

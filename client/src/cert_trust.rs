@@ -163,6 +163,12 @@ pub struct TofuVerifier {
     store: Mutex<KnownHostsStore>,
 }
 
+impl Default for TofuVerifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TofuVerifier {
     /// Create a new verifier, loading any previously-saved fingerprints.
     ///

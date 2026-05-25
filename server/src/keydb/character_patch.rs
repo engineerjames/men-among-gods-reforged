@@ -43,6 +43,7 @@ const STATUS_TTL_SECS: u64 = 300;
 
 /// Event emitted by the watcher to the tick loop.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum CharacterPatchEvent {
     /// Apply a single patch to the in-memory character table.
     Apply(CharacterPatch),
@@ -194,14 +195,13 @@ fn watcher_loop(tx: Sender<CharacterPatchEvent>, shutdown: Arc<AtomicBool>) {
             }
         }
 
-        if let Some(request_id) = reload_request_id {
-            if tx
+        if let Some(request_id) = reload_request_id
+            && tx
                 .send(CharacterPatchEvent::ReloadCompleted { request_id })
                 .is_err()
-            {
-                log::info!("character patch watcher: receiver dropped, exiting");
-                return;
-            }
+        {
+            log::info!("character patch watcher: receiver dropped, exiting");
+            return;
         }
     }
 }

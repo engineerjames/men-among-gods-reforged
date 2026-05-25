@@ -22,13 +22,10 @@ mod talk;
 mod tls;
 
 use core::logout_reasons::LogoutReason;
-use log;
 use std::env;
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-
-use core;
 
 use crate::game_state::GameState;
 

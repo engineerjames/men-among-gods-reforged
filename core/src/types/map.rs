@@ -122,8 +122,10 @@ mod tests {
 
     #[test]
     fn test_map_add_light() {
-        let mut map = Map::default();
-        map.light = 100;
+        let mut map = Map {
+            light: 100,
+            ..Map::default()
+        };
         map.add_light(50);
 
         let light_copy = map.light;

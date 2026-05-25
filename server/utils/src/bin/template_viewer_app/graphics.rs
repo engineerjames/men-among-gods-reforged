@@ -150,11 +150,11 @@ impl GraphicsZipCache {
             }
 
             // Load from the open archive
-            if let Some(ref mut archive) = state.archive {
-                if let Ok(mut entry) = archive.by_name(entry_name) {
+            if let Some(ref mut archive) = state.archive
+                && let Ok(mut entry) = archive.by_name(entry_name) {
                     let mut bytes = Vec::new();
-                    if entry.read_to_end(&mut bytes).is_ok() {
-                        if let Ok(decoded) = image::load_from_memory(&bytes) {
+                    if entry.read_to_end(&mut bytes).is_ok()
+                        && let Ok(decoded) = image::load_from_memory(&bytes) {
                             let rgba = decoded.to_rgba8();
                             let (w, h) = rgba.dimensions();
                             let pixels = rgba.into_raw();
@@ -182,9 +182,7 @@ impl GraphicsZipCache {
                             self.textures.insert(*sprite_id, texture);
                             self.sprite_tiles.insert(*sprite_id, (xs, ys));
                         }
-                    }
                 }
-            }
         }
 
         state.index = end_idx;

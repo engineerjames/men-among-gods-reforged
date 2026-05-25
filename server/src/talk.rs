@@ -3421,18 +3421,18 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
         let mut best = 9999;
         let mut bestn = 0;
 
-        for n in 1..core::constants::MAXCHARS {
-            if characters[n].used != core::constants::USE_ACTIVE {
+        for (n, character) in characters.iter().enumerate().skip(1) {
+            if character.used != core::constants::USE_ACTIVE {
                 continue;
             }
-            if characters[n].flags & core::constants::CharacterFlags::Body.bits() != 0 {
+            if character.flags & core::constants::CharacterFlags::Body.bits() != 0 {
                 continue;
             }
 
-            let char_name_lower = characters[n].get_name().to_lowercase();
+            let char_name_lower = character.get_name().to_lowercase();
             if char_name_lower == target_name_lower {
-                let dist = (cn_x - i32::from(characters[n].x)).abs()
-                    + (cn_y - i32::from(characters[n].y)).abs();
+                let dist = (cn_x - i32::from(character.x)).abs()
+                    + (cn_y - i32::from(character.y)).abs();
                 if dist < best {
                     best = dist;
                     bestn = n;

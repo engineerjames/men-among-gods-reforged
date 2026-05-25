@@ -12,7 +12,7 @@ use core::area::AREAS;
 ///
 /// * `true` when the character is in one of the pentagram quest areas.
 pub fn is_in_pentagram_quest(gs: &mut GameState, cn: usize) -> bool {
-    if !(1..crate::core::constants::MAXCHARS).contains(&cn) {
+    if !(1..core::constants::MAXCHARS).contains(&cn) {
         return false;
     }
 
@@ -24,9 +24,8 @@ pub fn is_in_pentagram_quest(gs: &mut GameState, cn: usize) -> bool {
     let y = coords.1;
 
     let n: [usize; 5] = [67, 68, 110, 113, 123];
-    for i in 0..5 {
-        let idx = n[i];
-        if AREAS.get(idx).map_or(false, |a| a.contains(x, y)) {
+    for &idx in &n {
+        if AREAS.get(idx).is_some_and(|a| a.contains(x, y)) {
             return true;
         }
     }

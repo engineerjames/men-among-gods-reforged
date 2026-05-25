@@ -17,11 +17,10 @@ impl GameState {
     pub(crate) fn char_wears_item(&mut self, cn: usize, item_template: u16) -> bool {
         for n in 0..20 {
             let item_idx = self.characters[cn].worn[n];
-            if item_idx != 0 {
-                if self.items[item_idx as usize].temp == item_template {
+            if item_idx != 0
+                && self.items[item_idx as usize].temp == item_template {
                     return true;
                 }
-            }
         }
         false
     }
@@ -123,8 +122,8 @@ impl GameState {
 
             if !char_has_nomagic {
                 // Add magical bonuses
-                for z in 0..5 {
-                    attrib_bonus[z] += if item.active != 0 {
+                for (z, bonus) in attrib_bonus.iter_mut().enumerate().take(5) {
+                    *bonus += if item.active != 0 {
                         i32::from(item.attrib[z][1])
                     } else {
                         i32::from(item.attrib[z][0])
@@ -195,8 +194,8 @@ impl GameState {
 
                 let spell = &mut self.items[spell_idx as usize];
 
-                for z in 0..5 {
-                    attrib_bonus[z] += i32::from(spell.attrib[z][1]);
+                for (z, bonus) in attrib_bonus.iter_mut().enumerate().take(5) {
+                    *bonus += i32::from(spell.attrib[z][1]);
                 }
 
                 hp_bonus += i32::from(spell.hp[1]);
@@ -254,21 +253,21 @@ impl GameState {
             &self.characters[cn].attrib,
             &self.characters[cn].skill,
         );
-        for z in 0..5 {
-            attrib_bonus[z] += talent_bonuses.attrib[z];
+        for (z, bonus) in attrib_bonus.iter_mut().enumerate() {
+            *bonus += talent_bonuses.attrib[z];
         }
-        for z in 0..50 {
-            skill_bonus[z] += talent_bonuses.skill[z];
+        for (z, bonus) in skill_bonus.iter_mut().enumerate() {
+            *bonus += talent_bonuses.skill[z];
         }
         hp_bonus += talent_bonuses.hp_flat;
         mana_bonus += talent_bonuses.mana_flat;
         end_bonus += talent_bonuses.end_flat;
 
         // Calculate final attributes
-        for z in 0..5 {
+        for (z, &bonus) in attrib_bonus.iter().enumerate().take(5) {
             let mut final_attrib = i32::from(self.characters[cn].attrib[z][0])
                 + i32::from(self.characters[cn].attrib[z][1])
-                + attrib_bonus[z];
+                + bonus;
 
             final_attrib = final_attrib.clamp(1, 250);
             self.characters[cn].attrib[z][5] = final_attrib as u8;
@@ -318,10 +317,10 @@ impl GameState {
         }
 
         // Calculate final skills (with attribute bonuses)
-        for z in 0..50 {
+        for (z, &bonus) in skill_bonus.iter().enumerate().take(50) {
             let mut final_skill = i32::from(self.characters[cn].skill[z][0])
                 + i32::from(self.characters[cn].skill[z][1])
-                + skill_bonus[z];
+                + bonus;
 
             // Add attribute bonuses using the proper skill->attribute mapping from `skills`
             let attrs = skills::get_skill_attribs(z);
@@ -564,11 +563,10 @@ impl GameState {
                         // Misc action
                         if mode == 2 {
                             self.characters[cn].a_end -= scale(25);
-                        } else if mode == 0 {
-                            if !noend {
+                        } else if mode == 0
+                            && !noend {
                                 self.characters[cn].a_end += scale(25);
                             }
-                        }
                     }
                 }
 
@@ -827,8 +825,8 @@ impl GameState {
                             let is_invisible =
                                 self.characters[cn].flags & CharacterFlags::Invisible.bits() != 0;
 
-                            if God::transfer_char(self, cn, dest_x as usize, dest_y as usize) {
-                                if !is_invisible {
+                            if God::transfer_char(self, cn, dest_x as usize, dest_y as usize)
+                                && !is_invisible {
                                     EffectManager::fx_add_effect(
                                         self,
                                         12,
@@ -847,7 +845,6 @@ impl GameState {
                                         0,
                                     );
                                 }
-                            }
 
                             // Reset character state
                             self.characters[cn].status = 0;
@@ -1353,8 +1350,8 @@ impl GameState {
         let spells = self.characters[co].spell;
         let mut shield_updates: Vec<(usize, usize, i32, bool)> = Vec::new(); // (slot, item_idx, new_active, kill)
 
-        for n in 0..20 {
-            let in_idx = spells[n] as usize;
+        for (n, &spell_ref) in spells[..20].iter().enumerate() {
+            let in_idx = spell_ref as usize;
             if in_idx == 0 {
                 continue;
             }
@@ -1523,8 +1520,8 @@ impl GameState {
         let will_die_hp = self.characters[co].a_hp - dam;
         let saved_by_god = (will_die_hp < 500) && (self.characters[co].luck >= 100);
 
-        if saved_by_god {
-            if (mf_flags & u64::from(core::constants::MF_ARENA)) == 0
+        if saved_by_god
+            && (mf_flags & u64::from(core::constants::MF_ARENA)) == 0
                 && helpers::random_mod_i32(10000) < 5000 + self.characters[co].luck
             {
                 // Save the character
@@ -1591,7 +1588,6 @@ impl GameState {
                 );
                 return dam / 1000;
             }
-        }
 
         // Subtract hp
         self.characters[co].a_hp -= dam;
@@ -1674,8 +1670,8 @@ impl GameState {
                 let has_medit = self.characters[co].skill[skills::SK_MEDIT][0] != 0;
                 if !has_medit {
                     let spells = self.characters[co].spell;
-                    for n in 0..20 {
-                        let in_idx = spells[n] as usize;
+                    for &spell_ref in &spells[..20] {
+                        let in_idx = spell_ref as usize;
                         if in_idx == 0 {
                             continue;
                         }

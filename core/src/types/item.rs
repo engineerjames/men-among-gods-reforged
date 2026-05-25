@@ -231,16 +231,17 @@ mod tests {
 
     #[test]
     fn test_item_roundtrip() {
-        let mut original = Item::default();
-        original.used = 1;
-        original.name = *b"Test Item\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-        original.reference =
-            *b"a test item\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-        original.flags = 0x123456789ABCDEF0;
-        original.value = 1000;
-        original.placement = 5;
-        original.temp = 100;
-        original.damage_state = 2;
+        let mut original = Item {
+            used: 1,
+            name: *b"Test Item\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            reference: *b"a test item\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            flags: 0x123456789ABCDEF0,
+            value: 1000,
+            placement: 5,
+            temp: 100,
+            damage_state: 2,
+            ..Item::default()
+        };
         original.attrib[0] = [1, 2, 3];
         original.hp = [100, 200, 50];
         original.skill[0] = [10, 20, 5];
@@ -269,16 +270,19 @@ mod tests {
 
     #[test]
     fn test_item_get_name() {
-        let mut item = Item::default();
-        item.name = *b"Sword of Power\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        let item = Item {
+            name: *b"Sword of Power\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            ..Item::default()
+        };
         assert_eq!(item.get_name(), "Sword of Power");
     }
 
     #[test]
     fn test_item_flags() {
-        let mut item = Item::default();
-
-        item.flags = ItemFlags::IF_LABYDESTROY.bits();
+        let mut item = Item {
+            flags: ItemFlags::IF_LABYDESTROY.bits(),
+            ..Item::default()
+        };
         assert!(item.has_laby_destroy());
         assert!(!item.has_soulstone());
 

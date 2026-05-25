@@ -1974,16 +1974,14 @@ impl God {
         // This is simplified - original had more complex ranking
         for i in 1..core::constants::MAXCHARS {
             let c = &gs.characters[i];
-            if c.is_living_character(i) && c.is_player() {
-                if c.points > 100000 {
-                    let points_to_print = c.points;
-                    let name = c.get_name().to_owned();
-                    gs.do_character_log(
-                        cn,
-                        core::types::FontColor::Green,
-                        &format!("  {}: Points={}\n", name, points_to_print),
-                    );
-                }
+            if c.is_living_character(i) && c.is_player() && c.points > 100000 {
+                let points_to_print = c.points;
+                let name = c.get_name().to_owned();
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Green,
+                    &format!("  {}: Points={}\n", name, points_to_print),
+                );
             }
         }
     }
@@ -2067,7 +2065,7 @@ impl God {
             return;
         }
 
-        let armor_type = ArmorType::from_str(armor).unwrap_or_else(|| ArmorType::Cloth);
+        let armor_type = ArmorType::from_abbrev(armor).unwrap_or(ArmorType::Cloth);
 
         if armor_type == ArmorType::Cloth || armor_type == ArmorType::Leather {
             gs.do_character_log(
@@ -2078,7 +2076,7 @@ impl God {
             return;
         }
 
-        let animal_type = MagicArmorType::from_str(animal).unwrap_or_else(|| MagicArmorType::Bear);
+        let animal_type = MagicArmorType::from_abbrev(animal).unwrap_or(MagicArmorType::Bear);
         let is_godly = godly.to_lowercase().starts_with("go");
 
         let (helmet_temp, armor_temp) = match armor_type {
@@ -2353,17 +2351,15 @@ impl God {
                 .next()
                 .map(|c| c.is_ascii_digit())
                 .unwrap_or(false)
+                && let Ok(rank) = spec2.parse::<usize>()
+                && rank >= ranks::TOTAL_RANKS
             {
-                if let Ok(rank) = spec2.parse::<usize>() {
-                    if rank >= ranks::TOTAL_RANKS {
-                        gs.do_character_log(
-                            cn,
-                            core::types::FontColor::Red,
-                            &format!("No such rank: {}\n", spec2),
-                        );
-                        return;
-                    }
-                }
+                gs.do_character_log(
+                    cn,
+                    core::types::FontColor::Red,
+                    &format!("No such rank: {}\n", spec2),
+                );
+                return;
             }
 
             let which = spec3.parse::<usize>().unwrap_or(1).max(1);
@@ -2577,8 +2573,8 @@ impl God {
             mirror.sprite = target_sprite;
 
             // Copy attributes
-            for i in 0..5 {
-                mirror.attrib[i][0] = target_attrib[i][0];
+            for (i, src) in target_attrib[..5].iter().enumerate() {
+                mirror.attrib[i][0] = src[0];
             }
 
             // Copy max HP/END/MANA
@@ -2587,8 +2583,11 @@ impl God {
             mirror.mana[0] = target_mana[0];
 
             // Copy skills
-            for i in 1..35 {
-                mirror.skill[i][0] = target_skill[i][0];
+            for (dst, src) in mirror.skill[1..35]
+                .iter_mut()
+                .zip(target_skill[1..35].iter())
+            {
+                dst[0] = src[0];
             }
 
             // Calculate hand-to-hand skill based on kindred

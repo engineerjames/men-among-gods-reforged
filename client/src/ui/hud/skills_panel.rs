@@ -651,13 +651,12 @@ impl SkillsPanel {
             let ry = self.skill_row_y(row);
             if y >= ry && y < ry + ROW_H {
                 let sorted_idx = self.skill_scroll + row;
-                if let Some(&skill_id) = data.sorted_skills.get(sorted_idx) {
-                    if !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
+                if let Some(&skill_id) = data.sorted_skills.get(sorted_idx)
+                    && !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
                         self.pending_actions.push(WidgetAction::CastSkill {
                             skill_nr: get_skill_nr(skill_id),
                         });
                     }
-                }
                 return;
             }
         }
@@ -669,12 +668,11 @@ impl SkillsPanel {
             let ry = self.skill_row_y(row);
             if y >= ry && y < ry + ROW_H {
                 let sorted_idx = self.skill_scroll + row;
-                if let Some(&skill_id) = data.sorted_skills.get(sorted_idx) {
-                    if !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
+                if let Some(&skill_id) = data.sorted_skills.get(sorted_idx)
+                    && !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
                         self.pending_actions
                             .push(WidgetAction::BeginSkillAssign { skill_id });
                     }
-                }
                 return;
             }
         }
@@ -880,14 +878,14 @@ impl Widget for SkillsPanel {
         let (name_x, _value_x, plus_x, minus_x, cost_x) = self.col_x();
 
         // --- Attributes ---
-        for n in 0..5 {
+        for (n, attr_name) in ATTR_NAMES.iter().enumerate() {
             let y = self.attr_row_y(n);
             let raised = self.stat_raised[n];
             let value_total = i32::from(data.attrib[n][5]) + raised;
             let value_bare = i32::from(data.attrib[n][0]) + raised;
             let cost = Self::attrib_cost(data, n, value_bare);
 
-            let line = format!("{:<14} {:3}", ATTR_NAMES[n], value_total);
+            let line = format!("{:<14} {:3}", attr_name, value_total);
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,

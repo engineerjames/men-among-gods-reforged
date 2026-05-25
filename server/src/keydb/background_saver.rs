@@ -43,6 +43,7 @@ pub const SAVE_CYCLE_COUNT: u32 = 6;
 ///
 /// Each variant carries the cloned data needed for one write operation
 /// so the game loop can hand off ownership and continue immediately.
+#[allow(clippy::large_enum_variant)]
 pub enum SaveJob {
     /// Persist all character slots (`game:char:*`).
     Characters(Vec<core::types::Character>),
@@ -118,10 +119,10 @@ impl BackgroundSaver {
     /// the [`Drop`] implementation.
     pub fn shutdown(&mut self) {
         let _ = self.tx.send(SaveJob::Shutdown);
-        if let Some(handle) = self.handle.take() {
-            if let Err(e) = handle.join() {
-                log::error!("Background saver thread panicked: {e:?}");
-            }
+        if let Some(handle) = self.handle.take()
+            && let Err(e) = handle.join()
+        {
+            log::error!("Background saver thread panicked: {e:?}");
         }
     }
 }

@@ -18,6 +18,7 @@ impl GameState {
     /// * `xs`, `ys` - Center coordinates of the area
     /// * `notify_type` - Type of notification
     /// * `dat1`, `dat2`, `dat3`, `dat4` - Additional data for the notification
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn do_area_notify(
         &mut self,
         cn: i32,
@@ -140,9 +141,9 @@ impl GameState {
                 }
             }
 
-            for i in 0..bestn.len() {
-                if bestn[i] != 0 {
-                    self.do_notify_character(bestn[i] as u32, shout_type, dat1, dat2, dat3, dat4);
+            for &bestn_n in &bestn {
+                if bestn_n != 0 {
+                    self.do_notify_character(bestn_n as u32, shout_type, dat1, dat2, dat3, dat4);
                 }
             }
         } else {
@@ -250,8 +251,8 @@ impl GameState {
 
             // Show description or reference
             let has_desc = self.characters[co].description[0] != 0;
-            let description = c_string_to_str(&mut self.characters[co].description).to_owned();
-            let reference = c_string_to_str(&mut self.characters[co].reference).to_owned();
+            let description = c_string_to_str(&self.characters[co].description).to_owned();
+            let reference = c_string_to_str(&self.characters[co].reference).to_owned();
 
             if has_desc {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", description));
@@ -262,10 +263,10 @@ impl GameState {
             // Check if target is AFK (away from keyboard)
             let co_is_player = self.characters[co].is_player();
             let co_data0 = self.characters[co].data[0];
-            let co_text0 = c_string_to_str(&mut self.characters[co].text[0]).to_owned();
+            let co_text0 = c_string_to_str(&self.characters[co].text[0]).to_owned();
 
             if co_is_player && co_data0 != 0 {
-                let co_name = c_string_to_str(&mut self.characters[co].name).to_owned();
+                let co_name = c_string_to_str(&self.characters[co].name).to_owned();
 
                 if !co_text0.is_empty() {
                     self.do_character_log(
@@ -285,7 +286,7 @@ impl GameState {
 
             // Check for Purple One follower
             let co_kindred = self.characters[co].kindred;
-            let co_reference = c_string_to_str(&mut self.characters[co].reference).to_owned();
+            let co_reference = c_string_to_str(&self.characters[co].reference).to_owned();
 
             if co_is_player && (co_kindred as u32 & traits::KIN_PURPLE) != 0 {
                 self.do_character_log(
@@ -301,7 +302,7 @@ impl GameState {
             let cn_is_shutup = self.characters[cn].flags & CharacterFlags::ShutUp.bits() != 0;
 
             if godflag == 0 && cn != co && cn_is_player && !cn_is_invisible && !cn_is_shutup {
-                let cn_name = c_string_to_str(&mut self.characters[cn].name).to_owned();
+                let cn_name = c_string_to_str(&self.characters[cn].name).to_owned();
 
                 self.do_character_log(
                     co,
@@ -322,10 +323,10 @@ impl GameState {
                     "unknown causes".to_owned()
                 } else if co_data15 >= core::constants::MAXCHARS as i32 {
                     let killer_idx = (co_data15 & 0xFFFF) as usize;
-                    c_string_to_str(&mut self.characters[killer_idx].reference).to_owned()
+                    c_string_to_str(&self.characters[killer_idx].reference).to_owned()
                 } else {
                     let idx = co_data15 as usize;
-                    c_string_to_str(&mut self.character_templates[idx].reference).to_owned()
+                    c_string_to_str(&self.character_templates[idx].reference).to_owned()
                 };
 
                 let area = {
@@ -384,7 +385,7 @@ impl GameState {
             }
 
             // Show custom text[3] (player description/title)
-            let co_text3 = c_string_to_str(&mut self.characters[co].text[3]).to_owned();
+            let co_text3 = c_string_to_str(&self.characters[co].text[3]).to_owned();
 
             if !co_text3.is_empty() && co_is_player {
                 self.do_character_log(cn, FontColor::Yellow, &format!("{}\n", co_text3));
@@ -620,7 +621,7 @@ impl GameState {
 
         let co_name = {
             let mut name = [0u8; 15];
-            name.copy_from_slice(&mut self.characters[co].name[0..15]);
+            name.copy_from_slice(&self.characters[co].name[0..15]);
             name
         };
 
@@ -964,11 +965,11 @@ impl GameState {
         }
 
         // direct log write from client
-        if text.starts_with('|') {
+        if let Some(log_text) = text.strip_prefix('|') {
             chlog!(
                 cn,
                 "{}",
-                &text[1..] // skip '|'
+                log_text
             );
             return;
         }
@@ -1118,7 +1119,7 @@ impl GameState {
         if co_afk {
             let co_afk_msg = self.characters[co].text[0][0] != 0;
             if co_afk_msg {
-                let msg = c_string_to_str(&mut self.characters[co].text[0]).to_owned();
+                let msg = c_string_to_str(&self.characters[co].text[0]).to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Red,

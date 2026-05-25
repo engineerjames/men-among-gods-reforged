@@ -94,19 +94,19 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
     for n in 30..35 {
         let co = gs.characters[cn].data[n] as usize;
         if co != 0 && Character::is_sane_character(co) {
-            for m in 0..maxseen {
-                if seen[m].co == co {
+            for item in seen[..maxseen].iter_mut() {
+                if item.co == co {
                     let co_team = gs.characters[co].data[42];
                     let cn_team = gs.characters[cn].data[42];
 
                     if co_team == cn_team {
-                        seen[m].help += 1;
-                        help = help.max(seen[m].help);
+                        item.help += 1;
+                        help = help.max(item.help);
                     } else {
-                        if seen[m].stun != 0 {
-                            seen[m].stun += 2;
+                        if item.stun != 0 {
+                            item.stun += 2;
                         }
-                        stun = stun.max(seen[m].stun);
+                        stun = stun.max(item.stun);
                     }
                     break;
                 }
@@ -118,14 +118,14 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
     if co != 0 && Character::is_sane_character(co) {
         flee += 5;
         let mut m = 0;
-        for i in 0..maxseen {
-            if seen[i].co == co {
-                if seen[i].stun != 0 {
-                    seen[i].stun += 5;
+        for (i, item) in seen[..maxseen].iter_mut().enumerate() {
+            if item.co == co {
+                if item.stun != 0 {
+                    item.stun += 5;
                 } else {
                     flee += 2;
                 }
-                stun = stun.max(seen[i].stun);
+                stun = stun.max(item.stun);
                 m = i + 1;
                 break;
             }
@@ -182,14 +182,14 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             1
         };
 
-        for n in 0..maxseen {
-            let tmp = if !seen[n].is_friend {
-                if seen[n].dist < 6 { -2000 } else { -1000 }
+        for item in &seen[..maxseen] {
+            let tmp = if !item.is_friend {
+                if item.dist < 6 { -2000 } else { -1000 }
             } else {
                 150
             };
 
-            let co = seen[n].co;
+            let co = item.co;
             let (cn_x, cn_y, co_x, co_y) = (
                 gs.characters[cn].x,
                 gs.characters[cn].y,
@@ -463,12 +463,11 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
         let ticker = gs.globals.ticker;
         let data_24 = gs.characters[cn].data[24];
         if state == 1 && ticker > data_24 + TICKS * 10 {
-            if gs.characters[cn].citem == 0 {
-                if let Some(in_item) = God::create_item(gs, 718) {
+            if gs.characters[cn].citem == 0
+                && let Some(in_item) = God::create_item(gs, 718) {
                     gs.characters[cn].citem = in_item as u32;
                     gs.items[in_item].carried = cn as u16;
                 }
-            }
             let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
             if (i32::from(cn_x) - 264).abs() + (i32::from(cn_y) - 317).abs() < 20 {
                 gs.characters[cn].data[22] = 2;

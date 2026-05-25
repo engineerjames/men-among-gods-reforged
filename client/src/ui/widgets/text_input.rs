@@ -223,7 +223,7 @@ impl TextInput {
     fn recalculate_view_offset(&mut self) {
         let visible = self.visible_char_count();
         let len = self.value.len();
-        self.view_offset = if len <= visible { 0 } else { len - visible };
+        self.view_offset = len.saturating_sub(visible);
     }
 
     /// Returns the display string for the current view window.

@@ -43,6 +43,12 @@ pub struct EnterResetCodeScene {
     keyboard: OnScreenKeyboard,
 }
 
+impl Default for EnterResetCodeScene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EnterResetCodeScene {
     /// Creates a new `EnterResetCodeScene` with empty form fields.
     ///
@@ -154,8 +160,8 @@ impl Scene for EnterResetCodeScene {
 
         // When the on-screen keyboard is visible, intercept raw SDL
         // controller buttons for keyboard-specific actions.
-        if self.keyboard.is_visible() {
-            if let Event::ControllerButtonDown { button, .. } = event {
+        if self.keyboard.is_visible()
+            && let Event::ControllerButtonDown { button, .. } = event {
                 match button {
                     Btn::X => {
                         self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
@@ -181,7 +187,6 @@ impl Scene for EnterResetCodeScene {
                     _ => {}
                 }
             }
-        }
 
         // Controller → nav event (rising-edge gated for axes).
         if let Some(nav_event) = self.controller_nav.process_event(event) {

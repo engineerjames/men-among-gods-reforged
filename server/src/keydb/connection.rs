@@ -458,10 +458,12 @@ mod tests {
 
     #[test]
     fn derive_character_selection_metadata_uses_live_values() {
-        let mut character = Character::default();
-        character.kindred = (traits::KIN_ARCHTEMPLAR | traits::KIN_FEMALE) as i32;
-        character.sprite = 8144;
-        character.points_tot = 0;
+        let character = Character {
+            kindred: (traits::KIN_ARCHTEMPLAR | traits::KIN_FEMALE) as i32,
+            sprite: 8144,
+            points_tot: 0,
+            ..Character::default()
+        };
 
         let (class, sex, sprite, rank_index) =
             derive_character_selection_metadata(&character).unwrap();
@@ -473,18 +475,22 @@ mod tests {
 
     #[test]
     fn derive_character_selection_metadata_requires_class_and_sex_bits() {
-        let mut character = Character::default();
-        character.kindred = traits::KIN_ARCHTEMPLAR as i32;
-        character.sprite = 8144;
+        let character = Character {
+            kindred: traits::KIN_ARCHTEMPLAR as i32,
+            sprite: 8144,
+            ..Character::default()
+        };
 
         assert_eq!(derive_character_selection_metadata(&character), None);
     }
 
     #[test]
     fn derive_character_selection_metadata_rank_index_from_points_tot() {
-        let mut character = Character::default();
-        character.kindred = (traits::KIN_MERCENARY | traits::KIN_MALE) as i32;
-        character.sprite = 0;
+        let mut character = Character {
+            kindred: (traits::KIN_MERCENARY | traits::KIN_MALE) as i32,
+            sprite: 0,
+            ..Character::default()
+        };
 
         // points_tot = 0 → rank 0 (Private).
         character.points_tot = 0;

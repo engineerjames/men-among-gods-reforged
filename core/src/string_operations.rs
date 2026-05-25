@@ -32,14 +32,12 @@ pub fn write_ascii_into_fixed(dst: &mut [u8], s: &str) {
         return;
     }
 
-    let mut i = 0usize;
-    for &b in s.as_bytes() {
+    for (i, &b) in s.as_bytes().iter().enumerate() {
         if i >= dst.len().saturating_sub(1) {
             break;
         }
 
         dst[i] = if (32..=126).contains(&b) { b } else { b' ' };
-        i += 1;
     }
 }
 

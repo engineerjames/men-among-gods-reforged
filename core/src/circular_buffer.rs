@@ -81,6 +81,15 @@ impl<T> CircularBuffer<T> {
         self.buffer.iter().filter(|item| item.is_some()).count()
     }
 
+    /// Returns `true` if the buffer contains no items.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when no slots are occupied.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     /// Returns the total number of items ever pushed into the buffer.
     ///
     /// This counter increases monotonically with each `push` and resets

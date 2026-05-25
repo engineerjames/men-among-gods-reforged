@@ -141,7 +141,7 @@ impl ShopPanel {
     ///
     /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
-        self.data.as_ref().map_or(false, |d| d.visible)
+        self.data.as_ref().is_some_and(|d| d.visible)
     }
 
     /// Toggle the panel's visibility.

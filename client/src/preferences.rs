@@ -75,17 +75,14 @@ impl Default for CharacterSettings {
 
 /// Window display mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum DisplayMode {
+    #[default]
     Windowed,
     Fullscreen,
     BorderlessFullscreen,
 }
 
-impl Default for DisplayMode {
-    fn default() -> Self {
-        Self::Windowed
-    }
-}
 
 impl fmt::Display for DisplayMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -504,25 +501,30 @@ mod tests {
 
     #[test]
     fn settings_serde_roundtrip() {
-        let mut s = Settings::default();
-        s.music_enabled = false;
-        s.display_mode = DisplayMode::BorderlessFullscreen;
-        s.shadows_enabled = true;
-        s.master_volume = 0.75;
-        s.show_helper_text = false;
-        s.show_positions = true;
-        s.character.skill_keybinds = [
-            None,
-            Some(42),
-            None,
-            None,
-            Some(7),
-            None,
-            None,
-            None,
-            None,
-            None,
-        ];
+        let s = Settings {
+            music_enabled: false,
+            display_mode: DisplayMode::BorderlessFullscreen,
+            shadows_enabled: true,
+            master_volume: 0.75,
+            show_helper_text: false,
+            show_positions: true,
+            character: CharacterSettings {
+                skill_keybinds: [
+                    None,
+                    Some(42),
+                    None,
+                    None,
+                    Some(7),
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
+                ..CharacterSettings::default()
+            },
+            ..Settings::default()
+        };
 
         let json = serde_json::to_string(&s).unwrap();
         let deserialized: Settings = serde_json::from_str(&json).unwrap();
@@ -625,9 +627,11 @@ mod tests {
     #[test]
     fn global_settings_shadows_and_volume_are_not_per_character() {
         // Verify that shadows_enabled and master_volume live on Settings, not CharacterSettings.
-        let mut s = Settings::default();
-        s.shadows_enabled = true;
-        s.master_volume = 0.5;
+        let s = Settings {
+            shadows_enabled: true,
+            master_volume: 0.5,
+            ..Settings::default()
+        };
         // CharacterSettings must not have these fields — confirmed by the struct definition.
         assert!(s.shadows_enabled);
         assert!((s.master_volume - 0.5).abs() < f32::EPSILON);
@@ -646,12 +650,14 @@ mod tests {
 
     #[test]
     fn settings_hud_toggles_serde_roundtrip() {
-        let mut s = Settings::default();
-        s.show_names = false;
-        s.show_proz = false;
-        s.hide = true;
-        s.show_positions = true;
-        s.spell_effects_enabled = false;
+        let s = Settings {
+            show_names: false,
+            show_proz: false,
+            hide: true,
+            show_positions: true,
+            spell_effects_enabled: false,
+            ..Settings::default()
+        };
 
         let json = serde_json::to_string(&s).unwrap();
         let d: Settings = serde_json::from_str(&json).unwrap();

@@ -247,12 +247,11 @@ fn main() -> Result<(), String> {
             // Any gamepad input switches to controller mode; any
             // keyboard/mouse input switches back.
             match &event {
-                sdl2::event::Event::ControllerButtonDown { .. } => {
-                    if !app_state.controller_active {
+                sdl2::event::Event::ControllerButtonDown { .. }
+                    if !app_state.controller_active => {
                         log::info!("Controller input detected — switching to controller mode");
                         app_state.controller_active = true;
                     }
-                }
                 sdl2::event::Event::ControllerAxisMotion { value, .. } => {
                     // Ignore small axis values inside the deadzone.
                     // Use saturating_abs to avoid overflow on i16::MIN (-32768).
@@ -290,12 +289,11 @@ fn main() -> Result<(), String> {
                 | sdl2::event::Event::MouseButtonUp { .. }
                 | sdl2::event::Event::MouseMotion { .. }
                 | sdl2::event::Event::MouseWheel { .. }
-                | sdl2::event::Event::TextInput { .. } => {
-                    if app_state.controller_active {
+                | sdl2::event::Event::TextInput { .. }
+                    if app_state.controller_active => {
                         log::info!("Keyboard/mouse input detected — leaving controller mode");
                         app_state.controller_active = false;
                     }
-                }
                 _ => {}
             }
             // --------------------------------------------------------------

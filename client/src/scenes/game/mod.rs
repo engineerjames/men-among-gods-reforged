@@ -238,14 +238,13 @@ fn active_quest_destination(
     step_idx: usize,
     npc_pos_fallback: Option<(u16, u16)>,
 ) -> Option<(u16, u16)> {
-    if let Some(def) = mag_core::quest_defs::find_quest_def(template_id) {
-        if let Some(step) = def.steps.get(step_idx) {
+    if let Some(def) = mag_core::quest_defs::find_quest_def(template_id)
+        && let Some(step) = def.steps.get(step_idx) {
             return match step {
                 mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
                 mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
             };
         }
-    }
     npc_pos_fallback
 }
 
@@ -697,11 +696,10 @@ impl GameScene {
 
         for y in 0..TILEY {
             for x in 0..TILEX {
-                if let Some(tile) = ps.map().tile_at_xy(x, y) {
-                    if tile.ch_nr == selected {
+                if let Some(tile) = ps.map().tile_at_xy(x, y)
+                    && tile.ch_nr == selected {
                         return true;
                     }
-                }
             }
         }
 
@@ -1323,8 +1321,8 @@ impl Scene for GameScene {
         {
             let mods = KeyModifiers::from_sdl2(*keymod);
             let has_modifier = mods.ctrl || mods.alt;
-            if has_modifier || !self.chat_box.is_focused() {
-                if let Some(action) = app_state
+            if (has_modifier || !self.chat_box.is_focused())
+                && let Some(action) = app_state
                     .settings
                     .character
                     .key_bindings
@@ -1336,7 +1334,6 @@ impl Scene for GameScene {
                     }
                     return None;
                 }
-            }
         }
 
         // --- Controller events ---
@@ -1353,8 +1350,7 @@ impl Scene for GameScene {
         if let Event::KeyDown {
             keycode: Some(kc), ..
         } = event
-        {
-            if matches!(
+            && matches!(
                 *kc,
                 Keycode::Num0
                     | Keycode::Num1
@@ -1370,17 +1366,15 @@ impl Scene for GameScene {
                 self.handle_num_hotkey(app_state, *kc);
                 return None;
             }
-        }
 
         // --- Mouse world interactions ---
-        if !ui_consumed {
-            if let Event::MouseButtonUp {
+        if !ui_consumed
+            && let Event::MouseButtonUp {
                 mouse_btn, x, y, ..
             } = event
             {
                 return self.handle_world_click(app_state, *mouse_btn, *x, *y);
             }
-        }
 
         None
     }
@@ -1514,8 +1508,8 @@ impl Scene for GameScene {
         }
 
         // --- L3 hold detection: look at nearest character ---
-        if self.controller_mode {
-            if let Some(pressed_at) = self.l3_pressed_at {
+        if self.controller_mode
+            && let Some(pressed_at) = self.l3_pressed_at {
                 const L3_HOLD_THRESHOLD: Duration = Duration::from_millis(500);
                 if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
                     self.l3_pressed_at = None; // consumed
@@ -1529,22 +1523,19 @@ impl Scene for GameScene {
                             {
                                 let tile = ps.map().tile_at_xy(sx, sy);
                                 let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
-                                if target_cn != 0 {
-                                    if let Some(net) = app_state.network.as_ref() {
+                                if target_cn != 0
+                                    && let Some(net) = app_state.network.as_ref() {
                                         self.play_click_sound(app_state);
                                         net.send(ClientCommand::new_look(target_cn));
                                     }
-                                }
                             }
                         }
                     }
                 }
             }
-        }
 
         // Create the cert dialog widget when a mismatch is first detected.
-        if self.certificate_mismatch.is_some() && self.cert_dialog.is_none() {
-            let m = self.certificate_mismatch.as_ref().unwrap();
+        if let Some(m) = &self.certificate_mismatch && self.cert_dialog.is_none() {
             self.cert_dialog = Some(CertDialog::new(
                 &m.host,
                 &m.expected_fingerprint,
@@ -1554,11 +1545,10 @@ impl Scene for GameScene {
 
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
-            if let Some(ps) = app_state.player_state.as_mut() {
-                if !Self::is_selected_visible(ps) {
+            if let Some(ps) = app_state.player_state.as_mut()
+                && !Self::is_selected_visible(ps) {
                     ps.clear_selected_char();
                 }
-            }
 
             let tick_now = app_state
                 .network

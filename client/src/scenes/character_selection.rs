@@ -60,6 +60,12 @@ pub struct CharacterSelectionScene {
     controller_nav: ControllerNavState,
 }
 
+impl Default for CharacterSelectionScene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CharacterSelectionScene {
     /// Creates a new `CharacterSelectionScene` with empty state.
     ///

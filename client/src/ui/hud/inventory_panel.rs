@@ -564,8 +564,8 @@ impl InventoryPanel {
     /// placement flags and the currently-equipped right-hand placement.
     fn compute_blocked(citem_p: u16, worn_p: &[i32; 20]) -> [bool; 20] {
         let mut blocked = [false; 20];
-        for slot in 0..20 {
-            blocked[slot] = !Self::slot_accepts(slot, citem_p);
+        for (slot, is_blocked) in blocked.iter_mut().enumerate() {
+            *is_blocked = !Self::slot_accepts(slot, citem_p);
         }
         if (worn_p[WN_RHAND] as u16 & PL_TWOHAND) != 0 {
             blocked[WN_LHAND] = true;
@@ -887,8 +887,8 @@ impl Widget for InventoryPanel {
             }
 
             // Blocked-slot overlay (sprite 4) when carrying an incompatible item.
-            if let Some(ref bl) = blocked {
-                if bl[worn_index] {
+            if let Some(ref bl) = blocked
+                && bl[worn_index] {
                     let tex = ctx.gfx.get_texture(4);
                     let q = tex.query();
                     ctx.canvas.copy(
@@ -897,7 +897,6 @@ impl Widget for InventoryPanel {
                         Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
                     )?;
                 }
-            }
         }
 
         // --- Controller selection highlight (golden stroke) ---

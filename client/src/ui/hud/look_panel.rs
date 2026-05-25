@@ -219,12 +219,11 @@ impl LookPanel {
             let map = ps.map();
             let total = TILEX * TILEY;
             for i in 0..total {
-                if let Some(tile) = map.tile_at_index(i) {
-                    if tile.ch_nr == ch_nr {
+                if let Some(tile) = map.tile_at_index(i)
+                    && tile.ch_nr == ch_nr {
                         sprite_id = tile.obj2;
                         break;
                     }
-                }
             }
         }
 

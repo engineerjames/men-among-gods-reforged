@@ -86,6 +86,12 @@ pub struct DeleteCharacterDialog {
     controller_focused: Option<usize>,
 }
 
+impl Default for DeleteCharacterDialog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DeleteCharacterDialog {
     /// Creates a new, initially hidden delete character dialog.
     ///
@@ -255,24 +261,22 @@ impl Widget for DeleteCharacterDialog {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(0) => {
-                        if self.name_matches() && !self.is_deleting {
+                    Some(0)
+                        if self.name_matches() && !self.is_deleting => {
                             self.actions.push(DeleteCharacterDialogAction::Confirm {
                                 character_id: self.character_id,
                             });
                         }
-                    }
                     Some(1) => self.actions.push(DeleteCharacterDialogAction::Cancel),
                     _ => {}
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 

@@ -202,8 +202,7 @@ impl ClientCommand {
         let mut payload = vec![0u8; 15];
         let n = chunk.len().min(15);
         payload[..n].copy_from_slice(&chunk[..n]);
-        let cmd = Self::new(kind, payload);
-        cmd
+        Self::new(kind, payload)
     }
 
     /// Splits up to 120 bytes across 8 CmdInput packets (mirrors main.c `say`).
@@ -384,8 +383,7 @@ impl ClientCommand {
     ///
     /// * A new instance configured by `new_reset`.
     pub fn new_reset() -> Self {
-        let cmd = Self::cmd_xy_i16_i32(ClientCommandType::CmdReset, 0, 0);
-        cmd
+        Self::cmd_xy_i16_i32(ClientCommandType::CmdReset, 0, 0)
     }
 
     /// Creates a shop interaction command (buy/sell).
@@ -471,8 +469,7 @@ impl ClientCommand {
     ///
     /// * A new instance configured by `new_exit`.
     pub fn new_exit() -> Self {
-        let cmd = Self::cmd_u32(ClientCommandType::CmdExit, 0);
-        cmd
+        Self::cmd_u32(ClientCommandType::CmdExit, 0)
     }
 
     /// Creates an auto-look request for a specific target.
@@ -485,8 +482,7 @@ impl ClientCommand {
     ///
     /// * A new instance configured by `new_autolook`.
     pub fn new_autolook(lookat: u32) -> Self {
-        let cmd = Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat);
-        cmd
+        Self::cmd_u32(ClientCommandType::CmdAutoLook, lookat)
     }
 
     /// Creates an inventory interaction command.

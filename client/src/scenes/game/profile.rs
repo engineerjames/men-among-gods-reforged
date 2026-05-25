@@ -157,8 +157,10 @@ mod tests {
         scene.skills_panel.set_position(700, 600);
         scene.settings_panel.set_position(500, 400);
 
-        let mut settings = CharacterSettings::default();
-        settings.inventory_panel_pos = Some((12, 34));
+        let settings = CharacterSettings {
+            inventory_panel_pos: Some((12, 34)),
+            ..CharacterSettings::default()
+        };
 
         scene.apply_character_panel_positions(&settings);
 

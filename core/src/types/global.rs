@@ -134,24 +134,26 @@ mod tests {
 
     #[test]
     fn test_global_roundtrip() {
-        let mut original = Global::default();
-        original.mdtime = 12345;
-        original.mdday = 100;
-        original.mdyear = 2026;
-        original.dlight = 50;
-        original.players_created = 1000;
-        original.npcs_created = 5000;
-        original.ticker = 99999;
-        original.total_online_time = 1234567890;
-        original.online_per_hour = [100; 24];
-        original.uptime = 9876543210;
-        original.uptime_per_hour = [200; 24];
-        original.max_online = 150;
-        original.max_online_per_hour = [50; 24];
-        original.fullmoon = 1;
-        original.newmoon = 0;
-        original.unique = 0xDEADBEEFCAFEBABE;
-        original.cap = 250;
+        let original = Global {
+            mdtime: 12345,
+            mdday: 100,
+            mdyear: 2026,
+            dlight: 50,
+            players_created: 1000,
+            npcs_created: 5000,
+            ticker: 99999,
+            total_online_time: 1234567890,
+            online_per_hour: [100; 24],
+            uptime: 9876543210,
+            uptime_per_hour: [200; 24],
+            max_online: 150,
+            max_online_per_hour: [50; 24],
+            fullmoon: 1,
+            newmoon: 0,
+            unique: 0xDEADBEEFCAFEBABE,
+            cap: 250,
+            ..Global::default()
+        };
 
         let bytes = original.to_bytes();
         let deserialized = Global::from_bytes(&bytes).expect("Failed to deserialize Global");

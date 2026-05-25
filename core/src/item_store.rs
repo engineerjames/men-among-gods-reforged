@@ -387,11 +387,13 @@ mod tests {
 
     #[test]
     fn patch_roundtrip_preserves_fields() {
-        let mut item = Item::default();
-        item.used = 1;
-        item.value = 12_345;
-        item.placement = 0x0040;
-        item.flags = 0xDEAD_BEEF;
+        let mut item = Item {
+            used: 1,
+            value: 12_345,
+            placement: 0x0040,
+            flags: 0xDEAD_BEEF,
+            ..Item::default()
+        };
         item.skill[3] = [1, 2, 3];
         item.name[..4].copy_from_slice(b"boot");
 
@@ -404,19 +406,23 @@ mod tests {
 
     #[test]
     fn apply_preserves_dynamic_fields() {
-        let mut existing = Item::default();
-        existing.x = 12;
-        existing.y = 34;
-        existing.carried = 99;
-        existing.damage_state = 2;
-        existing.current_age = [10, 20];
-        existing.current_damage = 5;
-        existing.sprite_override = 444;
-        existing.value = 1; // static field; should be overwritten
+        let mut existing = Item {
+            x: 12,
+            y: 34,
+            carried: 99,
+            damage_state: 2,
+            current_age: [10, 20],
+            current_damage: 5,
+            sprite_override: 444,
+            value: 1,
+            ..Item::default()
+        };
 
-        let mut new_item = Item::default();
-        new_item.value = 9_999;
-        new_item.flags = 0xAA;
+        let new_item = Item {
+            value: 9_999,
+            flags: 0xAA,
+            ..Item::default()
+        };
         let patch = ItemPatch::from_item(5, &new_item);
 
         patch.apply_to(&mut existing);

@@ -105,6 +105,12 @@ pub struct CharacterSelectionForm {
     controller_focused: Option<usize>,
 }
 
+impl Default for CharacterSelectionForm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CharacterSelectionForm {
     /// Creates a new character selection form centered on screen.
     ///
@@ -367,12 +373,11 @@ impl Widget for CharacterSelectionForm {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 
@@ -410,11 +415,10 @@ impl Widget for CharacterSelectionForm {
         }
 
         // Consume if inside panel.
-        if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event {
-            if self.bounds.contains_point(*x, *y) {
+        if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event
+            && self.bounds.contains_point(*x, *y) {
                 return EventResponse::Consumed;
             }
-        }
 
         EventResponse::Ignored
     }

@@ -40,6 +40,12 @@ pub struct CharacterCreationScene {
     keyboard: OnScreenKeyboard,
 }
 
+impl Default for CharacterCreationScene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CharacterCreationScene {
     /// Creates a new `CharacterCreationScene` with default selections.
     ///
@@ -74,8 +80,8 @@ impl Scene for CharacterCreationScene {
 
         // When the on-screen keyboard is visible, intercept raw SDL
         // controller buttons for keyboard-specific actions.
-        if self.keyboard.is_visible() {
-            if let Event::ControllerButtonDown { button, .. } = event {
+        if self.keyboard.is_visible()
+            && let Event::ControllerButtonDown { button, .. } = event {
                 match button {
                     Btn::X => {
                         self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
@@ -101,7 +107,6 @@ impl Scene for CharacterCreationScene {
                     _ => {}
                 }
             }
-        }
 
         // Controller → nav event (rising-edge gated for axes).
         if let Some(nav_event) = self.controller_nav.process_event(event) {
@@ -226,19 +231,16 @@ impl Scene for CharacterCreationScene {
             None
         };
 
-        let Some(result) = result else {
-            return None;
-        };
+        let result = result?;
 
         self.is_busy = false;
         self.form.set_busy(false);
         self.account_rx = None;
 
-        if let Some(thread) = self.account_thread.take() {
-            if thread.join().is_err() {
+        if let Some(thread) = self.account_thread.take()
+            && thread.join().is_err() {
                 log::error!("Character creation thread panicked");
             }
-        }
 
         match result {
             Ok(summary) => {

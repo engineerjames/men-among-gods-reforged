@@ -253,7 +253,7 @@ impl GameState {
         }
 
         // If caller has text[1], make NPC say its text[1] with victim name substitution
-        let caller_has_text1 = !c_string_to_str(&mut self.characters[cn].text[1]).is_empty();
+        let caller_has_text1 = !c_string_to_str(&self.characters[cn].text[1]).is_empty();
         if caller_has_text1 {
             let victim_name = self.characters[cv].get_name().to_owned();
             driver::npc_saytext_n(self, co, 1, Some(&victim_name));

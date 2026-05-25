@@ -185,12 +185,11 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
     ///
     /// * `index` - The option index to select.
     pub fn select_by_index(&mut self, index: usize) {
-        if let Some(opt) = self.options.get(index) {
-            if self.selected != opt.value {
+        if let Some(opt) = self.options.get(index)
+            && self.selected != opt.value {
                 self.selected = opt.value;
                 self.changed = true;
             }
-        }
     }
 
     /// Returns the row height for a single radio option.

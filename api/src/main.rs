@@ -10,7 +10,6 @@ use axum_governor::GovernorLayer;
 use lazy_limit::{Duration, RuleConfig, init_rate_limiter};
 use log::{LevelFilter, error, info, warn};
 use real::RealIpLayer;
-use redis;
 use std::env;
 use std::net::SocketAddr;
 use std::time::Duration as StdDuration;
@@ -120,12 +119,7 @@ async fn connect_keydb_with_retry(
         }
     }
 
-    Err(last_error.unwrap_or_else(|| {
-        Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "Failed to connect to KeyDB",
-        ))
-    }))
+    Err(last_error.unwrap_or_else(|| Box::new(std::io::Error::other("Failed to connect to KeyDB"))))
 }
 
 #[tokio::main]

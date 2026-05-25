@@ -48,6 +48,12 @@ pub struct LoginScene {
     keyboard: OnScreenKeyboard,
 }
 
+impl Default for LoginScene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LoginScene {
     /// Creates a new `LoginScene` with default field values and the configured server IP.
     ///
@@ -205,8 +211,8 @@ impl Scene for LoginScene {
         // When the on-screen keyboard is visible, intercept raw SDL
         // controller buttons for keyboard-specific actions before the
         // rising-edge nav tracker sees them.
-        if self.keyboard.is_visible() {
-            if let Event::ControllerButtonDown { button, .. } = event {
+        if self.keyboard.is_visible()
+            && let Event::ControllerButtonDown { button, .. } = event {
                 match button {
                     Btn::X => {
                         self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
@@ -233,7 +239,6 @@ impl Scene for LoginScene {
                     _ => {} // A, B, DPadLeft, DPadRight fall through to nav
                 }
             }
-        }
 
         // Controller → nav event (rising-edge gated for axes).
         if let Some(nav_event) = self.controller_nav.process_event(event) {

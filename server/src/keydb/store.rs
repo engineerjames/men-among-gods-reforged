@@ -290,7 +290,7 @@ pub fn encode<T: Encode>(val: &T) -> Result<Vec<u8>, String> {
 /// * `con`      - An open Redis/KeyDB connection.
 /// * `prefix`   - Key prefix including trailing colon (e.g. `"game:item:"`).
 /// * `entities` - The slice of entities to persist.  Each element is
-///                keyed as `{prefix}{slice_index}`.
+///   keyed as `{prefix}{slice_index}`.
 ///
 /// # Returns
 ///
@@ -303,8 +303,9 @@ fn save_indexed_entities<T: Encode>(
     for batch_start in (0..entities.len()).step_by(PIPELINE_BATCH_SIZE) {
         let batch_end = (batch_start + PIPELINE_BATCH_SIZE).min(entities.len());
         let mut pipeline = pipe();
-        for idx in batch_start..batch_end {
-            let bytes = encode(&entities[idx])?;
+        for (offset, entity) in entities[batch_start..batch_end].iter().enumerate() {
+            let idx = batch_start + offset;
+            let bytes = encode(entity)?;
             pipeline.cmd("SET").arg(format!("{prefix}{idx}")).arg(bytes);
         }
         pipeline
@@ -339,9 +340,9 @@ pub fn save_indexed_entities_range<T: Encode>(
     for batch_start in (0..entities.len()).step_by(PIPELINE_BATCH_SIZE) {
         let batch_end = (batch_start + PIPELINE_BATCH_SIZE).min(entities.len());
         let mut pipeline = pipe();
-        for rel in batch_start..batch_end {
-            let abs = start_index + rel;
-            let bytes = encode(&entities[rel])?;
+        for (offset, entity) in entities[batch_start..batch_end].iter().enumerate() {
+            let abs = start_index + batch_start + offset;
+            let bytes = encode(entity)?;
             pipeline.cmd("SET").arg(format!("{prefix}{abs}")).arg(bytes);
         }
         pipeline
@@ -570,10 +571,11 @@ pub fn save_map(con: &mut Connection, map: &[core::types::Map]) -> Result<(), St
     for batch_start in (0..total).step_by(PIPELINE_BATCH_SIZE) {
         let batch_end = (batch_start + PIPELINE_BATCH_SIZE).min(total);
         let mut pipeline = pipe();
-        for linear in batch_start..batch_end {
+        for (offset, tile) in map[batch_start..batch_end].iter().enumerate() {
+            let linear = batch_start + offset;
             let x = linear % map_x;
             let y = linear / map_x;
-            let bytes = encode(&map[linear])?;
+            let bytes = encode(tile)?;
             pipeline
                 .cmd("SET")
                 .arg(format!("game:map:{x}:{y}"))
@@ -611,11 +613,11 @@ pub fn save_map_range(
     for batch_start in (0..total).step_by(PIPELINE_BATCH_SIZE) {
         let batch_end = (batch_start + PIPELINE_BATCH_SIZE).min(total);
         let mut pipeline = pipe();
-        for rel in batch_start..batch_end {
-            let abs = start_linear + rel;
+        for (offset, tile) in map[batch_start..batch_end].iter().enumerate() {
+            let abs = start_linear + batch_start + offset;
             let x = abs % map_x;
             let y = abs / map_x;
-            let bytes = encode(&map[rel])?;
+            let bytes = encode(tile)?;
             pipeline
                 .cmd("SET")
                 .arg(format!("game:map:{x}:{y}"))
@@ -848,11 +850,12 @@ mod tests {
     /// accidental bumps without a migration path).
     #[test]
     fn schema_version_is_one() {
-        assert_eq!(SCHEMA_VERSION, 1);
+        const _: () = assert!(SCHEMA_VERSION == 1, "SCHEMA_VERSION must stay at 1");
     }
 
     /// Verify that `PIPELINE_BATCH_SIZE` is a power of two and non-zero.
     #[test]
+    #[allow(clippy::assertions_on_constants)]
     fn pipeline_batch_size_is_reasonable() {
         assert!(PIPELINE_BATCH_SIZE > 0);
         assert!(PIPELINE_BATCH_SIZE.is_power_of_two());

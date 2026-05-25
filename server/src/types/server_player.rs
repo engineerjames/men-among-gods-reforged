@@ -5,11 +5,8 @@ use core::{
 
 use flate2::write::ZlibEncoder;
 
-use crate::{
-    core::constants::{OBUFSIZE, SPR_EMPTY, TBUFSIZE, TILEX, TILEY},
-    tls::GameStream,
-    types::cmap::CMap,
-};
+use crate::{tls::GameStream, types::cmap::CMap};
+use core::constants::{OBUFSIZE, SPR_EMPTY, TBUFSIZE, TILEX, TILEY};
 
 // Server side player data
 pub struct ServerPlayer {

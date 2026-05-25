@@ -913,8 +913,8 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
             let items = gs.characters[cn].item;
             items.iter().position(|&it| it == 0)
         };
-        if let Some(slot) = first_empty_slot {
-            if chance > 0 && helpers::random_mod(chance as u32) == 0 {
+        if let Some(slot) = first_empty_slot
+            && chance > 0 && helpers::random_mod(chance as u32) == 0 {
                 let tmp = pop_create_bonus(gs, cn, chance);
                 if tmp != 0 {
                     let tmp = tmp as usize;
@@ -922,15 +922,14 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
                     gs.characters[cn].item[slot] = tmp as u32;
                 }
             }
-        }
 
         // Rainbow belt: at most one, attempt on (new) first empty slot.
         let first_empty_slot = {
             let items = gs.characters[cn].item;
             items.iter().position(|&it| it == 0)
         };
-        if let Some(slot) = first_empty_slot {
-            if helpers::random_mod(10000) == 0 {
+        if let Some(slot) = first_empty_slot
+            && helpers::random_mod(10000) == 0 {
                 let tmp = pop_create_bonus_belt(gs, cn);
                 if tmp != 0 {
                     let tmp = tmp as usize;
@@ -938,7 +937,6 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
                     gs.characters[cn].item[slot] = tmp as u32;
                 }
             }
-        }
     }
 
     // Drop character on map if requested (matches C++: exact coords, cleanup on failure).
@@ -1109,8 +1107,7 @@ pub fn pop_skill(gs: &mut GameState) {
 
         let template_skills = gs.character_templates[t].skill;
 
-        for n in 0..50usize {
-            let temp_skill = template_skills[n];
+        for (n, temp_skill) in template_skills.iter().enumerate() {
 
             let ch = &mut gs.characters[cn];
 

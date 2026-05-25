@@ -2,7 +2,7 @@ use core::constants::CharacterFlags;
 
 use crate::game_state::GameState;
 use crate::player;
-use crate::{core, driver, helpers};
+use crate::{driver, helpers};
 
 /// Notifies the area of the character's presence if the ticker matches.
 ///
@@ -1206,8 +1206,7 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
         i32::from(gs.characters[cn].y),
     );
 
-    if (x == ax + 1 && (y == ay + 1 || y == ay - 1))
-        || (x == ax - 1 && (y == ay + 1 || y == ay - 1))
+    if (x == ax + 1 || x == ax - 1) && (y == ay + 1 || y == ay - 1)
     {
         let err = char_moveto(gs, cn, x, y, 2, tox, toy);
         if err == -1 {
@@ -1297,8 +1296,7 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     );
 
     // diagonal adjacency
-    if (x == ax + 1 && (y == ay + 1 || y == ay - 1))
-        || (x == ax - 1 && (y == ay + 1 || y == ay - 1))
+    if (x == ax + 1 || x == ax - 1) && (y == ay + 1 || y == ay - 1)
     {
         let err = char_moveto(gs, cn, x, y, 2, tox, toy);
         if err == -1 {
@@ -2197,11 +2195,10 @@ pub fn driver_msg(
         & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
         != 0;
 
-    if !is_player {
-        if driver::npc_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4) {
+    if !is_player
+        && driver::npc_msg(gs, cn, msg_type, dat1, dat2, dat3, dat4) {
             return;
         }
-    }
 
     match msg_type as u32 {
         x if x == u32::from(core::constants::NT_GOTHIT)

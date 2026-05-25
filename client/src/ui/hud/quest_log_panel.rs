@@ -407,8 +407,8 @@ impl Widget for QuestLogPanel {
         }
 
         // Active quest description block under the rows.
-        if self.data.active_template_id != 0 {
-            if let Some(active) = self
+        if self.data.active_template_id != 0
+            && let Some(active) = self
                 .data
                 .entries
                 .iter()
@@ -440,7 +440,6 @@ impl Widget for QuestLogPanel {
                     y += ROW_H;
                 }
             }
-        }
 
         Ok(())
     }

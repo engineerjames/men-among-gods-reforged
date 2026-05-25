@@ -509,12 +509,8 @@ impl GameState {
                 for _ in 0..(2 * dist - 1) {
                     v.push(-1); // W
                 }
-                for _ in 0..(2 * dist) {
-                    v.push(mapx); // S
-                }
-                for _ in 0..(2 * dist) {
-                    v.push(1); // E
-                }
+                v.extend(std::iter::repeat_n(mapx, (2 * dist) as usize)); // S
+                v.extend(std::iter::repeat_n(1i32, (2 * dist) as usize)); // E
                 for _ in 0..(2 * dist) {
                     v.push(-mapx); // N
                 }
