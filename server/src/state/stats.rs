@@ -149,15 +149,8 @@ impl GameState {
                     i32::from(item.mana[0])
                 };
 
-                for z in 0..50 {
-                    let skill_idx = skills::canonicalize_weapon_skill(z);
-                    let bonus = if item.active != 0 {
-                        i32::from(item.skill[z][1])
-                    } else {
-                        i32::from(item.skill[z][0])
-                    };
-                    skill_bonus[skill_idx] += bonus;
-                }
+                let modifier_idx = if item.active != 0 { 1 } else { 0 };
+                helpers::add_canonical_skill_bonuses(&mut skill_bonus, &item.skill, modifier_idx);
             }
 
             // Add physical bonuses (always apply)
@@ -210,10 +203,7 @@ impl GameState {
                 end_bonus += i32::from(spell.end[1]);
                 mana_bonus += i32::from(spell.mana[1]);
 
-                for z in 0..50 {
-                    let skill_idx = skills::canonicalize_weapon_skill(z);
-                    skill_bonus[skill_idx] += i32::from(spell.skill[z][1]);
-                }
+                helpers::add_canonical_skill_bonuses(&mut skill_bonus, &spell.skill, 1);
 
                 armor += i32::from(spell.armor[1]);
                 weapon += i32::from(spell.weapon[1]);
@@ -1726,9 +1716,99 @@ impl GameState {
 
 #[cfg(test)]
 mod tests {
-    use core::{constants::USE_ACTIVE, traits};
+    use core::{
+        constants::USE_ACTIVE,
+        skills::{self, SkillIndex},
+        traits,
+    };
 
+    use crate::game_state::GameState;
     use crate::test_helpers::{add_test_player, with_test_gs};
+
+    fn seed_weapon_skill_baseline(gs: &mut GameState, cn: usize) {
+        for attrib_idx in 0..5 {
+            gs.characters[cn].attrib[attrib_idx][SkillIndex::BaseValue as usize] = 30;
+        }
+
+        gs.characters[cn].skill[skills::SK_WEAPON][SkillIndex::BaseValue as usize] = 50;
+        gs.characters[cn].skill[skills::SK_WEAPON][SkillIndex::MaxValue as usize] = 100;
+    }
+
+    fn weapon_skill_total(gs: &GameState, cn: usize) -> i32 {
+        i32::from(gs.characters[cn].skill[skills::SK_WEAPON][SkillIndex::TotalValue as usize])
+    }
+
+    fn set_legacy_weapon_bonuses(skill: &mut [[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
+        skill[skills::SK_HAND][modifier_idx] = 10;
+        skill[skills::SK_DAGGER][modifier_idx] = 10;
+        skill[skills::SK_TWOHAND][modifier_idx] = 10;
+    }
+
+    #[test]
+    fn active_spell_legacy_weapon_bonuses_collapse_per_source() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            seed_weapon_skill_baseline(gs, cn);
+            gs.really_update_char(cn);
+            let baseline = weapon_skill_total(gs, cn);
+
+            let spell_idx = 10;
+            gs.items[spell_idx] = core::types::Item::default();
+            gs.items[spell_idx].used = USE_ACTIVE;
+            set_legacy_weapon_bonuses(&mut gs.items[spell_idx].skill, 1);
+            gs.characters[cn].spell[0] = spell_idx as u32;
+
+            gs.really_update_char(cn);
+
+            assert_eq!(weapon_skill_total(gs, cn) - baseline, 10);
+        });
+    }
+
+    #[test]
+    fn worn_item_legacy_weapon_bonuses_collapse_per_source() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            seed_weapon_skill_baseline(gs, cn);
+            gs.really_update_char(cn);
+            let baseline = weapon_skill_total(gs, cn);
+
+            let item_idx = 10;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            set_legacy_weapon_bonuses(&mut gs.items[item_idx].skill, 0);
+            gs.characters[cn].worn[0] = item_idx as u32;
+
+            gs.really_update_char(cn);
+
+            assert_eq!(weapon_skill_total(gs, cn) - baseline, 10);
+        });
+    }
+
+    #[test]
+    fn separate_weapon_bonus_sources_still_stack() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            seed_weapon_skill_baseline(gs, cn);
+            gs.really_update_char(cn);
+            let baseline = weapon_skill_total(gs, cn);
+
+            let first_spell_idx = 10;
+            gs.items[first_spell_idx] = core::types::Item::default();
+            gs.items[first_spell_idx].used = USE_ACTIVE;
+            set_legacy_weapon_bonuses(&mut gs.items[first_spell_idx].skill, 1);
+            gs.characters[cn].spell[0] = first_spell_idx as u32;
+
+            let second_spell_idx = 11;
+            gs.items[second_spell_idx] = core::types::Item::default();
+            gs.items[second_spell_idx].used = USE_ACTIVE;
+            gs.items[second_spell_idx].skill[skills::SK_WEAPON][1] = 10;
+            gs.characters[cn].spell[1] = second_spell_idx as u32;
+
+            gs.really_update_char(cn);
+
+            assert_eq!(weapon_skill_total(gs, cn) - baseline, 20);
+        });
+    }
 
     #[test]
     fn rank_up_grants_talent_points_only_for_milestone_ranks() {

@@ -179,6 +179,59 @@ pub(crate) fn item_weapon_requirement(skill: &[[i8; 3]; skills::MAX_SKILLS]) -> 
     requirement
 }
 
+/// Adds one item's skill modifiers into canonical skill bonus totals.
+///
+/// Retired weapon skill slots are collapsed into a single [`skills::SK_WEAPON`]
+/// contribution for the source item, while non-weapon skills continue to add
+/// independently.
+///
+/// # Arguments
+///
+/// * `skill_bonus` - Destination dynamic skill bonus accumulator.
+/// * `skill` - Source item skill modifier array.
+/// * `modifier_idx` - Item modifier column to read.
+///
+/// # Panics
+///
+/// * Panics when `modifier_idx` is outside the source skill modifier columns.
+pub(crate) fn add_canonical_skill_bonuses(
+    skill_bonus: &mut [i32; skills::MAX_SKILLS],
+    skill: &[[i8; 3]; skills::MAX_SKILLS],
+    modifier_idx: usize,
+) {
+    for skill_idx in 0..skills::MAX_SKILLS {
+        if skill_idx == skills::SK_WEAPON || skills::is_legacy_weapon_skill(skill_idx) {
+            continue;
+        }
+
+        skill_bonus[skill_idx] += i32::from(skill[skill_idx][modifier_idx]);
+    }
+
+    skill_bonus[skills::SK_WEAPON] += collapsed_weapon_skill_bonus(skill, modifier_idx);
+}
+
+// TODO: Clean this up by updating the item templates once changes have settled.
+/// Returns the single effective weapon bonus encoded on one item source.
+fn collapsed_weapon_skill_bonus(skill: &[[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) -> i32 {
+    let mut strongest_bonus = 0i32;
+    let mut strongest_penalty = 0i32;
+
+    for skill_idx in std::iter::once(skills::SK_WEAPON).chain(skills::LEGACY_WEAPON_SKILLS) {
+        let value = i32::from(skill[skill_idx][modifier_idx]);
+        if value > 0 {
+            strongest_bonus = strongest_bonus.max(value);
+        } else if value < 0 {
+            strongest_penalty = strongest_penalty.min(value);
+        }
+    }
+
+    if strongest_bonus > 0 {
+        strongest_bonus
+    } else {
+        strongest_penalty
+    }
+}
+
 /// Returns the AoE square radius for a skill base value.
 ///
 /// Bases `1..=3` keep the original cross-shaped footprint, represented here
@@ -1308,6 +1361,50 @@ mod tests {
         skill[skills::SK_STAFF][2] = 7;
 
         assert_eq!(item_weapon_requirement(&skill), 7);
+    }
+
+    #[test]
+    fn add_canonical_skill_bonuses_collapses_legacy_weapon_slots() {
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
+        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        skill[skills::SK_WEAPON][0] = 8;
+        skill[skills::SK_HAND][0] = 10;
+        skill[skills::SK_DAGGER][0] = 10;
+        skill[skills::SK_TWOHAND][0] = 10;
+
+        add_canonical_skill_bonuses(&mut skill_bonus, &skill, 0);
+
+        assert_eq!(skill_bonus[skills::SK_WEAPON], 10);
+        assert_eq!(skill_bonus[skills::SK_HAND], 0);
+        assert_eq!(skill_bonus[skills::SK_DAGGER], 0);
+        assert_eq!(skill_bonus[skills::SK_TWOHAND], 0);
+    }
+
+    #[test]
+    fn add_canonical_skill_bonuses_preserves_non_weapon_bonuses() {
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
+        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        skill[skills::SK_STEALTH][0] = 4;
+        skill[skills::SK_REPAIR][0] = 6;
+
+        add_canonical_skill_bonuses(&mut skill_bonus, &skill, 0);
+
+        assert_eq!(skill_bonus[skills::SK_STEALTH], 4);
+        assert_eq!(skill_bonus[skills::SK_REPAIR], 6);
+        assert_eq!(skill_bonus[skills::SK_WEAPON], 0);
+    }
+
+    #[test]
+    fn add_canonical_skill_bonuses_collapses_weapon_penalties() {
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
+        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        skill[skills::SK_HAND][1] = -5;
+        skill[skills::SK_DAGGER][1] = -10;
+        skill[skills::SK_TWOHAND][1] = -7;
+
+        add_canonical_skill_bonuses(&mut skill_bonus, &skill, 1);
+
+        assert_eq!(skill_bonus[skills::SK_WEAPON], -10);
     }
 
     #[test]
