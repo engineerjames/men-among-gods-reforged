@@ -197,9 +197,7 @@ pub fn spell_race_mod(gs: &GameState, power: i32, kindred: i32) -> i32 {
         modf = 1.05;
     } else if (kindred & KIN_ARCHTEMPLAR as i32) != 0 {
         modf = 0.95;
-    } else if (kindred & KIN_SORCERER as i32) != 0 {
-        modf = 1.10;
-    } else if (kindred & KIN_WARRIOR as i32) != 0 {
+    } else if (kindred & KIN_SORCERER as i32) != 0 || (kindred & KIN_WARRIOR as i32) != 0 {
         modf = 1.10;
     } else if (kindred & KIN_SEYAN_DU as i32) != 0 {
         modf = 0.95;
