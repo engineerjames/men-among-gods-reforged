@@ -187,6 +187,8 @@ const SHOP_PANEL_H: u32 = crate::ui::hud::shop_panel::SHOP_PANEL_H;
 const SHOP_PANEL_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SHOP_PANEL_W as i32) / 2;
 /// Y position of the shop panel (vertically centered).
 const SHOP_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - SHOP_PANEL_H as i32) / 2;
+/// Maximum character count for one helper-text line.
+const HELPER_TEXT_MAX_CHARS: u32 = 50;
 
 // Minimap
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
@@ -837,96 +839,40 @@ impl GameScene {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
             let text = format!("({},{})", self.mouse_x, self.mouse_y);
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         // Show the rank name as a tooltip when hovering the rank sigil.
         if self.rank_sigil.is_hovered() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                self.rank_sigil.rank_name(),
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, self.rank_sigil.rank_name(), x, y);
         }
         if let Some(text) = self.rank_progress_line.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         if let Some(text) = self.vitality_bars.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         if let Some(text) = self.spell_effect_icons.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         if let Some(text) = self.skill_bar.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         if !self.is_mouse_over_ui_above_skills_panel()
             && let Some(text) = self.skills_panel.hover_text()
         {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, text, x, y);
         }
         if self.is_mouse_over_ui() {
             return Ok(());
@@ -936,15 +882,41 @@ impl GameScene {
         };
         let x = self.mouse_x + 12;
         let y = self.mouse_y + 16;
-        crate::font_cache::draw_text(
+        self.draw_cursor_helper_text(canvas, gfx, text, x, y)
+    }
+
+    /// Draws wrapped helper text at a cursor-relative position.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    /// * `gfx` - Graphics/texture cache.
+    /// * `text` - Helper text to draw.
+    /// * `x` - Left edge of the first line.
+    /// * `y` - Top edge of the first line.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn draw_cursor_helper_text(
+        &self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        text: &str,
+        x: i32,
+        y: i32,
+    ) -> Result<(), String> {
+        crate::font_cache::draw_wrapped_text(
             canvas,
             gfx,
             1,
             text,
             x,
             y,
+            HELPER_TEXT_MAX_CHARS * crate::font_cache::BITMAP_GLYPH_ADVANCE,
             crate::font_cache::TextStyle::drop_shadow(),
         )
+        .map(|_| ())
     }
 
     /// Draw a crosshair cursor at the virtual cursor position when controller
