@@ -947,7 +947,7 @@ mod tests {
         assert_eq!(get_skill_name(SK_WEAPON), "Weapon Skill");
 
         // Test empty skills (reserved slots)
-        assert_eq!(get_skill_name(37), "");
+        assert_eq!(get_skill_name(43), "");
         assert_eq!(get_skill_name(49), "");
     }
 
@@ -1016,7 +1016,7 @@ mod tests {
         assert_eq!(SKILLTAB[10].cat, SkillCategory::Misc); // Swimming
 
         // Test empty skills (category 'Z')
-        assert_eq!(SKILLTAB[37].cat, SkillCategory::Unknown);
+        assert_eq!(SKILLTAB[43].cat, SkillCategory::Unknown);
         assert_eq!(SKILLTAB[49].cat, SkillCategory::Unknown);
     }
 
@@ -1162,7 +1162,7 @@ mod tests {
         assert_eq!(get_skill_sortkey(11), 'R');
         assert_eq!(get_skill_sortkey(28), 'B');
         assert_eq!(get_skill_sortkey(SK_WEAPON), 'C');
-        assert_eq!(get_skill_sortkey(37), 'Z');
+        assert_eq!(get_skill_sortkey(43), 'Z');
     }
 
     #[test]

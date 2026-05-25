@@ -1975,7 +1975,7 @@ mod tests {
             gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[1] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0001;
             gs.characters[cn].future1[mercenary::DODGE_BOOST_1.layer as usize] |=
                 mercenary::DODGE_BOOST_1.mask;
 

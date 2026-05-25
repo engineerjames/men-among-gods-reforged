@@ -334,7 +334,7 @@ mod tests {
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[1] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0001;
 
             let bonuses = talent_stat_bonuses(
                 gs.characters[cn].kindred,
@@ -470,10 +470,14 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_MERCENARY, 1);
-            // DISTRACT's effect is `AttributesPercent { [Strength], [+10%] }`.
+            // STRENGTH_BOOST_1's effect is `AttributesPercent { [Strength], [+10%] }`.
+            // Manually seed the layer 1-9 prereq chain so the root-most learn is layer 10.
+            for layer in 1..=9 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Strength Boost I")).unwrap();
             assert_eq!(
                 gs.characters[cn].attrib[Attribute::Strength as usize]
                     [SkillIndex::BaseValue as usize],
@@ -498,7 +502,7 @@ mod tests {
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 50;
-            gs.characters[cn].future1[1] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0001;
 
             gs.really_update_char(cn);
 
@@ -516,7 +520,7 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             gs.characters[cn].kindred = KIN_MERCENARY as i32;
-            gs.characters[cn].future1[1] |= 0b0000_0001;
+            gs.characters[cn].future1[10] |= 0b0000_0001;
 
             gs.characters[cn].attrib[Attribute::Strength as usize]
                 [SkillIndex::BaseValue as usize] = 55;
