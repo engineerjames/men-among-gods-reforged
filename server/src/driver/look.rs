@@ -3,6 +3,12 @@ use core::string_operations::c_string_to_str;
 use core::types::FontColor;
 
 /// Show the description and available slots for a rat-eye (driver 17)
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Character index used by this function.
+/// * `item_idx` - Index passed to `look_rat_eye`.
 pub fn look_rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) {
     // Print description
     let description = gs.items[item_idx].description;
@@ -27,6 +33,12 @@ pub fn look_rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) {
 }
 
 /// Show the description and remaining charges for a spell scroll (driver 48)
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Character index used by this function.
+/// * `item_idx` - Index passed to `look_spell_scroll`.
 pub fn look_spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) {
     let description = gs.items[item_idx].description;
     gs.do_character_log(
@@ -45,6 +57,12 @@ pub fn look_spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) {
 }
 
 /// Dispatch based on the item's look driver
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Character index used by this function.
+/// * `item_idx` - Index passed to `look_driver`.
 pub fn look_driver(gs: &mut GameState, cn: usize, item_idx: usize) {
     let driver = gs.items[item_idx].driver;
     match driver {

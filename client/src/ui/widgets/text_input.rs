@@ -110,6 +110,10 @@ impl TextInput {
     }
 
     /// Returns a reference to the current text content.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `value`.
     pub fn value(&self) -> &str {
         &self.value
     }
@@ -129,6 +133,10 @@ impl TextInput {
 
     /// Returns `true` once if the value changed since the last call, then
     /// clears the flag.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `was_changed` succeeds or the condition is met, otherwise `false`.
     pub fn was_changed(&mut self) -> bool {
         let c = self.changed;
         self.changed = false;
@@ -192,6 +200,10 @@ impl TextInput {
     }
 
     /// Returns whether this field currently has keyboard focus.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_focused` succeeds or the condition is met, otherwise `false`.
     pub fn is_focused(&self) -> bool {
         self.focused
     }

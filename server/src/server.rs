@@ -126,6 +126,10 @@ pub struct Server {
 impl Server {
     /// Construct a new `Server` instance with uninitialized socket and
     /// counters. Call `initialize()` to bind the port and set up subsystems.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         Server {
             sock: None,

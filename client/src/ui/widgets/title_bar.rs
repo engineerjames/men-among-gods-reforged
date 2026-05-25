@@ -165,17 +165,29 @@ impl TitleBar {
     }
 
     /// Returns whether the panel is pinned (drag-locked).
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_pinned` succeeds or the condition is met, otherwise `false`.
     pub fn is_pinned(&self) -> bool {
         self.pinned
     }
 
     /// Returns whether a drag is currently in progress.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_dragging` succeeds or the condition is met, otherwise `false`.
     pub fn is_dragging(&self) -> bool {
         self.dragging
     }
 
     /// Returns `true` once if the close button was clicked since the last
     /// call, then clears the flag.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `was_close_requested` succeeds or the condition is met, otherwise `false`.
     pub fn was_close_requested(&mut self) -> bool {
         let v = self.close_requested;
         self.close_requested = false;

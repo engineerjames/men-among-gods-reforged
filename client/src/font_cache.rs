@@ -79,6 +79,10 @@ impl TextStyle {
     /// # Arguments
     ///
     /// * `color` - Tint color applied via SDL texture color modulation.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `tinted`.
     pub fn tinted(color: sdl2::pixels::Color) -> Self {
         Self {
             tint: Some(color),
@@ -91,6 +95,10 @@ impl TextStyle {
     /// # Arguments
     ///
     /// * `alpha` - Opacity: 255 = fully opaque, 0 = invisible.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `faded`.
     pub fn faded(alpha: u8) -> Self {
         Self {
             alpha: Some(alpha),
@@ -99,6 +107,10 @@ impl TextStyle {
     }
 
     /// Creates a centered style with no tint or alpha.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `centered`.
     pub fn centered() -> Self {
         Self {
             centered: true,
@@ -111,18 +123,34 @@ impl TextStyle {
     /// # Arguments
     ///
     /// * `color` - Tint color applied via SDL texture color modulation.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `with_tint`.
     pub fn with_tint(mut self, color: sdl2::pixels::Color) -> Self {
         self.tint = Some(color);
         self
     }
 
     /// Returns a copy of this style with a 1-pixel black drop shadow enabled.
+    ///
+    /// # Arguments
+    ///
+    /// * `self` - Value passed to `with_drop_shadow`.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `with_drop_shadow`.
     pub fn with_drop_shadow(mut self) -> Self {
         self.drop_shadow = true;
         self
     }
 
     /// Creates a plain style with a 1-pixel black drop shadow.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `drop_shadow`.
     pub fn drop_shadow() -> Self {
         Self {
             drop_shadow: true,
@@ -140,6 +168,14 @@ impl Default for TextStyle {
 /// Returns the 0-based glyph index for the given ASCII character.
 ///
 /// Returns -1 for characters outside the printable range.
+///
+/// # Arguments
+///
+/// * `ch` - Value passed to `glyph_index`.
+///
+/// # Returns
+///
+/// * Value returned by `glyph_index`.
 #[inline]
 pub fn glyph_index(ch: char) -> i32 {
     let code = ch as i32;
@@ -273,6 +309,14 @@ fn draw_text_impl(
 }
 
 /// Returns the pixel width of the given text string when rendered with the bitmap font.
+///
+/// # Arguments
+///
+/// * `text` - Text used by this function.
+///
+/// # Returns
+///
+/// * Value returned by `text_width`.
 #[inline]
 pub fn text_width(text: &str) -> u32 {
     (text.len() as u32) * BITMAP_GLYPH_ADVANCE
@@ -560,6 +604,10 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
     /// # Arguments
     ///
     /// * `stem` - Filename stem, e.g. `"NotoSans-Bold"`.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `font_id` produces one, otherwise `None`.
     pub fn font_id(&self, stem: &str) -> Option<TtfId> {
         self.font_ids_by_stem.get(stem).copied()
     }
@@ -574,6 +622,10 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
     ///
     /// * `stem` - Filename stem, e.g. `"MatrixSansVideo-Regular"`.
     /// * `size_pt` - Logical point size.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `handle`.
     pub fn handle(&self, stem: &str, size_pt: u16) -> FontHandle {
         match self.font_id(stem) {
             Some(id) => FontHandle::ttf(id, size_pt),
@@ -588,6 +640,10 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
     }
 
     /// Returns the alphabetically-sorted list of discovered TTF font stems.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `ttf_stems`.
     pub fn ttf_stems(&self) -> &[String] {
         &self.sorted_stems
     }
@@ -611,6 +667,10 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
     }
 
     /// Returns the current DPI scale factor.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `dpi_scale`.
     pub fn dpi_scale(&self) -> f32 {
         self.dpi_scale
     }
@@ -775,6 +835,10 @@ pub fn text_size(engine: &mut TextEngine<'_, '_>, handle: &FontHandle, text: &st
 ///
 /// * `engine` - Text engine (used only for the TTF branch).
 /// * `handle` - Font handle.
+///
+/// # Returns
+///
+/// * Value returned by `line_height`.
 pub fn line_height(engine: &mut TextEngine<'_, '_>, handle: &FontHandle) -> u32 {
     match *handle {
         FontHandle::Bitmap { .. } => BITMAP_GLYPH_H,

@@ -78,6 +78,10 @@ pub fn execute_world_action(
 
 /// Port of `init_lights` from `populate.cpp`
 /// Initialize lighting on the map
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 pub fn init_lights(gs: &mut GameState) {
     let mut cnt1 = 0;
     let mut cnt2 = 0;
@@ -138,6 +142,10 @@ pub fn init_lights(gs: &mut GameState) {
 /// * `gs` - Mutable game state.
 /// * `temp` - Item template id.
 /// * `cn` - Character receiving or influencing the item roll.
+///
+/// # Returns
+///
+/// * Value returned by `pop_create_item`.
 pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
     let mut in_id = 0;
     let alignment = gs.characters[cn].alignment;
@@ -268,6 +276,10 @@ pub fn pop_create_item(gs: &mut GameState, temp: usize, cn: usize) -> usize {
 /// * `gs` - Mutable game state.
 /// * `cn` - Character receiving the bonus.
 /// * `_chance` - Legacy chance parameter retained for parity.
+///
+/// # Returns
+///
+/// * Value returned by `pop_create_bonus`.
 pub fn pop_create_bonus(gs: &mut GameState, cn: usize, _chance: i32) -> i32 {
     let points_tot = gs.characters[cn].points_tot;
 
@@ -356,6 +368,10 @@ pub fn pop_create_bonus(gs: &mut GameState, cn: usize, _chance: i32) -> i32 {
 /// # Arguments
 /// * `gs` - Mutable game state.
 /// * `cn` - Character receiving the belt.
+///
+/// # Returns
+///
+/// * Value returned by `pop_create_bonus_belt`.
 pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
     let points_tot = gs.characters[cn].points_tot;
 
@@ -768,6 +784,10 @@ pub fn pop_create_bonus_belt(gs: &mut GameState, cn: usize) -> i32 {
 /// * `gs` - Mutable game state.
 /// * `template_id` - Character template id.
 /// * `drop` - Whether to place the character on the map immediately.
+///
+/// # Returns
+///
+/// * `Some` value when `pop_create_char` produces one, otherwise `None`.
 pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Option<usize> {
     // Find a free character slot.
     let cn = match (1..MAXCHARS).find(|&i| gs.characters[i].used == USE_EMPTY) {
@@ -945,6 +965,11 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
 
 /// Port of `reset_char` from `populate.cpp`
 /// Resets a character template and all instances
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `n` - Value passed to `reset_char`.
 pub fn reset_char(gs: &mut GameState, n: usize) {
     if !(1..MAXTCHARS).contains(&n) {
         log::warn!("reset_char: invalid template {}", n);
@@ -1049,6 +1074,16 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
 
 /// Port of `skillcost` from `populate.cpp`
 /// Calculates the cost of raising a skill
+///
+/// # Arguments
+///
+/// * `val` - Value passed to `skillcost`.
+/// * `dif` - Value passed to `skillcost`.
+/// * `start` - Value passed to `skillcost`.
+///
+/// # Returns
+///
+/// * Value returned by `skillcost`.
 pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
     let mut p = 0;
     for n in start..val {
@@ -1059,6 +1094,10 @@ pub fn skillcost(val: i32, dif: i32, start: i32) -> i32 {
 
 /// Port of `pop_skill` from `populate.cpp`
 /// Updates skills for all characters
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 pub fn pop_skill(gs: &mut GameState) {
     for cn in 1..MAXCHARS {
         let is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
@@ -1109,6 +1148,11 @@ pub fn pop_skill(gs: &mut GameState) {
 
 /// Port of `reset_item` from `populate.cpp`
 /// Resets an item template and all instances
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `n` - Value passed to `reset_item`.
 pub fn reset_item(gs: &mut GameState, n: usize) {
     if !(2..MAXTITEM).contains(&n) {
         return; // Never reset blank template (1)
@@ -1189,6 +1233,10 @@ pub fn reset_item(gs: &mut GameState, n: usize) {
 
 /// Port of `reset_changed_items` from `populate.cpp`
 /// Resets a predefined list of changed items
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 pub fn reset_changed_items(gs: &mut GameState) {
     let changelist: Vec<usize> = vec![];
 
@@ -1199,6 +1247,10 @@ pub fn reset_changed_items(gs: &mut GameState) {
 
 /// Port of `pop_tick` from `populate.cpp`
 /// Handles population ticking and resets
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 pub fn pop_tick(gs: &mut GameState) {
     const RESETTICKER: u32 = TICKS as u32 * 60;
 
@@ -1229,6 +1281,10 @@ pub fn pop_tick(gs: &mut GameState) {
 
 /// Port of `pop_reset_all` from `populate.cpp`
 /// Resets all character and item templates
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 #[allow(dead_code)]
 pub fn pop_reset_all(gs: &mut GameState) {
     for n in 1..MAXTCHARS {
@@ -1250,6 +1306,10 @@ pub fn pop_reset_all(gs: &mut GameState) {
 
 /// Port of `pop_wipe` from `populate.cpp`
 /// Wipes all dynamic game data
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 pub fn pop_wipe(gs: &mut GameState) {
     // Clear all characters
     for n in 1..MAXCHARS {
@@ -1291,6 +1351,10 @@ pub fn pop_wipe(gs: &mut GameState) {
 
 /// Port of `populate` from `populate.cpp`
 /// Populates the world with NPCs
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 pub fn populate(gs: &mut GameState) {
     log::info!("Populating world...");
 

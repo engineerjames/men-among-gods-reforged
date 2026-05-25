@@ -23,6 +23,11 @@ impl PacketStats {
     }
 }
 
+/// Initializes global packet statistics storage.
+///
+/// # Returns
+///
+/// * `Ok(())` when storage was initialized, or `Err(String)` if it was already initialized.
 pub fn initialize_packet_stats() -> Result<(), String> {
     PACKET_STATS
         .set(RwLock::new(PacketStats::new()))
@@ -33,6 +38,13 @@ pub fn initialize_packet_stats() -> Result<(), String> {
 ///
 /// Copies up to `length` bytes from `data` into the player's `tbuf`.
 /// If the buffer overflows the player is disconnected.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `player_id` - Identifier passed to `xsend`.
+/// * `data` - Data buffer used by this function.
+/// * `length` - Value passed to `xsend`.
 pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: usize) {
     let send_len = std::cmp::min(length, data.len());
 
@@ -104,6 +116,13 @@ pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: usize) {
 ///
 /// Enqueues up to `length` bytes from `data` into the player's `obuf`.
 /// If the buffer is full the player is disconnected (client too slow).
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `player_id` - Identifier passed to `csend`.
+/// * `data` - Data buffer used by this function.
+/// * `length` - Value passed to `csend`.
 pub fn csend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
     let send_len = std::cmp::min(length as usize, data.len());
 

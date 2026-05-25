@@ -194,6 +194,10 @@ impl CharacterSelectionForm {
     }
 
     /// Returns the currently selected character ID, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `selected_character_id` produces one, otherwise `None`.
     pub fn selected_character_id(&self) -> Option<u64> {
         self.character_list.selected_id()
     }
@@ -218,6 +222,10 @@ impl CharacterSelectionForm {
     }
 
     /// Returns `true` if the character list is empty.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_empty` succeeds or the condition is met, otherwise `false`.
     pub fn is_empty(&self) -> bool {
         self.character_list.is_empty()
     }

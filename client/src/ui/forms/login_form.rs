@@ -243,16 +243,28 @@ impl LoginForm {
     }
 
     /// Returns a reference to the current server-IP value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `server_ip`.
     pub fn server_ip(&self) -> &str {
         self.ip_input.value()
     }
 
     /// Returns a reference to the current username value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `username`.
     pub fn username(&self) -> &str {
         self.username_input.value()
     }
 
     /// Returns a reference to the current password value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `password`.
     pub fn password(&self) -> &str {
         self.password_input.value()
     }

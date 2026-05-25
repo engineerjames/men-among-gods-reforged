@@ -158,14 +158,21 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
 /// are bindable on the skill bar. `SK_BLAST` maps to the exhaustion indicator
 /// rather than the castable blast icon.
 ///
+/// For potion effects where multiple potions share the same `skill_nr` (e.g.
+/// skill 254 is used by both Greenling Eye and Ratling Eye potions), `sprite`
+/// is used as a tiebreaker.  Pass `0` when the sprite is not available.
+///
 /// # Arguments
 ///
 /// * `skill_nr` - Protocol skill number matching one of the `SK_*` constants.
+/// * `sprite` - Sprite tile number from the `SetCharSpell` packet (bytes 5–6);
+///   used to disambiguate effects that share a `skill_nr`. TODO: The server
+///   already tells us the sprite id so just use that ffs.
 ///
 /// # Returns
 ///
 /// * `Some(SpellIconMeta)` when the skill has an active-effect indicator.
-pub fn active_spell_effect_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
+pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<SpellIconMeta> {
     match skill_nr {
         skills::SK_LIGHT
         | skills::SK_PROTECT
@@ -180,6 +187,33 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             name: "Spell Exhaustion",
             color: Color::RGB(200, 140, 40),
             icon_filename: "exhaustion_icon.png",
+        }),
+        // Eye potions share skill_nr 254 (data[1]); the sprite (data[0])
+        // distinguishes them: Greenling Eye = 16741, Ratling Eye = 96.
+        // Other consumables (Astonian Ale, Dragon's Breath, Mana Lite) also
+        // use skill_nr 254 and fall through to the generic potion icon.
+        254 => match sprite {
+            16741 => Some(SpellIconMeta {
+                name: "Greenling Eye Potion",
+                color: Color::RGB(100, 210, 140),
+                icon_filename: "gpot_icon.png",
+            }),
+            96 => Some(SpellIconMeta {
+                name: "Ratling Eye Potion",
+                color: Color::RGB(200, 160, 80),
+                icon_filename: "rpot_icon.png",
+            }),
+            _ => Some(SpellIconMeta {
+                name: "Potion Effect",
+                color: Color::RGB(140, 200, 200),
+                icon_filename: "potion_icon.png",
+            }),
+        },
+        // Potion of Golem uses data[1]=449.
+        449 => Some(SpellIconMeta {
+            name: "Golem Potion",
+            color: Color::RGB(160, 200, 100),
+            icon_filename: "golempot_icon.png",
         }),
         _ => None,
     }
@@ -233,7 +267,7 @@ mod tests {
     #[test]
     fn blast_uses_distinct_skill_and_effect_icons() {
         let skill_meta = spell_icon_meta(skills::SK_BLAST).unwrap();
-        let effect_meta = active_spell_effect_icon_meta(skills::SK_BLAST).unwrap();
+        let effect_meta = active_spell_effect_icon_meta(skills::SK_BLAST, 0).unwrap();
         assert_eq!(skill_meta.icon_filename, "blast_icon.png");
         assert_eq!(effect_meta.icon_filename, "exhaustion_icon.png");
     }
@@ -251,7 +285,7 @@ mod tests {
         ];
 
         for skill_nr in passive {
-            assert!(active_spell_effect_icon_meta(skill_nr).is_none());
+            assert!(active_spell_effect_icon_meta(skill_nr, 0).is_none());
         }
     }
 }

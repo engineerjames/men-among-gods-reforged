@@ -126,6 +126,10 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
     }
 
     /// Returns the currently selected value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `selected`.
     pub fn selected(&self) -> T {
         self.selected
     }
@@ -142,6 +146,10 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
 
     /// Returns `true` once if the selection changed since the last call,
     /// then clears the flag.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `was_changed` succeeds or the condition is met, otherwise `false`.
     pub fn was_changed(&mut self) -> bool {
         let c = self.changed;
         self.changed = false;
@@ -149,6 +157,10 @@ impl<T: Copy + PartialEq + Debug> RadioGroup<T> {
     }
 
     /// Returns the number of options in this group.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `option_count`.
     pub fn option_count(&self) -> usize {
         self.options.len()
     }

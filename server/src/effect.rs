@@ -39,6 +39,10 @@ impl EffectManager {
 
     /// Port of `effect_tick(void)` from `svr_effect.cpp`
     /// Main effect processing function called every tick
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
     pub fn effect_tick(gs: &mut GameState) {
         let mut cnt = 0;
 
@@ -470,6 +474,19 @@ impl EffectManager {
     }
 
     /// Port of `fx_add_effect` from `svr_effect.cpp`
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `effect_type` - Value passed to `fx_add_effect`.
+    /// * `duration` - Value passed to `fx_add_effect`.
+    /// * `d1` - Value passed to `fx_add_effect`.
+    /// * `d2` - Value passed to `fx_add_effect`.
+    /// * `d3` - Value passed to `fx_add_effect`.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `fx_add_effect` produces one, otherwise `None`.
     pub fn fx_add_effect(
         gs: &mut GameState,
         effect_type: i32,

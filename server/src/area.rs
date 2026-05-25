@@ -1,6 +1,16 @@
 use crate::game_state::GameState;
 use core::area::AREAS;
 
+/// Returns whether a character is currently inside a pentagram quest area.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing character coordinates.
+/// * `cn` - Character index to test.
+///
+/// # Returns
+///
+/// * `true` when the character is in one of the pentagram quest areas.
 pub fn is_in_pentagram_quest(gs: &mut GameState, cn: usize) -> bool {
     if !(1..core::constants::MAXCHARS).contains(&cn) {
         return false;
@@ -22,6 +32,17 @@ pub fn is_in_pentagram_quest(gs: &mut GameState, cn: usize) -> bool {
     false
 }
 
+/// Returns a comma-separated area description for map coordinates.
+///
+/// # Arguments
+///
+/// * `x` - Server map x coordinate.
+/// * `y` - Server map y coordinate.
+/// * `verbose` - Whether to include area prepositions such as `in` or `at`.
+///
+/// # Returns
+///
+/// * Matching area text, or an empty string when no area contains the coordinates.
 pub fn get_area_m(x: i32, y: i32, verbose: bool) -> String {
     let mut buf = String::new();
     let mut first = true;

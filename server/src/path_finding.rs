@@ -80,6 +80,10 @@ pub struct PathFinder {
 
 impl PathFinder {
     /// Create a new pathfinder
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         let map_size = (SERVER_MAPX * SERVER_MAPY) as usize;
         Self {

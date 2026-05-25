@@ -267,6 +267,10 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
 
 /// Clear the saved small map for all players to force a full resend
 /// TODO: Do we need this for any reason?
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
 #[allow(dead_code)]
 pub fn plr_clear_map(gs: &mut GameState) {
     for n in 1..gs.players.len() {
@@ -288,6 +292,16 @@ pub fn plr_getmap(gs: &mut GameState, nr: usize) {
     plr_getmap_complete(gs, nr);
 }
 
+/// Builds and sends the complete visible map snapshot for a player.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing player map caches and world tiles.
+/// * `nr` - Player slot index requesting the complete map update.
+///
+/// # Panics
+///
+/// * Panics if `nr`, the player's character index, or a calculated map index is invalid.
 pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
 
@@ -772,6 +786,11 @@ fn cl_light_26(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -
 }
 
 /// Send light updates for all changed tiles
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_change_light(gs: &mut GameState, nr: usize) {
     let total = core::constants::TILEX * core::constants::TILEY;
 
@@ -802,6 +821,11 @@ pub fn plr_change_light(gs: &mut GameState, nr: usize) {
 }
 
 /// Send map tile content updates for all changed tiles
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_change_map(gs: &mut GameState, nr: usize) {
     let total = core::constants::TILEX * core::constants::TILEY;
     let mut lastn: i32 = -1;
@@ -945,6 +969,12 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
 }
 
 /// Send position change to player with map scrolling
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
+/// * `cn` - Character index used by this function.
 pub fn plr_change_position(gs: &mut GameState, nr: usize, cn: usize) {
     let x = gs.characters[cn].x;
     let y = gs.characters[cn].y;

@@ -187,11 +187,19 @@ impl RequestResetForm {
     }
 
     /// Returns a reference to the current username value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `username`.
     pub fn username(&self) -> &str {
         self.username_input.value()
     }
 
     /// Returns a reference to the current e-mail value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `email`.
     pub fn email(&self) -> &str {
         self.email_input.value()
     }

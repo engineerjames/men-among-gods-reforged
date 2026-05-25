@@ -23,6 +23,14 @@ macro_rules! chlog {
 /// Format a number into a compact string with K/M suffixes.
 /// Example: 1234567 -> "1M"
 /// Example: 12345 -> "12K"
+///
+/// # Arguments
+///
+/// * `value` - Value used by this function.
+///
+/// # Returns
+///
+/// * Value returned by `format_number`.
 pub fn format_number(value: i32) -> String {
     if value < 99 * 1000 {
         format!("{}", value)
@@ -39,6 +47,14 @@ pub fn format_number(value: i32) -> String {
 /// modulo-style distribution (including modulo bias) similar to the C macro.
 ///
 /// Returns `0` when `a == 0`.
+///
+/// # Arguments
+///
+/// * `a` - Value passed to `random_mod`.
+///
+/// # Returns
+///
+/// * Value returned by `random_mod`.
 #[inline]
 pub fn random_mod(a: u32) -> u32 {
     if a == 0 {
@@ -50,6 +66,14 @@ pub fn random_mod(a: u32) -> u32 {
 /// Signed convenience wrapper around [`random_mod`].
 ///
 /// Returns a value in `[0, a)` when `a > 0`, otherwise returns `0`.
+///
+/// # Arguments
+///
+/// * `a` - Value passed to `random_mod_i32`.
+///
+/// # Returns
+///
+/// * Value returned by `random_mod_i32`.
 #[inline]
 pub fn random_mod_i32(a: i32) -> i32 {
     if a <= 0 {
@@ -61,6 +85,14 @@ pub fn random_mod_i32(a: i32) -> i32 {
 /// `usize` convenience wrapper around [`random_mod`].
 ///
 /// Returns a value in `[0, a)` when `a > 0`, otherwise returns `0`.
+///
+/// # Arguments
+///
+/// * `a` - Value passed to `random_mod_usize`.
+///
+/// # Returns
+///
+/// * Value returned by `random_mod_usize`.
 #[inline]
 pub fn random_mod_usize(a: usize) -> usize {
     if a == 0 {
@@ -70,6 +102,15 @@ pub fn random_mod_usize(a: usize) -> usize {
     random_mod(a as u32) as usize
 }
 
+/// Writes a Rust string into a fixed-width C string buffer.
+///
+/// The buffer is zero-filled first and the copied string is truncated to leave
+/// room for a trailing NUL byte when the buffer is non-empty.
+///
+/// # Arguments
+///
+/// * `buf` - Destination fixed-width C string buffer.
+/// * `s` - Source string to copy.
 pub fn write_c_string(buf: &mut [u8], s: &str) {
     buf.fill(0);
     let bytes = s.as_bytes();
@@ -136,6 +177,59 @@ pub(crate) fn item_weapon_requirement(skill: &[[i8; 3]; skills::MAX_SKILLS]) -> 
     }
 
     requirement
+}
+
+/// Adds one item's skill modifiers into canonical skill bonus totals.
+///
+/// Retired weapon skill slots are collapsed into a single [`skills::SK_WEAPON`]
+/// contribution for the source item, while non-weapon skills continue to add
+/// independently.
+///
+/// # Arguments
+///
+/// * `skill_bonus` - Destination dynamic skill bonus accumulator.
+/// * `skill` - Source item skill modifier array.
+/// * `modifier_idx` - Item modifier column to read.
+///
+/// # Panics
+///
+/// * Panics when `modifier_idx` is outside the source skill modifier columns.
+pub(crate) fn add_canonical_skill_bonuses(
+    skill_bonus: &mut [i32; skills::MAX_SKILLS],
+    skill: &[[i8; 3]; skills::MAX_SKILLS],
+    modifier_idx: usize,
+) {
+    for skill_idx in 0..skills::MAX_SKILLS {
+        if skill_idx == skills::SK_WEAPON || skills::is_legacy_weapon_skill(skill_idx) {
+            continue;
+        }
+
+        skill_bonus[skill_idx] += i32::from(skill[skill_idx][modifier_idx]);
+    }
+
+    skill_bonus[skills::SK_WEAPON] += collapsed_weapon_skill_bonus(skill, modifier_idx);
+}
+
+// TODO: Clean this up by updating the item templates once changes have settled.
+/// Returns the single effective weapon bonus encoded on one item source.
+fn collapsed_weapon_skill_bonus(skill: &[[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) -> i32 {
+    let mut strongest_bonus = 0i32;
+    let mut strongest_penalty = 0i32;
+
+    for skill_idx in std::iter::once(skills::SK_WEAPON).chain(skills::LEGACY_WEAPON_SKILLS) {
+        let value = i32::from(skill[skill_idx][modifier_idx]);
+        if value > 0 {
+            strongest_bonus = strongest_bonus.max(value);
+        } else if value < 0 {
+            strongest_penalty = strongest_penalty.min(value);
+        }
+    }
+
+    if strongest_bonus > 0 {
+        strongest_bonus
+    } else {
+        strongest_penalty
+    }
 }
 
 /// Returns the AoE square radius for a skill base value.
@@ -268,6 +362,15 @@ pub(crate) fn skill_aoe_targets(
 ///
 /// Creates a template item, then applies randomized prefix/suffix modifiers, sprite overrides,
 /// and rewrites name/reference/description. Returns the new item id, or `None` if creation fails.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `temp` - Value passed to `create_special_item`.
+///
+/// # Returns
+///
+/// * `Some` value when `create_special_item` produces one, otherwise `None`.
 pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
     let item_id = God::create_item(gs, temp)?;
     let item = &mut gs.items[item_id];
@@ -372,6 +475,10 @@ pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
 /// * `cn` - Player character initiating the lab transfer
 /// * `nr` - Lab number (determines enemy template)
 /// * `exp` - Experience reward associated with the lab
+///
+/// # Returns
+///
+/// * `true` when `use_labtransfer` succeeds or the condition is met, otherwise `false`.
 pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool {
     use {CharacterFlags, SERVER_MAPX};
     // 1. Check if area is busy (any player or labkeeper in 164..184 x 159..178)
@@ -496,6 +603,10 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
 ///
 /// # Arguments
 /// * `nr` - Numeric monster class identifier
+///
+/// # Returns
+///
+/// * Value returned by `get_class_name`.
 pub fn get_class_name(nr: i32) -> &'static str {
     // List from C++ npc_class[]
     const NPC_CLASS: [&str; 77] = [
@@ -598,6 +709,10 @@ pub fn get_class_name(nr: i32) -> &'static str {
 /// # Arguments
 /// * `cn` - Character index owning the kill record
 /// * `val` - Monster class id
+///
+/// # Returns
+///
+/// * `true` when `killed_class` succeeds or the condition is met, otherwise `false`.
 pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
     let (bit, data_idx) = if val < 32 {
         (1 << val, 60)
@@ -620,6 +735,10 @@ pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
 ///
 /// # Arguments
 /// * `dt` - Delta in server ticks
+///
+/// # Returns
+///
+/// * Value returned by `ago_string`.
 pub fn ago_string(dt: u128) -> String {
     let minutes = dt / (60 * TICKS as u128);
     if minutes == 0 {
@@ -648,6 +767,11 @@ pub fn ago_string(dt: u128) -> String {
 ///
 /// Port of the original `show_time(int cn)` which printed something like:
 /// "It's H:MM on the Dth of the Mth month of the year Y."
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Character index used by this function.
 pub fn show_time(gs: &mut GameState, cn: usize) {
     // Read time values from globals
     let (mdtime, mdday, mdyear) = {
@@ -695,6 +819,10 @@ pub fn show_time(gs: &mut GameState, cn: usize) {
 ///
 /// # Arguments
 /// * `ch` - Character data to hash.
+///
+/// # Returns
+///
+/// * Value returned by `char_id`.
 pub fn char_id(ch: &Character) -> i32 {
     let mut id = 0;
 
@@ -716,6 +844,10 @@ pub fn char_id(ch: &Character) -> i32 {
 ///
 /// # Arguments
 /// * `current_experience` - Current total experience points
+///
+/// # Returns
+///
+/// * Value returned by `points_tolevel`.
 pub fn points_tolevel(current_experience: u32) -> u32 {
     let curr_level = core::ranks::points2rank(current_experience);
     if curr_level == 23 {
@@ -757,6 +889,10 @@ pub fn points_tolevel(current_experience: u32) -> u32 {
 /// # Arguments
 /// * `cn` - First character.
 /// * `co` - Second character.
+///
+/// # Returns
+///
+/// * Value returned by `rankdiff`.
 pub fn rankdiff(cn: &Character, co: &Character) -> i32 {
     let cn_experience = cn.points_tot as u32;
     let co_experience = co.points_tot as u32;
@@ -769,6 +905,10 @@ pub fn rankdiff(cn: &Character, co: &Character) -> i32 {
 /// # Arguments
 /// * `cn` - First character.
 /// * `co` - Second character.
+///
+/// # Returns
+///
+/// * Value returned by `absrankdiff`.
 pub fn absrankdiff(cn: &Character, co: &Character) -> u32 {
     rankdiff(cn, co).unsigned_abs()
 }
@@ -778,6 +918,10 @@ pub fn absrankdiff(cn: &Character, co: &Character) -> u32 {
 /// # Arguments
 /// * `cn` - First character.
 /// * `co` - Second character.
+///
+/// # Returns
+///
+/// * `true` when `in_attackrange` succeeds or the condition is met, otherwise `false`.
 pub fn in_attackrange(cn: &Character, co: &Character) -> bool {
     absrankdiff(cn, co) <= ATTACK_RANGE as u32
 }
@@ -787,6 +931,10 @@ pub fn in_attackrange(cn: &Character, co: &Character) -> bool {
 /// # Arguments
 /// * `cn` - First character.
 /// * `co` - Second character.
+///
+/// # Returns
+///
+/// * `true` when `in_grouprange` succeeds or the condition is met, otherwise `false`.
 pub fn in_grouprange(cn: &Character, co: &Character) -> bool {
     absrankdiff(cn, co) <= GROUP_RANGE as u32
 }
@@ -801,6 +949,10 @@ pub fn in_grouprange(cn: &Character, co: &Character) -> bool {
 /// * `cn` - Player character.
 /// * `co_rank` - Opponent's rank index
 /// * `exp` - Base experience to scale
+///
+/// # Returns
+///
+/// * Value returned by `scale_exps2`.
 pub fn scale_exps2(cn: &Character, co_rank: i32, exp: i32) -> i32 {
     const SCALE_TAB: [f32; 49] = [
         0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.07,
@@ -828,6 +980,10 @@ pub fn scale_exps2(cn: &Character, co_rank: i32, exp: i32) -> i32 {
 /// * `cn` - Player character.
 /// * `co` - Opponent character.
 /// * `exp` - Base experience to scale
+///
+/// # Returns
+///
+/// * Value returned by `scale_exps`.
 pub fn scale_exps(cn: &Character, co: &Character, exp: i32) -> i32 {
     let co_experience = co.points_tot as u32;
     scale_exps2(cn, core::ranks::points2rank(co_experience) as i32, exp)
@@ -835,6 +991,14 @@ pub fn scale_exps(cn: &Character, co: &Character, exp: i32) -> i32 {
 
 /// Port of `it_base_status` from `svr_tick.cpp`
 /// Returns the base animation frame for an item status
+///
+/// # Arguments
+///
+/// * `n` - Value passed to `it_base_status`.
+///
+/// # Returns
+///
+/// * Value returned by `it_base_status`.
 pub fn it_base_status(n: u8) -> u8 {
     if n == 0 {
         return 0;
@@ -859,6 +1023,14 @@ pub fn it_base_status(n: u8) -> u8 {
 
 /// Port of `ch_base_status` from `svr_tick.cpp`
 /// Returns the base animation frame for a character status
+///
+/// # Arguments
+///
+/// * `n` - Value passed to `ch_base_status`.
+///
+/// # Returns
+///
+/// * Value returned by `ch_base_status`.
 pub fn ch_base_status(n: u8) -> u8 {
     if n < 4 {
         return n;
@@ -975,6 +1147,10 @@ pub fn ch_base_status(n: u8) -> u8 {
 /// # Arguments
 /// * `dx` - Delta X
 /// * `dy` - Delta Y
+///
+/// # Returns
+///
+/// * Value returned by `drv_dcoor2dir`.
 pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
     match (dx.cmp(&0), dy.cmp(&0)) {
         (std::cmp::Ordering::Greater, std::cmp::Ordering::Greater) => i32::from(DX_RIGHTDOWN),
@@ -996,6 +1172,10 @@ pub fn drv_dcoor2dir(dx: i32, dy: i32) -> i32 {
 ///
 /// # Arguments
 /// * `ch` - Character to inspect.
+///
+/// # Returns
+///
+/// * Value returned by `invis_level`.
 pub fn invis_level(ch: &Character) -> i32 {
     let flags = ch.flags;
     if flags & CharacterFlags::GreaterInv.bits() != 0 {
@@ -1181,6 +1361,50 @@ mod tests {
         skill[skills::SK_STAFF][2] = 7;
 
         assert_eq!(item_weapon_requirement(&skill), 7);
+    }
+
+    #[test]
+    fn add_canonical_skill_bonuses_collapses_legacy_weapon_slots() {
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
+        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        skill[skills::SK_WEAPON][0] = 8;
+        skill[skills::SK_HAND][0] = 10;
+        skill[skills::SK_DAGGER][0] = 10;
+        skill[skills::SK_TWOHAND][0] = 10;
+
+        add_canonical_skill_bonuses(&mut skill_bonus, &skill, 0);
+
+        assert_eq!(skill_bonus[skills::SK_WEAPON], 10);
+        assert_eq!(skill_bonus[skills::SK_HAND], 0);
+        assert_eq!(skill_bonus[skills::SK_DAGGER], 0);
+        assert_eq!(skill_bonus[skills::SK_TWOHAND], 0);
+    }
+
+    #[test]
+    fn add_canonical_skill_bonuses_preserves_non_weapon_bonuses() {
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
+        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        skill[skills::SK_STEALTH][0] = 4;
+        skill[skills::SK_REPAIR][0] = 6;
+
+        add_canonical_skill_bonuses(&mut skill_bonus, &skill, 0);
+
+        assert_eq!(skill_bonus[skills::SK_STEALTH], 4);
+        assert_eq!(skill_bonus[skills::SK_REPAIR], 6);
+        assert_eq!(skill_bonus[skills::SK_WEAPON], 0);
+    }
+
+    #[test]
+    fn add_canonical_skill_bonuses_collapses_weapon_penalties() {
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
+        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        skill[skills::SK_HAND][1] = -5;
+        skill[skills::SK_DAGGER][1] = -10;
+        skill[skills::SK_TWOHAND][1] = -7;
+
+        add_canonical_skill_bonuses(&mut skill_bonus, &skill, 1);
+
+        assert_eq!(skill_bonus[skills::SK_WEAPON], -10);
     }
 
     #[test]

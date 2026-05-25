@@ -71,6 +71,10 @@ impl Slider {
     }
 
     /// Returns the current slider value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `value`.
     pub fn value(&self) -> f32 {
         self.value
     }
@@ -89,6 +93,10 @@ impl Slider {
     /// Returns `true` once if the value changed since the last call.
     ///
     /// Clears the flag on read.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `was_changed` succeeds or the condition is met, otherwise `false`.
     pub fn was_changed(&mut self) -> bool {
         let c = self.changed;
         self.changed = false;

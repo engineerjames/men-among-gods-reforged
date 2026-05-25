@@ -46,6 +46,10 @@ impl GameMap {
     }
 
     /// Returns the total number of tiles in the grid (`TILEX * TILEY`).
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `len`.
     #[inline]
     pub fn len(&self) -> usize {
         self.tiles.len()

@@ -622,6 +622,11 @@ pub struct Labyrinth9 {
 }
 
 impl Labyrinth9 {
+    /// Creates an empty Labyrinth 9 runtime state record.
+    ///
+    /// # Returns
+    ///
+    /// * A `Labyrinth9` value with all riddle and switch state zeroed.
     pub fn new() -> Self {
         Self {
             guesser: [0; core::constants::RIDDLEGIVERS],
@@ -633,6 +638,11 @@ impl Labyrinth9 {
     }
 }
 
+/// Initializes Labyrinth 9 state and resets every bank.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Labyrinth 9 state, map, and items.
 pub fn lab9_initialize(gs: &mut GameState) {
     log::info!("Initializing Labyrinth 9...");
     gs.lab9 = Labyrinth9::new();
@@ -641,10 +651,34 @@ pub fn lab9_initialize(gs: &mut GameState) {
     }
 }
 
+/// Returns the active guesser id for a Labyrinth 9 riddle giver slot.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Labyrinth 9 state.
+/// * `idx` - Riddle giver slot index.
+///
+/// # Returns
+///
+/// * Character id currently guessing for the slot, or `0` when none is recorded.
+///
+/// # Panics
+///
+/// * Panics if `idx` is not a valid riddle giver slot.
 pub fn lab9_get_guesser(gs: &GameState, idx: usize) -> i32 {
     gs.lab9.guesser[idx]
 }
 
+/// Ticks down the active riddle timeout for a Labyrinth 9 riddle giver.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing characters and Labyrinth 9 state.
+/// * `riddler_id` - Character index of the riddle giver.
+///
+/// # Panics
+///
+/// * Panics if `riddler_id` is not a valid character index.
 pub fn lab9_tick_riddle_timeout(gs: &mut GameState, riddler_id: usize) {
     let area_of_knowledge = gs.characters[riddler_id].data[72];
     if !(core::constants::RIDDLE_MIN_AREA..=core::constants::RIDDLE_MAX_AREA)
@@ -679,6 +713,21 @@ pub fn lab9_tick_riddle_timeout(gs: &mut GameState, riddler_id: usize) {
     }
 }
 
+/// Processes player speech as a possible Labyrinth 9 riddle answer.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing characters and Labyrinth 9 state.
+/// * `character_id` - Speaking character index.
+/// * `text` - Text spoken by the character.
+///
+/// # Returns
+///
+/// * `true` when the speech was consumed as a correct answer, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `character_id` or an active riddler index is invalid.
 pub fn lab9_guesser_says(gs: &mut GameState, character_id: usize, text: &str) -> bool {
     let is_player = gs.characters[character_id].is_player();
 
@@ -820,6 +869,17 @@ pub fn lab9_guesser_says(gs: &mut GameState, character_id: usize, text: &str) ->
     false
 }
 
+/// Assigns and announces a Labyrinth 9 riddle to a character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing characters and Labyrinth 9 state.
+/// * `riddler_id` - Riddle giver character index.
+/// * `character_id` - Character index receiving the riddle.
+///
+/// # Panics
+///
+/// * Panics if either character index or the riddler's riddle area is invalid.
 pub fn lab9_pose_riddle(gs: &mut GameState, riddler_id: usize, character_id: usize) {
     let riddle_index =
         (gs.characters[riddler_id].data[72] - core::constants::RIDDLE_MIN_AREA) as usize;
@@ -999,6 +1059,21 @@ fn lab9_reset_bank(gs: &mut GameState, bankno: i32, closedoor: bool) {
     }
 }
 
+/// Handles using a Labyrinth 9 switch item.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing map, item, and Labyrinth 9 state.
+/// * `cn` - Character index using the switch.
+/// * `item_id` - Switch item index.
+///
+/// # Returns
+///
+/// * Always `true` after toggling the switch.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `item_id`, or a related bank item/map index is invalid.
 pub fn lab9_use_switch(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
     log::info!("Character {} flipped a switch.", cn);
 
@@ -1024,6 +1099,21 @@ pub fn lab9_use_switch(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
     true
 }
 
+/// Handles using a Labyrinth 9 door item.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing map, item, and character state.
+/// * `cn` - Character index using the door, or `0` for scripted door closing.
+/// * `item_id` - Door item index.
+///
+/// # Returns
+///
+/// * `true` when the door use was handled successfully, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `item_id`, a related map index, or a nonzero `cn` index is invalid.
 pub fn lab9_use_door(gs: &mut GameState, cn: usize, item_id: i32) -> bool {
     let item_x = gs.items[item_id as usize].x;
     let item_y = gs.items[item_id as usize].y;

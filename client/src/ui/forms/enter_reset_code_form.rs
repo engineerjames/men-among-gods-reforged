@@ -203,16 +203,28 @@ impl EnterResetCodeForm {
     }
 
     /// Returns a reference to the current code value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `code`.
     pub fn code(&self) -> &str {
         self.code_input.value()
     }
 
     /// Returns a reference to the current new-password value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `password`.
     pub fn password(&self) -> &str {
         self.password_input.value()
     }
 
     /// Returns a reference to the current confirm-password value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `confirm_password`.
     pub fn confirm_password(&self) -> &str {
         self.confirm_input.value()
     }

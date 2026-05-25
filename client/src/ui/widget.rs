@@ -399,6 +399,10 @@ impl GameAction {
     pub const ALL: &'static [GameAction] = &[GameAction::ToggleSkills, GameAction::ToggleInventory];
 
     /// Human-readable label for this action.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `label`.
     pub fn label(self) -> &'static str {
         match self {
             GameAction::ToggleSkills => "Toggle Skills Panel",
@@ -435,6 +439,10 @@ impl KeyBinding {
     }
 
     /// Returns the SDL2 `Keycode`, if the stored value is still valid.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `sdl_keycode` produces one, otherwise `None`.
     pub fn sdl_keycode(self) -> Option<Keycode> {
         Keycode::from_i32(self.keycode)
     }
@@ -445,6 +453,10 @@ impl KeyBinding {
     ///
     /// * `keycode` - The pressed key.
     /// * `modifiers` - Current modifier state.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `matches` succeeds or the condition is met, otherwise `false`.
     pub fn matches(self, keycode: Keycode, modifiers: KeyModifiers) -> bool {
         self.keycode == i32::from(keycode) && self.modifiers == modifiers
     }

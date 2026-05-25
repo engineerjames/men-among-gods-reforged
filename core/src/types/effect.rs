@@ -14,10 +14,28 @@ pub struct Effect {
 }
 
 impl Effect {
+    /// Serializes this effect to bincode bytes.
+    ///
+    /// # Returns
+    ///
+    /// * Encoded effect bytes.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if bincode serialization fails.
     pub fn to_bytes(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, bincode::config::standard()).expect("Effect::to_bytes failed")
     }
 
+    /// Decodes an effect from bincode bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Serialized effect bytes.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Effect)` when all bytes decode successfully, otherwise `None`.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let (value, consumed): (Self, usize) =
             bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;

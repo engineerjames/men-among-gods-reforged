@@ -141,16 +141,28 @@ impl ChatBox {
     }
 
     /// Returns the total number of stored messages.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `message_count`.
     pub fn message_count(&self) -> usize {
         self.messages.len()
     }
 
     /// Returns a read-only view of the current input text.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `input_text`.
     pub fn input_text(&self) -> &str {
         &self.input_buf
     }
 
     /// Returns `true` if the chat input has keyboard focus.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_focused` succeeds or the condition is met, otherwise `false`.
     pub fn is_focused(&self) -> bool {
         self.focused
     }

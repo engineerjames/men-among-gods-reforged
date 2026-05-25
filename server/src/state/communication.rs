@@ -1382,6 +1382,10 @@ impl GameState {
     /// Port of `do_nostaff(int cn)` from `svr_do.cpp`
     ///
     /// Toggle whether character hears staff messages.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index used by this function.
     pub fn do_nostaff(&mut self, cn: usize) {
         self.characters[cn].flags ^= CharacterFlags::NoStaff.bits();
         if (self.characters[cn].flags & CharacterFlags::NoStaff.bits()) != 0 {
