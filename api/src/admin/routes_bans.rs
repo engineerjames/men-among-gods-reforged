@@ -360,6 +360,7 @@ async fn resolve_target(
     }
 }
 
+#[allow(clippy::result_large_err)]
 fn resolve_expires_at(
     now: u64,
     expires_at: Option<u64>,
@@ -375,7 +376,7 @@ fn resolve_expires_at(
             "expires_at must be in the future",
         )),
         (Some(value), None) => Ok(Some(value)),
-        (None, Some(value)) if value == 0 => Err(bad_request(
+        (None, Some(0)) => Err(bad_request(
             "invalid_duration",
             "duration_seconds must be greater than zero",
         )),

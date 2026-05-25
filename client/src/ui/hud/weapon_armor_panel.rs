@@ -180,11 +180,10 @@ impl Widget for WeaponArmorPanel {
     ///
     /// * `Consumed` if a click landed inside the panel, `Ignored` otherwise.
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
-        if let UiEvent::MouseClick { x, y, .. } = event {
-            if self.bounds.contains_point(*x, *y) {
+        if let UiEvent::MouseClick { x, y, .. } = event
+            && self.bounds.contains_point(*x, *y) {
                 return EventResponse::Consumed;
             }
-        }
         EventResponse::Ignored
     }
 

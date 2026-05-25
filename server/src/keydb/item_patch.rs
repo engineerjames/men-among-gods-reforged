@@ -40,6 +40,7 @@ const STATUS_TTL_SECS: u64 = 300;
 
 /// Event emitted by the watcher to the tick loop.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum ItemPatchEvent {
     /// Apply a single patch to the in-memory item table.
     Apply(ItemPatch),
@@ -188,14 +189,13 @@ fn watcher_loop(tx: Sender<ItemPatchEvent>, shutdown: Arc<AtomicBool>) {
             }
         }
 
-        if let Some(request_id) = reload_request_id {
-            if tx
+        if let Some(request_id) = reload_request_id
+            && tx
                 .send(ItemPatchEvent::ReloadCompleted { request_id })
                 .is_err()
-            {
-                log::info!("item patch watcher: receiver dropped, exiting");
-                return;
-            }
+        {
+            log::info!("item patch watcher: receiver dropped, exiting");
+            return;
         }
     }
 }

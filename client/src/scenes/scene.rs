@@ -53,6 +53,12 @@ pub struct SceneManager {
     scenes: HashMap<SceneType, Box<dyn Scene>>,
 }
 
+impl Default for SceneManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SceneManager {
     /// Creates a new `SceneManager` pre-populated with all known scene implementations.
     /// The initial active scene is `SceneType::Login`.

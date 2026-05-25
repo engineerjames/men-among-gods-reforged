@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 
-const KEYS: &'static [(u8, u8, u8)] = &[
+const KEYS: &[(u8, u8, u8)] = &[
     (0xff, 0x00, 0xff), // #ff00ff
     (0xfe, 0x00, 0xfe), // #fe00fe
     (0xfd, 0x00, 0xfd), // #fd00fd
@@ -52,7 +52,7 @@ fn convert_file(input_path: &Path, output_path: &Path) -> Result<(), ImageError>
     let out = process_image(img);
 
     // Save as PNG, enforcing PNG format
-    let fout = File::create(&output_path).map_err(|e| ImageError::IoError(e))?;
+    let fout = File::create(output_path).map_err(ImageError::IoError)?;
     let mut w = BufWriter::new(fout);
     out.write_to(&mut w, ImageOutputFormat::Png)?;
     println!("Wrote {}", output_path.display());
@@ -79,14 +79,14 @@ fn run() -> Result<(), ImageError> {
         std::process::exit(1);
     }
 
-    const EXTENSIONS_TO_CONVERT: [&'static str; 2] = ["png", "bmp"];
+    const EXTENSIONS_TO_CONVERT: [&str; 2] = ["png", "bmp"];
 
     // Intentionally non-recursive directory processing
     let files_to_convert: Vec<(std::path::PathBuf, std::path::PathBuf)> = if is_input_directory {
         let input_dir = Path::new(&args[1]);
         let output_dir = Path::new(&args[2]);
         std::fs::read_dir(input_dir)
-            .map_err(|e| ImageError::IoError(e))?
+            .map_err(ImageError::IoError)?
             .filter_map(|entry| {
                 entry.ok().and_then(|e| {
                     let path = e.path();

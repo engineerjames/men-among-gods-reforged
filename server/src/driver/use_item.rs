@@ -235,7 +235,7 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    if template_id <= 0 || template_id >= MAXTITEM {
+    if template_id == 0 || template_id >= MAXTITEM {
         return false;
     }
 
@@ -382,7 +382,7 @@ pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
         return false;
     }
 
-    if template_id <= 0 || template_id >= MAXTITEM {
+    if template_id == 0 || template_id >= MAXTITEM {
         return false;
     }
 
@@ -439,8 +439,8 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     let data_entries = {
         let item_data = gs.items[item_idx].data;
         let mut count = 0;
-        for n in 0..10 {
-            if item_data[n] == 0 {
+        for &val in &item_data[..10] {
+            if val == 0 {
                 break;
             }
             count += 1;
@@ -461,7 +461,7 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     let n = helpers::random_mod_usize(count);
     let template_id = data[n] as usize;
 
-    if template_id <= 0 || template_id >= MAXTITEM {
+    if template_id == 0 || template_id >= MAXTITEM {
         return false;
     }
 
@@ -700,7 +700,7 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    if template_id <= 0 || template_id >= MAXTITEM {
+    if template_id == 0 || template_id >= MAXTITEM {
         log::error!(
             "stone_sword called with invalid template_id: {}",
             template_id
@@ -780,33 +780,29 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
 
     for n in 0..40 {
         let item_idx = gs.characters[cn].item[n] as usize;
-        if item_idx != 0 {
-            if (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
-                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_owned();
-                gs.characters[cn].item[n] = 0;
-                gs.items[item_idx].used = USE_EMPTY;
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", item_ref),
-                );
-            }
+        if item_idx != 0 && (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
+            let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_owned();
+            gs.characters[cn].item[n] = 0;
+            gs.items[item_idx].used = USE_EMPTY;
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", item_ref),
+            );
         }
     }
 
     for n in 0..20 {
         let item_idx = gs.characters[cn].worn[n] as usize;
-        if item_idx != 0 {
-            if (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
-                let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_owned();
-                gs.characters[cn].worn[n] = 0;
-                gs.items[item_idx].used = USE_EMPTY;
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!("Your {} vanished.\n", item_ref),
-                );
-            }
+        if item_idx != 0 && (gs.items[item_idx].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 {
+            let item_ref = c_string_to_str(&gs.items[item_idx].reference).to_owned();
+            gs.characters[cn].worn[n] = 0;
+            gs.items[item_idx].used = USE_EMPTY;
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Your {} vanished.\n", item_ref),
+            );
         }
     }
 
@@ -896,11 +892,9 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     for n in 0..20 {
         let spell_idx = gs.characters[cn].spell[n] as usize;
-        if spell_idx != 0 {
-            if gs.items[spell_idx].temp == skills::SK_RECALL as u16 {
-                gs.characters[cn].spell[n] = 0;
-                gs.items[spell_idx].used = USE_EMPTY;
-            }
+        if spell_idx != 0 && gs.items[spell_idx].temp == skills::SK_RECALL as u16 {
+            gs.characters[cn].spell[n] = 0;
+            gs.items[spell_idx].used = USE_EMPTY;
         }
     }
 
@@ -1025,11 +1019,9 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
 
     for n in 0..20 {
         let spell_idx = gs.characters[cn].spell[n] as usize;
-        if spell_idx != 0 {
-            if gs.items[spell_idx].temp == skills::SK_RECALL as u16 {
-                gs.characters[cn].spell[n] = 0;
-                gs.items[spell_idx].used = USE_EMPTY;
-            }
+        if spell_idx != 0 && gs.items[spell_idx].temp == skills::SK_RECALL as u16 {
+            gs.characters[cn].spell[n] = 0;
+            gs.items[spell_idx].used = USE_EMPTY;
         }
     }
 
@@ -1425,9 +1417,9 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     // find smallest bucket
     let mut sbase = 0usize;
     let mut tmpmin = i32::MAX;
-    for i in 0..baseg.len() {
-        if baseg[i] < tmpmin {
-            tmpmin = baseg[i];
+    for (i, &val) in baseg.iter().enumerate() {
+        if val < tmpmin {
+            tmpmin = val;
             sbase = i;
         }
     }
@@ -1872,20 +1864,23 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     }
 
     // occasional extra items (partial port)
-    if helpers::random_mod_i32(30) == 0 && gs.characters[cc].data[0] > 5 {
-        if let Some(it) = God::create_item(gs, helpers::random_mod_usize(2) + 273) {
-            God::give_character_item(gs, cc, it);
-        }
+    if helpers::random_mod_i32(30) == 0
+        && gs.characters[cc].data[0] > 5
+        && let Some(it) = God::create_item(gs, helpers::random_mod_usize(2) + 273)
+    {
+        God::give_character_item(gs, cc, it);
     }
-    if helpers::random_mod_i32(60) == 0 && gs.characters[cc].data[0] > 15 {
-        if let Some(it) = God::create_item(gs, helpers::random_mod_usize(2) + 192) {
-            God::give_character_item(gs, cc, it);
-        }
+    if helpers::random_mod_i32(60) == 0
+        && gs.characters[cc].data[0] > 15
+        && let Some(it) = God::create_item(gs, helpers::random_mod_usize(2) + 192)
+    {
+        God::give_character_item(gs, cc, it);
     }
-    if helpers::random_mod_i32(150) == 0 && gs.characters[cc].data[0] > 20 {
-        if let Some(it) = God::create_item(gs, helpers::random_mod_usize(9) + 181) {
-            God::give_character_item(gs, cc, it);
-        }
+    if helpers::random_mod_i32(150) == 0
+        && gs.characters[cc].data[0] > 20
+        && let Some(it) = God::create_item(gs, helpers::random_mod_usize(9) + 181)
+    {
+        God::give_character_item(gs, cc, it);
     }
 
     // update character state
@@ -2281,16 +2276,14 @@ pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Add effect if data[2] contains a character template
     let temp = gs.items[item_idx].data[2] as usize;
     if temp != 0 {
-        {
-            EffectManager::fx_add_effect(
-                gs,
-                2,
-                core::constants::TICKS * 10,
-                i32::from(gs.character_templates[temp].x),
-                i32::from(gs.character_templates[temp].y),
-                temp as i32,
-            )
-        };
+        EffectManager::fx_add_effect(
+            gs,
+            2,
+            core::constants::TICKS * 10,
+            i32::from(gs.character_templates[temp].x),
+            i32::from(gs.character_templates[temp].y),
+            temp as i32,
+        );
         log::info!("use_spawn: would add effect for template {}", temp);
     }
 
@@ -2790,11 +2783,13 @@ pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         474
     } else if (t1 == 472 && t2 == 473) || (t1 == 473 && t2 == 472) {
         475
-    } else if (t1 == 471 && t2 == 475) || (t1 == 475 && t2 == 471) {
-        466
-    } else if (t1 == 472 && t2 == 474) || (t1 == 474 && t2 == 472) {
-        466
-    } else if (t1 == 473 && t2 == 476) || (t1 == 476 && t2 == 473) {
+    } else if (t1 == 471 && t2 == 475)
+        || (t1 == 475 && t2 == 471)
+        || (t1 == 472 && t2 == 474)
+        || (t1 == 474 && t2 == 472)
+        || (t1 == 473 && t2 == 476)
+        || (t1 == 476 && t2 == 473)
+    {
         466
     } else {
         gs.do_character_log(cn, core::types::FontColor::Yellow, "That doesn't fit.\n");
@@ -3165,14 +3160,15 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
             if gs.items[n].driver != 33 {
                 continue;
             }
-            if gs.items[n].active == 0 {
-                if gs.items[n].light[0] != gs.items[n].light[1] && gs.items[n].x > 0 {
-                    gs.do_add_light(
-                        i32::from(gs.items[n].x),
-                        i32::from(gs.items[n].y),
-                        i32::from(gs.items[n].light[1]) - i32::from(gs.items[n].light[0]),
-                    );
-                }
+            if gs.items[n].active == 0
+                && gs.items[n].light[0] != gs.items[n].light[1]
+                && gs.items[n].x > 0
+            {
+                gs.do_add_light(
+                    i32::from(gs.items[n].x),
+                    i32::from(gs.items[n].y),
+                    i32::from(gs.items[n].light[1]) - i32::from(gs.items[n].light[0]),
+                );
             }
             gs.items[n].duration = 10 * 60 + crate::helpers::random_mod(20 * 60);
             gs.items[n].active = gs.items[n].duration;
@@ -3211,20 +3207,15 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             for m in 1..4 {
                 let needs_spawn = {
                     let co = gs.items[item_idx].data[m] as usize;
-                    let needs_spawn = if co == 0 {
+
+                    if co == 0 {
                         true
                     } else {
-                        {
-                            if co >= gs.characters.len() || gs.characters[co].used == USE_EMPTY {
-                                true
-                            } else if gs.characters[co].data[0] != item_idx as i32 {
-                                true
-                            } else {
-                                (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0
-                            }
-                        }
-                    };
-                    needs_spawn
+                        co >= gs.characters.len()
+                            || gs.characters[co].used == USE_EMPTY
+                            || gs.characters[co].data[0] != item_idx as i32
+                            || (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0
+                    }
                 };
 
                 if needs_spawn {
@@ -3431,20 +3422,15 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     for m in 1..4 {
         let needs_spawn = {
             let co = gs.items[item_idx].data[m] as usize;
-            let needs_spawn = if co == 0 {
+
+            if co == 0 {
                 true
             } else {
-                {
-                    if co >= gs.characters.len() || gs.characters[co].used == USE_EMPTY {
-                        true
-                    } else if gs.characters[co].data[0] != item_idx as i32 {
-                        true
-                    } else {
-                        (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0
-                    }
-                }
-            };
-            needs_spawn
+                co >= gs.characters.len()
+                    || gs.characters[co].used == USE_EMPTY
+                    || gs.characters[co].data[0] != item_idx as i32
+                    || (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0
+            }
         };
 
         if needs_spawn {
@@ -3509,10 +3495,8 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
                 );
             }
 
-            {
-                if in2 < gs.items.len() {
-                    gs.items[in2].used = USE_EMPTY;
-                }
+            if in2 < gs.items.len() {
+                gs.items[in2].used = USE_EMPTY;
             };
             {
                 gs.characters[cn].citem = 0;
@@ -3779,16 +3763,14 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         return false;
     }
 
-    {
-        EffectManager::fx_add_effect(
-            gs,
-            7,
-            0,
-            i32::from(gs.characters[cn].x),
-            i32::from(gs.characters[cn].y),
-            0,
-        )
-    };
+    EffectManager::fx_add_effect(
+        gs,
+        7,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
 
     // Get character position
     let (ch_x, ch_y) = {
@@ -3896,16 +3878,14 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     // Teleport
-    {
-        EffectManager::fx_add_effect(
-            gs,
-            6,
-            0,
-            i32::from(gs.characters[cn].x),
-            i32::from(gs.characters[cn].y),
-            0,
-        )
-    };
+    EffectManager::fx_add_effect(
+        gs,
+        6,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
     let (dest_x, dest_y) = {
         (
             gs.items[item_idx].data[0] as usize,
@@ -3913,16 +3893,14 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         )
     };
     God::transfer_char(gs, cn, dest_x, dest_y);
-    {
-        EffectManager::fx_add_effect(
-            gs,
-            6,
-            0,
-            i32::from(gs.characters[cn].x),
-            i32::from(gs.characters[cn].y),
-            0,
-        )
-    };
+    EffectManager::fx_add_effect(
+        gs,
+        6,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
 
     // Remove IF_LABYDESTROY items from citem
     let citem = gs.characters[cn].citem as usize;
@@ -4320,16 +4298,14 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     }
 
     // Teleport
-    {
-        EffectManager::fx_add_effect(
-            gs,
-            6,
-            0,
-            i32::from(gs.characters[cn].x),
-            i32::from(gs.characters[cn].y),
-            0,
-        )
-    };
+    EffectManager::fx_add_effect(
+        gs,
+        6,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
     let (dest_x, dest_y) = {
         (
             gs.items[item_idx].data[0] as usize,
@@ -4337,16 +4313,14 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
         )
     };
     God::transfer_char(gs, cn, dest_x, dest_y);
-    {
-        EffectManager::fx_add_effect(
-            gs,
-            6,
-            0,
-            i32::from(gs.characters[cn].x),
-            i32::from(gs.characters[cn].y),
-            0,
-        )
-    };
+    EffectManager::fx_add_effect(
+        gs,
+        6,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
 
     true
 }
@@ -4755,16 +4729,14 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> b
             core::types::FontColor::Red,
             "You feel the hand of the Goddess of Magic touch your mind.\n",
         );
-        {
-            EffectManager::fx_add_effect(
-                gs,
-                6,
-                0,
-                i32::from(gs.characters[cn].x),
-                i32::from(gs.characters[cn].y),
-                0,
-            )
-        };
+        EffectManager::fx_add_effect(
+            gs,
+            6,
+            0,
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+            0,
+        );
     }
 
     true
@@ -5410,13 +5382,6 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             log::info!("Used {}", item_name);
 
             // Apply hp/end/mana changes
-            {
-                (
-                    gs.items[item_idx].hp[0],
-                    gs.items[item_idx].end[0],
-                    gs.items[item_idx].mana[0],
-                )
-            };
             {
                 let hp = gs.items[item_idx].hp[0];
                 let end = gs.items[item_idx].end[0];
@@ -6075,10 +6040,8 @@ pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
 pub fn item_damage_armor(gs: &mut GameState, cn: usize, damage: i32) {
     let dam = damage / 4 + 1;
     for n in 0..20 {
-        if n != WN_RHAND && n != WN_LHAND {
-            if helpers::random_mod_i32(3) != 0 {
-                item_damage_worn(gs, cn, n, dam);
-            }
+        if n != WN_RHAND && n != WN_LHAND && helpers::random_mod_i32(3) != 0 {
+            item_damage_worn(gs, cn, n, dam);
         }
     }
 }
@@ -6397,10 +6360,10 @@ pub fn pentagram(gs: &mut GameState, item_idx: usize) {
             true
         } else {
             let cn = stored_cn as usize;
-            let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
+
+            gs.characters[cn].data[0] != item_idx as i32
                 || gs.characters[cn].used == USE_EMPTY
-                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
-            dead_or_mismatch
+                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0
         };
 
         if should_spawn {
@@ -6433,10 +6396,10 @@ pub fn spiderweb(gs: &mut GameState, item_idx: usize) {
             true
         } else {
             let cn = stored_cn as usize;
-            let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
+
+            gs.characters[cn].data[0] != item_idx as i32
                 || gs.characters[cn].used == USE_EMPTY
-                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
-            dead_or_mismatch
+                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0
         };
 
         if should_spawn {
@@ -6487,10 +6450,10 @@ pub fn greenlingball(gs: &mut GameState, item_idx: usize) {
             true
         } else {
             let cn = stored_cn as usize;
-            let dead_or_mismatch = gs.characters[cn].data[0] != item_idx as i32
+
+            gs.characters[cn].data[0] != item_idx as i32
                 || gs.characters[cn].used == USE_EMPTY
-                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0;
-            dead_or_mismatch
+                || (gs.characters[cn].flags & CharacterFlags::Body.bits()) != 0
         };
 
         if should_spawn {
@@ -6586,14 +6549,16 @@ pub fn item_tick_expire(gs: &mut GameState) {
 
             let (ch_present, to_ch_present) = (gs.map[m].ch != 0, gs.map[m].to_ch != 0);
 
-            if (flags & ItemFlags::IF_REACTIVATE.bits()) != 0 && active == 0 {
-                if !ch_present && !to_ch_present {
-                    gs.items[in_idx].active = duration;
+            if (flags & ItemFlags::IF_REACTIVATE.bits()) != 0
+                && active == 0
+                && !ch_present
+                && !to_ch_present
+            {
+                gs.items[in_idx].active = duration;
 
-                    active = duration;
-                    if light_diff != 0 {
-                        gs.do_add_light(x as i32, y as i32, light_diff);
-                    }
+                active = duration;
+                if light_diff != 0 {
+                    gs.do_add_light(x as i32, y as i32, light_diff);
                 }
             }
 
@@ -6635,8 +6600,9 @@ pub fn item_tick_expire(gs: &mut GameState) {
 
             // Check if item should expire
             let map_flags = gs.map[m].flags;
-            if ((flags & ItemFlags::IF_TAKE.bits()) == 0 && driver != 7)
-                || ((map_flags & u64::from(MF_NOEXPIRE)) != 0 && driver != 7)
+            if (((flags & ItemFlags::IF_TAKE.bits()) == 0
+                || (map_flags & u64::from(MF_NOEXPIRE)) != 0)
+                && driver != 7)
                 || driver == 37
                 || (flags & ItemFlags::IF_NOEXPIRE.bits()) != 0
             {
@@ -7539,16 +7505,14 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 
     // Add departure effect
-    {
-        EffectManager::fx_add_effect(
-            gs,
-            6,
-            0,
-            i32::from(gs.characters[cn].x),
-            i32::from(gs.characters[cn].y),
-            0,
-        )
-    };
+    EffectManager::fx_add_effect(
+        gs,
+        6,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
 
     player::map::plr_map_remove(gs, cn);
 
@@ -7637,7 +7601,7 @@ pub fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
 pub fn step_driver(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let driver = gs.items[item_idx].driver;
 
-    let ret = match driver {
+    match driver {
         36 => step_portal1_lab13(gs, cn, item_idx),
         37 => step_trap(gs, cn, item_idx),
         38 => step_portal2_lab13(gs, cn, item_idx),
@@ -7654,9 +7618,7 @@ pub fn step_driver(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 
             0
         }
-    };
-
-    ret
+    }
 }
 
 pub fn step_driver_remove(gs: &mut GameState, cn: usize, item_idx: usize) {

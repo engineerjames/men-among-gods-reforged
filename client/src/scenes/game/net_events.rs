@@ -150,11 +150,10 @@ impl GameScene {
             }
         }
 
-        if let Some(ps) = app_state.player_state.as_mut() {
-            if ps.take_exit_requested_reason().is_some() {
+        if let Some(ps) = app_state.player_state.as_mut()
+            && ps.take_exit_requested_reason().is_some() {
                 return Some(SceneType::CharacterSelection);
             }
-        }
 
         if self.pending_exit.take().is_some() {
             return Some(SceneType::CharacterSelection);
@@ -251,29 +250,26 @@ impl GameScene {
     /// * `app_state` - Shared application state (network + settings access).
     pub(crate) fn process_chat_box_actions(&mut self, app_state: &mut AppState) {
         for action in self.chat_box.take_actions() {
-            match action {
-                WidgetAction::SendChat(text) => {
-                    if text.trim().eq_ignore_ascii_case("/autoloot") {
-                        app_state.settings.character.auto_loot_graves =
-                            !app_state.settings.character.auto_loot_graves;
-                        let status = if app_state.settings.character.auto_loot_graves {
-                            "enabled"
-                        } else {
-                            "disabled"
-                        };
-                        if let Some(ps) = app_state.player_state.as_mut() {
-                            ps.tlog(1, &format!("Auto-loot graves: {status}."));
-                        }
-                        self.save_active_profile(app_state);
-                        continue;
+            if let WidgetAction::SendChat(text) = action {
+                if text.trim().eq_ignore_ascii_case("/autoloot") {
+                    app_state.settings.character.auto_loot_graves =
+                        !app_state.settings.character.auto_loot_graves;
+                    let status = if app_state.settings.character.auto_loot_graves {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    };
+                    if let Some(ps) = app_state.player_state.as_mut() {
+                        ps.tlog(1, format!("Auto-loot graves: {status}."));
                     }
-                    if let Some(net) = app_state.network.as_ref() {
-                        for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
-                            net.send(pkt);
-                        }
+                    self.save_active_profile(app_state);
+                    continue;
+                }
+                if let Some(net) = app_state.network.as_ref() {
+                    for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
+                        net.send(pkt);
                     }
                 }
-                _ => {}
             }
         }
     }
@@ -286,11 +282,10 @@ impl GameScene {
     /// * `app_state` - Shared application state (network access).
     pub(crate) fn process_mode_button_actions(&mut self, app_state: &AppState) {
         for action in self.mode_button.take_actions() {
-            if let WidgetAction::ChangeMode(mode) = action {
-                if let Some(net) = app_state.network.as_ref() {
+            if let WidgetAction::ChangeMode(mode) = action
+                && let Some(net) = app_state.network.as_ref() {
                     net.send(ClientCommand::new_mode(mode as i16));
                 }
-            }
         }
     }
 
@@ -350,7 +345,7 @@ impl GameScene {
                     }
                     if let Some(ps) = app_state.player_state.as_mut() {
                         let name = skills::get_skill_name(skill_nr);
-                        ps.tlog(1, &format!("Bound {} to key {}.", name, key_slot + 1));
+                        ps.tlog(1, format!("Bound {} to key {}.", name, key_slot + 1));
                     }
                     self.save_active_profile(app_state);
                 }
@@ -466,41 +461,38 @@ impl GameScene {
     /// * `app_state` - Shared application state.
     pub(crate) fn process_skill_picker_actions(&mut self, app_state: &mut AppState<'_>) {
         for action in self.skill_picker.take_actions() {
-            match action {
-                WidgetAction::BindSkillKey { skill_nr, key_slot } => {
-                    use crate::ui::hud::skill_bar::TOP_CELLS;
-                    let slot = key_slot as usize;
-                    if slot >= TOP_CELLS {
-                        // Secondary bar slot.
-                        let sec_slot = slot - TOP_CELLS;
-                        for s in app_state
-                            .settings
-                            .character
-                            .skill_keybinds_secondary
-                            .iter_mut()
-                        {
-                            if *s == Some(skill_nr) {
-                                *s = None;
-                            }
+            if let WidgetAction::BindSkillKey { skill_nr, key_slot } = action {
+                use crate::ui::hud::skill_bar::TOP_CELLS;
+                let slot = key_slot as usize;
+                if slot >= TOP_CELLS {
+                    // Secondary bar slot.
+                    let sec_slot = slot - TOP_CELLS;
+                    for s in app_state
+                        .settings
+                        .character
+                        .skill_keybinds_secondary
+                        .iter_mut()
+                    {
+                        if *s == Some(skill_nr) {
+                            *s = None;
                         }
-                        app_state.settings.character.skill_keybinds_secondary[sec_slot] =
-                            Some(skill_nr);
-                    } else {
-                        // Primary bar slot — clear any previous slot with the same skill_nr.
-                        for s in app_state.settings.character.skill_keybinds.iter_mut() {
-                            if *s == Some(skill_nr) {
-                                *s = None;
-                            }
+                    }
+                    app_state.settings.character.skill_keybinds_secondary[sec_slot] =
+                        Some(skill_nr);
+                } else {
+                    // Primary bar slot — clear any previous slot with the same skill_nr.
+                    for s in app_state.settings.character.skill_keybinds.iter_mut() {
+                        if *s == Some(skill_nr) {
+                            *s = None;
                         }
-                        app_state.settings.character.skill_keybinds[slot] = Some(skill_nr);
                     }
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        let name = skills::get_skill_name(skill_nr);
-                        ps.tlog(1, &format!("Bound {} to key {}.", name, key_slot + 1));
-                    }
-                    self.save_active_profile(app_state);
+                    app_state.settings.character.skill_keybinds[slot] = Some(skill_nr);
                 }
-                _ => {}
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    let name = skills::get_skill_name(skill_nr);
+                    ps.tlog(1, format!("Bound {} to key {}.", name, key_slot + 1));
+                }
+                self.save_active_profile(app_state);
             }
         }
     }

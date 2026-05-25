@@ -585,20 +585,21 @@ mod tests {
 
     #[test]
     fn test_character_roundtrip() {
-        let mut original = Character::default();
-        original.used = 1;
-        original.name =
-            *b"TestHero\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-        original.reference = *b"a brave warrior\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
-        original.kindred = 5;
-        original.player = 1;
-        original.sprite = 1000;
-        original.sound = 500;
-        original.flags = 0x123456789ABCDEF0;
-        original.alignment = 100;
-        original.temple_x = 50;
-        original.temple_y = 60;
-        original.hp = [100, 120, 140, 10, 0, 100];
+        let mut original = Character {
+            used: 1,
+            name: *b"TestHero\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            reference: *b"a brave warrior\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            kindred: 5,
+            player: 1,
+            sprite: 1000,
+            sound: 500,
+            flags: 0x123456789ABCDEF0,
+            alignment: 100,
+            temple_x: 50,
+            temple_y: 60,
+            hp: [100, 120, 140, 10, 0, 100],
+            ..Character::default()
+        };
         original.attrib[0] = [10, 5, 50, 3, 2, 17];
         original.skill[0] = [20, 10, 100, 5, 3, 33];
         original.x = 100;
@@ -626,9 +627,10 @@ mod tests {
 
     #[test]
     fn test_character_get_name() {
-        let mut character = Character::default();
-        character.name =
-            *b"Hero123\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        let character = Character {
+            name: *b"Hero123\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            ..Character::default()
+        };
         assert_eq!(character.get_name(), "Hero123");
     }
 
@@ -671,13 +673,13 @@ mod tests {
 
     #[test]
     fn test_is_close_to_temple() {
-        let mut character = Character::default();
-        character.temple_x = 100;
-        character.temple_y = 100;
-
-        // At temple
-        character.x = 100;
-        character.y = 100;
+        let mut character = Character {
+            temple_x: 100,
+            temple_y: 100,
+            x: 100,
+            y: 100,
+            ..Character::default()
+        };
         assert!(character.is_close_to_temple());
 
         // Within distance
@@ -715,8 +717,10 @@ mod tests {
 
     #[test]
     fn test_is_living_character() {
-        let mut character = Character::default();
-        character.used = USE_EMPTY;
+        let mut character = Character {
+            used: USE_EMPTY,
+            ..Character::default()
+        };
 
         // Dead character
         assert!(!character.is_living_character(1));
@@ -758,8 +762,10 @@ mod tests {
 
     #[test]
     fn test_set_do_update_flags() {
-        let mut character = Character::default();
-        character.flags = 0;
+        let mut character = Character {
+            flags: 0,
+            ..Character::default()
+        };
 
         character.set_do_update_flags();
 
@@ -769,8 +775,10 @@ mod tests {
 
     #[test]
     fn test_is_monster() {
-        let mut character = Character::default();
-        character.kindred = 0;
+        let mut character = Character {
+            kindred: 0,
+            ..Character::default()
+        };
         assert!(!character.is_monster());
 
         character.kindred = traits::KIN_MONSTER as i32;
@@ -779,8 +787,10 @@ mod tests {
 
     #[test]
     fn test_is_usurp_or_thrall() {
-        let mut character = Character::default();
-        character.flags = 0;
+        let mut character = Character {
+            flags: 0,
+            ..Character::default()
+        };
         assert!(!character.is_usurp_or_thrall());
 
         character.flags = CharacterFlags::Usurp.bits();
@@ -795,9 +805,10 @@ mod tests {
 
     #[test]
     fn test_get_kindred_as_string() {
-        let mut character = Character::default();
-
-        character.kindred = traits::KIN_TEMPLAR as i32;
+        let mut character = Character {
+            kindred: traits::KIN_TEMPLAR as i32,
+            ..Character::default()
+        };
         assert_eq!(character.get_kindred_as_string(), "Templar");
 
         character.kindred = traits::KIN_HARAKIM as i32;
@@ -815,9 +826,10 @@ mod tests {
 
     #[test]
     fn test_get_gender_as_string() {
-        let mut character = Character::default();
-
-        character.kindred = traits::KIN_FEMALE as i32;
+        let mut character = Character {
+            kindred: traits::KIN_FEMALE as i32,
+            ..Character::default()
+        };
         assert_eq!(character.get_gender_as_string(), "Female");
 
         character.kindred = traits::KIN_MALE as i32;
@@ -841,15 +853,19 @@ mod tests {
 
     #[test]
     fn test_get_reference() {
-        let mut character = Character::default();
-        character.reference = *b"a brave warrior\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+        let character = Character {
+            reference: *b"a brave warrior\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0",
+            ..Character::default()
+        };
         assert_eq!(character.get_reference(), "a brave warrior");
     }
 
     #[test]
     fn test_is_sane_npc() {
-        let mut character = Character::default();
-        character.flags = 0; // Not a player, so it's an NPC
+        let mut character = Character {
+            flags: 0, // Not a player, so it's an NPC
+            ..Character::default()
+        };
 
         assert!(Character::is_sane_npc(1, &character));
         assert!(!Character::is_sane_npc(0, &character));
@@ -865,8 +881,10 @@ mod tests {
 
     #[test]
     fn test_get_invisibility_level() {
-        let mut character = Character::default();
-        character.flags = 0;
+        let mut character = Character {
+            flags: 0,
+            ..Character::default()
+        };
         assert_eq!(character.get_invisibility_level(), 1);
 
         character.flags = CharacterFlags::Staff.bits();

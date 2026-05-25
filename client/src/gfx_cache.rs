@@ -244,8 +244,8 @@ impl<'tc> GraphicsCache<'tc> {
     /// * `Some(Texture)` on success, `None` if the sprite is not in the archive
     ///   or decoding fails.
     fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture<'tc>> {
-        if let Some(filename) = self.index_to_filename.get(&id) {
-            if let Ok(mut file) = self.archive.by_name(filename) {
+        if let Some(filename) = self.index_to_filename.get(&id)
+            && let Ok(mut file) = self.archive.by_name(filename) {
                 let mut buffer = Vec::new();
                 file.read_to_end(&mut buffer).ok()?;
                 if let Ok(texture) = self.creator.load_texture_bytes(&buffer) {
@@ -257,7 +257,6 @@ impl<'tc> GraphicsCache<'tc> {
                     return Some(texture);
                 }
             }
-        }
 
         None
     }

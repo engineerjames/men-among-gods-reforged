@@ -596,7 +596,7 @@ impl GameState {
         self.characters[co].a_hp = 0;
 
         // Set corpse owner (killer only mode vs all can loot)
-        let cc = if cn != 0 && !(self.characters[cn].flags & CharacterFlags::Player.bits() != 0) {
+        let cc = if cn != 0 && (self.characters[cn].flags & CharacterFlags::Player.bits() == 0) {
             let cc = self.characters[cn].data[63] as usize;
             if cc != 0 && (self.characters[cc].flags & CharacterFlags::Player.bits() != 0) {
                 Some(cc)

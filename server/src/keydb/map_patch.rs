@@ -191,14 +191,13 @@ fn watcher_loop(tx: Sender<MapPatchEvent>, shutdown: Arc<AtomicBool>) {
             }
         }
 
-        if let Some(request_id) = reload_request_id {
-            if tx
+        if let Some(request_id) = reload_request_id
+            && tx
                 .send(MapPatchEvent::ReloadCompleted { request_id })
                 .is_err()
-            {
-                log::info!("map patch watcher: receiver dropped, exiting");
-                return;
-            }
+        {
+            log::info!("map patch watcher: receiver dropped, exiting");
+            return;
         }
     }
 }

@@ -427,6 +427,7 @@ mod tests {
     /// `split_tick_payload` correctly splits a payload that mixes a SV_TICK (2
     /// bytes) with one of each light command, all using the new 4-byte header.
     #[test]
+    #[allow(clippy::vec_init_then_push)]
     fn split_tick_payload_light_packets_new_format() {
         let mut payload: Vec<u8> = Vec::new();
 
@@ -461,9 +462,7 @@ mod tests {
         payload.push(0x10);
         payload.push(0x00);
         payload.push(0x0F);
-        for _ in 0..13 {
-            payload.push(0xAB);
-        }
+        payload.extend(std::iter::repeat_n(0xABu8, 13));
 
         let cmds = split_tick_payload(&payload).expect("should parse without error");
         assert_eq!(cmds.len(), 5);

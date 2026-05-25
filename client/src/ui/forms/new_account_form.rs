@@ -103,6 +103,12 @@ pub struct NewAccountForm {
     controller_focused: Option<usize>,
 }
 
+impl Default for NewAccountForm {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NewAccountForm {
     /// Creates a new account form, centerd on screen.
     ///
@@ -412,12 +418,11 @@ impl Widget for NewAccountForm {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 
@@ -450,12 +455,10 @@ impl Widget for NewAccountForm {
             button: MouseButton::Left,
             ..
         } = event
-        {
-            if let Some(idx) = self.field_index_at(*x, *y) {
+            && let Some(idx) = self.field_index_at(*x, *y) {
                 self.focused_field = idx;
                 self.apply_focus();
             }
-        }
 
         // Forward to buttons.
         if self.create_button.handle_event(event) == EventResponse::Consumed {
@@ -474,11 +477,10 @@ impl Widget for NewAccountForm {
         self.confirm_password_input.handle_event(event);
 
         // Consume if inside panel.
-        if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event {
-            if self.bounds.contains_point(*x, *y) {
+        if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event
+            && self.bounds.contains_point(*x, *y) {
                 return EventResponse::Consumed;
             }
-        }
 
         match event {
             UiEvent::TextInput { .. } | UiEvent::KeyDown { .. } => EventResponse::Consumed,

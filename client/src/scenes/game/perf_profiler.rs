@@ -158,13 +158,11 @@ impl PerfProfiler {
     /// Call once per frame (e.g. at the start of `update`) to check whether
     /// the capture window has elapsed. If so, logs the summary and deactivates.
     pub fn check_expired(&mut self) {
-        if self.active {
-            if let Some(start) = self.start_time {
-                if start.elapsed() >= PROFILE_DURATION {
+        if self.active
+            && let Some(start) = self.start_time
+                && start.elapsed() >= PROFILE_DURATION {
                     self.finish();
                 }
-            }
-        }
     }
 
     // ── Per-frame API ───────────────────────────────────────────────────

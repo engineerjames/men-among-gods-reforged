@@ -116,9 +116,7 @@ impl GameScene {
         // citem already read above.
         let selected_char = ps.selected_char();
 
-        let Some(net) = app_state.network.as_ref() else {
-            return None;
-        };
+        let net = app_state.network.as_ref()?;
 
         match mouse_btn {
             MouseButton::Left if has_alt => {
@@ -134,14 +132,13 @@ impl GameScene {
                     }
                 }
             }
-            MouseButton::Right if has_alt => {
-                if target_cn != 0 {
+            MouseButton::Right if has_alt
+                && target_cn != 0 => {
                     self.play_click_sound(app_state);
                     net.send(ClientCommand::new_look(target_cn));
                 }
-            }
-            MouseButton::Left if has_ctrl => {
-                if target_cn != 0 {
+            MouseButton::Left if has_ctrl
+                && target_cn != 0 => {
                     self.play_click_sound(app_state);
                     if citem != 0 {
                         net.send(ClientCommand::new_give(target_cn));
@@ -149,13 +146,11 @@ impl GameScene {
                         net.send(ClientCommand::new_attack(target_cn));
                     }
                 }
-            }
-            MouseButton::Right if has_ctrl => {
-                if target_cn != 0 {
+            MouseButton::Right if has_ctrl
+                && target_cn != 0 => {
                     self.play_click_sound(app_state);
                     net.send(ClientCommand::new_look(target_cn));
                 }
-            }
             MouseButton::Left if has_shift => {
                 let tile_flags = tile.map(|t| t.flags).unwrap_or(0);
                 let is_item = (tile_flags & ISITEM) != 0;

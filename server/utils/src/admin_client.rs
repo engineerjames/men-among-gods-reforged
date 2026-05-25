@@ -846,7 +846,7 @@ impl AdminClient {
     /// * `x`     - Tile X coordinate.
     /// * `y`     - Tile Y coordinate.
     /// * `patch` - Static-field overrides. `patch.x` / `patch.y` must match
-    ///             the URL coordinates; the API rejects mismatches.
+    ///   the URL coordinates; the API rejects mismatches.
     ///
     /// # Returns
     ///
@@ -1243,7 +1243,7 @@ impl AdminClient {
     ///
     /// * `from`  - Inclusive start index.
     /// * `limit` - Maximum number of summaries to return (`None` uses the API
-    ///             default of `256`).
+    ///   default of `256`).
     ///
     /// # Returns
     ///
@@ -1263,7 +1263,7 @@ impl AdminClient {
     ///
     /// * `from`  - Inclusive start index.
     /// * `limit` - Maximum number of summaries to return (`None` uses the API
-    ///             default of `256`).
+    ///   default of `256`).
     ///
     /// # Returns
     ///

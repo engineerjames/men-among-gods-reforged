@@ -11,9 +11,10 @@ use core::{
 };
 
 use crate::{
-    chlog, core::types::Character, driver, effect::EffectManager, game_state::GameState, god::God,
-    helpers, points, populate,
+    chlog, driver, effect::EffectManager, game_state::GameState, god::God, helpers, points,
+    populate,
 };
+use core::types::Character;
 
 use core::constants::LEGACY_TICKS;
 
@@ -60,11 +61,10 @@ pub fn chance_base(gs: &mut GameState, cn: usize, skill: i32, d20: i32, power: i
     // Ported from C++ chance_base(int cn, int skill, int d20, int power)
     let mut chance = d20 * skill / std::cmp::max(1, power);
     let (flags, luck) = (gs.characters[cn].flags, gs.characters[cn].luck);
-    if (flags & CharacterFlags::Player.bits()) != 0 {
-        if luck < 0 {
+    if (flags & CharacterFlags::Player.bits()) != 0
+        && luck < 0 {
             chance += luck / 500 - 1;
         }
-    }
 
     chance = chance.clamp(0, 18);
 
@@ -79,11 +79,10 @@ pub fn chance(gs: &mut GameState, cn: usize, d20: i32) -> i32 {
     // Ported from C++ chance(int cn, int d20)
     let mut d20 = d20;
     let (flags, luck) = (gs.characters[cn].flags, gs.characters[cn].luck);
-    if (flags & CharacterFlags::Player.bits()) != 0 {
-        if luck < 0 {
+    if (flags & CharacterFlags::Player.bits()) != 0
+        && luck < 0 {
             d20 += luck / 500 - 1;
         }
-    }
 
     d20 = d20.clamp(0, 18);
 
@@ -107,9 +106,7 @@ pub fn spell_race_mod(gs: &GameState, power: i32, kindred: i32) -> i32 {
         modf = 1.05;
     } else if (kindred & traits::KIN_ARCHTEMPLAR as i32) != 0 {
         modf = 0.95;
-    } else if (kindred & traits::KIN_SORCERER as i32) != 0 {
-        modf = 1.10;
-    } else if (kindred & traits::KIN_WARRIOR as i32) != 0 {
+    } else if (kindred & (traits::KIN_SORCERER | traits::KIN_WARRIOR) as i32) != 0 {
         modf = 1.10;
     } else if (kindred & traits::KIN_SEYAN_DU as i32) != 0 {
         modf = 0.95;
@@ -2858,8 +2855,8 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
         }
 
         // Dispelling someone else's non-curse spell is treated like an attack.
-        if target != 0 {
-            if !gs.may_attack_msg(cn, co, true) {
+        if target != 0
+            && !gs.may_attack_msg(cn, co, true) {
                 chlog!(
                     cn,
                     "Prevented from dispelling {}",
@@ -2867,7 +2864,6 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
                 );
                 return;
             }
-        }
     }
 
     let slot = slot.expect("slot must be set");
@@ -3245,8 +3241,8 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     let mana0 = gs.characters[cc].mana[0];
     let skills = gs.characters[cc].skill;
 
-    for z in 0..5 {
-        for m in 10..i32::from(attribs[z][0]) {
+    for attrib in &attribs[..5] {
+        for m in 10..i32::from(attrib[0]) {
             pts += points::attrib_needed(m, 3);
         }
     }
@@ -3263,8 +3259,8 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         pts += points::mana_needed(m, 3);
     }
 
-    for z in 0..50 {
-        for m in 1..i32::from(skills[z][0]) {
+    for skill in &skills[..50] {
+        for m in 1..i32::from(skill[0]) {
             pts += points::skill_needed(m, 2);
         }
     }

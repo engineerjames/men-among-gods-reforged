@@ -1577,8 +1577,8 @@ impl Server {
             }
         };
 
-        if let Some(connection) = status_connection.as_mut() {
-            if let Err(error) =
+        if let Some(connection) = status_connection.as_mut()
+            && let Err(error) =
                 server::keydb::world_action::write_running_status(connection, &request)
             {
                 log::warn!(
@@ -1587,15 +1587,13 @@ impl Server {
                     error
                 );
             }
-        }
 
-        if let Some(saver) = self.background_saver.as_ref() {
-            if let Err(error) = saver.flush() {
+        if let Some(saver) = self.background_saver.as_ref()
+            && let Err(error) = saver.flush() {
                 let message = format!("background saver flush failed: {}", error);
                 self.write_world_action_failure(status_connection.as_mut(), &request, &message);
                 return;
             }
-        }
 
         match populate::execute_world_action(gs, &request.action) {
             Ok(outcome) => {
@@ -1604,8 +1602,8 @@ impl Server {
                     Ok(()) => {
                         let elapsed_ms = started.elapsed().as_millis();
                         let message = format!("{} ({} ms)", outcome.message, elapsed_ms);
-                        if let Some(connection) = status_connection.as_mut() {
-                            if let Err(error) = server::keydb::world_action::write_applied_status(
+                        if let Some(connection) = status_connection.as_mut()
+                            && let Err(error) = server::keydb::world_action::write_applied_status(
                                 connection, &request, &message,
                             ) {
                                 log::warn!(
@@ -1614,7 +1612,6 @@ impl Server {
                                     error
                                 );
                             }
-                        }
                         log::info!("world action {} applied: {}", request.request_id, message);
                     }
                     Err(error) => {
@@ -1639,8 +1636,8 @@ impl Server {
         request: &core::world_action_store::WorldActionRequest,
         message: &str,
     ) {
-        if let Some(connection) = status_connection {
-            if let Err(error) =
+        if let Some(connection) = status_connection
+            && let Err(error) =
                 server::keydb::world_action::write_failed_status(connection, request, message)
             {
                 log::warn!(
@@ -1649,7 +1646,6 @@ impl Server {
                     error
                 );
             }
-        }
         log::warn!("world action {} failed: {}", request.request_id, message);
     }
 
@@ -1695,8 +1691,8 @@ impl Server {
             }
         };
 
-        if let Some(connection) = status_connection.as_mut() {
-            if let Err(error) =
+        if let Some(connection) = status_connection.as_mut()
+            && let Err(error) =
                 server::keydb::ban_action::write_running_status(connection, &request)
             {
                 log::warn!(
@@ -1705,7 +1701,6 @@ impl Server {
                     error
                 );
             }
-        }
 
         let message = match &request.action {
             BanActionKind::ApplyBan {
@@ -1729,8 +1724,8 @@ impl Server {
             BanActionKind::ReloadBans => "ban reload acknowledged".to_owned(),
         };
 
-        if let Some(connection) = status_connection.as_mut() {
-            if let Err(error) =
+        if let Some(connection) = status_connection.as_mut()
+            && let Err(error) =
                 server::keydb::ban_action::write_applied_status(connection, &request, &message)
             {
                 log::warn!(
@@ -1739,7 +1734,6 @@ impl Server {
                     error
                 );
             }
-        }
         log::info!("ban action {} applied: {}", request.request_id, message);
     }
 
@@ -2305,9 +2299,7 @@ mod tests {
             slot.sprite_override = 555;
             slot.value = 1;
 
-            let mut new_item = core::types::Item::default();
-            new_item.value = 9_999;
-            new_item.flags = 0xAA;
+            let new_item = core::types::Item { value: 9_999, flags: 0xAA, ..core::types::Item::default() };
             let patch = core::item_store::ItemPatch::from_item(idx, &new_item);
             assert!(Server::apply_item_patch(gs, &patch));
 
@@ -2331,8 +2323,7 @@ mod tests {
     #[test]
     fn apply_item_patch_rejects_out_of_range_slot() {
         crate::test_helpers::with_test_gs(|gs| {
-            let mut new_item = core::types::Item::default();
-            new_item.value = 1;
+            let new_item = core::types::Item { value: 1, ..core::types::Item::default() };
             let patch = core::item_store::ItemPatch::from_item(core::constants::MAXITEM, &new_item);
             assert!(!Server::apply_item_patch(gs, &patch));
         });
@@ -2371,10 +2362,7 @@ mod tests {
             slot.luck = 50;
             slot.kindred = 1;
 
-            let mut new_char = core::types::Character::default();
-            new_char.kindred = 9;
-            new_char.flags = 0xBEEF;
-            new_char.alignment = -7;
+            let new_char = core::types::Character { kindred: 9, flags: 0xBEEF, alignment: -7, ..core::types::Character::default() };
             let patch = core::character_store::CharacterPatch::from_character(idx, &new_char);
             assert!(Server::apply_character_patch(gs, &patch));
 

@@ -137,7 +137,7 @@ impl ShopPanel {
 
     /// Returns whether the panel is currently visible.
     pub fn is_visible(&self) -> bool {
-        self.data.as_ref().map_or(false, |d| d.visible)
+        self.data.as_ref().is_some_and(|d| d.visible)
     }
 
     /// Toggle the panel's visibility.

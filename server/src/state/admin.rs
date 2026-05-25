@@ -166,7 +166,7 @@ impl GameState {
         buf[0] = ServerCommandType::Look5 as u8;
 
         let mut co_name = [0u8; 15];
-        co_name.copy_from_slice(&mut self.characters[co].name[0..15]);
+        co_name.copy_from_slice(&self.characters[co].name[0..15]);
 
         buf[1..16].copy_from_slice(&co_name);
 
@@ -442,7 +442,7 @@ impl GameState {
 
                 // Get item reference and character name for logging
                 let item_reference =
-                    c_string_to_str(&mut self.items[item_id as usize].reference).to_owned();
+                    c_string_to_str(&self.items[item_id as usize].reference).to_owned();
                 let co_name = self.characters[co].get_name().to_owned();
 
                 self.do_character_log(
@@ -454,7 +454,7 @@ impl GameState {
             } else {
                 // Inventory full
                 let item_reference =
-                    c_string_to_str(&mut self.items[item_id as usize].reference).to_owned();
+                    c_string_to_str(&self.items[item_id as usize].reference).to_owned();
 
                 self.do_character_log(
                     cn,

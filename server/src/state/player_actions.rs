@@ -55,7 +55,7 @@ impl GameState {
                     self.items[tmp].data[0] = cn as u32;
 
                     // Engrave character name into description
-                    let current_desc = c_string_to_str(&mut self.items[tmp].description);
+                    let current_desc = c_string_to_str(&self.items[tmp].description);
                     let char_name = self.characters[cn].get_name();
                     let new_desc = format!(
                         "{} Engraved in it are the letters \"{}\".",
@@ -68,7 +68,7 @@ impl GameState {
                             .copy_from_slice(&desc_bytes[..desc_bytes.len().min(200)]);
                     }
                 } else {
-                    let item_ref = c_string_to_str(&mut self.items[tmp].reference).to_owned();
+                    let item_ref = c_string_to_str(&self.items[tmp].reference).to_owned();
                     self.do_character_log(
                         cn,
                         FontColor::Red,
@@ -82,12 +82,12 @@ impl GameState {
             }
 
             // Check attribute requirements
-            for m in 0..5 {
+            for (m, at_text) in AT_TEXT.iter().enumerate().take(5) {
                 if self.items[tmp].attrib[m][2] > self.characters[cn].attrib[m][0] as i8 {
                     self.do_character_log(
                         cn,
                         FontColor::Red,
-                        &format!("You're {} to use that.\n", AT_TEXT[m]),
+                        &format!("You're {} to use that.\n", at_text),
                     );
                     return -1;
                 }
@@ -211,9 +211,8 @@ impl GameState {
         }
 
         // Perform the swap
-        let tmp = self.characters[cn].citem;
-        self.characters[cn].citem = self.characters[cn].worn[n];
-        self.characters[cn].worn[n] = tmp;
+        let ch = &mut self.characters[cn];
+        std::mem::swap(&mut ch.citem, &mut ch.worn[n]);
 
         self.characters[cn].set_do_update_flags();
 
@@ -880,7 +879,7 @@ impl GameState {
         }
         if msg.is_empty() {
             self.characters[co].text[3] = [0; 160];
-            let old = c_string_to_str(&mut self.characters[co].text[3]).to_owned();
+            let old = c_string_to_str(&self.characters[co].text[3]).to_owned();
             let co_name = self.characters[co].get_name().to_owned();
             self.do_character_log(
                 cn,
@@ -927,7 +926,7 @@ impl GameState {
                 let len_to_copy = std::cmp::min(bytes.len(), 48);
                 self.characters[cn].text[0][..len_to_copy].copy_from_slice(&bytes[..len_to_copy]);
 
-                let afk_text = c_string_to_str(&mut self.characters[cn].text[0]).to_owned();
+                let afk_text = c_string_to_str(&self.characters[cn].text[0]).to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Blue,

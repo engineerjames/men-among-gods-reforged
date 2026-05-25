@@ -177,8 +177,8 @@ impl GameScene {
                 }
 
                 // When the settings panel is open, forward nav events to it
-                if self.settings_panel.is_visible() {
-                    if let Some(nav_event) = self.hud_nav.process_event(event) {
+                if self.settings_panel.is_visible()
+                    && let Some(nav_event) = self.hud_nav.process_event(event) {
                         self.settings_panel.handle_event(&nav_event);
                         if let Some(sc) = self.process_settings_panel_actions(app_state) {
                             return Some(sc);
@@ -191,7 +191,6 @@ impl GameScene {
                         }
                         return None;
                     }
-                }
 
                 // D-pad → panel toggles and in-panel navigation (controller mode)
                 if self.controller_mode
@@ -370,15 +369,15 @@ impl GameScene {
                 // interaction). Without this guard, LT+A would fall through to
                 // the A-button walk/click path before reaching the skill
                 // dispatch block at the bottom.
-                if (self.lt_held || self.rt_held) && self.controller_mode {
-                    if let Some(cb) = ControllerButton::from_sdl2(
+                if (self.lt_held || self.rt_held) && self.controller_mode
+                    && let Some(cb) = ControllerButton::from_sdl2(
                         *button,
                         self.lb_held,
                         self.rb_held,
                         self.lt_held,
                         self.rt_held,
-                    ) {
-                        if let Some(slot) = app_state
+                    )
+                        && let Some(slot) = app_state
                             .settings
                             .character
                             .controller_bindings
@@ -404,8 +403,6 @@ impl GameScene {
                             }
                             return None;
                         }
-                    }
-                }
 
                 // A button → controller-specific panel interaction
                 // When inventory or skills is open with a focused slot, handle
@@ -419,24 +416,22 @@ impl GameScene {
                     }
 
                     // Inventory panel: A = interact with selected slot
-                    if self.inventory_panel.is_visible() {
-                        if let Some(slot) = self.inventory_panel.controller_selected() {
+                    if self.inventory_panel.is_visible()
+                        && let Some(slot) = self.inventory_panel.controller_selected() {
                             let shift = self.lb_held;
                             self.inventory_panel.controller_activate(slot, shift);
                             self.process_inventory_panel_actions(app_state);
                             return None;
                         }
-                    }
 
                     // Skills panel: A = activate focused +/- or Update
-                    if self.skills_panel.is_visible() {
-                        if self.skills_panel.controller_focus().is_some() {
+                    if self.skills_panel.is_visible()
+                        && self.skills_panel.controller_focus().is_some() {
                             let shift = self.lb_held;
                             self.skills_panel.controller_activate(shift);
                             self.process_skills_panel_actions(app_state);
                             return None;
                         }
-                    }
                 }
 
                 // A button → left-click equivalent (LB = shift, RB = ctrl)
@@ -535,8 +530,7 @@ impl GameScene {
                         .character
                         .controller_bindings
                         .slot_for_button(cb)
-                    {
-                        if let (Some(net), Some(ps)) =
+                        && let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
                             // LT held → secondary bar; otherwise primary.
@@ -554,7 +548,6 @@ impl GameScene {
                                 ));
                             }
                         }
-                    }
                 }
                 None
             }
@@ -571,8 +564,8 @@ impl GameScene {
                 }
 
                 // Left stick release (L3) → short press = select/deselect character
-                if *button == Btn::LeftStick && self.controller_mode {
-                    if let Some(_pressed_at) = self.l3_pressed_at.take() {
+                if *button == Btn::LeftStick && self.controller_mode
+                    && let Some(_pressed_at) = self.l3_pressed_at.take() {
                         // Hold threshold not reached (would have been consumed
                         // in update()), so this is a short press → select.
                         if let Some(ps) = app_state.player_state.as_ref() {
@@ -591,8 +584,8 @@ impl GameScene {
                                     let tile = ps.map().tile_at_xy(sx, sy);
                                     let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
                                     let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
-                                    if target_cn != 0 {
-                                        if let Some(ps_mut) = app_state.player_state.as_mut() {
+                                    if target_cn != 0
+                                        && let Some(ps_mut) = app_state.player_state.as_mut() {
                                             if selected_char == target_cn as u16 {
                                                 ps_mut.clear_selected_char();
                                             } else {
@@ -602,7 +595,6 @@ impl GameScene {
                                                 );
                                             }
                                         }
-                                    }
                                 } else if selected_char != 0 {
                                     // No character near cursor but one is selected → deselect
                                     if let Some(ps_mut) = app_state.player_state.as_mut() {
@@ -612,7 +604,6 @@ impl GameScene {
                             }
                         }
                     }
-                }
 
                 None
             }
@@ -676,15 +667,14 @@ impl GameScene {
                 }
 
                 // When settings panel is open (and keyboard hidden), forward nav events from stick
-                if self.settings_panel.is_visible() && !self.keyboard.is_visible() {
-                    if let Some(nav_event) = self.hud_nav.process_event(event) {
+                if self.settings_panel.is_visible() && !self.keyboard.is_visible()
+                    && let Some(nav_event) = self.hud_nav.process_event(event) {
                         self.settings_panel.handle_event(&nav_event);
                         if let Some(sc) = self.process_settings_panel_actions(app_state) {
                             return Some(sc);
                         }
                         return None;
                     }
-                }
 
                 // Trigger axis → skill dispatch.
                 // Lt fires from the secondary bar; Rt fires from the primary bar.
@@ -695,8 +685,7 @@ impl GameScene {
                         .character
                         .controller_bindings
                         .slot_for_button(cb)
-                    {
-                        if let (Some(net), Some(ps)) =
+                        && let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
                         {
                             let skill_nr = if use_secondary {
@@ -713,7 +702,6 @@ impl GameScene {
                                 ));
                             }
                         }
-                    }
                 }
                 None
             }

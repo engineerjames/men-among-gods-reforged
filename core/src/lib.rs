@@ -103,7 +103,7 @@ pub fn initialize_logger(
     log_level: LevelFilter,
     file_path: Option<&str>,
 ) -> Result<(), SetLoggerError> {
-    const LOGGING_PATTERN: &'static str = "{d} {l} {f}:{L} - {m}\n";
+    const LOGGING_PATTERN: &str = "{d} {l} {f}:{L} - {m}\n";
 
     // Build a stderr logger - always on.
     let stderr = ConsoleAppender::builder()

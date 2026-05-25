@@ -119,6 +119,12 @@ pub struct SkillBar {
     show_secondary: bool,
 }
 
+impl Default for SkillBar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkillBar {
     /// Creates a new skill bar at the given position.
     ///
@@ -316,8 +322,8 @@ impl Widget for SkillBar {
                                 });
                             }
                         }
-                        MouseButton::Right => {
-                            if bound_skill.is_some() {
+                        MouseButton::Right
+                            if bound_skill.is_some() => {
                                 // Unbind: bind slot to a sentinel that
                                 // `BindSkillKey` handler will clear.
                                 // We reuse BindSkillKey with skill_nr=0 as
@@ -327,7 +333,6 @@ impl Widget for SkillBar {
                                     key_slot,
                                 });
                             }
-                        }
                         _ => {}
                     }
                     return EventResponse::Consumed;

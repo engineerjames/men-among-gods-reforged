@@ -355,12 +355,11 @@ impl Widget for TalentPanel {
             return EventResponse::Consumed;
         }
 
-        if let UiEvent::MouseWheel { x, y, delta } = event {
-            if self.bounds.contains_point(*x, *y) {
+        if let UiEvent::MouseWheel { x, y, delta } = event
+            && self.bounds.contains_point(*x, *y) {
                 self.scroll_by(-*delta);
                 return EventResponse::Consumed;
             }
-        }
 
         // Per-row Learn buttons. Only emit if the visible row is currently
         // Available (the server still validates, but this avoids spam).
@@ -368,13 +367,12 @@ impl Widget for TalentPanel {
         let visible = self.visible_range();
         for row in self.rows[visible].iter_mut() {
             if row.button.handle_event(event) == EventResponse::Consumed {
-                if let Some(t) = snapshot.as_ref() {
-                    if Self::node_status(row.meta, t) == NodeStatus::Available {
+                if let Some(t) = snapshot.as_ref()
+                    && Self::node_status(row.meta, t) == NodeStatus::Available {
                         self.pending_actions.push(WidgetAction::LearnTalent {
                             slot: row.meta.slot,
                         });
                     }
-                }
                 return EventResponse::Consumed;
             }
         }
@@ -428,7 +426,7 @@ impl Widget for TalentPanel {
                 u32::from(available_talent_points(t)),
                 total_points_spent(t),
                 self.class
-                    .and_then(|c| tree_for(c))
+                    .and_then(tree_for)
                     .map(class_label)
                     .unwrap_or("(no tree)"),
             ),

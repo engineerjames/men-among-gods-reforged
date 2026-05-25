@@ -754,14 +754,13 @@ pub fn lab9_guesser_says(gs: &mut GameState, character_id: usize, text: &str) ->
             }
         }
     }
-    if !found {
-        if let Some(start) = word_start {
+    if !found
+        && let Some(start) = word_start {
             let word = &text[start..];
             if matches_answer(word) {
                 found = true;
             }
         }
-    }
 
     if found {
         let char_name = gs.characters[character_id].get_name().to_owned();
@@ -941,10 +940,10 @@ fn lab9_reset_bank(gs: &mut GameState, bankno: i32, closedoor: bool) {
     let bank_index = (bankno - 1) as usize;
     let bank = BANKS[bank_index];
     let x = bank.x1;
-    let mut y = bank.y1;
     let t = bank.temp;
 
     for n in 0..core::constants::SWITCHES {
+        let y = bank.y1 + n as i32;
         let m = (x + y * core::constants::SERVER_MAPX) as usize;
         let item_number = gs.map[m].it;
 
@@ -991,8 +990,6 @@ fn lab9_reset_bank(gs: &mut GameState, bankno: i32, closedoor: bool) {
         if len < 200 {
             gs.items[item_number as usize].description[len] = 0;
         }
-
-        y += 1;
     }
 
     let door_m = (bank.doorx + bank.doory * core::constants::SERVER_MAPX) as usize;
