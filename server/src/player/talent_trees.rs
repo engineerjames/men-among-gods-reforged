@@ -141,12 +141,24 @@ fn grant_skill(cn: usize, game_state: &mut GameState, skill: Skill) -> Result<()
         ));
     }
 
-    game_state.characters[cn].skill[skill as usize][SkillIndex::BaseValue as usize] = 1;
+    let idx = skill as usize;
+    let ch = &mut game_state.characters[cn];
+    ch.skill[idx][SkillIndex::BaseValue as usize] = 1;
+    // Talent-granted skills aren't present in any character template, so seed
+    // their MaxValue and RaiseDifficulty here. Without this the per-skill UI
+    // refuses to spend skill points on them (RaiseDifficulty == 0 means
+    // "not raisable", MaxValue == 0 caps progression at the base value).
+    if ch.skill[idx][SkillIndex::MaxValue as usize] == 0 {
+        ch.skill[idx][SkillIndex::MaxValue as usize] = 100;
+    }
+    if ch.skill[idx][SkillIndex::RaiseDifficulty as usize] == 0 {
+        ch.skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
+    }
 
     log::info!(
         "Granted new skill {:?} to character {}",
         skill,
-        c_string_to_str(&game_state.characters[cn].name)
+        c_string_to_str(&ch.name)
     );
 
     Ok(())

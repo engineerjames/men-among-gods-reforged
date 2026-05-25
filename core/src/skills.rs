@@ -59,6 +59,14 @@ pub const SK_BLADE_DANCE: usize = 42;
 
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
+const AT_DESC: [&str; 5] = [
+    "Helps you face danger.",
+    "Strengthens focus and magic.",
+    "Improves awareness and spell use.",
+    "Improves movement and dodging.",
+    "Improves physical power.",
+];
+
 /// Maximum number of skill slots.
 pub const MAX_SKILLS: usize = 50;
 
@@ -748,6 +756,19 @@ pub fn attribute_name(n: usize) -> &'static str {
     if n < AT_NAME.len() { AT_NAME[n] } else { "" }
 }
 
+/// Returns the brief helper text for an attribute index.
+///
+/// # Arguments
+///
+/// * `n` - Attribute index (0..4).
+///
+/// # Returns
+///
+/// * The attribute helper text, or an empty string if out of bounds.
+pub fn attribute_desc(n: usize) -> &'static str {
+    if n < AT_DESC.len() { AT_DESC[n] } else { "" }
+}
+
 // Static skill table (taken from server/original_source/SkillTab.cpp)
 const SKILL_NAMES: [&str; 50] = [
     "Hand to Hand",
@@ -1140,6 +1161,28 @@ mod tests {
     fn test_attribute_name_out_of_bounds() {
         assert_eq!(attribute_name(5), "");
         assert_eq!(attribute_name(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_attribute_desc_valid() {
+        assert_eq!(attribute_desc(0), "Helps you face danger.");
+        assert_eq!(attribute_desc(1), "Strengthens focus and magic.");
+        assert_eq!(attribute_desc(2), "Improves awareness and spell use.");
+        assert_eq!(attribute_desc(3), "Improves movement and dodging.");
+        assert_eq!(attribute_desc(4), "Improves physical power.");
+    }
+
+    #[test]
+    fn test_attribute_desc_out_of_bounds() {
+        assert_eq!(attribute_desc(5), "");
+        assert_eq!(attribute_desc(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_attribute_descs_non_empty() {
+        for n in 0..AT_DESC.len() {
+            assert!(!attribute_desc(n).is_empty());
+        }
     }
 
     #[test]

@@ -796,6 +796,20 @@ impl GameScene {
         false
     }
 
+    /// Returns `true` when a visible panel drawn above the skills panel is
+    /// under the cursor.
+    fn is_mouse_over_ui_above_skills_panel(&self) -> bool {
+        let (mx, my) = (self.mouse_x, self.mouse_y);
+        (self.inventory_panel.is_visible() && self.inventory_panel.bounds().contains_point(mx, my))
+            || (self.settings_panel.is_visible()
+                && self.settings_panel.bounds().contains_point(mx, my))
+            || (self.talent_panel.is_visible() && self.talent_panel.bounds().contains_point(mx, my))
+            || (self.quest_log_panel.is_visible()
+                && self.quest_log_panel.bounds().contains_point(mx, my))
+            || (self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my))
+            || (self.skill_picker.is_visible() && self.skill_picker.bounds().contains_point(mx, my))
+    }
+
     /// Draws context-sensitive helper text below and to the right of the
     /// mouse cursor with a drop shadow, matching the nameplate style.
     ///
@@ -894,6 +908,21 @@ impl GameScene {
                 gfx,
                 1,
                 &text,
+                x,
+                y,
+                crate::font_cache::TextStyle::drop_shadow(),
+            );
+        }
+        if !self.is_mouse_over_ui_above_skills_panel()
+            && let Some(text) = self.skills_panel.hover_text()
+        {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return crate::font_cache::draw_text(
+                canvas,
+                gfx,
+                1,
+                text,
                 x,
                 y,
                 crate::font_cache::TextStyle::drop_shadow(),
