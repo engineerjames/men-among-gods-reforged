@@ -316,6 +316,10 @@ fn data_directory() -> PathBuf {
 }
 
 /// Returns the path to the JSON profile file (`mag_profile.json`).
+///
+/// # Returns
+///
+/// * Value returned by `profile_file_path`.
 pub fn profile_file_path() -> PathBuf {
     data_directory().join(PROFILE_FILE_NAME)
 }
@@ -333,11 +337,19 @@ pub fn profile_exists() -> bool {
 }
 
 /// Returns the path to the log file (`mag_client.log`).
+///
+/// # Returns
+///
+/// * Value returned by `log_file_path`.
 pub fn log_file_path() -> PathBuf {
     data_directory().join(LOG_FILE_NAME)
 }
 
 /// Returns the path to the trusted hosts file (`known_hosts.json`).
+///
+/// # Returns
+///
+/// * Value returned by `known_hosts_file_path`.
 pub fn known_hosts_file_path() -> PathBuf {
     data_directory().join(KNOWN_HOSTS_FILE)
 }
@@ -430,6 +442,10 @@ pub fn save_global_settings(settings: &Settings) -> Result<(), String> {
 
 /// Returns the username from the most recent successful login, or `None` if
 /// no login has been saved yet.
+///
+/// # Returns
+///
+/// * `Some` value when `load_last_username` produces one, otherwise `None`.
 pub fn load_last_username() -> Option<String> {
     let path = profile_file_path();
     read_storage(&path).last_username

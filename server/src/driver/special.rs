@@ -14,6 +14,15 @@ struct Seen {
 }
 
 /// TODO: Document the purpose, inputs, and outputs of this function.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Character index used by this function.
+///
+/// # Returns
+///
+/// * `true` when `npc_stunrun_high` succeeds or the condition is met, otherwise `false`.
 pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
     let mut seen: [Seen; 30] = [const {
         Seen {
@@ -511,6 +520,16 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
     false
 }
 
+/// Runs the low-priority tick for the stunrun NPC driver.
+///
+/// # Arguments
+///
+/// * `_gs` - Active game state, unused by this no-op legacy hook.
+/// * `_cn` - NPC character index, unused by this no-op legacy hook.
+///
+/// # Returns
+///
+/// * Always `false`, matching the original no-op implementation.
 pub fn npc_stunrun_low(_gs: &mut GameState, _cn: usize) -> bool {
     // Empty function - does nothing in the original C++ implementation
     false
@@ -592,6 +611,25 @@ fn npc_stunrun_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     true
 }
 
+/// Handles incoming messages for the stunrun NPC driver.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing NPC and target state.
+/// * `cn` - NPC character index receiving the message.
+/// * `msg_type` - Message type constant.
+/// * `dat1` - First message payload value.
+/// * `dat2` - Second message payload value.
+/// * `_dat3` - Third message payload value, currently unused.
+/// * `_dat4` - Fourth message payload value, currently unused.
+///
+/// # Returns
+///
+/// * `true` when the message was handled as actionable state, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn` or a message payload interpreted as a character index is invalid.
 pub fn npc_stunrun_msg(
     gs: &mut GameState,
     cn: usize,
@@ -624,6 +662,20 @@ pub fn npc_stunrun_msg(
     }
 }
 
+/// Runs the high-priority tick for a city-attack NPC.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing NPC combat state and skills.
+/// * `cn` - NPC character index.
+///
+/// # Returns
+///
+/// * `true` when the NPC spent the tick casting or acting, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn` or its current attack target index is invalid.
 pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
     let low_hp = gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 600);
     if low_hp && driver::npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
@@ -722,6 +774,22 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
     false
 }
 
+/// Attempts to move an NPC toward a target coordinate.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing NPC movement state and map collision checks.
+/// * `cn` - NPC character index.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * `true` when the NPC is close enough to the target, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn` is not a valid character index.
 pub fn npc_moveto(gs: &mut GameState, cn: usize, x: u16, y: u16) -> bool {
     let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
@@ -791,6 +859,20 @@ fn npc_cityattack_wait(gs: &GameState) -> bool {
     (mdtime % 28800) < 20
 }
 
+/// Runs the low-priority waypoint state machine for a city-attack NPC.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing NPC waypoint state.
+/// * `cn` - NPC character index.
+///
+/// # Returns
+///
+/// * Always `false` after advancing state as needed.
+///
+/// # Panics
+///
+/// * Panics if `cn` is not a valid character index.
 pub fn npc_cityattack_low(gs: &mut GameState, cn: usize) -> bool {
     let state = gs.characters[cn].data[0];
 
@@ -846,6 +928,25 @@ fn npc_cityattack_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     true
 }
 
+/// Handles incoming messages for the city-attack NPC driver.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing NPC and target state.
+/// * `cn` - NPC character index receiving the message.
+/// * `msg_type` - Message type constant.
+/// * `dat1` - First message payload value.
+/// * `dat2` - Second message payload value.
+/// * `_dat3` - Third message payload value, currently unused.
+/// * `_dat4` - Fourth message payload value, currently unused.
+///
+/// # Returns
+///
+/// * `true` when the message was handled as actionable state, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn` or a message payload interpreted as a character index is invalid.
 pub fn npc_cityattack_msg(
     gs: &mut GameState,
     cn: usize,
@@ -882,10 +983,34 @@ pub fn npc_cityattack_msg(
     }
 }
 
+/// Runs the high-priority tick for Malte's NPC driver.
+///
+/// # Arguments
+///
+/// * `_gs` - Active game state, unused by this legacy hook.
+/// * `_character_id` - NPC character index, unused by this legacy hook.
+///
+/// # Returns
+///
+/// * Always `false`.
 pub fn npc_malte_high(_gs: &mut GameState, _character_id: usize) -> bool {
     false
 }
 
+/// Runs the low-priority scripted state machine for Malte's NPC driver.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing Malte's script state.
+/// * `cn` - Malte character index.
+///
+/// # Returns
+///
+/// * `true` when the script consumed the tick, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn` or the stored target character index is invalid.
 pub fn npc_malte_low(gs: &mut GameState, cn: usize) -> bool {
     let ticker = gs.globals.ticker;
     let data_2 = gs.characters[cn].data[2];
@@ -986,6 +1111,25 @@ fn npc_malte_gotattack(gs: &mut GameState, cn: usize, co: usize) -> bool {
     true
 }
 
+/// Handles incoming messages for Malte's NPC driver.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing NPC and target state.
+/// * `cn` - Malte character index receiving the message.
+/// * `msg_type` - Message type constant.
+/// * `dat1` - First message payload value.
+/// * `_dat2` - Second message payload value, currently unused.
+/// * `_dat3` - Third message payload value, currently unused.
+/// * `_dat4` - Fourth message payload value, currently unused.
+///
+/// # Returns
+///
+/// * `true` when the message was handled as actionable state, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn` or a message payload interpreted as a character index is invalid.
 pub fn npc_malte_msg(
     gs: &mut GameState,
     cn: usize,

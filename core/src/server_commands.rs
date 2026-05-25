@@ -178,6 +178,16 @@ fn sv_setmap3_len(cnt: usize) -> usize {
 }
 
 impl ServerCommandType {
+    /// Returns the expected packet length for a server command buffer.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Packet bytes beginning with a server command opcode.
+    /// * `last_setmap_n` - Mutable state used to resolve delta-encoded map packet lengths.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(length)` with the expected packet byte length, or `Err(String)` for invalid/incomplete input.
     pub fn get_expected_length(bytes: &[u8], last_setmap_n: &mut i32) -> Result<usize, String> {
         if bytes.is_empty() {
             return Err("sv_cmd_len called with empty buffer".to_owned());
@@ -1269,6 +1279,15 @@ pub struct ServerCommand {
 }
 
 impl ServerCommand {
+    /// Decodes a structured server command from raw packet bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Raw packet bytes including the command opcode.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(ServerCommand)` when decoding succeeds, otherwise `None`.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         if bytes.is_empty() {
             return None;

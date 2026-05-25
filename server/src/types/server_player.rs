@@ -87,6 +87,11 @@ pub struct ServerPlayer {
 }
 
 impl ServerPlayer {
+    /// Creates a new disconnected server player slot with empty buffers and maps.
+    ///
+    /// # Returns
+    ///
+    /// * A default server player slot ready for login/session initialization.
     pub fn new() -> Self {
         let cmap_size = TILEX * TILEY;
         let mut cmap = std::array::from_fn(|_| CMap::default());
@@ -139,6 +144,15 @@ impl ServerPlayer {
         }
     }
 
+    /// Returns whether a player slot index is in range.
+    ///
+    /// # Arguments
+    ///
+    /// * `player_index` - Player slot index to validate.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `player_index` is less than `MAXPLAYER`.
     pub fn is_sane_player(player_index: usize) -> bool {
         player_index < MAXPLAYER
     }

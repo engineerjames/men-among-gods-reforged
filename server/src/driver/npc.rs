@@ -100,6 +100,22 @@ pub fn npc_should_consider_enemy(cn: &Character, co: &Character, always: bool) -
     true
 }
 
+/// Handles the legacy `npc_add_enemy` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `always` - Value passed through to the legacy `npc_add_enemy` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_add_enemy` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_add_enemy` is outside the corresponding game-state collection.
 pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> bool {
     if !npc_should_consider_enemy(&gs.characters[cn], &gs.characters[co], always) {
         return false;
@@ -148,6 +164,17 @@ pub fn npc_add_enemy(gs: &mut GameState, cn: usize, co: usize, always: bool) -> 
     true
 }
 
+/// Handles the legacy `npc_is_enemy` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `co_idx` - Value passed through to the legacy `npc_is_enemy` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_is_enemy` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_is_enemy(cn: &Character, co: &Character, co_idx: usize) -> bool {
     let idx = co_idx as i32 | (helpers::char_id(co) << 16);
 
@@ -159,6 +186,21 @@ pub fn npc_is_enemy(cn: &Character, co: &Character, co_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_list_enemies` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `npc` - Value passed through to the legacy `npc_list_enemies` hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_list_enemies` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_list_enemies` is outside the corresponding game-state collection.
 pub fn npc_list_enemies(gs: &mut GameState, npc: usize, cn: usize) -> bool {
     let npc_name = c_string_to_str(&gs.characters[npc].name).to_owned();
     let mut enemies = Vec::new();
@@ -191,6 +233,21 @@ pub fn npc_list_enemies(gs: &mut GameState, npc: usize, cn: usize) -> bool {
     }
 }
 
+/// Handles the legacy `npc_remove_enemy` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `npc` - Value passed through to the legacy `npc_remove_enemy` hook.
+/// * `enemy` - Value passed through to the legacy `npc_remove_enemy` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_remove_enemy` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_remove_enemy` is outside the corresponding game-state collection.
 pub fn npc_remove_enemy(gs: &mut GameState, npc: usize, enemy: usize) -> bool {
     let mut found = false;
 
@@ -210,6 +267,18 @@ pub fn npc_remove_enemy(gs: &mut GameState, npc: usize, enemy: usize) -> bool {
     found
 }
 
+/// Handles the legacy `npc_saytext_n` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `npc` - Value passed through to the legacy `npc_saytext_n` hook.
+/// * `n` - Value passed through to the legacy `npc_saytext_n` hook.
+/// * `name` - Value passed through to the legacy `npc_saytext_n` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_saytext_n` is outside the corresponding game-state collection.
 pub fn npc_saytext_n(gs: &mut GameState, npc: usize, n: usize, name: Option<&str>) {
     let ch_npc = &gs.characters[npc];
 
@@ -244,6 +313,22 @@ pub fn npc_saytext_n(gs: &mut GameState, npc: usize, n: usize, name: Option<&str
     }
 }
 
+/// Handles the legacy `npc_gotattack` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `_dam` - Value passed through to the legacy `npc_gotattack` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_gotattack` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_gotattack` is outside the corresponding game-state collection.
 pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> bool {
     gs.characters[cn].data[92] = TICKS * 60;
 
@@ -367,22 +452,90 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
     true
 }
 
+/// Handles the legacy `npc_gothit` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `dam` - Value passed through to the legacy `npc_gothit` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_gothit` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_gothit` is outside the corresponding game-state collection.
 pub fn npc_gothit(gs: &mut GameState, cn: usize, co: usize, dam: i32) -> bool {
     npc_gotattack(gs, cn, co, dam)
 }
 
+/// Handles the legacy `npc_gotmiss` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_gotmiss` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_gotmiss` is outside the corresponding game-state collection.
 pub fn npc_gotmiss(gs: &mut GameState, cn: usize, co: usize) -> bool {
     npc_gotattack(gs, cn, co, 0)
 }
 
+/// Handles the legacy `npc_didhit` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `_co` - Value passed through to the legacy `npc_didhit` hook.
+/// * `_dam` - Value passed through to the legacy `npc_didhit` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_didhit` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_didhit(_cn: usize, _co: usize, _dam: i32) -> bool {
     false
 }
 
+/// Handles the legacy `npc_didmiss` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `_co` - Value passed through to the legacy `npc_didmiss` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_didmiss` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_didmiss(_cn: usize, _co: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_killed` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `cc` - Secondary character index for this hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_killed` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_killed` is outside the corresponding game-state collection.
 pub fn npc_killed(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     if gs.characters[cn].attack_cn == co as u16 {
         gs.characters[cn].attack_cn = 0;
@@ -409,18 +562,75 @@ pub fn npc_killed(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_didkill` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_didkill` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_didkill` is outside the corresponding game-state collection.
 pub fn npc_didkill(gs: &mut GameState, cn: usize, co: usize) -> bool {
     npc_killed(gs, cn, cn, co)
 }
 
+/// Handles the legacy `npc_gotexp` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `_amount` - Value passed through to the legacy `npc_gotexp` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_gotexp` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_gotexp(_cn: usize, _amount: i32) -> bool {
     false
 }
 
+/// Handles the legacy `npc_seekill` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `cc` - Secondary character index for this hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_seekill` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_seekill` is outside the corresponding game-state collection.
 pub fn npc_seekill(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     npc_killed(gs, cn, cc, co)
 }
 
+/// Handles the legacy `npc_seeattack` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `cc` - Secondary character index for this hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_seeattack` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_seeattack` is outside the corresponding game-state collection.
 pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     gs.characters[cn].data[92] = TICKS * 60;
 
@@ -572,6 +782,22 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
     false
 }
 
+/// Handles the legacy `npc_seehit` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `cc` - Secondary character index for this hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_seehit` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_seehit` is outside the corresponding game-state collection.
 pub fn npc_seehit(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     if npc_seeattack(gs, cn, cc, co) {
         return true;
@@ -585,6 +811,22 @@ pub fn npc_seehit(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_seemiss` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `cc` - Secondary character index for this hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_seemiss` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_seemiss` is outside the corresponding game-state collection.
 pub fn npc_seemiss(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool {
     if npc_seeattack(gs, cn, cc, co) {
         return true;
@@ -598,6 +840,23 @@ pub fn npc_seemiss(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool 
     false
 }
 
+/// Handles the legacy `npc_give` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `in_item` - Value passed through to the legacy `npc_give` hook.
+/// * `money` - Value passed through to the legacy `npc_give` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_give` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_give` is outside the corresponding game-state collection.
 pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money: i32) -> bool {
     // If giver is a player/usurp, set active timer; otherwise ensure group active
     if (gs.characters[co].flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
@@ -1061,6 +1320,21 @@ pub fn npc_scan_player_items(gs: &mut GameState, cn: usize, co: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_died` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_died` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_died` is outside the corresponding game-state collection.
 pub fn npc_died(gs: &mut GameState, cn: usize, co: usize) -> bool {
     // Mirror C++ behavior: chance = characters[cn].data[48]
     let chance = gs.characters[cn].data[48];
@@ -1089,6 +1363,24 @@ pub fn npc_died(gs: &mut GameState, cn: usize, co: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_shout` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `code` - Value passed through to the legacy `npc_shout` hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * `true` when `npc_shout` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_shout` is outside the corresponding game-state collection.
 pub fn npc_shout(gs: &mut GameState, cn: usize, co: usize, code: i32, x: i32, y: i32) -> bool {
     if gs.characters[cn].data[53] != 0 && gs.characters[cn].data[53] == code {
         gs.characters[cn].data[92] = TICKS * 60;
@@ -1121,6 +1413,21 @@ pub fn npc_shout(gs: &mut GameState, cn: usize, co: usize, code: i32, x: i32, y:
     false
 }
 
+/// Handles the legacy `npc_hitme` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_hitme` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_hitme` is outside the corresponding game-state collection.
 pub fn npc_hitme(gs: &mut GameState, cn: usize, co: usize) -> bool {
     let cn_can_see_co = gs.do_char_can_see(cn, co);
 
@@ -1134,6 +1441,25 @@ pub fn npc_hitme(gs: &mut GameState, cn: usize, co: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_msg` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `msg_type` - Message type constant being handled.
+/// * `dat1` - First legacy message payload value.
+/// * `dat2` - Second legacy message payload value.
+/// * `dat3` - Third legacy message payload value.
+/// * `dat4` - Fourth legacy message payload value.
+///
+/// # Returns
+///
+/// * `true` when `npc_msg` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_msg` is outside the corresponding game-state collection.
 pub fn npc_msg(
     gs: &mut GameState,
     cn: usize,
@@ -1184,6 +1510,16 @@ pub fn npc_msg(
 // Spell and Combat Functions
 // ****************************************************
 
+/// Handles the legacy `get_spellcost` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `spell` - Value passed through to the legacy `get_spellcost` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `get_spellcost` implementation.
 pub fn get_spellcost(cn: &Character, spell: usize) -> i32 {
     i32::from(match spell {
         skills::SK_BLAST => cn.skill[skills::SK_BLAST][5] / 5,
@@ -1202,6 +1538,15 @@ pub fn get_spellcost(cn: &Character, spell: usize) -> i32 {
     })
 }
 
+/// Handles the legacy `spellflag` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `spell` - Value passed through to the legacy `spellflag` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `spellflag` implementation.
 pub fn spellflag(spell: usize) -> u32 {
     match spell {
         skills::SK_LIGHT => SP_LIGHT,
@@ -1216,6 +1561,21 @@ pub fn spellflag(spell: usize) -> u32 {
     }
 }
 
+/// Handles the legacy `npc_check_target` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * `true` when `npc_check_target` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_check_target` is outside the corresponding game-state collection.
 pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
     if x < 1 || x >= SERVER_MAPX as usize || y < 1 || y >= SERVER_MAPY as usize {
         return false;
@@ -1247,6 +1607,16 @@ pub fn npc_check_target(gs: &GameState, x: usize, y: usize) -> bool {
     true
 }
 
+/// Handles the legacy `npc_is_stunned` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `items` - Value passed through to the legacy `npc_is_stunned` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_is_stunned` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_is_stunned(cn: &Character, items: &[core::types::Item]) -> bool {
     for n in 0..20 {
         let active_spell = cn.spell[n];
@@ -1258,6 +1628,16 @@ pub fn npc_is_stunned(cn: &Character, items: &[core::types::Item]) -> bool {
     false
 }
 
+/// Handles the legacy `npc_is_blessed` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `items` - Value passed through to the legacy `npc_is_blessed` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_is_blessed` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_is_blessed(cn: &Character, items: &[core::types::Item]) -> bool {
     for n in 0..20 {
         let active_spell = cn.spell[n];
@@ -1271,6 +1651,16 @@ pub fn npc_is_blessed(cn: &Character, items: &[core::types::Item]) -> bool {
 
 /// Pure pre-condition check: whether an NPC can consider casting `spell` on `co`
 /// based on character flags, skill availability, and spell-specific feasibility.
+///
+/// # Arguments
+///
+/// * `cn` - Character index used by this function.
+/// * `co` - Target or counterpart character index used by this function.
+/// * `spell` - Value passed to `npc_spell_preconditions_met`.
+///
+/// # Returns
+///
+/// * `true` when `npc_spell_preconditions_met` succeeds or the condition is met, otherwise `false`.
 pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize) -> bool {
     if cn.flags & CharacterFlags::NoMagic.bits() != 0 {
         return false;
@@ -1307,6 +1697,22 @@ pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize)
     true
 }
 
+/// Handles the legacy `npc_try_spell` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `spell` - Value passed through to the legacy `npc_try_spell` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_try_spell` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_try_spell` is outside the corresponding game-state collection.
 pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> bool {
     if !npc_spell_preconditions_met(&gs.characters[cn], &gs.characters[co], spell) {
         return false;
@@ -1372,6 +1778,16 @@ pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> 
     false
 }
 
+/// Handles the legacy `spell_immunity` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `power` - Value passed through to the legacy `spell_immunity` hook.
+/// * `immunity` - Value passed through to the legacy `spell_immunity` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `spell_immunity` implementation.
 pub fn spell_immunity(power: i32, immunity: i32) -> i32 {
     let half_immunity = immunity / 2;
     if power <= half_immunity {
@@ -1381,6 +1797,17 @@ pub fn spell_immunity(power: i32, immunity: i32) -> i32 {
     power - half_immunity
 }
 
+/// Handles the legacy `npc_can_spell` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `spell` - Value passed through to the legacy `npc_can_spell` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_can_spell` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_can_spell(cn: &Character, co: &Character, spell: usize) -> bool {
     if cn.a_mana / 1000 < get_spellcost(cn, spell) {
         return false;
@@ -1394,6 +1821,22 @@ pub fn npc_can_spell(cn: &Character, co: &Character, spell: usize) -> bool {
     true
 }
 
+/// Handles the legacy `npc_quaff_potion` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `itemp` - Value passed through to the legacy `npc_quaff_potion` hook.
+/// * `stemp` - Value passed through to the legacy `npc_quaff_potion` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_quaff_potion` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_quaff_potion` is outside the corresponding game-state collection.
 pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -> bool {
     for n in 0..20 {
         let item_index = gs.characters[cn].spell[n];
@@ -1444,6 +1887,16 @@ pub fn npc_quaff_potion(gs: &mut GameState, cn: usize, itemp: i32, stemp: i32) -
     true
 }
 
+/// Handles the legacy `die_companion` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `die_companion` is outside the corresponding game-state collection.
 pub fn die_companion(gs: &mut GameState, cn: usize) {
     EffectManager::fx_add_effect(
         gs,
@@ -1463,6 +1916,20 @@ pub fn die_companion(gs: &mut GameState, cn: usize) {
 // High Priority NPC Driver
 // ****************************************************
 
+/// Handles the legacy `npc_driver_high` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_driver_high` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_driver_high` is outside the corresponding game-state collection.
 pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     // Check for special driver
     let special_driver = gs.characters[cn].data[25];
@@ -1931,6 +2398,16 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
 // Low Priority NPC Driver
 // ****************************************************
 
+/// Handles the legacy `npc_driver_low` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_driver_low` is outside the corresponding game-state collection.
 pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
     // Check for special driver
     let special_driver = gs.characters[cn].data[25];
@@ -2406,6 +2883,21 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
 // Grave Looting and Equipment Functions
 // ****************************************************
 
+/// Handles the legacy `npc_check_placement` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `in_idx` - Value passed through to the legacy `npc_check_placement` hook.
+/// * `n` - Value passed through to the legacy `npc_check_placement` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_check_placement` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_check_placement` is outside the corresponding game-state collection.
 pub fn npc_check_placement(gs: &GameState, in_idx: usize, n: usize) -> bool {
     let placement = gs.items[in_idx].placement;
 
@@ -2425,6 +2917,16 @@ pub fn npc_check_placement(gs: &GameState, in_idx: usize, n: usize) -> bool {
     }
 }
 
+/// Handles the legacy `npc_can_wear_item` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `ch` - Value passed through to the legacy `npc_can_wear_item` hook.
+/// * `it` - Value passed through to the legacy `npc_can_wear_item` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_can_wear_item` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_can_wear_item(ch: &Character, it: &core::types::Item) -> bool {
     // Check attribute requirements
     for m in 0..5 {
@@ -2456,6 +2958,15 @@ pub fn npc_can_wear_item(ch: &Character, it: &core::types::Item) -> bool {
     true
 }
 
+/// Handles the legacy `npc_item_value` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `it` - Value passed through to the legacy `npc_item_value` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `npc_item_value` implementation.
 pub fn npc_item_value(it: &core::types::Item) -> i32 {
     let mut score = 0;
 
@@ -2474,6 +2985,21 @@ pub fn npc_item_value(it: &core::types::Item) -> i32 {
     score
 }
 
+/// Handles the legacy `npc_want_item` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `in_idx` - Value passed through to the legacy `npc_want_item` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_want_item` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_want_item` is outside the corresponding game-state collection.
 pub fn npc_want_item(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     let item_38 = gs.characters[cn].item[38];
 
@@ -2505,6 +3031,21 @@ pub fn npc_want_item(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_equip_item` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `in_idx` - Value passed through to the legacy `npc_equip_item` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_equip_item` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_equip_item` is outside the corresponding game-state collection.
 pub fn npc_equip_item(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     let citem = gs.characters[cn].citem;
 
@@ -2550,6 +3091,21 @@ pub fn npc_equip_item(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_loot_grave` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `in_idx` - Value passed through to the legacy `npc_loot_grave` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_loot_grave` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_loot_grave` is outside the corresponding game-state collection.
 pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     let ch_x = gs.characters[cn].x;
     let ch_y = gs.characters[cn].y;
@@ -2663,6 +3219,16 @@ pub fn npc_loot_grave(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_already_searched_grave` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `in_idx` - Value passed through to the legacy `npc_already_searched_grave` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_already_searched_grave` reports that it handled the legacy action, otherwise `false`.
 pub fn npc_already_searched_grave(cn: &Character, in_idx: usize) -> bool {
     let text_9 = &cn.text[9];
 
@@ -2682,6 +3248,17 @@ pub fn npc_already_searched_grave(cn: &Character, in_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `npc_add_searched_grave` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `in_idx` - Value passed through to the legacy `npc_add_searched_grave` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_add_searched_grave` is outside the corresponding game-state collection.
 pub fn npc_add_searched_grave(gs: &mut GameState, cn: usize, in_idx: usize) {
     let int_size = std::mem::size_of::<i32>();
     let text_9_len = gs.characters[cn].text[9].len();
@@ -2696,6 +3273,20 @@ pub fn npc_add_searched_grave(gs: &mut GameState, cn: usize, in_idx: usize) {
     }
 }
 
+/// Handles the legacy `npc_grave_logic` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_grave_logic` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_grave_logic` is outside the corresponding game-state collection.
 pub fn npc_grave_logic(gs: &mut GameState, cn: usize) -> bool {
     let (ch_x, ch_y) = (gs.characters[cn].x, gs.characters[cn].y);
 
@@ -2750,6 +3341,16 @@ pub fn npc_grave_logic(gs: &mut GameState, cn: usize) -> bool {
 // Shop Functions
 // ****************************************************
 
+/// Handles the legacy `update_shop` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `update_shop` is outside the corresponding game-state collection.
 pub fn update_shop(gs: &mut GameState, cn: usize) {
     let mut sale = [0i32; 10];
 
@@ -2841,6 +3442,21 @@ pub fn update_shop(gs: &mut GameState, cn: usize) {
 // Special Functions
 // ****************************************************
 
+/// Handles the legacy `shiva_activate_candle` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `in_idx` - Value passed through to the legacy `shiva_activate_candle` hook.
+///
+/// # Returns
+///
+/// * `true` when `shiva_activate_candle` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `shiva_activate_candle` is outside the corresponding game-state collection.
 pub fn shiva_activate_candle(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     let (mdtime, mdday) = (gs.globals.mdtime, gs.globals.mdday);
 
@@ -2898,6 +3514,15 @@ pub fn shiva_activate_candle(gs: &mut GameState, cn: usize, in_idx: usize) -> bo
 // Helper Functions for npc_see
 // ****************************************************
 
+/// Handles the legacy `is_unique_item` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `it` - Value passed through to the legacy `is_unique_item` hook.
+///
+/// # Returns
+///
+/// * `true` when `is_unique_item` reports that it handled the legacy action, otherwise `false`.
 pub fn is_unique_item(it: &core::types::Item) -> bool {
     const UNIQUE_TEMPS: [u16; 60] = [
         280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 525, 526, 527, 528, 529,
@@ -2909,6 +3534,16 @@ pub fn is_unique_item(it: &core::types::Item) -> bool {
     UNIQUE_TEMPS.contains(&it.temp)
 }
 
+/// Handles the legacy `count_uniques` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `items` - Value passed through to the legacy `count_uniques` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `count_uniques` implementation.
 pub fn count_uniques(cn: &Character, items: &[core::types::Item]) -> i32 {
     let mut cnt = 0;
 
@@ -2941,6 +3576,22 @@ pub fn count_uniques(cn: &Character, items: &[core::types::Item]) -> i32 {
     cnt
 }
 
+/// Handles the legacy `npc_cityguard_see` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+/// * `flag` - Value passed through to the legacy `npc_cityguard_see` hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_cityguard_see` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_cityguard_see` is outside the corresponding game-state collection.
 pub fn npc_cityguard_see(gs: &mut GameState, cn: usize, co: usize, flag: i32) -> bool {
     let co_group = gs.characters[co].data[42];
 
@@ -2996,6 +3647,21 @@ pub fn npc_cityguard_see(gs: &mut GameState, cn: usize, co: usize, flag: i32) ->
 // NPC See Function
 // ****************************************************
 
+/// Handles the legacy `npc_see` NPC driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `npc_see` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `npc_see` is outside the corresponding game-state collection.
 pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     let ticker = gs.globals.ticker;
 

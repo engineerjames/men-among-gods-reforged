@@ -288,16 +288,28 @@ impl Default for Character {
 
 impl Character {
     /// Get name as a string slice
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `get_name`.
     pub fn get_name(&self) -> &str {
         c_string_to_str(&self.name)
     }
 
     /// Check if character is a player
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_player` succeeds or the condition is met, otherwise `false`.
     pub fn is_player(&self) -> bool {
         (self.flags & CharacterFlags::Player.bits()) != 0
     }
 
     /// Check if character has profile flag set
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `has_prof` succeeds or the condition is met, otherwise `false`.
     pub fn has_prof(&self) -> bool {
         (self.flags & CharacterFlags::Profile.bits()) != 0
     }
@@ -408,18 +420,34 @@ impl Character {
         None
     }
 
+    /// Marks this character for client update and persistence.
     pub fn set_do_update_flags(&mut self) {
         self.flags |= CharacterFlags::Update.bits() | CharacterFlags::SaveMe.bits();
     }
 
+    /// Returns whether this character is a monster kindred.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the monster kindred bit is set, otherwise `false`.
     pub fn is_monster(&self) -> bool {
         (self.kindred as u32 & traits::KIN_MONSTER) != 0
     }
 
+    /// Returns whether this character is flagged as usurped or thralled.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when either the Usurp or Thrall flag is set.
     pub fn is_usurp_or_thrall(&self) -> bool {
         (self.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits())) != 0
     }
 
+    /// Returns a display string for this character's kindred.
+    ///
+    /// # Returns
+    ///
+    /// * Kindred display text derived from the character's kindred bitfield.
     pub fn get_kindred_as_string(&self) -> String {
         let kindred = self.kindred as u32;
         if kindred & traits::KIN_TEMPLAR != 0 {
@@ -435,6 +463,11 @@ impl Character {
         }
     }
 
+    /// Returns a display string for this character's gender.
+    ///
+    /// # Returns
+    ///
+    /// * Gender display text derived from the character's kindred bitfield.
     pub fn get_gender_as_string(&self) -> String {
         // TODO: Rework to utilize the values in the traits module
         let kindred = self.kindred as u32;
@@ -447,6 +480,11 @@ impl Character {
         }
     }
 
+    /// Builds a default visible description for this character.
+    ///
+    /// # Returns
+    ///
+    /// * Default description text using the character name, kindred, and gender.
     pub fn get_default_description(&self) -> String {
         format!(
             "{} is a {}. {} looks somewhat nondescript.",
@@ -456,10 +494,25 @@ impl Character {
         )
     }
 
+    /// Returns the character reference text.
+    ///
+    /// # Returns
+    ///
+    /// * Reference text decoded from the legacy fixed-width buffer.
     pub fn get_reference(&self) -> &str {
         c_string_to_str(&self.reference)
     }
 
+    /// Returns whether a character id points at a non-player character.
+    ///
+    /// # Arguments
+    ///
+    /// * `character_id` - Character id to validate.
+    /// * `character` - Character record associated with `character_id`.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `character_id` is in range and `character` is not a player.
     pub fn is_sane_npc(character_id: usize, character: &Character) -> bool {
         character_id > 0 && character_id < crate::constants::MAXCHARS && !character.is_player()
     }
@@ -552,6 +605,11 @@ impl Character {
         self.description[..limit].copy_from_slice(&bytes[..limit]);
     }
 
+    /// Returns whether this character should keep its group state active.
+    ///
+    /// # Returns
+    ///
+    /// * `true` for active player/usurp/no-sleep characters or characters with group data set.
     pub fn group_active(&self) -> bool {
         if (self.flags
             & (CharacterFlags::Player | CharacterFlags::Usurp | CharacterFlags::NoSleep).bits())

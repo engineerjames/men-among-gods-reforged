@@ -3120,6 +3120,16 @@ use crate::god::God;
 use crate::{driver, helpers};
 
 /// Port of `obey(int cn, int co)` from `talk.cpp` using direct `GameState` access.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `cn` - Character index used by this function.
+/// * `co` - Target or counterpart character index used by this function.
+///
+/// # Returns
+///
+/// * Value returned by `obey`.
 pub fn obey(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     // Check if co is the companion master (data[63])
     if gs.characters[cn].data[63] == co as i32 {

@@ -144,6 +144,11 @@ fn drain_batch(conn: &mut redis::Connection) -> Result<Vec<BanActionRequest>, St
 }
 
 /// Write a running status entry for a live ban action.
+///
+/// # Arguments
+///
+/// * `con` - Value passed to `write_running_status`.
+/// * `request` - Value passed to `write_running_status`.
 pub fn write_running_status(
     con: &mut redis::Connection,
     request: &BanActionRequest,
@@ -152,6 +157,12 @@ pub fn write_running_status(
 }
 
 /// Write an applied status entry for a live ban action.
+///
+/// # Arguments
+///
+/// * `con` - Value passed to `write_applied_status`.
+/// * `request` - Value passed to `write_applied_status`.
+/// * `message` - Value passed to `write_applied_status`.
 pub fn write_applied_status(
     con: &mut redis::Connection,
     request: &BanActionRequest,
@@ -161,6 +172,12 @@ pub fn write_applied_status(
 }
 
 /// Write a failed status entry for a live ban action.
+///
+/// # Arguments
+///
+/// * `con` - Value passed to `write_failed_status`.
+/// * `request` - Value passed to `write_failed_status`.
+/// * `message` - Value passed to `write_failed_status`.
 pub fn write_failed_status(
     con: &mut redis::Connection,
     request: &BanActionRequest,
@@ -170,6 +187,11 @@ pub fn write_failed_status(
 }
 
 /// Write a pending status entry for a live ban action.
+///
+/// # Arguments
+///
+/// * `con` - Value passed to `write_pending_status`.
+/// * `request` - Value passed to `write_pending_status`.
 pub fn write_pending_status(
     con: &mut redis::Connection,
     request: &BanActionRequest,

@@ -45,6 +45,21 @@ fn take_item_from_char(gs: &mut GameState, item_idx: usize, cn: usize) {
     gs.do_update_char(cn);
 }
 
+/// Handles the legacy `sub_door_driver` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `sub_door_driver` hook.
+///
+/// # Returns
+///
+/// * `true` when `sub_door_driver` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `sub_door_driver` is outside the corresponding game-state collection.
 pub fn sub_door_driver(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     let item = &gs.items[item_idx];
 
@@ -79,6 +94,21 @@ pub fn sub_door_driver(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool 
     false
 }
 
+/// Handles the legacy `use_door` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_door` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_door` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_door` is outside the corresponding game-state collection.
 pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let map_idx =
         gs.items[item_idx].x as usize + gs.items[item_idx].y as usize * SERVER_MAPX as usize;
@@ -221,6 +251,21 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_create_item` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_create_item` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_create_item` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_create_item` is outside the corresponding game-state collection.
 pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -321,6 +366,21 @@ pub fn use_create_item(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_create_gold` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_create_gold` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_create_gold` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_create_gold` is outside the corresponding game-state collection.
 pub fn use_create_gold(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -354,6 +414,21 @@ pub fn use_create_gold(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_create_item2` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_create_item2` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_create_item2` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_create_item2` is outside the corresponding game-state collection.
 pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -424,6 +499,21 @@ pub fn use_create_item2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     true
 }
 
+/// Handles the legacy `use_create_item3` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_create_item3` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_create_item3` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_create_item3` is outside the corresponding game-state collection.
 pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -507,6 +597,21 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     true
 }
 
+/// Handles the legacy `use_mix_potion` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_mix_potion` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_mix_potion` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_mix_potion` is outside the corresponding game-state collection.
 pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -626,6 +731,21 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_chain` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_chain` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_chain` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_chain` is outside the corresponding game-state collection.
 pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -684,6 +804,21 @@ pub fn use_chain(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `stone_sword` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `stone_sword` hook.
+///
+/// # Returns
+///
+/// * `true` when `stone_sword` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `stone_sword` is outside the corresponding game-state collection.
 pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         log::error!("stone_sword called with cn=0");
@@ -737,6 +872,22 @@ pub fn stone_sword(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `finish_laby_teleport` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `nr` - Legacy numeric identifier passed to the hook.
+/// * `exp` - Value passed through to the legacy `finish_laby_teleport` hook.
+///
+/// # Returns
+///
+/// * `true` when `finish_laby_teleport` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `finish_laby_teleport` is outside the corresponding game-state collection.
 pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize) -> bool {
     let current_progress = gs.characters[cn].data[20];
     let (x, y) = (gs.characters[cn].x, gs.characters[cn].y);
@@ -834,6 +985,20 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
     true
 }
 
+/// Handles the legacy `is_nolab_item` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `is_nolab_item` hook.
+///
+/// # Returns
+///
+/// * `true` when `is_nolab_item` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `is_nolab_item` is outside the corresponding game-state collection.
 pub fn is_nolab_item(gs: &mut GameState, item_idx: usize) -> bool {
     if !core::types::Item::is_sane_item(item_idx) {
         return false;
@@ -851,6 +1016,21 @@ pub fn is_nolab_item(gs: &mut GameState, item_idx: usize) -> bool {
     )
 }
 
+/// Handles the legacy `teleport` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `teleport` hook.
+///
+/// # Returns
+///
+/// * `true` when `teleport` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `teleport` is outside the corresponding game-state collection.
 pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return true;
@@ -915,6 +1095,21 @@ pub fn teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `teleport2` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `teleport2` hook.
+///
+/// # Returns
+///
+/// * `true` when `teleport2` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `teleport2` is outside the corresponding game-state collection.
 pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return true;
@@ -990,6 +1185,21 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_labyrinth` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `_item_idx` - Value passed through to the legacy `use_labyrinth` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_labyrinth` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_labyrinth` is outside the corresponding game-state collection.
 pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     let citem = gs.characters[cn].citem as usize;
     if citem != 0 && is_nolab_item(gs, citem) {
@@ -1067,6 +1277,21 @@ pub fn use_labyrinth(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_ladder` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_ladder` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_ladder` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_ladder` is outside the corresponding game-state collection.
 pub fn use_ladder(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     let item = &gs.items[item_idx];
@@ -1082,6 +1307,21 @@ pub fn use_ladder(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_bag` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_bag` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_bag` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_bag` is outside the corresponding game-state collection.
 pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let co = gs.items[item_idx].data[0] as usize;
 
@@ -1139,6 +1379,21 @@ pub fn use_bag(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_scroll` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_scroll` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_scroll` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_scroll` is outside the corresponding game-state collection.
 pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let skill_nr = skills::canonicalize_weapon_skill(gs.items[item_idx].data[0] as usize);
     let teaches_only = gs.items[item_idx].data[1] != 0;
@@ -1217,6 +1472,21 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_scroll2` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_scroll2` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_scroll2` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_scroll2` is outside the corresponding game-state collection.
 pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let attrib_nr = gs.items[item_idx].data[0] as usize;
     let current_val = gs.characters[cn].attrib[attrib_nr][0];
@@ -1263,6 +1533,21 @@ pub fn use_scroll2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_scroll3` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_scroll3` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_scroll3` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_scroll3` is outside the corresponding game-state collection.
 pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let amount = gs.items[item_idx].data[0] as i32;
     let current_hp = gs.characters[cn].hp[0];
@@ -1302,6 +1587,21 @@ pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_scroll4` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_scroll4` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_scroll4` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_scroll4` is outside the corresponding game-state collection.
 pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let amount = gs.items[item_idx].data[0] as i32;
     let current_end = gs.characters[cn].end[0];
@@ -1341,6 +1641,21 @@ pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_scroll5` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_scroll5` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_scroll5` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_scroll5` is outside the corresponding game-state collection.
 pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let amount = gs.items[item_idx].data[0] as i32;
     let current_mana = gs.characters[cn].mana[0];
@@ -1381,6 +1696,21 @@ pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_crystal_sub` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_crystal_sub` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `use_crystal_sub` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_crystal_sub` is outside the corresponding game-state collection.
 pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     // Get group id
     let group = gs.items[item_idx].data[0];
@@ -1889,6 +2219,21 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
     need
 }
 
+/// Handles the legacy `use_crystal` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_crystal` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_crystal` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_crystal` is outside the corresponding game-state collection.
 pub fn use_crystal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let mut cnt = 0;
 
@@ -1900,6 +2245,21 @@ pub fn use_crystal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     cnt == 0
 }
 
+/// Handles the legacy `use_mine_respawn` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_mine_respawn` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_mine_respawn` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_mine_respawn` is outside the corresponding game-state collection.
 pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     // Get group, template, and max count from item data
     let (group, template, max_cnt) = {
@@ -1973,6 +2333,21 @@ pub fn use_mine_respawn(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool
     true
 }
 
+/// Handles the legacy `rat_eye` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `rat_eye` hook.
+///
+/// # Returns
+///
+/// * `true` when `rat_eye` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `rat_eye` is outside the corresponding game-state collection.
 pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -2068,6 +2443,21 @@ pub fn rat_eye(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `skua_protect` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `skua_protect` hook.
+///
+/// # Returns
+///
+/// * `true` when `skua_protect` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `skua_protect` is outside the corresponding game-state collection.
 pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if the weapon is wielded
     let is_wielded = gs.characters[cn].worn[WN_RHAND] == item_idx as u32;
@@ -2137,6 +2527,21 @@ pub fn skua_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `purple_protect` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `purple_protect` hook.
+///
+/// # Returns
+///
+/// * `true` when `purple_protect` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `purple_protect` is outside the corresponding game-state collection.
 pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if the weapon is wielded
     let is_wielded = { gs.characters[cn].worn[core::constants::WN_RHAND] == item_idx as u32 };
@@ -2206,6 +2611,21 @@ pub fn purple_protect(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_lever` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_lever` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_lever` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_lever` is outside the corresponding game-state collection.
 pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     // Get the map coordinate from item data[0]
     let m = gs.items[item_idx].data[0] as usize;
@@ -2240,6 +2660,21 @@ pub fn use_lever(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_spawn` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_spawn` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_spawn` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_spawn` is outside the corresponding game-state collection.
 pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if already active
     let is_active = gs.items[item_idx].active != 0;
@@ -2290,6 +2725,21 @@ pub fn use_spawn(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_pile` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_pile` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_pile` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_pile` is outside the corresponding game-state collection.
 pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Item templates for rewards at different levels
     const FIND: [usize; 90] = [
@@ -2404,6 +2854,21 @@ pub fn use_pile(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_grave` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_grave` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_grave` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_grave` is outside the corresponding game-state collection.
 pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     // Get previously spawned character
     let cc = gs.items[item_idx].data[0] as usize;
@@ -2449,6 +2914,21 @@ pub fn use_grave(gs: &mut GameState, _cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `mine_wall` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `mine_wall` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `mine_wall` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `mine_wall` is outside the corresponding game-state collection.
 pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // If no item provided, get it from the map
     let in_idx = if item_idx == 0 {
@@ -2512,6 +2992,21 @@ pub fn mine_wall(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.items[in_idx].data[2] as i32
 }
 
+/// Handles the legacy `use_mine` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_mine` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_mine` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_mine` is outside the corresponding game-state collection.
 pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use core::constants::{AT_STREN, WN_RHAND};
 
@@ -2618,6 +3113,21 @@ pub fn use_mine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `use_mine_fast` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_mine_fast` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_mine_fast` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_mine_fast` is outside the corresponding game-state collection.
 pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -2664,6 +3174,21 @@ pub fn use_mine_fast(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `build_ring` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `build_ring` hook.
+///
+/// # Returns
+///
+/// * `true` when `build_ring` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `build_ring` is outside the corresponding game-state collection.
 pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     use core::constants::{ItemFlags, USE_EMPTY};
@@ -2762,6 +3287,21 @@ pub fn build_ring(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `build_amulet` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `build_amulet` hook.
+///
+/// # Returns
+///
+/// * `true` when `build_amulet` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `build_amulet` is outside the corresponding game-state collection.
 pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Get amulet piece template
     let t1 = gs.items[item_idx].temp;
@@ -2824,6 +3364,21 @@ pub fn build_amulet(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `use_gargoyle` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_gargoyle` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_gargoyle` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_gargoyle` is outside the corresponding game-state collection.
 pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     use core::constants::USE_EMPTY;
@@ -2879,6 +3434,21 @@ pub fn use_gargoyle(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_grolm` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_grolm` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_grolm` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_grolm` is outside the corresponding game-state collection.
 pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use crate::god::God;
     use core::constants::USE_EMPTY;
@@ -2934,6 +3504,21 @@ pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `boost_char` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `divi` - Value passed through to the legacy `boost_char` hook.
+///
+/// # Returns
+///
+/// * `true` when `boost_char` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `boost_char` is outside the corresponding game-state collection.
 pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
     // Boost attributes
     {
@@ -3003,6 +3588,20 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
     false
 }
 
+/// Handles the legacy `spawn_penta_enemy` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `spawn_penta_enemy` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `spawn_penta_enemy` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `spawn_penta_enemy` is outside the corresponding game-state collection.
 pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     // Determine enemy type from data[9]
     let data9 = gs.items[item_idx].data[9];
@@ -3079,6 +3678,21 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     cn as i32
 }
 
+/// Handles the legacy `solved_pentagram` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `solved_pentagram` hook.
+///
+/// # Returns
+///
+/// * `true` when `solved_pentagram` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `solved_pentagram` is outside the corresponding game-state collection.
 pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Calculate bonus
     let bonus = {
@@ -3192,6 +3806,21 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     false
 }
 
+/// Handles the legacy `use_pentagram` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_pentagram` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_pentagram` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_pentagram` is outside the corresponding game-state collection.
 pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if already active
     let active = gs.items[item_idx].active;
@@ -3444,6 +4073,21 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_shrine` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `_item_idx` - Value passed through to the legacy `use_shrine` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_shrine` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_shrine` is outside the corresponding game-state collection.
 pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -3751,6 +4395,21 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_kill_undead` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_kill_undead` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_kill_undead` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_kill_undead` is outside the corresponding game-state collection.
 pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -3808,6 +4467,21 @@ pub fn use_kill_undead(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `teleport3` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `teleport3` hook.
+///
+/// # Returns
+///
+/// * `true` when `teleport3` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `teleport3` is outside the corresponding game-state collection.
 pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return true;
@@ -4009,6 +4683,21 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_seyan_shrine` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_seyan_shrine` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_seyan_shrine` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_seyan_shrine` is outside the corresponding game-state collection.
 pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -4164,6 +4853,21 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     false
 }
 
+/// Handles the legacy `use_seyan_door` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_seyan_door` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_seyan_door` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_seyan_door` is outside the corresponding game-state collection.
 pub fn use_seyan_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn != 0 {
         // Check if character is Seyan'Du
@@ -4181,6 +4885,21 @@ pub fn use_seyan_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     use_door(gs, cn, item_idx)
 }
 
+/// Handles the legacy `use_seyan_portal` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_seyan_portal` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_seyan_portal` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_seyan_portal` is outside the corresponding game-state collection.
 pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -4325,6 +5044,21 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     true
 }
 
+/// Handles the legacy `spell_scroll` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `spell_scroll` hook.
+///
+/// # Returns
+///
+/// * `true` when `spell_scroll` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `spell_scroll` is outside the corresponding game-state collection.
 pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Read scroll data
     let (spell, power, charges) = {
@@ -4426,6 +5160,21 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `use_blook_pentagram` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_blook_pentagram` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_blook_pentagram` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_blook_pentagram` is outside the corresponding game-state collection.
 pub fn use_blook_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -4447,6 +5196,21 @@ pub fn use_blook_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bo
     true
 }
 
+/// Handles the legacy `use_create_npc` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_create_npc` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_create_npc` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_create_npc` is outside the corresponding game-state collection.
 pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Check if already active
     let active = gs.items[item_idx].active;
@@ -4483,6 +5247,21 @@ pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_rotate` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_rotate` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_rotate` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_rotate` is outside the corresponding game-state collection.
 pub fn use_rotate(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -4502,6 +5281,21 @@ pub fn use_rotate(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_lab8_key` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_lab8_key` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_lab8_key` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_lab8_key` is outside the corresponding game-state collection.
 pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0] = matching key part
     // data[1] = resulting key part
@@ -4588,6 +5382,21 @@ pub fn use_lab8_key(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_lab8_shrine` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_lab8_shrine` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_lab8_shrine` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_lab8_shrine` is outside the corresponding game-state collection.
 pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0] = item accepted as offering
     // data[1] = item returned as gift
@@ -4659,6 +5468,21 @@ pub fn use_lab8_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_lab8_moneyshrine` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_lab8_moneyshrine` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_lab8_moneyshrine` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_lab8_moneyshrine` is outside the corresponding game-state collection.
 pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0] = minimum offering accepted
     // data[1] = teleport coordinate x
@@ -4742,6 +5566,16 @@ pub fn use_lab8_moneyshrine(gs: &mut GameState, cn: usize, item_idx: usize) -> b
     true
 }
 
+/// Handles the legacy `change_to_archtemplar` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `change_to_archtemplar` is outside the corresponding game-state collection.
 pub fn change_to_archtemplar(gs: &mut GameState, cn: usize) {
     // Check agility requirement
     let agility = gs.characters[cn].attrib[AT_AGIL as usize][0];
@@ -4785,6 +5619,16 @@ pub fn change_to_archtemplar(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Handles the legacy `change_to_archharakim` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `change_to_archharakim` is outside the corresponding game-state collection.
 pub fn change_to_archharakim(gs: &mut GameState, cn: usize) {
     // Check willpower requirement
     let willpower = gs.characters[cn].attrib[AT_WILL as usize][0];
@@ -4829,6 +5673,16 @@ pub fn change_to_archharakim(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Handles the legacy `change_to_warrior` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `change_to_warrior` is outside the corresponding game-state collection.
 pub fn change_to_warrior(gs: &mut GameState, cn: usize) {
     // Check agility requirement
     let agility = gs.characters[cn].attrib[AT_AGIL as usize][0];
@@ -4873,6 +5727,16 @@ pub fn change_to_warrior(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Handles the legacy `change_to_sorcerer` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `change_to_sorcerer` is outside the corresponding game-state collection.
 pub fn change_to_sorcerer(gs: &mut GameState, cn: usize) {
     // Check willpower requirement
     let willpower = gs.characters[cn].attrib[AT_WILL as usize][0];
@@ -4917,6 +5781,21 @@ pub fn change_to_sorcerer(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Handles the legacy `shrine_of_change` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `_item_idx` - Value passed through to the legacy `shrine_of_change` hook.
+///
+/// # Returns
+///
+/// * `true` when `shrine_of_change` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `shrine_of_change` is outside the corresponding game-state collection.
 pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     // Requires specific potions to change character class
     // Potion of Life (148) -> Archtemplar/Archharakim
@@ -4995,6 +5874,21 @@ pub fn shrine_of_change(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool
     false
 }
 
+/// Handles the legacy `explorer_point` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `explorer_point` hook.
+///
+/// # Returns
+///
+/// * `true` when `explorer_point` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `explorer_point` is outside the corresponding game-state collection.
 pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // data[0-3] = bitmask for visited flags (stored in character data[46-49])
     // data[4] = base experience reward
@@ -5069,6 +5963,21 @@ pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_garbage` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `_item_idx` - Value passed through to the legacy `use_garbage` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_garbage` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_garbage` is outside the corresponding game-state collection.
 pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     if cn == 0 {
         return false;
@@ -5121,6 +6030,18 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `use_driver` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_driver` hook.
+/// * `carried` - Value passed through to the legacy `use_driver` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_driver` is outside the corresponding game-state collection.
 pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool) {
     if item_idx == 0 || cn >= 10000 {
         return;
@@ -5448,6 +6369,21 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
     }
 }
 
+/// Handles the legacy `use_soulstone` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `use_soulstone` hook.
+///
+/// # Returns
+///
+/// * `true` when `use_soulstone` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `use_soulstone` is outside the corresponding game-state collection.
 pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     if !core::types::Character::is_sane_character(cn) {
         return false;
@@ -5818,6 +6754,20 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
     soul_destroy(gs, cn, soulstone_idx);
 }
 
+/// Handles the legacy `item_age` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `item_age` hook.
+///
+/// # Returns
+///
+/// * `true` when `item_age` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_age` is outside the corresponding game-state collection.
 pub fn item_age(gs: &mut GameState, item_idx: usize) -> bool {
     let (current_age_act, max_age_act, current_damage, max_damage) = {
         let act = if gs.items[item_idx].active != 0 { 1 } else { 0 };
@@ -5895,6 +6845,18 @@ pub fn item_age(gs: &mut GameState, item_idx: usize) -> bool {
     false
 }
 
+/// Handles the legacy `item_damage_worn` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `n` - Value passed through to the legacy `item_damage_worn` hook.
+/// * `damage` - Value passed through to the legacy `item_damage_worn` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_damage_worn` is outside the corresponding game-state collection.
 pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
     let worn_idx = gs.characters[cn].worn[n] as usize;
     if worn_idx == 0 {
@@ -5964,6 +6926,17 @@ pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
     }
 }
 
+/// Handles the legacy `item_damage_citem` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `damage` - Value passed through to the legacy `item_damage_citem` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_damage_citem` is outside the corresponding game-state collection.
 pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
     use core::constants::USE_EMPTY;
 
@@ -6037,6 +7010,17 @@ pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
     }
 }
 
+/// Handles the legacy `item_damage_armor` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `damage` - Value passed through to the legacy `item_damage_armor` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_damage_armor` is outside the corresponding game-state collection.
 pub fn item_damage_armor(gs: &mut GameState, cn: usize, damage: i32) {
     let dam = damage / 4 + 1;
     for n in 0..20 {
@@ -6046,11 +7030,33 @@ pub fn item_damage_armor(gs: &mut GameState, cn: usize, damage: i32) {
     }
 }
 
+/// Handles the legacy `item_damage_weapon` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `damage` - Value passed through to the legacy `item_damage_weapon` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_damage_weapon` is outside the corresponding game-state collection.
 pub fn item_damage_weapon(gs: &mut GameState, cn: usize, damage: i32) {
     let dam = damage / 4 + 1;
     item_damage_worn(gs, cn, WN_RHAND, dam);
 }
 
+/// Handles the legacy `lightage` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `lightage` hook.
+/// * `multi` - Value passed through to the legacy `lightage` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `lightage` is outside the corresponding game-state collection.
 pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
     // Read basic item info
     let (carried, it_x, it_y, active) = {
@@ -6105,6 +7111,18 @@ pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
     };
 }
 
+/// Handles the legacy `age_message` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `age_message` hook.
+/// * `where_is` - Value passed through to the legacy `age_message` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `age_message` is outside the corresponding game-state collection.
 pub fn age_message(gs: &mut GameState, cn: usize, item_idx: usize, where_is: &str) {
     let (driver, damage_state, reference) = {
         (
@@ -6164,6 +7182,16 @@ pub fn age_message(gs: &mut GameState, cn: usize, item_idx: usize, where_is: &st
     gs.do_character_log(cn, font, &formatted_msg);
 }
 
+/// Handles the legacy `char_item_expire` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_item_expire` is outside the corresponding game-state collection.
 pub fn char_item_expire(gs: &mut GameState, cn: usize) {
     if (gs.characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0 {
         return;
@@ -6304,6 +7332,20 @@ pub fn char_item_expire(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `may_deactivate` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `may_deactivate` hook.
+///
+/// # Returns
+///
+/// * `true` when `may_deactivate` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `may_deactivate` is outside the corresponding game-state collection.
 pub fn may_deactivate(gs: &mut GameState, item_idx: usize) -> bool {
     // Special check for driver 1 (create_item with mines)
     let driver = gs.items[item_idx].driver;
@@ -6341,6 +7383,16 @@ pub fn may_deactivate(gs: &mut GameState, item_idx: usize) -> bool {
     true
 }
 
+/// Handles the legacy `pentagram` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `pentagram` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `pentagram` is outside the corresponding game-state collection.
 pub fn pentagram(gs: &mut GameState, item_idx: usize) {
     let active = gs.items[item_idx].active;
     if active != 0 {
@@ -6377,6 +7429,16 @@ pub fn pentagram(gs: &mut GameState, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `spiderweb` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `spiderweb` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `spiderweb` is outside the corresponding game-state collection.
 pub fn spiderweb(gs: &mut GameState, item_idx: usize) {
     let active = gs.items[item_idx].active;
     if active != 0 {
@@ -6431,6 +7493,16 @@ pub fn spiderweb(gs: &mut GameState, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `greenlingball` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `greenlingball` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `greenlingball` is outside the corresponding game-state collection.
 pub fn greenlingball(gs: &mut GameState, item_idx: usize) {
     let active = gs.items[item_idx].active;
     if active != 0 {
@@ -6485,6 +7557,16 @@ pub fn greenlingball(gs: &mut GameState, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `expire_blood_penta` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `expire_blood_penta` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `expire_blood_penta` is outside the corresponding game-state collection.
 pub fn expire_blood_penta(gs: &mut GameState, item_idx: usize) {
     {
         let item = &mut gs.items[item_idx];
@@ -6498,6 +7580,16 @@ pub fn expire_blood_penta(gs: &mut GameState, item_idx: usize) {
     };
 }
 
+/// Handles the legacy `expire_driver` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `expire_driver` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `expire_driver` is outside the corresponding game-state collection.
 pub fn expire_driver(gs: &mut GameState, item_idx: usize) {
     let driver = gs.items[item_idx].driver;
 
@@ -6514,6 +7606,15 @@ pub fn expire_driver(gs: &mut GameState, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `item_tick_expire` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_tick_expire` is outside the corresponding game-state collection.
 pub fn item_tick_expire(gs: &mut GameState) {
     const EXP_TIME: i32 = SERVER_MAPY / 4;
 
@@ -6773,6 +7874,15 @@ pub fn item_tick_expire(gs: &mut GameState) {
     gs.item_tick_expire_counter = y;
 }
 
+/// Handles the legacy `item_tick_gc` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_tick_gc` is outside the corresponding game-state collection.
 pub fn item_tick_gc(gs: &mut GameState) {
     let (off, m) = {
         let current_off = gs.item_tick_gc_off as usize;
@@ -6898,6 +8008,15 @@ pub fn item_tick_gc(gs: &mut GameState) {
     }
 }
 
+/// Handles the legacy `item_tick` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `item_tick` is outside the corresponding game-state collection.
 pub fn item_tick(gs: &mut GameState) {
     item_tick_expire(gs);
     item_tick_expire(gs);
@@ -6906,6 +8025,17 @@ pub fn item_tick(gs: &mut GameState) {
     item_tick_gc(gs);
 }
 
+/// Handles the legacy `trap1` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `trap1` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `trap1` is outside the corresponding game-state collection.
 pub fn trap1(gs: &mut GameState, cn: usize, item_idx: usize) {
     let n = gs.items[item_idx].data[1] as usize;
     if n != 0 {
@@ -6956,6 +8086,17 @@ pub fn trap1(gs: &mut GameState, cn: usize, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `trap2` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `tmp` - Value passed through to the legacy `trap2` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `trap2` is outside the corresponding game-state collection.
 pub fn trap2(gs: &mut GameState, cn: usize, tmp: usize) {
     let cc = match pop_create_char(gs, tmp, false) {
         Some(cc) => cc,
@@ -6974,6 +8115,17 @@ pub fn trap2(gs: &mut GameState, cn: usize, tmp: usize) {
     gs.do_update_char(cc);
 }
 
+/// Handles the legacy `start_trap` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `start_trap` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `start_trap` is outside the corresponding game-state collection.
 pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
     let (duration, light0, light1, x, y) = {
         let item = &gs.items[item_idx];
@@ -7032,6 +8184,21 @@ pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `step_trap` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_trap` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `step_trap` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_trap` is outside the corresponding game-state collection.
 pub fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
@@ -7048,6 +8215,17 @@ pub fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     0
 }
 
+/// Handles the legacy `step_trap_remove` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `_cn` - Character index reserved for this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_trap_remove` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_trap_remove` is outside the corresponding game-state collection.
 pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
     let (active, light0, light1, x, y) = {
         let item = &gs.items[item_idx];
@@ -7067,6 +8245,21 @@ pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `step_portal1_lab13` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `_item_idx` - Value passed through to the legacy `step_portal1_lab13` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `step_portal1_lab13` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_portal1_lab13` is outside the corresponding game-state collection.
 pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     // Check kindred
     let kindred = gs.characters[cn].kindred as u32;
@@ -7135,6 +8328,21 @@ pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
     1
 }
 
+/// Handles the legacy `step_portal2_lab13` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `_item_idx` - Value passed through to the legacy `step_portal2_lab13` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `step_portal2_lab13` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_portal2_lab13` is outside the corresponding game-state collection.
 pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
     if !is_player {
@@ -7308,6 +8516,21 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
     1
 }
 
+/// Handles the legacy `step_portal_arena` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_portal_arena` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `step_portal_arena` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_portal_arena` is outside the corresponding game-state collection.
 pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Check for arena token (temp 687) in citem
     let citem = gs.characters[cn].citem;
@@ -7438,6 +8661,21 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
     1
 }
 
+/// Handles the legacy `step_teleport` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_teleport` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `step_teleport` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_teleport` is outside the corresponding game-state collection.
 pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     if cn == 0 {
         log::error!("step_teleport(gs, ): cn = 0");
@@ -7555,6 +8793,21 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     2 // TELEPORT_SUCCESS
 }
 
+/// Handles the legacy `step_firefloor` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_firefloor` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `step_firefloor` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_firefloor` is outside the corresponding game-state collection.
 pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
 
@@ -7581,6 +8834,17 @@ pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     0
 }
 
+/// Handles the legacy `step_firefloor_remove` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_firefloor_remove` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_firefloor_remove` is outside the corresponding game-state collection.
 pub fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
     let temp = gs.items[item_idx].temp;
 
@@ -7598,6 +8862,21 @@ pub fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
     }
 }
 
+/// Handles the legacy `step_driver` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_driver` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `step_driver` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_driver` is outside the corresponding game-state collection.
 pub fn step_driver(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let driver = gs.items[item_idx].driver;
 
@@ -7621,6 +8900,17 @@ pub fn step_driver(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     }
 }
 
+/// Handles the legacy `step_driver_remove` item-use hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `item_idx` - Value passed through to the legacy `step_driver_remove` hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `step_driver_remove` is outside the corresponding game-state collection.
 pub fn step_driver_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
     let driver = gs.items[item_idx].driver;
 

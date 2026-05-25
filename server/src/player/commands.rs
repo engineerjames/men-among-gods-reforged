@@ -141,6 +141,11 @@ pub fn plr_cmd_ctick(gs: &mut GameState, nr: usize) {
 ///
 /// Reads `seq` and `client_time_ms` from the client's inbuf and replies with
 /// `SV_PONG`, echoing both values back to the client so it can compute RTT.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_cmd_ping(gs: &mut GameState, nr: usize) {
     let seq = u32::from_le_bytes([
         gs.players[nr].inbuf[1],

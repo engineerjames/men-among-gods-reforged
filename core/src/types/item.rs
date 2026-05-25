@@ -124,24 +124,54 @@ impl Default for Item {
 
 impl Item {
     /// Get name as a string slice
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `get_name`.
     pub fn get_name(&self) -> &str {
         c_string_to_str(&self.name)
     }
 
     /// Check if item has labyrinth destroy flag
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `has_laby_destroy` succeeds or the condition is met, otherwise `false`.
     pub fn has_laby_destroy(&self) -> bool {
         (self.flags & ItemFlags::IF_LABYDESTROY.bits()) != 0
     }
 
     /// Check if item has soulstone flag
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `has_soulstone` succeeds or the condition is met, otherwise `false`.
     pub fn has_soulstone(&self) -> bool {
         (self.flags & ItemFlags::IF_SOULSTONE.bits()) != 0
     }
 
+    /// Serializes this item to bincode bytes.
+    ///
+    /// # Returns
+    ///
+    /// * Encoded item bytes.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if bincode serialization fails.
     pub fn to_bytes(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, bincode::config::standard()).expect("Item::to_bytes failed")
     }
 
+    /// Decodes an item from bincode bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - Serialized item bytes.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Item)` when all bytes decode successfully, otherwise `None`.
     pub fn from_bytes(data: &[u8]) -> Option<Self> {
         let (value, consumed): (Self, usize) =
             bincode::decode_from_slice(data, bincode::config::standard()).ok()?;
@@ -152,14 +182,37 @@ impl Item {
         }
     }
 
+    /// Returns whether an item template id is in the valid template range.
+    ///
+    /// # Arguments
+    ///
+    /// * `template_id` - Item template id to validate.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `template_id` can address an item template slot.
     pub fn is_sane_item_template(template_id: usize) -> bool {
         (template_id > 0) && (template_id < crate::constants::MAXTITEM)
     }
 
+    /// Returns whether this item is marked unique.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the unique flag is set, otherwise `false`.
     pub fn is_unique(&self) -> bool {
         (self.flags & ItemFlags::IF_UNIQUE.bits()) != 0
     }
 
+    /// Returns whether an item id is in the valid runtime item range.
+    ///
+    /// # Arguments
+    ///
+    /// * `item_id` - Runtime item id to validate.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `item_id` can address a runtime item slot.
     pub fn is_sane_item(item_id: usize) -> bool {
         (item_id > 0) && (item_id < crate::constants::MAXITEM)
     }

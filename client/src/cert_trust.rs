@@ -171,6 +171,10 @@ impl Default for TofuVerifier {
 
 impl TofuVerifier {
     /// Create a new verifier, loading any previously-saved fingerprints.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         Self {
             store: Mutex::new(KnownHostsStore::load()),
@@ -287,6 +291,10 @@ impl ServerCertVerifier for TofuVerifier {
 // ---------------------------------------------------------------------------
 
 /// Build a `rustls::ClientConfig` that uses the shared TOFU verifier.
+///
+/// # Returns
+///
+/// * Value returned by `build_rustls_client_config`.
 pub fn build_rustls_client_config() -> ClientConfig {
     if let Err(err) = ensure_crypto_provider_installed() {
         panic!("{err}");
@@ -300,6 +308,10 @@ pub fn build_rustls_client_config() -> ClientConfig {
 }
 
 /// Build a `reqwest::blocking::Client` that uses TOFU for HTTPS.
+///
+/// # Returns
+///
+/// * `Ok` when `build_reqwest_client` succeeds, or `Err` with failure details.
 pub fn build_reqwest_client() -> Result<reqwest::blocking::Client, String> {
     let tls_config = build_rustls_client_config();
     reqwest::blocking::Client::builder()
@@ -310,6 +322,14 @@ pub fn build_reqwest_client() -> Result<reqwest::blocking::Client, String> {
 }
 
 /// Build a `rustls::ClientConnection` for wrapping a game-server TCP stream.
+///
+/// # Arguments
+///
+/// * `host` - Value passed to `build_game_tls_connector`.
+///
+/// # Returns
+///
+/// * `Ok` when `build_game_tls_connector` succeeds, or `Err` with failure details.
 pub fn build_game_tls_connector(host: &str) -> Result<rustls::ClientConnection, String> {
     let config = Arc::new(build_rustls_client_config());
     let server_name = rustls::pki_types::ServerName::try_from(host.to_owned())

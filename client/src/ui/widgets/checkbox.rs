@@ -54,6 +54,10 @@ impl Checkbox {
     }
 
     /// Returns whether the checkbox is currently checked.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_checked` succeeds or the condition is met, otherwise `false`.
     pub fn is_checked(&self) -> bool {
         self.checked
     }
@@ -72,6 +76,10 @@ impl Checkbox {
     /// Returns `true` once if the checkbox was toggled since the last call.
     ///
     /// Clears the flag on read.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `was_toggled` succeeds or the condition is met, otherwise `false`.
     pub fn was_toggled(&mut self) -> bool {
         let t = self.toggled;
         self.toggled = false;

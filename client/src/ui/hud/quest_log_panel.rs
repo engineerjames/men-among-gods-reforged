@@ -59,6 +59,10 @@ impl QuestTitle {
     /// Returns the matching text used for click-target detection and the
     /// non-colored highlight check (currently just the active row tint).
     /// Useful only for tests / debugging; the renderer does not call it.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `as_display_string`.
     pub fn as_display_string(&self) -> String {
         match self {
             QuestTitle::Plain(s) => s.clone(),
@@ -147,6 +151,10 @@ impl QuestLogPanel {
     }
 
     /// Returns `true` when the panel is currently visible.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
         self.visible
     }

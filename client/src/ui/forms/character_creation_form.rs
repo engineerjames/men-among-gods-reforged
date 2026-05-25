@@ -280,21 +280,37 @@ impl CharacterCreationForm {
     }
 
     /// Returns the currently selected class.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `selected_class`.
     pub fn selected_class(&self) -> Class {
         self.selected_class
     }
 
     /// Returns the currently selected sex.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `selected_sex`.
     pub fn selected_sex(&self) -> Sex {
         self.sex_group.selected()
     }
 
     /// Returns a reference to the current name input value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `name_input_value`.
     pub fn name_input_value(&self) -> &str {
         self.name_input.value()
     }
 
     /// Returns a reference to the current description input value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `description_input_value`.
     pub fn description_input_value(&self) -> &str {
         self.description_input.value()
     }

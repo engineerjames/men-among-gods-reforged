@@ -491,6 +491,16 @@ pub fn act_turn(gs: &mut GameState, cn: usize, dir: i32) {
     }
 }
 
+/// Handles the legacy `act_turn_rightdown` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_rightdown` is outside the corresponding game-state collection.
 pub fn act_turn_rightdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -512,6 +522,16 @@ pub fn act_turn_rightdown(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_turn_rightup` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_rightup` is outside the corresponding game-state collection.
 pub fn act_turn_rightup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -533,6 +553,16 @@ pub fn act_turn_rightup(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_turn_leftdown` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_leftdown` is outside the corresponding game-state collection.
 pub fn act_turn_leftdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -554,6 +584,16 @@ pub fn act_turn_leftdown(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_turn_leftup` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_leftup` is outside the corresponding game-state collection.
 pub fn act_turn_leftup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -575,6 +615,16 @@ pub fn act_turn_leftup(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_turn_right` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_right` is outside the corresponding game-state collection.
 pub fn act_turn_right(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -596,6 +646,16 @@ pub fn act_turn_right(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_turn_left` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_left` is outside the corresponding game-state collection.
 pub fn act_turn_left(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -617,6 +677,16 @@ pub fn act_turn_left(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_turn_down` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_down` is outside the corresponding game-state collection.
 pub fn act_turn_down(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -638,6 +708,16 @@ pub fn act_turn_down(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_turn_up` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_turn_up` is outside the corresponding game-state collection.
 pub fn act_turn_up(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -660,6 +740,16 @@ pub fn act_turn_up(gs: &mut GameState, cn: usize) {
     }
 }
 
+/// Handles the legacy `act_move_rightdown` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_rightdown` is outside the corresponding game-state collection.
 pub fn act_move_rightdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -710,6 +800,16 @@ pub fn act_move_rightdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = (y + 1) as i16;
 }
 
+/// Handles the legacy `act_move_rightup` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_rightup` is outside the corresponding game-state collection.
 pub fn act_move_rightup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -760,6 +860,16 @@ pub fn act_move_rightup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = (y - 1) as i16;
 }
 
+/// Handles the legacy `act_move_leftdown` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_leftdown` is outside the corresponding game-state collection.
 pub fn act_move_leftdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -810,6 +920,16 @@ pub fn act_move_leftdown(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = (y + 1) as i16;
 }
 
+/// Handles the legacy `act_move_leftup` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_leftup` is outside the corresponding game-state collection.
 pub fn act_move_leftup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -860,6 +980,16 @@ pub fn act_move_leftup(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = (y - 1) as i16;
 }
 
+/// Handles the legacy `act_move_right` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_right` is outside the corresponding game-state collection.
 pub fn act_move_right(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -896,6 +1026,16 @@ pub fn act_move_right(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = y as i16;
 }
 
+/// Handles the legacy `act_move_left` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_left` is outside the corresponding game-state collection.
 pub fn act_move_left(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -932,6 +1072,16 @@ pub fn act_move_left(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = y as i16;
 }
 
+/// Handles the legacy `act_move_down` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_down` is outside the corresponding game-state collection.
 pub fn act_move_down(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -968,6 +1118,16 @@ pub fn act_move_down(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = (y + 1) as i16;
 }
 
+/// Handles the legacy `act_move_up` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `act_move_up` is outside the corresponding game-state collection.
 pub fn act_move_up(gs: &mut GameState, cn: usize) {
     gs.characters[cn].cerrno = core::constants::ERR_NONE as u16;
 
@@ -1004,6 +1164,21 @@ pub fn act_move_up(gs: &mut GameState, cn: usize) {
     gs.characters[cn].toy = (y - 1) as i16;
 }
 
+/// Handles the legacy `char_give_char` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_give_char` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_give_char` is outside the corresponding game-state collection.
 pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
@@ -1077,6 +1252,21 @@ pub fn char_give_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     if err == -1 { -1 } else { 0 }
 }
 
+/// Handles the legacy `char_attack_char` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_attack_char` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_attack_char` is outside the corresponding game-state collection.
 pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
@@ -1189,6 +1379,22 @@ pub fn char_attack_char(gs: &mut GameState, cn: usize, co: usize) -> i32 {
     if err == -1 { -1 } else { 0 }
 }
 
+/// Handles the legacy `char_dropto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_dropto` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_dropto` is outside the corresponding game-state collection.
 pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
@@ -1242,6 +1448,22 @@ pub fn char_dropto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     0
 }
 
+/// Handles the legacy `char_pickup` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_pickup` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_pickup` is outside the corresponding game-state collection.
 pub fn char_pickup(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
@@ -1288,6 +1510,22 @@ pub fn char_pickup(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     -1
 }
 
+/// Handles the legacy `char_pickupto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_pickupto` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_pickupto` is outside the corresponding game-state collection.
 pub fn char_pickupto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
@@ -1313,6 +1551,22 @@ pub fn char_pickupto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     0
 }
 
+/// Handles the legacy `char_use` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_use` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_use` is outside the corresponding game-state collection.
 pub fn char_use(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
@@ -1359,6 +1613,22 @@ pub fn char_use(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     -1
 }
 
+/// Handles the legacy `char_useto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_useto` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_useto` is outside the corresponding game-state collection.
 pub fn char_useto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     let cerrno = gs.characters[cn].cerrno;
     if cerrno == core::constants::ERR_FAILED as u16 {
@@ -1379,6 +1649,25 @@ pub fn char_useto(gs: &mut GameState, cn: usize, x: i32, y: i32) -> i32 {
     0
 }
 
+/// Handles the legacy `char_moveto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+/// * `flag` - Value passed through to the legacy `char_moveto` hook.
+/// * `x2` - Value passed through to the legacy `char_moveto` hook.
+/// * `y2` - Value passed through to the legacy `char_moveto` hook.
+///
+/// # Returns
+///
+/// * Value produced by the legacy `char_moveto` implementation.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `char_moveto` is outside the corresponding game-state collection.
 pub fn char_moveto(
     gs: &mut GameState,
     cn: usize,
@@ -1545,6 +1834,18 @@ pub fn char_moveto(
     }
 }
 
+/// Handles the legacy `drv_moveto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_moveto` is outside the corresponding game-state collection.
 pub fn drv_moveto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     let ret = char_moveto(gs, cn, x as i32, y as i32, 0, 0, 0);
     if ret != 0 {
@@ -1557,6 +1858,18 @@ pub fn drv_moveto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     }
 }
 
+/// Handles the legacy `drv_turnto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_turnto` is outside the corresponding game-state collection.
 pub fn drv_turnto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     let dir = crate::helpers::drv_dcoor2dir(
         x as i32 - i32::from(gs.characters[cn].x),
@@ -1574,6 +1887,18 @@ pub fn drv_turnto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     }
 }
 
+/// Handles the legacy `drv_dropto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_dropto` is outside the corresponding game-state collection.
 pub fn drv_dropto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     let ret = char_dropto(gs, cn, x as i32, y as i32);
     if ret != 0 {
@@ -1586,6 +1911,18 @@ pub fn drv_dropto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     }
 }
 
+/// Handles the legacy `drv_pickupto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_pickupto` is outside the corresponding game-state collection.
 pub fn drv_pickupto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     let ret = char_pickupto(gs, cn, x as i32, y as i32);
     if ret != 0 {
@@ -1598,6 +1935,18 @@ pub fn drv_pickupto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     }
 }
 
+/// Handles the legacy `drv_useto` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `x` - Target x coordinate.
+/// * `y` - Target y coordinate.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_useto` is outside the corresponding game-state collection.
 pub fn drv_useto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     let ret = char_useto(gs, cn, x as i32, y as i32);
 
@@ -1623,6 +1972,17 @@ pub fn drv_useto(gs: &mut GameState, cn: usize, x: usize, y: usize) {
     }
 }
 
+/// Handles the legacy `drv_use` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `nr` - Legacy numeric identifier passed to the hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_use` is outside the corresponding game-state collection.
 pub fn drv_use(gs: &mut GameState, cn: usize, nr: i32) {
     let in_item = if nr < 20 {
         gs.characters[cn].worn[nr as usize] as usize
@@ -1647,6 +2007,17 @@ pub fn drv_use(gs: &mut GameState, cn: usize, nr: i32) {
     gs.characters[cn].use_nr = 0;
 }
 
+/// Handles the legacy `drv_attack_char` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_attack_char` is outside the corresponding game-state collection.
 pub fn drv_attack_char(gs: &mut GameState, cn: usize, co: usize) {
     let ret = char_attack_char(gs, cn, co);
     if ret == -1 {
@@ -1657,6 +2028,17 @@ pub fn drv_attack_char(gs: &mut GameState, cn: usize, co: usize) {
     }
 }
 
+/// Handles the legacy `drv_give_char` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_give_char` is outside the corresponding game-state collection.
 pub fn drv_give_char(gs: &mut GameState, cn: usize, co: usize) {
     let ret = char_give_char(gs, cn, co);
     if ret != 0 {
@@ -1669,6 +2051,16 @@ pub fn drv_give_char(gs: &mut GameState, cn: usize, co: usize) {
     }
 }
 
+/// Handles the legacy `drv_bow` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_bow` is outside the corresponding game-state collection.
 pub fn drv_bow(gs: &mut GameState, cn: usize) {
     let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTUP {
@@ -1694,6 +2086,16 @@ pub fn drv_bow(gs: &mut GameState, cn: usize) {
     gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
 }
 
+/// Handles the legacy `drv_wave` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_wave` is outside the corresponding game-state collection.
 pub fn drv_wave(gs: &mut GameState, cn: usize) {
     let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTUP {
@@ -1719,6 +2121,16 @@ pub fn drv_wave(gs: &mut GameState, cn: usize) {
     gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
 }
 
+/// Handles the legacy `drv_skill` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `drv_skill` is outside the corresponding game-state collection.
 pub fn drv_skill(gs: &mut GameState, cn: usize) {
     let dir = gs.characters[cn].dir;
     if dir == core::constants::DX_LEFTUP {
@@ -1745,6 +2157,21 @@ pub fn drv_skill(gs: &mut GameState, cn: usize) {
     gs.characters[cn].last_action = core::constants::ERR_SUCCESS as i8;
 }
 
+/// Handles the legacy `driver_msg` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `msg_type` - Message type constant being handled.
+/// * `dat1` - First legacy message payload value.
+/// * `dat2` - Second legacy message payload value.
+/// * `dat3` - Third legacy message payload value.
+/// * `dat4` - Fourth legacy message payload value.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `driver_msg` is outside the corresponding game-state collection.
 pub fn driver_msg(
     gs: &mut GameState,
     cn: usize,
@@ -1788,6 +2215,21 @@ pub fn driver_msg(
     }
 }
 
+/// Handles the legacy `follow_driver` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+/// * `co` - Target or counterpart character index for this hook.
+///
+/// # Returns
+///
+/// * `true` when `follow_driver` reports that it handled the legacy action, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `follow_driver` is outside the corresponding game-state collection.
 pub fn follow_driver(gs: &mut GameState, cn: usize, co: usize) -> bool {
     if co == 0 || co >= core::constants::MAXCHARS {
         return false;
@@ -1931,6 +2373,16 @@ pub fn follow_driver(gs: &mut GameState, cn: usize, co: usize) -> bool {
     true
 }
 
+/// Handles the legacy `driver` generic driver hook.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this legacy driver hook.
+/// * `cn` - Character index executing this legacy driver hook.
+///
+/// # Panics
+///
+/// * Panics if any legacy id or index parameter used by `driver` is outside the corresponding game-state collection.
 pub fn driver(gs: &mut GameState, cn: usize) {
     let is_player_or_usurp = (gs.characters[cn].flags
         & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))

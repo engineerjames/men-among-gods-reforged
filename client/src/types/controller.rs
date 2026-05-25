@@ -142,6 +142,10 @@ impl ControllerButton {
     pub const TRIGGER_THRESHOLD: i16 = 16000;
 
     /// Short display label suitable for UI buttons.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `label`.
     pub fn label(self) -> &'static str {
         match self {
             Self::A => "A",
@@ -184,6 +188,10 @@ impl ControllerButton {
     /// Used by [`ControllerBindingsSubPanel`] to enforce that skill-bar
     /// bindings must always involve a trigger so they cannot conflict with
     /// default gameplay controls.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_trigger_combo` succeeds or the condition is met, otherwise `false`.
     pub fn is_trigger_combo(self) -> bool {
         matches!(
             self,
@@ -356,6 +364,10 @@ impl ControllerBindings {
     }
 
     /// Returns a slice of all 9 binding slots.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `slots`.
     pub fn slots(&self) -> &[Option<ControllerButton>; CONTROLLER_BIND_SLOTS] {
         &self.bindings
     }

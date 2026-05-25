@@ -105,12 +105,12 @@ struct SpellEffectMeta {
 /// # Returns
 ///
 /// * `Some(SpellEffectMeta)` for known displayable effects, `None` otherwise.
-fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
+fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
     if skill_nr < 0 {
         return None;
     }
     let nr = skill_nr as usize;
-    let icon = active_spell_effect_icon_meta(nr)?;
+    let icon = active_spell_effect_icon_meta(nr, sprite)?;
     let kind = match nr {
         skills::SK_LIGHT
         | skills::SK_PROTECT
@@ -120,6 +120,8 @@ fn spell_meta(skill_nr: i16) -> Option<SpellEffectMeta> {
         | skills::SK_RECALL
         | skills::SK_BLAST => SpellEffectKind::Positive,
         skills::SK_CURSE | skills::SK_STUN | skills::SK_WIMPY => SpellEffectKind::Negative,
+        // Eye potions and Potion of Golem are positive buffs.
+        254 | 449 => SpellEffectKind::Positive,
         _ => return None,
     };
     Some(SpellEffectMeta { kind, icon })
@@ -161,10 +163,13 @@ fn format_duration(secs: f32) -> String {
 struct SpellSlotEntry {
     /// Spell slot index in the server-provided 20-element arrays.
     slot_index: usize,
-    /// Skill template number matching `SK_*` constants.
-    skill_nr: i16,
+    /// Sprite tile number from the `SetCharSpell` packet; used as the
+    /// texture cache key and to detect slot reuse.
+    sprite: i16,
     /// Remaining fill fraction in `[0.0, 1.0]` (`active / 16.0`).
     fill: f32,
+    /// Pre-computed display metadata for this effect.
+    meta: SpellEffectMeta,
 }
 
 // ---------------------------------------------------------------------------
@@ -187,8 +192,9 @@ struct HoveredIcon {
 /// Tracks observed decay rate for one active spell slot.
 #[derive(Clone, Debug)]
 struct DurationTracker {
-    /// Skill currently occupying the slot.
-    skill_nr: i16,
+    /// Sprite tile number of the effect occupying the slot; used to detect
+    /// when a slot is reused by a different effect.
+    sprite: i16,
     /// Fill fraction at the most recent observed fill change.
     last_fill: f32,
     /// Instant when `last_fill` was observed.
@@ -202,16 +208,16 @@ impl DurationTracker {
     ///
     /// # Arguments
     ///
-    /// * `skill_nr` - Skill currently occupying the slot.
+    /// * `sprite` - Sprite tile number of the effect occupying the slot.
     /// * `fill` - Current fill fraction in `[0.0, 1.0]`.
     /// * `now` - Observation time.
     ///
     /// # Returns
     ///
     /// * A tracker without a decay-rate estimate yet.
-    fn new(skill_nr: i16, fill: f32, now: Instant) -> Self {
+    fn new(sprite: i16, fill: f32, now: Instant) -> Self {
         Self {
-            skill_nr,
+            sprite,
             last_fill: fill,
             last_change_at: now,
             rate_per_sec: None,
@@ -291,8 +297,8 @@ pub struct SpellEffectIcons {
     hovered: Option<HoveredIcon>,
     /// Observed decay trackers keyed by spell slot index.
     duration_trackers: HashMap<usize, DurationTracker>,
-    /// Lazily-loaded texture IDs for spell icons. `None` means loading was
-    /// attempted and failed, so rendering should use the fallback tile.
+    /// Lazily-loaded texture IDs for spell icons, keyed by sprite tile number.
+    /// `None` means loading was attempted and failed, so rendering should use the fallback tile.
     icon_texture_ids: HashMap<i16, Option<usize>>,
 }
 
@@ -343,16 +349,18 @@ impl SpellEffectIcons {
                 continue;
             }
             let nr = spell_type[i];
-            let Some(meta) = spell_meta(nr) else {
+            let sprite = spell[i] as i16;
+            let Some(meta) = spell_meta(nr, sprite) else {
                 continue;
             };
             let fill = (f32::from(active[i]) / 16.0).clamp(0.0, 1.0);
-            self.update_duration_tracker(i, nr, fill, now);
+            self.update_duration_tracker(i, sprite, fill, now);
             active_slots.push(i);
             let entry = SpellSlotEntry {
                 slot_index: i,
-                skill_nr: nr,
+                sprite,
                 fill,
+                meta,
             };
             match meta.kind {
                 SpellEffectKind::Positive => {
@@ -376,21 +384,15 @@ impl SpellEffectIcons {
     /// # Arguments
     ///
     /// * `slot_index` - Spell slot index in the server-provided arrays.
-    /// * `skill_nr` - Skill currently occupying the slot.
+    /// * `sprite` - Sprite tile number of the effect occupying the slot.
     /// * `fill` - Current fill fraction in `[0.0, 1.0]`.
     /// * `now` - Observation time.
-    fn update_duration_tracker(
-        &mut self,
-        slot_index: usize,
-        skill_nr: i16,
-        fill: f32,
-        now: Instant,
-    ) {
+    fn update_duration_tracker(&mut self, slot_index: usize, sprite: i16, fill: f32, now: Instant) {
         match self.duration_trackers.get_mut(&slot_index) {
-            Some(tracker) if tracker.skill_nr == skill_nr => tracker.update(fill, now),
+            Some(tracker) if tracker.sprite == sprite => tracker.update(fill, now),
             _ => {
                 self.duration_trackers
-                    .insert(slot_index, DurationTracker::new(skill_nr, fill, now));
+                    .insert(slot_index, DurationTracker::new(sprite, fill, now));
             }
         }
     }
@@ -501,7 +503,7 @@ impl SpellEffectIcons {
             SpellEffectKind::Positive => self.positives.get(hov.index)?,
             SpellEffectKind::Negative => self.negatives.get(hov.index)?,
         };
-        let meta = spell_meta(entry.skill_nr)?;
+        let meta = entry.meta;
         if let Some(remaining_secs) = self
             .duration_trackers
             .get(&entry.slot_index)
@@ -539,7 +541,7 @@ impl SpellEffectIcons {
     /// # Arguments
     ///
     /// * `ctx` - Render context containing the graphics cache.
-    /// * `skill_nr` - Skill template number used as the texture cache key.
+    /// * `sprite` - Sprite tile number used as the texture cache key.
     /// * `meta` - Display metadata containing the temporary icon filename.
     ///
     /// # Returns
@@ -548,10 +550,10 @@ impl SpellEffectIcons {
     fn texture_id_for(
         &mut self,
         ctx: &mut RenderContext<'_, '_>,
-        skill_nr: i16,
+        sprite: i16,
         meta: SpellIconMeta,
     ) -> Option<usize> {
-        if let Some(id) = self.icon_texture_ids.get(&skill_nr) {
+        if let Some(id) = self.icon_texture_ids.get(&sprite) {
             return *id;
         }
 
@@ -569,7 +571,7 @@ impl SpellEffectIcons {
                 None
             }
         };
-        self.icon_texture_ids.insert(skill_nr, texture_id);
+        self.icon_texture_ids.insert(sprite, texture_id);
         texture_id
     }
 
@@ -591,9 +593,7 @@ impl SpellEffectIcons {
         entries: &[SpellSlotEntry],
     ) -> Result<(), String> {
         for (i, entry) in entries.iter().enumerate() {
-            let Some(meta) = spell_meta(entry.skill_nr) else {
-                continue;
-            };
+            let meta = entry.meta;
             let rect = self.icon_rect(kind, i);
             let hovered = self
                 .hovered
@@ -603,7 +603,7 @@ impl SpellEffectIcons {
             ctx.canvas.set_draw_color(ICON_BG);
             ctx.canvas.fill_rect(rect)?;
 
-            if let Some(texture_id) = self.texture_id_for(ctx, entry.skill_nr, meta.icon) {
+            if let Some(texture_id) = self.texture_id_for(ctx, entry.sprite, meta.icon) {
                 let texture = ctx.gfx.get_texture(texture_id);
                 ctx.canvas.copy(texture, None, Some(rect))?;
             } else {
@@ -681,8 +681,8 @@ mod tests {
 
         assert_eq!(icons.positives.len(), 1);
         assert_eq!(icons.negatives.len(), 1);
-        assert_eq!(icons.positives[0].skill_nr, skills::SK_BLESS as i16);
-        assert_eq!(icons.negatives[0].skill_nr, skills::SK_CURSE as i16);
+        assert_eq!(icons.positives[0].meta.icon.name, "Bless");
+        assert_eq!(icons.negatives[0].meta.icon.name, "Curse");
     }
 
     #[test]
@@ -709,7 +709,7 @@ mod tests {
         icons.duration_trackers.insert(
             0,
             DurationTracker {
-                skill_nr: skills::SK_BLESS as i16,
+                sprite: 1,
                 last_fill: 0.75,
                 last_change_at: Instant::now(),
                 rate_per_sec: Some(1.0 / 120.0),
@@ -833,7 +833,7 @@ mod tests {
         ];
 
         for skill_nr in displayable {
-            let meta = spell_meta(skill_nr as i16).unwrap();
+            let meta = spell_meta(skill_nr as i16, 0).unwrap();
             assert!(meta.icon.icon_filename.ends_with("_icon.png"));
         }
     }
@@ -851,7 +851,7 @@ mod tests {
         ];
 
         for skill_nr in passive {
-            assert!(spell_meta(skill_nr as i16).is_none());
+            assert!(spell_meta(skill_nr as i16, 0).is_none());
         }
     }
 }

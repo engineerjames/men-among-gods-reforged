@@ -112,6 +112,11 @@ impl Default for PerfProfiler {
 }
 
 impl PerfProfiler {
+    /// Creates an inactive profiler with empty sample buffers.
+    ///
+    /// # Returns
+    ///
+    /// * A new profiler ready to start collecting frame timing samples.
     pub fn new() -> Self {
         Self {
             active: false,
@@ -139,11 +144,19 @@ impl PerfProfiler {
     }
 
     /// Whether profiling is currently active.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_active` succeeds or the condition is met, otherwise `false`.
     pub fn is_active(&self) -> bool {
         self.active
     }
 
     /// Returns the number of seconds remaining in the profiling window, or 0.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `remaining_secs`.
     pub fn remaining_secs(&self) -> u64 {
         self.start_time
             .map(|t| {
@@ -177,6 +190,10 @@ impl PerfProfiler {
 
     /// Start timing a single draw call. Pairs with [`end_sample`].
     /// No-op when profiling is inactive.
+    ///
+    /// # Arguments
+    ///
+    /// * `_label` - Value passed to `begin_sample`.
     pub fn begin_sample(&mut self, _label: PerfLabel) {
         if self.active {
             self.pending_sample = Some(Instant::now());
@@ -185,6 +202,10 @@ impl PerfProfiler {
 
     /// Stop timing the draw call started by [`begin_sample`] and record it.
     /// No-op when profiling is inactive.
+    ///
+    /// # Arguments
+    ///
+    /// * `label` - Value passed to `end_sample`.
     pub fn end_sample(&mut self, label: PerfLabel) {
         if let Some(start) = self.pending_sample.take() {
             self.current_times.push((label, start.elapsed()));

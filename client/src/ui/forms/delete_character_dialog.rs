@@ -184,6 +184,10 @@ impl DeleteCharacterDialog {
     }
 
     /// Returns `true` if the dialog is currently visible.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
         self.visible
     }
