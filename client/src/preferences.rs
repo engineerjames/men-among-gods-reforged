@@ -74,15 +74,13 @@ impl Default for CharacterSettings {
 }
 
 /// Window display mode.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum DisplayMode {
     #[default]
     Windowed,
     Fullscreen,
     BorderlessFullscreen,
 }
-
 
 impl fmt::Display for DisplayMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

@@ -364,24 +364,25 @@ impl GameState {
         for m in 0..40 {
             let slot = self.characters[cn].item[m];
             if slot == 0
-                && let Some(in_idx) = God::create_item(self, 132) {
-                    self.items[in_idx].temp = 0;
-                    self.items[in_idx].description = [0; 200];
-                    let bytes = text.as_bytes();
-                    let length_to_copy =
-                        std::cmp::min(bytes.len(), self.items[in_idx].description.len());
-                    self.items[in_idx].description[..length_to_copy]
-                        .copy_from_slice(&bytes[..length_to_copy]);
+                && let Some(in_idx) = God::create_item(self, 132)
+            {
+                self.items[in_idx].temp = 0;
+                self.items[in_idx].description = [0; 200];
+                let bytes = text.as_bytes();
+                let length_to_copy =
+                    std::cmp::min(bytes.len(), self.items[in_idx].description.len());
+                self.items[in_idx].description[..length_to_copy]
+                    .copy_from_slice(&bytes[..length_to_copy]);
 
-                    self.items[in_idx].flags |= core::constants::ItemFlags::IF_NOEXPIRE.bits();
-                    self.items[in_idx].carried = cn as u16;
+                self.items[in_idx].flags |= core::constants::ItemFlags::IF_NOEXPIRE.bits();
+                self.items[in_idx].carried = cn as u16;
 
-                    self.characters[cn].item[m] = in_idx as u32;
-                    self.characters[cn].set_do_update_flags();
+                self.characters[cn].item[m] = in_idx as u32;
+                self.characters[cn].set_do_update_flags();
 
-                    self.do_update_char(cn);
-                    return;
-                }
+                self.do_update_char(cn);
+                return;
+            }
         }
 
         self.do_character_log(
@@ -533,7 +534,9 @@ impl GameState {
         for n in 1..core::constants::MAXCHARS {
             let ch = &mut self.characters[n];
             let show = {
-                if ch.used == core::constants::USE_EMPTY || (ch.flags & CharacterFlags::Player.bits()) == 0 {
+                if ch.used == core::constants::USE_EMPTY
+                    || (ch.flags & CharacterFlags::Player.bits()) == 0
+                {
                     false
                 } else {
                     (ch.flags & flag) != 0
@@ -649,7 +652,9 @@ impl GameState {
         for n in 1..core::constants::MAXCHARS {
             let ch = &mut self.characters[n];
             let matched = {
-                if ch.used == core::constants::USE_EMPTY || (ch.flags & CharacterFlags::Player.bits()) != 0 {
+                if ch.used == core::constants::USE_EMPTY
+                    || (ch.flags & CharacterFlags::Player.bits()) != 0
+                {
                     false
                 } else {
                     ch.get_name().to_lowercase().contains(&name.to_lowercase())
@@ -670,7 +675,9 @@ impl GameState {
 
         for n in 1..core::constants::MAXTCHARS {
             let matched = {
-                if self.character_templates[n].used == core::constants::USE_EMPTY || (self.character_templates[n].flags & CharacterFlags::Player.bits()) != 0 {
+                if self.character_templates[n].used == core::constants::USE_EMPTY
+                    || (self.character_templates[n].flags & CharacterFlags::Player.bits()) != 0
+                {
                     false
                 } else {
                     let name_s = c_string_to_str(&self.character_templates[n].name);
@@ -681,8 +688,7 @@ impl GameState {
             if matched {
                 foundtemp += 1;
                 let t_name = self.character_templates[n].get_name().to_owned();
-                let t_desc =
-                    c_string_to_str(&self.character_templates[n].description).to_owned();
+                let t_desc = c_string_to_str(&self.character_templates[n].description).to_owned();
                 self.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,

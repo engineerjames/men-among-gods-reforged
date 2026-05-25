@@ -178,19 +178,18 @@ impl GameScene {
 
                 // When the settings panel is open, forward nav events to it
                 if self.settings_panel.is_visible()
-                    && let Some(nav_event) = self.hud_nav.process_event(event) {
-                        self.settings_panel.handle_event(&nav_event);
-                        if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                            return Some(sc);
-                        }
-                        // NavBack on main settings panel → close it
-                        if matches!(nav_event, UiEvent::NavBack)
-                            && !self.settings_panel.is_visible()
-                        {
-                            // Panel already closed itself via NavBack handling
-                        }
-                        return None;
+                    && let Some(nav_event) = self.hud_nav.process_event(event)
+                {
+                    self.settings_panel.handle_event(&nav_event);
+                    if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                        return Some(sc);
                     }
+                    // NavBack on main settings panel → close it
+                    if matches!(nav_event, UiEvent::NavBack) && !self.settings_panel.is_visible() {
+                        // Panel already closed itself via NavBack handling
+                    }
+                    return None;
+                }
 
                 // D-pad → panel toggles and in-panel navigation (controller mode)
                 if self.controller_mode
@@ -369,7 +368,8 @@ impl GameScene {
                 // interaction). Without this guard, LT+A would fall through to
                 // the A-button walk/click path before reaching the skill
                 // dispatch block at the bottom.
-                if (self.lt_held || self.rt_held) && self.controller_mode
+                if (self.lt_held || self.rt_held)
+                    && self.controller_mode
                     && let Some(cb) = ControllerButton::from_sdl2(
                         *button,
                         self.lb_held,
@@ -377,32 +377,32 @@ impl GameScene {
                         self.lt_held,
                         self.rt_held,
                     )
-                        && let Some(slot) = app_state
-                            .settings
-                            .character
-                            .controller_bindings
-                            .slot_for_button(cb)
-                        {
-                            if let (Some(net), Some(ps)) =
-                                (app_state.network.as_ref(), app_state.player_state.as_ref())
-                            {
-                                // LT held → secondary bar; RT held → primary bar.
-                                let skill_nr = if self.lt_held {
-                                    app_state.settings.character.skill_keybinds_secondary[slot]
-                                } else {
-                                    app_state.settings.character.skill_keybinds[slot]
-                                };
-                                if let Some(skill_nr) = skill_nr {
-                                    self.play_click_sound(app_state);
-                                    net.send(ClientCommand::new_skill(
-                                        skill_nr as u32,
-                                        Self::default_skill_target(ps),
-                                        u32::from(ps.character_info().attrib[0][0]),
-                                    ));
-                                }
-                            }
-                            return None;
+                    && let Some(slot) = app_state
+                        .settings
+                        .character
+                        .controller_bindings
+                        .slot_for_button(cb)
+                {
+                    if let (Some(net), Some(ps)) =
+                        (app_state.network.as_ref(), app_state.player_state.as_ref())
+                    {
+                        // LT held → secondary bar; RT held → primary bar.
+                        let skill_nr = if self.lt_held {
+                            app_state.settings.character.skill_keybinds_secondary[slot]
+                        } else {
+                            app_state.settings.character.skill_keybinds[slot]
+                        };
+                        if let Some(skill_nr) = skill_nr {
+                            self.play_click_sound(app_state);
+                            net.send(ClientCommand::new_skill(
+                                skill_nr as u32,
+                                Self::default_skill_target(ps),
+                                u32::from(ps.character_info().attrib[0][0]),
+                            ));
                         }
+                    }
+                    return None;
+                }
 
                 // A button → controller-specific panel interaction
                 // When inventory or skills is open with a focused slot, handle
@@ -417,21 +417,23 @@ impl GameScene {
 
                     // Inventory panel: A = interact with selected slot
                     if self.inventory_panel.is_visible()
-                        && let Some(slot) = self.inventory_panel.controller_selected() {
-                            let shift = self.lb_held;
-                            self.inventory_panel.controller_activate(slot, shift);
-                            self.process_inventory_panel_actions(app_state);
-                            return None;
-                        }
+                        && let Some(slot) = self.inventory_panel.controller_selected()
+                    {
+                        let shift = self.lb_held;
+                        self.inventory_panel.controller_activate(slot, shift);
+                        self.process_inventory_panel_actions(app_state);
+                        return None;
+                    }
 
                     // Skills panel: A = activate focused +/- or Update
                     if self.skills_panel.is_visible()
-                        && self.skills_panel.controller_focus().is_some() {
-                            let shift = self.lb_held;
-                            self.skills_panel.controller_activate(shift);
-                            self.process_skills_panel_actions(app_state);
-                            return None;
-                        }
+                        && self.skills_panel.controller_focus().is_some()
+                    {
+                        let shift = self.lb_held;
+                        self.skills_panel.controller_activate(shift);
+                        self.process_skills_panel_actions(app_state);
+                        return None;
+                    }
                 }
 
                 // A button → left-click equivalent (LB = shift, RB = ctrl)
@@ -532,22 +534,22 @@ impl GameScene {
                         .slot_for_button(cb)
                         && let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            // LT held → secondary bar; otherwise primary.
-                            let skill_nr = if self.lt_held {
-                                app_state.settings.character.skill_keybinds_secondary[slot]
-                            } else {
-                                app_state.settings.character.skill_keybinds[slot]
-                            };
-                            if let Some(skill_nr) = skill_nr {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    u32::from(ps.character_info().attrib[0][0]),
-                                ));
-                            }
+                    {
+                        // LT held → secondary bar; otherwise primary.
+                        let skill_nr = if self.lt_held {
+                            app_state.settings.character.skill_keybinds_secondary[slot]
+                        } else {
+                            app_state.settings.character.skill_keybinds[slot]
+                        };
+                        if let Some(skill_nr) = skill_nr {
+                            self.play_click_sound(app_state);
+                            net.send(ClientCommand::new_skill(
+                                skill_nr as u32,
+                                Self::default_skill_target(ps),
+                                u32::from(ps.character_info().attrib[0][0]),
+                            ));
                         }
+                    }
                 }
                 None
             }
@@ -564,46 +566,43 @@ impl GameScene {
                 }
 
                 // Left stick release (L3) → short press = select/deselect character
-                if *button == Btn::LeftStick && self.controller_mode
-                    && let Some(_pressed_at) = self.l3_pressed_at.take() {
-                        // Hold threshold not reached (would have been consumed
-                        // in update()), so this is a short press → select.
-                        if let Some(ps) = app_state.player_state.as_ref() {
-                            let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-                            if let Some((mx, my)) = Self::screen_to_map_tile(
-                                self.mouse_x,
-                                self.mouse_y,
-                                cam_xoff,
-                                cam_yoff,
-                            ) {
-                                use mag_core::constants::ISCHAR;
-                                let selected_char = ps.selected_char();
-                                if let Some((sx, sy)) =
-                                    Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
+                if *button == Btn::LeftStick
+                    && self.controller_mode
+                    && let Some(_pressed_at) = self.l3_pressed_at.take()
+                {
+                    // Hold threshold not reached (would have been consumed
+                    // in update()), so this is a short press → select.
+                    if let Some(ps) = app_state.player_state.as_ref() {
+                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                        if let Some((mx, my)) =
+                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+                        {
+                            use mag_core::constants::ISCHAR;
+                            let selected_char = ps.selected_char();
+                            if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
+                            {
+                                let tile = ps.map().tile_at_xy(sx, sy);
+                                let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
+                                let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
+                                if target_cn != 0
+                                    && let Some(ps_mut) = app_state.player_state.as_mut()
                                 {
-                                    let tile = ps.map().tile_at_xy(sx, sy);
-                                    let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
-                                    let target_id = tile.map(|t| t.ch_id).unwrap_or(0);
-                                    if target_cn != 0
-                                        && let Some(ps_mut) = app_state.player_state.as_mut() {
-                                            if selected_char == target_cn as u16 {
-                                                ps_mut.clear_selected_char();
-                                            } else {
-                                                ps_mut.set_selected_char_with_id(
-                                                    target_cn as u16,
-                                                    target_id,
-                                                );
-                                            }
-                                        }
-                                } else if selected_char != 0 {
-                                    // No character near cursor but one is selected → deselect
-                                    if let Some(ps_mut) = app_state.player_state.as_mut() {
+                                    if selected_char == target_cn as u16 {
                                         ps_mut.clear_selected_char();
+                                    } else {
+                                        ps_mut
+                                            .set_selected_char_with_id(target_cn as u16, target_id);
                                     }
+                                }
+                            } else if selected_char != 0 {
+                                // No character near cursor but one is selected → deselect
+                                if let Some(ps_mut) = app_state.player_state.as_mut() {
+                                    ps_mut.clear_selected_char();
                                 }
                             }
                         }
                     }
+                }
 
                 None
             }
@@ -667,14 +666,16 @@ impl GameScene {
                 }
 
                 // When settings panel is open (and keyboard hidden), forward nav events from stick
-                if self.settings_panel.is_visible() && !self.keyboard.is_visible()
-                    && let Some(nav_event) = self.hud_nav.process_event(event) {
-                        self.settings_panel.handle_event(&nav_event);
-                        if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                            return Some(sc);
-                        }
-                        return None;
+                if self.settings_panel.is_visible()
+                    && !self.keyboard.is_visible()
+                    && let Some(nav_event) = self.hud_nav.process_event(event)
+                {
+                    self.settings_panel.handle_event(&nav_event);
+                    if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                        return Some(sc);
                     }
+                    return None;
+                }
 
                 // Trigger axis → skill dispatch.
                 // Lt fires from the secondary bar; Rt fires from the primary bar.
@@ -687,21 +688,21 @@ impl GameScene {
                         .slot_for_button(cb)
                         && let (Some(net), Some(ps)) =
                             (app_state.network.as_ref(), app_state.player_state.as_ref())
-                        {
-                            let skill_nr = if use_secondary {
-                                app_state.settings.character.skill_keybinds_secondary[slot]
-                            } else {
-                                app_state.settings.character.skill_keybinds[slot]
-                            };
-                            if let Some(skill_nr) = skill_nr {
-                                self.play_click_sound(app_state);
-                                net.send(ClientCommand::new_skill(
-                                    skill_nr as u32,
-                                    Self::default_skill_target(ps),
-                                    u32::from(ps.character_info().attrib[0][0]),
-                                ));
-                            }
+                    {
+                        let skill_nr = if use_secondary {
+                            app_state.settings.character.skill_keybinds_secondary[slot]
+                        } else {
+                            app_state.settings.character.skill_keybinds[slot]
+                        };
+                        if let Some(skill_nr) = skill_nr {
+                            self.play_click_sound(app_state);
+                            net.send(ClientCommand::new_skill(
+                                skill_nr as u32,
+                                Self::default_skill_target(ps),
+                                u32::from(ps.character_info().attrib[0][0]),
+                            ));
                         }
+                    }
                 }
                 None
             }

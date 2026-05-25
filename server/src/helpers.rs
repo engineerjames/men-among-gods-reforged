@@ -254,9 +254,10 @@ pub(crate) fn skill_aoe_targets(
             continue;
         }
         if let Some(viewer) = viewer
-            && gs.do_char_can_see(viewer, target) == 0 {
-                continue;
-            }
+            && gs.do_char_can_see(viewer, target) == 0
+        {
+            continue;
+        }
         targets.push(target);
     }
 

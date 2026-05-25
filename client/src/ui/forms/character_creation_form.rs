@@ -489,11 +489,10 @@ impl Widget for CharacterCreationForm {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. }
-                if self.controller_focused.is_some() => {
-                    self.controller_focused = None;
-                    self.apply_controller_focus();
-                }
+            UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
+                self.controller_focused = None;
+                self.apply_controller_focus();
+            }
             _ => {}
         }
 
@@ -526,10 +525,11 @@ impl Widget for CharacterCreationForm {
             button: MouseButton::Left,
             ..
         } = event
-            && let Some(idx) = self.field_index_at(*x, *y) {
-                self.focused_field = idx;
-                self.apply_focus();
-            }
+            && let Some(idx) = self.field_index_at(*x, *y)
+        {
+            self.focused_field = idx;
+            self.apply_focus();
+        }
 
         // Class column click handling.
         if let UiEvent::MouseClick {
@@ -573,9 +573,10 @@ impl Widget for CharacterCreationForm {
 
         // Consume if inside panel.
         if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event
-            && self.bounds.contains_point(*x, *y) {
-                return EventResponse::Consumed;
-            }
+            && self.bounds.contains_point(*x, *y)
+        {
+            return EventResponse::Consumed;
+        }
 
         match event {
             UiEvent::TextInput { .. } | UiEvent::KeyDown { .. } => EventResponse::Consumed,

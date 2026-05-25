@@ -43,6 +43,20 @@ pub const SK_CONCEN: usize = 34;
 pub const SK_WARCRY: usize = 35;
 pub const SK_WARCRY2: usize = SK_WARCRY + 100;
 
+// ---- Mercenary talent-granted skills (reserved slots 37..=42) ----
+/// Parasite: short-duration DoT that returns a portion of damage to the caster.
+pub const SK_PARASITE: usize = 37;
+/// Distract: slows enemy action ticks via a heavy Agility debuff.
+pub const SK_DISTRACT: usize = 38;
+/// Deliver Death: instant-kill execute on low-HP targets, long cooldown that resets on a successful kill.
+pub const SK_DELIVER_DEATH: usize = 39;
+/// Disarm: temporarily lowers the target's weapon skill.
+pub const SK_DISARM: usize = 40;
+/// Contagion: upgraded Curse with longer duration and a DoT that spreads on the target's death.
+pub const SK_CONTAGION: usize = 41;
+/// Blade Dance: passive amplifier that doubles Surround Hit secondary damage.
+pub const SK_BLADE_DANCE: usize = 42;
+
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
 /// Maximum number of skill slots.
@@ -172,6 +186,12 @@ pub enum Skill {
     SurroundHit = SK_SURROUND,
     Concentrate = SK_CONCEN,
     Warcry = SK_WARCRY,
+    Parasite = SK_PARASITE,
+    Distract = SK_DISTRACT,
+    DeliverDeath = SK_DELIVER_DEATH,
+    Disarm = SK_DISARM,
+    Contagion = SK_CONTAGION,
+    BladeDance = SK_BLADE_DANCE,
 }
 
 /// A skill definition entry describing one learnable ability.
@@ -570,13 +590,61 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         3,
         4,
     ),
-    // 37..49 reserved empty
-    SkillTab::new(37, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(38, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(39, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(40, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(41, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(42, SkillCategory::Unknown, "", "", 0, 0, 0),
+    // 37..42 Mercenary talent-granted skills; 43..49 still reserved empty
+    SkillTab::new(
+        37,
+        SkillCategory::Magic,
+        "Parasite",
+        "Spell: Infest target with a short DoT and return a fraction of the damage as health (Cost: 20 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        38,
+        SkillCategory::Magic,
+        "Distract",
+        "Spell: Briefly slow target's actions (Cost: 15 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        39,
+        SkillCategory::General,
+        "Deliver Death",
+        "Execute a target at or below 20% health. Long cooldown unless the kill succeeds.",
+        0,
+        3,
+        4,
+    ),
+    SkillTab::new(
+        40,
+        SkillCategory::Magic,
+        "Disarm",
+        "Spell: Lower target's weapon skill (Cost: 20 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        41,
+        SkillCategory::Magic,
+        "Contagion",
+        "Spell: Upgraded Curse with long duration; on target's death the curse spreads to nearby enemies (Cost: 40 Mana).",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        42,
+        SkillCategory::General,
+        "Blade Dance",
+        "Passive: Surround Hit secondary strikes deal double damage.",
+        0,
+        3,
+        4,
+    ),
     SkillTab::new(43, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(44, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(45, SkillCategory::Unknown, "", "", 0, 0, 0),
@@ -719,12 +787,12 @@ const SKILL_NAMES: [&str; 50] = [
     "Concentrate",
     "Warcry",
     "Weapon Skill",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
+    "Parasite",
+    "Distract",
+    "Deliver Death",
+    "Disarm",
+    "Contagion",
+    "Blade Dance",
     "",
     "",
     "",

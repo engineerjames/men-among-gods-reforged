@@ -672,25 +672,24 @@ impl MapViewerApp {
                                 if let Some(cache) = self.graphics_zip.as_mut()
                                     && let Ok(Some(texture)) =
                                         cache.texture_for(ctx, self.draft_sprite as usize)
-                                    {
-                                        ui.add(
-                                            egui::Image::new(texture)
-                                                .fit_to_exact_size(preview_size)
-                                                .maintain_aspect_ratio(true),
-                                        );
-                                        preview_drawn = true;
-                                    }
+                                {
+                                    ui.add(
+                                        egui::Image::new(texture)
+                                            .fit_to_exact_size(preview_size)
+                                            .maintain_aspect_ratio(true),
+                                    );
+                                    preview_drawn = true;
+                                }
 
                                 if !preview_drawn {
                                     ui.allocate_exact_size(preview_size, egui::Sense::hover());
                                 }
 
-                                if ui.small_button("Add").clicked()
-                                    && self.draft_sprite != 0 {
-                                        self.palette.push(PaletteEntry {
-                                            kind: PaletteEntryKind::Sprite(self.draft_sprite),
-                                        });
-                                    }
+                                if ui.small_button("Add").clicked() && self.draft_sprite != 0 {
+                                    self.palette.push(PaletteEntry {
+                                        kind: PaletteEntryKind::Sprite(self.draft_sprite),
+                                    });
+                                }
                             });
 
                             ui.horizontal(|ui| {
@@ -705,30 +704,29 @@ impl MapViewerApp {
                                     && self.item_templates[it_idx].used != USE_EMPTY
                                     && let Some(sprite) =
                                         item_map_sprite(self.item_templates[it_idx])
-                                        && let Some(cache) = self.graphics_zip.as_mut()
-                                            && let Ok(Some(texture)) =
-                                                cache.texture_for(ctx, sprite as usize)
-                                            {
-                                                ui.add(
-                                                    egui::Image::new(texture)
-                                                        .fit_to_exact_size(preview_size)
-                                                        .maintain_aspect_ratio(true),
-                                                );
-                                                preview_drawn = true;
-                                            }
+                                    && let Some(cache) = self.graphics_zip.as_mut()
+                                    && let Ok(Some(texture)) =
+                                        cache.texture_for(ctx, sprite as usize)
+                                {
+                                    ui.add(
+                                        egui::Image::new(texture)
+                                            .fit_to_exact_size(preview_size)
+                                            .maintain_aspect_ratio(true),
+                                    );
+                                    preview_drawn = true;
+                                }
 
                                 if !preview_drawn {
                                     ui.allocate_exact_size(preview_size, egui::Sense::hover());
                                 }
 
                                 if ui.small_button("Add").clicked()
-                                    && self.draft_item_instance_id != 0 {
-                                        self.palette.push(PaletteEntry {
-                                            kind: PaletteEntryKind::Item(
-                                                self.draft_item_instance_id,
-                                            ),
-                                        });
-                                    }
+                                    && self.draft_item_instance_id != 0
+                                {
+                                    self.palette.push(PaletteEntry {
+                                        kind: PaletteEntryKind::Item(self.draft_item_instance_id),
+                                    });
+                                }
                             });
 
                             ui.separator();
@@ -946,10 +944,11 @@ impl eframe::App for MapViewerApp {
 
         // Preload graphics incrementally
         if let Some(cache) = self.graphics_zip.as_mut()
-            && !cache.loading_done {
-                let _ = cache.preload_step(ctx);
-                ctx.request_repaint();
-            }
+            && !cache.loading_done
+        {
+            let _ = cache.preload_step(ctx);
+            ctx.request_repaint();
+        }
 
         // Keyboard pan (WASD).
         let dt = ctx.input(|i| i.stable_dt).max(1.0 / 240.0);
@@ -1190,18 +1189,19 @@ impl eframe::App for MapViewerApp {
 
                 // Show loading progress
                 if let Some(cache) = &self.graphics_zip
-                    && !cache.loading_done {
-                        let (loaded, total) = cache.loading_progress();
-                        ui.separator();
-                        ui.label(format!("Loading sprites: {}/{}", loaded, total));
-                        if total > 0 {
-                            let progress = loaded as f32 / total as f32;
-                            ui.add(
-                                egui::ProgressBar::new(progress)
-                                    .text(format!("{:.0}%", progress * 100.0)),
-                            );
-                        }
+                    && !cache.loading_done
+                {
+                    let (loaded, total) = cache.loading_progress();
+                    ui.separator();
+                    ui.label(format!("Loading sprites: {}/{}", loaded, total));
+                    if total > 0 {
+                        let progress = loaded as f32 / total as f32;
+                        ui.add(
+                            egui::ProgressBar::new(progress)
+                                .text(format!("{:.0}%", progress * 100.0)),
+                        );
                     }
+                }
 
                 ui.separator();
                 ui.label("Controls:");
@@ -1301,16 +1301,15 @@ impl eframe::App for MapViewerApp {
                             let preview_size = Vec2::new(64.0, 64.0);
                             self.ui_tile_preview_row(ui, ctx, sprite, fsprite, it, preview_size);
 
-                            if sprite != 0 && fsprite != 0
-                                && ui.button("Clear fsprite").clicked() {
-                                    let mut updated = self.map_tiles[idx];
-                                    updated.fsprite = 0;
-                                    if updated != self.map_tiles[idx] {
-                                        self.map_tiles[idx] = updated;
-                                        self.mark_tile_dirty(x, y);
-                                        ctx.request_repaint();
-                                    }
+                            if sprite != 0 && fsprite != 0 && ui.button("Clear fsprite").clicked() {
+                                let mut updated = self.map_tiles[idx];
+                                updated.fsprite = 0;
+                                if updated != self.map_tiles[idx] {
+                                    self.map_tiles[idx] = updated;
+                                    self.mark_tile_dirty(x, y);
+                                    ctx.request_repaint();
                                 }
+                            }
 
                             if it != 0 {
                                 let it_idx = it as usize;
@@ -1623,9 +1622,10 @@ impl eframe::App for MapViewerApp {
                             0,
                             0,
                             egui::Color32::WHITE,
-                        ) {
-                            self.graphics_zip_error = Some(e);
-                        }
+                        )
+                    {
+                        self.graphics_zip_error = Some(e);
+                    }
 
                     // Foreground
                     if tile.fsprite != 0 {

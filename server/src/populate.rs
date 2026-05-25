@@ -894,14 +894,16 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
             items.iter().position(|&it| it == 0)
         };
         if let Some(slot) = first_empty_slot
-            && chance > 0 && helpers::random_mod(chance as u32) == 0 {
-                let tmp = pop_create_bonus(gs, cn, chance);
-                if tmp != 0 {
-                    let tmp = tmp as usize;
-                    gs.items[tmp].carried = cn as u16;
-                    gs.characters[cn].item[slot] = tmp as u32;
-                }
+            && chance > 0
+            && helpers::random_mod(chance as u32) == 0
+        {
+            let tmp = pop_create_bonus(gs, cn, chance);
+            if tmp != 0 {
+                let tmp = tmp as usize;
+                gs.items[tmp].carried = cn as u16;
+                gs.characters[cn].item[slot] = tmp as u32;
             }
+        }
 
         // Rainbow belt: at most one, attempt on (new) first empty slot.
         let first_empty_slot = {
@@ -909,14 +911,15 @@ pub fn pop_create_char(gs: &mut GameState, template_id: usize, drop: bool) -> Op
             items.iter().position(|&it| it == 0)
         };
         if let Some(slot) = first_empty_slot
-            && helpers::random_mod(10000) == 0 {
-                let tmp = pop_create_bonus_belt(gs, cn);
-                if tmp != 0 {
-                    let tmp = tmp as usize;
-                    gs.items[tmp].carried = cn as u16;
-                    gs.characters[cn].item[slot] = tmp as u32;
-                }
+            && helpers::random_mod(10000) == 0
+        {
+            let tmp = pop_create_bonus_belt(gs, cn);
+            if tmp != 0 {
+                let tmp = tmp as usize;
+                gs.items[tmp].carried = cn as u16;
+                gs.characters[cn].item[slot] = tmp as u32;
             }
+        }
     }
 
     // Drop character on map if requested (matches C++: exact coords, cleanup on failure).
@@ -1069,7 +1072,6 @@ pub fn pop_skill(gs: &mut GameState) {
         let template_skills = gs.character_templates[t].skill;
 
         for (n, temp_skill) in template_skills.iter().enumerate() {
-
             let ch = &mut gs.characters[cn];
 
             if ch.skill[n][0] == 0 && temp_skill[0] != 0 {

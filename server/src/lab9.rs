@@ -754,13 +754,12 @@ pub fn lab9_guesser_says(gs: &mut GameState, character_id: usize, text: &str) ->
             }
         }
     }
-    if !found
-        && let Some(start) = word_start {
-            let word = &text[start..];
-            if matches_answer(word) {
-                found = true;
-            }
+    if !found && let Some(start) = word_start {
+        let word = &text[start..];
+        if matches_answer(word) {
+            found = true;
         }
+    }
 
     if found {
         let char_name = gs.characters[character_id].get_name().to_owned();

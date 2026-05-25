@@ -118,6 +118,36 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             color: Color::RGB(220, 110, 70),
             icon_filename: "warcry_icon.png",
         }),
+        skills::SK_PARASITE => Some(SpellIconMeta {
+            name: "Parasite",
+            color: Color::RGB(140, 200, 80),
+            icon_filename: "parasite_icon.png",
+        }),
+        skills::SK_DISTRACT => Some(SpellIconMeta {
+            name: "Distract",
+            color: Color::RGB(220, 220, 120),
+            icon_filename: "distract_icon.png",
+        }),
+        skills::SK_DELIVER_DEATH => Some(SpellIconMeta {
+            name: "Deliver Death",
+            color: Color::RGB(200, 40, 40),
+            icon_filename: "deliver_death_icon.png",
+        }),
+        skills::SK_DISARM => Some(SpellIconMeta {
+            name: "Disarm",
+            color: Color::RGB(180, 180, 200),
+            icon_filename: "disarm_icon.png",
+        }),
+        skills::SK_CONTAGION => Some(SpellIconMeta {
+            name: "Contagion",
+            color: Color::RGB(120, 180, 80),
+            icon_filename: "contagion_icon.png",
+        }),
+        skills::SK_BLADE_DANCE => Some(SpellIconMeta {
+            name: "Blade Dance",
+            color: Color::RGB(220, 160, 80),
+            icon_filename: "blade_dance_icon.png",
+        }),
         _ => None,
     }
 }

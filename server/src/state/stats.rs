@@ -17,10 +17,9 @@ impl GameState {
     pub(crate) fn char_wears_item(&mut self, cn: usize, item_template: u16) -> bool {
         for n in 0..20 {
             let item_idx = self.characters[cn].worn[n];
-            if item_idx != 0
-                && self.items[item_idx as usize].temp == item_template {
-                    return true;
-                }
+            if item_idx != 0 && self.items[item_idx as usize].temp == item_template {
+                return true;
+            }
         }
         false
     }
@@ -573,10 +572,9 @@ impl GameState {
                         // Misc action
                         if mode == 2 {
                             self.characters[cn].a_end -= scale(25);
-                        } else if mode == 0
-                            && !noend {
-                                self.characters[cn].a_end += scale(25);
-                            }
+                        } else if mode == 0 && !noend {
+                            self.characters[cn].a_end += scale(25);
+                        }
                     }
                 }
 
@@ -819,6 +817,59 @@ impl GameState {
                     }
                 }
 
+                // Parasite / Contagion damage-over-time with caster lifesteal.
+                // Each spell-item stores the caster in `data[0]` and ticks
+                // once per second based on remaining duration. Damage scales
+                // with `power`; the caster heals for 25% of damage dealt.
+                if item_temp == skills::SK_PARASITE as u16
+                    || item_temp == skills::SK_CONTAGION as u16
+                {
+                    let item = &self.items[spell_item as usize];
+                    let duration = item.duration as i32;
+                    let active_i = active as i32;
+                    let power = item.power as i32;
+                    let caster = item.data[0] as usize;
+                    // Tick once per second of real time.
+                    let elapsed = duration - active_i;
+                    if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
+                        let base_dam = (power / 4).max(1);
+                        let dam = if item_temp == skills::SK_CONTAGION as u16 {
+                            base_dam * 2
+                        } else {
+                            base_dam
+                        };
+                        let dam_unit = dam * 1000;
+                        // Apply DoT directly without going through do_hurt to
+                        // avoid amplifying with armor (the parasite eats
+                        // flesh from the inside).
+                        self.characters[cn].a_hp -= dam_unit;
+                        // Lifesteal: caster regains 25% of damage dealt, if
+                        // still alive and a sane character index.
+                        if core::types::Character::is_sane_character(caster)
+                            && caster != cn
+                            && self.characters[caster].used == core::constants::USE_ACTIVE
+                        {
+                            let heal = dam_unit / 4;
+                            self.characters[caster].a_hp += heal;
+                            let max_hp = i32::from(self.characters[caster].hp[5]) * 1000;
+                            if self.characters[caster].a_hp > max_hp {
+                                self.characters[caster].a_hp = max_hp;
+                            }
+                        }
+                        if self.characters[cn].a_hp < 500 {
+                            self.characters[cn].a_hp = 500;
+                            let spell_name = self.items[spell_item as usize].get_name().to_owned();
+                            self.do_character_log(
+                                cn,
+                                FontColor::Red,
+                                &format!("The {} killed you!\n", spell_name),
+                            );
+                            self.do_character_killed(cn, caster, false);
+                            return;
+                        }
+                    }
+                }
+
                 // Handle spell expiration
                 if active == 0 {
                     let spell_name = self.items[spell_item as usize].get_name().to_owned();
@@ -836,25 +887,26 @@ impl GameState {
                                 self.characters[cn].flags & CharacterFlags::Invisible.bits() != 0;
 
                             if God::transfer_char(self, cn, dest_x as usize, dest_y as usize)
-                                && !is_invisible {
-                                    EffectManager::fx_add_effect(
-                                        self,
-                                        12,
-                                        0,
-                                        i32::from(old_x),
-                                        i32::from(old_y),
-                                        0,
-                                    );
+                                && !is_invisible
+                            {
+                                EffectManager::fx_add_effect(
+                                    self,
+                                    12,
+                                    0,
+                                    i32::from(old_x),
+                                    i32::from(old_y),
+                                    0,
+                                );
 
-                                    EffectManager::fx_add_effect(
-                                        self,
-                                        12,
-                                        0,
-                                        dest_x as i32,
-                                        dest_y as i32,
-                                        0,
-                                    );
-                                }
+                                EffectManager::fx_add_effect(
+                                    self,
+                                    12,
+                                    0,
+                                    dest_x as i32,
+                                    dest_y as i32,
+                                    0,
+                                );
+                            }
 
                             // Reset character state
                             self.characters[cn].status = 0;
@@ -1532,72 +1584,72 @@ impl GameState {
 
         if saved_by_god
             && (mf_flags & u64::from(core::constants::MF_ARENA)) == 0
-                && helpers::random_mod_i32(10000) < 5000 + self.characters[co].luck
-            {
-                // Save the character
-                self.characters[co].a_hp = i32::from(self.characters[co].hp[5]) * 500;
-                self.characters[co].luck /= 2;
-                self.characters[co].data[44] += 1; // saved counter
+            && helpers::random_mod_i32(10000) < 5000 + self.characters[co].luck
+        {
+            // Save the character
+            self.characters[co].a_hp = i32::from(self.characters[co].hp[5]) * 500;
+            self.characters[co].luck /= 2;
+            self.characters[co].data[44] += 1; // saved counter
 
-                self.do_character_log(co, core::types::FontColor::Yellow, "A god reached down and saved you from the killing blow. You must have done the gods a favor sometime in the past!\n");
-                let co_x = self.characters[co].x;
-                let co_y = self.characters[co].y;
-                self.do_area_log(
-                    co,
-                    0,
-                    i32::from(co_x),
-                    i32::from(co_y),
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "A god reached down and saved {} from the killing blow.\n",
-                        self.characters[co].get_name().to_owned()
-                    ),
-                );
-                crate::effect::EffectManager::fx_add_effect(
-                    self,
-                    6,
-                    0,
-                    i32::from(co_x),
-                    i32::from(co_y),
-                    0,
-                );
-                let temple_x = self.characters[co].temple_x as usize;
-                let temple_y = self.characters[co].temple_y as usize;
-                God::transfer_char(self, co, temple_x, temple_y);
-                let new_x = self.characters[co].x;
-                let new_y = self.characters[co].y;
-                crate::effect::EffectManager::fx_add_effect(
-                    self,
-                    6,
-                    0,
-                    i32::from(new_x),
-                    i32::from(new_y),
-                    0,
-                );
+            self.do_character_log(co, core::types::FontColor::Yellow, "A god reached down and saved you from the killing blow. You must have done the gods a favor sometime in the past!\n");
+            let co_x = self.characters[co].x;
+            let co_y = self.characters[co].y;
+            self.do_area_log(
+                co,
+                0,
+                i32::from(co_x),
+                i32::from(co_y),
+                core::types::FontColor::Yellow,
+                &format!(
+                    "A god reached down and saved {} from the killing blow.\n",
+                    self.characters[co].get_name().to_owned()
+                ),
+            );
+            crate::effect::EffectManager::fx_add_effect(
+                self,
+                6,
+                0,
+                i32::from(co_x),
+                i32::from(co_y),
+                0,
+            );
+            let temple_x = self.characters[co].temple_x as usize;
+            let temple_y = self.characters[co].temple_y as usize;
+            God::transfer_char(self, co, temple_x, temple_y);
+            let new_x = self.characters[co].x;
+            let new_y = self.characters[co].y;
+            crate::effect::EffectManager::fx_add_effect(
+                self,
+                6,
+                0,
+                i32::from(new_x),
+                i32::from(new_y),
+                0,
+            );
 
-                self.do_notify_character(
-                    cn as u32,
-                    i32::from(core::constants::NT_DIDKILL),
-                    co as i32,
-                    0,
-                    0,
-                    0,
-                );
-                let cn_x = i32::from(self.characters[cn].x);
-                let cn_y = i32::from(self.characters[cn].y);
-                self.do_area_notify(
-                    cn as i32,
-                    co as i32,
-                    cn_x,
-                    cn_y,
-                    i32::from(core::constants::NT_SEEKILL),
-                    cn as i32,
-                    co as i32,
-                    0,
-                    0,
-                );
-                return dam / 1000;
-            }
+            self.do_notify_character(
+                cn as u32,
+                i32::from(core::constants::NT_DIDKILL),
+                co as i32,
+                0,
+                0,
+                0,
+            );
+            let cn_x = i32::from(self.characters[cn].x);
+            let cn_y = i32::from(self.characters[cn].y);
+            self.do_area_notify(
+                cn as i32,
+                co as i32,
+                cn_x,
+                cn_y,
+                i32::from(core::constants::NT_SEEKILL),
+                cn as i32,
+                co as i32,
+                0,
+                0,
+            );
+            return dam / 1000;
+        }
 
         // Subtract hp
         self.characters[co].a_hp -= dam;

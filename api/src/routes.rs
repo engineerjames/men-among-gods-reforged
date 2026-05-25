@@ -1263,7 +1263,8 @@ pub(crate) async fn request_password_reset(
     // are effectively atomic — avoids the TOCTOU race where concurrent requests
     // all read the same count before any of them increments it.
     let ip_key = format!("password_reset_attempts:{}", addr.ip());
-    let new_attempt_count: u64 = (redis::cmd("INCR").arg(&ip_key).query_async(&mut con).await).unwrap_or(1);
+    let new_attempt_count: u64 =
+        (redis::cmd("INCR").arg(&ip_key).query_async(&mut con).await).unwrap_or(1);
     let _: Result<(), _> = redis::cmd("EXPIRE")
         .arg(&ip_key)
         .arg(RESET_TTL_SECS)

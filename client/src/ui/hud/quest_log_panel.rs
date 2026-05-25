@@ -405,33 +405,33 @@ impl Widget for QuestLogPanel {
                 .entries
                 .iter()
                 .find(|e| e.template_id == self.data.active_template_id)
-            {
-                let mut y = self.desc_y();
-                if !active.description.is_empty() {
-                    font_cache::draw_text(
-                        ctx.canvas,
-                        ctx.gfx,
-                        PANEL_FONT,
-                        &active.description,
-                        text_x,
-                        y,
-                        font_cache::TextStyle::PLAIN,
-                    )?;
-                    y += ROW_H;
-                }
-                for step in &active.steps {
-                    font_cache::draw_text(
-                        ctx.canvas,
-                        ctx.gfx,
-                        PANEL_FONT,
-                        step,
-                        text_x,
-                        y,
-                        font_cache::TextStyle::PLAIN,
-                    )?;
-                    y += ROW_H;
-                }
+        {
+            let mut y = self.desc_y();
+            if !active.description.is_empty() {
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    &active.description,
+                    text_x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
+                y += ROW_H;
             }
+            for step in &active.steps {
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    step,
+                    text_x,
+                    y,
+                    font_cache::TextStyle::PLAIN,
+                )?;
+                y += ROW_H;
+            }
+        }
 
         Ok(())
     }

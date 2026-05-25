@@ -239,12 +239,13 @@ fn active_quest_destination(
     npc_pos_fallback: Option<(u16, u16)>,
 ) -> Option<(u16, u16)> {
     if let Some(def) = mag_core::quest_defs::find_quest_def(template_id)
-        && let Some(step) = def.steps.get(step_idx) {
-            return match step {
-                mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
-                mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
-            };
-        }
+        && let Some(step) = def.steps.get(step_idx)
+    {
+        return match step {
+            mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
+            mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
+        };
+    }
     npc_pos_fallback
 }
 
@@ -697,9 +698,10 @@ impl GameScene {
         for y in 0..TILEY {
             for x in 0..TILEX {
                 if let Some(tile) = ps.map().tile_at_xy(x, y)
-                    && tile.ch_nr == selected {
-                        return true;
-                    }
+                    && tile.ch_nr == selected
+                {
+                    return true;
+                }
             }
         }
 
@@ -1327,13 +1329,13 @@ impl Scene for GameScene {
                     .character
                     .key_bindings
                     .action_for_key(*kc, mods)
-                {
-                    match action {
-                        GameAction::ToggleSkills => self.skills_panel.toggle(),
-                        GameAction::ToggleInventory => self.inventory_panel.toggle(),
-                    }
-                    return None;
+            {
+                match action {
+                    GameAction::ToggleSkills => self.skills_panel.toggle(),
+                    GameAction::ToggleInventory => self.inventory_panel.toggle(),
                 }
+                return None;
+            }
         }
 
         // --- Controller events ---
@@ -1362,19 +1364,20 @@ impl Scene for GameScene {
                     | Keycode::Num7
                     | Keycode::Num8
                     | Keycode::Num9
-            ) {
-                self.handle_num_hotkey(app_state, *kc);
-                return None;
-            }
+            )
+        {
+            self.handle_num_hotkey(app_state, *kc);
+            return None;
+        }
 
         // --- Mouse world interactions ---
         if !ui_consumed
             && let Event::MouseButtonUp {
                 mouse_btn, x, y, ..
             } = event
-            {
-                return self.handle_world_click(app_state, *mouse_btn, *x, *y);
-            }
+        {
+            return self.handle_world_click(app_state, *mouse_btn, *x, *y);
+        }
 
         None
     }
@@ -1509,33 +1512,36 @@ impl Scene for GameScene {
 
         // --- L3 hold detection: look at nearest character ---
         if self.controller_mode
-            && let Some(pressed_at) = self.l3_pressed_at {
-                const L3_HOLD_THRESHOLD: Duration = Duration::from_millis(500);
-                if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
-                    self.l3_pressed_at = None; // consumed
-                    if let Some(ps) = app_state.player_state.as_ref() {
-                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-                        if let Some((mx, my)) =
-                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
-                        {
-                            use mag_core::constants::ISCHAR;
-                            if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
+            && let Some(pressed_at) = self.l3_pressed_at
+        {
+            const L3_HOLD_THRESHOLD: Duration = Duration::from_millis(500);
+            if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
+                self.l3_pressed_at = None; // consumed
+                if let Some(ps) = app_state.player_state.as_ref() {
+                    let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                    if let Some((mx, my)) =
+                        Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+                    {
+                        use mag_core::constants::ISCHAR;
+                        if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR) {
+                            let tile = ps.map().tile_at_xy(sx, sy);
+                            let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
+                            if target_cn != 0
+                                && let Some(net) = app_state.network.as_ref()
                             {
-                                let tile = ps.map().tile_at_xy(sx, sy);
-                                let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
-                                if target_cn != 0
-                                    && let Some(net) = app_state.network.as_ref() {
-                                        self.play_click_sound(app_state);
-                                        net.send(ClientCommand::new_look(target_cn));
-                                    }
+                                self.play_click_sound(app_state);
+                                net.send(ClientCommand::new_look(target_cn));
                             }
                         }
                     }
                 }
             }
+        }
 
         // Create the cert dialog widget when a mismatch is first detected.
-        if let Some(m) = &self.certificate_mismatch && self.cert_dialog.is_none() {
+        if let Some(m) = &self.certificate_mismatch
+            && self.cert_dialog.is_none()
+        {
             self.cert_dialog = Some(CertDialog::new(
                 &m.host,
                 &m.expected_fingerprint,
@@ -1546,9 +1552,10 @@ impl Scene for GameScene {
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
-                && !Self::is_selected_visible(ps) {
-                    ps.clear_selected_char();
-                }
+                && !Self::is_selected_visible(ps)
+            {
+                ps.clear_selected_char();
+            }
 
             let tick_now = app_state
                 .network

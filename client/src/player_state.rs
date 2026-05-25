@@ -383,9 +383,10 @@ impl PlayerState {
                 }
 
                 if let Some(space) = line[..cut].rfind(' ')
-                    && space > 0 {
-                        cut = space;
-                    }
+                    && space > 0
+                {
+                    cut = space;
+                }
 
                 let head = line[..cut].trim_end();
                 if !head.is_empty() {

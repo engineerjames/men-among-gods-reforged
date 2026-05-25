@@ -363,11 +363,10 @@ impl Widget for RequestResetForm {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. }
-                if self.controller_focused.is_some() => {
-                    self.controller_focused = None;
-                    self.apply_controller_focus();
-                }
+            UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
+                self.controller_focused = None;
+                self.apply_controller_focus();
+            }
             _ => {}
         }
 
@@ -400,10 +399,11 @@ impl Widget for RequestResetForm {
             button: MouseButton::Left,
             ..
         } = event
-            && let Some(idx) = self.field_index_at(*x, *y) {
-                self.focused_field = idx;
-                self.apply_focus();
-            }
+            && let Some(idx) = self.field_index_at(*x, *y)
+        {
+            self.focused_field = idx;
+            self.apply_focus();
+        }
 
         // Forward to buttons.
         if self.submit_button.handle_event(event) == EventResponse::Consumed {
@@ -421,9 +421,10 @@ impl Widget for RequestResetForm {
 
         // Consume if inside panel.
         if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event
-            && self.bounds.contains_point(*x, *y) {
-                return EventResponse::Consumed;
-            }
+            && self.bounds.contains_point(*x, *y)
+        {
+            return EventResponse::Consumed;
+        }
 
         match event {
             UiEvent::TextInput { .. } | UiEvent::KeyDown { .. } => EventResponse::Consumed,

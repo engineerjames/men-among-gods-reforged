@@ -52,6 +52,10 @@ impl GameState {
             0,
         );
 
+        // Contagion: if the dying character was infected, the disease leaps
+        // to adjacent enemies sharing the caster's faction enmity.
+        self.spread_contagion_on_death(character_id);
+
         // Log the kill
         if killer_id != 0 {
             log::info!(
@@ -903,6 +907,94 @@ impl GameState {
                 FontColor::Red,
                 "You would have lost permanent mana, but you're already at the minimum.\n",
             );
+        }
+    }
+
+    /// On-death helper for the Contagion DoT. If the dying character carries
+    /// an active Contagion spell-item, this spreads a fresh Contagion to up
+    /// to four adjacent enemies (8-neighborhood). Each spread carries the
+    /// original caster's identity so lifesteal continues to feed the source
+    /// of the infection.
+    ///
+    /// # Arguments
+    ///
+    /// * `dying` - Character index of the host that is about to die.
+    fn spread_contagion_on_death(&mut self, dying: usize) {
+        if !Character::is_sane_character(dying) {
+            return;
+        }
+        // Find an active Contagion DoT on the dying character.
+        let mut contagion_caster: i32 = -1;
+        let mut contagion_power: i32 = 0;
+        for n in 0..20 {
+            let in_idx = self.characters[dying].spell[n] as usize;
+            if in_idx == 0 {
+                continue;
+            }
+            if self.items[in_idx].temp == skills::SK_CONTAGION as u16
+                && self.items[in_idx].active > 0
+            {
+                contagion_caster = self.items[in_idx].data[0] as i32;
+                contagion_power = self.items[in_idx].power as i32;
+                break;
+            }
+        }
+        if contagion_caster < 0 {
+            return;
+        }
+        let caster = contagion_caster as usize;
+        if !Character::is_sane_character(caster) {
+            return;
+        }
+
+        let dx0 = i32::from(self.characters[dying].x);
+        let dy0 = i32::from(self.characters[dying].y);
+        let mut spread = 0;
+        for dy in -1..=1i32 {
+            for dx in -1..=1i32 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = dx0 + dx;
+                let ny = dy0 + dy;
+                if nx < 0
+                    || ny < 0
+                    || nx >= core::constants::SERVER_MAPX
+                    || ny >= core::constants::SERVER_MAPY
+                {
+                    continue;
+                }
+                let m = (nx + ny * core::constants::SERVER_MAPX) as usize;
+                let neighbor = self.map[m].ch as usize;
+                if neighbor == 0 || neighbor == caster {
+                    continue;
+                }
+                if !Character::is_sane_character(neighbor) {
+                    continue;
+                }
+                if !self.may_attack_msg(caster, neighbor, false) {
+                    continue;
+                }
+                if crate::driver::skill::apply_parasitic_dot(
+                    self,
+                    caster,
+                    neighbor,
+                    contagion_power,
+                    skills::SK_CONTAGION as u16,
+                    core::constants::TICKS * 60 * 8,
+                    b"Contagion",
+                ) {
+                    spread += 1;
+                    self.do_character_log(
+                        neighbor,
+                        FontColor::Green,
+                        "The contagion spreads to you!\n",
+                    );
+                }
+                if spread >= 4 {
+                    return;
+                }
+            }
         }
     }
 }

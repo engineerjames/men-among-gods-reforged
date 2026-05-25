@@ -439,11 +439,10 @@ impl Widget for LoginForm {
                 return EventResponse::Consumed;
             }
             // Mouse movement clears controller focus.
-            UiEvent::MouseMove { .. }
-                if self.controller_focused.is_some() => {
-                    self.controller_focused = None;
-                    self.apply_controller_focus();
-                }
+            UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
+                self.controller_focused = None;
+                self.apply_controller_focus();
+            }
             _ => {}
         }
 
@@ -476,10 +475,11 @@ impl Widget for LoginForm {
             button: MouseButton::Left,
             ..
         } = event
-            && let Some(idx) = self.field_index_at(*x, *y) {
-                self.focused_field = idx;
-                self.apply_focus();
-            }
+            && let Some(idx) = self.field_index_at(*x, *y)
+        {
+            self.focused_field = idx;
+            self.apply_focus();
+        }
 
         // ── Forward to interactive children ──────────────────────────────
         // Buttons first (highest priority for clicks).
@@ -523,9 +523,10 @@ impl Widget for LoginForm {
         // Consume the event if it landed inside the panel so it does not
         // propagate to the background.
         if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event
-            && self.bounds.contains_point(*x, *y) {
-                return EventResponse::Consumed;
-            }
+            && self.bounds.contains_point(*x, *y)
+        {
+            return EventResponse::Consumed;
+        }
 
         // Text and key events are consumed when any field is focused.
         match event {

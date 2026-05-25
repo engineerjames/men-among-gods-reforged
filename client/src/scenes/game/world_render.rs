@@ -437,28 +437,27 @@ impl GameScene {
         let citem = ps.character_info().citem;
         let has_item = citem > 0;
 
-        if self.alt_held
-            && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
-                return Some("LOOK");
-            }
+        if self.alt_held && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
+            return Some("LOOK");
+        }
 
-        if self.ctrl_held
-            && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
-                return if has_item {
-                    Some("GIVE")
-                } else {
-                    Some("ATTACK")
-                };
-            }
+        if self.ctrl_held && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
+            return if has_item {
+                Some("GIVE")
+            } else {
+                Some("ATTACK")
+            };
+        }
 
         if self.shift_held {
             // "USE" has highest priority when the cursor is over a usable tile,
             // even if the player is holding an item.
             if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {
                 if let Some(tile) = ps.map().tile_at_xy(sx, sy)
-                    && (tile.flags & ISUSABLE) != 0 {
-                        return Some("USE");
-                    }
+                    && (tile.flags & ISUSABLE) != 0
+                {
+                    return Some("USE");
+                }
                 // Not usable — pick up only when hand is empty.
                 if !has_item {
                     return Some("PICK UP");
@@ -536,11 +535,13 @@ impl GameScene {
                     sprite_id,
                     alpha,
                 }) = hover_highlight
-                    && hx == x && hy == y {
-                        Self::draw_world_sprite_highlight(
-                            canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
-                        )?;
-                    }
+                    && hx == x
+                    && hy == y
+                {
+                    Self::draw_world_sprite_highlight(
+                        canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
+                    )?;
+                }
 
                 if ci.goto_x == i32::from(tile.x) && ci.goto_y == i32::from(tile.y) {
                     Self::draw_world_sprite(
@@ -621,11 +622,13 @@ impl GameScene {
                         sprite_id,
                         alpha,
                     }) = hover_highlight
-                        && hx == x && hy == y {
-                            Self::draw_world_sprite_highlight(
-                                canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
-                            )?;
-                        }
+                        && hx == x
+                        && hy == y
+                    {
+                        Self::draw_world_sprite_highlight(
+                            canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
+                        )?;
+                    }
                 }
 
                 // Shadow (before character sprite, matching engine.c line 789).
@@ -657,11 +660,13 @@ impl GameScene {
                     y: hy,
                     alpha,
                 }) = hover_highlight
-                    && hx == x && hy == y {
-                        Self::draw_world_sprite_highlight(
-                            canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, alpha,
-                        )?;
-                    }
+                    && hx == x
+                    && hy == y
+                {
+                    Self::draw_world_sprite_highlight(
+                        canvas, gfx, ch, x, y, cam_xoff, cam_yoff, ch_xoff, ch_yoff, alpha,
+                    )?;
+                }
 
                 if ps.selected_char() != 0 && ps.selected_char() == tile.ch_nr {
                     Self::draw_world_sprite_tinted_highlight(

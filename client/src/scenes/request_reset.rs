@@ -129,32 +129,33 @@ impl Scene for RequestResetScene {
         // When the on-screen keyboard is visible, intercept raw SDL
         // controller buttons for keyboard-specific actions.
         if self.keyboard.is_visible()
-            && let Event::ControllerButtonDown { button, .. } = event {
-                match button {
-                    Btn::X => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
-                        return self.pending_scene.take();
-                    }
-                    Btn::Start => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardDismiss);
-                        for kb_action in self.keyboard.take_actions() {
-                            if let OnScreenKeyboardAction::Dismiss = kb_action {
-                                self.keyboard.hide();
-                            }
-                        }
-                        return self.pending_scene.take();
-                    }
-                    Btn::DPadUp => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardRowUp);
-                        return self.pending_scene.take();
-                    }
-                    Btn::DPadDown => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardRowDown);
-                        return self.pending_scene.take();
-                    }
-                    _ => {}
+            && let Event::ControllerButtonDown { button, .. } = event
+        {
+            match button {
+                Btn::X => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
+                    return self.pending_scene.take();
                 }
+                Btn::Start => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardDismiss);
+                    for kb_action in self.keyboard.take_actions() {
+                        if let OnScreenKeyboardAction::Dismiss = kb_action {
+                            self.keyboard.hide();
+                        }
+                    }
+                    return self.pending_scene.take();
+                }
+                Btn::DPadUp => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardRowUp);
+                    return self.pending_scene.take();
+                }
+                Btn::DPadDown => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardRowDown);
+                    return self.pending_scene.take();
+                }
+                _ => {}
             }
+        }
 
         // Controller → nav event (rising-edge gated for axes).
         if let Some(nav_event) = self.controller_nav.process_event(event) {

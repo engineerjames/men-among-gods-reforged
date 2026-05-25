@@ -245,18 +245,19 @@ impl<'tc> GraphicsCache<'tc> {
     ///   or decoding fails.
     fn load_texture_from_zip(&mut self, id: usize) -> Option<Texture<'tc>> {
         if let Some(filename) = self.index_to_filename.get(&id)
-            && let Ok(mut file) = self.archive.by_name(filename) {
-                let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).ok()?;
-                if let Ok(texture) = self.creator.load_texture_bytes(&buffer) {
-                    self.avg_color_cache
-                        .insert(id, Self::calculate_avg_color(&buffer));
-                    if let Some(rgba_image) = Self::decode_rgba_image(&buffer) {
-                        self.rgba_image_cache.insert(id, rgba_image);
-                    }
-                    return Some(texture);
+            && let Ok(mut file) = self.archive.by_name(filename)
+        {
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer).ok()?;
+            if let Ok(texture) = self.creator.load_texture_bytes(&buffer) {
+                self.avg_color_cache
+                    .insert(id, Self::calculate_avg_color(&buffer));
+                if let Some(rgba_image) = Self::decode_rgba_image(&buffer) {
+                    self.rgba_image_cache.insert(id, rgba_image);
                 }
+                return Some(texture);
             }
+        }
 
         None
     }

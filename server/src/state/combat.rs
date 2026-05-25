@@ -555,7 +555,17 @@ impl GameState {
                         continue;
                     }
                     if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
-                        let sdam = odam - odam / 4;
+                        let base_sdam = odam - odam / 4;
+                        // Blade Dance amplifier: if attacker has learned Blade
+                        // Dance, every surround strike hits for double damage.
+                        let sdam = if self.characters[attacker_index].skill[skills::SK_BLADE_DANCE]
+                            [0]
+                            != 0
+                        {
+                            base_sdam * 2
+                        } else {
+                            base_sdam
+                        };
                         self.remember_pvp(attacker_index, co2);
                         if self.dodges_physical_attack(co2) {
                             self.emit_attack_miss(attacker_index, co2);

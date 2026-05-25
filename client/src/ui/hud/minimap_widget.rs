@@ -405,11 +405,12 @@ impl MinimapWidget {
 
         // Active quest marker (magenta) drawn on top so it is always visible.
         if let Some((wx, wy)) = self.active_quest_marker
-            && let Some((sx, sy)) = self.project_world_to_screen(wx, wy) {
-                ctx.canvas.set_draw_color(Color::RGBA(255, 0, 255, 255));
-                ctx.canvas
-                    .fill_rect(sdl2::rect::Rect::new(sx - 1, sy - 1, 2, 2))?;
-            }
+            && let Some((sx, sy)) = self.project_world_to_screen(wx, wy)
+        {
+            ctx.canvas.set_draw_color(Color::RGBA(255, 0, 255, 255));
+            ctx.canvas
+                .fill_rect(sdl2::rect::Rect::new(sx - 1, sy - 1, 2, 2))?;
+        }
 
         Ok(())
     }

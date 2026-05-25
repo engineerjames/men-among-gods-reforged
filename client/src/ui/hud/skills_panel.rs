@@ -648,11 +648,13 @@ impl SkillsPanel {
             if y >= ry && y < ry + ROW_H {
                 let sorted_idx = self.skill_scroll + row;
                 if let Some(&skill_id) = data.sorted_skills.get(sorted_idx)
-                    && !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
-                        self.pending_actions.push(WidgetAction::CastSkill {
-                            skill_nr: get_skill_nr(skill_id),
-                        });
-                    }
+                    && !get_skill_name(skill_id).is_empty()
+                    && data.skill[skill_id][0] != 0
+                {
+                    self.pending_actions.push(WidgetAction::CastSkill {
+                        skill_nr: get_skill_nr(skill_id),
+                    });
+                }
                 return;
             }
         }
@@ -665,10 +667,12 @@ impl SkillsPanel {
             if y >= ry && y < ry + ROW_H {
                 let sorted_idx = self.skill_scroll + row;
                 if let Some(&skill_id) = data.sorted_skills.get(sorted_idx)
-                    && !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
-                        self.pending_actions
-                            .push(WidgetAction::BeginSkillAssign { skill_id });
-                    }
+                    && !get_skill_name(skill_id).is_empty()
+                    && data.skill[skill_id][0] != 0
+                {
+                    self.pending_actions
+                        .push(WidgetAction::BeginSkillAssign { skill_id });
+                }
                 return;
             }
         }

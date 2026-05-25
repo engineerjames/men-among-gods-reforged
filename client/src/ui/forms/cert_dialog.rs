@@ -164,11 +164,10 @@ impl Widget for CertDialog {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. }
-                if self.controller_focused.is_some() => {
-                    self.controller_focused = None;
-                    self.apply_controller_focus();
-                }
+            UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
+                self.controller_focused = None;
+                self.apply_controller_focus();
+            }
             _ => {}
         }
 

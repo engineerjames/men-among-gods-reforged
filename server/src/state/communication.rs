@@ -966,11 +966,7 @@ impl GameState {
 
         // direct log write from client
         if let Some(log_text) = text.strip_prefix('|') {
-            chlog!(
-                cn,
-                "{}",
-                log_text
-            );
+            chlog!(cn, "{}", log_text);
             return;
         }
 
