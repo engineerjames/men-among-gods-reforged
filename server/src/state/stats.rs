@@ -1722,8 +1722,8 @@ mod tests {
         traits,
     };
 
-    use crate::game_state::GameState;
     use crate::test_helpers::{add_test_player, with_test_gs};
+    use crate::{driver, game_state::GameState};
 
     fn seed_weapon_skill_baseline(gs: &mut GameState, cn: usize) {
         for attrib_idx in 0..5 {
@@ -1736,6 +1736,14 @@ mod tests {
 
     fn weapon_skill_total(gs: &GameState, cn: usize) -> i32 {
         i32::from(gs.characters[cn].skill[skills::SK_WEAPON][SkillIndex::TotalValue as usize])
+    }
+
+    fn weapon_skill_attribute_contribution(gs: &GameState, cn: usize) -> i32 {
+        let attrs = skills::get_skill_attribs(skills::SK_WEAPON);
+        (i32::from(gs.characters[cn].attrib[attrs[0]][SkillIndex::TotalValue as usize])
+            + i32::from(gs.characters[cn].attrib[attrs[1]][SkillIndex::TotalValue as usize])
+            + i32::from(gs.characters[cn].attrib[attrs[2]][SkillIndex::TotalValue as usize]))
+            / 5
     }
 
     fn set_legacy_weapon_bonuses(skill: &mut [[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
@@ -1807,6 +1815,35 @@ mod tests {
             gs.really_update_char(cn);
 
             assert_eq!(weapon_skill_total(gs, cn) - baseline, 20);
+        });
+    }
+
+    #[test]
+    fn bless_spell_does_not_add_direct_weapon_skill_bonuses() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            seed_weapon_skill_baseline(gs, cn);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.really_update_char(cn);
+            let baseline_total = weapon_skill_total(gs, cn);
+            let baseline_attribute_contribution = weapon_skill_attribute_contribution(gs, cn);
+
+            assert!(driver::spell_bless(gs, cn, cn, 50));
+
+            let spell_idx = gs.characters[cn].spell[0] as usize;
+            assert_ne!(spell_idx, 0);
+            assert_eq!(gs.items[spell_idx].skill[skills::SK_WEAPON][1], 0);
+            for legacy_skill in skills::LEGACY_WEAPON_SKILLS {
+                assert_eq!(gs.items[spell_idx].skill[legacy_skill][1], 0);
+            }
+
+            let blessed_total = weapon_skill_total(gs, cn);
+            let blessed_attribute_contribution = weapon_skill_attribute_contribution(gs, cn);
+
+            assert_eq!(
+                blessed_total - baseline_total,
+                blessed_attribute_contribution - baseline_attribute_contribution
+            );
         });
     }
 
