@@ -28,6 +28,10 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
 zip = "0.6.6"
 
+[profile.dev]
+# Keep line info while significantly shrinking PDB pressure on MSVC debug links.
+debug = 1
+
 # Build with: `cargo build --profile profiling`
 # Goal: mostly-release-like performance while keeping symbols/line info for profilers.
 [profile.profiling]
