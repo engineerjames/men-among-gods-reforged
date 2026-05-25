@@ -63,14 +63,16 @@ mod tests {
 
     #[test]
     fn globals_response_copies_values() {
-        let mut global = Global::default();
-        global.mdtime = 12;
-        global.mdday = 3;
-        global.mdyear = 2026;
-        global.players_online = 7;
+        let mut global = Global {
+            mdtime: 12,
+            mdday: 3,
+            mdyear: 2026,
+            players_online: 7,
+            unique: 1234,
+            ..Global::default()
+        };
         global.online_per_hour[5] = 42;
         global.max_online_per_hour[5] = 9;
-        global.unique = 1234;
         global.set_dirty(true);
 
         let response = GlobalsResponse::from(global);

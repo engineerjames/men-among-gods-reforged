@@ -429,13 +429,15 @@ mod tests {
 
     #[test]
     fn patch_roundtrip_preserves_fields() {
-        let mut character = Character::default();
-        character.used = 1;
-        character.kindred = 7;
-        character.flags = 0xCAFEBABE;
-        character.alignment = -42;
-        character.temple_x = 320;
-        character.temple_y = 240;
+        let mut character = Character {
+            used: 1,
+            kindred: 7,
+            flags: 0xCAFEBABE,
+            alignment: -42,
+            temple_x: 320,
+            temple_y: 240,
+            ..Character::default()
+        };
         character.skill[12][3] = 5;
         character.text[1][..3].copy_from_slice(b"Hi!");
 
@@ -448,17 +450,19 @@ mod tests {
 
     #[test]
     fn apply_preserves_dynamic_fields() {
-        let mut existing = Character::default();
-        existing.x = 11;
-        existing.y = 22;
-        existing.tox = 33;
-        existing.toy = 44;
-        existing.dir = 5;
-        existing.status = 7;
-        existing.a_hp = 999;
-        existing.a_end = 888;
-        existing.a_mana = 777;
-        existing.gold = 1_234_567;
+        let mut existing = Character {
+            x: 11,
+            y: 22,
+            tox: 33,
+            toy: 44,
+            dir: 5,
+            status: 7,
+            a_hp: 999,
+            a_end: 888,
+            a_mana: 777,
+            gold: 1_234_567,
+            ..Character::default()
+        };
         existing.item[0] = 42;
         existing.worn[1] = 24;
         existing.spell[2] = 13;
@@ -475,9 +479,11 @@ mod tests {
         existing.luck = 100;
         existing.kindred = 1; // static field; should be overwritten
 
-        let mut new_char = Character::default();
-        new_char.kindred = 9;
-        new_char.flags = 0xAAAA;
+        let new_char = Character {
+            kindred: 9,
+            flags: 0xAAAA,
+            ..Character::default()
+        };
         let patch = CharacterPatch::from_character(5, &new_char);
         patch.apply_to(&mut existing);
 

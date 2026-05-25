@@ -43,6 +43,12 @@ pub struct RequestResetScene {
     keyboard: OnScreenKeyboard,
 }
 
+impl Default for RequestResetScene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RequestResetScene {
     /// Creates a new `RequestResetScene` with empty form fields.
     pub fn new() -> Self {
@@ -122,8 +128,8 @@ impl Scene for RequestResetScene {
 
         // When the on-screen keyboard is visible, intercept raw SDL
         // controller buttons for keyboard-specific actions.
-        if self.keyboard.is_visible() {
-            if let Event::ControllerButtonDown { button, .. } = event {
+        if self.keyboard.is_visible()
+            && let Event::ControllerButtonDown { button, .. } = event {
                 match button {
                     Btn::X => {
                         self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
@@ -149,7 +155,6 @@ impl Scene for RequestResetScene {
                     _ => {}
                 }
             }
-        }
 
         // Controller → nav event (rising-edge gated for axes).
         if let Some(nav_event) = self.controller_nav.process_event(event) {

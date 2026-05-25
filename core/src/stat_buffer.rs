@@ -140,6 +140,15 @@ impl<T: std::cmp::PartialOrd<f32> + std::convert::Into<f32> + Clone> StatisticsB
     pub fn len(&self) -> usize {
         self.buffer.len()
     }
+
+    /// Returns `true` if the buffer contains no samples.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when no samples have been recorded.
+    pub fn is_empty(&self) -> bool {
+        self.buffer.is_empty()
+    }
 }
 
 #[cfg(test)]

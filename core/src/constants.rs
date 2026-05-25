@@ -732,7 +732,7 @@ impl ArmorType {
     /// # Returns
     ///
     /// * `Some(ArmorType)` on match, `None` otherwise.
-    pub fn from_str(s: &str) -> Option<ArmorType> {
+    pub fn from_abbrev(s: &str) -> Option<ArmorType> {
         let binding = s.to_lowercase();
         let s_lower = binding.trim();
 
@@ -786,7 +786,7 @@ impl MagicArmorType {
     /// # Returns
     ///
     /// * `Some(MagicArmorType)` on match, `None` otherwise.
-    pub fn from_str(s: &str) -> Option<MagicArmorType> {
+    pub fn from_abbrev(s: &str) -> Option<MagicArmorType> {
         let binding = s.to_lowercase();
         let s_lower = binding.trim();
 
@@ -1058,38 +1058,44 @@ mod tests {
 
     #[test]
     fn armor_type_from_str_case_insensitive() {
-        assert_eq!(ArmorType::from_str("cloth"), Some(ArmorType::Cloth));
-        assert_eq!(ArmorType::from_str("LEATHER"), Some(ArmorType::Leather));
-        assert_eq!(ArmorType::from_str("Bronze Armor"), Some(ArmorType::Bronze));
-        assert_eq!(ArmorType::from_str("steel"), Some(ArmorType::Steel));
-        assert_eq!(ArmorType::from_str("gold"), Some(ArmorType::Gold));
-        assert_eq!(ArmorType::from_str("emerald"), Some(ArmorType::Emerald));
-        assert_eq!(ArmorType::from_str("crystal"), Some(ArmorType::Crystal));
-        assert_eq!(ArmorType::from_str("titanium"), Some(ArmorType::Titanium));
+        assert_eq!(ArmorType::from_abbrev("cloth"), Some(ArmorType::Cloth));
+        assert_eq!(ArmorType::from_abbrev("LEATHER"), Some(ArmorType::Leather));
+        assert_eq!(
+            ArmorType::from_abbrev("Bronze Armor"),
+            Some(ArmorType::Bronze)
+        );
+        assert_eq!(ArmorType::from_abbrev("steel"), Some(ArmorType::Steel));
+        assert_eq!(ArmorType::from_abbrev("gold"), Some(ArmorType::Gold));
+        assert_eq!(ArmorType::from_abbrev("emerald"), Some(ArmorType::Emerald));
+        assert_eq!(ArmorType::from_abbrev("crystal"), Some(ArmorType::Crystal));
+        assert_eq!(
+            ArmorType::from_abbrev("titanium"),
+            Some(ArmorType::Titanium)
+        );
     }
 
     #[test]
     fn armor_type_from_str_returns_none_for_unknown() {
-        assert_eq!(ArmorType::from_str(""), None);
-        assert_eq!(ArmorType::from_str("diamond"), None);
-        assert_eq!(ArmorType::from_str("x"), None);
+        assert_eq!(ArmorType::from_abbrev(""), None);
+        assert_eq!(ArmorType::from_abbrev("diamond"), None);
+        assert_eq!(ArmorType::from_abbrev("x"), None);
     }
 
     #[test]
     fn magic_armor_type_from_str_case_insensitive() {
-        assert!(MagicArmorType::from_str("bear").is_some());
-        assert!(MagicArmorType::from_str("LION").is_some());
-        assert!(MagicArmorType::from_str("weasel").is_some());
-        assert!(MagicArmorType::from_str("snake").is_some());
-        assert!(MagicArmorType::from_str("owl").is_some());
-        assert!(MagicArmorType::from_str("magic").is_some());
-        assert!(MagicArmorType::from_str("life").is_some());
-        assert!(MagicArmorType::from_str("defence").is_some());
+        assert!(MagicArmorType::from_abbrev("bear").is_some());
+        assert!(MagicArmorType::from_abbrev("LION").is_some());
+        assert!(MagicArmorType::from_abbrev("weasel").is_some());
+        assert!(MagicArmorType::from_abbrev("snake").is_some());
+        assert!(MagicArmorType::from_abbrev("owl").is_some());
+        assert!(MagicArmorType::from_abbrev("magic").is_some());
+        assert!(MagicArmorType::from_abbrev("life").is_some());
+        assert!(MagicArmorType::from_abbrev("defence").is_some());
     }
 
     #[test]
     fn magic_armor_type_from_str_returns_none_for_unknown() {
-        assert!(MagicArmorType::from_str("").is_none());
-        assert!(MagicArmorType::from_str("fire").is_none());
+        assert!(MagicArmorType::from_abbrev("").is_none());
+        assert!(MagicArmorType::from_abbrev("fire").is_none());
     }
 }

@@ -159,7 +159,7 @@ where
         return DataSource::LiveApi { base_url, token };
     }
 
-    path_arg_from_iter(args.into_iter(), &["--snapshot"])
+    path_arg_from_iter(args, &["--snapshot"])
         .map(DataSource::SnapshotFile)
         .unwrap_or_default()
 }

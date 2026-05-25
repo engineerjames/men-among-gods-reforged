@@ -1,9 +1,9 @@
-/// Server library crate — exposes modules needed by downstream utilities.
-///
-/// The `server` crate is primarily a binary (the game server), but this
-/// `lib.rs` exposes a small set of modules so that the `server-utils` crate
-/// (template viewer, map viewer) can reuse KeyDB connectivity and the
-/// points-calculation logic without duplicating code.
+//! Server library crate — exposes modules needed by downstream utilities.
+//!
+//! The `server` crate is primarily a binary (the game server), but this
+//! `lib.rs` exposes a small set of modules so that the `server-utils` crate
+//! (template viewer, map viewer) can reuse KeyDB connectivity and the
+//! points-calculation logic without duplicating code.
 
 /// KeyDB integration: connection helper, persistence layer, snapshot I/O,
 /// background saver, and pub/sub patch watchers.

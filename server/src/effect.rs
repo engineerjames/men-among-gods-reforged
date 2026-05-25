@@ -226,7 +226,7 @@ impl EffectManager {
                 };
 
                 let mut desc_bytes = [0u8; 200];
-                let bytes_to_copy = description_string.as_bytes().len().min(199);
+                let bytes_to_copy = description_string.len().min(199);
                 desc_bytes[..bytes_to_copy]
                     .copy_from_slice(&description_string.as_bytes()[..bytes_to_copy]);
                 gs.items[in_id].description = desc_bytes;
@@ -374,13 +374,12 @@ impl EffectManager {
             gs.map[map_index].it = 0;
 
             let spawn_template = gs.effects[n].data[1];
-            if spawn_template != 0 {
-                if let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
+            if spawn_template != 0
+                && let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
                     God::drop_char(gs, cn, x as usize, y as usize);
                     gs.characters[cn].dir = DX_RIGHTUP;
                     player::commands::plr_reset_status(gs, cn);
                 }
-            }
 
             gs.effects[n].used = USE_EMPTY;
             gs.items[in_id].used = USE_EMPTY;
@@ -479,16 +478,16 @@ impl EffectManager {
         d3: i32,
     ) -> Option<usize> {
         let effects = &mut gs.effects;
-        for n in 1..MAXEFFECT {
-            if effects[n].used == USE_EMPTY {
-                effects[n].used = USE_ACTIVE;
-                effects[n].effect_type = effect_type as u8;
-                effects[n].duration = duration as u32;
-                effects[n].flags = 0;
-                effects[n].data[0] = d1 as u32;
-                effects[n].data[1] = d2 as u32;
-                effects[n].data[2] = d3 as u32;
-                return Some(n);
+        for (i, effect) in effects[1..MAXEFFECT].iter_mut().enumerate() {
+            if effect.used == USE_EMPTY {
+                effect.used = USE_ACTIVE;
+                effect.effect_type = effect_type as u8;
+                effect.duration = duration as u32;
+                effect.flags = 0;
+                effect.data[0] = d1 as u32;
+                effect.data[1] = d2 as u32;
+                effect.data[2] = d3 as u32;
+                return Some(i + 1);
             }
         }
         None

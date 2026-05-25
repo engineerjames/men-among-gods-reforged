@@ -115,6 +115,12 @@ pub struct OnScreenKeyboard {
     actions: Vec<OnScreenKeyboardAction>,
 }
 
+impl Default for OnScreenKeyboard {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OnScreenKeyboard {
     /// Creates a new on-screen keyboard, initially hidden, centered
     /// horizontally at the bottom of the target viewport.

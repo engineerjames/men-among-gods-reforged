@@ -1786,7 +1786,7 @@ fn parse_words_input(raw: &str) -> Result<Vec<String>, CliError> {
 }
 
 fn split_words(raw: &str) -> Vec<String> {
-    raw.split(|character: char| character == ',' || character == '\n' || character == '\r')
+    raw.split([',', '\n', '\r'])
         .map(str::trim)
         .filter(|word| !word.is_empty())
         .map(str::to_owned)

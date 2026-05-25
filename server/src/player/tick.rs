@@ -646,9 +646,8 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
                 2 => ch.mana,
                 _ => ch.hp,
             };
-            for i in 0..6 {
+            for (i, &v) in arr.iter().enumerate() {
                 let off = 1 + i * 2;
-                let v = arr[i];
                 buf[off] = (v & 0xff) as u8;
                 buf[off + 1] = (v >> 8) as u8;
             }

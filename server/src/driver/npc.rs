@@ -1,4 +1,3 @@
-use crate::core;
 use crate::driver;
 use crate::effect::EffectManager;
 use crate::game_state::GameState;
@@ -271,8 +270,11 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
         gs.characters[cn].data[70] = ticker + (TICKS * 60);
 
         let cc = God::create_char(gs, 80, true);
-        if cc.is_some() && cc.unwrap() > 0 && cc.unwrap() < MAXCHARS as i32 {
-            let cc = cc.unwrap() as usize;
+        if let Some(cc) = cc
+            && cc > 0
+            && cc < MAXCHARS as i32
+        {
+            let cc = cc as usize;
             gs.characters[cc].temp = CT_COMPANION as u16;
             gs.characters[cc].data[42] = 65536 + cn as i32;
             gs.characters[cc].data[59] = 65536 + cn as i32;
@@ -321,23 +323,22 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
     // Shout for help
     if gs.characters[cn].data[52] != 0
         && gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 666
+        && gs.characters[cn].data[55] + (TICKS * 60) < ticker
     {
-        if gs.characters[cn].data[55] + (TICKS * 60) < ticker {
-            gs.characters[cn].data[54] = 0;
-            gs.characters[cn].data[55] = ticker;
-            if co < MAXCHARS {
-                let co_name = gs.characters[co].get_name().to_owned();
-                npc_saytext_n(gs, cn, 4, Some(&co_name));
-            }
-            gs.do_npc_shout(
-                cn,
-                i32::from(NT_SHOUT),
-                cn as i32,
-                gs.characters[cn].data[52],
-                i32::from(gs.characters[cn].x),
-                i32::from(gs.characters[cn].y),
-            );
+        gs.characters[cn].data[54] = 0;
+        gs.characters[cn].data[55] = ticker;
+        if co < MAXCHARS {
+            let co_name = gs.characters[co].get_name().to_owned();
+            npc_saytext_n(gs, cn, 4, Some(&co_name));
         }
+        gs.do_npc_shout(
+            cn,
+            i32::from(NT_SHOUT),
+            cn as i32,
+            gs.characters[cn].data[52],
+            i32::from(gs.characters[cn].x),
+            i32::from(gs.characters[cn].y),
+        );
     }
 
     // Can't see attacker - panic mode
@@ -462,22 +463,22 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
     }
 
     // Protect character by template
-    if gs.characters[cn].data[31] != 0 {
-        if gs.characters[co].temp == gs.characters[cn].data[31] as u16 {
-            if npc_add_enemy(gs, cn, cc, true) {
-                let cc_name = gs.characters[cc].get_name().to_owned();
-                let co_name = gs.characters[co].get_name().to_owned();
-                npc_saytext_n(gs, cn, 1, Some(&cc_name));
-                log::info!(
-                    "NPC {} added {} to enemy list for attacking {} (protect char)",
-                    cn,
-                    cc_name,
-                    co_name
-                );
-            }
-            if gs.characters[cn].data[65] == 0 {
-                gs.characters[cn].data[65] = co as i32;
-            }
+    if gs.characters[cn].data[31] != 0
+        && gs.characters[co].temp == gs.characters[cn].data[31] as u16
+    {
+        if npc_add_enemy(gs, cn, cc, true) {
+            let cc_name = gs.characters[cc].get_name().to_owned();
+            let co_name = gs.characters[co].get_name().to_owned();
+            npc_saytext_n(gs, cn, 1, Some(&cc_name));
+            log::info!(
+                "NPC {} added {} to enemy list for attacking {} (protect char)",
+                cn,
+                cc_name,
+                co_name
+            );
+        }
+        if gs.characters[cn].data[65] == 0 {
+            gs.characters[cn].data[65] = co as i32;
         }
     }
 
@@ -556,18 +557,16 @@ pub fn npc_seeattack(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> boo
     // If one of the participants is my companion and its master is me, register the helper index
     if gs.characters[co].temp == core::constants::CT_COMPANION as u16
         && gs.characters[co].data[63] == cn as i32
+        && gs.characters[cn].data[65] == 0
     {
-        if gs.characters[cn].data[65] == 0 {
-            gs.characters[cn].data[65] = co as i32;
-        }
+        gs.characters[cn].data[65] = co as i32;
     }
 
     if gs.characters[cc].temp == core::constants::CT_COMPANION as u16
         && gs.characters[cc].data[63] == cn as i32
+        && gs.characters[cn].data[65] == 0
     {
-        if gs.characters[cn].data[65] == 0 {
-            gs.characters[cn].data[65] = cc as i32;
-        }
+        gs.characters[cn].data[65] = cc as i32;
     }
 
     false
@@ -1047,10 +1046,8 @@ pub fn npc_scan_player_items(gs: &mut GameState, cn: usize, co: usize) -> bool {
 
     // Check citem (cursor/hand slot) first.
     let citem = gs.characters[co].citem;
-    if citem != 0 && (citem & 0x8000_0000) == 0 {
-        if npc_sight_turn_in(gs, cn, co, citem as usize) {
-            return true;
-        }
+    if citem != 0 && (citem & 0x8000_0000) == 0 && npc_sight_turn_in(gs, cn, co, citem as usize) {
+        return true;
     }
 
     // Then check inventory slots 0..40.
@@ -1560,10 +1557,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     {
         let a_hp = gs.characters[cn].a_hp;
         let hp5 = gs.characters[cn].hp[5];
-        if a_hp < i32::from(hp5) * 600 {
-            if npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
-                return true;
-            }
+        if a_hp < i32::from(hp5) * 600 && npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
+            return true;
         }
     }
 
@@ -1667,10 +1662,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             let light = gs.check_dlight(cx, cy);
             let idx = cx + cy * SERVER_MAPX as usize;
             let map_light = gs.map[idx].light;
-            if light < 20 && map_light < 20 {
-                if npc_try_spell(gs, cn, cn, skills::SK_LIGHT) {
-                    return true;
-                }
+            if light < 20 && map_light < 20 && npc_try_spell(gs, cn, cn, skills::SK_LIGHT) {
+                return true;
             }
         }
     }
@@ -1681,10 +1674,8 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
         if co != 0 {
             let a_hp = gs.characters[co].a_hp;
             let hp5 = gs.characters[co].hp[5];
-            if a_hp < i32::from(hp5) * 600 {
-                if npc_try_spell(gs, cn, co, skills::SK_HEAL) {
-                    return true;
-                }
+            if a_hp < i32::from(hp5) * 600 && npc_try_spell(gs, cn, co, skills::SK_HEAL) {
+                return true;
             }
         }
     }
@@ -1699,16 +1690,15 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                 > (get_spellcost(&gs.characters[cn], skills::SK_BLESS) * 2
                     + get_spellcost(&gs.characters[cn], skills::SK_PROTECT)
                     + get_spellcost(&gs.characters[cn], skills::SK_ENHANCE))
+                && npc_try_spell(gs, cn, cn, skills::SK_BLESS)
             {
-                if npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
-                    return true;
-                }
+                return true;
             }
 
-            if gs.characters[co].a_hp < i32::from(gs.characters[co].hp[5]) * 600 {
-                if npc_try_spell(gs, cn, co, skills::SK_HEAL) {
-                    return true;
-                }
+            if gs.characters[co].a_hp < i32::from(gs.characters[co].hp[5]) * 600
+                && npc_try_spell(gs, cn, co, skills::SK_HEAL)
+            {
+                return true;
             }
 
             if !npc_can_spell(&gs.characters[co], &gs.characters[cn], skills::SK_PROTECT)
@@ -1730,10 +1720,9 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             if cc != 0
                 && gs.characters[co].a_hp < i32::from(gs.characters[co].hp[5]) * 650
                 && npc_is_enemy(&gs.characters[cn], &gs.characters[cc], cc)
+                && npc_try_spell(gs, cn, cc, skills::SK_BLAST)
             {
-                if npc_try_spell(gs, cn, cc, skills::SK_BLAST) {
-                    return true;
-                }
+                return true;
             }
             gs.characters[cn].data[65] = 0;
         }
@@ -1754,19 +1743,19 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
             if co != 0
                 && (gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 600
                     || helpers::random_mod_i32(10) == 0)
+                && npc_try_spell(gs, cn, co, skills::SK_BLAST)
             {
-                if npc_try_spell(gs, cn, co, skills::SK_BLAST) {
-                    return true;
-                }
+                return true;
             }
 
-            if co != 0 && gs.globals.ticker > gs.characters[cn].data[75] {
-                if npc_try_spell(gs, cn, co, skills::SK_STUN) {
-                    gs.characters[cn].data[75] = gs.globals.ticker
-                        + i32::from(gs.characters[cn].skill[skills::SK_STUN][5])
-                        + TICKS * 8;
-                    return true;
-                }
+            if co != 0
+                && gs.globals.ticker > gs.characters[cn].data[75]
+                && npc_try_spell(gs, cn, co, skills::SK_STUN)
+            {
+                gs.characters[cn].data[75] = gs.globals.ticker
+                    + i32::from(gs.characters[cn].skill[skills::SK_STUN][5])
+                    + TICKS * 8;
+                return true;
             }
 
             if gs.characters[cn].a_mana > 75000 && npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
@@ -1795,10 +1784,11 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                 return true;
             }
 
-            if co != 0 && gs.characters[co].armor + 5 > gs.characters[cn].weapon {
-                if npc_try_spell(gs, cn, co, skills::SK_BLAST) {
-                    return true;
-                }
+            if co != 0
+                && gs.characters[co].armor + 5 > gs.characters[cn].weapon
+                && npc_try_spell(gs, cn, co, skills::SK_BLAST)
+            {
+                return true;
             }
         }
     }
@@ -1819,17 +1809,15 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     // are we on protect and want to follow our master?
     {
         let co = gs.characters[cn].data[69] as usize;
-        if gs.characters[cn].attack_cn == 0 && co != 0 {
-            if driver::follow_driver(gs, cn, co) {
-                let (cn_x, cn_y, co_y) = (
-                    gs.characters[cn].x,
-                    gs.characters[cn].y,
-                    gs.characters[co].y,
-                );
-                let dist = (cn_x - co_y).abs() + (cn_y - co_y).abs();
-                gs.characters[cn].data[58] = if dist > 6 { 2 } else { 1 };
-                return true;
-            }
+        if gs.characters[cn].attack_cn == 0 && co != 0 && driver::follow_driver(gs, cn, co) {
+            let (cn_x, cn_y, co_y) = (
+                gs.characters[cn].x,
+                gs.characters[cn].y,
+                gs.characters[co].y,
+            );
+            let dist = (cn_x - co_y).abs() + (cn_y - co_y).abs();
+            gs.characters[cn].data[58] = if dist > 6 { 2 } else { 1 };
+            return true;
         }
     }
 
@@ -1917,17 +1905,18 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                         let map_idx = x + 1 + y * SERVER_MAPX as usize;
                         let is_empty = gs.map[map_idx].it == 0;
 
-                        if is_empty && player::commands::plr_check_target(gs, map_idx) {
-                            if let Some(in2) = God::create_item(gs, 18) {
-                                gs.items[in2].carried = cn as u16;
-                                gs.characters[cn].citem = in2 as u32;
-                                gs.characters[cn].misc_action = DR_DROP as u16;
-                                gs.characters[cn].misc_target1 = (x + 1) as u16;
-                                gs.characters[cn].misc_target2 = y as u16;
-                                gs.characters[cn].goto_x = 0u16;
-                                gs.characters[cn].data[58] = 1;
-                                return true;
-                            }
+                        if is_empty
+                            && player::commands::plr_check_target(gs, map_idx)
+                            && let Some(in2) = God::create_item(gs, 18)
+                        {
+                            gs.items[in2].carried = cn as u16;
+                            gs.characters[cn].citem = in2 as u32;
+                            gs.characters[cn].misc_action = DR_DROP as u16;
+                            gs.characters[cn].misc_target1 = (x + 1) as u16;
+                            gs.characters[cn].misc_target2 = y as u16;
+                            gs.characters[cn].goto_x = 0u16;
+                            gs.characters[cn].data[58] = 1;
+                            return true;
                         }
                     }
                 }
@@ -1984,10 +1973,9 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
         && ((cn & 15) == (ticker as usize & 15)
             || (character_flags & CharacterFlags::IsLooting.bits()) != 0)
         && temp != CT_COMPANION as u16
+        && npc_grave_logic(gs, cn)
     {
-        if npc_grave_logic(gs, cn) {
-            return;
-        }
+        return;
     }
 
     // Did someone call help? - high prio
@@ -2533,31 +2521,29 @@ pub fn npc_equip_item(gs: &mut GameState, cn: usize, in_idx: usize) -> bool {
     for n in 0..20 {
         let worn_n = gs.characters[cn].worn[n];
 
-        if worn_n == 0
-            || npc_item_value(&gs.items[in_idx]) > npc_item_value(&gs.items[worn_n as usize])
+        if (worn_n == 0
+            || npc_item_value(&gs.items[in_idx]) > npc_item_value(&gs.items[worn_n as usize]))
+            && npc_check_placement(gs, in_idx, n)
+            && npc_can_wear_item(&gs.characters[cn], &gs.items[in_idx])
         {
-            if npc_check_placement(gs, in_idx, n) {
-                if npc_can_wear_item(&gs.characters[cn], &gs.items[in_idx]) {
-                    log::info!("now wearing {}", gs.items[in_idx].get_name());
+            log::info!("now wearing {}", gs.items[in_idx].get_name());
 
-                    // Remove old item if any
-                    if worn_n != 0 {
-                        log::info!("storing item");
-                        gs.characters[cn].citem = worn_n;
+            // Remove old item if any
+            if worn_n != 0 {
+                log::info!("storing item");
+                gs.characters[cn].citem = worn_n;
 
-                        let do_store_item = gs.do_store_item(cn);
-                        if do_store_item == -1 {
-                            return false; // Stop looting if our backpack is full
-                        }
-                    }
-
-                    gs.characters[cn].worn[n] = in_idx as u32;
-                    gs.characters[cn].set_do_update_flags();
-                    gs.items[in_idx].carried = cn as u16;
-
-                    return true;
+                let do_store_item = gs.do_store_item(cn);
+                if do_store_item == -1 {
+                    return false; // Stop looting if our backpack is full
                 }
             }
+
+            gs.characters[cn].worn[n] = in_idx as u32;
+            gs.characters[cn].set_do_update_flags();
+            gs.items[in_idx].carried = cn as u16;
+
+            return true;
         }
     }
 
@@ -2784,9 +2770,9 @@ pub fn update_shop(gs: &mut GameState, cn: usize) {
             let temp = gs.items[in_idx as usize].temp;
 
             let mut found = false;
-            for z in 0..10 {
-                if temp == sale[z] as u16 {
-                    sale[z] = 0;
+            for item in &mut sale[..10] {
+                if temp == *item as u16 {
+                    *item = 0;
                     found = true;
                     break;
                 }
@@ -2816,18 +2802,15 @@ pub fn update_shop(gs: &mut GameState, cn: usize) {
     }
 
     // Check if our store is complete - create missing items
-    for n in 0..10 {
-        let temp = sale[n];
+    for &temp in &sale[..10] {
         if temp == 0 {
             continue;
         }
 
-        let in_idx = God::create_item(gs, temp as usize);
-
-        if in_idx.is_some() {
-            if !God::give_character_item(gs, cn, in_idx.unwrap()) {
-                gs.items[in_idx.unwrap()].used = USE_EMPTY;
-            }
+        if let Some(in_idx) = God::create_item(gs, temp as usize)
+            && !God::give_character_item(gs, cn, in_idx)
+        {
+            gs.items[in_idx].used = USE_EMPTY;
         }
     }
 

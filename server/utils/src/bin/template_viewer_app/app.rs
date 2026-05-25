@@ -854,8 +854,7 @@ impl TemplateViewerApp {
         if source == ItemDetailsSource::ItemTemplates
             && self.data_source.is_live_api()
             && !self.fully_loaded_item_slots.contains(&idx)
-        {
-            if let Some(client) = self.admin_client.as_ref().cloned() {
+            && let Some(client) = self.admin_client.as_ref().cloned() {
                 match client.fetch_single_item_template(idx) {
                     Ok(item) => {
                         if idx < self.item_templates.len() {
@@ -872,7 +871,6 @@ impl TemplateViewerApp {
                     }
                 }
             }
-        }
         let item_ptr: *mut mag_core::types::Item = match source {
             ItemDetailsSource::ItemTemplates => {
                 if idx >= self.item_templates.len() {
@@ -905,8 +903,7 @@ impl TemplateViewerApp {
         if source == CharacterDetailsSource::CharacterTemplates
             && self.data_source.is_live_api()
             && !self.fully_loaded_char_slots.contains(&idx)
-        {
-            if let Some(client) = self.admin_client.as_ref().cloned() {
+            && let Some(client) = self.admin_client.as_ref().cloned() {
                 match client.fetch_single_character_template(idx) {
                     Ok(ch) => {
                         if idx < self.character_templates.len() {
@@ -923,7 +920,6 @@ impl TemplateViewerApp {
                     }
                 }
             }
-        }
         let character_ptr: *mut mag_core::types::Character = match source {
             CharacterDetailsSource::CharacterTemplates => {
                 if idx >= self.character_templates.len() {
@@ -1173,6 +1169,7 @@ impl TemplateViewerApp {
             });
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn render_item_details(&mut self, ui: &mut egui::Ui, item: &mut mag_core::types::Item) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.heading(item.get_name());
@@ -1651,6 +1648,7 @@ impl TemplateViewerApp {
         });
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn render_character_details(
         &mut self,
         ui: &mut egui::Ui,
@@ -2453,13 +2451,12 @@ impl eframe::App for TemplateViewerApp {
                         ui.close_menu();
                     }
 
-                    if self.graphics_zip.is_some() {
-                        if ui.button("Clear Graphics Zip").clicked() {
+                    if self.graphics_zip.is_some()
+                        && ui.button("Clear Graphics Zip").clicked() {
                             self.graphics_zip = None;
                             self.graphics_zip_error = None;
                             ui.close_menu();
                         }
-                    }
 
                     ui.separator();
 

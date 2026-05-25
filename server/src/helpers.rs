@@ -253,11 +253,10 @@ pub(crate) fn skill_aoe_targets(
         if (gs.characters[target].flags & CharacterFlags::Body.bits()) != 0 {
             continue;
         }
-        if let Some(viewer) = viewer {
-            if gs.do_char_can_see(viewer, target) == 0 {
+        if let Some(viewer) = viewer
+            && gs.do_char_can_see(viewer, target) == 0 {
                 continue;
             }
-        }
         targets.push(target);
     }
 
@@ -622,7 +621,7 @@ pub fn killed_class(gs: &mut GameState, cn: usize, val: i32) -> bool {
 /// * `dt` - Delta in server ticks
 pub fn ago_string(dt: u128) -> String {
     let minutes = dt / (60 * TICKS as u128);
-    if minutes <= 0 {
+    if minutes == 0 {
         return "just now".to_owned();
     }
     if minutes < 60 {
@@ -770,7 +769,7 @@ pub fn rankdiff(cn: &Character, co: &Character) -> i32 {
 /// * `cn` - First character.
 /// * `co` - Second character.
 pub fn absrankdiff(cn: &Character, co: &Character) -> u32 {
-    rankdiff(cn, co).abs() as u32
+    rankdiff(cn, co).unsigned_abs()
 }
 
 /// Check whether two characters are within attack range (unused helper).

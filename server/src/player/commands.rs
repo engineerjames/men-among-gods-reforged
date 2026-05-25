@@ -1887,6 +1887,7 @@ mod tests {
         gs.map[map_index(x, y)].ch = cn as u32;
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn configure_item(
         gs: &mut GameState,
         item_idx: usize,
@@ -2596,7 +2597,7 @@ mod tests {
             write_inbuf(gs, nr, &packet);
             plr_cmd_shop(gs, nr);
             assert_eq!(gs.characters[cn].depot[0], 0);
-            assert!(gs.characters[cn].item.iter().any(|&item| item == 10));
+            assert!(gs.characters[cn].item.contains(&10));
 
             let corpse = 2;
             place_character(gs, corpse, 11, 10, CharacterFlags::Body.bits(), "Corpse");
@@ -2611,6 +2612,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::type_complexity)]
     fn movement_wrappers_move_characters_and_update_map_state() {
         with_test_gs(|gs| {
             let (cn, _) = add_test_player(gs);
@@ -2646,6 +2648,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::type_complexity)]
     fn turn_wrappers_and_front_tile_helpers_resolve_expected_directions() {
         with_test_gs(|gs| {
             let (cn, _) = add_test_player(gs);

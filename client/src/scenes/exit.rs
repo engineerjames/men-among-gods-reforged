@@ -15,6 +15,12 @@ pub struct ExitScene {
     // No state needed for the exit scene, but we can add fields here if we want to display any information or perform any cleanup actions.
 }
 
+impl Default for ExitScene {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ExitScene {
     /// Creates a new `ExitScene`.
     pub fn new() -> Self {

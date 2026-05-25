@@ -324,7 +324,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     let see_vis = gs.see_map[cn].vis;
 
     let mut do_all = false;
-    if player_vx != see_x || player_vy != see_y || player_visi != see_vis || player_visi != see_vis
+    if player_vx != see_x || player_vy != see_y || player_visi != see_vis
     {
         gs.players[nr].vx = see_x;
         gs.players[nr].vy = see_y;
@@ -332,17 +332,9 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
         do_all = true;
     }
 
-    let empty_cmap = {
-        let mut tile = CMap::default();
-        tile.ba_sprite = core::constants::SPR_EMPTY as i16;
-        tile
-    };
+    let empty_cmap = CMap { ba_sprite: core::constants::SPR_EMPTY as i16, ..CMap::default() };
 
-    let empty_map = {
-        let mut tile = core::types::Map::default();
-        tile.sprite = core::constants::SPR_EMPTY;
-        tile
-    };
+    let empty_map = core::types::Map { sprite: core::constants::SPR_EMPTY, ..core::types::Map::default() };
 
     let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
     let mut y = ys;
@@ -387,11 +379,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
             let mut light = std::cmp::max(i32::from(gs.map[mi].light), tmp);
             light = gs.do_character_calculate_light(cn, light);
 
-            if light <= 5 && (gs.characters[cn].flags & CharacterFlags::Infrared.bits()) != 0 {
-                infra = true;
-            } else {
-                infra = false;
-            }
+            infra = light <= 5 && (gs.characters[cn].flags & CharacterFlags::Infrared.bits()) != 0;
 
             // Everyone sees themselves at least
             if light == 0 && gs.map[mi].ch as usize == cn {
@@ -636,7 +624,6 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 }
 
 /// Light update functions - calculate efficiency of batch updates
-
 /// Updates a single light tile (least efficient)
 fn cl_light_one(gs: &mut GameState, n: usize, dosend: usize, update_only: bool) -> usize {
     if !update_only {
@@ -791,6 +778,7 @@ pub fn plr_change_light(gs: &mut GameState, nr: usize) {
             let mut best_efficiency = 0;
             let mut best_func = 0;
 
+            #[allow(clippy::type_complexity)]
             let lfuncs: [fn(&mut GameState, usize, usize, bool) -> usize; 4] =
                 [cl_light_one, cl_light_three, cl_light_seven, cl_light_26];
 

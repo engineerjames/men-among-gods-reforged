@@ -691,17 +691,17 @@ pub(crate) async fn character_name_exists_scan_excluding(
             continue;
         }
 
-        if let Some(excluded_id) = exclude_character_id {
-            if parse_numeric_id("character:", &key) == Some(excluded_id) {
-                continue;
-            }
+        if let Some(excluded_id) = exclude_character_id
+            && parse_numeric_id("character:", &key) == Some(excluded_id)
+        {
+            continue;
         }
 
         let existing_name: Option<String> = con.hget(&key, "name").await?;
-        if let Some(existing_name) = existing_name {
-            if existing_name.trim().eq_ignore_ascii_case(target_name) {
-                return Ok(true);
-            }
+        if let Some(existing_name) = existing_name
+            && existing_name.trim().eq_ignore_ascii_case(target_name)
+        {
+            return Ok(true);
         }
     }
 
@@ -912,7 +912,7 @@ pub(crate) async fn list_characters_for_account_scan(
             name,
             description,
             sex,
-            class: class,
+            class,
             selection_sprite_id,
             server_id,
             rank_index,

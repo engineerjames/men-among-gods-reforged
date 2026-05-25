@@ -84,46 +84,44 @@ impl SoundCache {
         let mut sfx_cache: HashMap<usize, Chunk> = HashMap::new();
         let mut click_sfx: Option<Chunk> = None;
 
-        for file in std::fs::read_dir(&sfx_directory).unwrap_or_else(|e| {
+        for entry in std::fs::read_dir(&sfx_directory).unwrap_or_else(|e| {
             log::error!("Failed to read sound directory: {}", e);
             panic!("Failed to read sound directory: {}", e);
-        }) {
-            if let Ok(entry) = file {
-                let path = entry.path();
-                if path.is_file() {
-                    let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-                    if file_name.eq_ignore_ascii_case("click.wav") {
-                        match Chunk::from_file(&path) {
-                            Ok(chunk) => {
-                                click_sfx = Some(chunk);
-                            }
-                            Err(e) => {
-                                log::warn!(
-                                    "Failed to load click sfx from {}: {}",
-                                    path.display(),
-                                    e
-                                );
-                            }
+        }).flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if file_name.eq_ignore_ascii_case("click.wav") {
+                    match Chunk::from_file(&path) {
+                        Ok(chunk) => {
+                            click_sfx = Some(chunk);
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "Failed to load click sfx from {}: {}",
+                                path.display(),
+                                e
+                            );
                         }
                     }
+                }
 
-                    // Our SFX IDs are numeric filenames (e.g. 00031.wav). Some zip builds
-                    // include a directory prefix (e.g. sounds/00031.wav), so parse only the
-                    // final path component.
-                    let stem = file_name.split('.').next().unwrap_or("");
-                    if let Ok(id) = stem.parse::<usize>() {
-                        match Chunk::from_file(&path) {
-                            Ok(chunk) => {
-                                sfx_cache.insert(id, chunk);
-                            }
-                            Err(e) => {
-                                log::warn!(
-                                    "Failed to load sfx {} from {}: {}",
-                                    id,
-                                    path.display(),
-                                    e
-                                );
-                            }
+                // Our SFX IDs are numeric filenames (e.g. 00031.wav). Some zip builds
+                // include a directory prefix (e.g. sounds/00031.wav), so parse only the
+                // final path component.
+                let stem = file_name.split('.').next().unwrap_or("");
+                if let Ok(id) = stem.parse::<usize>() {
+                    match Chunk::from_file(&path) {
+                        Ok(chunk) => {
+                            sfx_cache.insert(id, chunk);
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "Failed to load sfx {} from {}: {}",
+                                id,
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -214,11 +212,10 @@ impl SoundCache {
         if self.disabled {
             return;
         }
-        if let Some(chunk) = self.music_cache.get(&track) {
-            if let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1) {
+        if let Some(chunk) = self.music_cache.get(&track)
+            && let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1) {
                 log::warn!("Failed to play music: {}", e);
             }
-        }
     }
 
     /// Stops any currently playing music on the dedicated music channel.

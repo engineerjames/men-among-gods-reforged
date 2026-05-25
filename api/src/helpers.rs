@@ -338,6 +338,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::await_holding_lock)]
     fn verify_token_accepts_valid_jwt() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -366,6 +367,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::await_holding_lock)]
     fn verify_token_rejects_invalid_jwt() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -383,6 +385,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::await_holding_lock)]
     fn verify_token_requires_secret() {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()

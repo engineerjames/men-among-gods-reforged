@@ -139,6 +139,7 @@ impl PathFinder {
     }
 
     /// Calculate cost considering direction and targets
+    #[allow(clippy::too_many_arguments)]
     fn calculate_cost(
         &self,
         fx: i16,
@@ -195,6 +196,7 @@ impl PathFinder {
     }
 
     /// Add a node to the search
+    #[allow(clippy::too_many_arguments)]
     fn add_node(
         &mut self,
         x: i16,
@@ -273,6 +275,7 @@ impl PathFinder {
     }
 
     /// Add successor nodes for a given node
+    #[allow(clippy::too_many_arguments)]
     fn add_successors(
         &mut self,
         node: &Node,
@@ -464,6 +467,7 @@ impl PathFinder {
     }
 
     /// Run A* search
+    #[allow(clippy::too_many_arguments)]
     fn astar(
         &mut self,
         fx: i16,
@@ -557,6 +561,7 @@ impl PathFinder {
     ///
     /// # Returns
     /// Direction to move, or `None` if no path is found.
+    #[allow(clippy::too_many_arguments)]
     pub fn find_path(
         &mut self,
         character: &core::types::Character,

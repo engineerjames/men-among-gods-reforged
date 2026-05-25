@@ -10,6 +10,7 @@ use std::net::{Shutdown, TcpStream};
 use std::sync::Arc;
 
 /// A game-server connection that may or may not be TLS-encrypted.
+#[allow(clippy::large_enum_variant)]
 pub enum GameStream {
     /// Unencrypted TCP connection.
     Plain(TcpStream),
@@ -94,7 +95,7 @@ pub fn load_tls_config() -> Result<Arc<rustls::ServerConfig>, String> {
 
     let config = rustls::ServerConfig::builder()
         .with_no_client_auth()
-        .with_single_cert(certs, key.into())
+        .with_single_cert(certs, key)
         .map_err(|e| format!("Invalid TLS configuration: {e}"))?;
 
     Ok(Arc::new(config))

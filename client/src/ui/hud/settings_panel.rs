@@ -548,12 +548,11 @@ impl DisplaySettingsSubPanel {
                 self.controller_focused = None;
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 
@@ -590,9 +589,7 @@ impl DisplaySettingsSubPanel {
 
         self.collect_child_actions();
 
-        if children_responses
-            .iter()
-            .any(|r| *r == EventResponse::Consumed)
+        if children_responses.contains(&EventResponse::Consumed)
         {
             return EventResponse::Consumed;
         }
@@ -821,12 +818,11 @@ impl DiagnosticsSubPanel {
                 self.controller_focused = None;
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 
@@ -1053,11 +1049,10 @@ impl ControlsSubPanel {
 
             match event {
                 UiEvent::TextInput { .. } => return EventResponse::Consumed,
-                UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } => {
-                    if self.bounds.contains_point(*x, *y) {
+                UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. }
+                    if self.bounds.contains_point(*x, *y) => {
                         return EventResponse::Consumed;
                     }
-                }
                 _ => {}
             }
         }
@@ -1115,12 +1110,11 @@ impl ControlsSubPanel {
                 self.controller_focused = None;
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 
@@ -1434,13 +1428,12 @@ impl ControllerBindingsSubPanel {
                     return EventResponse::Consumed;
                 }
                 UiEvent::TextInput { .. } => return EventResponse::Consumed,
-                UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } => {
-                    if self.bounds.contains_point(*x, *y) {
+                UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. }
+                    if self.bounds.contains_point(*x, *y) => {
                         // Click inside panel cancels listening.
                         self.cancel_listening();
                         return EventResponse::Consumed;
                     }
-                }
                 _ => {}
             }
         }
@@ -1502,12 +1495,11 @@ impl ControllerBindingsSubPanel {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 

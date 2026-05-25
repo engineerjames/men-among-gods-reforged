@@ -72,6 +72,12 @@ pub struct QuitConfirmDialog {
     controller_focused: Option<usize>,
 }
 
+impl Default for QuitConfirmDialog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl QuitConfirmDialog {
     /// Creates a new, initially hidden quit-confirmation dialog centerd on
     /// screen.
@@ -227,12 +233,11 @@ impl Widget for QuitConfirmDialog {
                 self.actions.push(QuitConfirmDialogAction::Cancel);
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. } => {
-                if self.controller_focused.is_some() {
+            UiEvent::MouseMove { .. }
+                if self.controller_focused.is_some() => {
                     self.controller_focused = None;
                     self.apply_controller_focus();
                 }
-            }
             _ => {}
         }
 

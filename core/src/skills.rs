@@ -216,7 +216,7 @@ impl SkillTab {
         SkillTab {
             nr,
             cat,
-            name: name,
+            name,
             desc,
             attrib: [a0, a1, a2],
         }
@@ -779,21 +779,13 @@ pub fn skill_lookup(name: &str) -> i32 {
         let mut skill_iter = skill.chars().map(|c| c.to_ascii_lowercase());
         let mut matched = true;
 
-        loop {
-            match (name_iter.next(), skill_iter.next()) {
-                (Some(pc), Some(sc)) => {
-                    if sc == ' ' {
-                        break; // skill name reached a space -> accept match
-                    }
-                    if pc != sc {
-                        matched = false;
-                        break;
-                    }
-                }
-                (Some(_), None) | (None, Some(_)) | (None, None) => {
-                    // either string ended -> accept if no mismatch so far
-                    break;
-                }
+        while let (Some(pc), Some(sc)) = (name_iter.next(), skill_iter.next()) {
+            if sc == ' ' {
+                break; // skill name reached a space -> accept match
+            }
+            if pc != sc {
+                matched = false;
+                break;
             }
         }
 
@@ -963,13 +955,13 @@ mod tests {
     #[test]
     fn test_skill_descriptions() {
         // Test that all active skills have non-empty descriptions
-        for i in 0..=SK_WEAPON {
+        for (i, skill) in SKILLTAB.iter().take(SK_WEAPON + 1).enumerate() {
             // Active skills including the unified Weapon Skill slot.
             assert!(
-                !SKILLTAB[i].desc.is_empty(),
+                !skill.desc.is_empty(),
                 "Skill {} '{}' should have a description",
                 i,
-                SKILLTAB[i].name
+                skill.name
             );
         }
 

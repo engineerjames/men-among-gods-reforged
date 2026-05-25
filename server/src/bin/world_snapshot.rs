@@ -20,7 +20,7 @@
 //! tooling.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process;
 use std::time::Instant;
 
@@ -196,7 +196,7 @@ fn cmd_export(output: &PathBuf) {
 /// * `input`          - Path to the source `.wsnap` file.
 /// * `skip_if_seeded` - Exit successfully without writing if data already exists.
 /// * `force`          - Overwrite existing data without prompting.
-fn cmd_import(input: &PathBuf, skip_if_seeded: bool, force: bool) {
+fn cmd_import(input: &Path, skip_if_seeded: bool, force: bool) {
     println!("Reading snapshot from {}...", input.display());
     let start = Instant::now();
 
@@ -310,7 +310,7 @@ fn cmd_import(input: &PathBuf, skip_if_seeded: bool, force: bool) {
 /// # Arguments
 ///
 /// * `input` - Path to the `.wsnap` file to verify.
-fn cmd_verify(input: &PathBuf) {
+fn cmd_verify(input: &Path) {
     println!("Verifying snapshot {}...", input.display());
 
     let snapshot = WorldSnapshot::from_file(input).unwrap_or_else(|e| {

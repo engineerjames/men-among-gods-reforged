@@ -35,6 +35,12 @@ pub struct ControllerNavState {
     axis_neg_y: bool,
 }
 
+impl Default for ControllerNavState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ControllerNavState {
     /// Creates a new tracker with all axes in the dead-zone.
     pub fn new() -> Self {

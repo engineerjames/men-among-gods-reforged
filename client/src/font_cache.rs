@@ -208,6 +208,7 @@ pub fn draw_text(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_text_impl(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
@@ -298,6 +299,7 @@ pub fn text_width(text: &str) -> u32 {
 /// # Returns
 ///
 /// `Ok(lines_drawn)` on success, or an SDL2 error string.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_wrapped_text(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     gfx_cache: &mut crate::gfx_cache::GraphicsCache<'_>,
@@ -813,6 +815,7 @@ pub fn line_height(engine: &mut TextEngine<'_, '_>, handle: &FontHandle) -> u32 
 /// # Returns
 ///
 /// `Ok(())` on success or an SDL error message string.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_text_handle(
     canvas: &mut Canvas<Window>,
     engine: &mut TextEngine<'_, '_>,
@@ -832,6 +835,7 @@ pub fn draw_text_handle(
 }
 
 /// Renders TTF text by iterating cached glyphs.
+#[allow(clippy::too_many_arguments)]
 fn draw_ttf_text(
     canvas: &mut Canvas<Window>,
     engine: &mut TextEngine<'_, '_>,
@@ -967,6 +971,7 @@ fn draw_ttf_text_impl(
 /// # Returns
 ///
 /// * Number of lines drawn, or an SDL error string.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_wrapped_text_handle(
     canvas: &mut Canvas<Window>,
     engine: &mut TextEngine<'_, '_>,

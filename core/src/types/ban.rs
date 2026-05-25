@@ -7,6 +7,16 @@ pub struct Ban {
     address: u32,
 }
 
+impl Default for Ban {
+    fn default() -> Self {
+        Ban {
+            creator: [0; 80],
+            victim: [0; 80],
+            address: 0,
+        }
+    }
+}
+
 impl Ban {
     /// Creates a new empty `Ban` record.
     ///
@@ -14,11 +24,7 @@ impl Ban {
     ///
     /// * A zeroed-out `Ban`.
     pub fn new() -> Self {
-        Ban {
-            creator: [0; 80],
-            victim: [0; 80],
-            address: 0,
-        }
+        Self::default()
     }
 
     /// Returns the banned IP address.
