@@ -123,6 +123,10 @@ impl Default for PlayerState {
 
 impl PlayerState {
     /// Returns the number of messages currently stored in the chat log.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `log_len`.
     pub fn log_len(&self) -> usize {
         self.message_log.len()
     }
@@ -131,6 +135,10 @@ impl PlayerState {
     ///
     /// Unlike `log_len()`, this counter increases monotonically and does not
     /// saturate at the buffer capacity.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `log_total_pushed`.
     pub fn log_total_pushed(&self) -> usize {
         self.message_log.total_pushed()
     }
@@ -144,16 +152,28 @@ impl PlayerState {
     }
 
     /// Returns a shared reference to the visible tile map.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `map`.
     pub fn map(&self) -> &GameMap {
         &self.map
     }
 
     /// Returns a mutable reference to the visible tile map.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `map_mut`.
     pub fn map_mut(&mut self) -> &mut GameMap {
         &mut self.map
     }
 
     /// Returns a shared reference to the player's own character stats.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `character_info`.
     pub fn character_info(&self) -> &ClientPlayer {
         &self.character_info
     }
@@ -162,16 +182,28 @@ impl PlayerState {
     ///
     /// `[0]` is the unspent points pool; `[1..24]` are the per-layer bit
     /// fields (8 nodes per byte). See `core::talent_trees`.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `talents`.
     pub fn talents(&self) -> &[u8; 25] {
         &self.talents
     }
 
     /// Returns the immutable per-session quest catalog snapshot.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `quest_catalog`.
     pub fn quest_catalog(&self) -> &[mag_core::quest_defs::QuestCatalogEntry] {
         &self.quest_catalog
     }
 
     /// Returns the per-quest completion counters, indexed by catalog index.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `quest_completion_counts`.
     pub fn quest_completion_counts(&self) -> &[i16; mag_core::quest_defs::MAX_QUEST_CATALOG] {
         &self.quest_completion_counts
     }
@@ -204,11 +236,19 @@ impl PlayerState {
 
     /// Returns the NPC template ID of the currently focused quest, or `0`
     /// when none is focused.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `active_quest_template_id`.
     pub fn active_quest_template_id(&self) -> u16 {
         self.active_quest_template_id
     }
 
     /// Returns the active step index within the focused quest's walkthrough.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `active_quest_step_idx`.
     pub fn active_quest_step_idx(&self) -> u8 {
         self.active_quest_step_idx
     }
@@ -220,6 +260,10 @@ impl PlayerState {
     }
 
     /// Returns `true` when the shop overlay should be displayed.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `should_show_shop` succeeds or the condition is met, otherwise `false`.
     pub fn should_show_shop(&self) -> bool {
         self.should_show_shop
     }
@@ -230,6 +274,10 @@ impl PlayerState {
     /// Determined by whether all shop items have a price of zero: merchant
     /// items always carry a non-zero barter price, while corpse items are
     /// always free to take.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `shop_is_grave` succeeds or the condition is met, otherwise `false`.
     pub fn shop_is_grave(&self) -> bool {
         self.shop_is_grave
     }
@@ -243,6 +291,10 @@ impl PlayerState {
     }
 
     /// Returns `true` when the "look at" info panel should be displayed.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `should_show_look` succeeds or the condition is met, otherwise `false`.
     pub fn should_show_look(&self) -> bool {
         self.should_show_look
     }
@@ -256,11 +308,19 @@ impl PlayerState {
     }
 
     /// Returns a shared reference to the current "look at" target data.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `look_target`.
     pub fn look_target(&self) -> &Look {
         &self.look_target
     }
 
     /// Returns a shared reference to the current shop target data.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `shop_target`.
     pub fn shop_target(&self) -> &Look {
         &self.shop_target
     }
@@ -282,11 +342,20 @@ impl PlayerState {
     }
 
     /// Returns the `ch_nr` of the currently selected (clicked) character tile.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `selected_char`.
     pub fn selected_char(&self) -> u16 {
         self.selected_char
     }
 
     /// Sets both the selected character `nr` and `id`.
+    ///
+    /// # Arguments
+    ///
+    /// * `selected_char` - Value passed to `set_selected_char_with_id`.
+    /// * `selected_char_id` - Identifier passed to `set_selected_char_with_id`.
     pub fn set_selected_char_with_id(&mut self, selected_char: u16, selected_char_id: u16) {
         self.selected_char = selected_char;
         self.selected_char_id = selected_char_id;
@@ -311,6 +380,10 @@ impl PlayerState {
 
     /// Advances per-tick timers, syncs the animation ctick with the server,
     /// and runs the legacy engine tick.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_ticker` - Value passed to `on_tick_packet`.
     pub fn on_tick_packet(&mut self, client_ticker: u32) {
         let _ = client_ticker;
 

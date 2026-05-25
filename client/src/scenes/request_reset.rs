@@ -45,6 +45,10 @@ pub struct RequestResetScene {
 
 impl RequestResetScene {
     /// Creates a new `RequestResetScene` with empty form fields.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         RequestResetScene {
             form: RequestResetForm::new(),

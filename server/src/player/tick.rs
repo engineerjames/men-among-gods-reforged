@@ -466,6 +466,10 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 ///
 /// # Arguments
 /// * `n` - Character index
+///
+/// # Returns
+///
+/// * Value returned by `speedo`.
 pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
     let speed = (gs.characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
     let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
@@ -474,6 +478,11 @@ pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
 
 /// Port of `plr_state` from `svr_tick.cpp`
 /// Handles player state transitions (login, exit, timeouts)
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_state(gs: &mut GameState, nr: usize) {
     let ticker = gs.globals.ticker;
     let (lasttick, state) = (gs.players[nr].lasttick as i32, gs.players[nr].state);
@@ -512,6 +521,11 @@ pub fn plr_state(gs: &mut GameState, nr: usize) {
 
 /// Port of `plr_change` from `svr_tick.cpp`
 /// Sends changed player data to the client
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_change(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
 
@@ -1104,6 +1118,11 @@ fn plr_change_target(gs: &mut GameState, nr: usize, cn: usize) {
 
 /// Port of `plr_tick` from `svr_tick.cpp`
 /// Handles player tick processing (lag detection and stoning)
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_tick(gs: &mut GameState, nr: usize) {
     // Increment local tick counter
     gs.players[nr].ltick = gs.players[nr].ltick.wrapping_add(1);
@@ -1187,6 +1206,11 @@ fn stone_gc(gs: &mut GameState, cn: usize, mode: bool) {
 
 /// Port of `plr_idle` from `svr_tick.cpp`
 /// Handles idle timeout checking for players
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_idle(gs: &mut GameState, nr: usize) {
     let ticker = gs.globals.ticker as u32;
     let (lasttick, lasttick2, state, usnr) = (

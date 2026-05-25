@@ -53,6 +53,10 @@ impl LoginScene {
     ///
     /// The username field is pre-populated from the last successful login if one
     /// was previously saved.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         let settings = preferences::load_global_settings();
         let login_form = LoginForm::new(

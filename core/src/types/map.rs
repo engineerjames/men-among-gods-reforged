@@ -23,10 +23,28 @@ pub struct Map {
 }
 
 impl Map {
+    /// Serializes this map tile to bincode bytes.
+    ///
+    /// # Returns
+    ///
+    /// * Encoded map tile bytes.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if bincode serialization fails.
     pub fn to_bytes(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, bincode::config::standard()).expect("Map::to_bytes failed")
     }
 
+    /// Decodes a map tile from bincode bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Serialized map tile bytes.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Map)` when all bytes decode successfully, otherwise `None`.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let (value, consumed): (Self, usize) =
             bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;
@@ -37,11 +55,26 @@ impl Map {
         }
     }
 
+    /// Adds light to this tile while clamping to the valid light range.
+    ///
+    /// # Arguments
+    ///
+    /// * `amount` - Signed light delta to apply.
     pub fn add_light(&mut self, amount: i32) {
         let new_light = i32::from(self.light) + amount;
         self.light = new_light.clamp(0, i32::from(i16::MAX)) as i16;
     }
 
+    /// Returns whether server map coordinates are in bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Server map x coordinate.
+    /// * `y` - Server map y coordinate.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when both coordinates are inside the server map.
     pub fn is_sane_coordinates(x: usize, y: usize) -> bool {
         x < crate::constants::SERVER_MAPX as usize && y < crate::constants::SERVER_MAPY as usize
     }

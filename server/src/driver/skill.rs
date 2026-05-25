@@ -26,6 +26,17 @@ use crate::{
 
 use core::constants::LEGACY_TICKS;
 
+/// Returns whether `co` is a player or the ghost companion owned by `cn`.
+///
+/// # Arguments
+///
+/// * `cn` - Candidate owner character.
+/// * `cn_idx` - Character index for `cn`.
+/// * `co` - Candidate target character.
+///
+/// # Returns
+///
+/// * `true` when `cn` is a player and `co` is either a player or `cn`'s ghost companion.
 pub fn player_or_ghost(cn: &Character, cn_idx: usize, co: &Character) -> bool {
     if (cn.flags & CharacterFlags::Player.bits()) == 0 {
         return false;
@@ -38,6 +49,22 @@ pub fn player_or_ghost(cn: &Character, cn_idx: usize, co: &Character) -> bool {
     }
     false
 }
+
+/// Consumes mana for a spell after applying Concentration cost reduction.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing character mana and skills.
+/// * `cn` - Caster character index.
+/// * `cost` - Base spell cost in whole mana units.
+///
+/// # Returns
+///
+/// * `0` when mana was consumed successfully, or `-1` when the caster lacks mana.
+///
+/// # Panics
+///
+/// * Panics if `cn` is not a valid character index.
 pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     // Ported from C++ spellcost(int cn, int cost)
     // concentrate:
@@ -65,6 +92,23 @@ pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     0
 }
 
+/// Performs a focus check against an opposing skill or resistance power.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for caster state and failure messages.
+/// * `cn` - Caster character index.
+/// * `skill` - Caster skill value used for the check.
+/// * `d20` - Base d20 threshold before luck adjustment.
+/// * `power` - Opposing power or resistance value.
+///
+/// # Returns
+///
+/// * `0` when focus succeeds, or `-1` when focus is lost.
+///
+/// # Panics
+///
+/// * Panics if `cn` is not a valid character index.
 pub fn chance_base(gs: &mut GameState, cn: usize, skill: i32, d20: i32, power: i32) -> i32 {
     // Ported from C++ chance_base(int cn, int skill, int d20, int power)
     let mut chance = d20 * skill / std::cmp::max(1, power);
@@ -84,6 +128,22 @@ pub fn chance_base(gs: &mut GameState, cn: usize, skill: i32, d20: i32, power: i
     }
     0
 }
+
+/// Performs a simple spell focus check for `cn`.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for caster state and failure messages.
+/// * `cn` - Caster character index.
+/// * `d20` - Base d20 threshold before luck adjustment.
+///
+/// # Returns
+///
+/// * `0` when focus succeeds, or `-1` when focus is lost.
+///
+/// # Panics
+///
+/// * Panics if `cn` is not a valid character index.
 pub fn chance(gs: &mut GameState, cn: usize, d20: i32) -> i32 {
     // Ported from C++ chance(int cn, int d20)
     let mut d20 = d20;
@@ -103,11 +163,35 @@ pub fn chance(gs: &mut GameState, cn: usize, d20: i32) -> i32 {
     }
     0
 }
+
+/// Reduces spell power by a target immunity value.
+///
+/// # Arguments
+///
+/// * `_gs` - Game state reserved for compatibility with the legacy signature.
+/// * `power` - Incoming spell power.
+/// * `immun` - Target immunity skill value.
+///
+/// # Returns
+///
+/// * Effective spell power after immunity mitigation, with a minimum of `1`.
 pub fn spell_immunity(_gs: &GameState, power: i32, immun: i32) -> i32 {
     // Ported from C++ spell_immunity(int power, int immun)
     let immun = immun / 2;
     if power <= immun { 1 } else { power - immun }
 }
+
+/// Applies caster kindred and moon-phase modifiers to spell power.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing global moon-phase flags.
+/// * `power` - Base spell power.
+/// * `kindred` - Caster kindred bitfield.
+///
+/// # Returns
+///
+/// * Modified spell power after kindred and moon-phase adjustments.
 pub fn spell_race_mod(gs: &GameState, power: i32, kindred: i32) -> i32 {
     // Ported from C++ spell_race_mod(int power, int kindred)
 
@@ -142,6 +226,24 @@ pub fn spell_race_mod(gs: &GameState, power: i32, kindred: i32) -> i32 {
     (f64::from(power) * modf) as i32
 }
 
+/// Adds a spell item to a character's active spell slots.
+///
+/// Replaces weaker duplicate spells, rejects weaker overwrites, and evicts the
+/// weakest active spell when all slots are full and the new spell is stronger.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing characters, items, and map flags.
+/// * `cn` - Target character index receiving the spell.
+/// * `in_` - Spell item index to attach.
+///
+/// # Returns
+///
+/// * `1` when the spell was attached, or `0` when it was rejected or neutralized.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `in_`, an active spell item index, or the character's map position is invalid.
 pub fn add_spell(gs: &mut GameState, cn: usize, in_: usize) -> i32 {
     // Ported from C++ add_spell(int cn, int in)
     let mut n = 0;
@@ -220,6 +322,20 @@ pub fn add_spell(gs: &mut GameState, cn: usize, in_: usize) -> i32 {
     1
 }
 
+/// Returns whether a character currently has the spell-exhaustion marker.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing character spell slots and items.
+/// * `cn` - Character index to inspect.
+///
+/// # Returns
+///
+/// * `true` when a spell-exhaustion marker is active, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn` or an active spell item index is invalid.
 pub fn is_exhausted(gs: &mut GameState, cn: usize) -> bool {
     for n in 0..20 {
         let in_ = gs.characters[cn].spell[n] as usize;
@@ -238,6 +354,17 @@ pub fn is_exhausted(gs: &mut GameState, cn: usize) -> bool {
     false
 }
 
+/// Adds a temporary spell-exhaustion marker to a character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create and attach the exhaustion item.
+/// * `cn` - Character index receiving exhaustion.
+/// * `exhaust_length` - Exhaustion duration in ticks.
+///
+/// # Panics
+///
+/// * Panics if `cn` is invalid or the created item index becomes invalid.
 pub fn add_exhaust(gs: &mut GameState, cn: usize, exhaust_length: i32) {
     // Ported from C++ add_exhaust(int cn, int len)
     let in_ = God::create_item(gs, 1);
@@ -262,6 +389,17 @@ pub fn add_exhaust(gs: &mut GameState, cn: usize, exhaust_length: i32) {
     add_spell(gs, cn, in_.unwrap());
 }
 
+/// Converts an item template effect into an active spell on a character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to copy item bonuses and attach the spell.
+/// * `cn` - Character index receiving the copied spell effect.
+/// * `in2` - Source item index providing spell metadata and bonuses.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `in2`, or the created spell item index is invalid.
 pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
     // Ported from C++ spell_from_item(int cn, int in2)
     let flags = gs.characters[cn].flags;
@@ -326,6 +464,22 @@ pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
     GameState::char_play_sound(gs, cn, i32::from(sound) + 1, -150, 0);
 }
 
+/// Applies the Light spell to a target character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create the spell item and emit feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Base spell power before race and moon modifiers.
+///
+/// # Returns
+///
+/// * `true` when Light was applied, or `false` when item creation or attachment failed.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or the created spell item index is invalid.
 pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     // Ported from C++ spell_light(int cn, int co, int power)
     let in_ = God::create_item(gs, 1);
@@ -418,6 +572,16 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
     true
 }
 
+/// Handles direct player/NPC use of the Light skill.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, costs, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` or the selected target index is invalid.
 pub fn skill_light(gs: &mut GameState, cn: usize) {
     // rate limit for player
     let is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
@@ -474,6 +638,15 @@ pub fn skill_light(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS / 4);
 }
 
+/// Computes the aggregate spellpower cap for a character.
+///
+/// # Arguments
+///
+/// * `cn` - Character whose primary attributes define the cap.
+///
+/// # Returns
+///
+/// * Sum of agility, strength, intelligence, willpower, and bravery base attributes.
 pub fn spellpower(cn: &Character) -> i32 {
     let a = i32::from(cn.attrib[core::constants::AT_AGIL as usize][0]);
     let b = i32::from(cn.attrib[core::constants::AT_STREN as usize][0]);
@@ -483,6 +656,22 @@ pub fn spellpower(cn: &Character) -> i32 {
     a + b + c + d + e
 }
 
+/// Applies the Protection spell to a target character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create the spell item and emit feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Base spell power before target cap and race modifiers.
+///
+/// # Returns
+///
+/// * `true` when Protection was applied, or `false` when item creation or attachment failed.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or the created spell item index is invalid.
 pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
@@ -607,6 +796,16 @@ pub fn spell_protect(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
     true
 }
 
+/// Handles direct player/NPC use of the Protection skill.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, costs, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` or the selected target index is invalid.
 pub fn skill_protect(gs: &mut GameState, cn: usize) {
     let has_skill = gs.characters[cn].skill[SK_PROTECT][5] != 0;
     if !has_skill {
@@ -670,6 +869,22 @@ pub fn skill_protect(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS / 2);
 }
 
+/// Applies the Enhance Weapon spell to a target character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create the spell item and emit feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Base spell power before target cap and race modifiers.
+///
+/// # Returns
+///
+/// * `true` when Enhance Weapon was applied, or `false` when item creation or attachment failed.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or the created spell item index is invalid.
 pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
@@ -804,6 +1019,16 @@ pub fn spell_enhance(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
     true
 }
 
+/// Handles direct player/NPC use of the Enhance Weapon skill.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, costs, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` or the selected target index is invalid.
 pub fn skill_enhance(gs: &mut GameState, cn: usize) {
     let co = if gs.characters[cn].skill_target1 != 0 {
         gs.characters[cn].skill_target1 as usize
@@ -888,6 +1113,22 @@ pub fn skill_enhance(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS / 2);
 }
 
+/// Applies the Bless spell to a target character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create the spell item and emit feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Base spell power before target cap and race modifiers.
+///
+/// # Returns
+///
+/// * `true` when Bless was applied, or `false` when item creation or attachment failed.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or the created spell item index is invalid.
 pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
@@ -1019,6 +1260,16 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
     true
 }
 
+/// Handles direct player/NPC use of the Bless skill.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, costs, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` or the selected target index is invalid.
 pub fn skill_bless(gs: &mut GameState, cn: usize) {
     let co = if gs.characters[cn].skill_target1 != 0 {
         gs.characters[cn].skill_target1 as usize
@@ -1100,6 +1351,16 @@ pub fn skill_bless(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS);
 }
 
+/// Toggles the Guardian Angel protective spell for a character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to inspect spells, create the guardian item, and emit feedback.
+/// * `cn` - Character index activating or dismissing Guardian Angel.
+///
+/// # Panics
+///
+/// * Panics if `cn`, an active spell item index, or the created spell item index is invalid.
 pub fn skill_wimp(gs: &mut GameState, cn: usize) {
     // If Guardian Angel already active, remove it
     for n in 0..20 {
@@ -1194,6 +1455,22 @@ pub fn skill_wimp(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Applies the Magic Shield spell to a target character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create the spell item and emit feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Base spell power before race and moon modifiers.
+///
+/// # Returns
+///
+/// * `true` when Magic Shield was applied, or `false` when item creation or attachment failed.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or the created spell item index is invalid.
 pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
@@ -1305,6 +1582,16 @@ pub fn spell_mshield(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bo
     true
 }
 
+/// Handles direct player/NPC use of the Magic Shield skill.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for costs, focus checks, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` is not a valid character index.
 pub fn skill_mshield(gs: &mut GameState, cn: usize) {
     if is_exhausted(gs, cn) {
         return;
@@ -1326,6 +1613,22 @@ pub fn skill_mshield(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
+/// Heals a target character and emits spell feedback.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to adjust hit points and emit feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Healing power used to restore hit points.
+///
+/// # Returns
+///
+/// * Always `true` after applying the heal.
+///
+/// # Panics
+///
+/// * Panics if `cn` or `co` is not a valid character index.
 pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     if cn != co {
         gs.characters[co].a_hp += spell_race_mod(gs, power * 2500, gs.characters[cn].kindred);
@@ -1398,6 +1701,16 @@ pub fn spell_heal(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
     true
 }
 
+/// Handles direct player/NPC use of the Heal skill.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, costs, and healing.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` or the selected target index is invalid.
 pub fn skill_heal(gs: &mut GameState, cn: usize) {
     let mut co = if gs.characters[cn].skill_target1 != 0 {
         gs.characters[cn].skill_target1 as usize
@@ -1479,6 +1792,22 @@ pub fn skill_heal(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, TICKS * 2);
 }
 
+/// Applies the Curse spell to a target character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create the curse item and emit combat feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Base curse power before immunity and race modifiers.
+///
+/// # Returns
+///
+/// * `true` when Curse was applied, or `false` when the target is immune, item creation fails, or attachment is neutralized.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or the created spell item index is invalid.
 pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let flags = gs.characters[co].flags;
     if (flags & CharacterFlags::Immortal.bits()) != 0 {
@@ -1566,6 +1895,16 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
     true
 }
 
+/// Handles direct player/NPC use of the Curse skill, including area expansion.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, combat checks, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn`, the selected target index, or an area target index is invalid.
 pub fn skill_curse(gs: &mut GameState, cn: usize) {
     let co = if gs.characters[cn].skill_target1 != 0 {
         gs.characters[cn].skill_target1 as usize
@@ -1694,6 +2033,22 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 4);
 }
 
+/// Attempts to apply Warcry effects to one target.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for attack validation, item creation, and effects.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Warcry power checked against target resistance.
+///
+/// # Returns
+///
+/// * `true` when Warcry effects were applied, otherwise `false`.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or a created spell item index is invalid.
 pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     if gs.characters[cn].attack_cn as usize != co && gs.characters[co].alignment == 10000 {
         return false;
@@ -1791,6 +2146,16 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     true
 }
 
+/// Handles direct player/NPC use of the Warcry skill over nearby targets.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for endurance costs, nearby target lookup, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` is invalid or a scanned map index is invalid.
 pub fn skill_warcry(gs: &mut GameState, cn: usize) {
     if gs.characters[cn].a_end < 150 * 1000 {
         gs.do_character_log(cn, core::types::FontColor::Red, "You're too exhausted!\n");
@@ -1854,6 +2219,18 @@ pub fn skill_warcry(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Writes detailed item statistics to a character's log.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the target item and output character.
+/// * `cn` - Character index receiving the item information.
+/// * `in_` - Item index to inspect.
+/// * `_look` - Legacy look-mode argument retained for signature compatibility.
+///
+/// # Panics
+///
+/// * Panics if `cn` or `in_` is not a valid index.
 pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
     // Name
     let name = gs.items[in_].name;
@@ -1990,6 +2367,17 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
     }
 }
 
+/// Writes detailed character spell, skill, and attribute information to a character's log.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing both characters and active spell items.
+/// * `cn` - Character index receiving the information.
+/// * `co` - Character index being inspected.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or an active spell item index is invalid.
 pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
     // Header
     let name_bytes = gs.characters[co].name;
@@ -2114,6 +2502,19 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
     gs.do_character_log(cn, FontColor::Green, " \n");
 }
 
+/// Handles direct player/NPC use of the Identify skill.
+///
+/// Identifies or hides identify data for a carried item, or reports character
+/// information when no valid carried item is selected.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for costs, focus checks, item flags, and feedback.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn`, the carried item index, or the selected character target is invalid.
 pub fn skill_identify(gs: &mut GameState, cn: usize) {
     if is_exhausted(gs, cn) {
         return;
@@ -2206,6 +2607,16 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Handles direct player/NPC use of the Blast skill, including area expansion.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, mana costs, damage, and effects.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn`, the selected target index, or an area target index is invalid.
 pub fn skill_blast(gs: &mut GameState, cn: usize) {
     let co = if gs.characters[cn].skill_target1 != 0 {
         gs.characters[cn].skill_target1 as usize
@@ -2392,6 +2803,16 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Attempts to repair the item currently carried under a character's cursor.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for item validation, endurance costs, and replacement item creation.
+/// * `cn` - Character index attempting the repair.
+///
+/// # Panics
+///
+/// * Panics if `cn`, the carried item index, or the created replacement item index is invalid.
 pub fn skill_repair(gs: &mut GameState, cn: usize) {
     let in_idx = gs.characters[cn].citem as usize;
     if in_idx == 0 {
@@ -2469,6 +2890,18 @@ pub fn skill_repair(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Handles direct player/NPC use of the Recall skill.
+///
+/// Creates a temporary Recall spell tied to the caster's temple coordinates.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for costs, item creation, and spell attachment.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn` or the created spell item index is invalid.
 pub fn skill_recall(gs: &mut GameState, cn: usize) {
     if is_exhausted(gs, cn) {
         return;
@@ -2524,6 +2957,22 @@ pub fn skill_recall(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Applies the Stun spell to a target character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to create the stun item and emit combat feedback.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+/// * `power` - Base stun power before immunity and race modifiers.
+///
+/// # Returns
+///
+/// * `true` when Stun was applied, or `false` when the target is immune, item creation fails, or attachment is neutralized.
+///
+/// # Panics
+///
+/// * Panics if `cn`, `co`, or the created spell item index is invalid.
 pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
         return false;
@@ -2626,6 +3075,16 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
     true
 }
 
+/// Handles direct player/NPC use of the Stun skill, including adjacent attackers.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, combat checks, and spell application.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn`, the selected target index, or an adjacent target index is invalid.
 pub fn skill_stun(gs: &mut GameState, cn: usize) {
     let co = if gs.characters[cn].skill_target1 != 0 {
         gs.characters[cn].skill_target1 as usize
@@ -2752,6 +3211,16 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
+/// Removes all active spell items from a character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing character spell slots and spell items.
+/// * `cn` - Character index whose spells should be removed.
+///
+/// # Panics
+///
+/// * Panics if `cn` or an active spell item index is invalid.
 pub fn remove_spells(gs: &mut GameState, cn: usize) {
     for n in 0..20usize {
         let in_idx = gs.characters[cn].spell[n] as usize;
@@ -2764,6 +3233,19 @@ pub fn remove_spells(gs: &mut GameState, cn: usize) {
     gs.do_update_char(cn);
 }
 
+/// Handles direct player/NPC use of the Dispel Magic skill.
+///
+/// Chooses a curse first, then the first non-Guardian-Angel spell, and treats
+/// hostile dispels as attacks where appropriate.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, spell removal, and feedback.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn`, the selected target index, or an active spell item index is invalid.
 pub fn skill_dispel(gs: &mut GameState, cn: usize) {
     // Port of C `skill_dispel(int cn)`.
     let target = gs.characters[cn].skill_target1 as usize;
@@ -2958,6 +3440,19 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Handles direct player/NPC use of the Ghost Companion skill.
+///
+/// Creates and initializes a companion NPC for the caster, optionally setting
+/// it to attack the selected target.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, companion creation, and initialization.
+/// * `cn` - Caster character index.
+///
+/// # Panics
+///
+/// * Panics if `cn`, the selected target index, or the created companion index is invalid.
 pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     // Check if in build mode
     if (gs.characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0 {
@@ -3307,6 +3802,16 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     EffectManager::fx_add_effect(gs, 7, 0, cn_x, cn_y, 0);
 }
 
+/// Returns whether one character is facing another adjacent character.
+///
+/// # Arguments
+///
+/// * `cn` - Character whose facing direction is tested.
+/// * `co` - Character whose position is compared against `cn`.
+///
+/// # Returns
+///
+/// * `true` when `co` is directly in front of `cn`, otherwise `false`.
 pub fn is_facing(cn: &Character, co: &Character) -> bool {
     let dir = cn.dir;
     let cx = cn.x;
@@ -3323,6 +3828,16 @@ pub fn is_facing(cn: &Character, co: &Character) -> bool {
     }
 }
 
+/// Returns whether one character has another adjacent character behind them.
+///
+/// # Arguments
+///
+/// * `cn` - Character whose facing direction is tested.
+/// * `co` - Character whose position is compared against `cn`.
+///
+/// # Returns
+///
+/// * `true` when `co` is directly behind `cn`, otherwise `false`.
 pub fn is_back(cn: &Character, co: &Character) -> bool {
     let dir = cn.dir;
     let cx = cn.x;
@@ -3339,6 +3854,16 @@ pub fn is_back(cn: &Character, co: &Character) -> bool {
     }
 }
 
+/// Logs the standard no-magic failure message for a character.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for character logging.
+/// * `cn` - Character index receiving the failure message.
+///
+/// # Panics
+///
+/// * Panics if `cn` is not a valid character index.
 pub fn nomagic(gs: &mut GameState, cn: usize) {
     gs.do_character_log(
         cn,
@@ -3347,6 +3872,17 @@ pub fn nomagic(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Dispatches direct skill use to the matching skill handler.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for skill lookup and handler execution.
+/// * `cn` - Character index using the skill.
+/// * `nr` - Skill number to dispatch.
+///
+/// # Panics
+///
+/// * Panics if `cn` is invalid or `nr` cannot be used as a skill-table index.
 pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
     // Check whether the character can use this skill/spell
     if gs.characters[cn].skill[nr as usize][0] == 0 {

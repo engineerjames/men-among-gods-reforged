@@ -62,6 +62,10 @@ pub struct CharacterSelectionScene {
 
 impl CharacterSelectionScene {
     /// Creates a new `CharacterSelectionScene` with empty state.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         Self {
             last_error: None,

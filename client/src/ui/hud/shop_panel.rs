@@ -136,6 +136,10 @@ impl ShopPanel {
     }
 
     /// Returns whether the panel is currently visible.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
         self.data.as_ref().map_or(false, |d| d.visible)
     }
@@ -229,6 +233,10 @@ impl ShopPanel {
     }
 
     /// Returns the currently controller-selected slot, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `controller_selected` produces one, otherwise `None`.
     pub fn controller_selected(&self) -> Option<usize> {
         self.controller_selected
     }

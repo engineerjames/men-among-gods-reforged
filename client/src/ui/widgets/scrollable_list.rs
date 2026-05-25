@@ -109,6 +109,10 @@ impl ScrollableList {
     }
 
     /// Returns the currently selected item ID, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `selected_id` produces one, otherwise `None`.
     pub fn selected_id(&self) -> Option<u64> {
         self.selected_id
     }
@@ -124,6 +128,10 @@ impl ScrollableList {
 
     /// Returns `true` once if the selection changed since the last call,
     /// then clears the flag.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `was_selection_changed` succeeds or the condition is met, otherwise `false`.
     pub fn was_selection_changed(&mut self) -> bool {
         let c = self.selection_changed;
         self.selection_changed = false;
@@ -149,6 +157,10 @@ impl ScrollableList {
     }
 
     /// Returns `true` if the item list is empty.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_empty` succeeds or the condition is met, otherwise `false`.
     pub fn is_empty(&self) -> bool {
         self.items.is_empty()
     }
@@ -169,11 +181,19 @@ impl ScrollableList {
     }
 
     /// Returns the total number of items in the list.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `item_count`.
     pub fn item_count(&self) -> usize {
         self.items.len()
     }
 
     /// Returns the controller focus cursor index, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `controller_cursor` produces one, otherwise `None`.
     pub fn controller_cursor(&self) -> Option<usize> {
         self.controller_cursor
     }

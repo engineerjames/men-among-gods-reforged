@@ -315,6 +315,16 @@ pub fn delete_character(base_url: &str, token: &str, character_id: u64) -> Resul
 /// Creates a short-lived, one-time login ticket for the game server.
 ///
 /// The returned ticket is meant to be sent over the TCP login handshake using `CL_API_LOGIN`.
+///
+/// # Arguments
+///
+/// * `base_url` - API base URL used by this function.
+/// * `token` - Authentication token used by this function.
+/// * `character_id` - Character id used by this function.
+///
+/// # Returns
+///
+/// * `Ok` when `create_game_login_ticket` succeeds, or `Err` with failure details.
 pub fn create_game_login_ticket(
     base_url: &str,
     token: &str,

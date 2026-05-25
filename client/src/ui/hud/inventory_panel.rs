@@ -190,6 +190,10 @@ impl InventoryPanel {
     }
 
     /// Returns whether the panel is currently visible.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
         self.visible
     }
@@ -276,6 +280,10 @@ impl InventoryPanel {
     ///
     /// Used by the helper-text renderer to suppress world-label logic while
     /// the cursor is anywhere over the panel.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_cursor_over_panel` succeeds or the condition is met, otherwise `false`.
     pub fn is_cursor_over_panel(&self) -> bool {
         self.bounds.contains_point(self.mouse_x, self.mouse_y)
     }
@@ -338,11 +346,19 @@ impl InventoryPanel {
     // -----------------------------------------------------------------------
 
     /// Returns the current controller-selected slot, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `controller_selected` produces one, otherwise `None`.
     pub fn controller_selected(&self) -> Option<InvSlotKind> {
         self.controller_selected
     }
 
     /// Sets the controller-selected slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `slot` - Slot index used by this function.
     pub fn set_controller_selected(&mut self, slot: Option<InvSlotKind>) {
         self.controller_selected = slot;
     }

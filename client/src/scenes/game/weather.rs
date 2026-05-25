@@ -102,6 +102,10 @@ impl Default for WeatherState {
 
 impl WeatherState {
     /// Build an inactive state ([`WeatherKind::None`], no particles).
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         let mut particles = Vec::with_capacity(MAX_PARTICLES);
         particles.resize(MAX_PARTICLES, Particle::dead());

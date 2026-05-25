@@ -17,6 +17,10 @@ pub struct ExitScene {
 
 impl ExitScene {
     /// Creates a new `ExitScene`.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         Self {}
     }

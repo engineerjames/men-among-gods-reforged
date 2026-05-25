@@ -42,6 +42,10 @@ pub struct CharacterCreationScene {
 
 impl CharacterCreationScene {
     /// Creates a new `CharacterCreationScene` with default selections.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         Self {
             error: None,

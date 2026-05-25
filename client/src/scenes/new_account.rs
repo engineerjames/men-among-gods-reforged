@@ -47,6 +47,10 @@ pub struct NewAccountScene {
 
 impl NewAccountScene {
     /// Creates a new `NewAccountScene` with empty form fields.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         NewAccountScene {
             form: NewAccountForm::new(),

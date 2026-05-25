@@ -158,11 +158,19 @@ impl RankSigil {
     }
 
     /// Returns `true` when the sigil should be visible for the current rank.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
         self.rank_index >= Self::FIRST_VISIBLE_RANK
     }
 
     /// Returns `true` when the mouse cursor is over this widget.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_hovered` succeeds or the condition is met, otherwise `false`.
     pub fn is_hovered(&self) -> bool {
         self.hovered
     }

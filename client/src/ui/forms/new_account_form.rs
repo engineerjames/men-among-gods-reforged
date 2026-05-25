@@ -212,21 +212,37 @@ impl NewAccountForm {
     }
 
     /// Returns a reference to the current e-mail value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `email`.
     pub fn email(&self) -> &str {
         self.email_input.value()
     }
 
     /// Returns a reference to the current username value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `username`.
     pub fn username(&self) -> &str {
         self.username_input.value()
     }
 
     /// Returns a reference to the current password value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `password`.
     pub fn password(&self) -> &str {
         self.password_input.value()
     }
 
     /// Returns a reference to the current confirm-password value.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `confirm_password`.
     pub fn confirm_password(&self) -> &str {
         self.confirm_password_input.value()
     }

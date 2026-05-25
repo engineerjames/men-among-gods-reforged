@@ -37,6 +37,10 @@ pub struct ControllerNavState {
 
 impl ControllerNavState {
     /// Creates a new tracker with all axes in the dead-zone.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         Self {
             axis_pos_x: false,

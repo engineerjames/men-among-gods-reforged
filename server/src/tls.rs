@@ -19,6 +19,10 @@ pub enum GameStream {
 
 impl GameStream {
     /// Sets the underlying TCP stream to non-blocking mode.
+    ///
+    /// # Arguments
+    ///
+    /// * `nonblocking` - Value passed to `set_nonblocking`.
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         match self {
             GameStream::Plain(s) => s.set_nonblocking(nonblocking),
@@ -27,6 +31,10 @@ impl GameStream {
     }
 
     /// Shuts down the underlying TCP connection.
+    ///
+    /// # Arguments
+    ///
+    /// * `how` - Value passed to `shutdown`.
     pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
         match self {
             GameStream::Plain(s) => s.shutdown(how),
@@ -64,6 +72,10 @@ impl Write for GameStream {
 ///
 /// Both `SERVER_TLS_CERT` and `SERVER_TLS_KEY` environment variables are
 /// required; the server refuses to start without them.
+///
+/// # Returns
+///
+/// * `Ok` when `load_tls_config` succeeds, or `Err` with failure details.
 pub fn load_tls_config() -> Result<Arc<rustls::ServerConfig>, String> {
     let cert_path = std::env::var("SERVER_TLS_CERT")
         .ok()
@@ -105,6 +117,15 @@ pub fn load_tls_config() -> Result<Arc<rustls::ServerConfig>, String> {
 /// The stream is temporarily set to blocking mode for the handshake, then
 /// switched back to non-blocking afterwards. Returns a `GameStream::Tls` on
 /// success.
+///
+/// # Arguments
+///
+/// * `stream` - Value passed to `accept_tls`.
+/// * `config` - Value passed to `accept_tls`.
+///
+/// # Returns
+///
+/// * `Ok` when `accept_tls` succeeds, or `Err` with failure details.
 pub fn accept_tls(
     stream: TcpStream,
     config: Arc<rustls::ServerConfig>,

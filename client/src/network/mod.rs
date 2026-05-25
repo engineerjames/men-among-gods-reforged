@@ -53,6 +53,16 @@ impl NetworkRuntime {
     ///
     /// The background thread wraps the TCP connection in a TLS layer using the
     /// TOFU certificate verifier before starting the login handshake.
+    ///
+    /// # Arguments
+    ///
+    /// * `host` - Value passed to `new`.
+    /// * `port` - Value passed to `new`.
+    /// * `ticket` - Value passed to `new`.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new(host: String, port: u16, ticket: u64) -> Self {
         let (command_tx, command_rx) = mpsc::channel::<NetworkCommand>();
         let (event_tx, event_rx) = mpsc::channel::<NetworkEvent>();
@@ -79,6 +89,10 @@ impl NetworkRuntime {
     }
 
     /// Serialises `cmd`, logs it at DEBUG level, and queues the bytes for the network thread.
+    ///
+    /// # Arguments
+    ///
+    /// * `cmd` - Value passed to `send`.
     pub fn send(&self, cmd: ClientCommand) {
         if let Some(tx) = &self.command_tx {
             if cmd.header == ClientCommandType::CmdCTick || cmd.header == ClientCommandType::Ping {
@@ -102,11 +116,19 @@ impl NetworkRuntime {
     }
 
     /// Non-blocking poll for the next network event.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `try_recv` produces one, otherwise `None`.
     pub fn try_recv(&mut self) -> Option<NetworkEvent> {
         self.event_rx.as_ref()?.try_recv().ok()
     }
 
     /// Returns milliseconds elapsed since the runtime was created.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `elapsed_ms`.
     pub fn elapsed_ms(&self) -> u32 {
         self.start_instant
             .elapsed()
@@ -115,6 +137,11 @@ impl NetworkRuntime {
     }
 
     /// Records a received pong and updates RTT tracking.
+    ///
+    /// # Arguments
+    ///
+    /// * `seq` - Value passed to `handle_pong`.
+    /// * `received_at` - Value passed to `handle_pong`.
     pub fn handle_pong(&mut self, seq: u32, received_at: Instant) {
         if let Some(sent_at) = self.pings_in_flight.remove(&seq) {
             let rtt_ms = received_at

@@ -108,6 +108,17 @@ pub fn load_message_of_the_day() -> Result<String, String> {
         .map_err(|err| format!("Failed to load game MOTD from KeyDB: {err}"))
 }
 
+/// Atomically consumes a one-time game login ticket from KeyDB.
+///
+/// # Arguments
+///
+/// * `ticket` - Login ticket value issued by the API.
+///
+/// # Returns
+///
+/// * `Ok(Some(metadata))` when the ticket exists and decodes successfully.
+/// * `Ok(None)` when `ticket` is zero or no ticket key exists.
+/// * `Err(String)` when KeyDB access or metadata decoding fails.
 pub fn consume_login_ticket(ticket: u64) -> Result<Option<GameLoginTicketMetadata>, String> {
     if ticket == 0 {
         return Ok(None);
@@ -137,6 +148,17 @@ pub fn consume_login_ticket(ticket: u64) -> Result<Option<GameLoginTicketMetadat
     Ok(Some(metadata))
 }
 
+/// Loads an account-service character summary from KeyDB.
+///
+/// # Arguments
+///
+/// * `character_id` - API character id to load.
+///
+/// # Returns
+///
+/// * `Ok(Some(CharacterSummary))` when the character hash exists.
+/// * `Ok(None)` when no character hash exists.
+/// * `Err(String)` when KeyDB access or hash parsing fails.
 pub fn load_character(character_id: u64) -> Result<Option<CharacterSummary>, String> {
     let mut con = connect()?;
     let key = format!("character:{}", character_id);

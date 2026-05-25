@@ -66,10 +66,28 @@ pub struct Global {
 }
 
 impl Global {
+    /// Serializes this global state record to bincode bytes.
+    ///
+    /// # Returns
+    ///
+    /// * Encoded global state bytes.
+    ///
+    /// # Panics
+    ///
+    /// * Panics if bincode serialization fails.
     pub fn to_bytes(&self) -> Vec<u8> {
         bincode::encode_to_vec(self, bincode::config::standard()).expect("Global::to_bytes failed")
     }
 
+    /// Decodes a global state record from bincode bytes.
+    ///
+    /// # Arguments
+    ///
+    /// * `bytes` - Serialized global state bytes.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(Global)` when all bytes decode successfully, otherwise `None`.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let (value, consumed): (Self, usize) =
             bincode::decode_from_slice(bytes, bincode::config::standard()).ok()?;
@@ -80,10 +98,20 @@ impl Global {
         }
     }
 
+    /// Returns whether the global state has unsaved changes.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the dirty flag is set, otherwise `false`.
     pub fn is_dirty(&self) -> bool {
         (self.flags & constants::GF_DIRTY) != 0
     }
 
+    /// Sets or clears the global dirty flag.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - `true` to set the dirty flag, `false` to clear it.
     pub fn set_dirty(&mut self, value: bool) {
         if value {
             self.flags |= constants::GF_DIRTY;

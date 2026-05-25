@@ -15,6 +15,11 @@ use crate::{game_state::GameState, god::God, network_manager};
 
 /// Port of `plr_login` from `svr_tick.cpp`
 /// Handles existing player login (stub - to be implemented)
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_login(gs: &mut GameState, nr: usize) {
     let login_ticket = gs.players[nr].login_ticket;
     if login_ticket == 0 {
@@ -793,6 +798,11 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
 /// The client sends `CL_API_LOGIN` with a u64 one-time ticket in the payload.
 /// We store the ticket on the player slot, enter the login state, and send the
 /// login-time mod packets while `plr_login` consumes the typed ticket metadata.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_api_login(gs: &mut GameState, nr: usize) {
     log::debug!("Player {} api_login", nr);
 

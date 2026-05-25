@@ -1357,6 +1357,10 @@ impl ControllerBindingsSubPanel {
 
     /// Returns `true` if the sub-panel is currently listening for a
     /// controller button press.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_listening` succeeds or the condition is met, otherwise `false`.
     pub fn is_listening(&self) -> bool {
         self.listening_for.is_some()
     }
@@ -1789,6 +1793,10 @@ impl SettingsPanel {
     }
 
     /// Returns whether the panel is currently visible.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_visible` succeeds or the condition is met, otherwise `false`.
     pub fn is_visible(&self) -> bool {
         self.visible
     }
@@ -1822,6 +1830,10 @@ impl SettingsPanel {
 
     /// Returns `true` if the controller bindings sub-panel is currently
     /// waiting for a button press to complete a binding assignment.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_controller_listening` succeeds or the condition is met, otherwise `false`.
     pub fn is_controller_listening(&self) -> bool {
         self.sub_controller.is_listening()
     }

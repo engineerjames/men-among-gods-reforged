@@ -23,6 +23,11 @@ pub mod tick;
 
 /// Port of `plr_cmd` from `svr_tick.cpp`
 /// Dispatches player commands from inbuf
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used by this function.
+/// * `nr` - Numeric identifier used by this function.
 pub fn plr_cmd(gs: &mut GameState, nr: usize) {
     let cmd = gs.players[nr].inbuf[0];
 

@@ -111,6 +111,7 @@ impl<T: std::cmp::PartialOrd<f32> + std::convert::Into<f32> + Clone> StatisticsB
         &self.stats
     }
 
+    /// Clears all samples and resets cached statistics.
     pub fn clear(&mut self) {
         self.buffer.clear();
         self.stats.std = 0.0;

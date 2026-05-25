@@ -248,11 +248,28 @@ impl VitalityChevrons {
     }
 
     /// Returns `true` when the point lies within any chevron band.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - X coordinate used by this function.
+    /// * `y` - Y coordinate used by this function.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `contains_point` succeeds or the condition is met, otherwise `false`.
     pub fn contains_point(&self, x: i32, y: i32) -> bool {
         self.hovered_at(x, y).is_some()
     }
 
     /// Updates hover state from a translated UI event.
+    ///
+    /// # Arguments
+    ///
+    /// * `event` - Input event handled by this function.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `handle_event`.
     pub fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if let UiEvent::MouseMove { x, y } = event {
             self.hovered = self.hovered_at(*x, *y);
@@ -261,6 +278,10 @@ impl VitalityChevrons {
     }
 
     /// Returns helper text for the hovered chevron, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `hover_text` produces one, otherwise `None`.
     pub fn hover_text(&self) -> Option<String> {
         match self.hovered? {
             HoveredChevron::Hp => Some(format!("HP: {} / {}", self.hp_current, self.hp_max)),

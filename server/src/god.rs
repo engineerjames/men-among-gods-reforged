@@ -58,6 +58,19 @@ impl God {
     }
 
     /// Drop a character near the target using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `character_id` - Character id used by this function.
+    /// * `x` - X coordinate used by this function.
+    /// * `y` - Y coordinate used by this function.
+    /// * `backup_x` - Value passed to `drop_char_fuzzy_large`.
+    /// * `backup_y` - Value passed to `drop_char_fuzzy_large`.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `drop_char_fuzzy_large` succeeds or the condition is met, otherwise `false`.
     pub fn drop_char_fuzzy_large(
         gs: &mut GameState,
         character_id: usize,
@@ -204,6 +217,16 @@ impl God {
     // Implementation of god_give_char from svr_god.cpp
 
     /// Give an item to a character using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `character_id` - Character id used by this function.
+    /// * `item_id` - Item id or index used by this function.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `give_character_item` succeeds or the condition is met, otherwise `false`.
     pub fn give_character_item(gs: &mut GameState, character_id: usize, item_id: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             log::error!("Invalid item ID {} when giving item.", item_id);
@@ -277,6 +300,17 @@ impl God {
     }
 
     /// Transfer a character using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `character_id` - Character id used by this function.
+    /// * `x` - X coordinate used by this function.
+    /// * `y` - Y coordinate used by this function.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `transfer_char` succeeds or the condition is met, otherwise `false`.
     pub fn transfer_char(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         if !Character::is_sane_character(character_id) || !Map::is_sane_coordinates(x, y) {
             log::error!(
@@ -308,6 +342,17 @@ impl God {
     }
 
     /// Place a character near a tile using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `character_id` - Character id used by this function.
+    /// * `x` - X coordinate used by this function.
+    /// * `y` - Y coordinate used by this function.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `drop_char_fuzzy` succeeds or the condition is met, otherwise `false`.
     pub fn drop_char_fuzzy(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
@@ -351,6 +396,16 @@ impl God {
     }
 
     /// Create a character using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `template_id` - Identifier passed to `create_char`.
+    /// * `with_items` - Value passed to `create_char`.
+    ///
+    /// # Returns
+    ///
+    /// * `Some` value when `create_char` produces one, otherwise `None`.
     pub fn create_char(gs: &mut GameState, template_id: usize, with_items: bool) -> Option<i32> {
         let unused_index = (1..core::constants::MAXCHARS)
             .find(|&i| gs.characters[i].used == core::constants::USE_EMPTY);
@@ -525,6 +580,11 @@ impl God {
     }
 
     /// Destroy a character's items using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `char_id` - Identifier passed to `destroy_items`.
     pub fn destroy_items(gs: &mut GameState, char_id: usize) {
         if !core::types::Character::is_sane_character(char_id) {
             log::error!("Invalid character ID {} in destroy_items", char_id);
@@ -589,6 +649,16 @@ impl God {
     }
 
     /// Take an item from a character using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `item_id` - Item id or index used by this function.
+    /// * `cn` - Character index used by this function.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `take_from_char` succeeds or the condition is met, otherwise `false`.
     pub fn take_from_char(gs: &mut GameState, item_id: usize, cn: usize) -> bool {
         if !core::types::Item::is_sane_item(item_id) {
             return false;
@@ -641,6 +711,17 @@ impl God {
     }
 
     /// Drop an item using an explicit game-state borrow.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `item_id` - Item id or index used by this function.
+    /// * `x` - X coordinate used by this function.
+    /// * `y` - Y coordinate used by this function.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `drop_item` succeeds or the condition is met, otherwise `false`.
     pub fn drop_item(gs: &mut GameState, item_id: usize, x: usize, y: usize) -> bool {
         if !Map::is_sane_coordinates(x, y) {
             return false;
@@ -721,6 +802,10 @@ impl God {
     /// * `cn` - Requesting character
     /// * `co` - Target character
     /// * `pass` - New password string
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `change_pass` succeeds or the condition is met, otherwise `false`.
     pub fn change_pass(gs: &mut GameState, cn: usize, co: usize, pass: &str) -> bool {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return false;
@@ -2557,6 +2642,10 @@ impl God {
     /// # Arguments
     /// * `cn` - Requesting character
     /// * `spec1`, `spec2` - Target and options
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `thrall`.
     pub fn thrall(gs: &mut GameState, cn: usize, spec1: &str, spec2: &str) -> i32 {
         if !Character::is_sane_character(cn) {
             return 0;
@@ -3302,6 +3391,13 @@ impl God {
     ///
     /// Administrative helper to OR the provided `flag` into the target's
     /// flag field.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `arg1` - Value passed to `set_flag`.
+    /// * `flag` - Value passed to `set_flag`.
     pub fn set_flag(gs: &mut GameState, cn: usize, arg1: &str, flag: u64) {
         log::debug!(
             "god_set_flag() called with arg1='{}', flag={:x}",
@@ -3393,6 +3489,12 @@ impl God {
     /// Set a global server flag (admin operation).
     ///
     /// Modifies server-level flags used to enable or disable features.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `flag` - Value passed to `set_gflag`.
     pub fn set_gflag(gs: &mut GameState, cn: usize, flag: i32) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3419,6 +3521,12 @@ impl God {
     /// Toggle the purple (privileged) status for a character.
     ///
     /// Grants or removes purple display/privileges from `co`.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
     pub fn set_purple(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3453,6 +3561,12 @@ impl God {
     /// Completely replaces the character with the template, preserving only
     /// essential account information like name, passwords, gold, and depot.
     /// This resets all stats, skills, and experience to template defaults.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
+    /// * `temp` - Value passed to `racechange`.
     pub fn racechange(gs: &mut GameState, co: usize, temp: i32) {
         if !Character::is_sane_character(co) {
             return;
@@ -3618,6 +3732,16 @@ impl God {
     /// Save character `co` to persistent storage.
     ///
     /// Returns `1` on success and performs necessary write operations.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `save` succeeds or the condition is met, otherwise `false`.
     pub fn save(gs: &mut GameState, cn: usize, co: usize) -> bool {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return false;
@@ -3644,6 +3768,12 @@ impl God {
     }
 
     /// Command to make `co` perform a slap animation (cosmetic/admin).
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
     pub fn slap(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3669,6 +3799,13 @@ impl God {
     /// Change a character's sprite id.
     ///
     /// Performs validation of the sprite id before updating the character.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
+    /// * `sprite` - Value passed to `spritechange`.
     pub fn spritechange(gs: &mut GameState, cn: usize, co: usize, sprite: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3701,6 +3838,13 @@ impl God {
     }
 
     /// Adjust the `luck` stat for a character.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
+    /// * `value` - Value used by this function.
     pub fn luck(gs: &mut GameState, cn: usize, co: usize, value: i32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3723,6 +3867,12 @@ impl God {
     }
 
     /// Reset a character's description to a blank/default value.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
     pub fn reset_description(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3755,6 +3905,13 @@ impl God {
     /// Set or change the visible name of a character, with validation.
     ///
     /// Ensures the new name meets length and character constraints.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
+    /// * `name` - Name used by this function.
     pub fn set_name(gs: &mut GameState, cn: usize, co: usize, name: &str) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -3901,6 +4058,11 @@ impl God {
     }
 
     /// Spawn a Grolm NPC near the caller for testing or event purposes.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
     pub fn grolm(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3919,6 +4081,11 @@ impl God {
     }
 
     /// Show internal debug/state information for the Grolm NPC.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
     pub fn grolm_info(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -3979,6 +4146,11 @@ impl God {
     }
 
     /// Start scripted movement or behaviour for the Grolm NPC.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
     pub fn grolm_start(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4026,6 +4198,11 @@ impl God {
     }
 
     /// Spawn a Gargoyle NPC near the caller for testing or event purposes.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
     pub fn gargoyle(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4045,6 +4222,12 @@ impl God {
 
     /// Perform a minor race/template change on the caller while preserving
     /// key attributes.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `temp` - Value passed to `minor_racechange`.
     pub fn minor_racechange(gs: &mut GameState, cn: usize, temp: i32) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4198,6 +4381,10 @@ impl God {
     ///
     /// # Arguments
     /// * `addr` - IPv4 address as integer
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_banned` succeeds or the condition is met, otherwise `false`.
     pub fn is_banned(gs: &mut GameState, addr: i32) -> bool {
         let addr = addr as u32;
 
@@ -4213,6 +4400,13 @@ impl God {
     /// Add a single ban entry for a specific address.
     ///
     /// Records the issuer `cn` and optionally the victim `co`.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
+    /// * `addr` - Value passed to `add_single_ban`.
     pub fn add_single_ban(gs: &mut GameState, cn: usize, co: usize, addr: u32) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -4241,6 +4435,12 @@ impl God {
     }
 
     /// Ban the current address of the target character `co`.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
     pub fn add_ban(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -4462,6 +4662,12 @@ impl God {
     }
 
     /// Delete a ban list entry by its index `nr`.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `nr` - Numeric identifier used by this function.
     pub fn del_ban(gs: &mut GameState, cn: usize, nr: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4486,6 +4692,11 @@ impl God {
     }
 
     /// List all active ban entries to the requesting character.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
     pub fn list_ban(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4517,6 +4728,12 @@ impl God {
     }
 
     /// Mute a character `co` so they cannot speak publicly.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `co` - Target or counterpart character index used by this function.
     pub fn shutup(gs: &mut GameState, cn: usize, co: usize) {
         if !Character::is_sane_character(cn) || !Character::is_sane_character(co) {
             return;
@@ -4550,6 +4767,12 @@ impl God {
     /// The difference `ltick - rtick` is a *tick lag* / backlog indicator
     /// (how far behind the client is), which we report as an approximate
     /// latency in milliseconds.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
+    /// * `target` - Value passed to `show_network_info`.
     pub fn show_network_info(gs: &mut GameState, cn: usize, target: &str) {
         if !Character::is_sane_character(cn) {
             return;
@@ -4681,6 +4904,11 @@ impl God {
     ///
     /// This is intended for god/imp usage; it enumerates active player
     /// connections and prints the same columns as `show_network_info`.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `cn` - Character index used by this function.
     pub fn show_network_info_all(gs: &mut GameState, cn: usize) {
         if !Character::is_sane_character(cn) {
             return;

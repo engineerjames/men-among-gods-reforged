@@ -74,6 +74,10 @@ impl Dropdown {
     }
 
     /// Returns the index of the currently selected option.
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `selected_index`.
     pub fn selected_index(&self) -> usize {
         self.selected
     }
@@ -100,6 +104,10 @@ impl Dropdown {
     /// Returns `true` once if the selection changed since the last call.
     ///
     /// Clears the flag on read.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `was_changed` succeeds or the condition is met, otherwise `false`.
     pub fn was_changed(&mut self) -> bool {
         let c = self.changed;
         self.changed = false;
@@ -107,6 +115,10 @@ impl Dropdown {
     }
 
     /// Returns whether the option list is currently expanded.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_expanded` succeeds or the condition is met, otherwise `false`.
     pub fn is_expanded(&self) -> bool {
         self.expanded
     }

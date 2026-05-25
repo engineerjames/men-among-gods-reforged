@@ -45,6 +45,10 @@ pub struct EnterResetCodeScene {
 
 impl EnterResetCodeScene {
     /// Creates a new `EnterResetCodeScene` with empty form fields.
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new`.
     pub fn new() -> Self {
         EnterResetCodeScene {
             form: EnterResetCodeForm::new(),

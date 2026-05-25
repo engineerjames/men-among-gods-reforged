@@ -157,6 +157,13 @@ impl SoundCache {
     /// Play a sound effect by numeric ID. `vol` is 0-127, `pan` is 0 (left) – 255 (right)
     /// with 128 as center. `master_volume` is a 0.0–1.0 multiplier applied on top.
     /// Mismatched or missing IDs are silently ignored.
+    ///
+    /// # Arguments
+    ///
+    /// * `nr` - Numeric identifier used by this function.
+    /// * `vol` - Value passed to `play_sfx`.
+    /// * `pan` - Value passed to `play_sfx`.
+    /// * `master_volume` - Value passed to `play_sfx`.
     pub fn play_sfx(&self, nr: usize, vol: i32, pan: i32, master_volume: f32) {
         if self.disabled {
             return;
@@ -183,6 +190,10 @@ impl SoundCache {
     }
 
     /// Plays the classic UI click sound (`click.wav`) if present in the asset pack.
+    ///
+    /// # Arguments
+    ///
+    /// * `master_volume` - Value passed to `play_click`.
     pub fn play_click(&self, master_volume: f32) {
         if self.disabled {
             return;

@@ -100,6 +100,10 @@ impl RectButton {
     }
 
     /// Returns whether the button is currently hovered.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_hovered` succeeds or the condition is met, otherwise `false`.
     pub fn is_hovered(&self) -> bool {
         self.hovered
     }
@@ -315,6 +319,10 @@ impl CircleButton {
     }
 
     /// Returns whether the button is currently hovered.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when `is_hovered` succeeds or the condition is met, otherwise `false`.
     pub fn is_hovered(&self) -> bool {
         self.hovered
     }
