@@ -2,7 +2,9 @@ use core::constants::{
     CharacterFlags, ItemFlags, MAX_SPEEDTAB_SPEED_INDEX, MAXCHARS, MIN_SPEEDTAB_INDEX,
 };
 use core::ranks;
-use core::talent_trees::{grant_talent_points, talent_stat_bonuses};
+use core::talent_trees::{
+    available_talent_points, grant_talent_points, talent_stat_bonuses, total_points_spent,
+};
 use core::types::FontColor;
 use core::{skills, traits};
 
@@ -1254,7 +1256,18 @@ impl GameState {
 
             let old_rank = self.characters[cn].data[45] as usize;
             let diff = rank - old_rank;
-            let talent_points = ranks::talent_points_awarded_between(old_rank, rank);
+
+            let crossed_milestones =
+                u16::from(ranks::talent_points_awarded_between(old_rank, rank));
+            let total_entitlement = u16::from(ranks::talent_points_awarded_between(0, rank));
+            let current_total_talent_points =
+                u16::from(available_talent_points(&self.characters[cn].future1))
+                    + (total_points_spent(&self.characters[cn].future1) as u16);
+
+            let remaining_entitlement =
+                total_entitlement.saturating_sub(current_total_talent_points);
+            let talent_points = crossed_milestones.min(remaining_entitlement) as u8;
+
             self.characters[cn].data[45] = rank as i32;
             if talent_points > 0 {
                 grant_talent_points(&mut self.characters[cn].future1, talent_points);
@@ -1939,6 +1952,40 @@ mod tests {
             gs.do_check_new_level(cn);
 
             assert_eq!(gs.characters[cn].future1[0], 0);
+        });
+    }
+
+    #[test]
+    fn rank_up_does_not_over_grant_when_entitlement_already_met() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].data[45] = 0;
+            gs.characters[cn].points_tot = core::ranks::RANK_THRESHOLDS[3] as i32;
+            gs.characters[cn].future1[0] = 2;
+
+            gs.do_check_new_level(cn);
+
+            assert_eq!(gs.characters[cn].future1[0], 2);
+            assert_eq!(gs.characters[cn].data[45], 3);
+        });
+    }
+
+    #[test]
+    fn rank_up_grants_only_missing_entitlement_points() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_MERCENARY as i32;
+            gs.characters[cn].used = USE_ACTIVE;
+            gs.characters[cn].data[45] = 0;
+            gs.characters[cn].points_tot = core::ranks::RANK_THRESHOLDS[3] as i32;
+            gs.characters[cn].future1[0] = 1;
+
+            gs.do_check_new_level(cn);
+
+            assert_eq!(gs.characters[cn].future1[0], 2);
+            assert_eq!(gs.characters[cn].data[45], 3);
         });
     }
 }
