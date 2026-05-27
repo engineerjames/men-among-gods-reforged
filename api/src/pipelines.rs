@@ -52,6 +52,8 @@ fn character_name_claim_key(name_lc: &str) -> String {
 /// Migration marker key for the character index backfill.
 const CHAR_INDEX_MIGRATION_KEY: &str = "migration:char_indexes:v1";
 
+type StagedCharacterNameMatch = (bool, u64, String, Option<u64>, Option<u32>);
+
 /// Parses a numeric ID from a KeyDB key suffix.
 ///
 /// This is used to distinguish real object keys like `account:{id}` from metadata keys
@@ -669,10 +671,10 @@ pub(crate) async fn delete_character(
         .await
         .unwrap_or((None, None));
 
-    if let Some(account_id) = account_id {
-        if let Err(err) = remove_character_from_account_set(con, account_id, character_id).await {
-            log::warn!("failed to SREM character {character_id} from account {account_id}: {err}");
-        }
+    if let Some(account_id) = account_id
+        && let Err(err) = remove_character_from_account_set(con, account_id, character_id).await
+    {
+        log::warn!("failed to SREM character {character_id} from account {account_id}: {err}");
     }
     if let Some(name) = name.as_deref()
         && !name.trim().is_empty()
@@ -850,8 +852,8 @@ pub(crate) async fn search_characters_by_name_scan(
     let mut needed_account_ids: Vec<u64> = Vec::new();
 
     // First pass: filter by name and collect account IDs we still need to look up.
-    let mut staged: Vec<(bool, u64, String, Option<u64>, Option<u32>)> = Vec::new();
-    for (character_id, raw) in character_ids.into_iter().zip(raws.into_iter()) {
+    let mut staged: Vec<StagedCharacterNameMatch> = Vec::new();
+    for (character_id, raw) in character_ids.into_iter().zip(raws) {
         let character_map: std::collections::HashMap<String, String> =
             match redis::from_redis_value(raw) {
                 Ok(value) => value,
@@ -896,7 +898,7 @@ pub(crate) async fn search_characters_by_name_scan(
         let raws: Vec<Option<String>> = pipe.query_async(&mut *con).await?;
         needed_account_ids
             .into_iter()
-            .zip(raws.into_iter())
+            .zip(raws)
             .filter_map(|(id, name)| name.map(|n| (id, n)))
             .collect()
     };
@@ -1225,7 +1227,7 @@ pub(crate) async fn list_characters_for_account(
     let raws: Vec<redis::Value> = pipe.query_async(&mut *con).await?;
 
     let mut out: Vec<CharacterSummary> = Vec::with_capacity(ids.len());
-    for (id, raw) in ids.into_iter().zip(raws.into_iter()) {
+    for (id, raw) in ids.into_iter().zip(raws) {
         let map: std::collections::HashMap<String, String> = match redis::from_redis_value(raw) {
             Ok(value) => value,
             Err(_) => continue,
