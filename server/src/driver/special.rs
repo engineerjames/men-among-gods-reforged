@@ -464,10 +464,11 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
         let data_24 = gs.characters[cn].data[24];
         if state == 1 && ticker > data_24 + TICKS * 10 {
             if gs.characters[cn].citem == 0
-                && let Some(in_item) = God::create_item(gs, 718) {
-                    gs.characters[cn].citem = in_item as u32;
-                    gs.items[in_item].carried = cn as u16;
-                }
+                && let Some(in_item) = God::create_item(gs, 718)
+            {
+                gs.characters[cn].citem = in_item as u32;
+                gs.items[in_item].carried = cn as u16;
+            }
             let (cn_x, cn_y) = (gs.characters[cn].x, gs.characters[cn].y);
             if (i32::from(cn_x) - 264).abs() + (i32::from(cn_y) - 317).abs() < 20 {
                 gs.characters[cn].data[22] = 2;

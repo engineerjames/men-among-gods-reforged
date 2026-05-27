@@ -379,14 +379,13 @@ where
 
     let (cn, is_brand_new_character) = apply_api_login_character_record(gs, &character)?;
 
-    if is_brand_new_character
-        && let Err(err) = set_server_id(character_id, cn as u32) {
-            log::warn!(
-                "Failed to persist server_id for API character {}: {}",
-                character_id,
-                err
-            );
-        }
+    if is_brand_new_character && let Err(err) = set_server_id(character_id, cn as u32) {
+        log::warn!(
+            "Failed to persist server_id for API character {}: {}",
+            character_id,
+            err
+        );
+    }
 
     gs.players[nr].api_character_id = character_id;
 

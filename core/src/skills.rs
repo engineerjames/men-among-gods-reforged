@@ -43,7 +43,29 @@ pub const SK_CONCEN: usize = 34;
 pub const SK_WARCRY: usize = 35;
 pub const SK_WARCRY2: usize = SK_WARCRY + 100;
 
+// ---- Mercenary talent-granted skills (reserved slots 37..=42) ----
+/// Parasite: short-duration DoT that returns a portion of damage to the caster.
+pub const SK_PARASITE: usize = 37;
+/// Distract: slows enemy action ticks via a heavy Agility debuff.
+pub const SK_DISTRACT: usize = 38;
+/// Deliver Death: instant-kill execute on low-HP targets, long cooldown that resets on a successful kill.
+pub const SK_DELIVER_DEATH: usize = 39;
+/// Disarm: temporarily lowers the target's weapon skill.
+pub const SK_DISARM: usize = 40;
+/// Contagion: upgraded Curse with longer duration and a DoT that spreads on the target's death.
+pub const SK_CONTAGION: usize = 41;
+/// Blade Dance: passive amplifier that doubles Surround Hit secondary damage.
+pub const SK_BLADE_DANCE: usize = 42;
+
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
+
+const AT_DESC: [&str; 5] = [
+    "Helps you face danger.",
+    "Strengthens focus and magic.",
+    "Improves awareness and spell use.",
+    "Improves movement and dodging.",
+    "Improves physical power.",
+];
 
 /// Maximum number of skill slots.
 pub const MAX_SKILLS: usize = 50;
@@ -172,6 +194,12 @@ pub enum Skill {
     SurroundHit = SK_SURROUND,
     Concentrate = SK_CONCEN,
     Warcry = SK_WARCRY,
+    Parasite = SK_PARASITE,
+    Distract = SK_DISTRACT,
+    DeliverDeath = SK_DELIVER_DEATH,
+    Disarm = SK_DISARM,
+    Contagion = SK_CONTAGION,
+    BladeDance = SK_BLADE_DANCE,
 }
 
 /// A skill definition entry describing one learnable ability.
@@ -570,13 +598,61 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         3,
         4,
     ),
-    // 37..49 reserved empty
-    SkillTab::new(37, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(38, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(39, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(40, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(41, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(42, SkillCategory::Unknown, "", "", 0, 0, 0),
+    // 37..42 Mercenary talent-granted skills; 43..49 still reserved empty
+    SkillTab::new(
+        37,
+        SkillCategory::Magic,
+        "Parasite",
+        "Spell: Short DoT; returns damage as health (Cost: 20 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        38,
+        SkillCategory::Magic,
+        "Distract",
+        "Spell: Briefly slow target's actions (Cost: 15 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        39,
+        SkillCategory::General,
+        "Deliver Death",
+        "Execute low-health target; cooldown resets on kill.",
+        0,
+        3,
+        4,
+    ),
+    SkillTab::new(
+        40,
+        SkillCategory::Magic,
+        "Disarm",
+        "Spell: Lower target's weapon skill (Cost: 20 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        41,
+        SkillCategory::Magic,
+        "Contagion",
+        "Spell: Upgraded Curse; spreads if target dies (Cost: 40 Mana).",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        42,
+        SkillCategory::General,
+        "Blade Dance",
+        "Passive: Surround Hit secondary strikes deal double damage.",
+        0,
+        3,
+        4,
+    ),
     SkillTab::new(43, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(44, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(45, SkillCategory::Unknown, "", "", 0, 0, 0),
@@ -680,6 +756,19 @@ pub fn attribute_name(n: usize) -> &'static str {
     if n < AT_NAME.len() { AT_NAME[n] } else { "" }
 }
 
+/// Returns the brief helper text for an attribute index.
+///
+/// # Arguments
+///
+/// * `n` - Attribute index (0..4).
+///
+/// # Returns
+///
+/// * The attribute helper text, or an empty string if out of bounds.
+pub fn attribute_desc(n: usize) -> &'static str {
+    if n < AT_DESC.len() { AT_DESC[n] } else { "" }
+}
+
 // Static skill table (taken from server/original_source/SkillTab.cpp)
 const SKILL_NAMES: [&str; 50] = [
     "Hand to Hand",
@@ -719,12 +808,12 @@ const SKILL_NAMES: [&str; 50] = [
     "Concentrate",
     "Warcry",
     "Weapon Skill",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
+    "Parasite",
+    "Distract",
+    "Deliver Death",
+    "Disarm",
+    "Contagion",
+    "Blade Dance",
     "",
     "",
     "",
@@ -879,7 +968,7 @@ mod tests {
         assert_eq!(get_skill_name(SK_WEAPON), "Weapon Skill");
 
         // Test empty skills (reserved slots)
-        assert_eq!(get_skill_name(37), "");
+        assert_eq!(get_skill_name(43), "");
         assert_eq!(get_skill_name(49), "");
     }
 
@@ -948,7 +1037,7 @@ mod tests {
         assert_eq!(SKILLTAB[10].cat, SkillCategory::Misc); // Swimming
 
         // Test empty skills (category 'Z')
-        assert_eq!(SKILLTAB[37].cat, SkillCategory::Unknown);
+        assert_eq!(SKILLTAB[43].cat, SkillCategory::Unknown);
         assert_eq!(SKILLTAB[49].cat, SkillCategory::Unknown);
     }
 
@@ -1075,6 +1164,28 @@ mod tests {
     }
 
     #[test]
+    fn test_attribute_desc_valid() {
+        assert_eq!(attribute_desc(0), "Helps you face danger.");
+        assert_eq!(attribute_desc(1), "Strengthens focus and magic.");
+        assert_eq!(attribute_desc(2), "Improves awareness and spell use.");
+        assert_eq!(attribute_desc(3), "Improves movement and dodging.");
+        assert_eq!(attribute_desc(4), "Improves physical power.");
+    }
+
+    #[test]
+    fn test_attribute_desc_out_of_bounds() {
+        assert_eq!(attribute_desc(5), "");
+        assert_eq!(attribute_desc(usize::MAX), "");
+    }
+
+    #[test]
+    fn test_attribute_descs_non_empty() {
+        for n in 0..AT_DESC.len() {
+            assert!(!attribute_desc(n).is_empty());
+        }
+    }
+
+    #[test]
     fn test_get_skill_desc_valid() {
         assert!(get_skill_desc(0).contains("Fighting without weapons"));
         assert!(get_skill_desc(26).contains("Heal"));
@@ -1094,7 +1205,7 @@ mod tests {
         assert_eq!(get_skill_sortkey(11), 'R');
         assert_eq!(get_skill_sortkey(28), 'B');
         assert_eq!(get_skill_sortkey(SK_WEAPON), 'C');
-        assert_eq!(get_skill_sortkey(37), 'Z');
+        assert_eq!(get_skill_sortkey(43), 'Z');
     }
 
     #[test]

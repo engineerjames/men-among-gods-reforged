@@ -226,10 +226,11 @@ impl ScrollableList {
     pub fn confirm_controller_cursor(&mut self) {
         if let Some(idx) = self.controller_cursor
             && let Some(item) = self.items.get(idx)
-                && self.selected_id != Some(item.id) {
-                    self.selected_id = Some(item.id);
-                    self.selection_changed = true;
-                }
+            && self.selected_id != Some(item.id)
+        {
+            self.selected_id = Some(item.id);
+            self.selection_changed = true;
+        }
     }
 }
 
@@ -374,23 +375,24 @@ impl Widget for ScrollableList {
             // Rank sigil (right-justified, vertically centered, rank 0 is invisible).
             // Scale down proportionally so the sigil fits within 40px tall.
             if let Some(rank_idx) = item.rank_index
-                && rank_idx >= FIRST_VISIBLE_RANK {
-                    let sigil_sprite_id = 10 + rank_idx.min(20);
-                    let (trim_top, draw_h) = RankSigil::draw_metrics(rank_idx);
-                    let max_h = 40_u32;
-                    let (dest_w, dest_h) = if draw_h > max_h {
-                        let scaled_w = (rank_sigil::SIGIL_WIDTH as u32 * max_h / draw_h).max(1);
-                        (scaled_w, max_h)
-                    } else {
-                        (rank_sigil::SIGIL_WIDTH as u32, draw_h)
-                    };
-                    let sigil_x = self.bounds.x + content_w as i32 - dest_w as i32 - PAD_X;
-                    let sigil_y = row_y + (ROW_H - dest_h as i32) / 2;
-                    let tex = ctx.gfx.get_texture(sigil_sprite_id);
-                    let src = Rect::new(0, trim_top as i32, rank_sigil::SIGIL_WIDTH as u32, draw_h);
-                    let dst = Rect::new(sigil_x, sigil_y, dest_w, dest_h);
-                    let _ = ctx.canvas.copy(tex, Some(src), Some(dst));
-                }
+                && rank_idx >= FIRST_VISIBLE_RANK
+            {
+                let sigil_sprite_id = 10 + rank_idx.min(20);
+                let (trim_top, draw_h) = RankSigil::draw_metrics(rank_idx);
+                let max_h = 40_u32;
+                let (dest_w, dest_h) = if draw_h > max_h {
+                    let scaled_w = (rank_sigil::SIGIL_WIDTH as u32 * max_h / draw_h).max(1);
+                    (scaled_w, max_h)
+                } else {
+                    (rank_sigil::SIGIL_WIDTH as u32, draw_h)
+                };
+                let sigil_x = self.bounds.x + content_w as i32 - dest_w as i32 - PAD_X;
+                let sigil_y = row_y + (ROW_H - dest_h as i32) / 2;
+                let tex = ctx.gfx.get_texture(sigil_sprite_id);
+                let src = Rect::new(0, trim_top as i32, rank_sigil::SIGIL_WIDTH as u32, draw_h);
+                let dst = Rect::new(sigil_x, sigil_y, dest_w, dest_h);
+                let _ = ctx.canvas.copy(tex, Some(src), Some(dst));
+            }
         }
 
         // ── Scrollbar ───────────────────────────────────────────────────

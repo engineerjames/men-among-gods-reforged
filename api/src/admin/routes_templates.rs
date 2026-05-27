@@ -495,7 +495,10 @@ mod tests {
 
     #[test]
     fn item_summary_extracts_fields() {
-        let mut item = Item { used: 1, ..Item::default() };
+        let mut item = Item {
+            used: 1,
+            ..Item::default()
+        };
         item.name[..5].copy_from_slice(b"sword");
         item.reference[..3].copy_from_slice(b"ref");
         let s = item_summary(7, &item);

@@ -6,8 +6,9 @@
 //! the popup hides it without binding anything.
 
 use mag_core::skills::{
-    SK_BLAST, SK_BLESS, SK_CURSE, SK_DISPEL, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_LIGHT,
-    SK_MSHIELD, SK_PROTECT, SK_RECALL, SK_REPAIR, SK_STUN, SK_WARCRY, SK_WIMPY,
+    SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONTAGION, SK_CURSE, SK_DELIVER_DEATH, SK_DISARM,
+    SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GHOST, SK_HEAL, SK_IDENT, SK_LIGHT, SK_MSHIELD,
+    SK_PARASITE, SK_PROTECT, SK_RECALL, SK_REPAIR, SK_STUN, SK_WARCRY, SK_WIMPY,
 };
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -65,8 +66,28 @@ pub const ANCHOR_Y_OFFSET: i32 = 20;
 /// **Placeholder**: fill in with real skill indices once the desired set is
 /// decided.  The order here determines the display order in the popup.
 pub const BINDABLE_SKILLS: &[usize] = &[
-    SK_MSHIELD, SK_REPAIR, SK_LIGHT, SK_RECALL, SK_WIMPY, SK_PROTECT, SK_ENHANCE, SK_STUN,
-    SK_CURSE, SK_BLESS, SK_IDENT, SK_BLAST, SK_DISPEL, SK_HEAL, SK_GHOST, SK_WARCRY,
+    SK_MSHIELD,
+    SK_REPAIR,
+    SK_LIGHT,
+    SK_RECALL,
+    SK_WIMPY,
+    SK_PROTECT,
+    SK_ENHANCE,
+    SK_STUN,
+    SK_CURSE,
+    SK_BLESS,
+    SK_IDENT,
+    SK_BLAST,
+    SK_DISPEL,
+    SK_HEAL,
+    SK_GHOST,
+    SK_WARCRY,
+    SK_PARASITE,
+    SK_DISTRACT,
+    SK_DELIVER_DEATH,
+    SK_DISARM,
+    SK_CONTAGION,
+    SK_BLADE_DANCE,
 ];
 
 // ---------------------------------------------------------------------------
@@ -366,15 +387,16 @@ impl Widget for SkillPickerPopup {
                 }
 
                 if *button == MouseButton::Left
-                    && let Some(idx) = self.hit_row(*x, *y) {
-                        self.selected_index = Some(idx);
-                        let entry = &self.entries[idx];
-                        self.actions.push(WidgetAction::BindSkillKey {
-                            skill_nr: entry.skill_nr,
-                            key_slot: self.target_slot,
-                        });
-                        self.hide();
-                    }
+                    && let Some(idx) = self.hit_row(*x, *y)
+                {
+                    self.selected_index = Some(idx);
+                    let entry = &self.entries[idx];
+                    self.actions.push(WidgetAction::BindSkillKey {
+                        skill_nr: entry.skill_nr,
+                        key_slot: self.target_slot,
+                    });
+                    self.hide();
+                }
                 EventResponse::Consumed
             }
             UiEvent::MouseWheel { delta, .. } => {

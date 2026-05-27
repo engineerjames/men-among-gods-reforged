@@ -173,9 +173,10 @@ impl PerfProfiler {
     pub fn check_expired(&mut self) {
         if self.active
             && let Some(start) = self.start_time
-                && start.elapsed() >= PROFILE_DURATION {
-                    self.finish();
-                }
+            && start.elapsed() >= PROFILE_DURATION
+        {
+            self.finish();
+        }
     }
 
     // ── Per-frame API ───────────────────────────────────────────────────

@@ -84,10 +84,13 @@ impl SoundCache {
         let mut sfx_cache: HashMap<usize, Chunk> = HashMap::new();
         let mut click_sfx: Option<Chunk> = None;
 
-        for entry in std::fs::read_dir(&sfx_directory).unwrap_or_else(|e| {
-            log::error!("Failed to read sound directory: {}", e);
-            panic!("Failed to read sound directory: {}", e);
-        }).flatten() {
+        for entry in std::fs::read_dir(&sfx_directory)
+            .unwrap_or_else(|e| {
+                log::error!("Failed to read sound directory: {}", e);
+                panic!("Failed to read sound directory: {}", e);
+            })
+            .flatten()
+        {
             let path = entry.path();
             if path.is_file() {
                 let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
@@ -97,11 +100,7 @@ impl SoundCache {
                             click_sfx = Some(chunk);
                         }
                         Err(e) => {
-                            log::warn!(
-                                "Failed to load click sfx from {}: {}",
-                                path.display(),
-                                e
-                            );
+                            log::warn!("Failed to load click sfx from {}: {}", path.display(), e);
                         }
                     }
                 }
@@ -116,12 +115,7 @@ impl SoundCache {
                             sfx_cache.insert(id, chunk);
                         }
                         Err(e) => {
-                            log::warn!(
-                                "Failed to load sfx {} from {}: {}",
-                                id,
-                                path.display(),
-                                e
-                            );
+                            log::warn!("Failed to load sfx {} from {}: {}", id, path.display(), e);
                         }
                     }
                 }
@@ -224,9 +218,10 @@ impl SoundCache {
             return;
         }
         if let Some(chunk) = self.music_cache.get(&track)
-            && let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1) {
-                log::warn!("Failed to play music: {}", e);
-            }
+            && let Err(e) = Channel(LOGIN_MUSIC_CHANNEL).play(chunk, -1)
+        {
+            log::warn!("Failed to play music: {}", e);
+        }
     }
 
     /// Stops any currently playing music on the dedicated music channel.

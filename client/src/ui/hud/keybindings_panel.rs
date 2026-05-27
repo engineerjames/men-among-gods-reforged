@@ -243,9 +243,10 @@ impl Widget for KeybindingsPanel {
             match event {
                 UiEvent::TextInput { .. } => return EventResponse::Consumed,
                 UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. }
-                    if self.bounds.contains_point(*x, *y) => {
-                        return EventResponse::Consumed;
-                    }
+                    if self.bounds.contains_point(*x, *y) =>
+                {
+                    return EventResponse::Consumed;
+                }
                 _ => {}
             }
         }

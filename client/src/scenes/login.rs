@@ -212,33 +212,34 @@ impl Scene for LoginScene {
         // controller buttons for keyboard-specific actions before the
         // rising-edge nav tracker sees them.
         if self.keyboard.is_visible()
-            && let Event::ControllerButtonDown { button, .. } = event {
-                match button {
-                    Btn::X => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
-                        return self.pending_scene.take();
-                    }
-                    Btn::Start => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardDismiss);
-                        // Process dismiss action immediately.
-                        for kb_action in self.keyboard.take_actions() {
-                            if let OnScreenKeyboardAction::Dismiss = kb_action {
-                                self.keyboard.hide();
-                            }
-                        }
-                        return self.pending_scene.take();
-                    }
-                    Btn::DPadUp => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardRowUp);
-                        return self.pending_scene.take();
-                    }
-                    Btn::DPadDown => {
-                        self.keyboard.handle_event(&UiEvent::KeyboardRowDown);
-                        return self.pending_scene.take();
-                    }
-                    _ => {} // A, B, DPadLeft, DPadRight fall through to nav
+            && let Event::ControllerButtonDown { button, .. } = event
+        {
+            match button {
+                Btn::X => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardToggleShift);
+                    return self.pending_scene.take();
                 }
+                Btn::Start => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardDismiss);
+                    // Process dismiss action immediately.
+                    for kb_action in self.keyboard.take_actions() {
+                        if let OnScreenKeyboardAction::Dismiss = kb_action {
+                            self.keyboard.hide();
+                        }
+                    }
+                    return self.pending_scene.take();
+                }
+                Btn::DPadUp => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardRowUp);
+                    return self.pending_scene.take();
+                }
+                Btn::DPadDown => {
+                    self.keyboard.handle_event(&UiEvent::KeyboardRowDown);
+                    return self.pending_scene.take();
+                }
+                _ => {} // A, B, DPadLeft, DPadRight fall through to nav
             }
+        }
 
         // Controller → nav event (rising-edge gated for axes).
         if let Some(nav_event) = self.controller_nav.process_event(event) {

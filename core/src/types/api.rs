@@ -25,8 +25,9 @@ pub struct UpdateCharacterRequest {
 /// JWT token returned on successful login.
 #[derive(Serialize, Deserialize)]
 pub struct LoginResponse {
-    /// JWT bearer token. Empty when login fails.
-    pub token: String,
+    /// JWT bearer token. `None` when login fails.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
     /// Optional player-facing error message when login fails.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,

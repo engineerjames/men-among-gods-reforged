@@ -177,9 +177,10 @@ impl NetworkRuntime {
         }
 
         if let Some(last) = self.last_ping_sent_at
-            && now.duration_since(last) < PING_INTERVAL {
-                return;
-            }
+            && now.duration_since(last) < PING_INTERVAL
+        {
+            return;
+        }
 
         let client_time_ms = self.elapsed_ms();
         self.ping_seq = self.ping_seq.wrapping_add(1);

@@ -255,7 +255,7 @@ async fn mutate_badwords(state: ApiState, kind: MutationKind, raw_words: Vec<Str
 }
 
 async fn apply_badwords_mutation(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     kind: MutationKind,
     requested: Vec<String>,
 ) -> Result<BadwordsMutationResponse, Response> {
@@ -342,9 +342,7 @@ async fn apply_badwords_mutation(
     })
 }
 
-async fn load_badwords(
-    con: &mut redis::aio::MultiplexedConnection,
-) -> Result<Vec<String>, Response> {
+async fn load_badwords(con: &mut redis::aio::ConnectionManager) -> Result<Vec<String>, Response> {
     let bytes: Option<Vec<u8>> = match con.get(BADWORDS_KEY).await {
         Ok(value) => value,
         Err(err) => {
@@ -367,9 +365,7 @@ async fn load_badwords(
     decode_badwords(&bytes).map_err(text_error_response)
 }
 
-async fn load_badwords_version(
-    con: &mut redis::aio::MultiplexedConnection,
-) -> Result<u64, Response> {
+async fn load_badwords_version(con: &mut redis::aio::ConnectionManager) -> Result<u64, Response> {
     match con.get::<_, Option<u64>>(BADWORDS_VERSION_KEY).await {
         Ok(value) => Ok(value.unwrap_or(0)),
         Err(err) => {
@@ -386,7 +382,7 @@ async fn load_badwords_version(
 }
 
 async fn acquire_badwords_lock(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
 ) -> Result<Option<String>, Response> {
     let token = generate_request_id();
     let result: Option<String> = match redis::cmd("SET")
@@ -411,7 +407,7 @@ async fn acquire_badwords_lock(
     Ok(result.map(|_| token))
 }
 
-async fn release_badwords_lock(con: &mut redis::aio::MultiplexedConnection, token: &str) {
+async fn release_badwords_lock(con: &mut redis::aio::ConnectionManager, token: &str) {
     let _: Result<i64, _> = redis::cmd("EVAL")
         .arg(
             "if redis.call('GET', KEYS[1]) == ARGV[1] then \

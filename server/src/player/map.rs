@@ -338,17 +338,22 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     let see_vis = gs.see_map[cn].vis;
 
     let mut do_all = false;
-    if player_vx != see_x || player_vy != see_y || player_visi != see_vis
-    {
+    if player_vx != see_x || player_vy != see_y || player_visi != see_vis {
         gs.players[nr].vx = see_x;
         gs.players[nr].vy = see_y;
         gs.players[nr].visi = see_vis;
         do_all = true;
     }
 
-    let empty_cmap = CMap { ba_sprite: core::constants::SPR_EMPTY as i16, ..CMap::default() };
+    let empty_cmap = CMap {
+        ba_sprite: core::constants::SPR_EMPTY as i16,
+        ..CMap::default()
+    };
 
-    let empty_map = core::types::Map { sprite: core::constants::SPR_EMPTY, ..core::types::Map::default() };
+    let empty_map = core::types::Map {
+        sprite: core::constants::SPR_EMPTY,
+        ..core::types::Map::default()
+    };
 
     let mut n = (YSCUT * core::constants::TILEX as i32 + XSCUT) as usize;
     let mut y = ys;

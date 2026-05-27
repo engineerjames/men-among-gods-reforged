@@ -1584,20 +1584,21 @@ impl Server {
         if let Some(connection) = status_connection.as_mut()
             && let Err(error) =
                 server::keydb::world_action::write_running_status(connection, &request)
-            {
-                log::warn!(
-                    "world action {}: running status write failed: {}",
-                    request.request_id,
-                    error
-                );
-            }
+        {
+            log::warn!(
+                "world action {}: running status write failed: {}",
+                request.request_id,
+                error
+            );
+        }
 
         if let Some(saver) = self.background_saver.as_ref()
-            && let Err(error) = saver.flush() {
-                let message = format!("background saver flush failed: {}", error);
-                self.write_world_action_failure(status_connection.as_mut(), &request, &message);
-                return;
-            }
+            && let Err(error) = saver.flush()
+        {
+            let message = format!("background saver flush failed: {}", error);
+            self.write_world_action_failure(status_connection.as_mut(), &request, &message);
+            return;
+        }
 
         match populate::execute_world_action(gs, &request.action) {
             Ok(outcome) => {
@@ -1609,13 +1610,14 @@ impl Server {
                         if let Some(connection) = status_connection.as_mut()
                             && let Err(error) = server::keydb::world_action::write_applied_status(
                                 connection, &request, &message,
-                            ) {
-                                log::warn!(
-                                    "world action {}: applied status write failed: {}",
-                                    request.request_id,
-                                    error
-                                );
-                            }
+                            )
+                        {
+                            log::warn!(
+                                "world action {}: applied status write failed: {}",
+                                request.request_id,
+                                error
+                            );
+                        }
                         log::info!("world action {} applied: {}", request.request_id, message);
                     }
                     Err(error) => {
@@ -1643,13 +1645,13 @@ impl Server {
         if let Some(connection) = status_connection
             && let Err(error) =
                 server::keydb::world_action::write_failed_status(connection, request, message)
-            {
-                log::warn!(
-                    "world action {}: failed status write failed: {}",
-                    request.request_id,
-                    error
-                );
-            }
+        {
+            log::warn!(
+                "world action {}: failed status write failed: {}",
+                request.request_id,
+                error
+            );
+        }
         log::warn!("world action {} failed: {}", request.request_id, message);
     }
 
@@ -1698,13 +1700,13 @@ impl Server {
         if let Some(connection) = status_connection.as_mut()
             && let Err(error) =
                 server::keydb::ban_action::write_running_status(connection, &request)
-            {
-                log::warn!(
-                    "ban action {}: running status write failed: {}",
-                    request.request_id,
-                    error
-                );
-            }
+        {
+            log::warn!(
+                "ban action {}: running status write failed: {}",
+                request.request_id,
+                error
+            );
+        }
 
         let message = match &request.action {
             BanActionKind::ApplyBan {
@@ -1731,13 +1733,13 @@ impl Server {
         if let Some(connection) = status_connection.as_mut()
             && let Err(error) =
                 server::keydb::ban_action::write_applied_status(connection, &request, &message)
-            {
-                log::warn!(
-                    "ban action {}: applied status write failed: {}",
-                    request.request_id,
-                    error
-                );
-            }
+        {
+            log::warn!(
+                "ban action {}: applied status write failed: {}",
+                request.request_id,
+                error
+            );
+        }
         log::info!("ban action {} applied: {}", request.request_id, message);
     }
 
@@ -2303,7 +2305,11 @@ mod tests {
             slot.sprite_override = 555;
             slot.value = 1;
 
-            let new_item = core::types::Item { value: 9_999, flags: 0xAA, ..core::types::Item::default() };
+            let new_item = core::types::Item {
+                value: 9_999,
+                flags: 0xAA,
+                ..core::types::Item::default()
+            };
             let patch = core::item_store::ItemPatch::from_item(idx, &new_item);
             assert!(Server::apply_item_patch(gs, &patch));
 
@@ -2327,7 +2333,10 @@ mod tests {
     #[test]
     fn apply_item_patch_rejects_out_of_range_slot() {
         crate::test_helpers::with_test_gs(|gs| {
-            let new_item = core::types::Item { value: 1, ..core::types::Item::default() };
+            let new_item = core::types::Item {
+                value: 1,
+                ..core::types::Item::default()
+            };
             let patch = core::item_store::ItemPatch::from_item(core::constants::MAXITEM, &new_item);
             assert!(!Server::apply_item_patch(gs, &patch));
         });
@@ -2366,7 +2375,12 @@ mod tests {
             slot.luck = 50;
             slot.kindred = 1;
 
-            let new_char = core::types::Character { kindred: 9, flags: 0xBEEF, alignment: -7, ..core::types::Character::default() };
+            let new_char = core::types::Character {
+                kindred: 9,
+                flags: 0xBEEF,
+                alignment: -7,
+                ..core::types::Character::default()
+            };
             let patch = core::character_store::CharacterPatch::from_character(idx, &new_char);
             assert!(Server::apply_character_patch(gs, &patch));
 

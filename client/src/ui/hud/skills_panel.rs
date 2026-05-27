@@ -11,7 +11,8 @@ use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
 use mag_core::skills::{
-    MAX_SKILLS, get_skill_name, get_skill_nr, get_skill_sortkey, is_legacy_weapon_skill,
+    MAX_SKILLS, attribute_desc, get_skill_desc, get_skill_name, get_skill_nr, get_skill_sortkey,
+    is_legacy_weapon_skill,
 };
 
 use crate::font_cache;
@@ -99,6 +100,10 @@ pub struct SkillsPanel {
     controller_focused_row: Option<usize>,
     /// Controller-focused column (+/-).
     controller_focused_col: SkillsFocusCol,
+    /// Last known mouse X position in logical viewport coordinates.
+    mouse_x: i32,
+    /// Last known mouse Y position in logical viewport coordinates.
+    mouse_y: i32,
 }
 
 impl SkillsPanel {
@@ -127,6 +132,8 @@ impl SkillsPanel {
             title_bar,
             controller_focused_row: None,
             controller_focused_col: SkillsFocusCol::Plus,
+            mouse_x: 0,
+            mouse_y: 0,
         }
     }
 
@@ -652,11 +659,13 @@ impl SkillsPanel {
             if y >= ry && y < ry + ROW_H {
                 let sorted_idx = self.skill_scroll + row;
                 if let Some(&skill_id) = data.sorted_skills.get(sorted_idx)
-                    && !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
-                        self.pending_actions.push(WidgetAction::CastSkill {
-                            skill_nr: get_skill_nr(skill_id),
-                        });
-                    }
+                    && !get_skill_name(skill_id).is_empty()
+                    && data.skill[skill_id][0] != 0
+                {
+                    self.pending_actions.push(WidgetAction::CastSkill {
+                        skill_nr: get_skill_nr(skill_id),
+                    });
+                }
                 return;
             }
         }
@@ -669,10 +678,12 @@ impl SkillsPanel {
             if y >= ry && y < ry + ROW_H {
                 let sorted_idx = self.skill_scroll + row;
                 if let Some(&skill_id) = data.sorted_skills.get(sorted_idx)
-                    && !get_skill_name(skill_id).is_empty() && data.skill[skill_id][0] != 0 {
-                        self.pending_actions
-                            .push(WidgetAction::BeginSkillAssign { skill_id });
-                    }
+                    && !get_skill_name(skill_id).is_empty()
+                    && data.skill[skill_id][0] != 0
+                {
+                    self.pending_actions
+                        .push(WidgetAction::BeginSkillAssign { skill_id });
+                }
                 return;
             }
         }
@@ -682,6 +693,55 @@ impl SkillsPanel {
     fn is_in_name_column(&self, x: i32) -> bool {
         let (name_x, _, plus_x, _, _) = self.col_x();
         x >= name_x && x < plus_x
+    }
+
+    /// Returns true if the x coordinate is in a helper-text label column.
+    fn is_in_helper_label_column(&self, x: i32) -> bool {
+        let (name_x, _, plus_x, _, _) = self.col_x();
+        x >= name_x && x < plus_x
+    }
+
+    /// Returns helper text for the currently hovered skill or attribute name.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&'static str)` with a brief description, or `None` when the
+    ///   cursor is outside a supported label row.
+    pub fn hover_text(&self) -> Option<&'static str> {
+        if !self.visible || !self.bounds.contains_point(self.mouse_x, self.mouse_y) {
+            return None;
+        }
+        if !self.is_in_helper_label_column(self.mouse_x) {
+            return None;
+        }
+
+        let data = self.data.as_ref()?;
+
+        for n in 0..5 {
+            let row_y = self.attr_row_y(n);
+            if self.mouse_y >= row_y && self.mouse_y < row_y + ROW_H {
+                let desc = attribute_desc(n);
+                return (!desc.is_empty()).then_some(desc);
+            }
+        }
+
+        for row in 0..VISIBLE_SKILL_ROWS {
+            let row_y = self.skill_row_y(row);
+            if self.mouse_y < row_y || self.mouse_y >= row_y + ROW_H {
+                continue;
+            }
+
+            let sorted_idx = self.skill_scroll + row;
+            let &skill_id = data.sorted_skills.get(sorted_idx)?;
+            if data.skill[skill_id][0] == 0 || get_skill_name(skill_id).is_empty() {
+                return None;
+            }
+
+            let desc = get_skill_desc(skill_id);
+            return (!desc.is_empty()).then_some(desc);
+        }
+
+        None
     }
 
     /// Build a sorted skills list from raw skill data.
@@ -747,6 +807,17 @@ impl Widget for SkillsPanel {
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         if !self.visible {
             return EventResponse::Ignored;
+        }
+
+        match event {
+            UiEvent::MouseMove { x, y }
+            | UiEvent::MouseWheel { x, y, .. }
+            | UiEvent::MouseDown { x, y, .. }
+            | UiEvent::MouseClick { x, y, .. } => {
+                self.mouse_x = *x;
+                self.mouse_y = *y;
+            }
+            _ => {}
         }
 
         // --- Title bar gets first crack at all events ---
@@ -839,6 +910,7 @@ impl Widget for SkillsPanel {
                 }
                 EventResponse::Consumed
             }
+            UiEvent::MouseMove { .. } => EventResponse::Ignored,
             _ => EventResponse::Ignored,
         }
     }
@@ -1206,6 +1278,17 @@ mod tests {
         }
     }
 
+    fn shown_panel(data: SkillsPanelData) -> SkillsPanel {
+        let mut panel = SkillsPanel::new(Bounds::new(10, 10, 300, 250), Color::RGBA(0, 0, 0, 180));
+        panel.toggle();
+        panel.update_data(data);
+        panel
+    }
+
+    fn move_mouse(panel: &mut SkillsPanel, x: i32, y: i32) {
+        panel.handle_event(&UiEvent::MouseMove { x, y });
+    }
+
     #[test]
     fn starts_hidden() {
         let panel = SkillsPanel::new(Bounds::new(0, 0, 300, 250), Color::RGBA(0, 0, 0, 180));
@@ -1259,6 +1342,85 @@ mod tests {
             modifiers: KeyModifiers::default(),
         });
         assert_eq!(resp, EventResponse::Ignored);
+    }
+
+    #[test]
+    fn hover_text_reports_attribute_description() {
+        let mut panel = shown_panel(make_data());
+        let (name_x, _, _, _, _) = panel.col_x();
+        let row_y = panel.attr_row_y(3);
+        move_mouse(&mut panel, name_x + 1, row_y + 1);
+
+        assert_eq!(
+            panel.hover_text(),
+            Some(mag_core::skills::attribute_desc(3))
+        );
+    }
+
+    #[test]
+    fn hover_text_reports_learned_skill_description() {
+        let mut data = make_data();
+        data.skill[mag_core::skills::SK_HEAL][0] = 1;
+        data.skill[mag_core::skills::SK_HEAL][5] = 1;
+        data.sorted_skills = vec![mag_core::skills::SK_HEAL];
+        let mut panel = shown_panel(data);
+        let (name_x, _, _, _, _) = panel.col_x();
+        let row_y = panel.skill_row_y(0);
+        move_mouse(&mut panel, name_x + 1, row_y + 1);
+
+        assert_eq!(
+            panel.hover_text(),
+            Some(mag_core::skills::get_skill_desc(mag_core::skills::SK_HEAL))
+        );
+    }
+
+    #[test]
+    fn hover_text_ignores_hidden_or_outside_panel() {
+        let mut panel = SkillsPanel::new(Bounds::new(10, 10, 300, 250), Color::RGBA(0, 0, 0, 180));
+        panel.update_data(make_data());
+        move_mouse(&mut panel, 40, 40);
+        assert_eq!(panel.hover_text(), None);
+
+        panel.toggle();
+        move_mouse(&mut panel, 0, 0);
+        assert_eq!(panel.hover_text(), None);
+    }
+
+    #[test]
+    fn hover_text_ignores_pool_rows() {
+        let mut panel = shown_panel(make_data());
+        let (name_x, _, _, _, _) = panel.col_x();
+        let row_y = panel.pool_row_y(0);
+        move_mouse(&mut panel, name_x + 1, row_y + 1);
+
+        assert_eq!(panel.hover_text(), None);
+    }
+
+    #[test]
+    fn hover_text_ignores_non_label_columns() {
+        let mut panel = shown_panel(make_data());
+        let (_, _, plus_x, _, _) = panel.col_x();
+        let row_y = panel.attr_row_y(0);
+        move_mouse(&mut panel, plus_x + 1, row_y + 1);
+
+        assert_eq!(panel.hover_text(), None);
+    }
+
+    #[test]
+    fn hover_text_ignores_unlearned_or_unnamed_skills() {
+        let mut data = make_data();
+        data.sorted_skills = vec![mag_core::skills::SK_HEAL];
+        let mut panel = shown_panel(data);
+        let (name_x, _, _, _, _) = panel.col_x();
+        let row_y = panel.skill_row_y(0);
+        move_mouse(&mut panel, name_x + 1, row_y + 1);
+        assert_eq!(panel.hover_text(), None);
+
+        let mut data = make_data();
+        data.skill[43][0] = 1;
+        data.sorted_skills = vec![43];
+        panel.update_data(data);
+        assert_eq!(panel.hover_text(), None);
     }
 
     #[test]

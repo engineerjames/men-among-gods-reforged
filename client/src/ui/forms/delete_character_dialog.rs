@@ -261,22 +261,20 @@ impl Widget for DeleteCharacterDialog {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(0)
-                        if self.name_matches() && !self.is_deleting => {
-                            self.actions.push(DeleteCharacterDialogAction::Confirm {
-                                character_id: self.character_id,
-                            });
-                        }
+                    Some(0) if self.name_matches() && !self.is_deleting => {
+                        self.actions.push(DeleteCharacterDialogAction::Confirm {
+                            character_id: self.character_id,
+                        });
+                    }
                     Some(1) => self.actions.push(DeleteCharacterDialogAction::Cancel),
                     _ => {}
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. }
-                if self.controller_focused.is_some() => {
-                    self.controller_focused = None;
-                    self.apply_controller_focus();
-                }
+            UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
+                self.controller_focused = None;
+                self.apply_controller_focus();
+            }
             _ => {}
         }
 

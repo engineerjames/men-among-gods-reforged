@@ -5,8 +5,9 @@ use core::{
         NT_GOTMISS, TICKS, USE_EMPTY,
     },
     skills::{
-        SK_AXE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CURSE, SK_DAGGER, SK_DISPEL, SK_ENHANCE,
-        SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PROTECT,
+        SK_AXE, SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER,
+        SK_DELIVER_DEATH, SK_DISARM, SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GHOST, SK_HEAL,
+        SK_IDENT, SK_IMMUN, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE, SK_PROTECT,
         SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_SENSE, SK_STAFF, SK_STUN,
         SK_SURROUND, SK_SWORD, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY,
         attribute_name, get_skill_name,
@@ -3865,6 +3866,591 @@ pub fn nomagic(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Returns true if the character currently has an active spell-item with the
+/// given skill `temp`, i.e. that skill is still on cooldown.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable reference to the game state.
+/// * `cn` - Character index to inspect.
+/// * `skill_temp` - The `temp` value of the cooldown spell-item to look for
+///   (typically the originating skill constant such as `SK_DELIVER_DEATH`).
+///
+/// # Returns
+///
+/// * `true` if a matching cooldown spell-item is still present.
+fn skill_on_cooldown(gs: &mut GameState, cn: usize, skill_temp: u16) -> bool {
+    for n in 0..20 {
+        let in_ = gs.characters[cn].spell[n] as usize;
+        if in_ != 0 && gs.items[in_].temp == skill_temp {
+            gs.do_character_log(cn, FontColor::Red, "That ability is still recharging.\n");
+            return true;
+        }
+    }
+    false
+}
+
+/// Adds a per-skill cooldown spell-item to the caster.
+///
+/// The created item has no stat effect; its sole purpose is to remain in
+/// `character.spell[]` for `len` ticks so that `skill_on_cooldown` can detect
+/// it. Mirrors the pattern of `add_exhaust` but uses a caller-supplied skill
+/// `temp` so each ability tracks its own recharge timer independently.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable reference to the game state.
+/// * `cn` - Character index to receive the cooldown marker.
+/// * `len` - Cooldown duration in ticks.
+/// * `skill_temp` - Originating skill constant stored in `item.temp`.
+/// * `name` - Display name used when the cooldown is reported (must fit 40 bytes).
+fn add_skill_cooldown(gs: &mut GameState, cn: usize, len: i32, skill_temp: u16, name: &[u8]) {
+    let in_ = match God::create_item(gs, 1) {
+        Some(i) => i,
+        None => {
+            log::error!("god_create_item failed in add_skill_cooldown");
+            return;
+        }
+    };
+    {
+        let item = &mut gs.items[in_];
+        let mut name_bytes = [0u8; 40];
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 97;
+        item.duration = len as u32;
+        item.active = len as u32;
+        item.temp = skill_temp;
+        item.power = 255;
+    }
+    add_spell(gs, cn, in_);
+}
+
+/// Resolves the active offensive target for a skill cast.
+///
+/// Mirrors the target-selection pattern shared by `skill_blast`, `skill_curse`
+/// and `skill_stun`: prefer `skill_target1`, fall back to `attack_cn`, then
+/// the caster themselves.
+fn resolve_offensive_target(gs: &GameState, cn: usize) -> usize {
+    if gs.characters[cn].skill_target1 != 0 {
+        gs.characters[cn].skill_target1 as usize
+    } else if gs.characters[cn].attack_cn != 0 {
+        gs.characters[cn].attack_cn as usize
+    } else {
+        cn
+    }
+}
+
+/// Common preflight checks for hostile single-target casts.
+///
+/// Validates visibility, self-target rejection, stoned target, attack
+/// permission, and remembers the PvP exchange. Returns true if the cast may
+/// proceed.
+fn hostile_cast_preflight(gs: &mut GameState, cn: usize, co: usize, self_msg: &str) -> bool {
+    if cn == co {
+        gs.do_character_log(cn, FontColor::Red, self_msg);
+        return false;
+    }
+    if gs.do_char_can_see(cn, co) == 0 {
+        gs.do_character_log(cn, FontColor::Red, "You cannot see your target.\n");
+        return false;
+    }
+    if (gs.characters[co].flags & CharacterFlags::Stoned.bits()) != 0 {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "Your target is lagging. Try again later.\n",
+        );
+        return false;
+    }
+    if !gs.may_attack_msg(cn, co, true) {
+        chlog!(
+            cn,
+            "Prevented from attacking {}",
+            gs.characters[co].get_name().to_owned()
+        );
+        return false;
+    }
+    gs.remember_pvp(cn, co);
+    true
+}
+
+/// Internal helper: attach a Parasite-family DoT spell-item to `co`.
+///
+/// Used both for the direct Parasite/Contagion cast and for on-death spread.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `caster` - Caster character index (recorded in `item.data[0]` for lifesteal).
+/// * `co` - Target character index.
+/// * `power` - Caster skill power; drives damage and resistance roll.
+/// * `temp` - Either `SK_PARASITE` or `SK_CONTAGION`.
+/// * `duration_ticks` - Total duration in ticks.
+/// * `name` - Display name shown to players.
+///
+/// # Returns
+///
+/// * `true` if the DoT was successfully attached.
+pub(crate) fn apply_parasitic_dot(
+    gs: &mut GameState,
+    caster: usize,
+    co: usize,
+    power: i32,
+    temp: u16,
+    duration_ticks: i32,
+    name: &[u8],
+) -> bool {
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        return false;
+    }
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in apply_parasitic_dot");
+        return false;
+    }
+    let in_idx = in_opt.unwrap();
+
+    let mut power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
+    power = spell_race_mod(gs, power, gs.characters[caster].kindred);
+    if power < 1 {
+        gs.items[in_idx].used = USE_EMPTY;
+        return false;
+    }
+
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 89;
+        item.duration = duration_ticks as u32;
+        item.active = duration_ticks as u32;
+        item.temp = temp;
+        item.power = power as u32;
+        item.data[0] = caster as u32;
+        // data[1] is reserved for Contagion to track the last tick at which it
+        // spread, preventing repeat spreads within the same combat round.
+        item.data[1] = 0;
+    }
+
+    if add_spell(gs, co, in_idx) == 0 {
+        return false;
+    }
+    true
+}
+
+/// Active spell: infest the target with parasites that drain HP over time and
+/// heal the caster for a fraction of the damage dealt.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_parasite(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot infect yourself.\n") {
+        return;
+    }
+    if spellcost(gs, cn, 20) != 0 {
+        return;
+    }
+    if chance(gs, cn, 18) != 0 {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_PARASITE][5]);
+    if !apply_parasitic_dot(
+        gs,
+        cn,
+        co,
+        power,
+        SK_PARASITE as u16,
+        TICKS * 8,
+        b"Parasite",
+    ) {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "Magical interference neutralised your parasite.\n",
+        );
+        return;
+    }
+
+    let name = gs.characters[co].get_name().to_owned();
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("{} was infested with parasites.\n", name),
+    );
+    gs.do_character_log(co, FontColor::Green, "Parasites burrow into your flesh!\n");
+    gs.do_notify_character(co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+    gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), co as i32, 0, 0, 0);
+    chlog!(cn, "Cast Parasite on {}", name);
+    EffectManager::fx_add_effect(
+        gs,
+        5,
+        0,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].y),
+        0,
+    );
+}
+
+/// Active spell: distract the target, reducing their Agility for a short time.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_distract(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot distract yourself.\n") {
+        return;
+    }
+    if spellcost(gs, cn, 15) != 0 {
+        return;
+    }
+    if chance(gs, cn, 18) != 0 {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_DISTRACT][5]);
+    let power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
+    let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
+    if power < 1 {
+        return;
+    }
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
+        return;
+    }
+
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in skill_distract");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+    let agility_penalty = -((power / 3).clamp(1, 30)) as i8;
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let name = b"Distract";
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 89;
+        item.duration = (TICKS * 10) as u32;
+        item.active = (TICKS * 10) as u32;
+        item.temp = SK_DISTRACT as u16;
+        item.power = power as u32;
+        item.attrib[AT_AGIL as usize][1] = agility_penalty;
+    }
+    if add_spell(gs, co, in_idx) == 0 {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "Magical interference neutralised your distraction.\n",
+        );
+        return;
+    }
+
+    let name = gs.characters[co].get_name().to_owned();
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("{} is now distracted.\n", name),
+    );
+    gs.do_character_log(co, FontColor::Green, "You feel distracted!\n");
+    gs.do_notify_character(co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+    gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), co as i32, 0, 0, 0);
+    chlog!(cn, "Cast Distract on {}", name);
+    EffectManager::fx_add_effect(
+        gs,
+        5,
+        0,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].y),
+        0,
+    );
+}
+
+/// Active melee finisher: a devastating blow against a low-health adjacent
+/// enemy. Deals massively amplified weapon damage when the target is below
+/// 25% HP, otherwise deals modestly increased damage. Long cooldown.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_deliver_death(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot strike yourself down.\n") {
+        return;
+    }
+    if skill_on_cooldown(gs, cn, SK_DELIVER_DEATH as u16) {
+        return;
+    }
+    // Adjacency check
+    let dx = (i32::from(gs.characters[cn].x) - i32::from(gs.characters[co].x)).abs();
+    let dy = (i32::from(gs.characters[cn].y) - i32::from(gs.characters[co].y)).abs();
+    if dx > 1 || dy > 1 {
+        gs.do_character_log(cn, FontColor::Red, "Your target is too far away.\n");
+        return;
+    }
+    if gs.characters[cn].a_end < 150 * 1000 {
+        gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
+        return;
+    }
+    gs.characters[cn].a_end -= 150 * 1000;
+
+    let weapon = i32::from(gs.characters[cn].weapon).max(1);
+    let max_hp = i32::from(gs.characters[co].hp[5]).max(1);
+    let cur_hp_pct = gs.characters[co].a_hp / max_hp; // 0..1000
+    let dam = if cur_hp_pct < 250 {
+        weapon * 5 + helpers::random_mod_i32(weapon * 2)
+    } else {
+        weapon * 2 + helpers::random_mod_i32(weapon)
+    };
+
+    let applied = gs.do_hurt(cn, co, dam, 0);
+    if applied < 1 {
+        gs.do_character_log(cn, FontColor::Green, "Your blow glances off harmlessly.\n");
+    } else {
+        let name = gs.characters[co].get_name().to_owned();
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("You deliver death to {} for {} HP.\n", name, applied),
+        );
+        chlog!(cn, "Cast Deliver Death on {} for {} HP", name, applied);
+    }
+
+    let tx = i32::from(gs.characters[co].x);
+    let ty = i32::from(gs.characters[co].y);
+    gs.do_area_sound(co, 0, tx, ty, i32::from(gs.characters[cn].sound) + 4);
+    EffectManager::fx_add_effect(gs, 5, 0, tx, ty, 0);
+
+    add_skill_cooldown(
+        gs,
+        cn,
+        TICKS * 45,
+        SK_DELIVER_DEATH as u16,
+        b"Deliver Death Cooldown",
+    );
+}
+
+/// Active spell: weakens the target's effective weapon skill for a short time,
+/// reducing their hit chance in melee.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_disarm(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot disarm yourself.\n") {
+        return;
+    }
+    if spellcost(gs, cn, 25) != 0 {
+        return;
+    }
+    if chance(gs, cn, 18) != 0 {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_DISARM][5]);
+    let power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
+    let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
+    if power < 1 {
+        return;
+    }
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
+        return;
+    }
+
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in skill_disarm");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+    let weapon_penalty = -((power / 2).clamp(1, 50)) as i8;
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let name = b"Disarm";
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 89;
+        item.duration = (TICKS * 15) as u32;
+        item.active = (TICKS * 15) as u32;
+        item.temp = SK_DISARM as u16;
+        item.power = power as u32;
+        item.skill[SK_WEAPON][1] = weapon_penalty;
+    }
+    if add_spell(gs, co, in_idx) == 0 {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "Magical interference neutralised your disarm.\n",
+        );
+        return;
+    }
+
+    let name = gs.characters[co].get_name().to_owned();
+    gs.do_character_log(cn, FontColor::Green, &format!("{} was disarmed.\n", name));
+    gs.do_character_log(
+        co,
+        FontColor::Green,
+        "Your weapon feels heavy and unfamiliar!\n",
+    );
+    gs.do_notify_character(co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+    gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), co as i32, 0, 0, 0);
+    chlog!(cn, "Cast Disarm on {}", name);
+    EffectManager::fx_add_effect(
+        gs,
+        5,
+        0,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].y),
+        0,
+    );
+}
+
+/// Active spell: a virulent parasitic infection that lasts much longer than
+/// Parasite and spreads to adjacent enemies when the host dies.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_contagion(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot infect yourself.\n") {
+        return;
+    }
+    if spellcost(gs, cn, 40) != 0 {
+        return;
+    }
+    if chance(gs, cn, 18) != 0 {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_CONTAGION][5]);
+    if !apply_parasitic_dot(
+        gs,
+        cn,
+        co,
+        power,
+        SK_CONTAGION as u16,
+        TICKS * 60 * 8,
+        b"Contagion",
+    ) {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "Magical interference neutralised your contagion.\n",
+        );
+        return;
+    }
+
+    let name = gs.characters[co].get_name().to_owned();
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("{} was struck by a virulent contagion.\n", name),
+    );
+    gs.do_character_log(co, FontColor::Green, "A virulent contagion takes hold!\n");
+    gs.do_notify_character(co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+    gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), co as i32, 0, 0, 0);
+    chlog!(cn, "Cast Contagion on {}", name);
+    EffectManager::fx_add_effect(
+        gs,
+        5,
+        0,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].y),
+        0,
+    );
+}
+
+/// Active melee skill: a sweeping flurry of strikes that hits every adjacent
+/// hostile target for double the standard Surround Hit damage. Costs
+/// endurance and goes on a short cooldown afterwards.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
+    if skill_on_cooldown(gs, cn, SK_BLADE_DANCE as u16) {
+        return;
+    }
+    if gs.characters[cn].a_end < 200 * 1000 {
+        gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
+        return;
+    }
+    gs.characters[cn].a_end -= 200 * 1000;
+
+    let weapon = i32::from(gs.characters[cn].weapon).max(1);
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    let attacker_is_player = (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+    let aoe_base = if attacker_is_player { 4 } else { 1 };
+
+    let mut hits = 0;
+    for co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, aoe_base) {
+        if co == cn {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, co, false) {
+            continue;
+        }
+        let base_dam = weapon + helpers::random_mod_i32(weapon.max(1));
+        // Mirror Surround Hit's reduction (3/4 of base) then double it for Blade Dance.
+        let sdam = (base_dam - base_dam / 4) * 2;
+        gs.remember_pvp(cn, co);
+        let applied = gs.do_hurt(cn, co, sdam, 0);
+        if applied > 0 {
+            hits += 1;
+            let name = gs.characters[co].get_name().to_owned();
+            gs.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("Your blade strikes {} for {} HP.\n", name, applied),
+            );
+        }
+        let tx = i32::from(gs.characters[co].x);
+        let ty = i32::from(gs.characters[co].y);
+        EffectManager::fx_add_effect(gs, 5, 0, tx, ty, 0);
+    }
+
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("Your blade dance lands {} strike(s).\n", hits),
+    );
+    chlog!(cn, "Performed Blade Dance ({} hits)", hits);
+
+    add_skill_cooldown(
+        gs,
+        cn,
+        TICKS * 30,
+        SK_BLADE_DANCE as u16,
+        b"Blade Dance Cooldown",
+    );
+}
+
 /// Dispatches direct skill use to the matching skill handler.
 ///
 /// # Arguments
@@ -4020,6 +4606,36 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
             "You use this skill automatically when you cast spells.\n",
         ),
         x if x == SK_WARCRY as i32 => skill_warcry(gs, cn),
+         x if x == SK_PARASITE as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_parasite(gs, cn);
+            }
+        }
+        x if x == SK_DISTRACT as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_distract(gs, cn);
+            }
+        }
+        x if x == SK_DELIVER_DEATH as i32 => skill_deliver_death(gs, cn),
+        x if x == SK_DISARM as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_disarm(gs, cn);
+            }
+        }
+        x if x == SK_CONTAGION as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_contagion(gs, cn);
+            }
+        }
+        x if x == SK_BLADE_DANCE as i32 => skill_blade_dance(gs, cn),
         _ => {
             gs.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n");
         }

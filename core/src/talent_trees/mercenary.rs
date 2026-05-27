@@ -1,7 +1,7 @@
 //! Mercenary class talent tree metadata and effects.
 
 use super::{TalentEffect, TalentNode, TalentRef, TalentTree};
-use crate::skills::Attribute;
+use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
 
 // ---- TalentRefs (used both as "this node's slot" and as prereqs) ----
@@ -145,9 +145,8 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Distract the enemy, reducing their accuracy.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[10],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::Distract,
             },
         },
         TalentNode {
@@ -156,9 +155,8 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Infest the enemy with parasites, dealing damage over time.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[10],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::Parasite,
             },
         },
         TalentNode {
@@ -227,9 +225,8 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Chance on hit to disarm your opponent.",
             cost: 1,
             prereqs: &[ATTACK_SPEED_BOOST_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Intuition],
-                percents: &[10],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::Disarm,
             },
         },
         TalentNode {
@@ -238,9 +235,8 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "A devastating finishing blow against low-health enemies.",
             cost: 1,
             prereqs: &[DAMAGE_BOOST_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[15],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::DeliverDeath,
             },
         },
         TalentNode {
@@ -315,9 +311,8 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "A flurry of strikes against all adjacent enemies.",
             cost: 1,
             prereqs: &[PROTECTIVE_SPELLS_BOOST_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[20],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::BladeDance,
             },
         },
         TalentNode {
@@ -326,9 +321,8 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Spreads parasitic damage to nearby enemies.",
             cost: 1,
             prereqs: &[IMMUN_RESIST_BOOST_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[20],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::Contagion,
             },
         },
         TalentNode {

@@ -3431,8 +3431,8 @@ pub fn answer_attack(gs: &mut GameState, cn: usize, co: usize, text: &str) {
 
             let char_name_lower = character.get_name().to_lowercase();
             if char_name_lower == target_name_lower {
-                let dist = (cn_x - i32::from(character.x)).abs()
-                    + (cn_y - i32::from(character.y)).abs();
+                let dist =
+                    (cn_x - i32::from(character.x)).abs() + (cn_y - i32::from(character.y)).abs();
                 if dist < best {
                     best = dist;
                     bestn = n;

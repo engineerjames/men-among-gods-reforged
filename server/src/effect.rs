@@ -379,11 +379,12 @@ impl EffectManager {
 
             let spawn_template = gs.effects[n].data[1];
             if spawn_template != 0
-                && let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
-                    God::drop_char(gs, cn, x as usize, y as usize);
-                    gs.characters[cn].dir = DX_RIGHTUP;
-                    player::commands::plr_reset_status(gs, cn);
-                }
+                && let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false)
+            {
+                God::drop_char(gs, cn, x as usize, y as usize);
+                gs.characters[cn].dir = DX_RIGHTUP;
+                player::commands::plr_reset_status(gs, cn);
+            }
 
             gs.effects[n].used = USE_EMPTY;
             gs.items[in_id].used = USE_EMPTY;

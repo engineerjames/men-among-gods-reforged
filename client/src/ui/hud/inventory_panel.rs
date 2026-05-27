@@ -888,15 +888,16 @@ impl Widget for InventoryPanel {
 
             // Blocked-slot overlay (sprite 4) when carrying an incompatible item.
             if let Some(ref bl) = blocked
-                && bl[worn_index] {
-                    let tex = ctx.gfx.get_texture(4);
-                    let q = tex.query();
-                    ctx.canvas.copy(
-                        tex,
-                        None,
-                        Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-                    )?;
-                }
+                && bl[worn_index]
+            {
+                let tex = ctx.gfx.get_texture(4);
+                let q = tex.query();
+                ctx.canvas.copy(
+                    tex,
+                    None,
+                    Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
+                )?;
+            }
         }
 
         // --- Controller selection highlight (golden stroke) ---

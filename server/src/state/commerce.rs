@@ -22,8 +22,6 @@ impl GameState {
     pub(crate) fn barter(&mut self, cn: usize, opr: i32, flag: i32) -> i32 {
         let barter_skill = i32::from(self.characters[cn].skill[skills::SK_BARTER][5]);
 
-        
-
         if flag != 0 {
             // Merchant is selling (player is buying)
             // Higher skill = lower price
@@ -66,10 +64,9 @@ impl GameState {
         }
 
         // For living merchants, check visibility
-        if !is_body
-            && self.do_char_can_see(cn, co) == 0 {
-                return;
-            }
+        if !is_body && self.do_char_can_see(cn, co) == 0 {
+            return;
+        }
 
         // For corpses, check distance (must be adjacent)
         if is_body {
@@ -794,8 +791,7 @@ impl GameState {
                         self.characters[co].depot[nr as usize] = 0;
 
                         let item_ref =
-                            c_string_to_str(&self.items[item_idx as usize].reference)
-                                .to_owned();
+                            c_string_to_str(&self.items[item_idx as usize].reference).to_owned();
 
                         let item_name = self.items[item_idx as usize].get_name().to_owned();
 
@@ -808,8 +804,7 @@ impl GameState {
                         chlog!(cn, "Took {} from depot", item_name);
                     } else {
                         let item_ref =
-                            c_string_to_str(&self.items[item_idx as usize].reference)
-                                .to_owned();
+                            c_string_to_str(&self.items[item_idx as usize].reference).to_owned();
 
                         self.do_character_log(
                             cn,

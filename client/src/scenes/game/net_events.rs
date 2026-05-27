@@ -151,9 +151,10 @@ impl GameScene {
         }
 
         if let Some(ps) = app_state.player_state.as_mut()
-            && ps.take_exit_requested_reason().is_some() {
-                return Some(SceneType::CharacterSelection);
-            }
+            && ps.take_exit_requested_reason().is_some()
+        {
+            return Some(SceneType::CharacterSelection);
+        }
 
         if self.pending_exit.take().is_some() {
             return Some(SceneType::CharacterSelection);
@@ -283,9 +284,10 @@ impl GameScene {
     pub(crate) fn process_mode_button_actions(&mut self, app_state: &AppState) {
         for action in self.mode_button.take_actions() {
             if let WidgetAction::ChangeMode(mode) = action
-                && let Some(net) = app_state.network.as_ref() {
-                    net.send(ClientCommand::new_mode(mode as i16));
-                }
+                && let Some(net) = app_state.network.as_ref()
+            {
+                net.send(ClientCommand::new_mode(mode as i16));
+            }
         }
     }
 

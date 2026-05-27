@@ -373,11 +373,10 @@ impl Widget for CharacterSelectionForm {
                 }
                 return EventResponse::Consumed;
             }
-            UiEvent::MouseMove { .. }
-                if self.controller_focused.is_some() => {
-                    self.controller_focused = None;
-                    self.apply_controller_focus();
-                }
+            UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
+                self.controller_focused = None;
+                self.apply_controller_focus();
+            }
             _ => {}
         }
 
@@ -416,9 +415,10 @@ impl Widget for CharacterSelectionForm {
 
         // Consume if inside panel.
         if let UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } = event
-            && self.bounds.contains_point(*x, *y) {
-                return EventResponse::Consumed;
-            }
+            && self.bounds.contains_point(*x, *y)
+        {
+            return EventResponse::Consumed;
+        }
 
         EventResponse::Ignored
     }

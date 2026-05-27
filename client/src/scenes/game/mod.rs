@@ -187,6 +187,8 @@ const SHOP_PANEL_H: u32 = crate::ui::hud::shop_panel::SHOP_PANEL_H;
 const SHOP_PANEL_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SHOP_PANEL_W as i32) / 2;
 /// Y position of the shop panel (vertically centered).
 const SHOP_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - SHOP_PANEL_H as i32) / 2;
+/// Maximum character count for one helper-text line.
+const HELPER_TEXT_MAX_CHARS: u32 = 50;
 
 // Minimap
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
@@ -239,12 +241,13 @@ fn active_quest_destination(
     npc_pos_fallback: Option<(u16, u16)>,
 ) -> Option<(u16, u16)> {
     if let Some(def) = mag_core::quest_defs::find_quest_def(template_id)
-        && let Some(step) = def.steps.get(step_idx) {
-            return match step {
-                mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
-                mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
-            };
-        }
+        && let Some(step) = def.steps.get(step_idx)
+    {
+        return match step {
+            mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
+            mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
+        };
+    }
     npc_pos_fallback
 }
 
@@ -697,9 +700,10 @@ impl GameScene {
         for y in 0..TILEY {
             for x in 0..TILEX {
                 if let Some(tile) = ps.map().tile_at_xy(x, y)
-                    && tile.ch_nr == selected {
-                        return true;
-                    }
+                    && tile.ch_nr == selected
+                {
+                    return true;
+                }
             }
         }
 
@@ -794,6 +798,20 @@ impl GameScene {
         false
     }
 
+    /// Returns `true` when a visible panel drawn above the skills panel is
+    /// under the cursor.
+    fn is_mouse_over_ui_above_skills_panel(&self) -> bool {
+        let (mx, my) = (self.mouse_x, self.mouse_y);
+        (self.inventory_panel.is_visible() && self.inventory_panel.bounds().contains_point(mx, my))
+            || (self.settings_panel.is_visible()
+                && self.settings_panel.bounds().contains_point(mx, my))
+            || (self.talent_panel.is_visible() && self.talent_panel.bounds().contains_point(mx, my))
+            || (self.quest_log_panel.is_visible()
+                && self.quest_log_panel.bounds().contains_point(mx, my))
+            || (self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my))
+            || (self.skill_picker.is_visible() && self.skill_picker.bounds().contains_point(mx, my))
+    }
+
     /// Draws context-sensitive helper text below and to the right of the
     /// mouse cursor with a drop shadow, matching the nameplate style.
     ///
@@ -821,81 +839,40 @@ impl GameScene {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
             let text = format!("({},{})", self.mouse_x, self.mouse_y);
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         // Show the rank name as a tooltip when hovering the rank sigil.
         if self.rank_sigil.is_hovered() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                self.rank_sigil.rank_name(),
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, self.rank_sigil.rank_name(), x, y);
         }
         if let Some(text) = self.rank_progress_line.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         if let Some(text) = self.vitality_bars.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         if let Some(text) = self.spell_effect_icons.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
         if let Some(text) = self.skill_bar.hover_text() {
             let x = self.mouse_x + 12;
             let y = self.mouse_y + 16;
-            return crate::font_cache::draw_text(
-                canvas,
-                gfx,
-                1,
-                &text,
-                x,
-                y,
-                crate::font_cache::TextStyle::drop_shadow(),
-            );
+            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
+        }
+        if !self.is_mouse_over_ui_above_skills_panel()
+            && let Some(text) = self.skills_panel.hover_text()
+        {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return self.draw_cursor_helper_text(canvas, gfx, text, x, y);
         }
         if self.is_mouse_over_ui() {
             return Ok(());
@@ -905,15 +882,41 @@ impl GameScene {
         };
         let x = self.mouse_x + 12;
         let y = self.mouse_y + 16;
-        crate::font_cache::draw_text(
+        self.draw_cursor_helper_text(canvas, gfx, text, x, y)
+    }
+
+    /// Draws wrapped helper text at a cursor-relative position.
+    ///
+    /// # Arguments
+    ///
+    /// * `canvas` - SDL2 canvas.
+    /// * `gfx` - Graphics/texture cache.
+    /// * `text` - Helper text to draw.
+    /// * `x` - Left edge of the first line.
+    /// * `y` - Top edge of the first line.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn draw_cursor_helper_text(
+        &self,
+        canvas: &mut Canvas<Window>,
+        gfx: &mut GraphicsCache<'_>,
+        text: &str,
+        x: i32,
+        y: i32,
+    ) -> Result<(), String> {
+        crate::font_cache::draw_wrapped_text(
             canvas,
             gfx,
             1,
             text,
             x,
             y,
+            HELPER_TEXT_MAX_CHARS * crate::font_cache::BITMAP_GLYPH_ADVANCE,
             crate::font_cache::TextStyle::drop_shadow(),
         )
+        .map(|_| ())
     }
 
     /// Draw a crosshair cursor at the virtual cursor position when controller
@@ -1327,13 +1330,13 @@ impl Scene for GameScene {
                     .character
                     .key_bindings
                     .action_for_key(*kc, mods)
-                {
-                    match action {
-                        GameAction::ToggleSkills => self.skills_panel.toggle(),
-                        GameAction::ToggleInventory => self.inventory_panel.toggle(),
-                    }
-                    return None;
+            {
+                match action {
+                    GameAction::ToggleSkills => self.skills_panel.toggle(),
+                    GameAction::ToggleInventory => self.inventory_panel.toggle(),
                 }
+                return None;
+            }
         }
 
         // --- Controller events ---
@@ -1362,19 +1365,20 @@ impl Scene for GameScene {
                     | Keycode::Num7
                     | Keycode::Num8
                     | Keycode::Num9
-            ) {
-                self.handle_num_hotkey(app_state, *kc);
-                return None;
-            }
+            )
+        {
+            self.handle_num_hotkey(app_state, *kc);
+            return None;
+        }
 
         // --- Mouse world interactions ---
         if !ui_consumed
             && let Event::MouseButtonUp {
                 mouse_btn, x, y, ..
             } = event
-            {
-                return self.handle_world_click(app_state, *mouse_btn, *x, *y);
-            }
+        {
+            return self.handle_world_click(app_state, *mouse_btn, *x, *y);
+        }
 
         None
     }
@@ -1509,33 +1513,36 @@ impl Scene for GameScene {
 
         // --- L3 hold detection: look at nearest character ---
         if self.controller_mode
-            && let Some(pressed_at) = self.l3_pressed_at {
-                const L3_HOLD_THRESHOLD: Duration = Duration::from_millis(500);
-                if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
-                    self.l3_pressed_at = None; // consumed
-                    if let Some(ps) = app_state.player_state.as_ref() {
-                        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
-                        if let Some((mx, my)) =
-                            Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
-                        {
-                            use mag_core::constants::ISCHAR;
-                            if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)
+            && let Some(pressed_at) = self.l3_pressed_at
+        {
+            const L3_HOLD_THRESHOLD: Duration = Duration::from_millis(500);
+            if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
+                self.l3_pressed_at = None; // consumed
+                if let Some(ps) = app_state.player_state.as_ref() {
+                    let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                    if let Some((mx, my)) =
+                        Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
+                    {
+                        use mag_core::constants::ISCHAR;
+                        if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR) {
+                            let tile = ps.map().tile_at_xy(sx, sy);
+                            let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
+                            if target_cn != 0
+                                && let Some(net) = app_state.network.as_ref()
                             {
-                                let tile = ps.map().tile_at_xy(sx, sy);
-                                let target_cn = tile.map(|t| u32::from(t.ch_nr)).unwrap_or(0);
-                                if target_cn != 0
-                                    && let Some(net) = app_state.network.as_ref() {
-                                        self.play_click_sound(app_state);
-                                        net.send(ClientCommand::new_look(target_cn));
-                                    }
+                                self.play_click_sound(app_state);
+                                net.send(ClientCommand::new_look(target_cn));
                             }
                         }
                     }
                 }
             }
+        }
 
         // Create the cert dialog widget when a mismatch is first detected.
-        if let Some(m) = &self.certificate_mismatch && self.cert_dialog.is_none() {
+        if let Some(m) = &self.certificate_mismatch
+            && self.cert_dialog.is_none()
+        {
             self.cert_dialog = Some(CertDialog::new(
                 &m.host,
                 &m.expected_fingerprint,
@@ -1546,9 +1553,10 @@ impl Scene for GameScene {
         let scene = self.process_network_events(app_state);
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
-                && !Self::is_selected_visible(ps) {
-                    ps.clear_selected_char();
-                }
+                && !Self::is_selected_visible(ps)
+            {
+                ps.clear_selected_char();
+            }
 
             let tick_now = app_state
                 .network

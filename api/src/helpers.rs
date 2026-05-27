@@ -3,28 +3,23 @@ use lazy_static::lazy_static;
 use log::error;
 use mag_core::types::JwtClaims;
 use regex::Regex;
-use std::env;
 
-/// Verifies the provided JWT token using the secret key from the environment variable `API_JWT_SECRET`.
+/// Verifies the provided JWT token using the supplied signing secret.
+///
+/// The secret is provided by the caller (typically cached on `ApiState`) so this
+/// function does not perform any process-environment lookups.
 ///
 /// # Arguments
 /// * `token` - The JWT token to verify.
+/// * `secret` - HMAC signing secret (raw bytes) for HS256 validation.
 ///
 /// # Returns
 /// * `Ok(TokenData<JwtClaims>)` if the token is valid, containing the decoded claims.
-/// * `Err(String)` if the token is invalid or if the secret key is missing.
-pub async fn verify_token(token: &str) -> Result<TokenData<JwtClaims>, String> {
-    let secret = match env::var("API_JWT_SECRET") {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => {
-            error!("JWT secret missing for verify_token");
-            return Err("Internal server error".to_owned());
-        }
-    };
-
+/// * `Err(String)` with a sanitized error message if the token is invalid.
+pub fn verify_token(token: &str, secret: &[u8]) -> Result<TokenData<JwtClaims>, String> {
     let token_data = match jsonwebtoken::decode::<JwtClaims>(
         token,
-        &DecodingKey::from_secret(secret.as_bytes()),
+        &DecodingKey::from_secret(secret),
         &Validation::default(),
     ) {
         Ok(data) => data,
@@ -44,7 +39,7 @@ pub async fn verify_token(token: &str) -> Result<TokenData<JwtClaims>, String> {
 ///
 /// # Returns
 /// * `Some(String)` containing the token if found, `None` otherwise.
-pub async fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
+pub fn get_token_from_headers(headers: &axum::http::HeaderMap) -> Option<String> {
     let token = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -257,149 +252,78 @@ mod tests {
     };
     use jsonwebtoken::{EncodingKey, Header};
     use mag_core::types::JwtClaims;
-    use std::sync::Mutex;
 
     use super::verify_token;
 
-    static ENV_LOCK: Mutex<()> = Mutex::new(());
-
-    fn set_env_var(key: &str, value: Option<&str>) -> Option<String> {
-        let previous = std::env::var(key).ok();
-        // SAFETY: Caller holds ENV_LOCK, serialising all environment mutations.
-        unsafe {
-            match value {
-                Some(value) => std::env::set_var(key, value),
-                None => std::env::remove_var(key),
-            }
-        }
-        previous
-    }
-
-    fn restore_env_var(key: &str, previous: Option<String>) {
-        // SAFETY: Caller holds ENV_LOCK, serialising all environment mutations.
-        unsafe {
-            match previous {
-                Some(value) => std::env::set_var(key, value),
-                None => std::env::remove_var(key),
-            }
-        }
-    }
-
     #[test]
     fn token_from_headers_extracts_bearer() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "Bearer abc.def.ghi".parse().unwrap(),
+        );
 
-        runtime.block_on(async {
-            let mut headers = axum::http::HeaderMap::new();
-            headers.insert(
-                axum::http::header::AUTHORIZATION,
-                "Bearer abc.def.ghi".parse().unwrap(),
-            );
-
-            let token = get_token_from_headers(&headers).await;
-            assert_eq!(Some("abc.def.ghi".to_owned()), token);
-        });
+        let token = get_token_from_headers(&headers);
+        assert_eq!(Some("abc.def.ghi".to_owned()), token);
     }
 
     #[test]
     fn token_from_headers_does_not_accept_raw_token() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(
+            axum::http::header::AUTHORIZATION,
+            "raw.token".parse().unwrap(),
+        );
 
-        runtime.block_on(async {
-            let mut headers = axum::http::HeaderMap::new();
-            headers.insert(
-                axum::http::header::AUTHORIZATION,
-                "raw.token".parse().unwrap(),
-            );
-
-            let token = get_token_from_headers(&headers).await;
-            assert_eq!(None, token);
-        });
+        let token = get_token_from_headers(&headers);
+        assert_eq!(None, token);
     }
 
     #[test]
     fn token_from_headers_missing_returns_none() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-
-        runtime.block_on(async {
-            let headers = axum::http::HeaderMap::new();
-            let token = get_token_from_headers(&headers).await;
-            assert_eq!(None, token);
-        });
+        let headers = axum::http::HeaderMap::new();
+        let token = get_token_from_headers(&headers);
+        assert_eq!(None, token);
     }
 
     #[test]
-    #[allow(clippy::await_holding_lock)]
     fn verify_token_accepts_valid_jwt() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+        let claims = JwtClaims {
+            sub: "tester".to_owned(),
+            exp: 1_999_999_999,
+        };
+        let token = jsonwebtoken::encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(b"test-secret"),
+        )
+        .expect("token encode");
 
-        runtime.block_on(async {
-            let _lock = ENV_LOCK.lock().unwrap();
-            let previous = set_env_var("API_JWT_SECRET", Some("test-secret"));
-
-            let claims = JwtClaims {
-                sub: "tester".to_owned(),
-                exp: 1_999_999_999,
-            };
-            let token = jsonwebtoken::encode(
-                &Header::default(),
-                &claims,
-                &EncodingKey::from_secret(b"test-secret"),
-            )
-            .expect("token encode");
-
-            let result = verify_token(&token).await;
-            restore_env_var("API_JWT_SECRET", previous);
-            assert!(result.is_ok(), "expected valid token");
-        });
+        let result = verify_token(&token, b"test-secret");
+        assert!(result.is_ok(), "expected valid token");
     }
 
     #[test]
-    #[allow(clippy::await_holding_lock)]
     fn verify_token_rejects_invalid_jwt() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-
-        runtime.block_on(async {
-            let _lock = ENV_LOCK.lock().unwrap();
-            let previous = set_env_var("API_JWT_SECRET", Some("test-secret"));
-
-            let result = verify_token("not-a-jwt").await;
-            restore_env_var("API_JWT_SECRET", previous);
-            assert!(result.is_err(), "expected invalid token");
-        });
+        let result = verify_token("not-a-jwt", b"test-secret");
+        assert!(result.is_err(), "expected invalid token");
     }
 
     #[test]
-    #[allow(clippy::await_holding_lock)]
-    fn verify_token_requires_secret() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
+    fn verify_token_rejects_wrong_secret() {
+        let claims = JwtClaims {
+            sub: "tester".to_owned(),
+            exp: 1_999_999_999,
+        };
+        let token = jsonwebtoken::encode(
+            &Header::default(),
+            &claims,
+            &EncodingKey::from_secret(b"correct-secret"),
+        )
+        .expect("token encode");
 
-        runtime.block_on(async {
-            let _lock = ENV_LOCK.lock().unwrap();
-            let previous = set_env_var("API_JWT_SECRET", None);
-
-            let result = verify_token("abc.def.ghi").await;
-            restore_env_var("API_JWT_SECRET", previous);
-            assert!(result.is_err(), "expected missing secret failure");
-        });
+        let result = verify_token(&token, b"wrong-secret");
+        assert!(result.is_err(), "expected wrong-secret failure");
     }
 
     #[test]

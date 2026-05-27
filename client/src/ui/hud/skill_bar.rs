@@ -322,17 +322,16 @@ impl Widget for SkillBar {
                                 });
                             }
                         }
-                        MouseButton::Right
-                            if bound_skill.is_some() => {
-                                // Unbind: bind slot to a sentinel that
-                                // `BindSkillKey` handler will clear.
-                                // We reuse BindSkillKey with skill_nr=0 as
-                                // the "clear" signal handled downstream.
-                                self.actions.push(WidgetAction::BindSkillKey {
-                                    skill_nr: 0,
-                                    key_slot,
-                                });
-                            }
+                        MouseButton::Right if bound_skill.is_some() => {
+                            // Unbind: bind slot to a sentinel that
+                            // `BindSkillKey` handler will clear.
+                            // We reuse BindSkillKey with skill_nr=0 as
+                            // the "clear" signal handled downstream.
+                            self.actions.push(WidgetAction::BindSkillKey {
+                                skill_nr: 0,
+                                key_slot,
+                            });
+                        }
                         _ => {}
                     }
                     return EventResponse::Consumed;

@@ -27,6 +27,33 @@ fn email_claim_key(email_lc: &str) -> String {
     format!("account:email:{}", email_lc)
 }
 
+/// Builds the KeyDB key for the per-account character ID set.
+///
+/// # Arguments
+/// * `account_id` - Owning account ID.
+///
+/// # Returns
+/// * Key in the form `account:{id}:characters`.
+fn account_characters_set_key(account_id: u64) -> String {
+    format!("account:{}:characters", account_id)
+}
+
+/// Builds the KeyDB key used to claim a character name globally.
+///
+/// # Arguments
+/// * `name_lc` - Lowercased character name.
+///
+/// # Returns
+/// * Key in the form `character:name:{name_lc}`.
+fn character_name_claim_key(name_lc: &str) -> String {
+    format!("character:name:{}", name_lc)
+}
+
+/// Migration marker key for the character index backfill.
+const CHAR_INDEX_MIGRATION_KEY: &str = "migration:char_indexes:v1";
+
+type StagedCharacterNameMatch = (bool, u64, String, Option<u64>, Option<u32>);
+
 /// Parses a numeric ID from a KeyDB key suffix.
 ///
 /// This is used to distinguish real object keys like `account:{id}` from metadata keys
@@ -60,7 +87,7 @@ fn parse_numeric_id(prefix: &str, key: &str) -> Option<u64> {
 /// * `Ok(Vec<String>)` of matching key names.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 async fn scan_keys_matching(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     pattern: &str,
     count: u32,
 ) -> Result<Vec<String>, redis::RedisError> {
@@ -100,7 +127,7 @@ async fn scan_keys_matching(
 /// * `Ok(false)` if the claim already existed.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn claim_username(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     username_lc: &str,
     account_id: u64,
 ) -> Result<bool, redis::RedisError> {
@@ -128,7 +155,7 @@ pub(crate) async fn claim_username(
 /// * `Ok(false)` if the claim already existed.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn claim_email(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     email_lc: &str,
     account_id: u64,
 ) -> Result<bool, redis::RedisError> {
@@ -156,7 +183,7 @@ pub(crate) async fn claim_email(
 /// * `Ok(false)` if the key did not match `account_id` or did not exist.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn release_claim_if_matches(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     key: &str,
     account_id: u64,
 ) -> Result<bool, redis::RedisError> {
@@ -180,7 +207,7 @@ pub(crate) async fn release_claim_if_matches(
 /// * `Ok(None)` if the username is not found.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_account_id_by_username(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     username_lc: &str,
 ) -> Result<Option<u64>, redis::RedisError> {
     let key = username_claim_key(username_lc);
@@ -203,7 +230,7 @@ pub(crate) async fn get_account_id_by_username(
 /// * `Ok(())` on success.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn insert_account_hash(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     id: u64,
     email_lc: &str,
     username_lc: &str,
@@ -241,7 +268,7 @@ pub(crate) async fn insert_account_hash(
 /// * `Ok(None)` if missing.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_account_password_hash(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     account_id: u64,
 ) -> Result<Option<String>, redis::RedisError> {
     let account_key = format!("account:{}", account_id);
@@ -259,7 +286,7 @@ pub(crate) async fn get_account_password_hash(
 /// * `Ok(None)` if missing.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_account_email(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     account_id: u64,
 ) -> Result<Option<String>, redis::RedisError> {
     let account_key = format!("account:{}", account_id);
@@ -277,7 +304,7 @@ pub(crate) async fn get_account_email(
 /// * `Ok(())` on success.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn set_account_password(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     account_id: u64,
     new_password: &str,
 ) -> Result<(), redis::RedisError> {
@@ -307,7 +334,7 @@ pub(crate) async fn set_account_password(
 /// * `Ok(character_id)` on success.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn insert_new_character(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     account_id: u64,
     name: &str,
     description: Option<&str>,
@@ -336,6 +363,16 @@ pub(crate) async fn insert_new_character(
         .query_async::<()>(&mut *con)
         .await?;
 
+    // Maintain per-account character set and the global name claim.
+    add_character_to_account_set(con, account_id, character_id).await?;
+    if !name.trim().is_empty()
+        && let Ok(false) = claim_character_name(con, name, character_id).await
+    {
+        // Caller is expected to have validated uniqueness; log if we lost a
+        // race and continue (the character is still queryable by id).
+        log::warn!("character-name claim lost race for name='{name}', character_id={character_id}");
+    }
+
     Ok(character_id)
 }
 
@@ -350,7 +387,7 @@ pub(crate) async fn insert_new_character(
 /// * `Ok(None)` if missing.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_character_account_id(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
 ) -> Result<Option<u64>, redis::RedisError> {
     let character_key = format!("character:{}", character_id);
@@ -368,7 +405,7 @@ pub(crate) async fn get_character_account_id(
 /// * `Ok(None)` if fields are missing or invalid.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_character_login_traits(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
 ) -> Result<Option<(Sex, Class)>, redis::RedisError> {
     let character_key = format!("character:{}", character_id);
@@ -397,7 +434,7 @@ pub(crate) async fn get_character_login_traits(
 }
 
 pub(crate) async fn get_character_name(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
 ) -> Result<Option<String>, redis::RedisError> {
     let character_key = format!("character:{}", character_id);
@@ -415,7 +452,7 @@ pub(crate) async fn get_character_name(
 /// * `Ok(None)` if missing.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_character_description(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
 ) -> Result<Option<String>, redis::RedisError> {
     let character_key = format!("character:{}", character_id);
@@ -433,7 +470,7 @@ pub(crate) async fn get_character_description(
 /// * `Ok(None)` if missing.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn get_character_server_id(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
 ) -> Result<Option<u32>, redis::RedisError> {
     let character_key = format!("character:{}", character_id);
@@ -449,7 +486,7 @@ pub(crate) async fn get_character_server_id(
 /// * `Ok(Vec<String>)` containing banned name substrings.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn load_bad_names(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
 ) -> Result<Vec<String>, redis::RedisError> {
     let bytes: Vec<u8> = con.get("game:badnames").await?;
     let (bad_names, _consumed): (Vec<String>, usize) =
@@ -474,7 +511,7 @@ pub(crate) async fn load_bad_names(
 /// * `Ok(false)` otherwise.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn character_template_name_exists(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     name: &str,
 ) -> Result<bool, redis::RedisError> {
     let target_name = name.trim();
@@ -517,7 +554,7 @@ pub(crate) async fn character_template_name_exists(
 /// * `Ok(false)` if absent, undecodable, or not flagged.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn character_slot_has_no_desc(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     server_id: u32,
 ) -> Result<bool, redis::RedisError> {
     let key = format!("game:char:{}", server_id);
@@ -547,12 +584,37 @@ pub(crate) async fn character_slot_has_no_desc(
 /// * `Ok(())` on success.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn update_character(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
     name: Option<&str>,
     description: Option<&str>,
 ) -> Result<(), redis::RedisError> {
     let character_key = format!("character:{}", character_id);
+
+    // If the name is changing, swap the global claim before the HSET so the
+    // claim mirrors the canonical hash value as soon as the write commits.
+    if let Some(new_name) = name {
+        let previous: Option<String> = con.hget(&character_key, "name").await?;
+        let old_lc = previous.as_deref().map(|n| n.to_ascii_lowercase());
+        let new_lc = new_name.to_ascii_lowercase();
+
+        if old_lc.as_deref() != Some(new_lc.as_str()) {
+            if let Some(old_name) = previous.as_deref()
+                && !old_name.trim().is_empty()
+                && let Err(err) =
+                    release_character_name_if_matches(con, old_name, character_id).await
+            {
+                log::warn!("failed to release old character-name claim '{old_name}': {err}");
+            }
+            if !new_name.trim().is_empty()
+                && let Ok(false) = claim_character_name(con, new_name, character_id).await
+            {
+                log::warn!(
+                    "character-name claim lost race for renamed character {character_id} to '{new_name}'"
+                );
+            }
+        }
+    }
 
     // Caller enforces at least one field is present.
     let mut cmd = redis::cmd("HSET");
@@ -572,7 +634,7 @@ pub(crate) async fn update_character(
 /// This is written by the game server once it assigns an internal character index.
 #[allow(dead_code)]
 pub(crate) async fn set_character_server_id(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
     server_id: u32,
 ) -> Result<(), redis::RedisError> {
@@ -595,10 +657,32 @@ pub(crate) async fn set_character_server_id(
 /// * `Ok(())` on success.
 /// * `Err(redis::RedisError)` on KeyDB failure.
 pub(crate) async fn delete_character(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
 ) -> Result<(), redis::RedisError> {
     let character_key = format!("character:{}", character_id);
+
+    // Best-effort index cleanup before deleting the canonical hash.
+    let (account_id, name): (Option<u64>, Option<String>) = redis::cmd("HMGET")
+        .arg(&character_key)
+        .arg("account_id")
+        .arg("name")
+        .query_async(&mut *con)
+        .await
+        .unwrap_or((None, None));
+
+    if let Some(account_id) = account_id
+        && let Err(err) = remove_character_from_account_set(con, account_id, character_id).await
+    {
+        log::warn!("failed to SREM character {character_id} from account {account_id}: {err}");
+    }
+    if let Some(name) = name.as_deref()
+        && !name.trim().is_empty()
+        && let Err(err) = release_character_name_if_matches(con, name, character_id).await
+    {
+        log::warn!("failed to release character-name claim for '{name}': {err}");
+    }
+
     con.del(character_key).await
 }
 
@@ -616,8 +700,9 @@ pub(crate) async fn delete_character(
 /// # Returns
 /// * `Ok(count)` where `count` is in `0..=max`.
 /// * `Err(redis::RedisError)` on KeyDB failure.
+#[allow(dead_code)]
 pub(crate) async fn count_characters_for_account_scan_up_to(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     account_id: u64,
     max: usize,
 ) -> Result<usize, redis::RedisError> {
@@ -666,8 +751,9 @@ pub(crate) async fn count_characters_for_account_scan_up_to(
 /// Scans `character:*` keys and compares normalized names using ASCII-insensitive
 /// matching. Used by create-character flows to enforce global character-name
 /// uniqueness.
+#[allow(dead_code)]
 pub(crate) async fn character_name_exists_scan(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     name: &str,
 ) -> Result<bool, redis::RedisError> {
     character_name_exists_scan_excluding(con, name, None).await
@@ -675,8 +761,9 @@ pub(crate) async fn character_name_exists_scan(
 
 /// Checks whether any existing character (other than `exclude_character_id`) already
 /// uses `name` (case-insensitive).
+#[allow(dead_code)]
 pub(crate) async fn character_name_exists_scan_excluding(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     name: &str,
     exclude_character_id: Option<u64>,
 ) -> Result<bool, redis::RedisError> {
@@ -728,7 +815,7 @@ pub(crate) struct CharacterNameSearchMatch {
 /// sorted by name and id. This supports admin flows where the operator knows a
 /// unique character name but not the API character id used by ban records.
 pub(crate) async fn search_characters_by_name_scan(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     query: &str,
     limit: usize,
 ) -> Result<Vec<CharacterNameSearchMatch>, redis::RedisError> {
@@ -739,21 +826,34 @@ pub(crate) async fn search_characters_by_name_scan(
 
     let query_lc = query.to_ascii_lowercase();
     let keys = scan_keys_matching(con, "character:*", 400).await?;
-    let mut matches: Vec<(bool, CharacterNameSearchMatch)> = Vec::new();
 
-    for key in keys {
+    // Collect candidate character IDs and pipeline a single HGETALL batch
+    // instead of one round-trip per key.
+    let mut character_ids: Vec<u64> = Vec::with_capacity(keys.len());
+    for key in &keys {
         if key == "character:next_id" {
             continue;
         }
+        if let Some(id) = parse_numeric_id("character:", key) {
+            character_ids.push(id);
+        }
+    }
+    if character_ids.is_empty() {
+        return Ok(Vec::new());
+    }
 
-        let Some(character_id) = parse_numeric_id("character:", &key) else {
-            continue;
-        };
+    let mut pipe = redis::pipe();
+    for id in &character_ids {
+        pipe.cmd("HGETALL").arg(format!("character:{id}"));
+    }
+    let raws: Vec<redis::Value> = pipe.query_async(&mut *con).await?;
 
-        let raw: redis::Value = redis::cmd("HGETALL")
-            .arg(&key)
-            .query_async(&mut *con)
-            .await?;
+    let mut matches: Vec<(bool, CharacterNameSearchMatch)> = Vec::new();
+    let mut needed_account_ids: Vec<u64> = Vec::new();
+
+    // First pass: filter by name and collect account IDs we still need to look up.
+    let mut staged: Vec<StagedCharacterNameMatch> = Vec::new();
+    for (character_id, raw) in character_ids.into_iter().zip(raws) {
         let character_map: std::collections::HashMap<String, String> =
             match redis::from_redis_value(raw) {
                 Ok(value) => value,
@@ -772,16 +872,39 @@ pub(crate) async fn search_characters_by_name_scan(
         let account_id = character_map
             .get("account_id")
             .and_then(|value| value.parse::<u64>().ok());
-        let account_username = match account_id {
-            Some(account_id) => {
-                let account_key = format!("account:{}", account_id);
-                con.hget(&account_key, "username").await?
-            }
-            None => None,
-        };
         let server_id = character_map
             .get("server_id")
             .and_then(|value| value.parse::<u32>().ok());
+
+        if let Some(account_id) = account_id {
+            needed_account_ids.push(account_id);
+        }
+        staged.push((exact, character_id, name, account_id, server_id));
+    }
+
+    // Pipeline the per-account username lookups (avoids a serialized round-trip
+    // per matched character).
+    let usernames: std::collections::HashMap<u64, String> = if needed_account_ids.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        needed_account_ids.sort_unstable();
+        needed_account_ids.dedup();
+        let mut pipe = redis::pipe();
+        for id in &needed_account_ids {
+            pipe.cmd("HGET")
+                .arg(format!("account:{id}"))
+                .arg("username");
+        }
+        let raws: Vec<Option<String>> = pipe.query_async(&mut *con).await?;
+        needed_account_ids
+            .into_iter()
+            .zip(raws)
+            .filter_map(|(id, name)| name.map(|n| (id, n)))
+            .collect()
+    };
+
+    for (exact, character_id, name, account_id, server_id) in staged {
+        let account_username = account_id.and_then(|id| usernames.get(&id).cloned());
         matches.push((
             exact,
             CharacterNameSearchMatch {
@@ -825,8 +948,9 @@ pub(crate) async fn search_characters_by_name_scan(
 /// # Returns
 /// * `Ok(Vec<CharacterSummary>)` for all matching characters.
 /// * `Err(redis::RedisError)` on KeyDB failure.
+#[allow(dead_code)]
 pub(crate) async fn list_characters_for_account_scan(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     account_id: u64,
 ) -> Result<Vec<CharacterSummary>, redis::RedisError> {
     let keys = scan_keys_matching(con, "character:*", 400).await?;
@@ -920,4 +1044,319 @@ pub(crate) async fn list_characters_for_account_scan(
     }
 
     Ok(characters)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Character index helpers (per-account set + global name claim)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Adds a character ID to the per-account character set.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `account_id` - Owning account ID.
+/// * `character_id` - Character ID to add.
+///
+/// # Returns
+/// * `Ok(())` on success.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn add_character_to_account_set(
+    con: &mut redis::aio::ConnectionManager,
+    account_id: u64,
+    character_id: u64,
+) -> Result<(), redis::RedisError> {
+    let key = account_characters_set_key(account_id);
+    con.sadd::<_, _, ()>(key, character_id).await
+}
+
+/// Removes a character ID from the per-account character set.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `account_id` - Owning account ID.
+/// * `character_id` - Character ID to remove.
+///
+/// # Returns
+/// * `Ok(())` on success.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn remove_character_from_account_set(
+    con: &mut redis::aio::ConnectionManager,
+    account_id: u64,
+    character_id: u64,
+) -> Result<(), redis::RedisError> {
+    let key = account_characters_set_key(account_id);
+    con.srem::<_, _, ()>(key, character_id).await
+}
+
+/// Lists the character IDs belonging to an account from the per-account set.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `account_id` - Owning account ID.
+///
+/// # Returns
+/// * `Ok(Vec<u64>)` of character IDs (unordered).
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn list_account_character_ids(
+    con: &mut redis::aio::ConnectionManager,
+    account_id: u64,
+) -> Result<Vec<u64>, redis::RedisError> {
+    let key = account_characters_set_key(account_id);
+    con.smembers(key).await
+}
+
+/// Counts characters belonging to an account using the per-account set.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `account_id` - Owning account ID.
+///
+/// # Returns
+/// * `Ok(count)` from `SCARD`.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn count_characters_for_account(
+    con: &mut redis::aio::ConnectionManager,
+    account_id: u64,
+) -> Result<usize, redis::RedisError> {
+    let key = account_characters_set_key(account_id);
+    let count: u64 = con.scard(key).await?;
+    Ok(count as usize)
+}
+
+/// Atomically claims a character name for `character_id`.
+///
+/// Stores `character:name:{name_lc} -> character_id` with `SET NX` so concurrent
+/// creates with the same name cannot both succeed.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `name` - Normalized character name (case-insensitive claim).
+/// * `character_id` - Character ID claiming the name.
+///
+/// # Returns
+/// * `Ok(true)` if the claim was created.
+/// * `Ok(false)` if the name is already claimed by another character.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn claim_character_name(
+    con: &mut redis::aio::ConnectionManager,
+    name: &str,
+    character_id: u64,
+) -> Result<bool, redis::RedisError> {
+    let key = character_name_claim_key(&name.to_ascii_lowercase());
+    let result: Option<String> = redis::cmd("SET")
+        .arg(key)
+        .arg(character_id)
+        .arg("NX")
+        .query_async(&mut *con)
+        .await?;
+    Ok(result.is_some())
+}
+
+/// Releases a character-name claim only if it still points at `character_id`.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `name` - Name to release.
+/// * `character_id` - Expected claim owner.
+///
+/// # Returns
+/// * `Ok(true)` if the claim was deleted.
+/// * `Ok(false)` if the claim pointed at a different character (or was absent).
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn release_character_name_if_matches(
+    con: &mut redis::aio::ConnectionManager,
+    name: &str,
+    character_id: u64,
+) -> Result<bool, redis::RedisError> {
+    let key = character_name_claim_key(&name.to_ascii_lowercase());
+    let stored: Option<u64> = con.get(&key).await?;
+    if stored == Some(character_id) {
+        let deleted: i64 = con.del(&key).await?;
+        Ok(deleted > 0)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Resolves a character name to its ID via the global claim key.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `name` - Character name (case-insensitive lookup).
+///
+/// # Returns
+/// * `Ok(Some(character_id))` if claimed.
+/// * `Ok(None)` if no claim exists.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn get_character_id_by_name(
+    con: &mut redis::aio::ConnectionManager,
+    name: &str,
+) -> Result<Option<u64>, redis::RedisError> {
+    let key = character_name_claim_key(&name.to_ascii_lowercase());
+    con.get(&key).await
+}
+
+/// Lists characters belonging to an account using the per-account set and a
+/// pipelined `HGETALL` batch.
+///
+/// Replaces the legacy `list_characters_for_account_scan` for hot paths. The
+/// per-account set is authoritative once the v1 character-index migration has
+/// run on startup.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+/// * `account_id` - Owning account ID.
+///
+/// # Returns
+/// * `Ok(Vec<CharacterSummary>)` for all matching characters.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn list_characters_for_account(
+    con: &mut redis::aio::ConnectionManager,
+    account_id: u64,
+) -> Result<Vec<CharacterSummary>, redis::RedisError> {
+    let ids = list_account_character_ids(con, account_id).await?;
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // Pipeline a single round-trip that fetches every character hash.
+    let mut pipe = redis::pipe();
+    for id in &ids {
+        pipe.cmd("HGETALL").arg(format!("character:{id}"));
+    }
+    let raws: Vec<redis::Value> = pipe.query_async(&mut *con).await?;
+
+    let mut out: Vec<CharacterSummary> = Vec::with_capacity(ids.len());
+    for (id, raw) in ids.into_iter().zip(raws) {
+        let map: std::collections::HashMap<String, String> = match redis::from_redis_value(raw) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        let Some(name) = map.get("name").cloned() else {
+            continue;
+        };
+        let description = map.get("description").cloned().unwrap_or_default();
+
+        let sex = match map.get("sex").and_then(|v| v.parse::<u32>().ok()) {
+            Some(value) => match Sex::from_u32(value) {
+                Some(value) => value,
+                None => continue,
+            },
+            None => continue,
+        };
+        let class = match map.get("class").and_then(|v| v.parse::<u32>().ok()) {
+            Some(value) => match Class::from_u32(value) {
+                Some(value) => value,
+                None => continue,
+            },
+            None => continue,
+        };
+        let server_id = map.get("server_id").and_then(|v| v.parse::<u32>().ok());
+        let selection_sprite_id = map
+            .get("selection_sprite_id")
+            .and_then(|v| v.parse::<u16>().ok());
+        let rank_index = map.get("rank_index").and_then(|v| v.parse::<u8>().ok());
+
+        out.push(CharacterSummary {
+            id,
+            name,
+            description,
+            sex,
+            class,
+            selection_sprite_id,
+            server_id,
+            rank_index,
+        });
+    }
+
+    Ok(out)
+}
+
+/// One-shot startup migration: backfills `account:{id}:characters` SET and
+/// `character:name:{lc}` claim keys from existing `character:*` hashes.
+///
+/// Idempotent. Skipped (no-op) once `migration:char_indexes:v1` is set.
+///
+/// # Arguments
+/// * `con` - KeyDB connection.
+///
+/// # Returns
+/// * `Ok(())` after either skipping or completing the migration.
+/// * `Err(redis::RedisError)` on KeyDB failure.
+pub(crate) async fn migrate_character_indexes_v1(
+    con: &mut redis::aio::ConnectionManager,
+) -> Result<(), redis::RedisError> {
+    let already_done: bool = con.exists(CHAR_INDEX_MIGRATION_KEY).await?;
+    if already_done {
+        return Ok(());
+    }
+
+    info!("Running character-index migration v1");
+
+    let keys = scan_keys_matching(con, "character:*", 400).await?;
+    let mut scanned = 0_usize;
+    let mut added_to_account = 0_usize;
+    let mut name_claims = 0_usize;
+    let mut name_conflicts = 0_usize;
+
+    for key in keys {
+        if key == "character:next_id" {
+            continue;
+        }
+        // Skip non-character:{id} keys (e.g. our new character:name:{lc} entries).
+        let Some(character_id) = parse_numeric_id("character:", &key) else {
+            continue;
+        };
+
+        scanned += 1;
+        let (account_id, name): (Option<u64>, Option<String>) = redis::cmd("HMGET")
+            .arg(&key)
+            .arg("account_id")
+            .arg("name")
+            .query_async(&mut *con)
+            .await?;
+
+        if let Some(account_id) = account_id {
+            let set_key = account_characters_set_key(account_id);
+            let added: i64 = con.sadd(&set_key, character_id).await?;
+            if added > 0 {
+                added_to_account += 1;
+            }
+        }
+
+        if let Some(name) = name.as_deref()
+            && !name.trim().is_empty()
+        {
+            let claim_key = character_name_claim_key(&name.to_ascii_lowercase());
+            let created: Option<String> = redis::cmd("SET")
+                .arg(&claim_key)
+                .arg(character_id)
+                .arg("NX")
+                .query_async(&mut *con)
+                .await?;
+            if created.is_some() {
+                name_claims += 1;
+            } else {
+                let existing: Option<u64> = con.get(&claim_key).await?;
+                if existing != Some(character_id) {
+                    name_conflicts += 1;
+                    log::warn!(
+                        "character-index migration: name '{}' already claimed by character {:?}, leaving claim untouched for character {}",
+                        name,
+                        existing,
+                        character_id
+                    );
+                }
+            }
+        }
+    }
+
+    let _: () = con.set(CHAR_INDEX_MIGRATION_KEY, "done").await?;
+
+    info!(
+        "character-index migration v1 complete: scanned={scanned}, set_added={added_to_account}, name_claims={name_claims}, name_conflicts={name_conflicts}",
+    );
+
+    Ok(())
 }

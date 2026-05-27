@@ -151,38 +151,40 @@ impl GraphicsZipCache {
 
             // Load from the open archive
             if let Some(ref mut archive) = state.archive
-                && let Ok(mut entry) = archive.by_name(entry_name) {
-                    let mut bytes = Vec::new();
-                    if entry.read_to_end(&mut bytes).is_ok()
-                        && let Ok(decoded) = image::load_from_memory(&bytes) {
-                            let rgba = decoded.to_rgba8();
-                            let (w, h) = rgba.dimensions();
-                            let pixels = rgba.into_raw();
+                && let Ok(mut entry) = archive.by_name(entry_name)
+            {
+                let mut bytes = Vec::new();
+                if entry.read_to_end(&mut bytes).is_ok()
+                    && let Ok(decoded) = image::load_from_memory(&bytes)
+                {
+                    let rgba = decoded.to_rgba8();
+                    let (w, h) = rgba.dimensions();
+                    let pixels = rgba.into_raw();
 
-                            // Cache the decoded pixels and dimensions
-                            self.decoded_cache.insert(*sprite_id, pixels.clone());
-                            self.decoded_dims.insert(*sprite_id, (w, h));
+                    // Cache the decoded pixels and dimensions
+                    self.decoded_cache.insert(*sprite_id, pixels.clone());
+                    self.decoded_dims.insert(*sprite_id, (w, h));
 
-                            // Create texture
-                            let w_i = (w.max(1) as i32).max(1);
-                            let h_i = (h.max(1) as i32).max(1);
-                            let xs = ((w_i + 31) / 32).max(1);
-                            let ys = ((h_i + 31) / 32).max(1);
+                    // Create texture
+                    let w_i = (w.max(1) as i32).max(1);
+                    let h_i = (h.max(1) as i32).max(1);
+                    let xs = ((w_i + 31) / 32).max(1);
+                    let ys = ((h_i + 31) / 32).max(1);
 
-                            let color = egui::ColorImage::from_rgba_unmultiplied(
-                                [w as usize, h as usize],
-                                pixels.as_slice(),
-                            );
+                    let color = egui::ColorImage::from_rgba_unmultiplied(
+                        [w as usize, h as usize],
+                        pixels.as_slice(),
+                    );
 
-                            let texture = ctx.load_texture(
-                                format!("sprite:{}:{}", self.zip_path.display(), sprite_id),
-                                color,
-                                egui::TextureOptions::NEAREST,
-                            );
-                            self.textures.insert(*sprite_id, texture);
-                            self.sprite_tiles.insert(*sprite_id, (xs, ys));
-                        }
+                    let texture = ctx.load_texture(
+                        format!("sprite:{}:{}", self.zip_path.display(), sprite_id),
+                        color,
+                        egui::TextureOptions::NEAREST,
+                    );
+                    self.textures.insert(*sprite_id, texture);
+                    self.sprite_tiles.insert(*sprite_id, (xs, ys));
                 }
+            }
         }
 
         state.index = end_idx;
