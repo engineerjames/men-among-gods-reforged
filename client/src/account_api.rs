@@ -70,10 +70,11 @@ pub fn login(base_url: &str, username: &str, password: &str) -> Result<String, S
         let body: LoginResponse = resp
             .json()
             .map_err(|err| format!("Failed to parse login response: {err}"))?;
-        if body.token.trim().is_empty() {
-            return Err("Login failed: empty token".to_owned());
-        }
-        return Ok(body.token);
+        let token = body
+            .token
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "Login failed: empty token".to_owned())?;
+        return Ok(token);
     }
 
     let body = resp.json::<LoginResponse>().ok();

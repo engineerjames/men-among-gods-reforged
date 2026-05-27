@@ -4,16 +4,15 @@ version.workspace = true
 edition = "2024"
 
 [dependencies]
+argon2.workspace = true
 axum = "0.8.8"
-axum-governor = "1.0.3"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 mag_core = { path = "../core", package = "core" }
 jsonwebtoken = "9.3.1"
-lazy-limit = "1.0.3"
 lazy_static = "1.5.0"
 log.workspace = true
 real = { version = "0.1.4", features = ["axum"] }
-redis = { workspace = true, features = ["aio", "tokio-comp"] }
+redis = { workspace = true, features = ["aio", "tokio-comp", "connection-manager"] }
 regex = "1.12.3"
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
 rand.workspace = true

@@ -1,30 +1,41 @@
 pub mod admin;
+pub mod auth_extractor;
 pub mod email;
 pub mod helpers;
+pub mod password;
 pub mod pipelines;
+pub mod rate_limit;
 pub mod routes;
 
 use axum::Router;
+use axum::middleware;
 use axum::routing::{delete, get, post, put};
-use axum_governor::GovernorLayer;
-use lazy_limit::{Duration, RuleConfig, init_rate_limiter};
 use log::{LevelFilter, error, info, warn};
 use real::RealIpLayer;
 use std::env;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use tokio::time::sleep;
 
 use crate::email::EmailSender;
 
+/// Minimum acceptable JWT secret length, in bytes. Anything shorter forces a
+/// startup failure (HS256 is only as strong as its secret).
+const MIN_JWT_SECRET_LEN: usize = 32;
+
 /// Shared application state passed to all route handlers via Axum's
 /// `State` extractor.
 #[derive(Clone)]
 pub struct ApiState {
-    /// Multiplexed KeyDB connection.
-    pub con: redis::aio::MultiplexedConnection,
+    /// Multiplexed KeyDB connection (via `ConnectionManager` for transparent
+    /// reconnect on transient failures).
+    pub con: redis::aio::ConnectionManager,
     /// Optional email sender (None when SMTP is not configured).
     pub email_sender: Option<EmailSender>,
+    /// HMAC signing secret for HS256 JWTs. Cached once at startup so
+    /// per-request handlers never hit `env::var`.
+    pub jwt_secret: Arc<Vec<u8>>,
 }
 
 fn parse_log_level(value: &str) -> Option<LevelFilter> {
@@ -78,7 +89,7 @@ fn resolve_api_port() -> u16 {
 
 async fn connect_keydb_with_retry(
     keydb_url: &str,
-) -> Result<redis::aio::MultiplexedConnection, Box<dyn std::error::Error>> {
+) -> Result<redis::aio::ConnectionManager, Box<dyn std::error::Error>> {
     const MAX_RETRIES: u32 = 5;
     const RETRY_DELAY_SECS: u64 = 6;
 
@@ -102,7 +113,7 @@ async fn connect_keydb_with_retry(
             }
         };
 
-        match client.get_multiplexed_async_connection().await {
+        match redis::aio::ConnectionManager::new(client).await {
             Ok(con) => return Ok(con),
             Err(err) => {
                 last_error = Some(Box::new(err));
@@ -142,29 +153,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         log_file.as_deref().unwrap_or("none")
     );
 
-    // 10 req/s globally
-    init_rate_limiter!(
-        default: RuleConfig::new(Duration::seconds(1), 10)
-    )
-    .await;
-    info!("Rate limiter initialized: 10 req/s");
-
-    // Ensure the right environment variables exist
-    if env::var("API_JWT_SECRET").is_err() {
-        error!("Environment variable API_JWT_SECRET is not set");
+    // Ensure the JWT signing secret is configured and reasonably strong.
+    let jwt_secret = match env::var("API_JWT_SECRET") {
+        Ok(value) => value,
+        Err(_) => {
+            error!("Environment variable API_JWT_SECRET is not set");
+            std::process::exit(1);
+        }
+    };
+    let jwt_secret_trimmed = jwt_secret.trim();
+    if jwt_secret_trimmed.len() < MIN_JWT_SECRET_LEN {
+        error!(
+            "API_JWT_SECRET is too short ({} bytes); refusing to start. Minimum is {} bytes.",
+            jwt_secret_trimmed.len(),
+            MIN_JWT_SECRET_LEN
+        );
         std::process::exit(1);
     }
+    let jwt_secret: Arc<Vec<u8>> = Arc::new(jwt_secret_trimmed.as_bytes().to_vec());
 
     let keydb_url = resolve_keydb_url();
     let con = connect_keydb_with_retry(&keydb_url).await?;
     info!("Connected to KeyDB");
+
+    // One-shot idempotent backfill: per-account character SET + global
+    // character-name claim keys. Runs before we bind the listener so the
+    // hot-path helpers can rely on the indexes existing.
+    {
+        let mut con = con.clone();
+        if let Err(err) = pipelines::migrate_character_indexes_v1(&mut con).await {
+            error!("Character-index migration failed: {err}");
+            return Err(Box::new(err) as Box<dyn std::error::Error>);
+        }
+    }
 
     let email_sender = EmailSender::from_env();
     if email_sender.is_none() {
         warn!("SMTP not configured — password reset emails will not be sent (set SMTP_HOST)");
     }
 
-    let state = ApiState { con, email_sender };
+    let state = ApiState {
+        con,
+        email_sender,
+        jwt_secret,
+    };
 
     let admin_router = admin::build_admin_router(state.clone());
     if admin_router.is_some() {
@@ -198,7 +230,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .route("/characters", post(routes::create_new_character))
         .route("/characters/{id}", put(routes::update_character))
         .route("/characters/{id}", delete(routes::delete_character))
-        .layer(GovernorLayer::default())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit::per_ip_rate_limit,
+        ))
         .with_state(state.clone());
 
     let app = match admin_router {

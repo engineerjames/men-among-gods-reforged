@@ -1,4 +1,3 @@
-use std::env;
 use std::net::SocketAddr;
 use std::time::Duration;
 use std::time::SystemTime;
@@ -6,9 +5,13 @@ use std::time::UNIX_EPOCH;
 
 use crate::ApiState;
 use crate::admin::routes_bans;
+use crate::auth_extractor::AuthUser;
 use crate::helpers;
+use crate::password;
 use crate::pipelines;
+use crate::rate_limit;
 
+use axum::response::IntoResponse;
 use axum::{Json, extract::ConnectInfo, extract::Path, extract::State, http::StatusCode};
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
@@ -54,33 +57,24 @@ enum CharacterNameValidationError {
 /// * `Ok(String)` with the canonical character name.
 /// * `Err(CharacterNameValidationError)` with the route-level rejection reason.
 async fn normalize_and_validate_character_name(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     name: &str,
     exclude_character_id: Option<u64>,
 ) -> Result<String, CharacterNameValidationError> {
     let normalized_name = helpers::normalize_character_name(name)
         .map_err(CharacterNameValidationError::BadRequest)?;
 
-    let duplicate_check = match exclude_character_id {
-        Some(excluded_id) => {
-            pipelines::character_name_exists_scan_excluding(
-                con,
-                &normalized_name,
-                Some(excluded_id),
-            )
-            .await
-        }
-        None => pipelines::character_name_exists_scan(con, &normalized_name).await,
-    };
+    // O(1) global uniqueness check via the character-name claim index.
+    let duplicate_check = pipelines::get_character_id_by_name(con, &normalized_name).await;
 
     match duplicate_check {
-        Ok(true) => {
+        Ok(Some(existing_id)) if Some(existing_id) != exclude_character_id => {
             return Err(CharacterNameValidationError::Unprocessable(format!(
                 "name already taken: {}",
                 normalized_name
             )));
         }
-        Ok(false) => {}
+        Ok(_) => {}
         Err(err) => return Err(CharacterNameValidationError::Internal(err.to_string())),
     }
 
@@ -145,25 +139,10 @@ fn character_name_error_status(context: &str, err: CharacterNameValidationError)
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, default)` on KeyDB or internal failures.
 pub(crate) async fn create_new_character(
     State(state): State<ApiState>,
-    headers: axum::http::HeaderMap,
+    auth: AuthUser,
     Json(payload): Json<CreateCharacterRequest>,
 ) -> (StatusCode, Json<CharacterSummary>) {
     let mut con = state.con.clone();
-    let token = match helpers::get_token_from_headers(&headers).await {
-        Some(value) => value,
-        None => {
-            warn!("Unauthorized access attempt: missing Authorization header");
-            return (StatusCode::UNAUTHORIZED, Json(CharacterSummary::default()));
-        }
-    };
-
-    let token_data = match helpers::verify_token(&token).await {
-        Ok(token_data) => token_data,
-        Err(err) => {
-            warn!("Unauthorized access attempt: {}", err);
-            return (StatusCode::UNAUTHORIZED, Json(CharacterSummary::default()));
-        }
-    };
 
     if !payload.validate() {
         return (StatusCode::BAD_REQUEST, Json(CharacterSummary::default()));
@@ -208,32 +187,10 @@ pub(crate) async fn create_new_character(
         }
     };
 
-    let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let user_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            warn!(
-                "Create character rejected: account not found for {}",
-                token_data.claims.sub
-            );
-            return (StatusCode::UNAUTHORIZED, Json(CharacterSummary::default()));
-        }
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CharacterSummary::default()),
-            );
-        }
-    };
+    let username_lc = auth.username_lc.clone();
+    let user_id = auth.account_id;
 
-    let character_count = match pipelines::count_characters_for_account_scan_up_to(
-        &mut con,
-        user_id,
-        MAX_CHARACTERS_PER_ACCOUNT,
-    )
-    .await
-    {
+    let character_count = match pipelines::count_characters_for_account(&mut con, user_id).await {
         Ok(value) => value,
         Err(err) => {
             error!("Redis read failed: {}", err);
@@ -259,7 +216,7 @@ pub(crate) async fn create_new_character(
         Ok(character_id) => {
             info!(
                 "Character created for account {}: id={}, name={}, sex={:?}, class={:?}",
-                token_data.claims.sub, character_id, name, sex, class
+                username_lc, character_id, name, sex, class
             );
             (
                 StatusCode::OK,
@@ -302,50 +259,12 @@ pub(crate) async fn create_new_character(
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, empty)` on KeyDB or internal failures.
 pub(crate) async fn get_characters(
     State(state): State<ApiState>,
-    headers: axum::http::HeaderMap,
+    auth: AuthUser,
 ) -> (StatusCode, Json<GetCharactersResponse>) {
     let mut con = state.con.clone();
-    let token = match helpers::get_token_from_headers(&headers).await {
-        Some(value) => value,
-        None => {
-            warn!("Unauthorized access attempt: missing Authorization header");
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(GetCharactersResponse { characters: vec![] }),
-            );
-        }
-    };
+    let user_id = auth.account_id;
 
-    let token_data = match helpers::verify_token(&token).await {
-        Ok(token_data) => token_data,
-        Err(err) => {
-            warn!("Unauthorized access attempt: {}", err);
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(GetCharactersResponse { characters: vec![] }),
-            );
-        }
-    };
-
-    let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let user_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(GetCharactersResponse { characters: vec![] }),
-            );
-        }
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(GetCharactersResponse { characters: vec![] }),
-            );
-        }
-    };
-
-    let characters = match pipelines::list_characters_for_account_scan(&mut con, user_id).await {
+    let characters = match pipelines::list_characters_for_account(&mut con, user_id).await {
         Ok(values) => values,
         Err(err) => {
             error!("Redis read failed: {}", err);
@@ -365,39 +284,11 @@ pub(crate) async fn get_characters(
 /// The game server later consumes the ticket from KeyDB during the TCP login handshake.
 pub(crate) async fn create_game_login_ticket(
     State(state): State<ApiState>,
-    headers: axum::http::HeaderMap,
+    auth: AuthUser,
     Json(payload): Json<CreateGameLoginTicketRequest>,
 ) -> (StatusCode, Json<CreateGameLoginTicketResponse>) {
     let mut con = state.con.clone();
-    let token = match helpers::get_token_from_headers(&headers).await {
-        Some(value) => value,
-        None => {
-            warn!("Unauthorized access attempt: missing Authorization header");
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(CreateGameLoginTicketResponse {
-                    ticket: None,
-                    error: Some("Unauthorized".to_owned()),
-                }),
-            );
-        }
-    };
-
-    let token_data = match helpers::verify_token(&token).await {
-        Ok(token_data) => token_data,
-        Err(err) => {
-            warn!("Unauthorized access attempt: {}", err);
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(CreateGameLoginTicketResponse {
-                    ticket: None,
-                    error: Some("Unauthorized".to_owned()),
-                }),
-            );
-        }
-    };
-
-    let username_lc = token_data.claims.sub.trim().to_lowercase();
+    let account_id = auth.account_id;
 
     if payload.client_version < constants::MINVERSION || payload.client_version > constants::VERSION
     {
@@ -415,29 +306,6 @@ pub(crate) async fn create_game_login_ticket(
             }),
         );
     }
-
-    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
-        Ok(Some(value)) => value,
-        Ok(None) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(CreateGameLoginTicketResponse {
-                    ticket: None,
-                    error: Some("Unauthorized".to_owned()),
-                }),
-            );
-        }
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CreateGameLoginTicketResponse {
-                    ticket: None,
-                    error: Some("Server error".to_owned()),
-                }),
-            );
-        }
-    };
 
     let owner_id = match pipelines::get_character_account_id(&mut con, payload.character_id).await {
         Ok(value) => value,
@@ -693,6 +561,23 @@ pub(crate) async fn create_account(
         );
     }
 
+    // Server-side rehash of the client-submitted PHC string before any
+    // KeyDB writes. Storing only this value means a KeyDB compromise never
+    // yields a directly-replayable credential against the API.
+    let stored_password = match password::hash_for_storage(&payload.password) {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Server-side password hashing failed: {err}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(CreateAccountResponse {
+                    error: Some("Server error".to_owned()),
+                    ..response
+                }),
+            );
+        }
+    };
+
     let id_key = "account:next_id";
     let id: u64 = match con.incr(id_key, 1).await {
         Ok(value) => value,
@@ -766,7 +651,7 @@ pub(crate) async fn create_account(
     }
 
     if let Err(err) =
-        pipelines::insert_account_hash(&mut con, id, &email_lc, &username_lc, &payload.password)
+        pipelines::insert_account_hash(&mut con, id, &email_lc, &username_lc, &stored_password)
             .await
     {
         let _ = pipelines::release_claim_if_matches(&mut con, &username_claim_key, id).await;
@@ -809,42 +694,12 @@ pub(crate) async fn create_account(
 /// * `StatusCode::INTERNAL_SERVER_ERROR` on KeyDB or internal failures.
 pub(crate) async fn update_character(
     State(state): State<ApiState>,
-    headers: axum::http::HeaderMap,
+    auth: AuthUser,
     Path(character_id): Path<u64>,
     Json(payload): Json<UpdateCharacterRequest>,
 ) -> StatusCode {
     let mut con = state.con.clone();
-    let token = match helpers::get_token_from_headers(&headers).await {
-        Some(value) => value,
-        None => {
-            warn!("Unauthorized access attempt: missing Authorization header");
-            return StatusCode::UNAUTHORIZED;
-        }
-    };
-
-    let token_data = match helpers::verify_token(&token).await {
-        Ok(token_data) => token_data,
-        Err(err) => {
-            warn!("Unauthorized access attempt: {}", err);
-            return StatusCode::UNAUTHORIZED;
-        }
-    };
-
-    let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
-        Ok(Some(id)) => id,
-        Ok(None) => {
-            warn!(
-                "Unauthorized update attempt: account not found for {}",
-                token_data.claims.sub
-            );
-            return StatusCode::UNAUTHORIZED;
-        }
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
-    };
+    let account_id = auth.account_id;
 
     let character_owner = match pipelines::get_character_account_id(&mut con, character_id).await {
         Ok(value) => value,
@@ -856,7 +711,7 @@ pub(crate) async fn update_character(
     if character_owner != Some(account_id) {
         warn!(
             "Unauthorized update attempt: character {} does not belong to user {}",
-            character_id, token_data.claims.sub
+            character_id, auth.username_lc
         );
         return StatusCode::UNAUTHORIZED;
     }
@@ -966,7 +821,7 @@ pub(crate) async fn update_character(
         Ok(_) => {
             info!(
                 "Character {} updated for account {}",
-                character_id, token_data.claims.sub
+                character_id, auth.username_lc
             );
             StatusCode::OK
         }
@@ -992,41 +847,11 @@ pub(crate) async fn update_character(
 /// * `StatusCode::INTERNAL_SERVER_ERROR` on KeyDB or internal failures.
 pub(crate) async fn delete_character(
     State(state): State<ApiState>,
-    headers: axum::http::HeaderMap,
+    auth: AuthUser,
     Path(character_id): Path<u64>,
 ) -> StatusCode {
     let mut con = state.con.clone();
-    let token = match helpers::get_token_from_headers(&headers).await {
-        Some(value) => value,
-        None => {
-            warn!("Unauthorized access attempt: missing Authorization header");
-            return StatusCode::UNAUTHORIZED;
-        }
-    };
-
-    let token_data = match helpers::verify_token(&token).await {
-        Ok(token_data) => token_data,
-        Err(err) => {
-            warn!("Unauthorized access attempt: {}", err);
-            return StatusCode::UNAUTHORIZED;
-        }
-    };
-
-    let username_lc = token_data.claims.sub.trim().to_lowercase();
-    let account_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
-        Ok(Some(id)) => id,
-        Ok(None) => {
-            warn!(
-                "Unauthorized delete attempt: account not found for {}",
-                token_data.claims.sub
-            );
-            return StatusCode::UNAUTHORIZED;
-        }
-        Err(err) => {
-            error!("Redis read failed: {}", err);
-            return StatusCode::INTERNAL_SERVER_ERROR;
-        }
-    };
+    let account_id = auth.account_id;
 
     let character_owner = match pipelines::get_character_account_id(&mut con, character_id).await {
         Ok(value) => value,
@@ -1038,7 +863,7 @@ pub(crate) async fn delete_character(
     if character_owner != Some(account_id) {
         warn!(
             "Unauthorized delete attempt: character {} does not belong to user {}",
-            character_id, token_data.claims.sub
+            character_id, auth.username_lc
         );
         return StatusCode::UNAUTHORIZED;
     }
@@ -1047,7 +872,7 @@ pub(crate) async fn delete_character(
         Ok(_) => {
             info!(
                 "Character {} deleted for account {}",
-                character_id, token_data.claims.sub
+                character_id, auth.username_lc
             );
             StatusCode::OK
         }
@@ -1073,34 +898,50 @@ pub(crate) async fn delete_character(
 /// * `(StatusCode::INTERNAL_SERVER_ERROR, LoginResponse)` when KeyDB fails or `API_JWT_SECRET` is missing.
 pub(crate) async fn login(
     State(state): State<ApiState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Json(payload): Json<LoginRequest>,
-) -> (StatusCode, Json<LoginResponse>) {
+) -> axum::response::Response {
     let mut con = state.con.clone();
     let username_lc = payload.username.trim().to_lowercase();
+    let ip = addr.ip();
     info!("Login request for username={}", username_lc);
+
+    // Per-IP login lockout (separate from generic per-IP rate limit so that
+    // repeated bad credentials specifically can be throttled hard).
+    if let rate_limit::LoginGateOutcome::LockedOut { retry_after_secs } =
+        rate_limit::check_login_lockout(&mut con, ip).await
+    {
+        warn!("Login rejected: IP {ip} is locked out for {retry_after_secs}s");
+        return rate_limit::login_locked_out_response(retry_after_secs);
+    }
+
     if !helpers::is_valid_password(&payload.password) {
         warn!("Login rejected: invalid password format");
         return (
             StatusCode::BAD_REQUEST,
-            login_response("", Some("Invalid password format")),
-        );
+            login_response(None, Some("Invalid password format")),
+        )
+            .into_response();
     }
 
     let user_id = match pipelines::get_account_id_by_username(&mut con, &username_lc).await {
         Ok(Some(value)) => value,
         Ok(None) => {
             warn!("Login rejected: username not found {}", username_lc);
+            rate_limit::record_login_failure(&mut con, ip).await;
             return (
                 StatusCode::UNAUTHORIZED,
-                login_response("", Some("Invalid username or password")),
-            );
+                login_response(None, Some("Invalid username or password")),
+            )
+                .into_response();
         }
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                login_response("", Some("Server error")),
-            );
+                login_response(None, Some("Server error")),
+            )
+                .into_response();
         }
     };
 
@@ -1111,8 +952,9 @@ pub(crate) async fn login(
                 error!("Redis read failed: {}", err);
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    login_response("", Some("Server error")),
-                );
+                    login_response(None, Some("Server error")),
+                )
+                    .into_response();
             }
         };
 
@@ -1123,19 +965,23 @@ pub(crate) async fn login(
                 "Login rejected: missing password hash for {}",
                 payload.username
             );
+            rate_limit::record_login_failure(&mut con, ip).await;
             return (
                 StatusCode::UNAUTHORIZED,
-                login_response("", Some("Invalid username or password")),
-            );
+                login_response(None, Some("Invalid username or password")),
+            )
+                .into_response();
         }
     };
 
-    if stored_hash != payload.password {
+    if !password::verify(&stored_hash, &payload.password) {
         warn!("Login rejected: password mismatch for {}", username_lc);
+        rate_limit::record_login_failure(&mut con, ip).await;
         return (
             StatusCode::UNAUTHORIZED,
-            login_response("", Some("Invalid username or password")),
-        );
+            login_response(None, Some("Invalid username or password")),
+        )
+            .into_response();
     }
 
     match routes_bans::account_is_banned(&mut con, user_id).await {
@@ -1143,29 +989,20 @@ pub(crate) async fn login(
             warn!("Login rejected: account {} is banned", user_id);
             return (
                 StatusCode::FORBIDDEN,
-                login_response("", Some("Account banned")),
-            );
+                login_response(None, Some("Account banned")),
+            )
+                .into_response();
         }
         Ok(false) => {}
         Err(err) => {
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                login_response("", Some("Server error")),
-            );
+                login_response(None, Some("Server error")),
+            )
+                .into_response();
         }
     }
-
-    let secret = match env::var("API_JWT_SECRET") {
-        Ok(value) if !value.trim().is_empty() => value,
-        _ => {
-            error!("Login failed: API_JWT_SECRET is not set");
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                login_response("", Some("Server error")),
-            );
-        }
-    };
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1179,24 +1016,39 @@ pub(crate) async fn login(
     let token = match jsonwebtoken::encode(
         &Header::default(),
         &claims,
-        &EncodingKey::from_secret(secret.as_bytes()),
+        &EncodingKey::from_secret(state.jwt_secret.as_ref()),
     ) {
         Ok(value) => value,
         Err(err) => {
             error!("JWT encode failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                login_response("", Some("Server error")),
-            );
+                login_response(None, Some("Server error")),
+            )
+                .into_response();
         }
     };
 
-    (StatusCode::OK, login_response(token, None))
+    // Successful login clears the failure counter to keep good clients out of
+    // the lockout window.
+    rate_limit::clear_login_failures(&mut con, ip).await;
+
+    (StatusCode::OK, login_response(Some(token), None)).into_response()
 }
 
-fn login_response(token: impl Into<String>, error: Option<&str>) -> Json<LoginResponse> {
+/// Builds the JSON body for a `/login` response.
+///
+/// # Arguments
+///
+/// * `token` - Signed JWT on success, `None` on failure.
+/// * `error` - Optional human-readable error message.
+///
+/// # Returns
+///
+/// * `Json<LoginResponse>` ready to return from a handler.
+fn login_response(token: Option<String>, error: Option<&str>) -> Json<LoginResponse> {
     Json(LoginResponse {
-        token: token.into(),
+        token,
         error: error.map(str::to_owned),
     })
 }
@@ -1441,8 +1293,20 @@ pub(crate) async fn confirm_password_reset(
     }
 
     // ── Update password ──────────────────────────────────────────────
-    if let Err(err) =
-        pipelines::set_account_password(&mut con, account_id, &payload.new_password).await
+    let stored_password = match password::hash_for_storage(&payload.new_password) {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Server-side password hashing failed during reset: {err}");
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ResetPasswordConfirmResponse {
+                    message: "Server error".to_owned(),
+                }),
+            );
+        }
+    };
+
+    if let Err(err) = pipelines::set_account_password(&mut con, account_id, &stored_password).await
     {
         error!("Redis write failed during password reset: {err}");
         return (

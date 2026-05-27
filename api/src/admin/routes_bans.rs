@@ -271,7 +271,7 @@ pub(crate) async fn search_characters(
 
 /// Return whether an account has an active ban.
 pub(crate) async fn account_is_banned(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     account_id: u64,
 ) -> Result<bool, String> {
     target_is_banned(con, &BanTarget::Account { account_id }).await
@@ -279,7 +279,7 @@ pub(crate) async fn account_is_banned(
 
 /// Return whether a character has an active ban.
 pub(crate) async fn character_is_banned(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     character_id: u64,
 ) -> Result<bool, String> {
     target_is_banned(con, &BanTarget::Character { character_id }).await
@@ -327,7 +327,7 @@ async fn delete_ban(state: ApiState, target: BanTarget) -> Response {
 }
 
 async fn resolve_target(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     request: BanTargetRequest,
 ) -> Result<BanTarget, Response> {
     match request {
@@ -385,9 +385,7 @@ fn resolve_expires_at(
     }
 }
 
-async fn load_bans(
-    con: &mut redis::aio::MultiplexedConnection,
-) -> Result<Vec<BanRecord>, Response> {
+async fn load_bans(con: &mut redis::aio::ConnectionManager) -> Result<Vec<BanRecord>, Response> {
     let keys: Vec<String> = con.smembers(BAN_ACTIVE_INDEX_KEY).await.map_err(|error| {
         warn!("admin bans SMEMBERS failed: {}", error);
         internal_error("keydb_error", "Failed to read bans")
@@ -417,7 +415,7 @@ async fn load_bans(
 }
 
 async fn load_ban(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     target: &BanTarget,
 ) -> Result<Option<BanRecord>, Response> {
     let key = target.active_key();
@@ -438,7 +436,7 @@ async fn load_ban(
 }
 
 async fn target_is_banned(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     target: &BanTarget,
 ) -> Result<bool, String> {
     let key = target.active_key();
@@ -454,7 +452,7 @@ async fn target_is_banned(
 }
 
 async fn upsert_ban(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     record: &BanRecord,
 ) -> Result<u64, Response> {
     let key = record.target.active_key();
@@ -475,7 +473,7 @@ async fn upsert_ban(
 }
 
 async fn remove_ban(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     target: &BanTarget,
 ) -> Result<(Option<BanRecord>, u64), Response> {
     let key = target.active_key();
@@ -498,7 +496,7 @@ async fn remove_ban(
     Ok((existing, version))
 }
 
-async fn load_ban_version(con: &mut redis::aio::MultiplexedConnection) -> Result<u64, Response> {
+async fn load_ban_version(con: &mut redis::aio::ConnectionManager) -> Result<u64, Response> {
     con.get::<_, Option<u64>>(BAN_VERSION_KEY)
         .await
         .map(|value| value.unwrap_or(0))
@@ -508,7 +506,7 @@ async fn load_ban_version(con: &mut redis::aio::MultiplexedConnection) -> Result
         })
 }
 
-async fn bump_version(con: &mut redis::aio::MultiplexedConnection) -> Result<u64, Response> {
+async fn bump_version(con: &mut redis::aio::ConnectionManager) -> Result<u64, Response> {
     con.incr(BAN_VERSION_KEY, 1_u64).await.map_err(|error| {
         warn!("admin bans version INCR failed: {}", error);
         internal_error("keydb_error", "Failed to bump ban version")
@@ -516,7 +514,7 @@ async fn bump_version(con: &mut redis::aio::MultiplexedConnection) -> Result<u64
 }
 
 async fn enqueue_live_action(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
     action: BanActionKind,
 ) -> Option<String> {
     let request_id = generate_request_id();
@@ -561,7 +559,7 @@ async fn enqueue_live_action(
 }
 
 async fn acquire_ban_lock(
-    con: &mut redis::aio::MultiplexedConnection,
+    con: &mut redis::aio::ConnectionManager,
 ) -> Result<Option<String>, Response> {
     let token = generate_request_id();
     let result: Option<String> = redis::cmd("SET")
@@ -579,7 +577,7 @@ async fn acquire_ban_lock(
     Ok(result.map(|_| token))
 }
 
-async fn release_ban_lock(con: &mut redis::aio::MultiplexedConnection, token: &str) {
+async fn release_ban_lock(con: &mut redis::aio::ConnectionManager, token: &str) {
     let _: Result<i64, _> = redis::cmd("EVAL")
         .arg(
             "if redis.call('GET', KEYS[1]) == ARGV[1] then \
