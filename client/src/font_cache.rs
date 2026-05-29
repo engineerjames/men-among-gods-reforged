@@ -620,7 +620,7 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
     ///
     /// # Arguments
     ///
-    /// * `stem` - Filename stem, e.g. `"MatrixSansVideo-Regular"`.
+    /// * `stem` - Filename stem, e.g. `"MatrixSans-Regular"`.
     /// * `size_pt` - Logical point size.
     ///
     /// # Returns

@@ -218,7 +218,7 @@ impl Widget for CertDialog {
         let x = self.bounds.x + PAD;
 
         // Title (TrueType, bold).
-        let title_handle = ctx.text.handle("MatrixSansVideo-Regular", 18);
+        let title_handle = ctx.text.handle("MatrixSans-Regular", 18);
         let title_line_h = font_cache::line_height(ctx.text, &title_handle);
         font_cache::draw_text_handle(
             ctx.canvas,
