@@ -1,4 +1,8 @@
-use core::constants::CharacterFlags;
+use core::constants::{
+    CharacterFlags, PL_ARMS, PL_BELT, PL_BODY, PL_CLOAK, PL_FEET, PL_HEAD, PL_LEGS, PL_NECK,
+    PL_RING, PL_SHIELD, PL_TWOHAND, PL_WEAPON, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET,
+    WN_HEAD, WN_LEGS, WN_LHAND, WN_LRING, WN_NECK, WN_RHAND, WN_RRING,
+};
 use core::skills;
 use core::string_operations::c_string_to_str;
 use core::traits;
@@ -166,7 +170,11 @@ impl GameState {
             }
 
             let item_flags = core::constants::ItemFlags::from_bits_truncate(self.items[tmp].flags);
-            if (self.items[tmp].placement & core::constants::PL_WEAPON) != 0
+            // Item 458 is the pickaxe: all classes must be able to equip it for mining
+            // regardless of the normal axe restriction on Mercenaries and Harakim.
+            let is_pickaxe = self.items[tmp].temp == 458;
+            if !is_pickaxe
+                && (self.items[tmp].placement & core::constants::PL_WEAPON) != 0
                 && !traits::kindred_can_use_weapon(self.characters[cn].kindred, item_flags)
             {
                 self.do_character_log(cn, FontColor::Red, "Your class cannot use that weapon.\n");
@@ -174,7 +182,6 @@ impl GameState {
             }
 
             // Check for correct placement
-            use core::constants::*;
             let placement_ok = match n {
                 WN_HEAD => (self.items[tmp].placement & PL_HEAD) != 0,
                 WN_NECK => (self.items[tmp].placement & PL_NECK) != 0,

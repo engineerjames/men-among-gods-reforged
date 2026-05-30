@@ -59,7 +59,7 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             icon_filename: "recall_icon.png",
         }),
         skills::SK_WIMPY => Some(SpellIconMeta {
-            name: "Wimpy",
+            name: "Guardian Angel",
             color: Color::RGB(160, 80, 40),
             icon_filename: "wimpy_icon.png",
         }),
@@ -69,7 +69,7 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             icon_filename: "protect_icon.png",
         }),
         skills::SK_ENHANCE => Some(SpellIconMeta {
-            name: "Enhancement",
+            name: "Enhance Weapon",
             color: Color::RGB(100, 220, 100),
             icon_filename: "enhance_icon.png",
         }),
