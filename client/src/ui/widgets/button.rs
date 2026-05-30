@@ -237,7 +237,14 @@ pub struct CircleButton {
     sprite_id: Option<usize>,
     /// Cached bounding box, kept in sync with center/radius.
     cached_bounds: Bounds,
+    /// Optional small text badge drawn in the upper-right corner.
+    badge_text: Option<String>,
+    /// Tint color used for the badge text.
+    badge_color: Color,
 }
+
+/// Default badge text color (saturated red, easily visible over icons).
+const DEFAULT_BADGE_COLOR: Color = Color::RGB(220, 40, 40);
 
 impl CircleButton {
     /// Creates a new circle button.
@@ -263,6 +270,8 @@ impl CircleButton {
             hover_alpha: 96,
             sprite_id: None,
             cached_bounds: Self::compute_bounds(center_x, center_y, radius),
+            badge_text: None,
+            badge_color: DEFAULT_BADGE_COLOR,
         }
     }
 
@@ -297,6 +306,41 @@ impl CircleButton {
     pub fn with_sprite(mut self, id: usize) -> Self {
         self.sprite_id = Some(id);
         self
+    }
+
+    /// Sets the badge text color.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - Tint color applied to badge glyphs.
+    ///
+    /// # Returns
+    ///
+    /// `self` for chaining.
+    pub fn with_badge_color(mut self, color: Color) -> Self {
+        self.badge_color = color;
+        self
+    }
+
+    /// Sets or clears the small badge text drawn in the upper-right corner.
+    ///
+    /// Pass `None` to hide the badge. Pass `Some(text)` with a short string
+    /// (typically 1–3 characters) to display it.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Optional badge text. `None` hides the badge.
+    pub fn set_badge(&mut self, text: Option<String>) {
+        self.badge_text = text;
+    }
+
+    /// Returns the current badge text, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&str)` when a badge is set, otherwise `None`.
+    pub fn badge_text(&self) -> Option<&str> {
+        self.badge_text.as_deref()
     }
 
     /// Returns `true` if the point `(px, py)` is inside the circle.
@@ -500,6 +544,21 @@ impl Widget for CircleButton {
             ctx.canvas.set_blend_mode(BlendMode::Blend);
         }
 
+        // Badge text (upper-right corner). Drawn last so it sits above the
+        // sprite icon and any hover tint.
+        if let Some(text) = self.badge_text.as_deref()
+            && !text.is_empty()
+        {
+            let text_w = (text.len() as i32) * font_cache::BITMAP_GLYPH_ADVANCE as i32;
+            let r = self.radius as i32;
+            let tx = self.center_x + r - text_w;
+            let ty = self.center_y - r;
+            let style = font_cache::TextStyle::default()
+                .with_tint(self.badge_color)
+                .with_drop_shadow();
+            font_cache::draw_text(ctx.canvas, ctx.gfx, 0, text, tx, ty, style)?;
+        }
+
         Ok(())
     }
 }
@@ -613,5 +672,27 @@ mod tests {
 
         btn.handle_event(&UiEvent::MouseMove { x: 200, y: 200 });
         assert!(!btn.is_hovered());
+    }
+
+    #[test]
+    fn circle_badge_defaults_to_none() {
+        let btn = CircleButton::new(50, 50, 10, Color::RGB(0, 0, 0));
+        assert!(btn.badge_text().is_none());
+    }
+
+    #[test]
+    fn circle_set_badge_toggles_state() {
+        let mut btn = CircleButton::new(50, 50, 10, Color::RGB(0, 0, 0));
+        btn.set_badge(Some("3".into()));
+        assert_eq!(btn.badge_text(), Some("3"));
+        btn.set_badge(None);
+        assert!(btn.badge_text().is_none());
+    }
+
+    #[test]
+    fn circle_with_badge_color_overrides_default() {
+        let btn = CircleButton::new(50, 50, 10, Color::RGB(0, 0, 0))
+            .with_badge_color(Color::RGB(0, 255, 0));
+        assert_eq!(btn.badge_color, Color::RGB(0, 255, 0));
     }
 }

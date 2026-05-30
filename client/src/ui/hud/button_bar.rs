@@ -15,6 +15,10 @@ const BUTTON_BORDER: Color = Color::RGBA(140, 140, 160, 220);
 
 pub const NUMBER_OF_BUTTONS: usize = 4;
 
+/// Index of the Talents button within the button column. Kept in sync with
+/// `panel_kinds` construction in `HudButtonBar::new` via a debug assertion.
+const TALENTS_BUTTON_INDEX: usize = 1;
+
 /// Five circular buttons arranged in a vertical column.
 ///
 /// Clicking a button produces a [`WidgetAction::TogglePanel`] action that the
@@ -56,6 +60,10 @@ impl HudButtonBar {
             HudPanel::Inventory,
             HudPanel::Settings,
         ];
+        debug_assert!(matches!(
+            panel_kinds[TALENTS_BUTTON_INDEX],
+            HudPanel::Talents
+        ));
 
         let positions = Self::compute_positions(cx, bottom_cy, spacing);
 
@@ -132,6 +140,26 @@ impl HudButtonBar {
             }
         }
         None
+    }
+
+    /// Sets the unspent talent-points indicator on the Talents button.
+    ///
+    /// Displays a small red number badge in the upper-right corner when
+    /// `count > 0`, and hides the badge when `count == 0`. Counts above 99
+    /// are clamped to `"99+"` to fit within the circle.
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Number of unspent talent points.
+    pub fn set_talent_points_badge(&mut self, count: u8) {
+        let badge = if count == 0 {
+            None
+        } else if count > 99 {
+            Some("99+".to_owned())
+        } else {
+            Some(count.to_string())
+        };
+        self.buttons[TALENTS_BUTTON_INDEX].set_badge(badge);
     }
 }
 
@@ -253,5 +281,25 @@ mod tests {
         assert_eq!(bar.take_actions().len(), 1);
         // Second drain should be empty
         assert!(bar.take_actions().is_empty());
+    }
+
+    #[test]
+    fn set_talent_points_badge_toggles_indicator() {
+        let mut bar = HudButtonBar::new(200, 300, 40, 16, [267, 267, 128, 35]);
+
+        // Initially no badge.
+        assert!(bar.buttons[TALENTS_BUTTON_INDEX].badge_text().is_none());
+
+        bar.set_talent_points_badge(1);
+        assert_eq!(bar.buttons[TALENTS_BUTTON_INDEX].badge_text(), Some("1"));
+
+        bar.set_talent_points_badge(42);
+        assert_eq!(bar.buttons[TALENTS_BUTTON_INDEX].badge_text(), Some("42"));
+
+        bar.set_talent_points_badge(0);
+        assert!(bar.buttons[TALENTS_BUTTON_INDEX].badge_text().is_none());
+
+        bar.set_talent_points_badge(200);
+        assert_eq!(bar.buttons[TALENTS_BUTTON_INDEX].badge_text(), Some("99+"));
     }
 }
