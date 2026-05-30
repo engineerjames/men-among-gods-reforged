@@ -118,6 +118,15 @@ fn main() -> Result<(), String> {
         player::connection::plr_logout(&mut gs, *usnr, *n, LogoutReason::Shutdown);
     }
 
+    // Enqueue a full save of all data types (characters, items, effects,
+    // globals, map) before draining the saver queue. Without this, data
+    // types touched late in the rotating cycle can be lost on shutdown —
+    // for example characters are only persisted on cycle 0 (~every 12 min),
+    // so a freshly created character could be missing from KeyDB on the
+    // next start even after a clean exit.
+    log::info!("Enqueueing full save of all game data before shutdown...");
+    server.enqueue_full_save(&gs);
+
     server.shutdown_background_saver();
 
     gs.shutdown();
