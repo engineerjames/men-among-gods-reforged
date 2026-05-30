@@ -867,6 +867,16 @@ impl GameScene {
             let y = self.mouse_y + 16;
             return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
         }
+        if let Some(text) = self.hud_buttons.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return self.draw_cursor_helper_text(canvas, gfx, text, x, y);
+        }
+        if let Some(text) = self.minimap_widget.hover_text() {
+            let x = self.mouse_x + 12;
+            let y = self.mouse_y + 16;
+            return self.draw_cursor_helper_text(canvas, gfx, text, x, y);
+        }
         if !self.is_mouse_over_ui_above_skills_panel()
             && let Some(text) = self.skills_panel.hover_text()
         {

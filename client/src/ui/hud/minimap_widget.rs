@@ -189,6 +189,19 @@ impl MinimapWidget {
         self.visible
     }
 
+    /// Returns `"Minimap"` when the toggle button is hovered, otherwise `None`.
+    ///
+    /// # Returns
+    ///
+    /// * `Some("Minimap")` when the button is hovered, or `None`.
+    pub fn hover_text(&self) -> Option<&'static str> {
+        if self.button.is_hovered() {
+            Some("Minimap")
+        } else {
+            None
+        }
+    }
+
     /// Returns the world-window size currently sampled into the viewport.
     fn current_sample_size(&self) -> usize {
         ZOOM_SAMPLE_SIZES[self.zoom_level] as usize

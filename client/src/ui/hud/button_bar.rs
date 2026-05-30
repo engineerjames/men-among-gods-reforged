@@ -110,6 +110,29 @@ impl HudButtonBar {
         let max_y = positions.iter().map(|(_, y)| y + r).max().unwrap();
         Bounds::new(min_x, min_y, (max_x - min_x) as u32, (max_y - min_y) as u32)
     }
+
+    /// Returns the display label for the button currently under the mouse
+    /// cursor, or `None` when no button is hovered.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&'static str)` with the panel name, or `None`.
+    pub fn hover_text(&self) -> Option<&'static str> {
+        for (i, btn) in self.buttons.iter().enumerate() {
+            if btn.is_hovered() {
+                return Some(match self.panel_kinds[i] {
+                    HudPanel::Skills => "Skills",
+                    HudPanel::Talents => "Talents",
+                    HudPanel::Inventory => "Inventory",
+                    HudPanel::Settings => "Settings",
+                    HudPanel::Minimap => "Minimap",
+                    HudPanel::KeyBindings => "Key Bindings",
+                    HudPanel::QuestLog => "Quest Log",
+                });
+            }
+        }
+        None
+    }
 }
 
 impl Widget for HudButtonBar {
