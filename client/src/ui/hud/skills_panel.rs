@@ -1417,8 +1417,8 @@ mod tests {
         assert_eq!(panel.hover_text(), None);
 
         let mut data = make_data();
-        data.skill[43][0] = 1;
-        data.sorted_skills = vec![43];
+        data.skill[49][0] = 1;
+        data.sorted_skills = vec![49];
         panel.update_data(data);
         assert_eq!(panel.hover_text(), None);
     }

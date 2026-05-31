@@ -57,6 +57,27 @@ pub const SK_CONTAGION: usize = 41;
 /// Blade Dance: passive amplifier that doubles Surround Hit secondary damage.
 pub const SK_BLADE_DANCE: usize = 42;
 
+// ---- Templar talent-granted skills (reserved slots 43..=48) ----
+/// Rains of Renewal: spends endurance to restore HP over time on the caster.
+pub const SK_RAINS_OF_RENEWAL: usize = 43;
+/// Gash: reckless melee swing that costs 5% current HP and deals amplified weapon damage.
+pub const SK_GASH: usize = 44;
+/// Sun's Blessing: self buff that raises every stat plus armor and weapon value;
+/// long cooldown that re-arms as the buff is expiring.
+pub const SK_SUNS_BLESSING: usize = 45;
+/// Sun's Blessing companion temp identifier for the attached buff item
+/// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
+pub const SK_SUNS_BLESSING2: usize = SK_SUNS_BLESSING + 100;
+/// Seeing Red: self buff that doubles outgoing damage and blocks new
+/// stun/slow/curse/disarm debuffs for the duration.
+pub const SK_SEEING_RED: usize = 46;
+/// Thunderous Fury: upgraded Warcry that stuns and deals a weakened blast to
+/// every nearby enemy.
+pub const SK_THUNDEROUS_FURY: usize = 47;
+/// Inner Strength: upgraded Warcry that stuns nearby enemies and buffs the
+/// caster's weapon skill for the duration.
+pub const SK_INNER_STRENGTH: usize = 48;
+
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
 const AT_DESC: [&str; 5] = [
@@ -200,6 +221,12 @@ pub enum Skill {
     Disarm = SK_DISARM,
     Contagion = SK_CONTAGION,
     BladeDance = SK_BLADE_DANCE,
+    RainsOfRenewal = SK_RAINS_OF_RENEWAL,
+    Gash = SK_GASH,
+    SunsBlessing = SK_SUNS_BLESSING,
+    SeeingRed = SK_SEEING_RED,
+    ThunderousFury = SK_THUNDEROUS_FURY,
+    InnerStrength = SK_INNER_STRENGTH,
 }
 
 /// A skill definition entry describing one learnable ability.
@@ -598,7 +625,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         3,
         4,
     ),
-    // 37..42 Mercenary talent-granted skills; 43..49 still reserved empty
+    // 37..42 Mercenary talent-granted skills
     SkillTab::new(
         37,
         SkillCategory::Magic,
@@ -653,12 +680,61 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         3,
         4,
     ),
-    SkillTab::new(43, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(44, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(45, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(46, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(47, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(48, SkillCategory::Unknown, "", "", 0, 0, 0),
+    // 43..48 Templar talent-granted skills; 49 still reserved empty.
+    SkillTab::new(
+        43,
+        SkillCategory::Magic,
+        "Rains of Renewal",
+        "Spell: Spend endurance to regenerate HP over time.",
+        0,
+        1,
+        2,
+    ),
+    SkillTab::new(
+        44,
+        SkillCategory::Combat,
+        "Gash",
+        "Reckless swing; costs 5% HP for greatly amplified weapon damage.",
+        0,
+        4,
+        4,
+    ),
+    SkillTab::new(
+        45,
+        SkillCategory::Magic,
+        "Sun's Blessing",
+        "Spell: Bless every stat plus armor and weapon. Long cooldown.",
+        0,
+        1,
+        2,
+    ),
+    SkillTab::new(
+        46,
+        SkillCategory::General,
+        "Seeing Red",
+        "Self buff: Double outgoing damage; immune to new debuffs.",
+        0,
+        0,
+        4,
+    ),
+    SkillTab::new(
+        47,
+        SkillCategory::General,
+        "Thunderous Fury",
+        "Upgraded Warcry: Stun and blast nearby enemies for weakened damage.",
+        0,
+        0,
+        4,
+    ),
+    SkillTab::new(
+        48,
+        SkillCategory::General,
+        "Inner Strength",
+        "Upgraded Warcry: Stun nearby enemies and raise own weapon skill.",
+        0,
+        0,
+        4,
+    ),
     SkillTab::new(49, SkillCategory::Unknown, "", "", 0, 0, 0),
 ];
 
@@ -814,12 +890,12 @@ const SKILL_NAMES: [&str; 50] = [
     "Disarm",
     "Contagion",
     "Blade Dance",
-    "",
-    "",
-    "",
-    "",
-    "",
-    "",
+    "Rains of Renewal",
+    "Gash",
+    "Sun's Blessing",
+    "Seeing Red",
+    "Thunderous Fury",
+    "Inner Strength",
     "",
 ];
 
@@ -967,8 +1043,15 @@ mod tests {
 
         assert_eq!(get_skill_name(SK_WEAPON), "Weapon Skill");
 
+        // Templar talent-granted skills (43..=48)
+        assert_eq!(get_skill_name(SK_RAINS_OF_RENEWAL), "Rains of Renewal");
+        assert_eq!(get_skill_name(SK_GASH), "Gash");
+        assert_eq!(get_skill_name(SK_SUNS_BLESSING), "Sun's Blessing");
+        assert_eq!(get_skill_name(SK_SEEING_RED), "Seeing Red");
+        assert_eq!(get_skill_name(SK_THUNDEROUS_FURY), "Thunderous Fury");
+        assert_eq!(get_skill_name(SK_INNER_STRENGTH), "Inner Strength");
+
         // Test empty skills (reserved slots)
-        assert_eq!(get_skill_name(43), "");
         assert_eq!(get_skill_name(49), "");
     }
 
@@ -1036,9 +1119,44 @@ mod tests {
         // Test Misc skills (category 'M')
         assert_eq!(SKILLTAB[10].cat, SkillCategory::Misc); // Swimming
 
+        // Templar talent-granted skills (43..=48) have concrete categories
+        assert_eq!(SKILLTAB[SK_RAINS_OF_RENEWAL].cat, SkillCategory::Magic);
+        assert_eq!(SKILLTAB[SK_GASH].cat, SkillCategory::Combat);
+        assert_eq!(SKILLTAB[SK_SUNS_BLESSING].cat, SkillCategory::Magic);
+        assert_eq!(SKILLTAB[SK_SEEING_RED].cat, SkillCategory::General);
+        assert_eq!(SKILLTAB[SK_THUNDEROUS_FURY].cat, SkillCategory::General);
+        assert_eq!(SKILLTAB[SK_INNER_STRENGTH].cat, SkillCategory::General);
+
         // Test empty skills (category 'Z')
-        assert_eq!(SKILLTAB[43].cat, SkillCategory::Unknown);
         assert_eq!(SKILLTAB[49].cat, SkillCategory::Unknown);
+    }
+
+    #[test]
+    fn test_templar_skills_lookup_and_attribs() {
+        // Prefix-based lookup works for each new Templar skill name.
+        assert_eq!(skill_lookup("rains"), SK_RAINS_OF_RENEWAL as i32);
+        assert_eq!(skill_lookup("gash"), SK_GASH as i32);
+        assert_eq!(skill_lookup("sun's"), SK_SUNS_BLESSING as i32);
+        assert_eq!(skill_lookup("seeing"), SK_SEEING_RED as i32);
+        assert_eq!(skill_lookup("thunder"), SK_THUNDEROUS_FURY as i32);
+        assert_eq!(skill_lookup("inner"), SK_INNER_STRENGTH as i32);
+
+        // Governing attributes are populated (non default-zero triples).
+        for slot in [
+            SK_RAINS_OF_RENEWAL,
+            SK_GASH,
+            SK_SUNS_BLESSING,
+            SK_SEEING_RED,
+            SK_THUNDEROUS_FURY,
+            SK_INNER_STRENGTH,
+        ] {
+            let a = get_skill_attribs(slot);
+            assert!(
+                a != [0, 0, 0],
+                "slot {} should have governing attributes",
+                slot
+            );
+        }
     }
 
     #[test]
@@ -1205,7 +1323,8 @@ mod tests {
         assert_eq!(get_skill_sortkey(11), 'R');
         assert_eq!(get_skill_sortkey(28), 'B');
         assert_eq!(get_skill_sortkey(SK_WEAPON), 'C');
-        assert_eq!(get_skill_sortkey(43), 'Z');
+        assert_eq!(get_skill_sortkey(SK_RAINS_OF_RENEWAL), 'R');
+        assert_eq!(get_skill_sortkey(49), 'Z');
     }
 
     #[test]

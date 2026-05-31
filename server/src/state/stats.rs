@@ -862,6 +862,24 @@ impl GameState {
                     }
                 }
 
+                // Rains of Renewal heal-over-time. Ticks once per second of
+                // real time, restoring HP scaled by the caster's skill power.
+                if item_temp == skills::SK_RAINS_OF_RENEWAL as u16 {
+                    let item = &self.items[spell_item as usize];
+                    let duration = item.duration as i32;
+                    let active_i = active as i32;
+                    let power = item.power as i32;
+                    let elapsed = duration - active_i;
+                    if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
+                        let heal = (power / 4).max(1) * 1000;
+                        self.characters[cn].a_hp += heal;
+                        let max_hp = i32::from(self.characters[cn].hp[5]) * 1000;
+                        if self.characters[cn].a_hp > max_hp {
+                            self.characters[cn].a_hp = max_hp;
+                        }
+                    }
+                }
+
                 // Handle spell expiration
                 if active == 0 {
                     let spell_name = self.items[spell_item as usize].get_name().to_owned();
