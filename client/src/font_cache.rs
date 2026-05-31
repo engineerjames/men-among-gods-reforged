@@ -354,38 +354,53 @@ pub fn draw_wrapped_text(
     max_width: u32,
     style: TextStyle,
 ) -> Result<u32, String> {
-    let chars_per_line = (max_width / BITMAP_GLYPH_ADVANCE).max(1) as usize;
     let line_h = BITMAP_GLYPH_H as i32;
-    let mut lines_drawn = 0u32;
+    let lines = wrap_lines_bitmap(text, max_width);
     let mut cur_y = y;
+    for line in &lines {
+        draw_text(canvas, gfx_cache, font, line, x, cur_y, style)?;
+        cur_y += line_h;
+    }
+    Ok(lines.len() as u32)
+}
 
-    // Build lines respecting word boundaries.
-    let words: Vec<&str> = text.split(' ').collect();
+/// Word-wraps `text` into lines that fit within `max_width` pixels, using the
+/// bitmap-font monospace advance.
+///
+/// Words wider than `max_width` are hard-broken at the character boundary
+/// (preserving the rendering behavior of [`draw_wrapped_text`]). Empty input
+/// returns an empty vector.
+///
+/// # Arguments
+///
+/// * `text` - Text to wrap. Spaces are treated as word boundaries; newlines
+///   are not handled.
+/// * `max_width` - Maximum pixel width of a single line. A width smaller than
+///   one glyph is treated as one character per line.
+///
+/// # Returns
+///
+/// * `Vec<String>` containing one entry per output line, in order.
+pub fn wrap_lines_bitmap(text: &str, max_width: u32) -> Vec<String> {
+    let chars_per_line = (max_width / BITMAP_GLYPH_ADVANCE).max(1) as usize;
+    let mut lines: Vec<String> = Vec::new();
     let mut current_line = String::new();
 
-    for word in words {
+    for word in text.split(' ') {
         // If a single word exceeds the available width, hard-break it.
         if word.len() >= chars_per_line {
-            // Flush any pending line first.
             if !current_line.is_empty() {
-                let flush = std::mem::take(&mut current_line);
-                draw_text(canvas, gfx_cache, font, &flush, x, cur_y, style)?;
-                cur_y += line_h;
-                lines_drawn += 1;
+                lines.push(std::mem::take(&mut current_line));
             }
-            // Hard-break the long word across multiple lines.
             let mut remaining = word;
             while !remaining.is_empty() {
                 let take = remaining.len().min(chars_per_line);
-                draw_text(canvas, gfx_cache, font, &remaining[..take], x, cur_y, style)?;
-                cur_y += line_h;
-                lines_drawn += 1;
+                lines.push(remaining[..take].to_owned());
                 remaining = &remaining[take..];
             }
             continue;
         }
 
-        // Try appending the word to the current line.
         let candidate = if current_line.is_empty() {
             word.to_owned()
         } else {
@@ -395,23 +410,44 @@ pub fn draw_wrapped_text(
         if candidate.len() <= chars_per_line {
             current_line = candidate;
         } else {
-            // Flush the current line and start a new one with this word.
             if !current_line.is_empty() {
-                draw_text(canvas, gfx_cache, font, &current_line, x, cur_y, style)?;
-                cur_y += line_h;
-                lines_drawn += 1;
+                lines.push(std::mem::take(&mut current_line));
             }
             current_line = word.to_owned();
         }
     }
 
-    // Flush the final line.
     if !current_line.is_empty() {
-        draw_text(canvas, gfx_cache, font, &current_line, x, cur_y, style)?;
-        lines_drawn += 1;
+        lines.push(current_line);
     }
 
-    Ok(lines_drawn)
+    lines
+}
+
+/// Measures the pixel dimensions of `text` when wrapped via
+/// [`wrap_lines_bitmap`] with the given `max_width`.
+///
+/// # Arguments
+///
+/// * `text` - Text to measure.
+/// * `max_width` - Maximum pixel width of a single line (same as passed to
+///   [`draw_wrapped_text`]).
+///
+/// # Returns
+///
+/// * `(width, height)` in pixels. `width` is the longest line's pixel width
+///   (`chars × BITMAP_GLYPH_ADVANCE`), `height` is
+///   `lines × BITMAP_GLYPH_H`. Both are `0` for empty input.
+pub fn measure_wrapped_bitmap(text: &str, max_width: u32) -> (u32, u32) {
+    let lines = wrap_lines_bitmap(text, max_width);
+    if lines.is_empty() {
+        return (0, 0);
+    }
+    let max_chars = lines.iter().map(|l| l.len() as u32).max().unwrap_or(0);
+    (
+        max_chars * BITMAP_GLYPH_ADVANCE,
+        lines.len() as u32 * BITMAP_GLYPH_H,
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -620,7 +656,7 @@ impl<'ttf, 'tc> TextEngine<'ttf, 'tc> {
     ///
     /// # Arguments
     ///
-    /// * `stem` - Filename stem, e.g. `"MatrixSansVideo-Regular"`.
+    /// * `stem` - Filename stem, e.g. `"MatrixSans-Regular"`.
     /// * `size_pt` - Logical point size.
     ///
     /// # Returns
@@ -1138,6 +1174,31 @@ mod tests {
     fn glyph_index_tilde() {
         // '~' = 126, 126 - 32 = 94
         assert_eq!(glyph_index('~'), 94);
+    }
+
+    #[test]
+    fn measure_wrapped_bitmap_empty() {
+        assert_eq!(measure_wrapped_bitmap("", 60), (0, 0));
+    }
+
+    #[test]
+    fn measure_wrapped_bitmap_single_short_line() {
+        // 5 chars fits comfortably in 10 chars worth of pixels.
+        let lines = wrap_lines_bitmap("hello", 10 * BITMAP_GLYPH_ADVANCE);
+        assert_eq!(lines, vec!["hello".to_owned()]);
+        let (w, h) = measure_wrapped_bitmap("hello", 10 * BITMAP_GLYPH_ADVANCE);
+        assert_eq!(w, 5 * BITMAP_GLYPH_ADVANCE);
+        assert_eq!(h, BITMAP_GLYPH_H);
+    }
+
+    #[test]
+    fn measure_wrapped_bitmap_multi_word_wrap() {
+        // "alpha beta gamma" (16 chars) wrapped at 10 chars/line.
+        let lines = wrap_lines_bitmap("alpha beta gamma", 10 * BITMAP_GLYPH_ADVANCE);
+        assert_eq!(lines, vec!["alpha beta".to_owned(), "gamma".to_owned()]);
+        let (w, h) = measure_wrapped_bitmap("alpha beta gamma", 10 * BITMAP_GLYPH_ADVANCE);
+        assert_eq!(w, 10 * BITMAP_GLYPH_ADVANCE);
+        assert_eq!(h, 2 * BITMAP_GLYPH_H);
     }
 
     #[test]

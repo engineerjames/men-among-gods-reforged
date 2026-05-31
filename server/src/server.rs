@@ -1065,6 +1065,22 @@ impl Server {
         let cycle = (gs.globals.ticker.unsigned_abs() / background_saver::SAVE_INTERVAL_TICKS)
             % background_saver::SAVE_CYCLE_COUNT;
 
+        Self::enqueue_save_cycle(saver, cycle, gs);
+    }
+
+    /// Clone and enqueue the data for a single save-rotation cycle.
+    ///
+    /// Centralizes the per-cycle data slicing so both the periodic
+    /// rotation ([`Self::maybe_enqueue_background_save`]) and the
+    /// shutdown full-save ([`Self::enqueue_full_save`]) stay in sync
+    /// when cycles are added or reorganized.
+    ///
+    /// # Arguments
+    ///
+    /// * `saver` - Handle to the background saver thread.
+    /// * `cycle` - Cycle index (`0..SAVE_CYCLE_COUNT`).
+    /// * `gs` - Game state to clone the relevant slice from.
+    fn enqueue_save_cycle(saver: &BackgroundSaver, cycle: u32, gs: &GameState) {
         match cycle {
             0 => {
                 // Characters
@@ -1106,6 +1122,32 @@ impl Server {
                 saver.send(SaveJob::MapTiles(data, half));
             }
             _ => {}
+        }
+    }
+
+    /// Enqueue every save cycle's data in one batch.
+    ///
+    /// Intended for clean shutdown: guarantees that all in-memory
+    /// state (characters, items, effects, globals, map) reaches KeyDB
+    /// regardless of where the rotating periodic saver was in its cycle.
+    /// Without this, data types touched late in a rotation can be lost
+    /// when the process exits before the next rotation reaches them
+    /// (e.g. characters are only persisted on cycle 0, once per ~12 min).
+    ///
+    /// Callers should invoke [`BackgroundSaver::flush`] (or
+    /// [`Self::shutdown_background_saver`], which calls `flush` internally)
+    /// after this returns to block until the writes complete.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Game state whose slices are cloned and enqueued.
+    pub fn enqueue_full_save(&self, gs: &GameState) {
+        let saver = match &self.background_saver {
+            Some(s) => s,
+            None => return,
+        };
+        for cycle in 0..background_saver::SAVE_CYCLE_COUNT {
+            Self::enqueue_save_cycle(saver, cycle, gs);
         }
     }
 

@@ -118,6 +118,9 @@ fn main() -> Result<(), String> {
         player::connection::plr_logout(&mut gs, *usnr, *n, LogoutReason::Shutdown);
     }
 
+    log::info!("Enqueueing full save of all game data before shutdown...");
+    server.enqueue_full_save(&gs);
+
     server.shutdown_background_saver();
 
     gs.shutdown();

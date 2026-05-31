@@ -6069,6 +6069,33 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         return;
     }
 
+    // If the character holds a flask (driver 4 + IF_USESPECIAL) in citem and is
+    // using a potion ingredient, redirect to use_mix_potion with roles swapped so
+    // that "flask on flower" and "flower on flask" both produce a potion.
+    if cn != 0 {
+        let citem_idx = gs.characters[cn].citem as usize;
+        if citem_idx != 0
+            && (citem_idx & 0x8000_0000) == 0
+            && (gs.items[citem_idx].flags & core::constants::ItemFlags::IF_USESPECIAL.bits()) != 0
+            && gs.items[citem_idx].driver == 4
+            && gs.items[item_idx].driver != 4
+        {
+            log::info!(
+                "Redirecting to use_mix_potion with item_idx={} and citem_idx={}",
+                item_idx,
+                citem_idx
+            );
+            // Temporarily point citem at the ingredient (item_idx) so that
+            // use_mix_potion reads: item_idx=flask (base), citem=flower (ingredient).
+            gs.characters[cn].citem = item_idx as u32;
+            if use_mix_potion(gs, cn, citem_idx) {
+                return;
+            }
+            // Restore on failure so normal driver dispatch can proceed.
+            gs.characters[cn].citem = citem_idx as u32;
+        }
+    }
+
     // Check if tile is occupied (for non-carried items)
     if !carried {
         let (it_x, it_y) = (

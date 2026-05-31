@@ -166,6 +166,8 @@ impl Scene for CharacterSelectionScene {
         self.pending_delete_character_id = None;
         self.pending_delete_character_name = None;
         self.delete_dialog.hide();
+        self.form.set_characters(vec![], vec![]);
+        self.form.set_selected(None);
         self.form
             .set_status(Some("Loading characters...".to_owned()));
         self.form.set_error(None);
@@ -404,8 +406,16 @@ impl Scene for CharacterSelectionScene {
                         self.characters.clear();
                         self.selected_character_id = None;
                         self.last_error = Some(error.clone());
-                        self.form.set_error(Some(error));
+                        self.form.set_error(Some(error.clone()));
                         self.form.set_status(None);
+
+                        // JWT expired or revoked — clear the stale token and
+                        // send the user back to the login screen.
+                        if error.contains("(401)") {
+                            app_state.api.token = None;
+                            app_state.api.username = None;
+                            return Some(SceneType::Login);
+                        }
                     }
                 }
             }

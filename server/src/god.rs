@@ -1154,18 +1154,9 @@ impl God {
         }
 
         let target_name = cx;
-        let target_location: Option<(usize, usize)> = gs
-            .characters
-            .iter()
-            .find(|char| {
-                char.used != core::constants::USE_EMPTY
-                    && char.get_name().eq_ignore_ascii_case(target_name)
-            })
-            .map(|target_char| (target_char.x as usize, target_char.y as usize));
-
-        if target_location.is_none() {
+        let co = gs.do_lookup_char(target_name);
+        if co <= 0 {
             log::error!("Character name '{}' not found in goto command", target_name);
-
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -1174,7 +1165,8 @@ impl God {
             return None;
         }
 
-        Some((target_location.unwrap().0, target_location.unwrap().1))
+        let co = co as usize;
+        Some((gs.characters[co].x as usize, gs.characters[co].y as usize))
     }
 
     /// Show comprehensive information about character `co` to `cn`.

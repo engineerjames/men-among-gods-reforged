@@ -189,6 +189,66 @@ const SHOP_PANEL_X: i32 = (crate::constants::TARGET_WIDTH_INT as i32 - SHOP_PANE
 const SHOP_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - SHOP_PANEL_H as i32) / 2;
 /// Maximum character count for one helper-text line.
 const HELPER_TEXT_MAX_CHARS: u32 = 50;
+/// Minimum margin (in logical pixels) between helper text and the screen
+/// edges. The tooltip is repositioned to honour this margin.
+const HELPER_TEXT_SCREEN_MARGIN: i32 = 4;
+/// Horizontal gap between the cursor and the helper-text block when drawn to
+/// the right of (or flipped to the left of) the cursor.
+const HELPER_TEXT_CURSOR_GAP_X: i32 = 12;
+/// Vertical gap between the cursor and the helper-text block when drawn
+/// below (or flipped above) the cursor.
+const HELPER_TEXT_CURSOR_GAP_Y: i32 = 16;
+/// Vertical gap used when the helper text is flipped to sit above the cursor.
+const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
+
+/// Computes the on-screen origin for a helper-text block of the given pixel
+/// size, given the cursor position and the logical screen dimensions.
+///
+/// Defaults to placing the text below and to the right of the cursor. Flips
+/// horizontally (text to the left of the cursor) when the default placement
+/// would overflow the right edge, and vertically (above the cursor) when it
+/// would overflow the bottom edge. Finally clamps both axes into the
+/// `[margin, screen - margin - dim]` range as a safety net for tooltips
+/// larger than the space on either side of the cursor.
+///
+/// # Arguments
+///
+/// * `cursor_x` - Cursor X position in logical pixels.
+/// * `cursor_y` - Cursor Y position in logical pixels.
+/// * `text_w`   - Width of the wrapped text block in pixels.
+/// * `text_h`   - Height of the wrapped text block in pixels.
+/// * `screen_w` - Logical screen width in pixels.
+/// * `screen_h` - Logical screen height in pixels.
+///
+/// # Returns
+///
+/// * `(x, y)` origin in logical pixels for the top-left of the text block.
+fn helper_text_origin(
+    cursor_x: i32,
+    cursor_y: i32,
+    text_w: i32,
+    text_h: i32,
+    screen_w: i32,
+    screen_h: i32,
+) -> (i32, i32) {
+    let margin = HELPER_TEXT_SCREEN_MARGIN;
+    let mut x = cursor_x + HELPER_TEXT_CURSOR_GAP_X;
+    let mut y = cursor_y + HELPER_TEXT_CURSOR_GAP_Y;
+
+    if x + text_w > screen_w - margin {
+        x = cursor_x - HELPER_TEXT_CURSOR_GAP_X - text_w;
+    }
+    if y + text_h > screen_h - margin {
+        y = cursor_y - HELPER_TEXT_CURSOR_FLIP_GAP_Y - text_h;
+    }
+
+    let max_x = (screen_w - margin - text_w).max(margin);
+    let max_y = (screen_h - margin - text_h).max(margin);
+    x = x.clamp(margin, max_x);
+    y = y.clamp(margin, max_y);
+
+    (x, y)
+}
 
 // Minimap
 pub(super) const MINIMAP_WORLD_SIZE: usize = 1024;
@@ -836,43 +896,38 @@ impl GameScene {
             return Ok(());
         }
         if show_positions {
-            let x = self.mouse_x + 12;
-            let y = self.mouse_y + 16;
             let text = format!("({},{})", self.mouse_x, self.mouse_y);
-            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
+            return self.draw_cursor_helper_text(canvas, gfx, &text);
         }
         // Show the rank name as a tooltip when hovering the rank sigil.
         if self.rank_sigil.is_hovered() {
-            let x = self.mouse_x + 12;
-            let y = self.mouse_y + 16;
-            return self.draw_cursor_helper_text(canvas, gfx, self.rank_sigil.rank_name(), x, y);
+            return self.draw_cursor_helper_text(canvas, gfx, self.rank_sigil.rank_name());
         }
         if let Some(text) = self.rank_progress_line.hover_text() {
-            let x = self.mouse_x + 12;
-            let y = self.mouse_y + 16;
-            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
+            return self.draw_cursor_helper_text(canvas, gfx, &text);
         }
         if let Some(text) = self.vitality_bars.hover_text() {
-            let x = self.mouse_x + 12;
-            let y = self.mouse_y + 16;
-            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
+            return self.draw_cursor_helper_text(canvas, gfx, &text);
         }
         if let Some(text) = self.spell_effect_icons.hover_text() {
-            let x = self.mouse_x + 12;
-            let y = self.mouse_y + 16;
-            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
+            return self.draw_cursor_helper_text(canvas, gfx, &text);
         }
         if let Some(text) = self.skill_bar.hover_text() {
-            let x = self.mouse_x + 12;
-            let y = self.mouse_y + 16;
-            return self.draw_cursor_helper_text(canvas, gfx, &text, x, y);
+            return self.draw_cursor_helper_text(canvas, gfx, &text);
+        }
+        if let Some(text) = self.hud_buttons.hover_text() {
+            return self.draw_cursor_helper_text(canvas, gfx, text);
+        }
+        if let Some(text) = self.minimap_widget.hover_text() {
+            return self.draw_cursor_helper_text(canvas, gfx, text);
+        }
+        if let Some(text) = self.mode_button.hover_text() {
+            return self.draw_cursor_helper_text(canvas, gfx, text);
         }
         if !self.is_mouse_over_ui_above_skills_panel()
             && let Some(text) = self.skills_panel.hover_text()
         {
-            let x = self.mouse_x + 12;
-            let y = self.mouse_y + 16;
-            return self.draw_cursor_helper_text(canvas, gfx, text, x, y);
+            return self.draw_cursor_helper_text(canvas, gfx, text);
         }
         if self.is_mouse_over_ui() {
             return Ok(());
@@ -880,20 +935,22 @@ impl GameScene {
         let Some(text) = self.resolve_helper_text(ps) else {
             return Ok(());
         };
-        let x = self.mouse_x + 12;
-        let y = self.mouse_y + 16;
-        self.draw_cursor_helper_text(canvas, gfx, text, x, y)
+        self.draw_cursor_helper_text(canvas, gfx, text)
     }
 
-    /// Draws wrapped helper text at a cursor-relative position.
+    /// Draws wrapped helper text near the cursor, repositioning the block to
+    /// stay fully on screen.
+    ///
+    /// The block defaults to the bottom-right of the cursor, flips to the
+    /// left/above when it would overflow the right/bottom edges, and is
+    /// clamped to a `HELPER_TEXT_SCREEN_MARGIN`-pixel inset as a final safety
+    /// net (see [`helper_text_origin`]).
     ///
     /// # Arguments
     ///
     /// * `canvas` - SDL2 canvas.
     /// * `gfx` - Graphics/texture cache.
     /// * `text` - Helper text to draw.
-    /// * `x` - Left edge of the first line.
-    /// * `y` - Top edge of the first line.
     ///
     /// # Returns
     ///
@@ -903,9 +960,17 @@ impl GameScene {
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache<'_>,
         text: &str,
-        x: i32,
-        y: i32,
     ) -> Result<(), String> {
+        let max_width = HELPER_TEXT_MAX_CHARS * crate::font_cache::BITMAP_GLYPH_ADVANCE;
+        let (text_w, text_h) = crate::font_cache::measure_wrapped_bitmap(text, max_width);
+        let (x, y) = helper_text_origin(
+            self.mouse_x,
+            self.mouse_y,
+            text_w as i32,
+            text_h as i32,
+            TARGET_WIDTH_INT as i32,
+            TARGET_HEIGHT_INT as i32,
+        );
         crate::font_cache::draw_wrapped_text(
             canvas,
             gfx,
@@ -913,7 +978,7 @@ impl GameScene {
             text,
             x,
             y,
-            HELPER_TEXT_MAX_CHARS * crate::font_cache::BITMAP_GLYPH_ADVANCE,
+            max_width,
             crate::font_cache::TextStyle::drop_shadow(),
         )
         .map(|_| ())
@@ -1691,6 +1756,9 @@ impl Scene for GameScene {
                 });
                 self.talent_panel
                     .sync_state(*ps.talents(), class_from_kindred(ci.kindred));
+                self.hud_buttons.set_talent_points_badge(
+                    mag_core::talent_trees::available_talent_points(ps.talents()),
+                );
                 use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
                     items: ci.item,
@@ -1948,5 +2016,48 @@ impl Scene for GameScene {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X, HELPER_TEXT_CURSOR_GAP_Y,
+        HELPER_TEXT_SCREEN_MARGIN, helper_text_origin,
+    };
+
+    const SCREEN_W: i32 = 800;
+    const SCREEN_H: i32 = 600;
+
+    #[test]
+    fn helper_text_default_anchor_in_center() {
+        let (x, y) = helper_text_origin(400, 300, 60, 20, SCREEN_W, SCREEN_H);
+        assert_eq!(x, 400 + HELPER_TEXT_CURSOR_GAP_X);
+        assert_eq!(y, 300 + HELPER_TEXT_CURSOR_GAP_Y);
+    }
+
+    #[test]
+    fn helper_text_flips_left_near_right_edge() {
+        let cursor_x = SCREEN_W - 20;
+        let text_w = 120;
+        let (x, _) = helper_text_origin(cursor_x, 100, text_w, 20, SCREEN_W, SCREEN_H);
+        assert_eq!(x, cursor_x - HELPER_TEXT_CURSOR_GAP_X - text_w);
+    }
+
+    #[test]
+    fn helper_text_flips_above_near_bottom_edge() {
+        let cursor_y = SCREEN_H - 10;
+        let text_h = 30;
+        let (_, y) = helper_text_origin(100, cursor_y, 60, text_h, SCREEN_W, SCREEN_H);
+        assert_eq!(y, cursor_y - HELPER_TEXT_CURSOR_FLIP_GAP_Y - text_h);
+    }
+
+    #[test]
+    fn helper_text_clamps_when_larger_than_either_side() {
+        // Cursor near right edge with a tooltip wider than the space to its
+        // left after flipping — the clamp keeps it within the margin.
+        let text_w = SCREEN_W; // wider than the screen
+        let (x, _) = helper_text_origin(SCREEN_W - 10, 100, text_w, 20, SCREEN_W, SCREEN_H);
+        assert_eq!(x, HELPER_TEXT_SCREEN_MARGIN);
     }
 }

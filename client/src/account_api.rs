@@ -350,11 +350,11 @@ pub fn create_game_login_ticket(
         .map_err(|err| format!("Create login ticket request failed: {err}"))?;
 
     let status = resp.status();
-    let body: CreateGameLoginTicketResponse = resp
-        .json()
-        .map_err(|err| format!("Failed to parse create ticket response: {err}"))?;
 
     if status.is_success() {
+        let body: CreateGameLoginTicketResponse = resp
+            .json()
+            .map_err(|err| format!("Failed to parse create ticket response: {err}"))?;
         if let Some(ticket) = body.ticket {
             return Ok(ticket);
         }
@@ -368,7 +368,13 @@ pub fn create_game_login_ticket(
         _ => "Ticket creation failed",
     };
 
-    Err(body.error.unwrap_or_else(|| fallback.to_owned()))
+    // Try to extract a descriptive error from the response body; tolerate
+    // non-JSON bodies (e.g. plain-text 401 from an intermediate proxy).
+    let api_error = resp
+        .json::<CreateGameLoginTicketResponse>()
+        .ok()
+        .and_then(|b| b.error);
+    Err(api_error.unwrap_or_else(|| format!("{} ({})", fallback, status.as_u16())))
 }
 
 /// Requests a password reset code to be sent to the account's email.

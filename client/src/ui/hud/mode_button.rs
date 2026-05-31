@@ -27,6 +27,9 @@ const MODE_COLORS: [Color; 3] = [
 /// Single-character labels for each mode.
 const MODE_LABELS: [&str; 3] = ["S", "N", "F"];
 
+/// Full mode names used for the hover tooltip.
+const MODE_HOVER_TEXTS: [&str; 3] = ["Slow mode", "Normal mode", "Fast mode"];
+
 /// Border color for the circle outline.
 const BORDER_COLOR: Color = Color::RGBA(180, 180, 200, 220);
 
@@ -93,6 +96,21 @@ impl ModeButton {
             fill,
         )
         .with_border_color(BORDER_COLOR);
+    }
+
+    /// Returns the hover tooltip describing the current mode, or `None` when
+    /// the button is not under the cursor.
+    ///
+    /// # Returns
+    ///
+    /// * `Some("Slow mode" | "Normal mode" | "Fast mode")` while hovered,
+    ///   or `None`.
+    pub fn hover_text(&self) -> Option<&'static str> {
+        if self.inner.is_hovered() {
+            Some(MODE_HOVER_TEXTS[self.mode.clamp(0, 2) as usize])
+        } else {
+            None
+        }
     }
 }
 
@@ -269,5 +287,25 @@ mod tests {
         assert_eq!(btn.mode, 2);
         btn.sync(-1);
         assert_eq!(btn.mode, 0);
+    }
+
+    #[test]
+    fn hover_text_none_when_not_hovered() {
+        let btn = ModeButton::new(100, 100, 18);
+        assert_eq!(btn.hover_text(), None);
+    }
+
+    #[test]
+    fn hover_text_reports_current_mode() {
+        let hover = UiEvent::MouseMove { x: 100, y: 100 };
+        let mut btn = ModeButton::new(100, 100, 18);
+        btn.handle_event(&hover);
+        assert_eq!(btn.hover_text(), Some("Normal mode"));
+        btn.sync(0);
+        btn.handle_event(&hover);
+        assert_eq!(btn.hover_text(), Some("Slow mode"));
+        btn.sync(2);
+        btn.handle_event(&hover);
+        assert_eq!(btn.hover_text(), Some("Fast mode"));
     }
 }
