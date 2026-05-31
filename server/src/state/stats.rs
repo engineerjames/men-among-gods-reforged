@@ -86,7 +86,7 @@ impl GameState {
         let mut hp_bonus = 0i32;
         let mut end_bonus = 0i32;
         let mut mana_bonus = 0i32;
-        let mut skill_bonus = [0i32; 50];
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
         let mut armor = 0i32;
         let mut weapon = 0i32;
         let mut gethit = 0i32;
@@ -101,7 +101,7 @@ impl GameState {
         self.characters[cn].hp[4] = 0;
         self.characters[cn].end[4] = 0;
         self.characters[cn].mana[4] = 0;
-        for n in 0..50 {
+        for n in 0..skills::MAX_SKILLS {
             self.characters[cn].skill[n][4] = 0;
         }
         self.characters[cn].armor = 0;

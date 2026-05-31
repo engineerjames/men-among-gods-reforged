@@ -2,7 +2,7 @@
 
 use crate::{
     constants::{CharacterFlags, USE_EMPTY},
-    skills::SkillIndex,
+    skills::{MAX_SKILLS, SkillIndex},
     string_operations::c_string_to_str,
     traits,
 };
@@ -45,7 +45,7 @@ pub struct Character {
     pub end: [u16; SkillIndex::MaxIndex as usize], // 375
     pub mana: [u16; SkillIndex::MaxIndex as usize], // 387
 
-    pub skill: [[u8; SkillIndex::MaxIndex as usize]; 50], // 687
+    pub skill: [[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS], // 687
 
     pub weapon_bonus: u8,
     pub armor_bonus: u8,
@@ -204,7 +204,7 @@ impl Default for Character {
             hp: [0; 6],
             end: [0; 6],
             mana: [0; 6],
-            skill: [[0; 6]; 50],
+            skill: [[0; 6]; MAX_SKILLS],
             weapon_bonus: 0,
             armor_bonus: 0,
             a_hp: 0,

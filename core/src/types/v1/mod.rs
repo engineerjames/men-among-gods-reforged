@@ -1,28 +1,27 @@
 //! Version 1 game data type definitions.
 //!
-//! This module is the canonical snapshot of the v1 on-disk layout for all
-//! serialised game entities.  The actual struct bodies live in the sibling
-//! modules one level up (`core::types::*`) and are re-exported here so that:
+//! This module preserves the **frozen v1 on-disk layout** for serialised game
+//! entities so snapshot migrators can decode legacy `.wsnap` files and convert
+//! them to the live (`v2`) struct shapes.
 //!
-//! - Existing call sites (`core::types::Character`, etc.) continue to work
-//!   without any changes.
-//! - Snapshot / migration code can reference types by version path
-//!   (`core::types::v1::Character`) to make schema version intent explicit.
+//! - `v1::Character` and `v1::Item` are independent struct definitions whose
+//!   field layout must never change (50-slot skill matrices).
+//! - `Map`, `Effect`, and `Global` have not changed shape since v1, so they
+//!   re-export the live structs verbatim. If they ever change, freeze them
+//!   here the same way `Character` and `Item` are frozen.
 //!
-//! # Future migration pattern
+//! # Migration pattern
 //!
-//! When a struct needs to evolve to v2:
-//!
-//! 1. Create `core/src/types/v2/mod.rs` with the updated struct definition.
-//! 2. Implement `From<v1::Foo> for v2::Foo` for every changed type.
-//! 3. Change the top-level re-export in `core/src/types/mod.rs` to point at
-//!    `v2::Foo` instead of `v1::Foo`.
-//! 4. Bump `SNAPSHOT_SCHEMA_VERSION` in `server/src/keydb/snapshot.rs`.
-//! 5. Add a migration arm to `WorldSnapshot::from_file` that converts v1
-//!    data to v2 types before returning.
+//! See the v1 -> v2 migration in `server::keydb::snapshot::WorldSnapshot::from_file`
+//! for the concrete pattern: detect the legacy schema version, decode into the
+//! frozen v1 structs, then convert via `From<v1::Foo> for crate::types::Foo`.
 
-pub use super::Character;
+pub mod character;
+pub mod item;
+
+pub use character::Character;
+pub use item::Item;
+
 pub use super::Effect;
 pub use super::Global;
-pub use super::Item;
 pub use super::Map;

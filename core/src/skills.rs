@@ -78,6 +78,31 @@ pub const SK_THUNDEROUS_FURY: usize = 47;
 /// caster's weapon skill for the duration.
 pub const SK_INNER_STRENGTH: usize = 48;
 
+// ---- Harakim talent-granted skills (reserved slots 50..=55) ----
+/// Revenant Conduit: self-buff that raises the caster's effective Ghost
+/// Companion skill at summon time; mana to cast, slow endurance drain to
+/// maintain.
+pub const SK_REVENANT_CONDUIT: usize = 50;
+/// Revenant Conduit companion temp identifier for the attached buff item
+/// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
+pub const SK_REVENANT_CONDUIT2: usize = SK_REVENANT_CONDUIT + 100;
+/// Kindred Spirit: passive that allows a second simultaneous Ghost Companion.
+pub const SK_KINDRED_SPIRIT: usize = 51;
+/// Spectral Pact: self-buff that redirects a portion of incoming damage
+/// from the caster to their ghost companion(s).
+pub const SK_SPECTRAL_PACT: usize = 52;
+/// Spectral Pact companion temp identifier for the attached buff item.
+pub const SK_SPECTRAL_PACT2: usize = SK_SPECTRAL_PACT + 100;
+/// Anguish (Lava): debuff that empowers the next Blast against the target
+/// for 1.5x-2x damage, then consumes itself.
+pub const SK_ANGUISH_LAVA: usize = 53;
+/// Anguish (Earth): large AoE debuff that prevents movement (but does not
+/// stun) on every hostile in range.
+pub const SK_ANGUISH_EARTH: usize = 54;
+/// Anguish (Ice): debuff that shreds the target's armor and weapon values
+/// directly (instead of lowering attributes the way Curse does).
+pub const SK_ANGUISH_ICE: usize = 55;
+
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
 const AT_DESC: [&str; 5] = [
@@ -89,7 +114,7 @@ const AT_DESC: [&str; 5] = [
 ];
 
 /// Maximum number of skill slots.
-pub const MAX_SKILLS: usize = 50;
+pub const MAX_SKILLS: usize = 75;
 
 /// Returns whether `skill` is one of the retired per-weapon combat slots.
 ///
@@ -227,6 +252,12 @@ pub enum Skill {
     SeeingRed = SK_SEEING_RED,
     ThunderousFury = SK_THUNDEROUS_FURY,
     InnerStrength = SK_INNER_STRENGTH,
+    RevenantConduit = SK_REVENANT_CONDUIT,
+    KindredSpirit = SK_KINDRED_SPIRIT,
+    SpectralPact = SK_SPECTRAL_PACT,
+    AnguishLava = SK_ANGUISH_LAVA,
+    AnguishEarth = SK_ANGUISH_EARTH,
+    AnguishIce = SK_ANGUISH_ICE,
 }
 
 /// A skill definition entry describing one learnable ability.
@@ -736,6 +767,80 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         4,
     ),
     SkillTab::new(49, SkillCategory::Unknown, "", "", 0, 0, 0),
+    // 50..55 Harakim talent-granted skills
+    SkillTab::new(
+        50,
+        SkillCategory::Magic,
+        "Revenant Conduit",
+        "Spell: Empower future ghost companions; drains endurance over time.",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        51,
+        SkillCategory::Magic,
+        "Kindred Spirit",
+        "Passive: Allows a second simultaneous Ghost Companion.",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        52,
+        SkillCategory::Magic,
+        "Spectral Pact",
+        "Spell: Ghost companion(s) absorb part of incoming damage.",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        53,
+        SkillCategory::Magic,
+        "Anguish (Lava)",
+        "Spell: Empowers your next Blast against the target (Cost: 30 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        54,
+        SkillCategory::Magic,
+        "Anguish (Earth)",
+        "Spell: Roots all enemies in a wide area (Cost: 40 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        55,
+        SkillCategory::Magic,
+        "Anguish (Ice)",
+        "Spell: Shreds the target's armor and weapon (Cost: 30 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(56, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(57, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(58, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(59, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(60, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(61, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(62, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(63, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(64, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(65, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(66, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(67, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(68, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(69, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(70, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(71, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(72, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(73, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(74, SkillCategory::Unknown, "", "", 0, 0, 0),
 ];
 
 /// Returns the canonical skill number for a given slot index.
@@ -846,7 +951,7 @@ pub fn attribute_desc(n: usize) -> &'static str {
 }
 
 // Static skill table (taken from server/original_source/SkillTab.cpp)
-const SKILL_NAMES: [&str; 50] = [
+const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "Hand to Hand",
     "Karate",
     "Dagger",
@@ -896,6 +1001,31 @@ const SKILL_NAMES: [&str; 50] = [
     "Seeing Red",
     "Thunderous Fury",
     "Inner Strength",
+    "",
+    "Revenant Conduit",
+    "Kindred Spirit",
+    "Spectral Pact",
+    "Anguish (Lava)",
+    "Anguish (Earth)",
+    "Anguish (Ice)",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
     "",
 ];
 
@@ -1224,7 +1354,7 @@ mod tests {
     #[test]
     fn test_max_skills_constant() {
         // Verify MAX_SKILLS matches the actual array size
-        assert_eq!(MAX_SKILLS, 50);
+        assert_eq!(MAX_SKILLS, 75);
         assert_eq!(SKILLTAB.len(), MAX_SKILLS);
     }
 

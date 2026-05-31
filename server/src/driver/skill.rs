@@ -434,7 +434,7 @@ pub fn spell_from_item(gs: &mut GameState, cn: usize, in2: usize) {
         for n in 0..5 {
             gs.items[in_].attrib[n][1] = gs.items[in2].attrib[n][1];
         }
-        for n in 0..50 {
+        for n in 0..core::skills::MAX_SKILLS {
             gs.items[in_].skill[n][1] = gs.items[in2].skill[n][1];
         }
         let data0 = gs.items[in2].data[0];
@@ -2310,7 +2310,7 @@ pub fn item_info(gs: &mut GameState, cn: usize, in_: usize, _look: i32) {
         );
     }
 
-    for n in 0..50 {
+    for n in 0..core::skills::MAX_SKILLS {
         let (s0, s1, s2) = (
             gs.items[in_].skill[n][0],
             gs.items[in_].skill[n][1],
@@ -2421,7 +2421,7 @@ pub fn char_info(gs: &mut GameState, cn: usize, co: usize) {
     // Skills two-column using static SKILL_NAMES
     let mut n1: i32 = -1;
     let mut n2: i32 = -1;
-    for n in 0..50 {
+    for n in 0..core::skills::MAX_SKILLS {
         let s0 = gs.characters[co].skill[n][0];
         if s0 != 0 && n1 == -1 {
             n1 = n as i32;
@@ -3678,7 +3678,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         );
     }
 
-    for n in 0..50 {
+    for n in 0..core::skills::MAX_SKILLS {
         let mut tmp = base;
         tmp = tmp * 3 / std::cmp::max(1, i32::from(gs.characters[cc].skill[n][3]));
         if gs.characters[cc].skill[n][2] != 0 {

@@ -46,7 +46,7 @@ pub fn calculate_points_tot(character: &Character) -> i32 {
         points += mana_needed(value, 3);
     }
 
-    for skill in 0..50 {
+    for skill in 0..skills::MAX_SKILLS {
         if skill == skills::SK_PERCEPT || skill == skills::SK_STEALTH || skill == skills::SK_LOCK {
             continue;
         }

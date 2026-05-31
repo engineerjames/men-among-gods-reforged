@@ -675,8 +675,8 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         }
     }
 
-    // skills (0..50)
-    for s in 0..50usize {
+    // skills (0..MAX_SKILLS)
+    for s in 0..core::skills::MAX_SKILLS {
         let chv = gs.characters[cn].skill[s];
         let changed = gs.players[nr].cpl.skill[s] != chv;
         if changed {

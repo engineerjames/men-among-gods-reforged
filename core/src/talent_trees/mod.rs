@@ -12,7 +12,7 @@
 //! * `future1[1..24]` — one byte per talent layer; each of the 8 bits
 //!   in a byte represents a single node in that layer.
 
-use crate::skills::{self, Attribute, Skill, SkillIndex};
+use crate::skills::{self, Attribute, MAX_SKILLS, Skill, SkillIndex};
 
 use crate::traits::Class;
 
@@ -183,7 +183,7 @@ pub struct TalentStatBonuses {
     /// Attribute bonuses indexed by [`Attribute`] discriminant.
     pub attrib: [i32; 5],
     /// Skill bonuses indexed by canonical [`Skill`] discriminant.
-    pub skill: [i32; 50],
+    pub skill: [i32; MAX_SKILLS],
     /// Dodge chance bonuses from talents, in percent.
     pub dodge: i32,
     /// Armor value bonus from talents, in percent of aggregated AV.
@@ -202,7 +202,7 @@ impl Default for TalentStatBonuses {
     fn default() -> Self {
         Self {
             attrib: [0; 5],
-            skill: [0; 50],
+            skill: [0; MAX_SKILLS],
             dodge: 0,
             armor_percent: 0,
             weapon_percent: 0,
@@ -458,7 +458,7 @@ pub fn talent_stat_bonuses(
     kindred: i32,
     talents: &[u8; 25],
     attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
-    skill: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+    skill: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
 ) -> TalentStatBonuses {
     let class = Class::from(kindred);
     let Some(tree) = tree_for(class) else {
@@ -525,7 +525,7 @@ pub fn talent_dodge_bonuses(class: Class, talents: &[u8; 25]) -> i32 {
 fn accumulate_stat_bonus(
     effect: TalentEffect,
     attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
-    skill_rows: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+    skill_rows: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
     bonuses: &mut TalentStatBonuses,
 ) {
     match effect {
@@ -1067,8 +1067,8 @@ mod tests {
         [[0; SkillIndex::MaxIndex as usize]; 5]
     }
 
-    fn empty_skill() -> [[u8; SkillIndex::MaxIndex as usize]; 50] {
-        [[0; SkillIndex::MaxIndex as usize]; 50]
+    fn empty_skill() -> [[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS] {
+        [[0; SkillIndex::MaxIndex as usize]; MAX_SKILLS]
     }
 
     #[test]

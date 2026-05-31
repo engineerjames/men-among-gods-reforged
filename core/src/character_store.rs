@@ -41,7 +41,7 @@
 //! progression.
 
 use crate::constants::MAXCHARS;
-use crate::skills::SkillIndex;
+use crate::skills::{MAX_SKILLS, SkillIndex};
 use bincode::{Decode, Encode};
 
 /// Width of the per-character attribute/skill arrays.
@@ -231,7 +231,7 @@ pub struct CharacterPatch {
     /// Base mana per skill axis.
     pub mana: [u16; SKILL_AXIS],
     /// Base skill values, `[base, mod, max?]` per skill axis.
-    pub skill: [[u8; SKILL_AXIS]; 50],
+    pub skill: [[u8; SKILL_AXIS]; MAX_SKILLS],
     /// Weapon proficiency bonus.
     pub weapon_bonus: u8,
     /// Armor proficiency bonus.

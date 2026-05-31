@@ -104,7 +104,7 @@ impl GameState {
             }
 
             // Check skill requirements
-            for m in 0..50 {
+            for m in 0..skills::MAX_SKILLS {
                 if skills::is_legacy_weapon_skill(m) || m == skills::SK_WEAPON {
                     continue;
                 }
