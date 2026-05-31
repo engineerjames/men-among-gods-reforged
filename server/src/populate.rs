@@ -980,7 +980,7 @@ pub fn reset_char(gs: &mut GameState, n: usize) {
     let has_respawn = (gs.character_templates[n].flags & CharacterFlags::Respawn.bits()) != 0;
 
     if used == USE_EMPTY || !has_respawn {
-        log::error!(
+        log::debug!(
             "reset_char: template {} is not in use or does not have respawn flag",
             n
         );
