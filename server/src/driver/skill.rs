@@ -1,17 +1,19 @@
 use core::{
     constants::{
-        AT_AGIL, AT_STREN, CHD_COMPANION, CHD_TALKATIVE, CNTSAY, COMPANION_TIMEOUT, CT_COMPANION,
-        CharacterFlags, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, ItemFlags, MAXSAY, NT_DIDHIT, NT_GOTHIT,
-        NT_GOTMISS, TICKS, USE_EMPTY,
+        AT_AGIL, AT_STREN, CHD_COMPANION, CHD_COMPANION2, CHD_TALKATIVE, CNTSAY, COMPANION_TIMEOUT,
+        CT_COMPANION, CharacterFlags, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, ItemFlags, MAXSAY,
+        NT_DIDHIT, NT_GOTHIT, NT_GOTMISS, TICKS, USE_EMPTY,
     },
     skills::{
-        SK_AXE, SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER,
-        SK_DELIVER_DEATH, SK_DISARM, SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GASH, SK_GHOST,
-        SK_HEAL, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD,
-        SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST,
-        SK_REST, SK_SEEING_RED, SK_SENSE, SK_STAFF, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2,
-        SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON,
-        SK_WIMPY, attribute_name, get_skill_name,
+        SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AXE, SK_BLADE_DANCE, SK_BLAST,
+        SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER, SK_DELIVER_DEATH, SK_DISARM,
+        SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN,
+        SK_INNER_STRENGTH, SK_KINDRED_SPIRIT, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE,
+        SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST,
+        SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SPECTRAL_PACT,
+        SK_SPECTRAL_PACT2, SK_STAFF, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2, SK_SURROUND,
+        SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY,
+        attribute_name, get_skill_name,
     },
     string_operations::c_string_to_str,
     traits::{
@@ -2670,6 +2672,22 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
 
     let mut dam = power * 2;
 
+    // Anguish (Lava): if the target carries the marker, amplify and consume.
+    let mut anguish_lava_item: Option<usize> = None;
+    for n in 0..20 {
+        let in_ = gs.characters[co].spell[n] as usize;
+        if in_ != 0 && gs.items[in_].temp == SK_ANGUISH_LAVA as u16 {
+            anguish_lava_item = Some(in_);
+            break;
+        }
+    }
+    if let Some(in_) = anguish_lava_item {
+        let anguish_power = gs.items[in_].power as i32;
+        let mult_pct = (150 + anguish_power / 2).clamp(150, 200);
+        dam = dam * mult_pct / 100;
+        gs.items[in_].active = 0;
+    }
+
     let mut cost = dam / 8 + 5;
     if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
         && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
@@ -3462,35 +3480,59 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    let existing_companion = {
-        if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
-            let co = gs.characters[cn].data[CHD_COMPANION] as usize;
-            if co != 0 {
-                if Character::is_sane_character(co)
-                    && gs.characters[co].data[63] == cn as i32
-                    && (gs.characters[co].flags & CharacterFlags::Body.bits()) == 0
-                    && gs.characters[co].used != USE_EMPTY
-                {
-                    Some(co)
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
+    // Inspect both companion slots. Kindred Spirit grants access to the
+    // second slot; without it, only `CHD_COMPANION` is usable.
+    let has_kindred_spirit = gs.characters[cn].skill[SK_KINDRED_SPIRIT][0] != 0
+        && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+
+    let companion_slot_state = |gs: &GameState, slot: usize| -> Option<usize> {
+        if (gs.characters[cn].flags & CharacterFlags::Player.bits()) == 0 {
+            return None;
+        }
+        let co = gs.characters[cn].data[slot] as usize;
+        if co == 0 {
+            return None;
+        }
+        if Character::is_sane_character(co)
+            && gs.characters[co].data[63] == cn as i32
+            && (gs.characters[co].flags & CharacterFlags::Body.bits()) == 0
+            && gs.characters[co].used != USE_EMPTY
+        {
+            Some(co)
         } else {
             None
         }
     };
 
-    if let Some(co) = existing_companion {
+    let slot1 = companion_slot_state(gs, CHD_COMPANION);
+    let slot2 = if has_kindred_spirit {
+        companion_slot_state(gs, CHD_COMPANION2)
+    } else {
+        None
+    };
+
+    let target_slot = if slot1.is_none() {
+        Some(CHD_COMPANION)
+    } else if has_kindred_spirit && slot2.is_none() {
+        Some(CHD_COMPANION2)
+    } else {
+        None
+    };
+
+    if target_slot.is_none() {
+        let limit = if has_kindred_spirit { 2 } else { 1 };
+        let existing = slot1.or(slot2).unwrap_or(0);
         gs.do_character_log(
             cn,
             FontColor::Red,
-            &format!("You may not have more than one Ghost Companion ({}).\n", co),
+            &format!(
+                "You may not have more than {} Ghost Companion(s) ({}).\n",
+                limit, existing
+            ),
         );
         return;
     }
+    let target_slot = target_slot.unwrap();
 
     // Get target
     let mut co = gs.characters[cn].skill_target1 as usize;
@@ -3621,10 +3663,24 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     }
 
     if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
-        gs.characters[cn].data[CHD_COMPANION] = cc as i32;
+        gs.characters[cn].data[target_slot] = cc as i32;
     }
 
-    let mut base = (i32::from(gs.characters[cn].skill[SK_GHOST][5]) * 4) / 11;
+    // Revenant Conduit: while the buff is active, the effective Ghost
+    // Companion skill is boosted by `item.power` percent.
+    let mut effective_ghost = i32::from(gs.characters[cn].skill[SK_GHOST][5]);
+    let mut conduit_boost = 0i32;
+    for n in 0..20 {
+        let in_ = gs.characters[cn].spell[n] as usize;
+        if in_ != 0 && gs.items[in_].temp == SK_REVENANT_CONDUIT2 as u16 {
+            conduit_boost = gs.items[in_].power as i32;
+            break;
+        }
+    }
+    if conduit_boost > 0 {
+        effective_ghost = effective_ghost * (100 + conduit_boost) / 100;
+    }
+    let mut base = (effective_ghost * 4) / 11;
     let kindred = gs.characters[cn].kindred;
     base = spell_race_mod(gs, base, kindred);
 
@@ -4957,6 +5013,384 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Returns whether `cn` currently has an active spell-item whose `temp`
+/// matches `skill_temp`.
+///
+/// Used by the new Harakim abilities (Revenant Conduit, Spectral Pact,
+/// Anguish-Earth) to gate behaviour on whether the relevant buff/debuff is
+/// still in effect.
+///
+/// # Arguments
+///
+/// * `gs` - Game state holding spell slots and item table.
+/// * `cn` - Character index to inspect.
+/// * `skill_temp` - The `temp` value to look for in `character.spell[]`.
+///
+/// # Returns
+///
+/// * `true` when an entry with a matching temp is present.
+pub(crate) fn has_active_spell_temp(gs: &GameState, cn: usize, skill_temp: u16) -> bool {
+    for n in 0..20 {
+        let in_ = gs.characters[cn].spell[n] as usize;
+        if in_ != 0 && gs.items[in_].temp == skill_temp {
+            return true;
+        }
+    }
+    false
+}
+
+/// Active self-buff: Revenant Conduit. Spends mana up front and attaches a
+/// spell item that boosts the caster's effective Ghost Companion skill at
+/// summon time (`skill_ghost` checks for the item) while draining endurance
+/// over time (the drain is processed in `state/stats.rs`).
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
+    if has_active_spell_temp(gs, cn, SK_REVENANT_CONDUIT2 as u16) {
+        gs.do_character_log(cn, FontColor::Red, "The conduit is already open.\n");
+        return;
+    }
+    if gs.characters[cn].a_end < 50 * 1000 {
+        gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
+        return;
+    }
+    if spellcost(gs, cn, 35) != 0 {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_REVENANT_CONDUIT][5]);
+    // +X% effective SK_GHOST per power tier, capped at +50%.
+    let boost_pct = ((power / 10) * 10).clamp(10, 50);
+    let duration = TICKS * 120;
+
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in skill_revenant_conduit");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let name = b"Revenant Conduit";
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 88;
+        item.duration = duration as u32;
+        item.active = duration as u32;
+        item.temp = SK_REVENANT_CONDUIT2 as u16;
+        item.power = boost_pct.max(1) as u32;
+    }
+    if add_spell(gs, cn, in_idx) == 0 {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "Magical interference closes the conduit.\n",
+        );
+        return;
+    }
+
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        "Cold spectral energy flows through you.\n",
+    );
+    chlog!(cn, "Cast Revenant Conduit (+{}% Ghost)", boost_pct);
+    EffectManager::fx_add_effect(
+        gs,
+        7,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
+}
+
+/// Passive: Kindred Spirit. Cannot be directly invoked; checked by
+/// `skill_ghost` to allow a second simultaneous companion.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index (used only for the help-text reply).
+pub fn skill_kindred_spirit(gs: &mut GameState, cn: usize) {
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        "You use this skill automatically when you summon a ghost companion.\n",
+    );
+}
+
+/// Active self-buff: Spectral Pact. Attaches a spell item that redirects a
+/// percentage of incoming damage from the caster to their ghost companion(s)
+/// (handled in `do_hurt`).
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
+    if has_active_spell_temp(gs, cn, SK_SPECTRAL_PACT2 as u16) {
+        gs.do_character_log(cn, FontColor::Red, "The pact is already in force.\n");
+        return;
+    }
+    if spellcost(gs, cn, 40) != 0 {
+        return;
+    }
+    let power = i32::from(gs.characters[cn].skill[SK_SPECTRAL_PACT][5]);
+    let redirect_pct = (10 + (power * 40) / 100).clamp(10, 50);
+    let duration = TICKS * 60;
+
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in skill_spectral_pact");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let name = b"Spectral Pact";
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 88;
+        item.duration = duration as u32;
+        item.active = duration as u32;
+        item.temp = SK_SPECTRAL_PACT2 as u16;
+        item.power = redirect_pct.max(1) as u32;
+    }
+    if add_spell(gs, cn, in_idx) == 0 {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "Magical interference breaks the pact.\n",
+        );
+        return;
+    }
+
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!(
+            "You bind your fate to your ghosts ({}% redirect).\n",
+            redirect_pct
+        ),
+    );
+    chlog!(cn, "Cast Spectral Pact ({}% redirect)", redirect_pct);
+    EffectManager::fx_add_effect(
+        gs,
+        7,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
+}
+
+/// Internal: shared preflight + resistance roll for the three Anguish casts.
+///
+/// Returns the resolved target on success, otherwise `None` (with any user
+/// messaging already emitted).
+fn anguish_preflight(
+    gs: &mut GameState,
+    cn: usize,
+    skill_const: usize,
+    cost: i32,
+) -> Option<usize> {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot anguish yourself.\n") {
+        return None;
+    }
+    if is_exhausted(gs, cn) {
+        return None;
+    }
+    if spellcost(gs, cn, cost) != 0 {
+        return None;
+    }
+    if chance_base(
+        gs,
+        cn,
+        i32::from(gs.characters[cn].skill[skill_const][5]),
+        10,
+        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+    ) != 0
+    {
+        return None;
+    }
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
+        return None;
+    }
+    Some(co)
+}
+
+/// Internal: attach a generic Anguish debuff spell-item to `co`.
+fn attach_anguish(
+    gs: &mut GameState,
+    cn: usize,
+    co: usize,
+    name: &[u8],
+    temp: u16,
+    power: u32,
+    duration_ticks: i32,
+    armor_mod: i8,
+    weapon_mod: i8,
+) {
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in attach_anguish");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 89;
+        item.duration = duration_ticks as u32;
+        item.active = duration_ticks as u32;
+        item.temp = temp;
+        item.power = power.max(1);
+        item.armor[1] = armor_mod;
+        item.weapon[1] = weapon_mod;
+        item.data[0] = cn as u32;
+    }
+    add_spell(gs, co, in_idx);
+    EffectManager::fx_add_effect(
+        gs,
+        5,
+        0,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].y),
+        0,
+    );
+}
+
+/// Active hostile cast: Anguish (Lava). Attaches a marker that empowers the
+/// caster's next Blast against the target.
+pub fn skill_anguish_lava(gs: &mut GameState, cn: usize) {
+    let Some(co) = anguish_preflight(gs, cn, SK_ANGUISH_LAVA, 30) else {
+        return;
+    };
+    let power = i32::from(gs.characters[cn].skill[SK_ANGUISH_LAVA][5]);
+    attach_anguish(
+        gs,
+        cn,
+        co,
+        b"Anguish - Lava",
+        SK_ANGUISH_LAVA as u16,
+        power.max(1) as u32,
+        TICKS * 30,
+        0,
+        0,
+    );
+    let name = gs.characters[co].get_name().to_owned();
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("{} burns with hidden anguish.\n", name),
+    );
+    chlog!(cn, "Cast Anguish-Lava on {}", name);
+}
+
+/// Active hostile AoE: Anguish (Earth). Attaches a move-block debuff to every
+/// hostile inside a 7x7 area around the resolved primary target.
+pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
+    let Some(co) = anguish_preflight(gs, cn, SK_ANGUISH_EARTH, 45) else {
+        return;
+    };
+    let power = i32::from(gs.characters[cn].skill[SK_ANGUISH_EARTH][5]);
+
+    attach_anguish(
+        gs,
+        cn,
+        co,
+        b"Anguish - Earth",
+        SK_ANGUISH_EARTH as u16,
+        power.max(1) as u32,
+        TICKS * 6,
+        0,
+        0,
+    );
+
+    let cx = i32::from(gs.characters[co].x);
+    let cy = i32::from(gs.characters[co].y);
+    // Force 7x7 (aoe_base = 10 maps to a 7x7 cross-pattern in
+    // `helpers::skill_aoe_targets`).
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), cx, cy, 10) {
+        if maybe_co == cn || maybe_co == co {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        let resist = i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]);
+        if power + helpers::random_mod_i32(20) <= resist + helpers::random_mod_i32(20) {
+            continue;
+        }
+        gs.remember_pvp(cn, maybe_co);
+        attach_anguish(
+            gs,
+            cn,
+            maybe_co,
+            b"Anguish - Earth",
+            SK_ANGUISH_EARTH as u16,
+            power.max(1) as u32,
+            TICKS * 6,
+            0,
+            0,
+        );
+    }
+
+    let name = gs.characters[co].get_name().to_owned();
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("The earth swallows {}'s footing.\n", name),
+    );
+    chlog!(cn, "Cast Anguish-Earth around {}", name);
+    add_exhaust(gs, cn, TICKS * 4);
+}
+
+/// Active hostile cast: Anguish (Ice). Attaches a debuff that shreds the
+/// target's armor and weapon values for the duration.
+pub fn skill_anguish_ice(gs: &mut GameState, cn: usize) {
+    let Some(co) = anguish_preflight(gs, cn, SK_ANGUISH_ICE, 35) else {
+        return;
+    };
+    let power = i32::from(gs.characters[cn].skill[SK_ANGUISH_ICE][5]);
+    let armor_drop = -((power / 8).clamp(2, 30) as i8);
+    let weapon_drop = -((power / 8).clamp(2, 30) as i8);
+    attach_anguish(
+        gs,
+        cn,
+        co,
+        b"Anguish - Ice",
+        SK_ANGUISH_ICE as u16,
+        power.max(1) as u32,
+        TICKS * 20,
+        armor_drop,
+        weapon_drop,
+    );
+    let name = gs.characters[co].get_name().to_owned();
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!("Glacial anguish bites into {}.\n", name),
+    );
+    chlog!(cn, "Cast Anguish-Ice on {}", name);
+}
+
 /// Dispatches direct skill use to the matching skill handler.
 ///
 /// # Arguments
@@ -5160,8 +5594,86 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
         x if x == SK_SEEING_RED as i32 => skill_seeing_red(gs, cn),
         x if x == SK_THUNDEROUS_FURY as i32 => skill_thunderous_fury(gs, cn),
         x if x == SK_INNER_STRENGTH as i32 => skill_inner_strength(gs, cn),
+        x if x == SK_REVENANT_CONDUIT as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_revenant_conduit(gs, cn);
+            }
+        }
+        x if x == SK_KINDRED_SPIRIT as i32 => skill_kindred_spirit(gs, cn),
+        x if x == SK_SPECTRAL_PACT as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_spectral_pact(gs, cn);
+            }
+        }
+        x if x == SK_ANGUISH_LAVA as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_anguish_lava(gs, cn);
+            }
+        }
+        x if x == SK_ANGUISH_EARTH as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_anguish_earth(gs, cn);
+            }
+        }
+        x if x == SK_ANGUISH_ICE as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_anguish_ice(gs, cn);
+            }
+        }
         _ => {
             gs.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n");
         }
+    }
+}
+
+#[cfg(test)]
+mod harakim_ability_tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::USE_ACTIVE;
+
+    fn attach_marker(gs: &mut GameState, cn: usize, slot: usize, item_idx: usize, temp: u16) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].temp = temp;
+        gs.items[item_idx].power = 25;
+        gs.items[item_idx].active = 100;
+        gs.items[item_idx].duration = 100;
+        gs.characters[cn].spell[slot] = item_idx as u32;
+    }
+
+    #[test]
+    fn has_active_spell_temp_detects_present_marker() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            assert!(!has_active_spell_temp(gs, cn, SK_REVENANT_CONDUIT2 as u16));
+            attach_marker(gs, cn, 0, 10, SK_REVENANT_CONDUIT2 as u16);
+            assert!(has_active_spell_temp(gs, cn, SK_REVENANT_CONDUIT2 as u16));
+            assert!(!has_active_spell_temp(gs, cn, SK_SPECTRAL_PACT2 as u16));
+        });
+    }
+
+    #[test]
+    fn anguish_earth_blocks_player_movement() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let start_x = gs.characters[cn].x;
+            let start_y = gs.characters[cn].y;
+            attach_marker(gs, cn, 0, 12, SK_ANGUISH_EARTH as u16);
+            crate::player::commands::plr_move_right(gs, cn);
+            assert_eq!(gs.characters[cn].x, start_x);
+            assert_eq!(gs.characters[cn].y, start_y);
+            assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+        });
     }
 }
