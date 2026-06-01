@@ -52,11 +52,46 @@ pub fn get_server_ip() -> String {
         .ok()
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            if cfg!(debug_assertions) {
-                "127.0.0.1".to_owned()
-            } else {
-                "menamonggods.ddns.net".to_owned()
-            }
-        })
+        .unwrap_or_else(|| default_server_ip().to_owned())
+}
+
+/// Returns the build-mode default server hostname.
+///
+/// Debug builds default to localhost for local development; release builds
+/// default to the public game host.
+///
+/// # Returns
+///
+/// * The default server IP or hostname for this build mode.
+pub fn default_server_ip() -> &'static str {
+    if cfg!(debug_assertions) {
+        "127.0.0.1"
+    } else {
+        "menamonggods.ddns.net"
+    }
+}
+
+/// Returns server host choices for the login-screen combo box.
+///
+/// The first entry is always [`get_server_ip`], so `MAG_SERVER_IP` and the
+/// debug/release default remain the initial login value. Local and production
+/// hosts are also included as alternate choices, with duplicates removed.
+///
+/// # Returns
+///
+/// * A non-empty list of server IP or hostname choices.
+pub fn server_ip_options() -> Vec<String> {
+    let mut options = Vec::new();
+
+    for candidate in [
+        get_server_ip(),
+        "127.0.0.1".to_owned(),
+        "menamonggods.ddns.net".to_owned(),
+    ] {
+        if !options.iter().any(|option| option == &candidate) {
+            options.push(candidate);
+        }
+    }
+
+    options
 }

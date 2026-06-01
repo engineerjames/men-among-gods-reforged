@@ -1,6 +1,6 @@
 //! Composite login form widget.
 //!
-//! Contains text inputs for server IP, username and password, a music
+//! Contains a server combo box, text inputs for username and password, a music
 //! checkbox, Login / Create-Account / Quit buttons, and optional status and
 //! error labels.  The owning scene reads pending [`LoginFormAction`]s via
 //! [`LoginForm::take_login_actions`].
@@ -17,6 +17,7 @@ use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget};
 use crate::ui::widgets::button::RectButton;
 use crate::ui::widgets::checkbox::Checkbox;
+use crate::ui::widgets::dropdown::Dropdown;
 use crate::ui::widgets::text_input::TextInput;
 
 // ---------------------------------------------------------------------------
@@ -30,7 +31,7 @@ const PANEL_H: u32 = 310;
 /// Horizontal padding inside the panel.
 const PAD_X: i32 = 20;
 
-/// Width of the three text input fields.
+/// Full width of the server row and text input fields.
 const INPUT_W: u32 = PANEL_W - (PAD_X as u32) * 2;
 
 /// Height of each text input field.
@@ -76,7 +77,7 @@ pub enum LoginFormAction {
     /// Music checkbox was toggled.
     ToggleMusic(bool),
     /// Controller wants to open the on-screen keyboard for a text field.
-    /// The `usize` is the text-field index (0 = IP, 1 = username, 2 = password).
+    /// The `usize` is the text-field index (0 = username, 1 = password).
     OpenKeyboard(usize),
 }
 
@@ -87,8 +88,10 @@ pub enum LoginFormAction {
 /// The login form panel containing all interactive elements.
 pub struct LoginForm {
     bounds: Bounds,
-    /// IP address / hostname input.
-    ip_input: TextInput,
+    /// Server IP address / hostname selection.
+    server_dropdown: Dropdown,
+    /// Server host choices shown in the combo-box list.
+    server_options: Vec<String>,
     /// Username input.
     username_input: TextInput,
     /// Password input (masked).
@@ -103,7 +106,7 @@ pub struct LoginForm {
     reset_button: RectButton,
     /// Quit button.
     quit_button: RectButton,
-    /// Index of the currently focused text field (0–2).
+    /// Index of the currently focused text field (0–1).
     focused_field: usize,
     /// Pending actions for the scene to drain.
     actions: Vec<LoginFormAction>,
@@ -112,23 +115,29 @@ pub struct LoginForm {
     /// Optional error message text.
     error_text: Option<String>,
     /// Controller focus index into the focusable elements list, if any.
-    /// Order: 0=music_checkbox, 1=login, 2=create, 3=reset, 4=quit.
+    /// Order: 0=server, 1=username, 2=password, 3=music, 4=login, 5=create, 6=reset, 7=quit.
     controller_focused: Option<usize>,
 }
 
 impl LoginForm {
-    /// Creates a new login form, centerd on screen.
+    /// Creates a new login form, centered on screen.
     ///
     /// # Arguments
     ///
     /// * `server_ip` - Initial server IP / hostname value.
+    /// * `server_options` - Server IP / hostname choices for the combo box.
     /// * `username` - Initial username value (e.g. from saved preferences).
     /// * `music_enabled` - Initial state of the music checkbox.
     ///
     /// # Returns
     ///
     /// A fully-initialised `LoginForm`.
-    pub fn new(server_ip: &str, username: &str, music_enabled: bool) -> Self {
+    pub fn new(
+        server_ip: &str,
+        server_options: &[String],
+        username: &str,
+        music_enabled: bool,
+    ) -> Self {
         let panel_x = (crate::constants::TARGET_WIDTH_INT - PANEL_W) as i32 / 2;
         let panel_y = (crate::constants::TARGET_HEIGHT_INT - PANEL_H) as i32 / 2;
 
@@ -140,20 +149,23 @@ impl LoginForm {
         // -- Text inputs --
         let mut cursor_y = panel_y + 30; // room for title
 
-        // IP
-        let ip_input_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        let mut ip_input = TextInput::new(
-            Bounds::new(panel_x + PAD_X, ip_input_y, INPUT_W, INPUT_H),
-            "e.g. 127.0.0.1",
+        let server_options = normalized_server_options(server_ip, server_options);
+
+        // Server combo box
+        let server_input_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
+        let server_dropdown = Dropdown::new(
+            Bounds::new(panel_x + PAD_X, server_input_y, INPUT_W, INPUT_H),
+            server_options.clone(),
+            0,
             FONT,
-            128,
-            false,
-            border_normal,
-            border_focused,
         );
-        ip_input.set_value(server_ip);
-        ip_input.set_focused(true);
-        cursor_y = ip_input_y + INPUT_H as i32 + FIELD_GAP;
+
+        let btn_bg = Background::SolidColor(Color::RGBA(50, 50, 80, 200));
+        let btn_border = Border {
+            color: Color::RGBA(120, 120, 180, 200),
+            width: 1,
+        };
+        cursor_y = server_input_y + INPUT_H as i32 + FIELD_GAP;
 
         // Username
         let user_input_y = cursor_y + font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
@@ -167,6 +179,7 @@ impl LoginForm {
             border_focused,
         );
         username_input.set_value(username);
+        username_input.set_focused(true);
         cursor_y = user_input_y + INPUT_H as i32 + FIELD_GAP;
 
         // Password
@@ -192,12 +205,6 @@ impl LoginForm {
         // Buttons - laid out horizontally, evenly
         let total_btn_w = 4 * 75 + 3 * BTN_GAP as u32;
         let btn_start_x = panel_x + (PANEL_W as i32 - total_btn_w as i32) / 2;
-
-        let btn_bg = Background::SolidColor(Color::RGBA(50, 50, 80, 200));
-        let btn_border = Border {
-            color: Color::RGBA(120, 120, 180, 200),
-            width: 1,
-        };
 
         let login_button = RectButton::new(Bounds::new(btn_start_x, cursor_y, 75, BTN_H), btn_bg)
             .with_border(btn_border)
@@ -226,7 +233,8 @@ impl LoginForm {
 
         Self {
             bounds,
-            ip_input,
+            server_dropdown,
+            server_options,
             username_input,
             password_input,
             music_checkbox,
@@ -248,7 +256,7 @@ impl LoginForm {
     ///
     /// * Value returned by `server_ip`.
     pub fn server_ip(&self) -> &str {
-        self.ip_input.value()
+        &self.server_options[self.server_dropdown.selected_index()]
     }
 
     /// Returns a reference to the current username value.
@@ -302,44 +310,47 @@ impl LoginForm {
     /// Pushes a Login action with the current field values.
     fn push_login_action(&mut self) {
         self.actions.push(LoginFormAction::Login {
-            ip: self.ip_input.value().to_owned(),
+            ip: self.server_ip().to_owned(),
             username: self.username_input.value().to_owned(),
             password: self.password_input.value().to_owned(),
         });
     }
 
+    /// Advances the selected server option, wrapping at the end.
+    fn cycle_server_option(&mut self) {
+        let next = (self.server_dropdown.selected_index() + 1) % self.server_options.len();
+        self.server_dropdown.set_selected(next);
+    }
+
     /// Advances keyboard focus to the next text field (Tab cycling).
     fn cycle_focus_forward(&mut self) {
-        self.focused_field = (self.focused_field + 1) % 3;
+        self.focused_field = (self.focused_field + 1) % 2;
         self.apply_focus();
     }
 
     /// Moves keyboard focus to the previous text field (Shift+Tab).
     fn cycle_focus_backward(&mut self) {
         self.focused_field = if self.focused_field == 0 {
-            2
+            1
         } else {
             self.focused_field - 1
         };
         self.apply_focus();
     }
 
-    /// Synchronises `set_focused` on all three text inputs based on
+    /// Synchronises `set_focused` on both text inputs based on
     /// `self.focused_field`.
     fn apply_focus(&mut self) {
-        self.ip_input.set_focused(self.focused_field == 0);
-        self.username_input.set_focused(self.focused_field == 1);
-        self.password_input.set_focused(self.focused_field == 2);
+        self.username_input.set_focused(self.focused_field == 0);
+        self.password_input.set_focused(self.focused_field == 1);
     }
 
-    /// Returns the field index (0-2) that contains the given point, if any.
+    /// Returns the text field index (0-1) that contains the given point, if any.
     fn field_index_at(&self, x: i32, y: i32) -> Option<usize> {
-        if self.ip_input.bounds().contains_point(x, y) {
+        if self.username_input.bounds().contains_point(x, y) {
             Some(0)
-        } else if self.username_input.bounds().contains_point(x, y) {
-            Some(1)
         } else if self.password_input.bounds().contains_point(x, y) {
-            Some(2)
+            Some(1)
         } else {
             None
         }
@@ -352,7 +363,7 @@ impl LoginForm {
     /// Applies the controller focus highlight to the appropriate child widget.
     fn apply_controller_focus(&mut self) {
         let focused = self.controller_focused;
-        self.ip_input.set_hovered(focused == Some(0));
+        self.server_dropdown.set_hovered(focused == Some(0));
         self.username_input.set_hovered(focused == Some(1));
         self.password_input.set_hovered(focused == Some(2));
         self.music_checkbox.set_hovered(focused == Some(3));
@@ -369,9 +380,8 @@ impl LoginForm {
     /// * `ch` - The character to inject.
     pub fn inject_char(&mut self, ch: char) {
         match self.focused_field {
-            0 => self.ip_input.inject_char(ch),
-            1 => self.username_input.inject_char(ch),
-            2 => self.password_input.inject_char(ch),
+            0 => self.username_input.inject_char(ch),
+            1 => self.password_input.inject_char(ch),
             _ => {}
         }
     }
@@ -379,9 +389,8 @@ impl LoginForm {
     /// Injects a backspace into the currently focused text field.
     pub fn inject_backspace(&mut self) {
         match self.focused_field {
-            0 => self.ip_input.inject_backspace(),
-            1 => self.username_input.inject_backspace(),
-            2 => self.password_input.inject_backspace(),
+            0 => self.username_input.inject_backspace(),
+            1 => self.password_input.inject_backspace(),
             _ => {}
         }
     }
@@ -390,9 +399,9 @@ impl LoginForm {
     ///
     /// # Arguments
     ///
-    /// * `field_index` - Text field index (0 = IP, 1 = username, 2 = password).
+    /// * `field_index` - Text field index (0 = username, 1 = password).
     pub fn set_text_focus(&mut self, field_index: usize) {
-        if field_index < 3 {
+        if field_index < 2 {
             self.focused_field = field_index;
             self.apply_focus();
         }
@@ -430,11 +439,12 @@ impl Widget for LoginForm {
             }
             UiEvent::NavConfirm => {
                 match self.controller_focused {
-                    Some(i @ 0..=2) => {
+                    Some(0) => self.cycle_server_option(),
+                    Some(i @ 1..=2) => {
                         // Text input — tell scene to open on-screen keyboard.
-                        self.focused_field = i;
+                        self.focused_field = i - 1;
                         self.apply_focus();
-                        self.actions.push(LoginFormAction::OpenKeyboard(i));
+                        self.actions.push(LoginFormAction::OpenKeyboard(i - 1));
                     }
                     Some(3) => {
                         // Toggle music checkbox.
@@ -456,6 +466,15 @@ impl Widget for LoginForm {
                 self.apply_controller_focus();
             }
             _ => {}
+        }
+
+        // Expanded combo box gets first chance at clicks so its option list
+        // overlays the rest of the form cleanly.
+        if self.server_dropdown.is_expanded() {
+            let response = self.server_dropdown.handle_event(event);
+            if response == EventResponse::Consumed || !self.server_dropdown.is_expanded() {
+                return EventResponse::Consumed;
+            }
         }
 
         // ── Tab / Enter key handling ──────────────────────────────────────
@@ -519,6 +538,11 @@ impl Widget for LoginForm {
             return EventResponse::Consumed;
         }
 
+        let server_resp = self.server_dropdown.handle_event(event);
+        if server_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
         // Checkbox
         let _cb_resp = self.music_checkbox.handle_event(event);
         if self.music_checkbox.was_toggled() {
@@ -528,7 +552,6 @@ impl Widget for LoginForm {
         }
 
         // Text inputs
-        self.ip_input.handle_event(event);
         self.username_input.handle_event(event);
         self.password_input.handle_event(event);
 
@@ -548,7 +571,6 @@ impl Widget for LoginForm {
     }
 
     fn update(&mut self, dt: Duration) {
-        self.ip_input.update(dt);
         self.username_input.update(dt);
         self.password_input.update(dt);
     }
@@ -583,7 +605,7 @@ impl Widget for LoginForm {
 
         let mut cursor_y = title_y + font_cache::BITMAP_GLYPH_H as i32 + 8;
 
-        // ── IP field ─────────────────────────────────────────────────────
+        // ── Server field ─────────────────────────────────────────────────
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
@@ -594,9 +616,8 @@ impl Widget for LoginForm {
             font_cache::TextStyle::PLAIN,
         )?;
         cursor_y += font_cache::BITMAP_GLYPH_H as i32 + LABEL_INPUT_GAP;
-        // Reposition input to follow dynamic layout (warning may shift things).
-        self.ip_input.set_position(self.bounds.x + PAD_X, cursor_y);
-        self.ip_input.render(ctx)?;
+        self.server_dropdown
+            .set_position(self.bounds.x + PAD_X, cursor_y);
         cursor_y += INPUT_H as i32 + FIELD_GAP;
 
         // ── Username field ───────────────────────────────────────────────
@@ -680,8 +701,29 @@ impl Widget for LoginForm {
             )?;
         }
 
+        self.server_dropdown.render(ctx)?;
+
         Ok(())
     }
+}
+
+/// Builds the combo-box option list with the current server value first.
+fn normalized_server_options(server_ip: &str, server_options: &[String]) -> Vec<String> {
+    let mut options = Vec::new();
+    let current = server_ip.trim();
+    if !current.is_empty() {
+        options.push(current.to_owned());
+    }
+    for option in server_options {
+        let trimmed = option.trim();
+        if !trimmed.is_empty() && !options.iter().any(|existing| existing == trimmed) {
+            options.push(trimmed.to_owned());
+        }
+    }
+    if options.is_empty() {
+        options.push("127.0.0.1".to_owned());
+    }
+    options
 }
 
 // ---------------------------------------------------------------------------
@@ -694,7 +736,12 @@ mod tests {
     use crate::ui::widget::KeyModifiers;
 
     fn make_form() -> LoginForm {
-        LoginForm::new("127.0.0.1", "testuser", false)
+        LoginForm::new(
+            "127.0.0.1",
+            &["127.0.0.1".to_owned(), "menamonggods.ddns.net".to_owned()],
+            "testuser",
+            false,
+        )
     }
 
     #[test]
@@ -719,11 +766,6 @@ mod tests {
             keycode: Keycode::Tab,
             modifiers: KeyModifiers::default(),
         });
-        assert_eq!(form.focused_field, 2);
-        form.handle_event(&UiEvent::KeyDown {
-            keycode: Keycode::Tab,
-            modifiers: KeyModifiers::default(),
-        });
         assert_eq!(form.focused_field, 0);
     }
 
@@ -737,7 +779,7 @@ mod tests {
                 ..Default::default()
             },
         });
-        assert_eq!(form.focused_field, 2);
+        assert_eq!(form.focused_field, 1);
     }
 
     #[test]
@@ -774,5 +816,50 @@ mod tests {
         form.set_submitting(true);
         assert!(form.show_submitting);
         assert!(form.error_text.is_none());
+    }
+
+    #[test]
+    fn server_combo_selection_updates_selected_server() {
+        let mut form = make_form();
+        let dropdown_bounds = *form.server_dropdown.bounds();
+        form.handle_event(&UiEvent::MouseClick {
+            x: dropdown_bounds.x + 2,
+            y: dropdown_bounds.y + 2,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert!(form.server_dropdown.is_expanded());
+
+        form.handle_event(&UiEvent::MouseClick {
+            x: dropdown_bounds.x + 4,
+            y: dropdown_bounds.y + dropdown_bounds.height as i32 + 16 + 2,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+
+        assert_eq!(form.server_ip(), "menamonggods.ddns.net");
+        assert!(!form.server_dropdown.is_expanded());
+    }
+
+    #[test]
+    fn controller_confirm_cycles_server_selection() {
+        let mut form = make_form();
+        form.controller_focused = Some(0);
+
+        form.handle_event(&UiEvent::NavConfirm);
+
+        assert_eq!(form.server_ip(), "menamonggods.ddns.net");
+    }
+
+    #[test]
+    fn normalized_server_options_keeps_current_value_first() {
+        let options = normalized_server_options(
+            "custom.example.net",
+            &["127.0.0.1".to_owned(), "custom.example.net".to_owned()],
+        );
+
+        assert_eq!(options[0], "custom.example.net");
+        assert_eq!(options[1], "127.0.0.1");
+        assert_eq!(options.len(), 2);
     }
 }
