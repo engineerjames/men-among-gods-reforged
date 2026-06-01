@@ -94,6 +94,9 @@ pub struct GameState {
     /// Number of pentagram items needed for a quest completion.
     pub penta_needed: usize,
 
+    /// Runtime-only landed primary-hit counters for talent passives.
+    pub talent_primary_hit_counts: Vec<u8>,
+
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
 
@@ -190,6 +193,7 @@ impl GameState {
             oy: 0,
             is_monster: false,
             penta_needed: 5,
+            talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding

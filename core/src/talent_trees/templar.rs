@@ -1,357 +1,263 @@
 //! Templar class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNode, TalentRef, TalentTree};
-use crate::skills::Attribute;
+use super::{
+    TalentEffect, TalentNode, TalentPrimaryHitProc, TalentPrimaryHitProcKind, TalentRef, TalentTree,
+};
+use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
 
-const SHIELD_OATH: TalentRef = TalentRef {
+const RENEWAL: TalentRef = TalentRef {
     layer: 1,
     mask: 0b0000_0001,
 };
-const SACRED_FOCUS: TalentRef = TalentRef {
+const GASH: TalentRef = TalentRef {
     layer: 1,
     mask: 0b0000_0010,
 };
-const BULWARK_1: TalentRef = TalentRef {
+const CORPORAL_STRENGTH: TalentRef = TalentRef {
     layer: 2,
     mask: 0b0000_0001,
 };
-const RADIANT_STRIKE_1: TalentRef = TalentRef {
-    layer: 2,
-    mask: 0b0000_0010,
-};
-const BULWARK_2: TalentRef = TalentRef {
+const STAFF_SERGEANT_STRENGTH: TalentRef = TalentRef {
     layer: 3,
     mask: 0b0000_0001,
 };
-const RADIANT_STRIKE_2: TalentRef = TalentRef {
-    layer: 3,
-    mask: 0b0000_0010,
-};
-const GUARDING_STEP_1: TalentRef = TalentRef {
+const FIRST_SERGEANT_MEDITATE: TalentRef = TalentRef {
     layer: 4,
     mask: 0b0000_0001,
 };
-const WRATH_1: TalentRef = TalentRef {
-    layer: 4,
-    mask: 0b0000_0010,
-};
-const AEGIS: TalentRef = TalentRef {
+const DIVINE_BLESSING: TalentRef = TalentRef {
     layer: 5,
     mask: 0b0000_0001,
 };
-const JUDGMENT: TalentRef = TalentRef {
+const SEEING_RED: TalentRef = TalentRef {
     layer: 5,
     mask: 0b0000_0010,
 };
-const GUARDING_STEP_2: TalentRef = TalentRef {
+const CAPTAIN_VITALITY: TalentRef = TalentRef {
     layer: 6,
     mask: 0b0000_0001,
 };
-const WRATH_2: TalentRef = TalentRef {
-    layer: 6,
-    mask: 0b0000_0010,
-};
-const SANCTUARY_1: TalentRef = TalentRef {
+const RENEWING_STRIKES: TalentRef = TalentRef {
     layer: 7,
     mask: 0b0000_0001,
 };
-const RESOLVE_1: TalentRef = TalentRef {
+const JUDGMENT_STRIKES: TalentRef = TalentRef {
     layer: 7,
     mask: 0b0000_0010,
 };
-const SANCTUARY_2: TalentRef = TalentRef {
+const BRIGADIER_GENERAL_VITALITY: TalentRef = TalentRef {
     layer: 8,
     mask: 0b0000_0001,
 };
-const RESOLVE_2: TalentRef = TalentRef {
-    layer: 8,
-    mask: 0b0000_0010,
-};
-const BASTION: TalentRef = TalentRef {
+const HOLY_FURY: TalentRef = TalentRef {
     layer: 9,
     mask: 0b0000_0001,
 };
-const CONSECRATION: TalentRef = TalentRef {
+const INNER_STRENGTH: TalentRef = TalentRef {
     layer: 9,
     mask: 0b0000_0010,
 };
-const STRENGTH_OF_FAITH_1: TalentRef = TalentRef {
+const FIELD_MARSHAL_AGILITY: TalentRef = TalentRef {
     layer: 10,
     mask: 0b0000_0001,
 };
-const WISDOM_OF_FAITH_1: TalentRef = TalentRef {
-    layer: 10,
-    mask: 0b0000_0010,
-};
-const STRENGTH_OF_FAITH_2: TalentRef = TalentRef {
+const BARON_AGILITY: TalentRef = TalentRef {
     layer: 11,
     mask: 0b0000_0001,
 };
-const WISDOM_OF_FAITH_2: TalentRef = TalentRef {
-    layer: 11,
-    mask: 0b0000_0010,
-};
-const OATHBOUND_PARAGON: TalentRef = TalentRef {
+const WARLORD_ASCENDANCY: TalentRef = TalentRef {
     layer: 12,
     mask: 0b0000_0001,
 };
 
-/// The full Templar placeholder talent tree.
+const WARLORD_EFFECTS: &[TalentEffect] = &[
+    TalentEffect::AttributesPercent {
+        attrs: &[Attribute::Strength, Attribute::Agility],
+        percents: &[10, 10],
+    },
+    TalentEffect::HpManaEndFlat {
+        hp: 100,
+        mana: 0,
+        end: 100,
+    },
+];
+
+/// The full Templar talent tree.
 pub static TEMPLAR_TREE: TalentTree = TalentTree {
     class: Class::Templar,
     nodes: &[
         TalentNode {
-            slot: SHIELD_OATH,
-            name: "Shield Oath",
-            description: "Root defensive vow for the Templar path.",
+            slot: RENEWAL,
+            name: "Renewal",
+            description: "Learn Rains of Renewal.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Braveness],
-                percents: &[10],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::RainsOfRenewal,
             },
         },
         TalentNode {
-            slot: SACRED_FOCUS,
-            name: "Sacred Focus",
-            description: "Root spell discipline for the Templar path.",
+            slot: GASH,
+            name: "Gash",
+            description: "Learn Gash.",
             cost: 1,
             prereqs: &[],
+            effect: TalentEffect::GrantSkill { skill: Skill::Gash },
+        },
+        TalentNode {
+            slot: CORPORAL_STRENGTH,
+            name: "Corporal Strength",
+            description: "Increase Strength by 5%.",
+            cost: 1,
+            prereqs: &[RENEWAL, GASH],
             effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[8],
+                attrs: &[Attribute::Strength],
+                percents: &[5],
             },
         },
         TalentNode {
-            slot: BULWARK_1,
-            name: "Bulwark I",
-            description: "Placeholder defensive training.",
+            slot: STAFF_SERGEANT_STRENGTH,
+            name: "Staff Sergeant Strength",
+            description: "Increase Strength by an additional 5%.",
             cost: 1,
-            prereqs: &[SHIELD_OATH],
+            prereqs: &[CORPORAL_STRENGTH],
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Strength],
+                percents: &[5],
+            },
+        },
+        TalentNode {
+            slot: FIRST_SERGEANT_MEDITATE,
+            name: "Meditative Discipline",
+            description: "Unlock Meditate at base level 5.",
+            cost: 1,
+            prereqs: &[STAFF_SERGEANT_STRENGTH],
+            effect: TalentEffect::GrantSkillAtBase {
+                skill: Skill::Meditate,
+                base: 5,
+            },
+        },
+        TalentNode {
+            slot: DIVINE_BLESSING,
+            name: "Divine Blessing",
+            description: "Learn Sun's Blessing.",
+            cost: 1,
+            prereqs: &[FIRST_SERGEANT_MEDITATE],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::SunsBlessing,
+            },
+        },
+        TalentNode {
+            slot: SEEING_RED,
+            name: "Seeing Red",
+            description: "Learn Seeing Red.",
+            cost: 1,
+            prereqs: &[FIRST_SERGEANT_MEDITATE],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::SeeingRed,
+            },
+        },
+        TalentNode {
+            slot: CAPTAIN_VITALITY,
+            name: "Captain Vitality",
+            description: "Increase maximum HP by 100 and endurance by 50.",
+            cost: 1,
+            prereqs: &[DIVINE_BLESSING, SEEING_RED],
+            effect: TalentEffect::HpManaEndFlat {
+                hp: 100,
+                mana: 0,
+                end: 50,
+            },
+        },
+        TalentNode {
+            slot: RENEWING_STRIKES,
+            name: "Renewing Strikes",
+            description: "Every fifth landed primary attack heals you for 50 HP.",
+            cost: 1,
+            prereqs: &[CAPTAIN_VITALITY],
+            effect: TalentEffect::PrimaryHitProc {
+                proc: TalentPrimaryHitProc {
+                    every_hits: 5,
+                    kind: TalentPrimaryHitProcKind::HealSelfHp { hp: 50 },
+                },
+            },
+        },
+        TalentNode {
+            slot: JUDGMENT_STRIKES,
+            name: "Judgment Strikes",
+            description: "Every fifth landed primary attack deals 25 extra damage.",
+            cost: 1,
+            prereqs: &[CAPTAIN_VITALITY],
+            effect: TalentEffect::PrimaryHitProc {
+                proc: TalentPrimaryHitProc {
+                    every_hits: 5,
+                    kind: TalentPrimaryHitProcKind::DamageTarget { damage: 25 },
+                },
+            },
+        },
+        TalentNode {
+            slot: BRIGADIER_GENERAL_VITALITY,
+            name: "Brigadier General Vitality",
+            description: "Increase maximum HP by 100 and endurance by 50.",
+            cost: 1,
+            prereqs: &[RENEWING_STRIKES, JUDGMENT_STRIKES],
+            effect: TalentEffect::HpManaEndFlat {
+                hp: 100,
+                mana: 0,
+                end: 50,
+            },
+        },
+        TalentNode {
+            slot: HOLY_FURY,
+            name: "Holy Fury",
+            description: "Learn Thunderous Fury.",
+            cost: 1,
+            prereqs: &[BRIGADIER_GENERAL_VITALITY],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::ThunderousFury,
+            },
+        },
+        TalentNode {
+            slot: INNER_STRENGTH,
+            name: "Inner Strength",
+            description: "Learn Inner Strength.",
+            cost: 1,
+            prereqs: &[BRIGADIER_GENERAL_VITALITY],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::InnerStrength,
+            },
+        },
+        TalentNode {
+            slot: FIELD_MARSHAL_AGILITY,
+            name: "Field Marshal Agility",
+            description: "Increase Agility by 5%.",
+            cost: 1,
+            prereqs: &[HOLY_FURY, INNER_STRENGTH],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Agility],
-                percents: &[6],
+                percents: &[5],
             },
         },
         TalentNode {
-            slot: RADIANT_STRIKE_1,
-            name: "Radiant Strike I",
-            description: "Placeholder offensive zeal training.",
+            slot: BARON_AGILITY,
+            name: "Baron Agility",
+            description: "Increase Agility by an additional 5%.",
             cost: 1,
-            prereqs: &[SACRED_FOCUS],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[10],
-            },
-        },
-        TalentNode {
-            slot: BULWARK_2,
-            name: "Bulwark II",
-            description: "Further defensive training.",
-            cost: 1,
-            prereqs: &[BULWARK_1],
+            prereqs: &[FIELD_MARSHAL_AGILITY],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Agility],
-                percents: &[8],
+                percents: &[5],
             },
         },
         TalentNode {
-            slot: RADIANT_STRIKE_2,
-            name: "Radiant Strike II",
-            description: "Further offensive zeal training.",
+            slot: WARLORD_ASCENDANCY,
+            name: "Warlord Ascendancy",
+            description: "Increase Strength and Agility by 10%, maximum HP by 100, and endurance by 100.",
             cost: 1,
-            prereqs: &[RADIANT_STRIKE_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: GUARDING_STEP_1,
-            name: "Guarding Step I",
-            description: "Placeholder control of battlefield positioning.",
-            cost: 1,
-            prereqs: &[BULWARK_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[8],
-            },
-        },
-        TalentNode {
-            slot: WRATH_1,
-            name: "Wrath I",
-            description: "Placeholder righteous damage improvement.",
-            cost: 1,
-            prereqs: &[RADIANT_STRIKE_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: AEGIS,
-            name: "Aegis",
-            description: "Placeholder protective active talent.",
-            cost: 1,
-            prereqs: &[GUARDING_STEP_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Braveness],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: JUDGMENT,
-            name: "Judgment",
-            description: "Placeholder finishing talent.",
-            cost: 1,
-            prereqs: &[WRATH_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[16],
-            },
-        },
-        TalentNode {
-            slot: GUARDING_STEP_2,
-            name: "Guarding Step II",
-            description: "Advanced positioning discipline.",
-            cost: 1,
-            prereqs: &[AEGIS],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[10],
-            },
-        },
-        TalentNode {
-            slot: WRATH_2,
-            name: "Wrath II",
-            description: "Advanced righteous damage improvement.",
-            cost: 1,
-            prereqs: &[JUDGMENT],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[16],
-            },
-        },
-        TalentNode {
-            slot: SANCTUARY_1,
-            name: "Sanctuary I",
-            description: "Placeholder party protection improvement.",
-            cost: 1,
-            prereqs: &[GUARDING_STEP_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: RESOLVE_1,
-            name: "Resolve I",
-            description: "Placeholder resistance improvement.",
-            cost: 1,
-            prereqs: &[WRATH_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Braveness],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: SANCTUARY_2,
-            name: "Sanctuary II",
-            description: "Further party protection improvement.",
-            cost: 1,
-            prereqs: &[SANCTUARY_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[16],
-            },
-        },
-        TalentNode {
-            slot: RESOLVE_2,
-            name: "Resolve II",
-            description: "Further resistance improvement.",
-            cost: 1,
-            prereqs: &[RESOLVE_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Braveness],
-                percents: &[16],
-            },
-        },
-        TalentNode {
-            slot: BASTION,
-            name: "Bastion",
-            description: "Placeholder defensive capstone branch.",
-            cost: 1,
-            prereqs: &[SANCTUARY_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[10],
-            },
-        },
-        TalentNode {
-            slot: CONSECRATION,
-            name: "Consecration",
-            description: "Placeholder sacred ground branch.",
-            cost: 1,
-            prereqs: &[RESOLVE_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[14],
-            },
-        },
-        TalentNode {
-            slot: STRENGTH_OF_FAITH_1,
-            name: "Strength of Faith I",
-            description: "Increase strength through discipline.",
-            cost: 1,
-            prereqs: &[BASTION],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: WISDOM_OF_FAITH_1,
-            name: "Wisdom of Faith I",
-            description: "Increase intuition through discipline.",
-            cost: 1,
-            prereqs: &[CONSECRATION],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Intuition],
-                percents: &[8],
-            },
-        },
-        TalentNode {
-            slot: STRENGTH_OF_FAITH_2,
-            name: "Strength of Faith II",
-            description: "Further increase strength through discipline.",
-            cost: 1,
-            prereqs: &[STRENGTH_OF_FAITH_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[14],
-            },
-        },
-        TalentNode {
-            slot: WISDOM_OF_FAITH_2,
-            name: "Wisdom of Faith II",
-            description: "Further increase intuition through discipline.",
-            cost: 1,
-            prereqs: &[WISDOM_OF_FAITH_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Intuition],
-                percents: &[10],
-            },
-        },
-        TalentNode {
-            slot: OATHBOUND_PARAGON,
-            name: "Oathbound Paragon",
-            description: "Capstone: unite Templar defense and zeal.",
-            cost: 1,
-            prereqs: &[STRENGTH_OF_FAITH_2, WISDOM_OF_FAITH_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Braveness],
-                percents: &[25],
+            prereqs: &[BARON_AGILITY],
+            effect: TalentEffect::Composite {
+                effects: WARLORD_EFFECTS,
             },
         },
     ],

@@ -1,6 +1,6 @@
 use core::constants::{CharacterFlags, ItemFlags};
 use core::string_operations::c_string_to_str;
-use core::talent_trees::talent_dodge_bonuses;
+use core::talent_trees::{TalentPrimaryHitProcKind, talent_dodge_bonuses, talent_primary_hit_proc};
 use core::types::{Class, FontColor};
 use core::{skills, traits};
 
@@ -496,6 +496,11 @@ impl GameState {
         let odam = dam;
         dam += bonus;
 
+        let triggered_proc = self.trigger_primary_hit_talent_proc(attacker_index);
+        if let Some(TalentPrimaryHitProcKind::DamageTarget { damage }) = triggered_proc {
+            dam += damage.max(0);
+        }
+
         // Apply weapon wear if wielding (only for players in original)
         if attacker_is_player {
             let rhand = self.characters[attacker_index].worn[core::constants::WN_RHAND] as usize;
@@ -506,6 +511,10 @@ impl GameState {
 
         // Apply damage and capture actual applied damage
         let applied = self.do_hurt(attacker_index, defender_index, dam, 0);
+
+        if let Some(TalentPrimaryHitProcKind::HealSelfHp { hp }) = triggered_proc {
+            self.apply_primary_hit_talent_heal(attacker_index, hp);
+        }
 
         // Play sounds depending on whether damage occurred (match original behaviour)
         let tx = i32::from(self.characters[defender_index].x);
@@ -575,6 +584,59 @@ impl GameState {
                     }
                 }
             }
+        }
+    }
+
+    /// Advances a landed primary-hit talent counter and returns a proc when due.
+    ///
+    /// # Arguments
+    ///
+    /// * `attacker_index` - Character index whose landed attack should count.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(kind)` on the hit that triggers the passive.
+    /// * `None` when no proc is learned or the counter has not reached its threshold.
+    fn trigger_primary_hit_talent_proc(
+        &mut self,
+        attacker_index: usize,
+    ) -> Option<TalentPrimaryHitProcKind> {
+        let character = &self.characters[attacker_index];
+        let is_player = (character.flags & CharacterFlags::Player.bits()) != 0;
+        if !is_player {
+            return None;
+        }
+
+        let proc = talent_primary_hit_proc(Class::from(character.kindred), &character.future1)?;
+        if proc.every_hits == 0 {
+            return None;
+        }
+
+        let count = &mut self.talent_primary_hit_counts[attacker_index];
+        *count = count.saturating_add(1);
+        if *count < proc.every_hits {
+            return None;
+        }
+
+        *count = 0;
+        Some(proc.kind)
+    }
+
+    /// Applies the heal side of a landed primary-hit talent proc.
+    ///
+    /// # Arguments
+    ///
+    /// * `attacker_index` - Character index to heal.
+    /// * `hp` - Whole HP to restore.
+    fn apply_primary_hit_talent_heal(&mut self, attacker_index: usize, hp: i32) {
+        if hp <= 0 {
+            return;
+        }
+
+        self.characters[attacker_index].a_hp += hp.saturating_mul(1000);
+        let max_hp = i32::from(self.characters[attacker_index].hp[5]) * 1000;
+        if self.characters[attacker_index].a_hp > max_hp {
+            self.characters[attacker_index].a_hp = max_hp;
         }
     }
 
@@ -1040,6 +1102,17 @@ mod tests {
     use crate::test_helpers::with_test_gs;
     use core::constants::{CharacterFlags, USE_ACTIVE};
     use core::talent_trees::mercenary;
+    use core::talent_trees::{TalentRef, tree_for};
+
+    fn named_slot(class: Class, name: &str) -> TalentRef {
+        tree_for(class)
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("missing talent node '{name}'"))
+            .slot
+    }
 
     fn seed_character(gs: &mut GameState, cn: usize, flags: u64, kindred: i32) {
         gs.characters[cn] = core::types::Character::default();
@@ -1117,6 +1190,79 @@ mod tests {
             spend_talent(gs, 1, mercenary::DODGE_BOOST_2);
 
             assert_eq!(gs.physical_dodge_percent(1), 0);
+        });
+    }
+
+    #[test]
+    fn primary_hit_proc_triggers_on_fifth_landed_hit() {
+        with_test_gs(|gs| {
+            let renewing = named_slot(Class::Templar, "Renewing Strikes");
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_TEMPLAR as i32,
+            );
+            spend_talent(gs, 1, renewing);
+
+            for _ in 0..4 {
+                assert_eq!(gs.trigger_primary_hit_talent_proc(1), None);
+            }
+            assert_eq!(
+                gs.trigger_primary_hit_talent_proc(1),
+                Some(TalentPrimaryHitProcKind::HealSelfHp { hp: 50 })
+            );
+            assert_eq!(gs.talent_primary_hit_counts[1], 0);
+        });
+    }
+
+    #[test]
+    fn primary_hit_proc_returns_damage_choice() {
+        with_test_gs(|gs| {
+            let judgment = named_slot(Class::Templar, "Judgment Strikes");
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_TEMPLAR as i32,
+            );
+            spend_talent(gs, 1, judgment);
+            gs.talent_primary_hit_counts[1] = 4;
+
+            assert_eq!(
+                gs.trigger_primary_hit_talent_proc(1),
+                Some(TalentPrimaryHitProcKind::DamageTarget { damage: 25 })
+            );
+        });
+    }
+
+    #[test]
+    fn primary_hit_proc_ignores_npc_talent_bits() {
+        with_test_gs(|gs| {
+            let renewing = named_slot(Class::Templar, "Renewing Strikes");
+            seed_character(gs, 1, 0, traits::KIN_TEMPLAR as i32);
+            spend_talent(gs, 1, renewing);
+            gs.talent_primary_hit_counts[1] = 4;
+
+            assert_eq!(gs.trigger_primary_hit_talent_proc(1), None);
+        });
+    }
+
+    #[test]
+    fn primary_hit_proc_heal_clamps_to_max_hp() {
+        with_test_gs(|gs| {
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_TEMPLAR as i32,
+            );
+            gs.characters[1].hp[5] = 100;
+            gs.characters[1].a_hp = 90_000;
+
+            gs.apply_primary_hit_talent_heal(1, 50);
+
+            assert_eq!(gs.characters[1].a_hp, 100_000);
         });
     }
 
