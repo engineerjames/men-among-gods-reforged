@@ -85,8 +85,11 @@ fn main() -> Result<(), String> {
     log::info!("God password loaded from MAG_GOD_PASSWORD.");
 
     if gs.globals.is_dirty() {
-        log::error!("Data files were not closed cleanly last time. Exiting.");
-        process::exit(1);
+        log::warn!("************************************************************");
+        log::warn!("KeyDB game state was not closed cleanly last time.");
+        log::warn!("Continuing startup; recent gameplay may be missing or partially persisted.");
+        log::warn!("Consider exporting a recovery snapshot before making manual repairs.");
+        log::warn!("************************************************************");
     }
 
     let mut server = server::Server::new();
