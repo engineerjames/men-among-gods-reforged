@@ -335,7 +335,7 @@ impl GameScene {
             return None;
         }
 
-        if self.ctrl_held || self.alt_held {
+        if self.effective_ctrl_held() || self.alt_held {
             let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)?;
             if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
                 return None;
@@ -351,7 +351,7 @@ impl GameScene {
                 y: sy,
                 alpha: 140,
             })
-        } else if self.shift_held && ps.character_info().citem == 0 {
+        } else if self.effective_shift_held() && ps.character_info().citem == 0 {
             // Snap to nearest item tile only when the hand is empty.
             let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM)?;
             if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
@@ -425,7 +425,9 @@ impl GameScene {
             return self.shop_panel.hovered_item_label(ps.shop_is_grave());
         }
         if self.inventory_panel.is_visible() && self.inventory_panel.is_cursor_over_panel() {
-            return self.inventory_panel.hovered_label(self.shift_held);
+            return self
+                .inventory_panel
+                .hovered_label(self.effective_shift_held());
         }
 
         let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
@@ -441,7 +443,8 @@ impl GameScene {
             return Some("LOOK");
         }
 
-        if self.ctrl_held && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
+        if self.effective_ctrl_held() && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some()
+        {
             return if has_item {
                 Some("GIVE")
             } else {
@@ -449,7 +452,7 @@ impl GameScene {
             };
         }
 
-        if self.shift_held {
+        if self.effective_shift_held() {
             // "USE" has highest priority when the cursor is over a usable tile,
             // even if the player is holding an item.
             if let Some((sx, sy)) = Self::nearest_tile_with_flag(ps, mx, my, ISITEM) {

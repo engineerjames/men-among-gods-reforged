@@ -43,6 +43,7 @@ use crate::{
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
+    types::mouse::{ExtraMouseButton, MouseModifier},
     ui::{
         self, RenderContext,
         forms::cert_dialog::CertDialog,
@@ -343,6 +344,10 @@ pub struct GameScene {
     pub(super) ctrl_held: bool,
     pub(super) shift_held: bool,
     pub(super) alt_held: bool,
+    /// Whether a mouse side button currently contributes Ctrl behavior.
+    pub(super) mouse_ctrl_held: bool,
+    /// Whether a mouse side button currently contributes Shift behavior.
+    pub(super) mouse_shift_held: bool,
     /// Whether the controller's left bumper (LB) is held.
     pub(super) lb_held: bool,
     /// Whether the controller's right bumper (RB) is held.
@@ -510,6 +515,8 @@ impl GameScene {
             ctrl_held: false,
             shift_held: false,
             alt_held: false,
+            mouse_ctrl_held: false,
+            mouse_shift_held: false,
             lb_held: false,
             rb_held: false,
             lt_held: false,
@@ -614,7 +621,81 @@ impl GameScene {
             },
             key_bindings: app_state.settings.character.key_bindings.clone(),
             controller_bindings: app_state.settings.character.controller_bindings.clone(),
+            mouse_modifier_bindings: app_state.settings.character.mouse_modifier_bindings.clone(),
         }
+    }
+
+    /// Returns whether Ctrl-like behavior is currently active.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when physical/controller Ctrl state or a mouse binding is held.
+    pub(super) fn effective_ctrl_held(&self) -> bool {
+        self.ctrl_held || self.mouse_ctrl_held
+    }
+
+    /// Returns whether Shift-like behavior is currently active.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when physical/controller Shift state or a mouse binding is held.
+    pub(super) fn effective_shift_held(&self) -> bool {
+        self.shift_held || self.mouse_shift_held
+    }
+
+    /// Builds the current effective modifier set for UI events.
+    ///
+    /// # Returns
+    ///
+    /// * Current Ctrl/Shift/Alt state, including mouse-derived modifiers.
+    pub(super) fn effective_key_modifiers(&self) -> KeyModifiers {
+        KeyModifiers {
+            ctrl: self.effective_ctrl_held(),
+            shift: self.effective_shift_held(),
+            alt: self.alt_held,
+        }
+    }
+
+    /// Applies a raw extra mouse-button event to mouse-derived modifier state.
+    ///
+    /// Returns `true` when the event was Mouse 4/Mouse 5 and should be
+    /// consumed before normal widget/world click handling.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    /// * `button` - Extra mouse button from the SDL event.
+    /// * `pressed` - `true` for button down, `false` for button up.
+    ///
+    /// # Returns
+    ///
+    /// * `(consumed, scene_change)` for the raw mouse-button event.
+    fn handle_extra_mouse_button_event(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        button: ExtraMouseButton,
+        pressed: bool,
+    ) -> (bool, Option<SceneType>) {
+        if pressed && self.settings_panel.is_mouse_modifier_listening() {
+            self.settings_panel.capture_mouse_modifier_button(button);
+            self.mouse_ctrl_held = false;
+            self.mouse_shift_held = false;
+            let scene_change = self.process_settings_panel_actions(app_state);
+            return (true, scene_change);
+        }
+
+        match app_state
+            .settings
+            .character
+            .mouse_modifier_bindings
+            .modifier_for_button(button)
+        {
+            Some(MouseModifier::Ctrl) => self.mouse_ctrl_held = pressed,
+            Some(MouseModifier::Shift) => self.mouse_shift_held = pressed,
+            None => {}
+        }
+
+        (true, None)
     }
 
     /// Drain pending `WidgetAction`s from the settings panel and apply
@@ -711,6 +792,16 @@ impl GameScene {
                         .character
                         .controller_bindings
                         .set(slot as usize, button);
+                    profile_changed = true;
+                }
+                WidgetAction::UpdateMouseModifierBinding { modifier, button } => {
+                    app_state
+                        .settings
+                        .character
+                        .mouse_modifier_bindings
+                        .set(modifier, button);
+                    self.mouse_ctrl_held = false;
+                    self.mouse_shift_held = false;
                     profile_changed = true;
                 }
                 WidgetAction::TogglePanel(_) => {
@@ -1186,6 +1277,8 @@ impl Scene for GameScene {
         self.ctrl_held = false;
         self.shift_held = false;
         self.alt_held = false;
+        self.mouse_ctrl_held = false;
+        self.mouse_shift_held = false;
         self.lb_held = false;
         self.rb_held = false;
         self.skill_scroll = 0;
@@ -1359,17 +1452,35 @@ impl Scene for GameScene {
             _ => {}
         }
 
+        match event {
+            Event::MouseButtonDown { mouse_btn, .. } => {
+                if let Some(button) = ExtraMouseButton::from_sdl2(*mouse_btn) {
+                    let (consumed, scene_change) =
+                        self.handle_extra_mouse_button_event(app_state, button, true);
+                    if consumed {
+                        return scene_change;
+                    }
+                }
+            }
+            Event::MouseButtonUp { mouse_btn, .. } => {
+                if let Some(button) = ExtraMouseButton::from_sdl2(*mouse_btn) {
+                    let (consumed, scene_change) =
+                        self.handle_extra_mouse_button_event(app_state, button, false);
+                    if consumed {
+                        return scene_change;
+                    }
+                }
+            }
+            _ => {}
+        }
+
         // --- UI widget stack ---
         let mut ui_consumed = false;
         if let Some(ui_event) = ui::sdl_to_ui_event(
             event,
             self.mouse_x,
             self.mouse_y,
-            KeyModifiers {
-                ctrl: self.ctrl_held,
-                shift: self.shift_held,
-                alt: self.alt_held,
-            },
+            self.effective_key_modifiers(),
         ) {
             match self.handle_ui_widget_events(app_state, &ui_event) {
                 net_events::UiHandleResult::SceneChange(sc) => return Some(sc),
@@ -1784,7 +1895,8 @@ impl Scene for GameScene {
                         &app_state.settings.character.skill_keybinds_secondary
                             [..NUMBER_OF_KEYBINDS],
                     );
-                    let show_secondary = self.shift_held || (self.controller_mode && self.lt_held);
+                    let show_secondary =
+                        self.effective_shift_held() || (self.controller_mode && self.lt_held);
                     self.skill_bar.update_data(SkillBarData {
                         keybinds,
                         secondary_keybinds,
@@ -2022,8 +2134,8 @@ impl Scene for GameScene {
 #[cfg(test)]
 mod tests {
     use super::{
-        HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X, HELPER_TEXT_CURSOR_GAP_Y,
-        HELPER_TEXT_SCREEN_MARGIN, helper_text_origin,
+        GameScene, HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X,
+        HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, helper_text_origin,
     };
 
     const SCREEN_W: i32 = 800;
@@ -2059,5 +2171,24 @@ mod tests {
         let text_w = SCREEN_W; // wider than the screen
         let (x, _) = helper_text_origin(SCREEN_W - 10, 100, text_w, 20, SCREEN_W, SCREEN_H);
         assert_eq!(x, HELPER_TEXT_SCREEN_MARGIN);
+    }
+
+    #[test]
+    fn effective_modifiers_include_mouse_held_state() {
+        let mut scene = GameScene::new();
+
+        scene.mouse_ctrl_held = true;
+        scene.mouse_shift_held = true;
+        let modifiers = scene.effective_key_modifiers();
+
+        assert!(scene.effective_ctrl_held());
+        assert!(scene.effective_shift_held());
+        assert!(modifiers.ctrl);
+        assert!(modifiers.shift);
+        assert!(!modifiers.alt);
+
+        scene.mouse_ctrl_held = false;
+        scene.ctrl_held = true;
+        assert!(scene.effective_ctrl_held());
     }
 }
