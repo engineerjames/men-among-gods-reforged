@@ -351,7 +351,7 @@ with `world-snapshot`.
 
 Template keys (`game:titem:*` and `game:tchar:*`) are not part of the background rotation and are not rewritten by the live server on shutdown. They are treated as immutable content during normal operation and are written by `world-snapshot` import or other maintenance tooling that explicitly saves templates.
 
-Clean shutdown paths perform a synchronous mutable-runtime save. Hard crashes can still lose up to roughly one background-save rotation (~12 minutes of gameplay).
+Clean shutdown paths perform a synchronous mutable-runtime save. Hard crashes can still lose up to roughly one background-save rotation (~12 minutes of gameplay). If the server starts with the persisted dirty flag still set, it logs a prominent warning and continues so operators can recover in place instead of being forced into an older backup restore.
 
 ### World Snapshot Tool
 
