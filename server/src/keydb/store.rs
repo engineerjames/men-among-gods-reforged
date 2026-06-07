@@ -20,9 +20,9 @@ use redis::{Commands, Connection, pipe};
 
 /// Current schema version written to the `game:meta:version` key.
 ///
-/// Increment this when the key layout or encoding format changes,
-/// and add a corresponding migration path in [`load_all`].
-const SCHEMA_VERSION: u32 = 1;
+/// Keep this aligned with the snapshot schema, because `world-snapshot import`
+/// seeds this marker after writing snapshot data into KeyDB.
+const SCHEMA_VERSION: u32 = super::snapshot::SNAPSHOT_SCHEMA_VERSION;
 
 /// Number of keys to batch in a single Redis pipeline round-trip.
 ///
@@ -846,11 +846,13 @@ pub fn load_character_templates(
 mod tests {
     use super::*;
 
-    /// Verify that `SCHEMA_VERSION` is the expected value (guards against
-    /// accidental bumps without a migration path).
+    /// Verify that `SCHEMA_VERSION` matches the snapshot import marker.
     #[test]
-    fn schema_version_is_one() {
-        const _: () = assert!(SCHEMA_VERSION == 1, "SCHEMA_VERSION must stay at 1");
+    fn schema_version_matches_snapshot_schema() {
+        const _: () = assert!(
+            SCHEMA_VERSION == super::super::snapshot::SNAPSHOT_SCHEMA_VERSION,
+            "SCHEMA_VERSION must match SNAPSHOT_SCHEMA_VERSION"
+        );
     }
 
     /// Verify that `PIPELINE_BATCH_SIZE` is a power of two and non-zero.

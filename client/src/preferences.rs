@@ -7,6 +7,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::types::controller::ControllerBindings;
+use crate::types::mouse::MouseModifierBindings;
 use crate::ui::widget::KeyBindings;
 
 /// Number of skill-bar binding slots.
@@ -46,6 +47,9 @@ pub struct CharacterSettings {
     /// Controller button bindings for skill-bar slots 1–9.
     #[serde(default)]
     pub controller_bindings: ControllerBindings,
+    /// Mouse side-button bindings that temporarily mimic Ctrl/Shift.
+    #[serde(default)]
+    pub mouse_modifier_bindings: MouseModifierBindings,
     /// Whether graves adjacent to the player are automatically looted on
     /// each server tick. Defaults to `true`. Toggle with `/autoloot`.
     #[serde(default = "default_auto_loot_graves")]
@@ -68,6 +72,7 @@ impl Default for CharacterSettings {
             settings_panel_pos: None,
             key_bindings: KeyBindings::default(),
             controller_bindings: ControllerBindings::default(),
+            mouse_modifier_bindings: MouseModifierBindings::default(),
             auto_loot_graves: true,
         }
     }
@@ -553,6 +558,19 @@ mod tests {
         assert_eq!(
             deserialized.character.skill_keybinds,
             defaults.character.skill_keybinds
+        );
+        assert_eq!(
+            deserialized.character.mouse_modifier_bindings,
+            defaults.character.mouse_modifier_bindings
+        );
+    }
+
+    #[test]
+    fn character_settings_missing_mouse_modifier_bindings_default_unbound() {
+        let deserialized: CharacterSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(
+            deserialized.mouse_modifier_bindings,
+            MouseModifierBindings::default()
         );
     }
 

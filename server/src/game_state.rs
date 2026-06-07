@@ -94,6 +94,9 @@ pub struct GameState {
     /// Number of pentagram items needed for a quest completion.
     pub penta_needed: usize,
 
+    /// Runtime-only landed primary-hit counters for talent passives.
+    pub talent_primary_hit_counts: Vec<u8>,
+
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
 
@@ -102,8 +105,7 @@ pub struct GameState {
     pub pathfinder: PathFinder,
 
     // -- Persistence (private) --
-    /// Set to `true` once a clean save has been performed, preventing a
-    /// redundant save from the `Drop` impl if `shutdown()` already ran.
+    /// Set to `true` until loaded runtime data needs a final persistence pass.
     saved_cleanly: bool,
 
     // -- Runtime mode flags --
@@ -191,12 +193,13 @@ impl GameState {
             oy: 0,
             is_monster: false,
             penta_needed: 5,
+            talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding
             pathfinder: PathFinder::new(),
-            // Persistence
-            saved_cleanly: false,
+            // Persistence is enabled only after KeyDB data loads successfully.
+            saved_cleanly: true,
             // Runtime mode flags
             playtest_mode: false,
             god_password: String::new(),
@@ -218,6 +221,7 @@ impl GameState {
     pub fn initialize() -> Result<GameState, String> {
         let mut gs = Self::new();
         gs.load_from_keydb()?;
+        gs.saved_cleanly = false;
         Ok(gs)
     }
 
@@ -346,21 +350,22 @@ impl GameState {
 impl Drop for GameState {
     /// Safety-net save on drop if `shutdown()` was not called.
     ///
-    /// If `shutdown()` already performed a clean save (indicated by
-    /// `saved_cleanly`), the drop is a no-op. Otherwise it attempts a
+    /// If persistence has not been activated yet or `shutdown()` already
+    /// performed a clean save, the drop is a no-op. Otherwise it attempts a
     /// last-ditch save to avoid data loss.
     fn drop(&mut self) {
         if self.saved_cleanly {
-            log::info!("GameState drop: already saved cleanly, skipping.");
+            log::info!("GameState drop: no pending persistence save, skipping.");
             return;
         }
 
         self.globals.set_dirty(false);
-        self.save().unwrap_or_else(|e| {
+        if let Err(e) = self.save() {
             log::error!("Failed to save game state on drop: {}", e);
-        });
-
-        log::info!("GameState saved cleanly on drop.");
+        } else {
+            self.saved_cleanly = true;
+            log::info!("GameState saved cleanly on drop.");
+        }
     }
 }
 

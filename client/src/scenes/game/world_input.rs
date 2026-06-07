@@ -38,7 +38,7 @@ impl GameScene {
         };
         if let (Some(net), Some(ps)) = (app_state.network.as_ref(), app_state.player_state.as_ref())
         {
-            let skill_nr = if self.shift_held {
+            let skill_nr = if self.effective_shift_held() {
                 app_state.settings.character.skill_keybinds_secondary[key_slot]
             } else {
                 app_state.settings.character.skill_keybinds[key_slot]
@@ -89,8 +89,8 @@ impl GameScene {
             return None;
         };
 
-        let has_ctrl = self.ctrl_held;
-        let has_shift = self.shift_held;
+        let has_ctrl = self.effective_ctrl_held();
+        let has_shift = self.effective_shift_held();
         let has_alt = self.alt_held;
 
         // Read citem early so we can suppress ISITEM snapping when the

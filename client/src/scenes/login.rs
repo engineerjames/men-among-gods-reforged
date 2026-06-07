@@ -67,6 +67,7 @@ impl LoginScene {
         let settings = preferences::load_global_settings();
         let login_form = LoginForm::new(
             &crate::hosts::get_server_ip(),
+            &crate::hosts::server_ip_options(),
             &preferences::load_last_username().unwrap_or_default(),
             settings.music_enabled,
         );
@@ -195,6 +196,7 @@ impl Scene for LoginScene {
     }
 
     fn on_exit(&mut self, app_state: &mut AppState<'_>) {
+        self.login_form.set_error(None);
         app_state.sfx_cache.stop_music();
     }
 

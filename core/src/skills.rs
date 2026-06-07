@@ -57,6 +57,52 @@ pub const SK_CONTAGION: usize = 41;
 /// Blade Dance: passive amplifier that doubles Surround Hit secondary damage.
 pub const SK_BLADE_DANCE: usize = 42;
 
+// ---- Templar talent-granted skills (reserved slots 43..=48) ----
+/// Rains of Renewal: spends endurance to restore HP over time on the caster.
+pub const SK_RAINS_OF_RENEWAL: usize = 43;
+/// Gash: reckless melee swing that costs 5% current HP and deals amplified weapon damage.
+pub const SK_GASH: usize = 44;
+/// Sun's Blessing: self buff that raises every stat plus armor and weapon value;
+/// long cooldown that re-arms as the buff is expiring.
+pub const SK_SUNS_BLESSING: usize = 45;
+/// Sun's Blessing companion temp identifier for the attached buff item
+/// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
+pub const SK_SUNS_BLESSING2: usize = SK_SUNS_BLESSING + 100;
+/// Seeing Red: self buff that doubles outgoing damage and blocks new
+/// stun/slow/curse/disarm debuffs for the duration.
+pub const SK_SEEING_RED: usize = 46;
+/// Thunderous Fury: upgraded Warcry that stuns and deals a weakened blast to
+/// every nearby enemy.
+pub const SK_THUNDEROUS_FURY: usize = 47;
+/// Inner Strength: upgraded Warcry that stuns nearby enemies and buffs the
+/// caster's weapon skill for the duration.
+pub const SK_INNER_STRENGTH: usize = 48;
+
+// ---- Harakim talent-granted skills (reserved slots 50..=55) ----
+/// Revenant Conduit: self-buff that raises the caster's effective Ghost
+/// Companion skill at summon time; mana to cast, slow endurance drain to
+/// maintain.
+pub const SK_REVENANT_CONDUIT: usize = 50;
+/// Revenant Conduit companion temp identifier for the attached buff item
+/// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
+pub const SK_REVENANT_CONDUIT2: usize = SK_REVENANT_CONDUIT + 100;
+/// Kindred Spirit: passive that allows a second simultaneous Ghost Companion.
+pub const SK_KINDRED_SPIRIT: usize = 51;
+/// Spectral Pact: self-buff that redirects a portion of incoming damage
+/// from the caster to their ghost companion(s).
+pub const SK_SPECTRAL_PACT: usize = 52;
+/// Spectral Pact companion temp identifier for the attached buff item.
+pub const SK_SPECTRAL_PACT2: usize = SK_SPECTRAL_PACT + 100;
+/// Anguish (Lava): debuff that empowers the next Blast against the target
+/// for 1.5x-2x damage, then consumes itself.
+pub const SK_ANGUISH_LAVA: usize = 53;
+/// Anguish (Earth): large AoE debuff that prevents movement (but does not
+/// stun) on every hostile in range.
+pub const SK_ANGUISH_EARTH: usize = 54;
+/// Anguish (Ice): debuff that shreds the target's armor and weapon values
+/// directly (instead of lowering attributes the way Curse does).
+pub const SK_ANGUISH_ICE: usize = 55;
+
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
 const AT_DESC: [&str; 5] = [
@@ -68,7 +114,7 @@ const AT_DESC: [&str; 5] = [
 ];
 
 /// Maximum number of skill slots.
-pub const MAX_SKILLS: usize = 50;
+pub const MAX_SKILLS: usize = 75;
 
 /// Returns whether `skill` is one of the retired per-weapon combat slots.
 ///
@@ -200,6 +246,18 @@ pub enum Skill {
     Disarm = SK_DISARM,
     Contagion = SK_CONTAGION,
     BladeDance = SK_BLADE_DANCE,
+    RainsOfRenewal = SK_RAINS_OF_RENEWAL,
+    Gash = SK_GASH,
+    SunsBlessing = SK_SUNS_BLESSING,
+    SeeingRed = SK_SEEING_RED,
+    ThunderousFury = SK_THUNDEROUS_FURY,
+    InnerStrength = SK_INNER_STRENGTH,
+    RevenantConduit = SK_REVENANT_CONDUIT,
+    KindredSpirit = SK_KINDRED_SPIRIT,
+    SpectralPact = SK_SPECTRAL_PACT,
+    AnguishLava = SK_ANGUISH_LAVA,
+    AnguishEarth = SK_ANGUISH_EARTH,
+    AnguishIce = SK_ANGUISH_ICE,
 }
 
 /// A skill definition entry describing one learnable ability.
@@ -598,7 +656,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         3,
         4,
     ),
-    // 37..42 Mercenary talent-granted skills; 43..49 still reserved empty
+    // 37..42 Mercenary talent-granted skills
     SkillTab::new(
         37,
         SkillCategory::Magic,
@@ -653,13 +711,136 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         3,
         4,
     ),
-    SkillTab::new(43, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(44, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(45, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(46, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(47, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(48, SkillCategory::Unknown, "", "", 0, 0, 0),
+    // 43..48 Templar talent-granted skills; 49 still reserved empty.
+    SkillTab::new(
+        43,
+        SkillCategory::Magic,
+        "Rains of Renewal",
+        "Spell: Spend endurance to regenerate HP over time.",
+        0,
+        1,
+        2,
+    ),
+    SkillTab::new(
+        44,
+        SkillCategory::Combat,
+        "Gash",
+        "Reckless swing; costs 5% HP for greatly amplified weapon damage.",
+        0,
+        4,
+        4,
+    ),
+    SkillTab::new(
+        45,
+        SkillCategory::Magic,
+        "Sun's Blessing",
+        "Spell: Bless every stat plus armor and weapon. Long cooldown.",
+        0,
+        1,
+        2,
+    ),
+    SkillTab::new(
+        46,
+        SkillCategory::General,
+        "Seeing Red",
+        "Self buff: Double outgoing damage; immune to new debuffs.",
+        0,
+        0,
+        4,
+    ),
+    SkillTab::new(
+        47,
+        SkillCategory::General,
+        "Thunderous Fury",
+        "Upgraded Warcry: Stun and blast nearby enemies for weakened damage.",
+        0,
+        0,
+        4,
+    ),
+    SkillTab::new(
+        48,
+        SkillCategory::General,
+        "Inner Strength",
+        "Upgraded Warcry: Stun nearby enemies and raise own weapon skill.",
+        0,
+        0,
+        4,
+    ),
     SkillTab::new(49, SkillCategory::Unknown, "", "", 0, 0, 0),
+    // 50..55 Harakim talent-granted skills
+    SkillTab::new(
+        50,
+        SkillCategory::Magic,
+        "Revenant Conduit",
+        "Spell: Empower future ghost companions; drains endurance over time.",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        51,
+        SkillCategory::Magic,
+        "Kindred Spirit",
+        "Passive: Allows a second simultaneous Ghost Companion.",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        52,
+        SkillCategory::Magic,
+        "Spectral Pact",
+        "Spell: Ghost companion(s) absorb part of incoming damage.",
+        0,
+        2,
+        1,
+    ),
+    SkillTab::new(
+        53,
+        SkillCategory::Magic,
+        "Anguish (Lava)",
+        "Spell: Empowers your next Blast against the target (Cost: 30 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        54,
+        SkillCategory::Magic,
+        "Anguish (Earth)",
+        "Spell: Roots all enemies in a wide area (Cost: 40 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        55,
+        SkillCategory::Magic,
+        "Anguish (Ice)",
+        "Spell: Shreds the target's armor and weapon (Cost: 30 Mana).",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(56, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(57, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(58, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(59, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(60, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(61, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(62, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(63, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(64, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(65, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(66, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(67, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(68, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(69, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(70, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(71, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(72, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(73, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(74, SkillCategory::Unknown, "", "", 0, 0, 0),
 ];
 
 /// Returns the canonical skill number for a given slot index.
@@ -770,7 +951,7 @@ pub fn attribute_desc(n: usize) -> &'static str {
 }
 
 // Static skill table (taken from server/original_source/SkillTab.cpp)
-const SKILL_NAMES: [&str; 50] = [
+const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "Hand to Hand",
     "Karate",
     "Dagger",
@@ -814,6 +995,31 @@ const SKILL_NAMES: [&str; 50] = [
     "Disarm",
     "Contagion",
     "Blade Dance",
+    "Rains of Renewal",
+    "Gash",
+    "Sun's Blessing",
+    "Seeing Red",
+    "Thunderous Fury",
+    "Inner Strength",
+    "",
+    "Revenant Conduit",
+    "Kindred Spirit",
+    "Spectral Pact",
+    "Anguish (Lava)",
+    "Anguish (Earth)",
+    "Anguish (Ice)",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
     "",
     "",
     "",
@@ -967,8 +1173,15 @@ mod tests {
 
         assert_eq!(get_skill_name(SK_WEAPON), "Weapon Skill");
 
+        // Templar talent-granted skills (43..=48)
+        assert_eq!(get_skill_name(SK_RAINS_OF_RENEWAL), "Rains of Renewal");
+        assert_eq!(get_skill_name(SK_GASH), "Gash");
+        assert_eq!(get_skill_name(SK_SUNS_BLESSING), "Sun's Blessing");
+        assert_eq!(get_skill_name(SK_SEEING_RED), "Seeing Red");
+        assert_eq!(get_skill_name(SK_THUNDEROUS_FURY), "Thunderous Fury");
+        assert_eq!(get_skill_name(SK_INNER_STRENGTH), "Inner Strength");
+
         // Test empty skills (reserved slots)
-        assert_eq!(get_skill_name(43), "");
         assert_eq!(get_skill_name(49), "");
     }
 
@@ -1036,9 +1249,44 @@ mod tests {
         // Test Misc skills (category 'M')
         assert_eq!(SKILLTAB[10].cat, SkillCategory::Misc); // Swimming
 
+        // Templar talent-granted skills (43..=48) have concrete categories
+        assert_eq!(SKILLTAB[SK_RAINS_OF_RENEWAL].cat, SkillCategory::Magic);
+        assert_eq!(SKILLTAB[SK_GASH].cat, SkillCategory::Combat);
+        assert_eq!(SKILLTAB[SK_SUNS_BLESSING].cat, SkillCategory::Magic);
+        assert_eq!(SKILLTAB[SK_SEEING_RED].cat, SkillCategory::General);
+        assert_eq!(SKILLTAB[SK_THUNDEROUS_FURY].cat, SkillCategory::General);
+        assert_eq!(SKILLTAB[SK_INNER_STRENGTH].cat, SkillCategory::General);
+
         // Test empty skills (category 'Z')
-        assert_eq!(SKILLTAB[43].cat, SkillCategory::Unknown);
         assert_eq!(SKILLTAB[49].cat, SkillCategory::Unknown);
+    }
+
+    #[test]
+    fn test_templar_skills_lookup_and_attribs() {
+        // Prefix-based lookup works for each new Templar skill name.
+        assert_eq!(skill_lookup("rains"), SK_RAINS_OF_RENEWAL as i32);
+        assert_eq!(skill_lookup("gash"), SK_GASH as i32);
+        assert_eq!(skill_lookup("sun's"), SK_SUNS_BLESSING as i32);
+        assert_eq!(skill_lookup("seeing"), SK_SEEING_RED as i32);
+        assert_eq!(skill_lookup("thunder"), SK_THUNDEROUS_FURY as i32);
+        assert_eq!(skill_lookup("inner"), SK_INNER_STRENGTH as i32);
+
+        // Governing attributes are populated (non default-zero triples).
+        for slot in [
+            SK_RAINS_OF_RENEWAL,
+            SK_GASH,
+            SK_SUNS_BLESSING,
+            SK_SEEING_RED,
+            SK_THUNDEROUS_FURY,
+            SK_INNER_STRENGTH,
+        ] {
+            let a = get_skill_attribs(slot);
+            assert!(
+                a != [0, 0, 0],
+                "slot {} should have governing attributes",
+                slot
+            );
+        }
     }
 
     #[test]
@@ -1106,7 +1354,7 @@ mod tests {
     #[test]
     fn test_max_skills_constant() {
         // Verify MAX_SKILLS matches the actual array size
-        assert_eq!(MAX_SKILLS, 50);
+        assert_eq!(MAX_SKILLS, 75);
         assert_eq!(SKILLTAB.len(), MAX_SKILLS);
     }
 
@@ -1205,7 +1453,8 @@ mod tests {
         assert_eq!(get_skill_sortkey(11), 'R');
         assert_eq!(get_skill_sortkey(28), 'B');
         assert_eq!(get_skill_sortkey(SK_WEAPON), 'C');
-        assert_eq!(get_skill_sortkey(43), 'Z');
+        assert_eq!(get_skill_sortkey(SK_RAINS_OF_RENEWAL), 'R');
+        assert_eq!(get_skill_sortkey(49), 'Z');
     }
 
     #[test]

@@ -12,7 +12,7 @@
 //! * `future1[1..24]` — one byte per talent layer; each of the 8 bits
 //!   in a byte represents a single node in that layer.
 
-use crate::skills::{self, Attribute, Skill, SkillIndex};
+use crate::skills::{self, Attribute, MAX_SKILLS, Skill, SkillIndex};
 
 use crate::traits::Class;
 
@@ -152,6 +152,47 @@ pub enum TalentEffect {
     },
     /// Grant a previously-unknown skill (set base value to 1).
     GrantSkill { skill: Skill },
+    /// Grant or raise a skill to at least a fixed base value.
+    GrantSkillAtBase {
+        /// Skill to grant or raise.
+        skill: Skill,
+        /// Minimum base value after the talent is learned.
+        base: u8,
+    },
+    /// Apply several effects from one learned node.
+    Composite {
+        /// Nested effects applied as though each were learned separately.
+        effects: &'static [TalentEffect],
+    },
+    /// Passive effect that triggers after landed primary physical attacks.
+    PrimaryHitProc {
+        /// Passive proc configuration.
+        proc: TalentPrimaryHitProc,
+    },
+}
+
+/// Passive effect that can trigger from a character's landed primary attack.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct TalentPrimaryHitProc {
+    /// Number of qualifying landed primary attacks required per trigger.
+    pub every_hits: u8,
+    /// Effect to apply when the hit count reaches [`Self::every_hits`].
+    pub kind: TalentPrimaryHitProcKind,
+}
+
+/// The runtime action performed by a primary-hit talent proc.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum TalentPrimaryHitProcKind {
+    /// Heal the attacker by the given amount of HP.
+    HealSelfHp {
+        /// Whole HP restored to the attacker.
+        hp: i32,
+    },
+    /// Deal extra damage to the primary defender.
+    DamageTarget {
+        /// Damage amount passed through the normal damage routine.
+        damage: i32,
+    },
 }
 
 /// Class-agnostic, effect-agnostic description of one talent node.
@@ -183,7 +224,7 @@ pub struct TalentStatBonuses {
     /// Attribute bonuses indexed by [`Attribute`] discriminant.
     pub attrib: [i32; 5],
     /// Skill bonuses indexed by canonical [`Skill`] discriminant.
-    pub skill: [i32; 50],
+    pub skill: [i32; MAX_SKILLS],
     /// Dodge chance bonuses from talents, in percent.
     pub dodge: i32,
     /// Armor value bonus from talents, in percent of aggregated AV.
@@ -202,7 +243,7 @@ impl Default for TalentStatBonuses {
     fn default() -> Self {
         Self {
             attrib: [0; 5],
-            skill: [0; 50],
+            skill: [0; MAX_SKILLS],
             dodge: 0,
             armor_percent: 0,
             weapon_percent: 0,
@@ -458,7 +499,7 @@ pub fn talent_stat_bonuses(
     kindred: i32,
     talents: &[u8; 25],
     attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
-    skill: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+    skill: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
 ) -> TalentStatBonuses {
     let class = Class::from(kindred);
     let Some(tree) = tree_for(class) else {
@@ -514,6 +555,64 @@ pub fn talent_dodge_bonuses(class: Class, talents: &[u8; 25]) -> i32 {
     bonus_percent
 }
 
+/// Returns the learned primary-hit passive proc for a character, if any.
+///
+/// If multiple proc talents are learned, the first matching node in tree order
+/// wins. Current trees expose these as mutually exclusive same-layer choices.
+///
+/// # Arguments
+///
+/// * `class` - Character class used to resolve the talent tree.
+/// * `talents` - Packed talent-tree state from the character record.
+///
+/// # Returns
+///
+/// * `Some(proc)` when a learned talent grants a primary-hit proc.
+/// * `None` otherwise.
+pub fn talent_primary_hit_proc(class: Class, talents: &[u8; 25]) -> Option<TalentPrimaryHitProc> {
+    let tree = tree_for(class)?;
+
+    for node in tree.nodes {
+        if !is_talent_slot_spent(talents, node.slot) {
+            continue;
+        }
+        if let Some(proc) = primary_hit_proc_from_effect(node.effect) {
+            return Some(proc);
+        }
+    }
+
+    None
+}
+
+/// Finds a primary-hit proc in an effect, including nested composite effects.
+///
+/// # Arguments
+///
+/// * `effect` - Effect to inspect.
+///
+/// # Returns
+///
+/// * `Some(proc)` when the effect grants a primary-hit passive.
+/// * `None` otherwise.
+fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHitProc> {
+    match effect {
+        TalentEffect::PrimaryHitProc { proc } => Some(proc),
+        TalentEffect::Composite { effects } => effects
+            .iter()
+            .find_map(|effect| primary_hit_proc_from_effect(*effect)),
+        TalentEffect::SkillsFlat { .. }
+        | TalentEffect::SkillsPercent { .. }
+        | TalentEffect::AttributesFlat { .. }
+        | TalentEffect::AttributesPercent { .. }
+        | TalentEffect::DodgeChancePercent { .. }
+        | TalentEffect::ArmorPercent { .. }
+        | TalentEffect::WeaponPercent { .. }
+        | TalentEffect::HpManaEndFlat { .. }
+        | TalentEffect::GrantSkill { .. }
+        | TalentEffect::GrantSkillAtBase { .. } => None,
+    }
+}
+
 /// Add one effect's derived stat contribution into `bonuses`.
 ///
 /// # Arguments
@@ -525,7 +624,7 @@ pub fn talent_dodge_bonuses(class: Class, talents: &[u8; 25]) -> i32 {
 fn accumulate_stat_bonus(
     effect: TalentEffect,
     attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
-    skill_rows: &[[u8; SkillIndex::MaxIndex as usize]; 50],
+    skill_rows: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
     bonuses: &mut TalentStatBonuses,
 ) {
     match effect {
@@ -587,7 +686,14 @@ fn accumulate_stat_bonus(
             bonuses.mana_flat += mana;
             bonuses.end_flat += end;
         }
-        TalentEffect::GrantSkill { .. } => {}
+        TalentEffect::Composite { effects } => {
+            for effect in effects {
+                accumulate_stat_bonus(*effect, attrib, skill_rows, bonuses);
+            }
+        }
+        TalentEffect::GrantSkill { .. }
+        | TalentEffect::GrantSkillAtBase { .. }
+        | TalentEffect::PrimaryHitProc { .. } => {}
     }
 }
 
@@ -992,74 +1098,91 @@ mod tests {
     fn list_variant_lengths_match_in_every_node() {
         for tree in all_trees() {
             for node in tree.nodes {
-                match node.effect {
-                    TalentEffect::SkillsFlat { skills, amounts } => {
-                        assert_eq!(
-                            skills.len(),
-                            amounts.len(),
-                            "tree {:?} node '{}' SkillsFlat list length mismatch",
-                            tree.class,
-                            node.name,
-                        );
-                        assert!(
-                            !skills.is_empty(),
-                            "tree {:?} node '{}' SkillsFlat must be non-empty",
-                            tree.class,
-                            node.name,
-                        );
-                    }
-                    TalentEffect::SkillsPercent { skills, percents } => {
-                        assert_eq!(
-                            skills.len(),
-                            percents.len(),
-                            "tree {:?} node '{}' SkillsPercent list length mismatch",
-                            tree.class,
-                            node.name,
-                        );
-                        assert!(
-                            !skills.is_empty(),
-                            "tree {:?} node '{}' SkillsPercent must be non-empty",
-                            tree.class,
-                            node.name,
-                        );
-                    }
-                    TalentEffect::AttributesFlat { attrs, amounts } => {
-                        assert_eq!(
-                            attrs.len(),
-                            amounts.len(),
-                            "tree {:?} node '{}' AttributesFlat list length mismatch",
-                            tree.class,
-                            node.name,
-                        );
-                        assert!(
-                            !attrs.is_empty(),
-                            "tree {:?} node '{}' AttributesFlat must be non-empty",
-                            tree.class,
-                            node.name,
-                        );
-                    }
-                    TalentEffect::AttributesPercent { attrs, percents } => {
-                        assert_eq!(
-                            attrs.len(),
-                            percents.len(),
-                            "tree {:?} node '{}' AttributesPercent list length mismatch",
-                            tree.class,
-                            node.name,
-                        );
-                        assert!(
-                            !attrs.is_empty(),
-                            "tree {:?} node '{}' AttributesPercent must be non-empty",
-                            tree.class,
-                            node.name,
-                        );
-                    }
-                    TalentEffect::DodgeChancePercent { .. }
-                    | TalentEffect::ArmorPercent { .. }
-                    | TalentEffect::WeaponPercent { .. }
-                    | TalentEffect::HpManaEndFlat { .. }
-                    | TalentEffect::GrantSkill { .. } => {}
+                assert_valid_effect_lists(tree.class, node.name, node.effect);
+            }
+        }
+    }
+
+    fn assert_valid_effect_lists(class: Class, node_name: &str, effect: TalentEffect) {
+        match effect {
+            TalentEffect::SkillsFlat { skills, amounts } => {
+                assert_eq!(
+                    skills.len(),
+                    amounts.len(),
+                    "tree {:?} node '{}' SkillsFlat list length mismatch",
+                    class,
+                    node_name,
+                );
+                assert!(
+                    !skills.is_empty(),
+                    "tree {:?} node '{}' SkillsFlat must be non-empty",
+                    class,
+                    node_name,
+                );
+            }
+            TalentEffect::SkillsPercent { skills, percents } => {
+                assert_eq!(
+                    skills.len(),
+                    percents.len(),
+                    "tree {:?} node '{}' SkillsPercent list length mismatch",
+                    class,
+                    node_name,
+                );
+                assert!(
+                    !skills.is_empty(),
+                    "tree {:?} node '{}' SkillsPercent must be non-empty",
+                    class,
+                    node_name,
+                );
+            }
+            TalentEffect::AttributesFlat { attrs, amounts } => {
+                assert_eq!(
+                    attrs.len(),
+                    amounts.len(),
+                    "tree {:?} node '{}' AttributesFlat list length mismatch",
+                    class,
+                    node_name,
+                );
+                assert!(
+                    !attrs.is_empty(),
+                    "tree {:?} node '{}' AttributesFlat must be non-empty",
+                    class,
+                    node_name,
+                );
+            }
+            TalentEffect::AttributesPercent { attrs, percents } => {
+                assert_eq!(
+                    attrs.len(),
+                    percents.len(),
+                    "tree {:?} node '{}' AttributesPercent list length mismatch",
+                    class,
+                    node_name,
+                );
+                assert!(
+                    !attrs.is_empty(),
+                    "tree {:?} node '{}' AttributesPercent must be non-empty",
+                    class,
+                    node_name,
+                );
+            }
+            TalentEffect::Composite { effects } => {
+                assert!(
+                    !effects.is_empty(),
+                    "tree {:?} node '{}' Composite must be non-empty",
+                    class,
+                    node_name,
+                );
+                for effect in effects {
+                    assert_valid_effect_lists(class, node_name, *effect);
                 }
             }
+            TalentEffect::DodgeChancePercent { .. }
+            | TalentEffect::ArmorPercent { .. }
+            | TalentEffect::WeaponPercent { .. }
+            | TalentEffect::HpManaEndFlat { .. }
+            | TalentEffect::GrantSkill { .. }
+            | TalentEffect::GrantSkillAtBase { .. }
+            | TalentEffect::PrimaryHitProc { .. } => {}
         }
     }
 
@@ -1067,8 +1190,8 @@ mod tests {
         [[0; SkillIndex::MaxIndex as usize]; 5]
     }
 
-    fn empty_skill() -> [[u8; SkillIndex::MaxIndex as usize]; 50] {
-        [[0; SkillIndex::MaxIndex as usize]; 50]
+    fn empty_skill() -> [[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS] {
+        [[0; SkillIndex::MaxIndex as usize]; MAX_SKILLS]
     }
 
     #[test]
@@ -1191,6 +1314,153 @@ mod tests {
         assert_eq!(bonuses.hp_flat, 14);
         assert_eq!(bonuses.mana_flat, 8);
         assert_eq!(bonuses.end_flat, 5);
+    }
+
+    #[test]
+    fn accumulate_composite_applies_nested_stat_effects() {
+        let mut attrib = empty_attrib();
+        attrib[Attribute::Strength as usize][SkillIndex::BaseValue as usize] = 50;
+        attrib[Attribute::Agility as usize][SkillIndex::BaseValue as usize] = 40;
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::Composite {
+                effects: &[
+                    TalentEffect::AttributesPercent {
+                        attrs: &[Attribute::Strength, Attribute::Agility],
+                        percents: &[10, 10],
+                    },
+                    TalentEffect::HpManaEndFlat {
+                        hp: 100,
+                        mana: 0,
+                        end: 100,
+                    },
+                ],
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.attrib[Attribute::Strength as usize], 5);
+        assert_eq!(bonuses.attrib[Attribute::Agility as usize], 4);
+        assert_eq!(bonuses.hp_flat, 100);
+        assert_eq!(bonuses.end_flat, 100);
+    }
+
+    #[test]
+    fn templar_tree_matches_rank_milestone_design() {
+        let tree = tree_for(Class::Templar).unwrap();
+
+        assert_eq!(tree.nodes.len(), 16);
+        assert_grants_skill(named_node(tree, "Renewal"), Skill::RainsOfRenewal);
+        assert_grants_skill(named_node(tree, "Gash"), Skill::Gash);
+        assert_attribute_percent(
+            named_node(tree, "Corporal Strength"),
+            Attribute::Strength,
+            5,
+        );
+        assert_attribute_percent(
+            named_node(tree, "Staff Sergeant Strength"),
+            Attribute::Strength,
+            5,
+        );
+        assert_grants_skill_at_base(
+            named_node(tree, "Meditative Discipline"),
+            Skill::Meditate,
+            5,
+        );
+        assert_grants_skill(named_node(tree, "Divine Blessing"), Skill::SunsBlessing);
+        assert_grants_skill(named_node(tree, "Seeing Red"), Skill::SeeingRed);
+        assert_hp_end(named_node(tree, "Captain Vitality"), 100, 50);
+        assert_primary_hit_proc(
+            named_node(tree, "Renewing Strikes"),
+            TalentPrimaryHitProcKind::HealSelfHp { hp: 50 },
+        );
+        assert_primary_hit_proc(
+            named_node(tree, "Judgment Strikes"),
+            TalentPrimaryHitProcKind::DamageTarget { damage: 25 },
+        );
+        assert_hp_end(named_node(tree, "Brigadier General Vitality"), 100, 50);
+        assert_grants_skill(named_node(tree, "Holy Fury"), Skill::ThunderousFury);
+        assert_grants_skill(named_node(tree, "Inner Strength"), Skill::InnerStrength);
+        assert_attribute_percent(
+            named_node(tree, "Field Marshal Agility"),
+            Attribute::Agility,
+            5,
+        );
+        assert_attribute_percent(named_node(tree, "Baron Agility"), Attribute::Agility, 5);
+    }
+
+    #[test]
+    fn talent_primary_hit_proc_returns_learned_templar_choice() {
+        let tree = tree_for(Class::Templar).unwrap();
+        let mut talents = [0u8; 25];
+        let renewing = named_node(tree, "Renewing Strikes").slot;
+
+        assert_eq!(talent_primary_hit_proc(Class::Templar, &talents), None);
+
+        talents[renewing.layer as usize] |= renewing.mask;
+        assert_eq!(
+            talent_primary_hit_proc(Class::Templar, &talents),
+            Some(TalentPrimaryHitProc {
+                every_hits: 5,
+                kind: TalentPrimaryHitProcKind::HealSelfHp { hp: 50 },
+            })
+        );
+    }
+
+    fn assert_grants_skill(node: &TalentNode, expected: Skill) {
+        match node.effect {
+            TalentEffect::GrantSkill { skill } => assert_eq!(skill, expected),
+            other => panic!("expected GrantSkill, got {other:?}"),
+        }
+    }
+
+    fn assert_grants_skill_at_base(node: &TalentNode, expected: Skill, expected_base: u8) {
+        match node.effect {
+            TalentEffect::GrantSkillAtBase { skill, base } => {
+                assert_eq!(skill, expected);
+                assert_eq!(base, expected_base);
+            }
+            other => panic!("expected GrantSkillAtBase, got {other:?}"),
+        }
+    }
+
+    fn assert_attribute_percent(
+        node: &TalentNode,
+        expected_attr: Attribute,
+        expected_percent: i32,
+    ) {
+        match node.effect {
+            TalentEffect::AttributesPercent { attrs, percents } => {
+                assert_eq!(attrs, &[expected_attr]);
+                assert_eq!(percents, &[expected_percent]);
+            }
+            other => panic!("expected AttributesPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_hp_end(node: &TalentNode, expected_hp: i32, expected_end: i32) {
+        match node.effect {
+            TalentEffect::HpManaEndFlat { hp, mana, end } => {
+                assert_eq!(hp, expected_hp);
+                assert_eq!(mana, 0);
+                assert_eq!(end, expected_end);
+            }
+            other => panic!("expected HpManaEndFlat, got {other:?}"),
+        }
+    }
+
+    fn assert_primary_hit_proc(node: &TalentNode, expected_kind: TalentPrimaryHitProcKind) {
+        match node.effect {
+            TalentEffect::PrimaryHitProc { proc } => {
+                assert_eq!(proc.every_hits, 5);
+                assert_eq!(proc.kind, expected_kind);
+            }
+            other => panic!("expected PrimaryHitProc, got {other:?}"),
+        }
     }
 
     #[test]

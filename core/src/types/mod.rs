@@ -1,10 +1,14 @@
 //! Data types module - contains all game data structures ported from the original C++ headers
 //!
-//! All five game-entity types (`Character`, `Item`, `Map`, `Effect`, `Global`) are also
-//! re-exported through the [`v1`] sub-module so that snapshot and migration code can
-//! reference them by version path (e.g. `core::types::v1::Character`).
+//! Versioned re-exports of the entity types live under [`v1`] (frozen 50-slot
+//! skill layout) and [`v2`] (current 75-slot skill layout). Snapshot and
+//! migration code should reference types by version path
+//! (e.g. `core::types::v1::Character`, `core::types::v2::Character`).
+//!
+//! Top-level re-exports always point at the **current** schema version (v2).
 
 pub mod v1;
+pub mod v2;
 
 pub mod api;
 mod ban;

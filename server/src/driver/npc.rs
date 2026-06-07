@@ -2936,7 +2936,7 @@ pub fn npc_can_wear_item(ch: &Character, it: &core::types::Item) -> bool {
     }
 
     // Check skill requirements
-    for m in 0..50 {
+    for m in 0..core::skills::MAX_SKILLS {
         if it.skill[m][2] > ch.skill[m][0] as i8 {
             return false;
         }
@@ -2970,7 +2970,7 @@ pub fn npc_can_wear_item(ch: &Character, it: &core::types::Item) -> bool {
 pub fn npc_item_value(it: &core::types::Item) -> i32 {
     let mut score = 0;
 
-    for n in 0..50 {
+    for n in 0..core::skills::MAX_SKILLS {
         // TODO: Do a deeper dive into what this is doing -- originally
         // the C code has it.attrib here which is clearly wrong since attrib
         // only has 5 entries.

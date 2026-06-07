@@ -449,11 +449,7 @@ impl GameScene {
                         x: self.mouse_x,
                         y: self.mouse_y,
                         button: UiMouseButton::Left,
-                        modifiers: KeyModifiers {
-                            ctrl: self.ctrl_held,
-                            shift: self.shift_held,
-                            alt: self.alt_held,
-                        },
+                        modifiers: self.effective_key_modifiers(),
                     };
                     match self.handle_ui_widget_events(app_state, &ui_event) {
                         UiHandleResult::SceneChange(sc) => {
@@ -490,11 +486,7 @@ impl GameScene {
                         x: self.mouse_x,
                         y: self.mouse_y,
                         button: UiMouseButton::Right,
-                        modifiers: KeyModifiers {
-                            ctrl: self.ctrl_held,
-                            shift: self.shift_held,
-                            alt: self.alt_held,
-                        },
+                        modifiers: self.effective_key_modifiers(),
                     };
                     match self.handle_ui_widget_events(app_state, &ui_event) {
                         UiHandleResult::SceneChange(sc) => {

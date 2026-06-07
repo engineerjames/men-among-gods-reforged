@@ -86,7 +86,7 @@ impl GameState {
         let mut hp_bonus = 0i32;
         let mut end_bonus = 0i32;
         let mut mana_bonus = 0i32;
-        let mut skill_bonus = [0i32; 50];
+        let mut skill_bonus = [0i32; skills::MAX_SKILLS];
         let mut armor = 0i32;
         let mut weapon = 0i32;
         let mut gethit = 0i32;
@@ -101,7 +101,7 @@ impl GameState {
         self.characters[cn].hp[4] = 0;
         self.characters[cn].end[4] = 0;
         self.characters[cn].mana[4] = 0;
-        for n in 0..50 {
+        for n in 0..skills::MAX_SKILLS {
             self.characters[cn].skill[n][4] = 0;
         }
         self.characters[cn].armor = 0;
@@ -862,6 +862,42 @@ impl GameState {
                     }
                 }
 
+                // Rains of Renewal heal-over-time. Ticks once per second of
+                // real time, restoring HP scaled by the caster's skill power.
+                if item_temp == skills::SK_RAINS_OF_RENEWAL as u16 {
+                    let item = &self.items[spell_item as usize];
+                    let duration = item.duration as i32;
+                    let active_i = active as i32;
+                    let power = item.power as i32;
+                    let elapsed = duration - active_i;
+                    if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
+                        let heal = (power / 4).max(1) * 1000;
+                        self.characters[cn].a_hp += heal;
+                        let max_hp = i32::from(self.characters[cn].hp[5]) * 1000;
+                        if self.characters[cn].a_hp > max_hp {
+                            self.characters[cn].a_hp = max_hp;
+                        }
+                    }
+                }
+
+                // Revenant Conduit endurance drain. Ticks once per second
+                // while the spell is active; if the caster runs out of
+                // endurance the marker expires early.
+                if item_temp == skills::SK_REVENANT_CONDUIT2 as u16 {
+                    let item = &self.items[spell_item as usize];
+                    let duration = item.duration as i32;
+                    let active_i = active as i32;
+                    let elapsed = duration - active_i;
+                    if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
+                        let drain = 2 * 1000;
+                        self.characters[cn].a_end -= drain;
+                        if self.characters[cn].a_end <= 0 {
+                            self.characters[cn].a_end = 0;
+                            self.items[spell_item as usize].active = 0;
+                        }
+                    }
+                }
+
                 // Handle spell expiration
                 if active == 0 {
                     let spell_name = self.items[spell_item as usize].get_name().to_owned();
@@ -1381,10 +1417,68 @@ impl GameState {
     /// # Returns
     /// Actual damage dealt in game units (after internal scaling/truncation)
     pub(crate) fn do_hurt(&mut self, cn: usize, co: usize, dam: i32, type_hurt: i32) -> i32 {
+        // Spectral Pact: high bit of `type_hurt` is reserved as a recursion
+        // sentinel so a redirected hit on the companion does not itself
+        // trigger another redirect. Strip it before any of the existing
+        // comparisons run.
+        const PACT_REDIRECT_BIT: i32 = 0x4000_0000;
+        let is_pact_redirect = (type_hurt & PACT_REDIRECT_BIT) != 0;
+        let type_hurt = type_hurt & !PACT_REDIRECT_BIT;
+
         // Quick sanity/body check
         let is_body = (self.characters[co].flags & CharacterFlags::Body.bits()) != 0;
         if is_body {
             return 0;
+        }
+
+        // If the victim has an active Spectral Pact, divert a share of the
+        // incoming damage to each living ghost companion they own.
+        let mut dam = dam;
+        if !is_pact_redirect && dam > 0 && co != cn {
+            let mut pact_pct: i32 = 0;
+            for n in 0..20 {
+                let in_ = self.characters[co].spell[n] as usize;
+                if in_ != 0 && self.items[in_].temp == skills::SK_SPECTRAL_PACT2 as u16 {
+                    pact_pct = self.items[in_].power as i32;
+                    break;
+                }
+            }
+            if pact_pct > 0 {
+                let mut companions: Vec<usize> = Vec::new();
+                for slot in [
+                    core::constants::CHD_COMPANION,
+                    core::constants::CHD_COMPANION2,
+                ] {
+                    let cc = self.characters[co].data[slot] as usize;
+                    if cc != 0
+                        && core::types::Character::is_sane_character(cc)
+                        && self.characters[cc].used == core::constants::USE_ACTIVE
+                        && (self.characters[cc].flags & CharacterFlags::Body.bits()) == 0
+                        && self.characters[cc].data[63] == co as i32
+                    {
+                        companions.push(cc);
+                    }
+                }
+                if !companions.is_empty() {
+                    let redirected_total = dam * pact_pct / 100;
+                    let per_companion = redirected_total / companions.len() as i32;
+                    if per_companion > 0 {
+                        let n_companions = companions.len() as i32;
+                        for cc in companions {
+                            // Recurse with sentinel set so we do not redirect
+                            // the redirected hit. Ignore the returned damage
+                            // figure; the headline number reported back to
+                            // the attacker still reflects only the portion
+                            // that landed on the original target.
+                            self.do_hurt(cn, cc, per_companion, type_hurt | PACT_REDIRECT_BIT);
+                        }
+                        dam -= per_companion * n_companions;
+                        if dam < 0 {
+                            dam = 0;
+                        }
+                    }
+                }
+            }
         }
 
         // If a real player got hit, damage armour pieces

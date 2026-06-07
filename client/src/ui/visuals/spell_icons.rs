@@ -148,6 +148,36 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             color: Color::RGB(220, 160, 80),
             icon_filename: "blade_dance_icon.png",
         }),
+        skills::SK_RAINS_OF_RENEWAL => Some(SpellIconMeta {
+            name: "Rains of Renewal",
+            color: Color::RGB(120, 180, 220),
+            icon_filename: "rains_of_renewal_icon.png",
+        }),
+        skills::SK_GASH => Some(SpellIconMeta {
+            name: "Gash",
+            color: Color::RGB(200, 60, 60),
+            icon_filename: "gash_icon.png",
+        }),
+        skills::SK_SUNS_BLESSING => Some(SpellIconMeta {
+            name: "Sun's Blessing",
+            color: Color::RGB(240, 220, 120),
+            icon_filename: "suns_blessing_icon.png",
+        }),
+        skills::SK_SEEING_RED => Some(SpellIconMeta {
+            name: "Seeing Red",
+            color: Color::RGB(220, 50, 50),
+            icon_filename: "seeing_red_icon.png",
+        }),
+        skills::SK_THUNDEROUS_FURY => Some(SpellIconMeta {
+            name: "Thunderous Fury",
+            color: Color::RGB(180, 140, 240),
+            icon_filename: "thunderous_fury_icon.png",
+        }),
+        skills::SK_INNER_STRENGTH => Some(SpellIconMeta {
+            name: "Inner Strength",
+            color: Color::RGB(240, 200, 120),
+            icon_filename: "inner_strength_icon.png",
+        }),
         _ => None,
     }
 }
@@ -182,7 +212,11 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         | skills::SK_RECALL
         | skills::SK_CURSE
         | skills::SK_STUN
-        | skills::SK_WIMPY => spell_icon_meta(skill_nr),
+        | skills::SK_WIMPY
+        | skills::SK_RAINS_OF_RENEWAL
+        | skills::SK_SUNS_BLESSING
+        | skills::SK_SEEING_RED
+        | skills::SK_INNER_STRENGTH => spell_icon_meta(skill_nr),
         skills::SK_BLAST => Some(SpellIconMeta {
             name: "Spell Exhaustion",
             color: Color::RGB(200, 140, 40),
