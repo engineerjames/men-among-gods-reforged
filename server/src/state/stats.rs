@@ -1566,7 +1566,6 @@ impl GameState {
         let co_armor = self.characters[co].armor;
 
         // Compute damage scaling by type
-        let mut dam = dam;
         if type_hurt == 0 {
             dam -= i32::from(co_armor);
             if dam < 0 {

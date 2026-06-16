@@ -5670,6 +5670,7 @@ fn anguish_preflight(
 }
 
 /// Internal: attach a generic Anguish debuff spell-item to `co`.
+#[allow(clippy::too_many_arguments)]
 fn attach_anguish(
     gs: &mut GameState,
     cn: usize,
