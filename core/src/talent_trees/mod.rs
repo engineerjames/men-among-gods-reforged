@@ -103,6 +103,8 @@ impl TalentRef {
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TalentEffect {
+    /// Learned talent has runtime behavior checked directly by server systems.
+    Passive,
     /// Add a flat amount to one or more skills' base values.
     SkillsFlat {
         /// Target skills.
@@ -600,7 +602,8 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
         TalentEffect::Composite { effects } => effects
             .iter()
             .find_map(|effect| primary_hit_proc_from_effect(*effect)),
-        TalentEffect::SkillsFlat { .. }
+        TalentEffect::Passive
+        | TalentEffect::SkillsFlat { .. }
         | TalentEffect::SkillsPercent { .. }
         | TalentEffect::AttributesFlat { .. }
         | TalentEffect::AttributesPercent { .. }
@@ -691,7 +694,8 @@ fn accumulate_stat_bonus(
                 accumulate_stat_bonus(*effect, attrib, skill_rows, bonuses);
             }
         }
-        TalentEffect::GrantSkill { .. }
+        TalentEffect::Passive
+        | TalentEffect::GrantSkill { .. }
         | TalentEffect::GrantSkillAtBase { .. }
         | TalentEffect::PrimaryHitProc { .. } => {}
     }
@@ -1176,7 +1180,8 @@ mod tests {
                     assert_valid_effect_lists(class, node_name, *effect);
                 }
             }
-            TalentEffect::DodgeChancePercent { .. }
+            TalentEffect::Passive
+            | TalentEffect::DodgeChancePercent { .. }
             | TalentEffect::ArmorPercent { .. }
             | TalentEffect::WeaponPercent { .. }
             | TalentEffect::HpManaEndFlat { .. }
@@ -1415,13 +1420,10 @@ mod tests {
             Attribute::Willpower,
             5,
         );
-        assert_grants_skill(named_node(tree, "Ice Stun"), Skill::IceStun);
+        assert_passive(named_node(tree, "Ice Stun"));
         assert_grants_skill(named_node(tree, "Kindred Spirit"), Skill::KindredSpirit);
         assert_hp_mana_end(named_node(tree, "Captain Reserves"), 25, 100, 25);
-        assert_grants_skill(
-            named_node(tree, "Element Switching"),
-            Skill::ElementSwitching,
-        );
+        assert_passive(named_node(tree, "Element Switching"));
         assert_grants_skill(
             named_node(tree, "Spellcaster Kindred Spirit"),
             Skill::SpellcasterKindredSpirit,
@@ -1464,6 +1466,13 @@ mod tests {
         match node.effect {
             TalentEffect::GrantSkill { skill } => assert_eq!(skill, expected),
             other => panic!("expected GrantSkill, got {other:?}"),
+        }
+    }
+
+    fn assert_passive(node: &TalentNode) {
+        match node.effect {
+            TalentEffect::Passive => {}
+            other => panic!("expected Passive, got {other:?}"),
         }
     }
 

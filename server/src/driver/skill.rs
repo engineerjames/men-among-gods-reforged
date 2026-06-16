@@ -17,9 +17,10 @@ use core::{
         SK_WIMPY, attribute_name, get_skill_name,
     },
     string_operations::c_string_to_str,
+    talent_trees::harakim,
     traits::{
-        KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_MONSTER, KIN_SEYAN_DU,
-        KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
+        Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_MONSTER,
+        KIN_SEYAN_DU, KIN_SORCERER, KIN_TEMPLAR, KIN_WARRIOR,
     },
     types::FontColor,
 };
@@ -166,6 +167,25 @@ fn spellcost_blast(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     }
 }
 
+/// Returns whether an elemental cast can use the Harakim Element Switching modifier.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing caster talent state.
+/// * `cn` - Caster character index.
+///
+/// # Returns
+///
+/// * `true` when the caster is a Harakim player with Element Switching learned.
+fn has_element_switching_modifier(gs: &GameState, cn: usize) -> bool {
+    (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+        && matches!(
+            Class::from(gs.characters[cn].kindred),
+            Class::Harakim | Class::ArchHarakim
+        )
+        && harakim::has_element_switching(&gs.characters[cn].future1)
+}
+
 /// Records a Harakim elemental cast and reports whether it changed element.
 ///
 /// # Arguments
@@ -178,7 +198,7 @@ fn spellcost_blast(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
 ///
 /// * `true` when the caster has Element Switching and the previous element differs.
 fn record_harakim_element_cast(gs: &mut GameState, cn: usize, element: u32) -> bool {
-    if gs.characters[cn].skill[SK_ELEMENT_SWITCHING][0] == 0 {
+    if !has_element_switching_modifier(gs, cn) {
         return false;
     }
 
@@ -3492,7 +3512,15 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     }
 
     let power = i32::from(gs.characters[cn].skill[SK_STUN][5]);
-    spell_stun(gs, cn, co, power);
+    let has_ice_stun = has_ice_stun_modifier(gs, cn);
+    let burst_power = if has_ice_stun {
+        apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, power)
+    } else {
+        power
+    };
+    if spell_stun(gs, cn, co, power) && has_ice_stun {
+        attach_ice_stun_marker(gs, cn, co, burst_power);
+    }
 
     let co_orig = co;
     let m: usize = gs.characters[cn].x as usize
@@ -3513,12 +3541,15 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
             if i32::from(gs.characters[cn].skill[SK_STUN][5]) + s_rand
                 > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
             {
-                spell_stun(
+                if spell_stun(
                     gs,
                     cn,
                     maybe_co,
                     i32::from(gs.characters[cn].skill[SK_STUN][5]),
-                );
+                ) && has_ice_stun
+                {
+                    attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
+                }
             }
         }
     }
@@ -3532,6 +3563,25 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
         0,
     );
     add_exhaust(gs, cn, core::constants::TICKS * 3);
+}
+
+/// Returns whether a Stun cast should receive the Harakim Ice Stun modifier.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing caster talent state.
+/// * `cn` - Caster character index.
+///
+/// # Returns
+///
+/// * `true` when the caster is a Harakim player with the Ice Stun talent learned.
+fn has_ice_stun_modifier(gs: &GameState, cn: usize) -> bool {
+    (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+        && matches!(
+            Class::from(gs.characters[cn].kindred),
+            Class::Harakim | Class::ArchHarakim
+        )
+        && harakim::has_ice_stun(&gs.characters[cn].future1)
 }
 
 /// Attaches Ice Stun's on-death burst marker to a stunned target.
@@ -3565,42 +3615,6 @@ fn attach_ice_stun_marker(gs: &mut GameState, caster: usize, co: usize, power: i
         item.data[0] = caster as u32;
     }
     add_spell(gs, co, in_idx);
-}
-
-/// Active hostile cast: Ice Stun. Applies Stun and marks the target for a
-/// possible ice burst if it dies before the marker expires.
-///
-/// # Arguments
-///
-/// * `gs` - Active game state used for target validation, mana costs, and effects.
-/// * `cn` - Caster character index.
-pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
-    let co = resolve_offensive_target(gs, cn);
-    if !hostile_cast_preflight(gs, cn, co, "You cannot ice stun yourself.\n") {
-        return;
-    }
-    if is_exhausted(gs, cn) {
-        return;
-    }
-    if spellcost(gs, cn, 25) != 0 {
-        return;
-    }
-    let power = i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]);
-    if chance_base(
-        gs,
-        cn,
-        power,
-        12,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
-    ) != 0
-    {
-        return;
-    }
-    let burst_power = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, power);
-    if spell_stun(gs, cn, co, power) {
-        attach_ice_stun_marker(gs, cn, co, burst_power);
-    }
-    add_exhaust(gs, cn, TICKS * 3);
 }
 
 /// Removes all active spell items from a character.
@@ -5505,21 +5519,6 @@ pub fn skill_kindred_spirit(gs: &mut GameState, cn: usize) {
     );
 }
 
-/// Passive: Element Switching. Cannot be directly invoked; elemental casts
-/// check this skill automatically.
-///
-/// # Arguments
-///
-/// * `gs` - Game state.
-/// * `cn` - Caster character index (used only for the help-text reply).
-pub fn skill_element_switching(gs: &mut GameState, cn: usize) {
-    gs.do_character_log(
-        cn,
-        FontColor::Green,
-        "You use this skill automatically when alternating elemental spells.\n",
-    );
-}
-
 /// Passive: Spellcaster Kindred Spirit. Cannot be directly invoked; ghost
 /// companion AI checks this skill automatically.
 ///
@@ -6047,14 +6046,6 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 skill_lava_blast(gs, cn);
             }
         }
-        x if x == SK_ICE_STUN as i32 => {
-            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
-                nomagic(gs, cn);
-            } else {
-                skill_ice_stun(gs, cn);
-            }
-        }
-        x if x == SK_ELEMENT_SWITCHING as i32 => skill_element_switching(gs, cn),
         x if x == SK_SPELLCASTER_KINDRED_SPIRIT as i32 => {
             skill_spellcaster_kindred_spirit(gs, cn);
         }
@@ -6116,7 +6107,8 @@ mod harakim_ability_tests {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);
             gs.item_templates[1].used = USE_ACTIVE;
-            gs.characters[cn].skill[SK_ELEMENT_SWITCHING][0] = 1;
+            gs.characters[cn].kindred = KIN_HARAKIM as i32;
+            gs.characters[cn].future1[7] |= 0b0000_0001;
 
             let first = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100);
             let same = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100);
@@ -6125,6 +6117,50 @@ mod harakim_ability_tests {
             assert_eq!(first, 100);
             assert_eq!(same, 100);
             assert_eq!(changed, 120);
+        });
+    }
+
+    #[test]
+    fn element_switching_modifier_requires_harakim_player_talent() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].kindred = KIN_HARAKIM as i32;
+
+            assert_eq!(
+                apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100),
+                100
+            );
+            assert_eq!(
+                apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, 100),
+                100
+            );
+
+            gs.characters[cn].future1[7] |= 0b0000_0001;
+            assert_eq!(
+                apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100),
+                100
+            );
+            assert_eq!(
+                apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, 100),
+                120
+            );
+        });
+    }
+
+    #[test]
+    fn ice_stun_modifier_requires_harakim_player_talent() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = KIN_HARAKIM as i32;
+
+            assert!(!has_ice_stun_modifier(gs, cn));
+
+            gs.characters[cn].future1[5] |= 0b0000_0001;
+            assert!(has_ice_stun_modifier(gs, cn));
+
+            gs.characters[cn].flags = 0;
+            assert!(!has_ice_stun_modifier(gs, cn));
         });
     }
 

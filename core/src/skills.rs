@@ -78,7 +78,7 @@ pub const SK_THUNDEROUS_FURY: usize = 47;
 /// caster's weapon skill for the duration.
 pub const SK_INNER_STRENGTH: usize = 48;
 
-// ---- Harakim talent-granted skills (reserved slots 50..=59) ----
+// ---- Harakim talent-granted skills and markers (reserved slots 50..=59) ----
 /// Revenant Conduit: self-buff that raises the caster's effective Ghost
 /// Companion skill at summon time; mana to cast, slow endurance drain to
 /// maintain.
@@ -104,9 +104,9 @@ pub const SK_ANGUISH_EARTH: usize = 54;
 pub const SK_ANGUISH_ICE: usize = 55;
 /// Lava Blast: elemental blast variant that burns impacted enemies over time.
 pub const SK_LAVA_BLAST: usize = 56;
-/// Ice Stun: empowered stun that can cause a damaging burst when the target dies.
+/// Ice Stun spell-item marker temp used by the Harakim Stun modifier.
 pub const SK_ICE_STUN: usize = 57;
-/// Element Switching: passive that boosts damage when alternating elemental spell types.
+/// Element Switching spell-item marker temp used by the Harakim elemental proc icon.
 pub const SK_ELEMENT_SWITCHING: usize = 58;
 /// Spellcaster Kindred Spirit: passive that lets ghost companions cast Blast.
 pub const SK_SPELLCASTER_KINDRED_SPIRIT: usize = 59;
@@ -267,8 +267,6 @@ pub enum Skill {
     AnguishEarth = SK_ANGUISH_EARTH,
     AnguishIce = SK_ANGUISH_ICE,
     LavaBlast = SK_LAVA_BLAST,
-    IceStun = SK_ICE_STUN,
-    ElementSwitching = SK_ELEMENT_SWITCHING,
     SpellcasterKindredSpirit = SK_SPELLCASTER_KINDRED_SPIRIT,
 }
 
@@ -779,7 +777,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         4,
     ),
     SkillTab::new(49, SkillCategory::Unknown, "", "", 0, 0, 0),
-    // 50..59 Harakim talent-granted skills
+    // 50..59 Harakim talent-granted and reserved slots
     SkillTab::new(
         50,
         SkillCategory::Magic,
@@ -843,24 +841,8 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         1,
         4,
     ),
-    SkillTab::new(
-        57,
-        SkillCategory::Magic,
-        "Ice Stun",
-        "Spell: Empowered Stun with a chance to burst on death.",
-        2,
-        1,
-        4,
-    ),
-    SkillTab::new(
-        58,
-        SkillCategory::Magic,
-        "Element Switching",
-        "Passive: Alternating elemental spell types increases damage.",
-        2,
-        1,
-        4,
-    ),
+    SkillTab::new(57, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(58, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(
         59,
         SkillCategory::Magic,

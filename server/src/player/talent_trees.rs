@@ -113,7 +113,8 @@ fn dispatch_immediate_effect(
             }
             Ok(())
         }
-        TalentEffect::SkillsFlat { .. }
+        TalentEffect::Passive
+        | TalentEffect::SkillsFlat { .. }
         | TalentEffect::SkillsPercent { .. }
         | TalentEffect::AttributesFlat { .. }
         | TalentEffect::AttributesPercent { .. }
@@ -219,7 +220,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::with_test_gs;
     use core::constants::CharacterFlags;
-    use core::skills::Attribute;
+    use core::skills::{Attribute, SK_ELEMENT_SWITCHING, SK_ICE_STUN};
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
@@ -645,6 +646,56 @@ mod tests {
                     [SkillIndex::RaiseDifficulty as usize],
                 5
             );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_ice_stun_modifies_stun_without_granting_new_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            for layer in 1..=4 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::BaseValue as usize] = 12;
+
+            learn_talent(gs, cn, harakim_slot("Ice Stun")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::BaseValue as usize],
+                12,
+                "existing Stun investment should remain the source of Ice Stun power"
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_ICE_STUN][SkillIndex::BaseValue as usize],
+                0,
+                "Ice Stun should not become a separate castable skill"
+            );
+            assert!(core::talent_trees::harakim::has_ice_stun(
+                &gs.characters[cn].future1
+            ));
+        });
+    }
+
+    #[test]
+    fn learn_harakim_element_switching_sets_talent_without_granting_new_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            for layer in 1..=6 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+
+            learn_talent(gs, cn, harakim_slot("Element Switching")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_ELEMENT_SWITCHING][SkillIndex::BaseValue as usize],
+                0,
+                "Element Switching should not become a separate castable skill"
+            );
+            assert!(core::talent_trees::harakim::has_element_switching(
+                &gs.characters[cn].future1
+            ));
         });
     }
 

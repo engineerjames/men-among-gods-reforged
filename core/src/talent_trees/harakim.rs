@@ -1,6 +1,6 @@
 //! Harakim class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNode, TalentRef, TalentTree};
+use super::{TalentEffect, TalentNode, TalentRef, TalentTree, is_talent_slot_spent};
 use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
 
@@ -87,6 +87,32 @@ const WARLORD_EFFECTS: &[TalentEffect] = &[
     },
 ];
 
+/// Returns whether the packed Harakim talent state includes Ice Stun.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state from `Character::future1`.
+///
+/// # Returns
+///
+/// * `true` when the Ice Stun talent is learned.
+pub fn has_ice_stun(talents: &[u8; 25]) -> bool {
+    is_talent_slot_spent(talents, ICE_STUN)
+}
+
+/// Returns whether the packed Harakim talent state includes Element Switching.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state from `Character::future1`.
+///
+/// # Returns
+///
+/// * `true` when the Element Switching talent is learned.
+pub fn has_element_switching(talents: &[u8; 25]) -> bool {
+    is_talent_slot_spent(talents, ELEMENT_SWITCHING)
+}
+
 /// The full Harakim talent tree.
 pub static HARAKIM_TREE: TalentTree = TalentTree {
     class: Class::Harakim,
@@ -147,12 +173,10 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: ICE_STUN,
             name: "Ice Stun",
-            description: "Learn Ice Stun.",
+            description: "Stun marks targets for a chance to burst with ice when they die.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_WILLPOWER],
-            effect: TalentEffect::GrantSkill {
-                skill: Skill::IceStun,
-            },
+            effect: TalentEffect::Passive,
         },
         TalentNode {
             slot: KINDRED_SPIRIT,
@@ -177,12 +201,10 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: ELEMENT_SWITCHING,
             name: "Element Switching",
-            description: "Learn Element Switching.",
+            description: "Alternating elemental spell types can increase damage.",
             cost: 1,
             prereqs: &[CAPTAIN_RESERVES],
-            effect: TalentEffect::GrantSkill {
-                skill: Skill::ElementSwitching,
-            },
+            effect: TalentEffect::Passive,
         },
         TalentNode {
             slot: SPELLCASTER_KINDRED_SPIRIT,
