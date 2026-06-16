@@ -56,6 +56,10 @@ impl GameState {
         // to adjacent enemies sharing the caster's faction enmity.
         self.spread_contagion_on_death(character_id);
 
+        // Ice Stun: if the dying character was marked by empowered stun,
+        // nearby enemies may be cut by the collapsing ice.
+        self.trigger_ice_stun_burst_on_death(character_id);
+
         // Log the kill
         if killer_id != 0 {
             log::info!(
@@ -993,6 +997,104 @@ impl GameState {
                 }
                 if spread >= 4 {
                     return;
+                }
+            }
+        }
+    }
+
+    /// On-death helper for Ice Stun. If the dying character carries an active
+    /// Ice Stun marker, it has a 25% chance to damage enemies in the adjacent
+    /// 3x3 area. The marker stores the original caster in `data[0]` so attack
+    /// legality and kill credit remain tied to the source of the stun.
+    ///
+    /// # Arguments
+    ///
+    /// * `dying` - Character index of the host that is about to die.
+    fn trigger_ice_stun_burst_on_death(&mut self, dying: usize) {
+        if !Character::is_sane_character(dying) {
+            return;
+        }
+
+        let mut marker_idx = 0usize;
+        let mut caster = 0usize;
+        let mut power = 0i32;
+        for n in 0..20 {
+            let in_idx = self.characters[dying].spell[n] as usize;
+            if in_idx == 0 {
+                continue;
+            }
+            if self.items[in_idx].temp == skills::SK_ICE_STUN as u16
+                && self.items[in_idx].active > 0
+            {
+                marker_idx = in_idx;
+                caster = self.items[in_idx].data[0] as usize;
+                power = self.items[in_idx].power as i32;
+                break;
+            }
+        }
+        if marker_idx == 0 || !Character::is_sane_character(caster) {
+            return;
+        }
+
+        self.items[marker_idx].active = 0;
+        if helpers::random_mod(100) >= 25 {
+            return;
+        }
+
+        let dx0 = i32::from(self.characters[dying].x);
+        let dy0 = i32::from(self.characters[dying].y);
+        let damage = (power / 2).max(1);
+        let damage_unit = damage * 1000;
+
+        for dy in -1..=1i32 {
+            for dx in -1..=1i32 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let nx = dx0 + dx;
+                let ny = dy0 + dy;
+                if nx < 0
+                    || ny < 0
+                    || nx >= core::constants::SERVER_MAPX
+                    || ny >= core::constants::SERVER_MAPY
+                {
+                    continue;
+                }
+
+                let map_idx = (nx + ny * core::constants::SERVER_MAPX) as usize;
+                let neighbor = self.map[map_idx].ch as usize;
+                if neighbor == 0 || neighbor == dying || neighbor == caster {
+                    continue;
+                }
+                if !Character::is_sane_character(neighbor) {
+                    continue;
+                }
+                if self.characters[neighbor].flags & CharacterFlags::Body.bits() != 0 {
+                    continue;
+                }
+                if !self.may_attack_msg(caster, neighbor, false) {
+                    continue;
+                }
+
+                self.remember_pvp(caster, neighbor);
+                self.characters[neighbor].a_hp -= damage_unit;
+                self.do_character_log(
+                    neighbor,
+                    FontColor::Green,
+                    "Shattering ice cuts into you!\n",
+                );
+                EffectManager::fx_add_effect(
+                    self,
+                    5,
+                    0,
+                    i32::from(self.characters[neighbor].x),
+                    i32::from(self.characters[neighbor].y),
+                    0,
+                );
+
+                if self.characters[neighbor].a_hp < 500 {
+                    self.characters[neighbor].a_hp = 500;
+                    self.do_character_killed(neighbor, caster, false);
                 }
             }
         }

@@ -1394,6 +1394,55 @@ mod tests {
     }
 
     #[test]
+    fn harakim_tree_matches_rank_milestone_design() {
+        let tree = tree_for(Class::Harakim).unwrap();
+
+        assert_eq!(tree.nodes.len(), 16);
+        assert_grants_skill(named_node(tree, "Lava Blast"), Skill::LavaBlast);
+        assert_grants_skill(named_node(tree, "Revenant Conduit"), Skill::RevenantConduit);
+        assert_attribute_percent(
+            named_node(tree, "Corporal Intuition"),
+            Attribute::Intuition,
+            5,
+        );
+        assert_attribute_percent(
+            named_node(tree, "Staff Sergeant Intuition"),
+            Attribute::Intuition,
+            5,
+        );
+        assert_attribute_percent(
+            named_node(tree, "First Sergeant Willpower"),
+            Attribute::Willpower,
+            5,
+        );
+        assert_grants_skill(named_node(tree, "Ice Stun"), Skill::IceStun);
+        assert_grants_skill(named_node(tree, "Kindred Spirit"), Skill::KindredSpirit);
+        assert_hp_mana_end(named_node(tree, "Captain Reserves"), 25, 100, 25);
+        assert_grants_skill(
+            named_node(tree, "Element Switching"),
+            Skill::ElementSwitching,
+        );
+        assert_grants_skill(
+            named_node(tree, "Spellcaster Kindred Spirit"),
+            Skill::SpellcasterKindredSpirit,
+        );
+        assert_attribute_percent(
+            named_node(tree, "Brigadier General Intuition"),
+            Attribute::Intuition,
+            5,
+        );
+        assert_grants_skill(named_node(tree, "Elemental Anguish"), Skill::AnguishEarth);
+        assert_grants_skill(named_node(tree, "Spectral Pact"), Skill::SpectralPact);
+        assert_attribute_percent(
+            named_node(tree, "Field Marshal Intuition"),
+            Attribute::Intuition,
+            5,
+        );
+        assert_attribute_percent(named_node(tree, "Baron Willpower"), Attribute::Willpower, 5);
+        assert_hp_mana_end(named_node(tree, "Warlord Ascendancy"), 50, 100, 50);
+    }
+
+    #[test]
     fn talent_primary_hit_proc_returns_learned_templar_choice() {
         let tree = tree_for(Class::Templar).unwrap();
         let mut talents = [0u8; 25];
@@ -1450,6 +1499,34 @@ mod tests {
                 assert_eq!(end, expected_end);
             }
             other => panic!("expected HpManaEndFlat, got {other:?}"),
+        }
+    }
+
+    fn assert_hp_mana_end(
+        node: &TalentNode,
+        expected_hp: i32,
+        expected_mana: i32,
+        expected_end: i32,
+    ) {
+        match node.effect {
+            TalentEffect::HpManaEndFlat { hp, mana, end } => {
+                assert_eq!(hp, expected_hp);
+                assert_eq!(mana, expected_mana);
+                assert_eq!(end, expected_end);
+            }
+            TalentEffect::Composite { effects } => {
+                let mut found = false;
+                for effect in effects {
+                    if let TalentEffect::HpManaEndFlat { hp, mana, end } = effect {
+                        assert_eq!(*hp, expected_hp);
+                        assert_eq!(*mana, expected_mana);
+                        assert_eq!(*end, expected_end);
+                        found = true;
+                    }
+                }
+                assert!(found, "expected composite to contain HpManaEndFlat");
+            }
+            other => panic!("expected HpManaEndFlat or Composite, got {other:?}"),
         }
     }
 

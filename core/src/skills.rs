@@ -78,7 +78,7 @@ pub const SK_THUNDEROUS_FURY: usize = 47;
 /// caster's weapon skill for the duration.
 pub const SK_INNER_STRENGTH: usize = 48;
 
-// ---- Harakim talent-granted skills (reserved slots 50..=55) ----
+// ---- Harakim talent-granted skills (reserved slots 50..=59) ----
 /// Revenant Conduit: self-buff that raises the caster's effective Ghost
 /// Companion skill at summon time; mana to cast, slow endurance drain to
 /// maintain.
@@ -102,6 +102,14 @@ pub const SK_ANGUISH_EARTH: usize = 54;
 /// Anguish (Ice): debuff that shreds the target's armor and weapon values
 /// directly (instead of lowering attributes the way Curse does).
 pub const SK_ANGUISH_ICE: usize = 55;
+/// Lava Blast: elemental blast variant that burns impacted enemies over time.
+pub const SK_LAVA_BLAST: usize = 56;
+/// Ice Stun: empowered stun that can cause a damaging burst when the target dies.
+pub const SK_ICE_STUN: usize = 57;
+/// Element Switching: passive that boosts damage when alternating elemental spell types.
+pub const SK_ELEMENT_SWITCHING: usize = 58;
+/// Spellcaster Kindred Spirit: passive that lets ghost companions cast Blast.
+pub const SK_SPELLCASTER_KINDRED_SPIRIT: usize = 59;
 
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
@@ -258,6 +266,10 @@ pub enum Skill {
     AnguishLava = SK_ANGUISH_LAVA,
     AnguishEarth = SK_ANGUISH_EARTH,
     AnguishIce = SK_ANGUISH_ICE,
+    LavaBlast = SK_LAVA_BLAST,
+    IceStun = SK_ICE_STUN,
+    ElementSwitching = SK_ELEMENT_SWITCHING,
+    SpellcasterKindredSpirit = SK_SPELLCASTER_KINDRED_SPIRIT,
 }
 
 /// A skill definition entry describing one learnable ability.
@@ -767,7 +779,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         4,
     ),
     SkillTab::new(49, SkillCategory::Unknown, "", "", 0, 0, 0),
-    // 50..55 Harakim talent-granted skills
+    // 50..59 Harakim talent-granted skills
     SkillTab::new(
         50,
         SkillCategory::Magic,
@@ -822,10 +834,42 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         1,
         4,
     ),
-    SkillTab::new(56, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(57, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(58, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(59, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(
+        56,
+        SkillCategory::Magic,
+        "Lava Blast",
+        "Spell: Blast enemies and burn them over time.",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        57,
+        SkillCategory::Magic,
+        "Ice Stun",
+        "Spell: Empowered Stun with a chance to burst on death.",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        58,
+        SkillCategory::Magic,
+        "Element Switching",
+        "Passive: Alternating elemental spell types increases damage.",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        59,
+        SkillCategory::Magic,
+        "Spellcaster Kindred Spirit",
+        "Passive: Ghost companions can cast Blast using endurance.",
+        0,
+        2,
+        1,
+    ),
     SkillTab::new(60, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(61, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(62, SkillCategory::Unknown, "", "", 0, 0, 0),

@@ -318,7 +318,11 @@ impl GameState {
         }
 
         // Calculate final skills (with attribute bonuses)
-        for (z, &bonus) in skill_bonus.iter().enumerate().take(50) {
+        for (z, &bonus) in skill_bonus
+            .iter()
+            .enumerate()
+            .take(core::skills::MAX_SKILLS)
+        {
             let mut final_skill = i32::from(self.characters[cn].skill[z][0])
                 + i32::from(self.characters[cn].skill[z][1])
                 + bonus;
@@ -809,12 +813,13 @@ impl GameState {
                     }
                 }
 
-                // Parasite / Contagion damage-over-time with caster lifesteal.
+                // Parasite / Contagion / Lava Burn damage-over-time.
                 // Each spell-item stores the caster in `data[0]` and ticks
                 // once per second based on remaining duration. Damage scales
-                // with `power`; the caster heals for 25% of damage dealt.
+                // with `power`; Parasite-family spells also heal the caster.
                 if item_temp == skills::SK_PARASITE as u16
                     || item_temp == skills::SK_CONTAGION as u16
+                    || item_temp == skills::SK_LAVA_BLAST as u16
                 {
                     let item = &self.items[spell_item as usize];
                     let duration = item.duration as i32;
@@ -825,19 +830,20 @@ impl GameState {
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
                         let base_dam = (power / 4).max(1);
-                        let dam = if item_temp == skills::SK_CONTAGION as u16 {
-                            base_dam * 2
-                        } else {
-                            base_dam
+                        let dam = match item_temp {
+                            temp if temp == skills::SK_CONTAGION as u16 => base_dam * 2,
+                            temp if temp == skills::SK_LAVA_BLAST as u16 => (base_dam / 2).max(1),
+                            _ => base_dam,
                         };
                         let dam_unit = dam * 1000;
                         // Apply DoT directly without going through do_hurt to
                         // avoid amplifying with armor (the parasite eats
                         // flesh from the inside).
                         self.characters[cn].a_hp -= dam_unit;
-                        // Lifesteal: caster regains 25% of damage dealt, if
-                        // still alive and a sane character index.
-                        if core::types::Character::is_sane_character(caster)
+                        // Lifesteal: Parasite-family spells return 25% of damage dealt, if
+                        // still alive and a sane character index. Lava Blast only burns.
+                        if item_temp != skills::SK_LAVA_BLAST as u16
+                            && core::types::Character::is_sane_character(caster)
                             && caster != cn
                             && self.characters[caster].used == core::constants::USE_ACTIVE
                         {
@@ -1970,6 +1976,25 @@ mod tests {
             gs.really_update_char(cn);
 
             assert_eq!(weapon_skill_total(gs, cn) - baseline, 20);
+        });
+    }
+
+    #[test]
+    fn recompute_updates_harakim_talent_skill_slots() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            for attrib_idx in 0..5 {
+                gs.characters[cn].attrib[attrib_idx][SkillIndex::BaseValue as usize] = 30;
+            }
+            gs.characters[cn].skill[skills::SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 1;
+            gs.characters[cn].skill[skills::SK_LAVA_BLAST][SkillIndex::MaxValue as usize] = 100;
+
+            gs.really_update_char(cn);
+
+            assert!(
+                gs.characters[cn].skill[skills::SK_LAVA_BLAST][SkillIndex::TotalValue as usize] > 1,
+                "slot 56 should receive attribute contribution during recompute"
+            );
         });
     }
 

@@ -7,13 +7,14 @@ use core::{
     skills::{
         SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AXE, SK_BLADE_DANCE, SK_BLAST,
         SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER, SK_DELIVER_DEATH, SK_DISARM,
-        SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL, SK_IDENT, SK_IMMUN,
-        SK_INNER_STRENGTH, SK_KINDRED_SPIRIT, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE,
-        SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST,
-        SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SPECTRAL_PACT,
-        SK_SPECTRAL_PACT2, SK_STAFF, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2, SK_SURROUND,
-        SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY,
-        attribute_name, get_skill_name,
+        SK_DISPEL, SK_DISTRACT, SK_ELEMENT_SWITCHING, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL,
+        SK_ICE_STUN, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH, SK_KINDRED_SPIRIT, SK_LAVA_BLAST,
+        SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL,
+        SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_REVENANT_CONDUIT,
+        SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SPECTRAL_PACT, SK_SPECTRAL_PACT2,
+        SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2,
+        SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON,
+        SK_WIMPY, attribute_name, get_skill_name,
     },
     string_operations::c_string_to_str,
     traits::{
@@ -30,6 +31,15 @@ use crate::{
 use core::types::Character;
 
 use core::constants::LEGACY_TICKS;
+
+/// Element marker value for Lava-element Harakim casts.
+const HARAKIM_ELEMENT_LAVA: u32 = 1;
+/// Element marker value for Ice-element Harakim casts.
+const HARAKIM_ELEMENT_ICE: u32 = 2;
+/// Element marker value for Earth-element Harakim casts.
+const HARAKIM_ELEMENT_EARTH: u32 = 3;
+/// Percent damage boost granted when Element Switching alternates elements.
+const ELEMENT_SWITCH_DAMAGE_PERCENT: i32 = 20;
 
 /// Returns whether `co` is a player or the ghost companion owned by `cn`.
 ///
@@ -95,6 +105,148 @@ pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     }
     gs.characters[cn].a_mana = a_mana - cost * 1000;
     0
+}
+
+/// Consumes endurance for a spell-like action.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing character endurance.
+/// * `cn` - Caster character index.
+/// * `cost` - Base endurance cost in whole endurance units.
+///
+/// # Returns
+///
+/// * `0` when endurance was consumed successfully, or `-1` when the caster lacks endurance.
+pub fn spellcost_endurance(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
+    let a_end = gs.characters[cn].a_end;
+    if cost * 1000 > a_end {
+        gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
+        return -1;
+    }
+    gs.characters[cn].a_end = a_end - cost * 1000;
+    0
+}
+
+/// Returns whether a Blast cast should consume endurance instead of mana.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing owner and companion state.
+/// * `cn` - Caster character index.
+///
+/// # Returns
+///
+/// * `true` for ghost companions whose owner has Spellcaster Kindred Spirit.
+fn blast_uses_endurance(gs: &GameState, cn: usize) -> bool {
+    if gs.characters[cn].temp != CT_COMPANION as u16 {
+        return false;
+    }
+    let owner = gs.characters[cn].data[63] as usize;
+    Character::is_sane_character(owner)
+        && gs.characters[owner].skill[SK_SPELLCASTER_KINDRED_SPIRIT][0] != 0
+}
+
+/// Consumes the appropriate resource for a Blast cast.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing caster resources.
+/// * `cn` - Caster character index.
+/// * `cost` - Base spell cost in whole resource units.
+///
+/// # Returns
+///
+/// * `0` when the resource was consumed successfully, otherwise `-1`.
+fn spellcost_blast(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
+    if blast_uses_endurance(gs, cn) {
+        spellcost_endurance(gs, cn, cost)
+    } else {
+        spellcost(gs, cn, cost)
+    }
+}
+
+/// Records a Harakim elemental cast and reports whether it changed element.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing caster spell markers.
+/// * `cn` - Caster character index.
+/// * `element` - Element marker value being cast now.
+///
+/// # Returns
+///
+/// * `true` when the caster has Element Switching and the previous element differs.
+fn record_harakim_element_cast(gs: &mut GameState, cn: usize, element: u32) -> bool {
+    if gs.characters[cn].skill[SK_ELEMENT_SWITCHING][0] == 0 {
+        return false;
+    }
+
+    for n in 0..20 {
+        let in_idx = gs.characters[cn].spell[n] as usize;
+        if in_idx == 0 || gs.items[in_idx].temp != SK_ELEMENT_SWITCHING as u16 {
+            continue;
+        }
+        let last_element = gs.items[in_idx].data[0];
+        gs.items[in_idx].data[0] = element;
+        gs.items[in_idx].active = gs.items[in_idx].duration;
+        return last_element != 0 && last_element != element;
+    }
+
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in record_harakim_element_cast");
+        return false;
+    }
+    let in_idx = in_opt.unwrap();
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let name = b"Element Switching";
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.duration = (TICKS * 60) as u32;
+        item.active = item.duration;
+        item.temp = SK_ELEMENT_SWITCHING as u16;
+        item.power = 1;
+        item.data[0] = element;
+    }
+    if add_spell(gs, cn, in_idx) == 0 {
+        for slot in 0..20 {
+            if gs.characters[cn].spell[slot] == 0 {
+                gs.characters[cn].spell[slot] = in_idx as u32;
+                break;
+            }
+        }
+    }
+    false
+}
+
+/// Applies Element Switching's damage bonus when the caster alternates elements.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing caster spell markers.
+/// * `cn` - Caster character index.
+/// * `element` - Element marker value being cast now.
+/// * `damage` - Base damage or damage-driving power.
+///
+/// # Returns
+///
+/// * Boosted damage when the element changed, otherwise `damage` unchanged.
+fn apply_harakim_element_damage_bonus(
+    gs: &mut GameState,
+    cn: usize,
+    element: u32,
+    damage: i32,
+) -> i32 {
+    if record_harakim_element_cast(gs, cn, element) {
+        damage * (100 + ELEMENT_SWITCH_DAMAGE_PERCENT) / 100
+    } else {
+        damage
+    }
 }
 
 /// Performs a focus check against an opposing skill or resistance power.
@@ -2695,7 +2847,7 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         cost /= 3;
     }
 
-    if spellcost(gs, cn, cost) != 0 {
+    if spellcost_blast(gs, cn, cost) != 0 {
         return;
     }
 
@@ -2815,6 +2967,155 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
     }
 
     add_exhaust(gs, cn, core::constants::TICKS * 6);
+    EffectManager::fx_add_effect(
+        gs,
+        7,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
+}
+
+/// Attaches Lava Blast's burning damage-over-time marker to an impacted enemy.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to allocate and attach the spell item.
+/// * `caster` - Character index of the Lava Blast caster.
+/// * `co` - Character index of the impacted enemy.
+/// * `power` - Effective Lava Blast power recorded for tick damage.
+fn apply_lava_blast_dot(gs: &mut GameState, caster: usize, co: usize, power: i32) {
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in apply_lava_blast_dot");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let name = b"Lava Burn";
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 89;
+        item.duration = (TICKS * 5) as u32;
+        item.active = item.duration;
+        item.temp = SK_LAVA_BLAST as u16;
+        item.power = power.max(1) as u32;
+        item.data[0] = caster as u32;
+    }
+    add_spell(gs, co, in_idx);
+}
+
+/// Active hostile cast: Lava Blast. Deals Blast-like damage and burns every
+/// impacted enemy for a short duration.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, mana costs, damage, and effects.
+/// * `cn` - Caster character index.
+pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot lava blast yourself.\n") {
+        return;
+    }
+    if is_exhausted(gs, cn) {
+        return;
+    }
+
+    let mut power = i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][5]);
+    power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
+    power = spell_race_mod(gs, power, gs.characters[cn].kindred);
+    let mut dam = (power * 3) / 2;
+
+    let mut cost = dam / 8 + 8;
+    if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+        && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
+    {
+        cost /= 3;
+    }
+    if spellcost(gs, cn, cost) != 0 {
+        return;
+    }
+
+    if chance_base(
+        gs,
+        cn,
+        i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][5]),
+        12,
+        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+    ) != 0
+    {
+        return;
+    }
+
+    dam = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, dam);
+
+    let tmp = gs.do_hurt(cn, co, dam, 1);
+    if tmp < 1 {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            "You cannot penetrate your target's armor.\n",
+        );
+    } else {
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("You lava blast your target for {} HP.\n", tmp),
+        );
+        apply_lava_blast_dot(gs, cn, co, power);
+    }
+    EffectManager::fx_add_effect(
+        gs,
+        5,
+        0,
+        i32::from(gs.characters[co].x),
+        i32::from(gs.characters[co].y),
+        0,
+    );
+
+    let co_orig = co;
+    dam = dam / 2 + dam / 4;
+    let aoe_base = i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][0]);
+    let use_legacy_cross = helpers::skill_aoe_uses_legacy_cross(aoe_base);
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, aoe_base) {
+        if maybe_co == cn || maybe_co == co_orig {
+            continue;
+        }
+        if use_legacy_cross && gs.characters[maybe_co].attack_cn != cn as u16 {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        gs.remember_pvp(cn, maybe_co);
+        let tmp2 = gs.do_hurt(cn, maybe_co, dam, 1);
+        if tmp2 >= 1 {
+            gs.do_character_log(
+                cn,
+                FontColor::Green,
+                &format!("You lava blast your target for {} HP.\n", tmp2),
+            );
+            apply_lava_blast_dot(gs, cn, maybe_co, power);
+        }
+        EffectManager::fx_add_effect(
+            gs,
+            5,
+            0,
+            i32::from(gs.characters[maybe_co].x),
+            i32::from(gs.characters[maybe_co].y),
+            0,
+        );
+    }
+
+    add_exhaust(gs, cn, TICKS * 6);
     EffectManager::fx_add_effect(
         gs,
         7,
@@ -3233,6 +3534,75 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
+/// Attaches Ice Stun's on-death burst marker to a stunned target.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to allocate and attach the marker.
+/// * `caster` - Character index of the Ice Stun caster.
+/// * `co` - Character index of the stunned target.
+/// * `power` - Effective Ice Stun power recorded for death-burst damage.
+fn attach_ice_stun_marker(gs: &mut GameState, caster: usize, co: usize, power: i32) {
+    let in_opt = God::create_item(gs, 1);
+    if in_opt.is_none() {
+        log::error!("god_create_item failed in attach_ice_stun_marker");
+        return;
+    }
+    let in_idx = in_opt.unwrap();
+    {
+        let item = &mut gs.items[in_idx];
+        let mut name_bytes = [0u8; 40];
+        let name = b"Ice Stun";
+        let nlen = name.len().min(40);
+        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+        item.name = name_bytes;
+        item.flags |= ItemFlags::IF_SPELL.bits();
+        item.sprite[1] = 91;
+        item.duration = (power + TICKS).max(TICKS) as u32;
+        item.active = item.duration;
+        item.temp = SK_ICE_STUN as u16;
+        item.power = power.max(1) as u32;
+        item.data[0] = caster as u32;
+    }
+    add_spell(gs, co, in_idx);
+}
+
+/// Active hostile cast: Ice Stun. Applies Stun and marks the target for a
+/// possible ice burst if it dies before the marker expires.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for target validation, mana costs, and effects.
+/// * `cn` - Caster character index.
+pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot ice stun yourself.\n") {
+        return;
+    }
+    if is_exhausted(gs, cn) {
+        return;
+    }
+    if spellcost(gs, cn, 25) != 0 {
+        return;
+    }
+    let power = i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]);
+    if chance_base(
+        gs,
+        cn,
+        power,
+        12,
+        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+    ) != 0
+    {
+        return;
+    }
+    let burst_power = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, power);
+    if spell_stun(gs, cn, co, power) {
+        attach_ice_stun_marker(gs, cn, co, burst_power);
+    }
+    add_exhaust(gs, cn, TICKS * 3);
+}
+
 /// Removes all active spell items from a character.
 ///
 /// # Arguments
@@ -3483,6 +3853,9 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     // Inspect both companion slots. Kindred Spirit grants access to the
     // second slot; without it, only `CHD_COMPANION` is usable.
     let has_kindred_spirit = gs.characters[cn].skill[SK_KINDRED_SPIRIT][0] != 0
+        && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+    let has_spellcaster_kindred_spirit = gs.characters[cn].skill[SK_SPELLCASTER_KINDRED_SPIRIT][0]
+        != 0
         && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
 
     let companion_slot_state = |gs: &GameState, slot: usize| -> Option<usize> {
@@ -3740,6 +4113,12 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         if gs.characters[cc].skill[n][2] != 0 {
             gs.characters[cc].skill[n][0] = std::cmp::min(gs.characters[cc].skill[n][2], tmp as u8);
         }
+    }
+
+    if has_spellcaster_kindred_spirit {
+        gs.characters[cc].skill[SK_BLAST][0] = gs.characters[cc].skill[SK_BLAST][0].max(1);
+        gs.characters[cc].skill[SK_BLAST][2] = gs.characters[cc].skill[SK_BLAST][2].max(100);
+        gs.characters[cc].skill[SK_BLAST][3] = gs.characters[cc].skill[SK_BLAST][3].max(5);
     }
 
     gs.characters[cc].hp[0] = std::cmp::max(
@@ -5126,6 +5505,36 @@ pub fn skill_kindred_spirit(gs: &mut GameState, cn: usize) {
     );
 }
 
+/// Passive: Element Switching. Cannot be directly invoked; elemental casts
+/// check this skill automatically.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index (used only for the help-text reply).
+pub fn skill_element_switching(gs: &mut GameState, cn: usize) {
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        "You use this skill automatically when alternating elemental spells.\n",
+    );
+}
+
+/// Passive: Spellcaster Kindred Spirit. Cannot be directly invoked; ghost
+/// companion AI checks this skill automatically.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index (used only for the help-text reply).
+pub fn skill_spellcaster_kindred_spirit(gs: &mut GameState, cn: usize) {
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        "You use this skill automatically through your ghost companions.\n",
+    );
+}
+
 /// Active self-buff: Spectral Pact. Attaches a spell item that redirects a
 /// percentage of incoming damage from the caster to their ghost companion(s)
 /// (handled in `do_hurt`).
@@ -5310,6 +5719,7 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
         return;
     };
     let power = i32::from(gs.characters[cn].skill[SK_ANGUISH_EARTH][5]);
+    record_harakim_element_cast(gs, cn, HARAKIM_ELEMENT_EARTH);
 
     attach_anguish(
         gs,
@@ -5630,6 +6040,24 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 skill_anguish_ice(gs, cn);
             }
         }
+        x if x == SK_LAVA_BLAST as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_lava_blast(gs, cn);
+            }
+        }
+        x if x == SK_ICE_STUN as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_ice_stun(gs, cn);
+            }
+        }
+        x if x == SK_ELEMENT_SWITCHING as i32 => skill_element_switching(gs, cn),
+        x if x == SK_SPELLCASTER_KINDRED_SPIRIT as i32 => {
+            skill_spellcaster_kindred_spirit(gs, cn);
+        }
         _ => {
             gs.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n");
         }
@@ -5660,6 +6088,43 @@ mod harakim_ability_tests {
             attach_marker(gs, cn, 0, 10, SK_REVENANT_CONDUIT2 as u16);
             assert!(has_active_spell_temp(gs, cn, SK_REVENANT_CONDUIT2 as u16));
             assert!(!has_active_spell_temp(gs, cn, SK_SPECTRAL_PACT2 as u16));
+        });
+    }
+
+    #[test]
+    fn spellcaster_kindred_blast_spends_companion_endurance() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            let companion = 2;
+            gs.characters[owner].skill[SK_SPELLCASTER_KINDRED_SPIRIT][0] = 1;
+            gs.characters[companion] = core::types::Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[companion].a_end = 100_000;
+            gs.characters[companion].a_mana = 100_000;
+
+            assert_eq!(spellcost_blast(gs, companion, 10), 0);
+
+            assert_eq!(gs.characters[companion].a_end, 90_000);
+            assert_eq!(gs.characters[companion].a_mana, 100_000);
+        });
+    }
+
+    #[test]
+    fn element_switching_boosts_changed_element_damage() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].skill[SK_ELEMENT_SWITCHING][0] = 1;
+
+            let first = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100);
+            let same = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100);
+            let changed = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, 100);
+
+            assert_eq!(first, 100);
+            assert_eq!(same, 100);
+            assert_eq!(changed, 120);
         });
     }
 

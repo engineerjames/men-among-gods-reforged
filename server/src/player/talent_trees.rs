@@ -224,7 +224,7 @@ mod tests {
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
     };
-    use core::traits::{Class, KIN_MERCENARY, KIN_TEMPLAR};
+    use core::traits::{Class, KIN_HARAKIM, KIN_MERCENARY, KIN_TEMPLAR};
 
     fn empty_talents() -> [u8; 25] {
         [0; 25]
@@ -251,6 +251,16 @@ mod tests {
             .iter()
             .find(|node| node.name == name)
             .unwrap_or_else(|| panic!("missing templar talent '{name}'"))
+            .slot
+    }
+
+    fn harakim_slot(name: &str) -> TalentRef {
+        tree_for(Class::Harakim)
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("missing harakim talent '{name}'"))
             .slot
     }
 
@@ -615,6 +625,49 @@ mod tests {
     }
 
     #[test]
+    fn learn_harakim_lava_blast_grants_lava_blast_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::BaseValue as usize],
+                1
+            );
+            assert_eq!(
+                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[Skill::LavaBlast as usize]
+                    [SkillIndex::RaiseDifficulty as usize],
+                5
+            );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_spellcaster_kindred_grants_passive_after_prereqs() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            for layer in 1..=6 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+
+            learn_talent(gs, cn, harakim_slot("Spellcaster Kindred Spirit")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::SpellcasterKindredSpirit as usize]
+                    [SkillIndex::BaseValue as usize],
+                1
+            );
+        });
+    }
+
+    #[test]
     fn learn_templar_warlord_composite_recomputes_stat_bonuses() {
         with_test_gs(|gs| {
             let cn = 1;
@@ -725,10 +778,9 @@ mod tests {
             tree_for(Class::Templar).unwrap().nodes[0].effect,
             Skill::RainsOfRenewal,
         );
-        assert_effect(
+        assert_grant_effect(
             tree_for(Class::Harakim).unwrap().nodes[0].effect,
-            Attribute::Intuition,
-            10,
+            Skill::LavaBlast,
         );
         assert_effect(
             tree_for(Class::SeyanDu).unwrap().nodes[17].effect,
