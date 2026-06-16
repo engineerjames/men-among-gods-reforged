@@ -26,8 +26,11 @@ use core::{
 };
 
 use crate::{
-    chlog, driver, effect::EffectManager, game_state::GameState, god::God, helpers, points,
-    populate,
+    chlog, driver,
+    effect::EffectManager,
+    game_state::{ElementSwitchState, GameState},
+    god::God,
+    helpers, points, populate,
 };
 use core::types::Character;
 
@@ -41,6 +44,8 @@ const HARAKIM_ELEMENT_ICE: u32 = 2;
 const HARAKIM_ELEMENT_EARTH: u32 = 3;
 /// Percent damage boost granted when Element Switching alternates elements.
 const ELEMENT_SWITCH_DAMAGE_PERCENT: i32 = 20;
+/// Duration, in ticks, that Element Switching remembers the last cast element.
+const ELEMENT_SWITCH_MEMORY_TICKS: i32 = TICKS * 60;
 
 /// Returns whether `co` is a player or the ghost companion owned by `cn`.
 ///
@@ -190,7 +195,7 @@ fn has_element_switching_modifier(gs: &GameState, cn: usize) -> bool {
 ///
 /// # Arguments
 ///
-/// * `gs` - Active game state containing caster spell markers.
+/// * `gs` - Active game state containing runtime Element Switching state.
 /// * `cn` - Caster character index.
 /// * `element` - Element marker value being cast now.
 ///
@@ -202,21 +207,48 @@ fn record_harakim_element_cast(gs: &mut GameState, cn: usize, element: u32) -> b
         return false;
     }
 
+    let current_tick = gs.globals.ticker;
+    let changed = matches!(
+        gs.element_switch_states.get(&cn),
+        Some(state) if state.expires_at_tick > current_tick
+            && state.last_element != 0
+            && state.last_element != element
+    );
+
+    gs.element_switch_states.insert(
+        cn,
+        ElementSwitchState {
+            last_element: element,
+            expires_at_tick: current_tick + ELEMENT_SWITCH_MEMORY_TICKS,
+        },
+    );
+
+    if changed {
+        show_element_switching_proc_icon(gs, cn);
+    }
+
+    changed
+}
+
+/// Refreshes the client-visible Element Switching proc icon on the caster.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing spell items and caster state.
+/// * `cn` - Caster character index.
+fn show_element_switching_proc_icon(gs: &mut GameState, cn: usize) {
     for n in 0..20 {
         let in_idx = gs.characters[cn].spell[n] as usize;
-        if in_idx == 0 || gs.items[in_idx].temp != SK_ELEMENT_SWITCHING as u16 {
-            continue;
+        if in_idx != 0 && gs.items[in_idx].temp == SK_ELEMENT_SWITCHING as u16 {
+            gs.items[in_idx].active = gs.items[in_idx].duration;
+            return;
         }
-        let last_element = gs.items[in_idx].data[0];
-        gs.items[in_idx].data[0] = element;
-        gs.items[in_idx].active = gs.items[in_idx].duration;
-        return last_element != 0 && last_element != element;
     }
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
-        log::error!("god_create_item failed in record_harakim_element_cast");
-        return false;
+        log::error!("god_create_item failed in show_element_switching_proc_icon");
+        return;
     }
     let in_idx = in_opt.unwrap();
     {
@@ -227,11 +259,10 @@ fn record_harakim_element_cast(gs: &mut GameState, cn: usize, element: u32) -> b
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.duration = (TICKS * 60) as u32;
+        item.duration = (TICKS * 10) as u32;
         item.active = item.duration;
         item.temp = SK_ELEMENT_SWITCHING as u16;
-        item.power = 1;
-        item.data[0] = element;
+        item.power = ELEMENT_SWITCH_DAMAGE_PERCENT as u32;
     }
     if add_spell(gs, cn, in_idx) == 0 {
         for slot in 0..20 {
@@ -241,14 +272,13 @@ fn record_harakim_element_cast(gs: &mut GameState, cn: usize, element: u32) -> b
             }
         }
     }
-    false
 }
 
 /// Applies Element Switching's damage bonus when the caster alternates elements.
 ///
 /// # Arguments
 ///
-/// * `gs` - Active game state containing caster spell markers.
+/// * `gs` - Active game state containing runtime Element Switching state.
 /// * `cn` - Caster character index.
 /// * `element` - Element marker value being cast now.
 /// * `damage` - Base damage or damage-driving power.
@@ -6117,6 +6147,52 @@ mod harakim_ability_tests {
             assert_eq!(first, 100);
             assert_eq!(same, 100);
             assert_eq!(changed, 120);
+            assert!(has_active_spell_temp(gs, cn, SK_ELEMENT_SWITCHING as u16));
+            let state = gs
+                .element_switch_states
+                .get(&cn)
+                .expect("element state should be tracked outside spell items");
+            assert_eq!(state.last_element, HARAKIM_ELEMENT_ICE);
+        });
+    }
+
+    #[test]
+    fn element_switching_first_cast_tracks_state_without_icon() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.item_templates[1].used = USE_ACTIVE;
+            gs.characters[cn].kindred = KIN_HARAKIM as i32;
+            gs.characters[cn].future1[7] |= 0b0000_0001;
+
+            let damage = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100);
+
+            assert_eq!(damage, 100);
+            assert!(!has_active_spell_temp(gs, cn, SK_ELEMENT_SWITCHING as u16));
+            let state = gs
+                .element_switch_states
+                .get(&cn)
+                .expect("first elemental cast should be remembered");
+            assert_eq!(state.last_element, HARAKIM_ELEMENT_LAVA);
+        });
+    }
+
+    #[test]
+    fn element_switching_state_expires_on_tick_cleanup() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = KIN_HARAKIM as i32;
+            gs.characters[cn].future1[7] |= 0b0000_0001;
+            gs.globals.ticker = 10;
+
+            assert_eq!(
+                apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_LAVA, 100),
+                100
+            );
+            assert!(gs.element_switch_states.contains_key(&cn));
+
+            gs.tick_element_switch_states(10 + ELEMENT_SWITCH_MEMORY_TICKS);
+
+            assert!(!gs.element_switch_states.contains_key(&cn));
         });
     }
 

@@ -2,6 +2,20 @@ use crate::path_finding::PathFinder;
 use crate::types::server_player::ServerPlayer;
 use core::constants::{CharacterFlags, USE_EMPTY};
 use core::talent_trees::total_points_spent;
+use std::collections::HashMap;
+
+/// Runtime state for the Harakim Element Switching passive.
+///
+/// This is intentionally separate from spell items. Spell items may be used to
+/// show a client icon, but the server tracks the actual last-cast element here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ElementSwitchState {
+    /// Last elemental spell type cast by the character.
+    pub last_element: u32,
+    /// Server tick at which this transient memory expires.
+    pub expires_at_tick: i32,
+}
+
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -96,6 +110,8 @@ pub struct GameState {
 
     /// Runtime-only landed primary-hit counters for talent passives.
     pub talent_primary_hit_counts: Vec<u8>,
+    /// Runtime-only last-element state for the Harakim Element Switching passive.
+    pub element_switch_states: HashMap<usize, ElementSwitchState>,
 
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
@@ -194,6 +210,7 @@ impl GameState {
             is_monster: false,
             penta_needed: 5,
             talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
+            element_switch_states: HashMap::new(),
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding
@@ -204,6 +221,16 @@ impl GameState {
             playtest_mode: false,
             god_password: String::new(),
         }
+    }
+
+    /// Removes expired Element Switching state entries.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_tick` - Current server tick used as the expiry threshold.
+    pub(crate) fn tick_element_switch_states(&mut self, current_tick: i32) {
+        self.element_switch_states
+            .retain(|_, state| state.expires_at_tick > current_tick);
     }
 
     /// Initialize a new `GameState` by loading all data from KeyDB.
