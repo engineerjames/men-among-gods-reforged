@@ -3570,16 +3570,15 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
             let o_rand = helpers::random_mod_i32(20);
             if i32::from(gs.characters[cn].skill[SK_STUN][5]) + s_rand
                 > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
-            {
-                if spell_stun(
+                && spell_stun(
                     gs,
                     cn,
                     maybe_co,
                     i32::from(gs.characters[cn].skill[SK_STUN][5]),
-                ) && has_ice_stun
-                {
-                    attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
-                }
+                )
+                && has_ice_stun
+            {
+                attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
             }
         }
     }
