@@ -178,6 +178,41 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             color: Color::RGB(240, 200, 120),
             icon_filename: "inner_strength_icon.png",
         }),
+        skills::SK_LAVA_BLAST => Some(SpellIconMeta {
+            name: "Lava Blast",
+            color: Color::RGB(230, 110, 50),
+            icon_filename: "lava_blast_icon.png",
+        }),
+        skills::SK_REVENANT_CONDUIT => Some(SpellIconMeta {
+            name: "Revenant Conduit",
+            color: Color::RGB(130, 160, 240),
+            icon_filename: "revenant_conduit_icon.png",
+        }),
+        skills::SK_SPECTRAL_PACT => Some(SpellIconMeta {
+            name: "Spectral Pact",
+            color: Color::RGB(180, 140, 220),
+            icon_filename: "spectral_pact_icon.png",
+        }),
+        skills::SK_KINDRED_SPIRIT => Some(SpellIconMeta {
+            name: "Kindred Spirit",
+            color: Color::RGB(130, 210, 180),
+            icon_filename: "kindred_spirit_icon.png",
+        }),
+        skills::SK_ANGUISH_LAVA => Some(SpellIconMeta {
+            name: "Anguish - Lava",
+            color: Color::RGB(230, 100, 50),
+            icon_filename: "elemental_anguish_icon.png",
+        }),
+        skills::SK_ANGUISH_EARTH => Some(SpellIconMeta {
+            name: "Anguish - Earth",
+            color: Color::RGB(160, 120, 60),
+            icon_filename: "elemental_anguish_icon.png",
+        }),
+        skills::SK_ANGUISH_ICE => Some(SpellIconMeta {
+            name: "Anguish - Ice",
+            color: Color::RGB(100, 180, 230),
+            icon_filename: "elemental_anguish_icon.png",
+        }),
         _ => None,
     }
 }
@@ -221,6 +256,35 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
             name: "Spell Exhaustion",
             color: Color::RGB(200, 140, 40),
             icon_filename: "exhaustion_icon.png",
+        }),
+        // Revenant Conduit active buff — server item uses the *2 temp marker.
+        skills::SK_REVENANT_CONDUIT2 => Some(SpellIconMeta {
+            name: "Revenant Conduit",
+            color: Color::RGB(130, 160, 240),
+            icon_filename: "revenant_conduit_icon.png",
+        }),
+        // Spectral Pact active buff — server item uses the *2 temp marker.
+        skills::SK_SPECTRAL_PACT2 => Some(SpellIconMeta {
+            name: "Spectral Pact",
+            color: Color::RGB(180, 140, 220),
+            icon_filename: "spectral_pact_icon.png",
+        }),
+        // Elemental Anguish debuffs placed on the target (or on the player
+        // when cast by an enemy Harakim); all three variants share the same icon.
+        skills::SK_ANGUISH_LAVA => Some(SpellIconMeta {
+            name: "Anguish - Lava",
+            color: Color::RGB(230, 100, 50),
+            icon_filename: "elemental_anguish_icon.png",
+        }),
+        skills::SK_ANGUISH_EARTH => Some(SpellIconMeta {
+            name: "Anguish - Earth",
+            color: Color::RGB(160, 120, 60),
+            icon_filename: "elemental_anguish_icon.png",
+        }),
+        skills::SK_ANGUISH_ICE => Some(SpellIconMeta {
+            name: "Anguish - Ice",
+            color: Color::RGB(100, 180, 230),
+            icon_filename: "elemental_anguish_icon.png",
         }),
         // Eye potions share skill_nr 254 (data[1]); the sprite (data[0])
         // distinguishes them: Greenling Eye = 16741, Ratling Eye = 96.
