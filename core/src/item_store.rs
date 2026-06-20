@@ -23,6 +23,7 @@
 //! state changes.
 
 use crate::constants::MAXITEM;
+use crate::skills::MAX_SKILLS;
 use bincode::{Decode, Encode};
 
 // ---------------------------------------------------------------------------
@@ -194,7 +195,7 @@ pub struct ItemPatch {
     /// Mana modifiers `[wear, active, min]`.
     pub mana: [i16; 3],
     /// Per-skill modifiers `[wear, active, min]`.
-    pub skill: [[i8; 3]; 50],
+    pub skill: [[i8; 3]; MAX_SKILLS],
     /// Armor bonus (inactive/active).
     pub armor: [i8; 2],
     /// Weapon bonus (inactive/active).

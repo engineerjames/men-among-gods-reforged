@@ -1,6 +1,6 @@
 //! Rectangular and circular button widgets.
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
@@ -564,6 +564,241 @@ impl Widget for CircleButton {
 }
 
 // ---------------------------------------------------------------------------
+// CircularImageButton
+// ---------------------------------------------------------------------------
+
+/// A clickable circular button rendered from a whole-button image.
+///
+/// The image is scaled to the button's bounding square. Hit-testing remains
+/// circular, and hover/badge overlays are drawn above the image.
+pub struct CircularImageButton {
+    center_x: i32,
+    center_y: i32,
+    radius: u32,
+    image_path: PathBuf,
+    texture_id: Option<usize>,
+    load_failed: bool,
+    hovered: bool,
+    hover_alpha: u8,
+    /// Cached bounding box, kept in sync with center/radius.
+    cached_bounds: Bounds,
+    /// Optional small text badge drawn in the upper-right corner.
+    badge_text: Option<String>,
+    /// Tint color used for the badge text.
+    badge_color: Color,
+}
+
+impl CircularImageButton {
+    /// Creates a new circular image button.
+    ///
+    /// # Arguments
+    ///
+    /// * `center_x` - X center in logical pixels.
+    /// * `center_y` - Y center in logical pixels.
+    /// * `radius` - Radius in pixels.
+    /// * `image_path` - Filesystem path to the whole-button PNG image.
+    ///
+    /// # Returns
+    ///
+    /// A new `CircularImageButton`.
+    pub fn new(center_x: i32, center_y: i32, radius: u32, image_path: PathBuf) -> Self {
+        Self {
+            center_x,
+            center_y,
+            radius,
+            image_path,
+            texture_id: None,
+            load_failed: false,
+            hovered: false,
+            hover_alpha: 96,
+            cached_bounds: CircleButton::compute_bounds(center_x, center_y, radius),
+            badge_text: None,
+            badge_color: DEFAULT_BADGE_COLOR,
+        }
+    }
+
+    /// Sets the badge text color.
+    ///
+    /// # Arguments
+    ///
+    /// * `color` - Tint color applied to badge glyphs.
+    ///
+    /// # Returns
+    ///
+    /// `self` for chaining.
+    pub fn with_badge_color(mut self, color: Color) -> Self {
+        self.badge_color = color;
+        self
+    }
+
+    /// Sets or clears the small badge text drawn in the upper-right corner.
+    ///
+    /// Pass `None` to hide the badge. Pass `Some(text)` with a short string
+    /// (typically 1-3 characters) to display it.
+    ///
+    /// # Arguments
+    ///
+    /// * `text` - Optional badge text. `None` hides the badge.
+    pub fn set_badge(&mut self, text: Option<String>) {
+        self.badge_text = text;
+    }
+
+    /// Returns the current badge text, if any.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&str)` when a badge is set, otherwise `None`.
+    pub fn badge_text(&self) -> Option<&str> {
+        self.badge_text.as_deref()
+    }
+
+    /// Returns `true` if the point `(px, py)` is inside the circular hit area.
+    ///
+    /// # Arguments
+    ///
+    /// * `px` - X coordinate.
+    /// * `py` - Y coordinate.
+    ///
+    /// # Returns
+    ///
+    /// `true` if inside or on the boundary.
+    fn contains_point(&self, px: i32, py: i32) -> bool {
+        let dx = i64::from(px - self.center_x);
+        let dy = i64::from(py - self.center_y);
+        let r = i64::from(self.radius);
+        dx * dx + dy * dy <= r * r
+    }
+
+    /// Returns whether the button is currently hovered.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the cursor is inside the circular hit area.
+    pub fn is_hovered(&self) -> bool {
+        self.hovered
+    }
+
+    /// Ensures the button image is loaded into the graphics cache.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Render context containing the graphics cache.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(texture_id)` when the image is available, otherwise `None`.
+    fn ensure_texture_id(&mut self, ctx: &mut RenderContext<'_, '_>) -> Option<usize> {
+        if self.texture_id.is_some() || self.load_failed {
+            return self.texture_id;
+        }
+
+        match ctx.gfx.load_texture_from_path(&self.image_path) {
+            Ok(id) => {
+                self.texture_id = Some(id);
+                Some(id)
+            }
+            Err(err) => {
+                log::warn!(
+                    "Failed to load circular image button {}: {}",
+                    self.image_path.display(),
+                    err
+                );
+                self.load_failed = true;
+                None
+            }
+        }
+    }
+
+    /// Draws the optional badge text above the image and hover overlay.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Render context used for drawing.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when rendering succeeds, or an SDL error string.
+    fn render_badge(&self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if let Some(text) = self.badge_text.as_deref()
+            && !text.is_empty()
+        {
+            let text_w = (text.len() as i32) * font_cache::BITMAP_GLYPH_ADVANCE as i32;
+            let r = self.radius as i32;
+            let tx = self.center_x + r - text_w;
+            let ty = self.center_y - r;
+            let style = font_cache::TextStyle::default()
+                .with_tint(self.badge_color)
+                .with_drop_shadow();
+            font_cache::draw_text(ctx.canvas, ctx.gfx, 0, text, tx, ty, style)?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Widget for CircularImageButton {
+    fn bounds(&self) -> &Bounds {
+        &self.cached_bounds
+    }
+
+    fn set_position(&mut self, x: i32, y: i32) {
+        self.center_x = x + self.radius as i32;
+        self.center_y = y + self.radius as i32;
+        self.cached_bounds =
+            CircleButton::compute_bounds(self.center_x, self.center_y, self.radius);
+    }
+
+    fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        match event {
+            UiEvent::MouseMove { x, y } => {
+                self.hovered = self.contains_point(*x, *y);
+                EventResponse::Ignored
+            }
+            UiEvent::MouseClick {
+                x,
+                y,
+                button: MouseButton::Left,
+                ..
+            } => {
+                if self.contains_point(*x, *y) {
+                    EventResponse::Consumed
+                } else {
+                    EventResponse::Ignored
+                }
+            }
+            _ => EventResponse::Ignored,
+        }
+    }
+
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if let Some(id) = self.ensure_texture_id(ctx) {
+            let texture = ctx.gfx.get_texture(id);
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            ctx.canvas.copy(
+                texture,
+                None,
+                Some(sdl2::rect::Rect::new(
+                    self.cached_bounds.x,
+                    self.cached_bounds.y,
+                    self.cached_bounds.width,
+                    self.cached_bounds.height,
+                )),
+            )?;
+        }
+
+        if self.hovered {
+            ctx.canvas.set_blend_mode(BlendMode::Add);
+            ctx.canvas
+                .set_draw_color(Color::RGBA(255, 255, 255, self.hover_alpha));
+            CircleButton::fill_circle(ctx.canvas, self.center_x, self.center_y, self.radius)?;
+            ctx.canvas.set_blend_mode(BlendMode::Blend);
+        }
+
+        self.render_badge(ctx)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -693,6 +928,109 @@ mod tests {
     fn circle_with_badge_color_overrides_default() {
         let btn = CircleButton::new(50, 50, 10, Color::RGB(0, 0, 0))
             .with_badge_color(Color::RGB(0, 255, 0));
+        assert_eq!(btn.badge_color, Color::RGB(0, 255, 0));
+    }
+
+    // -- CircularImageButton --
+
+    fn image_button() -> CircularImageButton {
+        CircularImageButton::new(100, 100, 20, PathBuf::from("button.png"))
+    }
+
+    #[test]
+    fn circular_image_contains_center() {
+        let btn = image_button();
+        assert!(btn.contains_point(100, 100));
+    }
+
+    #[test]
+    fn circular_image_contains_edge() {
+        let btn = image_button();
+        assert!(btn.contains_point(120, 100));
+    }
+
+    #[test]
+    fn circular_image_excludes_outside() {
+        let btn = image_button();
+        assert!(!btn.contains_point(121, 100));
+    }
+
+    #[test]
+    fn circular_image_diagonal_check() {
+        let btn = CircularImageButton::new(0, 0, 10, PathBuf::from("button.png"));
+        assert!(btn.contains_point(7, 7));
+        assert!(!btn.contains_point(8, 8));
+    }
+
+    #[test]
+    fn circular_image_uses_i64_no_overflow() {
+        let btn =
+            CircularImageButton::new(i32::MAX - 10, i32::MAX - 10, 5, PathBuf::from("button.png"));
+        assert!(!btn.contains_point(0, 0));
+    }
+
+    #[test]
+    fn circular_image_hover_toggle() {
+        let mut btn = image_button();
+        assert!(!btn.is_hovered());
+
+        btn.handle_event(&UiEvent::MouseMove { x: 100, y: 100 });
+        assert!(btn.is_hovered());
+
+        btn.handle_event(&UiEvent::MouseMove { x: 200, y: 200 });
+        assert!(!btn.is_hovered());
+    }
+
+    #[test]
+    fn circular_image_click_inside_consumed() {
+        let mut btn = image_button();
+        let resp = btn.handle_event(&UiEvent::MouseClick {
+            x: 100,
+            y: 100,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+    }
+
+    #[test]
+    fn circular_image_click_outside_ignored() {
+        let mut btn = image_button();
+        let resp = btn.handle_event(&UiEvent::MouseClick {
+            x: 0,
+            y: 0,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Ignored);
+    }
+
+    #[test]
+    fn circular_image_set_position_updates_bounds() {
+        let mut btn = image_button();
+        btn.set_position(10, 20);
+        assert_eq!(*btn.bounds(), Bounds::new(10, 20, 40, 40));
+        assert!(btn.contains_point(30, 40));
+    }
+
+    #[test]
+    fn circular_image_badge_defaults_to_none() {
+        let btn = image_button();
+        assert!(btn.badge_text().is_none());
+    }
+
+    #[test]
+    fn circular_image_set_badge_toggles_state() {
+        let mut btn = image_button();
+        btn.set_badge(Some("3".into()));
+        assert_eq!(btn.badge_text(), Some("3"));
+        btn.set_badge(None);
+        assert!(btn.badge_text().is_none());
+    }
+
+    #[test]
+    fn circular_image_with_badge_color_overrides_default() {
+        let btn = image_button().with_badge_color(Color::RGB(0, 255, 0));
         assert_eq!(btn.badge_color, Color::RGB(0, 255, 0));
     }
 }

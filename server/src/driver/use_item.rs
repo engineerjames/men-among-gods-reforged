@@ -1829,7 +1829,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
             ch.attrib[n][0] = v as u8;
         }
 
-        for n in 0..50 {
+        for n in 0..core::skills::MAX_SKILLS {
             let mut t = base + helpers::random_mod_i32(15);
             let diff = std::cmp::max(1, i32::from(ch.skill[n][3]));
             t = t * 3 / diff;
@@ -1871,7 +1871,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
         for m in 50..i32::from(ch.mana[0]) {
             pts += points::mana_needed(m, 3);
         }
-        for z in 0..50 {
+        for z in 0..core::skills::MAX_SKILLS {
             for m in 1..i32::from(ch.skill[z][0]) {
                 pts += points::skill_needed(m, 2);
             }

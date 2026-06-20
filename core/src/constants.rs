@@ -448,6 +448,12 @@ pub const CHD_FIGHTBACK: usize = 11;
 pub const CHD_GROUP: usize = 42;
 pub const CHD_MASTER: usize = 63;
 pub const CHD_COMPANION: usize = 64;
+/// Second ghost companion slot, granted by the Kindred Spirit passive.
+///
+/// Mirrors `CHD_COMPANION` but lives in a previously unused `data[]` index
+/// so the legacy single-companion logic in `skill_ghost` and the npc tick
+/// loop can be extended without affecting existing characters.
+pub const CHD_COMPANION2: usize = 32;
 pub const CHD_ALLOW: usize = 65;
 pub const CHD_CORPSEOWNER: usize = 66;
 pub const CHD_RIDDLER: usize = 67;

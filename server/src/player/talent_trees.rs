@@ -106,14 +106,23 @@ fn dispatch_immediate_effect(
 ) -> Result<(), String> {
     match effect {
         TalentEffect::GrantSkill { skill } => grant_skill(cn, gs, skill),
-        TalentEffect::SkillsFlat { .. }
+        TalentEffect::GrantSkillAtBase { skill, base } => grant_skill_at_base(cn, gs, skill, base),
+        TalentEffect::Composite { effects } => {
+            for effect in effects {
+                dispatch_immediate_effect(cn, gs, *effect)?;
+            }
+            Ok(())
+        }
+        TalentEffect::Passive
+        | TalentEffect::SkillsFlat { .. }
         | TalentEffect::SkillsPercent { .. }
         | TalentEffect::AttributesFlat { .. }
         | TalentEffect::AttributesPercent { .. }
         | TalentEffect::DodgeChancePercent { .. }
         | TalentEffect::ArmorPercent { .. }
         | TalentEffect::WeaponPercent { .. }
-        | TalentEffect::HpManaEndFlat { .. } => Ok(()),
+        | TalentEffect::HpManaEndFlat { .. }
+        | TalentEffect::PrimaryHitProc { .. } => Ok(()),
     }
 }
 
@@ -164,17 +173,59 @@ fn grant_skill(cn: usize, game_state: &mut GameState, skill: Skill) -> Result<()
     Ok(())
 }
 
+/// Mark a skill as granted at a minimum base value.
+///
+/// Existing higher investment is preserved. This is intentionally tolerant of
+/// pre-owned skills so fixed-base talent grants can be learned without the
+/// rollback hazard of [`grant_skill`].
+///
+/// # Arguments
+///
+/// * `cn` - Character slot index.
+/// * `game_state` - Mutable game state.
+/// * `skill` - Skill to grant or raise.
+/// * `base` - Minimum base value after the grant.
+fn grant_skill_at_base(
+    cn: usize,
+    game_state: &mut GameState,
+    skill: Skill,
+    base: u8,
+) -> Result<(), String> {
+    let idx = skill as usize;
+    let ch = &mut game_state.characters[cn];
+
+    let base_idx = SkillIndex::BaseValue as usize;
+    if ch.skill[idx][base_idx] < base {
+        ch.skill[idx][base_idx] = base;
+    }
+    if ch.skill[idx][SkillIndex::MaxValue as usize] == 0 {
+        ch.skill[idx][SkillIndex::MaxValue as usize] = 100;
+    }
+    if ch.skill[idx][SkillIndex::RaiseDifficulty as usize] == 0 {
+        ch.skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
+    }
+
+    log::info!(
+        "Granted skill {:?} at base {} to character {}",
+        skill,
+        base,
+        c_string_to_str(&ch.name)
+    );
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::with_test_gs;
     use core::constants::CharacterFlags;
-    use core::skills::Attribute;
+    use core::skills::{Attribute, SK_ELEMENT_SWITCHING, SK_ICE_STUN};
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
     };
-    use core::traits::{Class, KIN_MERCENARY};
+    use core::traits::{Class, KIN_HARAKIM, KIN_MERCENARY, KIN_TEMPLAR};
 
     fn empty_talents() -> [u8; 25] {
         [0; 25]
@@ -191,6 +242,26 @@ mod tests {
             .iter()
             .find(|node| node.name == name)
             .unwrap_or_else(|| panic!("missing mercenary talent '{name}'"))
+            .slot
+    }
+
+    fn templar_slot(name: &str) -> TalentRef {
+        tree_for(Class::Templar)
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("missing templar talent '{name}'"))
+            .slot
+    }
+
+    fn harakim_slot(name: &str) -> TalentRef {
+        tree_for(Class::Harakim)
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("missing harakim talent '{name}'"))
             .slot
     }
 
@@ -387,6 +458,35 @@ mod tests {
         });
     }
 
+    #[test]
+    fn grant_skill_at_base_raises_lower_base_and_seeds_progression() {
+        with_test_gs(|gs| {
+            let cn = 1;
+
+            grant_skill_at_base(cn, gs, Skill::Meditate, 5).unwrap();
+
+            let skill = &gs.characters[cn].skill[Skill::Meditate as usize];
+            assert_eq!(skill[SkillIndex::BaseValue as usize], 5);
+            assert_eq!(skill[SkillIndex::MaxValue as usize], 100);
+            assert_eq!(skill[SkillIndex::RaiseDifficulty as usize], 5);
+        });
+    }
+
+    #[test]
+    fn grant_skill_at_base_preserves_higher_existing_base() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn].skill[Skill::Meditate as usize][SkillIndex::BaseValue as usize] = 8;
+
+            grant_skill_at_base(cn, gs, Skill::Meditate, 5).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Meditate as usize][SkillIndex::BaseValue as usize],
+                8
+            );
+        });
+    }
+
     // ---- learn_talent ---------------------------------------------------
 
     fn give_class_and_points(gs: &mut GameState, cn: usize, class_bits: u32, points: u8) {
@@ -508,6 +608,146 @@ mod tests {
     }
 
     #[test]
+    fn learn_templar_meditative_discipline_grants_meditate_base_five() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            for layer in 1..=3 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+
+            learn_talent(gs, cn, templar_slot("Meditative Discipline")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Meditate as usize][SkillIndex::BaseValue as usize],
+                5
+            );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_lava_blast_grants_lava_blast_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::BaseValue as usize],
+                1
+            );
+            assert_eq!(
+                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[Skill::LavaBlast as usize]
+                    [SkillIndex::RaiseDifficulty as usize],
+                5
+            );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_ice_stun_modifies_stun_without_granting_new_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            for layer in 1..=4 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::BaseValue as usize] = 12;
+
+            learn_talent(gs, cn, harakim_slot("Ice Stun")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::BaseValue as usize],
+                12,
+                "existing Stun investment should remain the source of Ice Stun power"
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_ICE_STUN][SkillIndex::BaseValue as usize],
+                0,
+                "Ice Stun should not become a separate castable skill"
+            );
+            assert!(core::talent_trees::harakim::has_ice_stun(
+                &gs.characters[cn].future1
+            ));
+        });
+    }
+
+    #[test]
+    fn learn_harakim_element_switching_sets_talent_without_granting_new_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            for layer in 1..=6 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+
+            learn_talent(gs, cn, harakim_slot("Element Switching")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_ELEMENT_SWITCHING][SkillIndex::BaseValue as usize],
+                0,
+                "Element Switching should not become a separate castable skill"
+            );
+            assert!(core::talent_trees::harakim::has_element_switching(
+                &gs.characters[cn].future1
+            ));
+        });
+    }
+
+    #[test]
+    fn learn_harakim_spellcaster_kindred_grants_passive_after_prereqs() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            for layer in 1..=6 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+
+            learn_talent(gs, cn, harakim_slot("Spellcaster Kindred Spirit")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::SpellcasterKindredSpirit as usize]
+                    [SkillIndex::BaseValue as usize],
+                1
+            );
+        });
+    }
+
+    #[test]
+    fn learn_templar_warlord_composite_recomputes_stat_bonuses() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            for layer in 1..=11 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].attrib[Attribute::Strength as usize]
+                [SkillIndex::BaseValue as usize] = 50;
+            gs.characters[cn].attrib[Attribute::Agility as usize][SkillIndex::BaseValue as usize] =
+                40;
+
+            learn_talent(gs, cn, templar_slot("Warlord Ascendancy")).unwrap();
+            gs.really_update_char(cn);
+
+            assert_eq!(
+                gs.characters[cn].attrib[Attribute::Strength as usize]
+                    [SkillIndex::TotalValue as usize],
+                61
+            );
+            assert_eq!(
+                gs.characters[cn].attrib[Attribute::Agility as usize]
+                    [SkillIndex::TotalValue as usize],
+                48
+            );
+        });
+    }
+
+    #[test]
     fn learned_talent_bonus_survives_restart_style_recompute() {
         with_test_gs(|gs| {
             let cn = 1;
@@ -585,15 +825,13 @@ mod tests {
 
     #[test]
     fn core_node_effects_have_distinct_class_flavors() {
-        assert_effect(
+        assert_grant_effect(
             tree_for(Class::Templar).unwrap().nodes[0].effect,
-            Attribute::Braveness,
-            10,
+            Skill::RainsOfRenewal,
         );
-        assert_effect(
+        assert_grant_effect(
             tree_for(Class::Harakim).unwrap().nodes[0].effect,
-            Attribute::Intuition,
-            10,
+            Skill::LavaBlast,
         );
         assert_effect(
             tree_for(Class::SeyanDu).unwrap().nodes[17].effect,
@@ -611,6 +849,13 @@ mod tests {
                 assert_eq!(percents[0], expected_percent);
             }
             other => panic!("expected AttributesPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_grant_effect(effect: TalentEffect, expected_skill: Skill) {
+        match effect {
+            TalentEffect::GrantSkill { skill } => assert_eq!(skill, expected_skill),
+            other => panic!("expected GrantSkill, got {other:?}"),
         }
     }
 }

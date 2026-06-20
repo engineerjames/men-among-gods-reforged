@@ -12,6 +12,7 @@ use sdl2::render::BlendMode;
 use crate::font_cache;
 use crate::preferences::DisplayMode;
 use crate::types::controller::{CONTROLLER_BIND_SLOTS, ControllerBindings, ControllerButton};
+use crate::types::mouse::{ExtraMouseButton, MouseModifier, MouseModifierBindings};
 use crate::ui::RenderContext;
 use crate::ui::forms::quit_confirm_dialog::{QuitConfirmDialog, QuitConfirmDialogAction};
 use crate::ui::style::{Background, Border};
@@ -44,7 +45,8 @@ const Y_DISPLAY_BTN: i32 = TITLE_BAR_H + 8;
 const Y_DIAG_BTN: i32 = Y_DISPLAY_BTN + BTN_H as i32 + 6;
 const Y_CONTROLS_BTN: i32 = Y_DIAG_BTN + BTN_H as i32 + 6;
 const Y_CONTROLLER_BTN: i32 = Y_CONTROLS_BTN + BTN_H as i32 + 6;
-const Y_VOLUME: i32 = Y_CONTROLLER_BTN + BTN_H as i32 + 10;
+const Y_MOUSE_BTN: i32 = Y_CONTROLLER_BTN + BTN_H as i32 + 6;
+const Y_VOLUME: i32 = Y_MOUSE_BTN + BTN_H as i32 + 10;
 const Y_SEPARATOR: i32 = Y_VOLUME + ROW_H + 8;
 const Y_SESSION_BTNS: i32 = Y_SEPARATOR + 10;
 const Y_RETURN_BTN: i32 = Y_SESSION_BTNS + BTN_H as i32 + 6;
@@ -116,6 +118,23 @@ const fn controller_panel_height(slot_count: usize) -> u32 {
 const CB_PANEL_H: u32 = controller_panel_height(CONTROLLER_BIND_SLOTS);
 
 // ---------------------------------------------------------------------------
+// Layout constants — Mouse sub-panel
+// ---------------------------------------------------------------------------
+
+const MS_ROW_H: i32 = 22;
+const MS_BIND_BTN_W: u32 = 110;
+const MS_CLEAR_BTN_W: u32 = 56;
+const MS_Y_HINT: i32 = TITLE_BAR_H + 8;
+const MS_Y_HINT2: i32 = MS_Y_HINT + ROW_H;
+const MS_Y_FIRST_ROW: i32 = MS_Y_HINT2 + ROW_H + 6;
+
+const fn mouse_panel_height(modifier_count: usize) -> u32 {
+    (MS_Y_FIRST_ROW + MS_ROW_H * modifier_count as i32 + 10 + BTN_H as i32 + 8) as u32
+}
+
+const MS_PANEL_H: u32 = mouse_panel_height(MouseModifier::ALL.len());
+
+// ---------------------------------------------------------------------------
 // Which sub-panel is active
 // ---------------------------------------------------------------------------
 
@@ -130,6 +149,8 @@ enum SettingsSubPanel {
     Controls,
     /// Controller (gamepad button bindings).
     Controller,
+    /// Mouse side-button modifier bindings.
+    Mouse,
 }
 
 // ---------------------------------------------------------------------------
@@ -1565,6 +1586,383 @@ impl ControllerBindingsSubPanel {
 }
 
 // ===========================================================================
+// MouseSettingsSubPanel
+// ===========================================================================
+
+/// Sub-panel for mouse side-button modifier bindings.
+///
+/// Displays one row for each supported modifier target. Clicking a binding
+/// button enters listening mode; the owning scene captures the next Mouse 4
+/// or Mouse 5 press from raw SDL events and forwards it here.
+struct MouseSettingsSubPanel {
+    bounds: Bounds,
+    visible: bool,
+    title_bar: TitleBar,
+    binding_buttons: Vec<RectButton>,
+    clear_buttons: Vec<RectButton>,
+    listening_for: Option<MouseModifier>,
+    bindings: MouseModifierBindings,
+    btn_close: RectButton,
+    pending_actions: Vec<WidgetAction>,
+    /// Controller focus index. 0..1 = modifier binding buttons,
+    /// 2..3 = clear buttons, 4 = Close.
+    controller_focused: Option<usize>,
+    lbl_hint: Label,
+    lbl_hint2: Label,
+}
+
+impl MouseSettingsSubPanel {
+    /// Creates a new mouse settings sub-panel positioned at the given origin.
+    ///
+    /// # Arguments
+    ///
+    /// * `origin_x` - Left edge of the sub-panel.
+    /// * `origin_y` - Top edge of the sub-panel.
+    /// * `width` - Panel width.
+    ///
+    /// # Returns
+    ///
+    /// A new `MouseSettingsSubPanel`, initially hidden.
+    fn new(origin_x: i32, origin_y: i32, width: u32) -> Self {
+        let clear_x = origin_x + width as i32 - H_INSET - MS_CLEAR_BTN_W as i32;
+        let bind_x = clear_x - 6 - MS_BIND_BTN_W as i32;
+        let close_x = origin_x + H_INSET;
+        let close_w = CONTROL_W.min(width.saturating_sub(H_INSET as u32 * 2));
+        let close_y = origin_y + MS_PANEL_H as i32 - BTN_H as i32 - 8;
+        let label_x = origin_x + H_INSET;
+
+        let binding_buttons = MouseModifier::ALL
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                let y = origin_y + MS_Y_FIRST_ROW + MS_ROW_H * index as i32 + 2;
+                RectButton::new(Bounds::new(bind_x, y, MS_BIND_BTN_W, BTN_H), btn_bg())
+                    .with_label("Unbound", 0)
+                    .with_border(btn_border())
+            })
+            .collect();
+        let clear_buttons = MouseModifier::ALL
+            .iter()
+            .enumerate()
+            .map(|(index, _)| {
+                let y = origin_y + MS_Y_FIRST_ROW + MS_ROW_H * index as i32 + 2;
+                RectButton::new(Bounds::new(clear_x, y, MS_CLEAR_BTN_W, BTN_H), btn_bg())
+                    .with_label("Clear", 0)
+                    .with_border(btn_border())
+            })
+            .collect();
+
+        Self {
+            bounds: Bounds::new(origin_x, origin_y, width, MS_PANEL_H),
+            visible: false,
+            title_bar: TitleBar::new_static("Mouse Settings", origin_x, origin_y, width),
+            binding_buttons,
+            clear_buttons,
+            listening_for: None,
+            bindings: MouseModifierBindings::default(),
+            btn_close: RectButton::new(Bounds::new(close_x, close_y, close_w, BTN_H), btn_bg())
+                .with_label("Close", 0)
+                .with_border(btn_border()),
+            pending_actions: Vec::new(),
+            controller_focused: None,
+            lbl_hint: Label::new(
+                "Bind Mouse 4 or Mouse 5 to",
+                0,
+                label_x,
+                origin_y + MS_Y_HINT,
+            ),
+            lbl_hint2: Label::new(
+                "temporarily act like Ctrl/Shift",
+                0,
+                label_x,
+                origin_y + MS_Y_HINT2,
+            ),
+        }
+    }
+
+    /// Returns the total number of focusable elements.
+    fn focusable_count(&self) -> usize {
+        self.binding_buttons.len() + self.clear_buttons.len() + 1
+    }
+
+    /// Applies controller focus highlighting.
+    fn apply_controller_focus(&mut self) {
+        let focused = self.controller_focused;
+        let binding_count = self.binding_buttons.len();
+        let clear_count = self.clear_buttons.len();
+        for (index, button) in self.binding_buttons.iter_mut().enumerate() {
+            button.set_hovered(focused == Some(index));
+        }
+        for (index, button) in self.clear_buttons.iter_mut().enumerate() {
+            button.set_hovered(focused == Some(binding_count + index));
+        }
+        self.btn_close
+            .set_hovered(focused == Some(binding_count + clear_count));
+    }
+
+    /// Loads widget values from the current mouse modifier bindings.
+    ///
+    /// # Arguments
+    ///
+    /// * `bindings` - Current mouse modifier bindings to display.
+    fn sync_state(&mut self, bindings: &MouseModifierBindings) {
+        self.bindings = bindings.clone();
+        self.cancel_listening();
+    }
+
+    /// Rebuilds binding button labels from the current bindings.
+    fn refresh_button_labels(&mut self) {
+        for (index, modifier) in MouseModifier::ALL.iter().enumerate() {
+            if let Some(button) = self.binding_buttons.get_mut(index) {
+                button.set_label(self.bindings.button_label(*modifier));
+            }
+        }
+    }
+
+    /// Cancels any in-progress listening state and restores labels.
+    fn cancel_listening(&mut self) {
+        self.listening_for = None;
+        self.refresh_button_labels();
+    }
+
+    /// Marks the panel visible and resets transient input state.
+    fn show(&mut self) {
+        self.visible = true;
+        self.cancel_listening();
+    }
+
+    /// Hides the panel and clears transient input state.
+    fn hide(&mut self) {
+        self.visible = false;
+        self.cancel_listening();
+    }
+
+    /// Records a captured extra mouse-button press for the active modifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `button` - Extra mouse button that was pressed.
+    fn capture_mouse_button(&mut self, button: ExtraMouseButton) {
+        if let Some(modifier) = self.listening_for {
+            self.bindings.set(modifier, Some(button));
+            self.pending_actions
+                .push(WidgetAction::UpdateMouseModifierBinding {
+                    modifier,
+                    button: Some(button),
+                });
+            self.cancel_listening();
+        }
+    }
+
+    /// Returns `true` if the panel is waiting for a Mouse 4/5 press.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when a binding row is listening, otherwise `false`.
+    fn is_listening(&self) -> bool {
+        self.listening_for.is_some()
+    }
+
+    /// Clears the binding for a modifier row and emits the update action.
+    ///
+    /// # Arguments
+    ///
+    /// * `modifier` - Modifier target to clear.
+    fn clear_binding(&mut self, modifier: MouseModifier) {
+        self.bindings.set(modifier, None);
+        self.pending_actions
+            .push(WidgetAction::UpdateMouseModifierBinding {
+                modifier,
+                button: None,
+            });
+        self.refresh_button_labels();
+    }
+
+    /// Shifts all widgets by a pixel delta.
+    fn shift_all(&mut self, dx: i32, dy: i32) {
+        self.bounds.x += dx;
+        self.bounds.y += dy;
+        self.title_bar
+            .set_bar_position(self.bounds.x, self.bounds.y);
+        for button in &mut self.binding_buttons {
+            shift(button, dx, dy);
+        }
+        for button in &mut self.clear_buttons {
+            shift(button, dx, dy);
+        }
+        shift(&mut self.btn_close, dx, dy);
+        shift(&mut self.lbl_hint, dx, dy);
+        shift(&mut self.lbl_hint2, dx, dy);
+    }
+
+    /// Returns whether the title bar close button was pressed.
+    fn was_close_requested(&mut self) -> bool {
+        self.title_bar.was_close_requested()
+    }
+
+    /// Handles a UI event. Returns `Consumed` if the sub-panel ate it.
+    fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if !self.visible {
+            return EventResponse::Ignored;
+        }
+
+        if self.listening_for.is_some() {
+            match event {
+                UiEvent::KeyDown { keycode, .. } => {
+                    if *keycode == Keycode::Escape {
+                        self.cancel_listening();
+                    }
+                    return EventResponse::Consumed;
+                }
+                UiEvent::TextInput { .. } => return EventResponse::Consumed,
+                UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. }
+                    if self.bounds.contains_point(*x, *y) =>
+                {
+                    self.cancel_listening();
+                    return EventResponse::Consumed;
+                }
+                _ => {}
+            }
+        }
+
+        let (tb_resp, _drag) = self.title_bar.handle_event(event);
+        if self.was_close_requested() {
+            self.hide();
+            return EventResponse::Consumed;
+        }
+        if tb_resp == EventResponse::Consumed {
+            return EventResponse::Consumed;
+        }
+
+        match event {
+            UiEvent::NavNext => {
+                let count = self.focusable_count();
+                self.controller_focused = Some(match self.controller_focused {
+                    None => 0,
+                    Some(index) => (index + 1) % count,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavPrev => {
+                let count = self.focusable_count();
+                self.controller_focused = Some(match self.controller_focused {
+                    None => count - 1,
+                    Some(0) => count - 1,
+                    Some(index) => index - 1,
+                });
+                self.apply_controller_focus();
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavConfirm => {
+                let binding_count = self.binding_buttons.len();
+                let clear_count = self.clear_buttons.len();
+                match self.controller_focused {
+                    Some(index) if index < binding_count => {
+                        let modifier = MouseModifier::ALL[index];
+                        self.listening_for = Some(modifier);
+                        if let Some(button) = self.binding_buttons.get_mut(index) {
+                            button.set_label("Press Mouse");
+                        }
+                    }
+                    Some(index) if index < binding_count + clear_count => {
+                        let modifier = MouseModifier::ALL[index - binding_count];
+                        self.clear_binding(modifier);
+                    }
+                    Some(index) if index == binding_count + clear_count => {
+                        self.hide();
+                        self.controller_focused = None;
+                    }
+                    _ => {}
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::NavBack => {
+                if self.listening_for.is_some() {
+                    self.cancel_listening();
+                } else {
+                    self.hide();
+                    self.controller_focused = None;
+                }
+                return EventResponse::Consumed;
+            }
+            UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
+                self.controller_focused = None;
+                self.apply_controller_focus();
+            }
+            _ => {}
+        }
+
+        if self.btn_close.handle_event(event) == EventResponse::Consumed {
+            self.hide();
+            return EventResponse::Consumed;
+        }
+
+        for (index, button) in self.binding_buttons.iter_mut().enumerate() {
+            if button.handle_event(event) == EventResponse::Consumed {
+                let modifier = MouseModifier::ALL[index];
+                self.listening_for = Some(modifier);
+                if let Some(active_button) = self.binding_buttons.get_mut(index) {
+                    active_button.set_label("Press Mouse");
+                }
+                return EventResponse::Consumed;
+            }
+        }
+
+        for (index, button) in self.clear_buttons.iter_mut().enumerate() {
+            if button.handle_event(event) == EventResponse::Consumed {
+                self.clear_binding(MouseModifier::ALL[index]);
+                return EventResponse::Consumed;
+            }
+        }
+
+        consume_mouse_events_in_bounds(&self.bounds, event)
+    }
+
+    /// Renders the sub-panel and its children.
+    fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if !self.visible {
+            return Ok(());
+        }
+
+        draw_sub_panel_frame(ctx, &self.bounds, SUB_PANEL_BG, BORDER_COLOR)?;
+        self.title_bar.render(ctx)?;
+        self.lbl_hint.render(ctx)?;
+        self.lbl_hint2.render(ctx)?;
+
+        let label_x = self.bounds.x + H_INSET;
+        for (index, modifier) in MouseModifier::ALL.iter().enumerate() {
+            let y = self.bounds.y + MS_Y_FIRST_ROW + MS_ROW_H * index as i32;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                0,
+                modifier.label(),
+                label_x,
+                y + 3,
+                font_cache::TextStyle::default(),
+            )?;
+
+            if let Some(button) = self.binding_buttons.get_mut(index) {
+                button.render(ctx)?;
+            }
+            if let Some(button) = self.clear_buttons.get_mut(index) {
+                button.render(ctx)?;
+            }
+        }
+
+        self.btn_close.render(ctx)?;
+
+        Ok(())
+    }
+
+    /// Drains pending actions.
+    fn take_actions(&mut self) -> Vec<WidgetAction> {
+        std::mem::take(&mut self.pending_actions)
+    }
+}
+
+// ===========================================================================
 // Data snapshot
 // ===========================================================================
 
@@ -1607,6 +2005,8 @@ pub struct SettingsPanelData {
     pub key_bindings: KeyBindings,
     /// Current controller button bindings for skill-bar slots.
     pub controller_bindings: ControllerBindings,
+    /// Current mouse side-button modifier bindings.
+    pub mouse_modifier_bindings: MouseModifierBindings,
 }
 
 // ===========================================================================
@@ -1634,6 +2034,7 @@ pub struct SettingsPanel {
     btn_diagnostics: RectButton,
     btn_controls: RectButton,
     btn_controller: RectButton,
+    btn_mouse: RectButton,
 
     // --- Inline volume ---
     sld_volume: Slider,
@@ -1651,10 +2052,11 @@ pub struct SettingsPanel {
     sub_diagnostics: DiagnosticsSubPanel,
     sub_controls: ControlsSubPanel,
     sub_controller: ControllerBindingsSubPanel,
+    sub_mouse: MouseSettingsSubPanel,
 
     /// Controller focus index into the focusable elements list, if any.
     /// Order: 0=Display, 1=Diagnostics, 2=Controls, 3=Controller,
-    ///        4=Volume, 5=Disconnect, 6=Quit, 7=Return.
+    ///        4=Mouse, 5=Volume, 6=Disconnect, 7=Quit, 8=Return.
     controller_focused: Option<usize>,
     /// `true` when the controller is actively adjusting the volume slider
     /// (entered via NavConfirm on index 4, exited via NavConfirm or NavBack).
@@ -1684,6 +2086,7 @@ impl SettingsPanel {
         let (controls_x, controls_y) = centered_sub_panel_origin(&bounds, bounds.width, CT_PANEL_H);
         let (controller_x, controller_y) =
             centered_sub_panel_origin(&bounds, bounds.width, CB_PANEL_H);
+        let (mouse_x, mouse_y) = centered_sub_panel_origin(&bounds, bounds.width, MS_PANEL_H);
 
         Self {
             bounds,
@@ -1721,6 +2124,10 @@ impl SettingsPanel {
             )
             .with_label("Controller", 0)
             .with_border(btn_border()),
+
+            btn_mouse: RectButton::new(Bounds::new(x, bounds.y + Y_MOUSE_BTN, w, BTN_H), btn_bg())
+                .with_label("Mouse Settings", 0)
+                .with_border(btn_border()),
 
             sld_volume: Slider::new(
                 Bounds::new(x, bounds.y + Y_VOLUME, w, ROW_H as u32),
@@ -1765,6 +2172,7 @@ impl SettingsPanel {
                 controller_y,
                 bounds.width,
             ),
+            sub_mouse: MouseSettingsSubPanel::new(mouse_x, mouse_y, bounds.width),
 
             controller_focused: None,
             volume_adjusting: false,
@@ -1804,6 +2212,7 @@ impl SettingsPanel {
         self.sub_diagnostics.sync_state(data);
         self.sub_controls.sync_state(data);
         self.sub_controller.sync_state(&data.controller_bindings);
+        self.sub_mouse.sync_state(&data.mouse_modifier_bindings);
     }
 
     /// Updates the ping readout label.
@@ -1862,6 +2271,27 @@ impl SettingsPanel {
         self.collect_sub_panel_actions();
     }
 
+    /// Returns `true` if the mouse settings sub-panel is currently waiting
+    /// for a Mouse 4/Mouse 5 press to complete a binding assignment.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when a mouse modifier row is listening, otherwise `false`.
+    pub fn is_mouse_modifier_listening(&self) -> bool {
+        self.sub_mouse.is_listening()
+    }
+
+    /// Forwards a captured extra mouse-button press to the mouse settings
+    /// sub-panel and collects the resulting update action.
+    ///
+    /// # Arguments
+    ///
+    /// * `button` - The extra mouse button that was pressed.
+    pub fn capture_mouse_modifier_button(&mut self, button: ExtraMouseButton) {
+        self.sub_mouse.capture_mouse_button(button);
+        self.collect_sub_panel_actions();
+    }
+
     /// Updates the profiler button label.
     ///
     /// # Arguments
@@ -1881,6 +2311,7 @@ impl SettingsPanel {
             SettingsSubPanel::Diagnostics => self.sub_diagnostics.visible = true,
             SettingsSubPanel::Controls => self.sub_controls.show(),
             SettingsSubPanel::Controller => self.sub_controller.show(),
+            SettingsSubPanel::Mouse => self.sub_mouse.show(),
         }
     }
 
@@ -1892,12 +2323,13 @@ impl SettingsPanel {
                 SettingsSubPanel::Diagnostics => self.sub_diagnostics.visible = false,
                 SettingsSubPanel::Controls => self.sub_controls.hide(),
                 SettingsSubPanel::Controller => self.sub_controller.hide(),
+                SettingsSubPanel::Mouse => self.sub_mouse.hide(),
             }
         }
     }
 
     /// Number of focusable elements on the main panel.
-    const MAIN_FOCUSABLE_COUNT: usize = 8;
+    const MAIN_FOCUSABLE_COUNT: usize = 9;
 
     /// Applies controller focus highlighting to the main panel widgets.
     fn apply_controller_focus(&mut self) {
@@ -1906,11 +2338,12 @@ impl SettingsPanel {
         self.btn_diagnostics.set_hovered(f == Some(1));
         self.btn_controls.set_hovered(f == Some(2));
         self.btn_controller.set_hovered(f == Some(3));
-        self.sld_volume.set_hovered(f == Some(4));
+        self.btn_mouse.set_hovered(f == Some(4));
+        self.sld_volume.set_hovered(f == Some(5));
         self.sld_volume.set_active(self.volume_adjusting);
-        self.btn_disconnect.set_hovered(f == Some(5));
-        self.btn_quit.set_hovered(f == Some(6));
-        self.btn_return.set_hovered(f == Some(7));
+        self.btn_disconnect.set_hovered(f == Some(6));
+        self.btn_quit.set_hovered(f == Some(7));
+        self.btn_return.set_hovered(f == Some(8));
     }
 
     /// Resets the controller focus (e.g. when mouse takes over).
@@ -1938,6 +2371,7 @@ impl SettingsPanel {
             .extend(self.sub_controls.take_actions());
         self.pending_actions
             .extend(self.sub_controller.take_actions());
+        self.pending_actions.extend(self.sub_mouse.take_actions());
     }
 }
 
@@ -1956,18 +2390,19 @@ impl Widget for SettingsPanel {
         shift(&mut self.btn_display, dx, dy);
         shift(&mut self.btn_diagnostics, dx, dy);
         shift(&mut self.btn_controls, dx, dy);
+        shift(&mut self.btn_controller, dx, dy);
+        shift(&mut self.btn_mouse, dx, dy);
         shift(&mut self.sld_volume, dx, dy);
         shift(&mut self.btn_disconnect, dx, dy);
         shift(&mut self.btn_quit, dx, dy);
         shift(&mut self.btn_return, dx, dy);
-
-        shift(&mut self.btn_controller, dx, dy);
 
         // Sub-panels move with the main panel.
         self.sub_display.shift_all(dx, dy);
         self.sub_diagnostics.shift_all(dx, dy);
         self.sub_controls.shift_all(dx, dy);
         self.sub_controller.shift_all(dx, dy);
+        self.sub_mouse.shift_all(dx, dy);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
@@ -1999,6 +2434,7 @@ impl Widget for SettingsPanel {
                 SettingsSubPanel::Diagnostics => self.sub_diagnostics.handle_event(event),
                 SettingsSubPanel::Controls => self.sub_controls.handle_event(event),
                 SettingsSubPanel::Controller => self.sub_controller.handle_event(event),
+                SettingsSubPanel::Mouse => self.sub_mouse.handle_event(event),
             };
             self.collect_sub_panel_actions();
 
@@ -2007,6 +2443,7 @@ impl Widget for SettingsPanel {
                 SettingsSubPanel::Diagnostics => !self.sub_diagnostics.visible,
                 SettingsSubPanel::Controls => !self.sub_controls.visible,
                 SettingsSubPanel::Controller => !self.sub_controller.visible,
+                SettingsSubPanel::Mouse => !self.sub_mouse.visible,
             };
             if closed {
                 self.active_sub_panel = None;
@@ -2069,20 +2506,21 @@ impl Widget for SettingsPanel {
                     Some(1) => self.open_sub_panel(SettingsSubPanel::Diagnostics),
                     Some(2) => self.open_sub_panel(SettingsSubPanel::Controls),
                     Some(3) => self.open_sub_panel(SettingsSubPanel::Controller),
-                    Some(4) => {
+                    Some(4) => self.open_sub_panel(SettingsSubPanel::Mouse),
+                    Some(5) => {
                         // Volume slider: enter adjust mode so NavNext/NavPrev
                         // will increase/decrease volume until confirmed.
                         self.volume_adjusting = true;
                         self.sld_volume.set_active(true);
                     }
-                    Some(5) => {
+                    Some(6) => {
                         self.pending_actions.push(WidgetAction::Disconnect);
                     }
-                    Some(6) => {
+                    Some(7) => {
                         self.quit_dialog.center_on(&self.bounds);
                         self.quit_dialog.show();
                     }
-                    Some(7) => {
+                    Some(8) => {
                         self.visible = false;
                         self.close_active_sub_panel();
                         self.pending_actions
@@ -2160,6 +2598,14 @@ impl Widget for SettingsPanel {
             }
             return EventResponse::Consumed;
         }
+        if self.btn_mouse.handle_event(event) == EventResponse::Consumed {
+            if self.active_sub_panel == Some(SettingsSubPanel::Mouse) {
+                self.close_active_sub_panel();
+            } else {
+                self.open_sub_panel(SettingsSubPanel::Mouse);
+            }
+            return EventResponse::Consumed;
+        }
 
         // 5. Volume slider.
         if self.sld_volume.handle_event(event) == EventResponse::Consumed {
@@ -2224,6 +2670,7 @@ impl Widget for SettingsPanel {
         self.btn_diagnostics.render(ctx)?;
         self.btn_controls.render(ctx)?;
         self.btn_controller.render(ctx)?;
+        self.btn_mouse.render(ctx)?;
 
         // Volume slider
         self.sld_volume.render(ctx)?;
@@ -2252,6 +2699,7 @@ impl Widget for SettingsPanel {
         self.sub_diagnostics.render(ctx)?;
         self.sub_controls.render(ctx)?;
         self.sub_controller.render(ctx)?;
+        self.sub_mouse.render(ctx)?;
 
         // Quit confirmation rendered topmost.
         self.quit_dialog.render(ctx)?;
@@ -2301,6 +2749,7 @@ mod tests {
             profiler_remaining_secs: None,
             key_bindings: KeyBindings::default(),
             controller_bindings: ControllerBindings::default(),
+            mouse_modifier_bindings: MouseModifierBindings::default(),
         }
     }
 
@@ -2410,6 +2859,102 @@ mod tests {
 
         assert_eq!(sub_center_x, panel_center_x);
         assert_eq!(sub_center_y, panel_center_y);
+    }
+
+    #[test]
+    fn mouse_settings_button_opens_sub_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+
+        let resp = panel.handle_event(&left_click(15, Y_MOUSE_BTN + 5));
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Mouse));
+        assert!(panel.sub_mouse.visible);
+    }
+
+    #[test]
+    fn mouse_settings_capture_emits_update_action() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.sync_state(&make_data());
+        panel.handle_event(&left_click(15, Y_MOUSE_BTN + 5));
+        let _ = panel.take_actions();
+
+        let btn_bounds = *panel.sub_mouse.binding_buttons[0].bounds();
+        let resp = panel.handle_event(&left_click(btn_bounds.x + 5, btn_bounds.y + 2));
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(panel.is_mouse_modifier_listening());
+
+        panel.capture_mouse_modifier_button(ExtraMouseButton::Mouse4);
+        let actions = panel.take_actions();
+
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                WidgetAction::UpdateMouseModifierBinding {
+                    modifier: MouseModifier::Ctrl,
+                    button: Some(ExtraMouseButton::Mouse4)
+                }
+            )),
+            "Expected UpdateMouseModifierBinding action, got {:?}",
+            actions
+        );
+        assert!(!panel.is_mouse_modifier_listening());
+        assert_eq!(
+            panel.sub_mouse.bindings.get(MouseModifier::Ctrl),
+            Some(ExtraMouseButton::Mouse4)
+        );
+    }
+
+    #[test]
+    fn mouse_settings_clear_emits_update_action() {
+        let mut panel = make_panel();
+        let mut data = make_data();
+        data.mouse_modifier_bindings
+            .set(MouseModifier::Shift, Some(ExtraMouseButton::Mouse5));
+        panel.toggle();
+        panel.sync_state(&data);
+        panel.handle_event(&left_click(15, Y_MOUSE_BTN + 5));
+        let _ = panel.take_actions();
+
+        let clear_bounds = *panel.sub_mouse.clear_buttons[1].bounds();
+        let resp = panel.handle_event(&left_click(clear_bounds.x + 5, clear_bounds.y + 2));
+        assert_eq!(resp, EventResponse::Consumed);
+        let actions = panel.take_actions();
+
+        assert!(
+            actions.iter().any(|action| matches!(
+                action,
+                WidgetAction::UpdateMouseModifierBinding {
+                    modifier: MouseModifier::Shift,
+                    button: None
+                }
+            )),
+            "Expected clear UpdateMouseModifierBinding action, got {:?}",
+            actions
+        );
+        assert_eq!(panel.sub_mouse.bindings.get(MouseModifier::Shift), None);
+    }
+
+    #[test]
+    fn controller_nav_can_open_mouse_settings_sub_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+
+        for _ in 0..5 {
+            assert_eq!(
+                panel.handle_event(&UiEvent::NavNext),
+                EventResponse::Consumed
+            );
+        }
+        assert_eq!(
+            panel.handle_event(&UiEvent::NavConfirm),
+            EventResponse::Consumed
+        );
+
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Mouse));
+        assert!(panel.sub_mouse.visible);
     }
 
     #[test]

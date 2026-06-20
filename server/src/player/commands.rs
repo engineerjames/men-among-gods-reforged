@@ -827,6 +827,29 @@ pub fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
 /// * `dx` - Horizontal movement delta.
 /// * `dy` - Vertical movement delta.
 fn plr_move_by(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
+    // Anguish (Earth): while a debuff with SK_ANGUISH_EARTH temp is active
+    // on this character, all directional movement is suppressed. The
+    // character can still turn, attack, and cast.
+    {
+        let mut blocked = false;
+        for n in 0..20 {
+            let in_ = gs.characters[cn].spell[n] as usize;
+            if in_ != 0 && gs.items[in_].temp == core::skills::SK_ANGUISH_EARTH as u16 {
+                blocked = true;
+                break;
+            }
+        }
+        if blocked {
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "Your feet are anchored by the earth!\n",
+            );
+            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
+            return;
+        }
+    }
+
     plr_map_remove(gs, cn);
 
     let ch = &mut gs.characters[cn];

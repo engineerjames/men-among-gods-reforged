@@ -2,6 +2,20 @@ use crate::path_finding::PathFinder;
 use crate::types::server_player::ServerPlayer;
 use core::constants::{CharacterFlags, USE_EMPTY};
 use core::talent_trees::total_points_spent;
+use std::collections::HashMap;
+
+/// Runtime state for the Harakim Element Switching passive.
+///
+/// This is intentionally separate from spell items. Spell items may be used to
+/// show a client icon, but the server tracks the actual last-cast element here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ElementSwitchState {
+    /// Last elemental spell type cast by the character.
+    pub last_element: u32,
+    /// Server tick at which this transient memory expires.
+    pub expires_at_tick: i32,
+}
+
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -94,6 +108,11 @@ pub struct GameState {
     /// Number of pentagram items needed for a quest completion.
     pub penta_needed: usize,
 
+    /// Runtime-only landed primary-hit counters for talent passives.
+    pub talent_primary_hit_counts: Vec<u8>,
+    /// Runtime-only last-element state for the Harakim Element Switching passive.
+    pub element_switch_states: HashMap<usize, ElementSwitchState>,
+
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
 
@@ -102,8 +121,7 @@ pub struct GameState {
     pub pathfinder: PathFinder,
 
     // -- Persistence (private) --
-    /// Set to `true` once a clean save has been performed, preventing a
-    /// redundant save from the `Drop` impl if `shutdown()` already ran.
+    /// Set to `true` until loaded runtime data needs a final persistence pass.
     saved_cleanly: bool,
 
     // -- Runtime mode flags --
@@ -191,16 +209,28 @@ impl GameState {
             oy: 0,
             is_monster: false,
             penta_needed: 5,
+            talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
+            element_switch_states: HashMap::new(),
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding
             pathfinder: PathFinder::new(),
-            // Persistence
-            saved_cleanly: false,
+            // Persistence is enabled only after KeyDB data loads successfully.
+            saved_cleanly: true,
             // Runtime mode flags
             playtest_mode: false,
             god_password: String::new(),
         }
+    }
+
+    /// Removes expired Element Switching state entries.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_tick` - Current server tick used as the expiry threshold.
+    pub(crate) fn tick_element_switch_states(&mut self, current_tick: i32) {
+        self.element_switch_states
+            .retain(|_, state| state.expires_at_tick > current_tick);
     }
 
     /// Initialize a new `GameState` by loading all data from KeyDB.
@@ -218,6 +248,7 @@ impl GameState {
     pub fn initialize() -> Result<GameState, String> {
         let mut gs = Self::new();
         gs.load_from_keydb()?;
+        gs.saved_cleanly = false;
         Ok(gs)
     }
 
@@ -346,21 +377,22 @@ impl GameState {
 impl Drop for GameState {
     /// Safety-net save on drop if `shutdown()` was not called.
     ///
-    /// If `shutdown()` already performed a clean save (indicated by
-    /// `saved_cleanly`), the drop is a no-op. Otherwise it attempts a
+    /// If persistence has not been activated yet or `shutdown()` already
+    /// performed a clean save, the drop is a no-op. Otherwise it attempts a
     /// last-ditch save to avoid data loss.
     fn drop(&mut self) {
         if self.saved_cleanly {
-            log::info!("GameState drop: already saved cleanly, skipping.");
+            log::info!("GameState drop: no pending persistence save, skipping.");
             return;
         }
 
         self.globals.set_dirty(false);
-        self.save().unwrap_or_else(|e| {
+        if let Err(e) = self.save() {
             log::error!("Failed to save game state on drop: {}", e);
-        });
-
-        log::info!("GameState saved cleanly on drop.");
+        } else {
+            self.saved_cleanly = true;
+            log::info!("GameState saved cleanly on drop.");
+        }
     }
 }
 

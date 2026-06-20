@@ -1,357 +1,282 @@
 //! Harakim class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNode, TalentRef, TalentTree};
-use crate::skills::Attribute;
+use super::{TalentEffect, TalentNode, TalentRef, TalentTree, is_talent_slot_spent};
+use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
 
-const DESERT_SENSE: TalentRef = TalentRef {
+const LAVA_BLAST: TalentRef = TalentRef {
     layer: 1,
     mask: 0b0000_0001,
 };
-const MIND_SPIKE: TalentRef = TalentRef {
+const REVENANT_CONDUIT: TalentRef = TalentRef {
     layer: 1,
     mask: 0b0000_0010,
 };
-const MIRAGE_STEP_1: TalentRef = TalentRef {
+const CORPORAL_INTUITION: TalentRef = TalentRef {
     layer: 2,
     mask: 0b0000_0001,
 };
-const SAND_CHANNELING_1: TalentRef = TalentRef {
-    layer: 2,
-    mask: 0b0000_0010,
-};
-const MIRAGE_STEP_2: TalentRef = TalentRef {
+const STAFF_SERGEANT_INTUITION: TalentRef = TalentRef {
     layer: 3,
     mask: 0b0000_0001,
 };
-const SAND_CHANNELING_2: TalentRef = TalentRef {
-    layer: 3,
-    mask: 0b0000_0010,
-};
-const SWIFT_READING_1: TalentRef = TalentRef {
+const FIRST_SERGEANT_WILLPOWER: TalentRef = TalentRef {
     layer: 4,
     mask: 0b0000_0001,
 };
-const SPIRIT_CUT_1: TalentRef = TalentRef {
-    layer: 4,
-    mask: 0b0000_0010,
-};
-const UNMASK: TalentRef = TalentRef {
+const ICE_STUN: TalentRef = TalentRef {
     layer: 5,
     mask: 0b0000_0001,
 };
-const SOUL_BURN: TalentRef = TalentRef {
+const KINDRED_SPIRIT: TalentRef = TalentRef {
     layer: 5,
     mask: 0b0000_0010,
 };
-const SWIFT_READING_2: TalentRef = TalentRef {
+const CAPTAIN_RESERVES: TalentRef = TalentRef {
     layer: 6,
     mask: 0b0000_0001,
 };
-const SPIRIT_CUT_2: TalentRef = TalentRef {
-    layer: 6,
-    mask: 0b0000_0010,
-};
-const VEIL_1: TalentRef = TalentRef {
+const ELEMENT_SWITCHING: TalentRef = TalentRef {
     layer: 7,
     mask: 0b0000_0001,
 };
-const STILLNESS_1: TalentRef = TalentRef {
+const SPELLCASTER_KINDRED_SPIRIT: TalentRef = TalentRef {
     layer: 7,
     mask: 0b0000_0010,
 };
-const VEIL_2: TalentRef = TalentRef {
+const BRIGADIER_GENERAL_INTUITION: TalentRef = TalentRef {
     layer: 8,
     mask: 0b0000_0001,
 };
-const STILLNESS_2: TalentRef = TalentRef {
-    layer: 8,
-    mask: 0b0000_0010,
-};
-const DUST_DANCE: TalentRef = TalentRef {
+const ELEMENTAL_ANGUISH: TalentRef = TalentRef {
     layer: 9,
     mask: 0b0000_0001,
 };
-const FEVER_DREAM: TalentRef = TalentRef {
+const SPECTRAL_PACT: TalentRef = TalentRef {
     layer: 9,
     mask: 0b0000_0010,
 };
-const STRENGTH_OF_SAND_1: TalentRef = TalentRef {
+const FIELD_MARSHAL_INTUITION: TalentRef = TalentRef {
     layer: 10,
     mask: 0b0000_0001,
 };
-const INSIGHT_OF_SAND_1: TalentRef = TalentRef {
-    layer: 10,
-    mask: 0b0000_0010,
-};
-const STRENGTH_OF_SAND_2: TalentRef = TalentRef {
+const BARON_WILLPOWER: TalentRef = TalentRef {
     layer: 11,
     mask: 0b0000_0001,
 };
-const INSIGHT_OF_SAND_2: TalentRef = TalentRef {
-    layer: 11,
-    mask: 0b0000_0010,
-};
-const EYE_OF_THE_STORM: TalentRef = TalentRef {
+const WARLORD_ASCENDANCY: TalentRef = TalentRef {
     layer: 12,
     mask: 0b0000_0001,
 };
 
-/// The full Harakim placeholder talent tree.
+const CAPTAIN_RESERVE_EFFECTS: &[TalentEffect] = &[TalentEffect::HpManaEndFlat {
+    hp: 25,
+    mana: 100,
+    end: 25,
+}];
+
+const WARLORD_EFFECTS: &[TalentEffect] = &[
+    TalentEffect::AttributesPercent {
+        attrs: &[Attribute::Intuition, Attribute::Willpower],
+        percents: &[10, 10],
+    },
+    TalentEffect::HpManaEndFlat {
+        hp: 50,
+        mana: 100,
+        end: 50,
+    },
+];
+
+/// Returns whether the packed Harakim talent state includes Ice Stun.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state from `Character::future1`.
+///
+/// # Returns
+///
+/// * `true` when the Ice Stun talent is learned.
+pub fn has_ice_stun(talents: &[u8; 25]) -> bool {
+    is_talent_slot_spent(talents, ICE_STUN)
+}
+
+/// Returns whether the packed Harakim talent state includes Element Switching.
+///
+/// # Arguments
+///
+/// * `talents` - Packed talent-tree state from `Character::future1`.
+///
+/// # Returns
+///
+/// * `true` when the Element Switching talent is learned.
+pub fn has_element_switching(talents: &[u8; 25]) -> bool {
+    is_talent_slot_spent(talents, ELEMENT_SWITCHING)
+}
+
+/// The full Harakim talent tree.
 pub static HARAKIM_TREE: TalentTree = TalentTree {
     class: Class::Harakim,
     nodes: &[
         TalentNode {
-            slot: DESERT_SENSE,
-            name: "Desert Sense",
-            description: "Root awareness talent for the Harakim path.",
+            slot: LAVA_BLAST,
+            name: "Lava Blast",
+            description: "Learn Lava Blast.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Intuition],
-                percents: &[10],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::LavaBlast,
             },
         },
         TalentNode {
-            slot: MIND_SPIKE,
-            name: "Mind Spike",
-            description: "Root will-focused talent for the Harakim path.",
+            slot: REVENANT_CONDUIT,
+            name: "Revenant Conduit",
+            description: "Learn Revenant Conduit.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[10],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::RevenantConduit,
             },
         },
         TalentNode {
-            slot: MIRAGE_STEP_1,
-            name: "Mirage Step I",
-            description: "Placeholder movement through misdirection.",
+            slot: CORPORAL_INTUITION,
+            name: "Corporal Intuition",
+            description: "Increase Intuition by 5%.",
             cost: 1,
-            prereqs: &[DESERT_SENSE],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[10],
-            },
-        },
-        TalentNode {
-            slot: SAND_CHANNELING_1,
-            name: "Sand Channeling I",
-            description: "Placeholder spell channeling discipline.",
-            cost: 1,
-            prereqs: &[MIND_SPIKE],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: MIRAGE_STEP_2,
-            name: "Mirage Step II",
-            description: "Further movement through misdirection.",
-            cost: 1,
-            prereqs: &[MIRAGE_STEP_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: SAND_CHANNELING_2,
-            name: "Sand Channeling II",
-            description: "Further spell channeling discipline.",
-            cost: 1,
-            prereqs: &[SAND_CHANNELING_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[16],
-            },
-        },
-        TalentNode {
-            slot: SWIFT_READING_1,
-            name: "Swift Reading I",
-            description: "Placeholder tactical reading improvement.",
-            cost: 1,
-            prereqs: &[MIRAGE_STEP_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[8],
-            },
-        },
-        TalentNode {
-            slot: SPIRIT_CUT_1,
-            name: "Spirit Cut I",
-            description: "Placeholder focused strike improvement.",
-            cost: 1,
-            prereqs: &[SAND_CHANNELING_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[6],
-            },
-        },
-        TalentNode {
-            slot: UNMASK,
-            name: "Unmask",
-            description: "Placeholder detection talent.",
-            cost: 1,
-            prereqs: &[SWIFT_READING_1],
+            prereqs: &[LAVA_BLAST, REVENANT_CONDUIT],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Intuition],
-                percents: &[12],
+                percents: &[5],
             },
         },
         TalentNode {
-            slot: SOUL_BURN,
-            name: "Soul Burn",
-            description: "Placeholder willpower attack talent.",
+            slot: STAFF_SERGEANT_INTUITION,
+            name: "Staff Sergeant Intuition",
+            description: "Increase Intuition by an additional 5%.",
             cost: 1,
-            prereqs: &[SPIRIT_CUT_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[14],
-            },
-        },
-        TalentNode {
-            slot: SWIFT_READING_2,
-            name: "Swift Reading II",
-            description: "Advanced tactical reading improvement.",
-            cost: 1,
-            prereqs: &[UNMASK],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: SPIRIT_CUT_2,
-            name: "Spirit Cut II",
-            description: "Advanced focused strike improvement.",
-            cost: 1,
-            prereqs: &[SOUL_BURN],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[8],
-            },
-        },
-        TalentNode {
-            slot: VEIL_1,
-            name: "Veil I",
-            description: "Placeholder defensive illusion improvement.",
-            cost: 1,
-            prereqs: &[SWIFT_READING_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: STILLNESS_1,
-            name: "Stillness I",
-            description: "Placeholder focus improvement.",
-            cost: 1,
-            prereqs: &[SPIRIT_CUT_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Braveness],
-                percents: &[8],
-            },
-        },
-        TalentNode {
-            slot: VEIL_2,
-            name: "Veil II",
-            description: "Further defensive illusion improvement.",
-            cost: 1,
-            prereqs: &[VEIL_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[16],
-            },
-        },
-        TalentNode {
-            slot: STILLNESS_2,
-            name: "Stillness II",
-            description: "Further focus improvement.",
-            cost: 1,
-            prereqs: &[STILLNESS_1],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Braveness],
-                percents: &[12],
-            },
-        },
-        TalentNode {
-            slot: DUST_DANCE,
-            name: "Dust Dance",
-            description: "Placeholder evasive capstone branch.",
-            cost: 1,
-            prereqs: &[VEIL_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[16],
-            },
-        },
-        TalentNode {
-            slot: FEVER_DREAM,
-            name: "Fever Dream",
-            description: "Placeholder mental pressure branch.",
-            cost: 1,
-            prereqs: &[STILLNESS_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Willpower],
-                percents: &[22],
-            },
-        },
-        TalentNode {
-            slot: STRENGTH_OF_SAND_1,
-            name: "Strength of Sand I",
-            description: "Increase strength through desert discipline.",
-            cost: 1,
-            prereqs: &[DUST_DANCE],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[6],
-            },
-        },
-        TalentNode {
-            slot: INSIGHT_OF_SAND_1,
-            name: "Insight of Sand I",
-            description: "Increase intuition through desert discipline.",
-            cost: 1,
-            prereqs: &[FEVER_DREAM],
+            prereqs: &[CORPORAL_INTUITION],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Intuition],
-                percents: &[14],
+                percents: &[5],
             },
         },
         TalentNode {
-            slot: STRENGTH_OF_SAND_2,
-            name: "Strength of Sand II",
-            description: "Further increase strength through desert discipline.",
+            slot: FIRST_SERGEANT_WILLPOWER,
+            name: "First Sergeant Willpower",
+            description: "Increase Willpower by 5%.",
             cost: 1,
-            prereqs: &[STRENGTH_OF_SAND_1],
+            prereqs: &[STAFF_SERGEANT_INTUITION],
             effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Strength],
-                percents: &[8],
+                attrs: &[Attribute::Willpower],
+                percents: &[5],
             },
         },
         TalentNode {
-            slot: INSIGHT_OF_SAND_2,
-            name: "Insight of Sand II",
-            description: "Further increase intuition through desert discipline.",
+            slot: ICE_STUN,
+            name: "Ice Stun",
+            description: "Stun marks targets for a chance to burst with ice when they die.",
             cost: 1,
-            prereqs: &[INSIGHT_OF_SAND_1],
+            prereqs: &[FIRST_SERGEANT_WILLPOWER],
+            effect: TalentEffect::Passive,
+        },
+        TalentNode {
+            slot: KINDRED_SPIRIT,
+            name: "Kindred Spirit",
+            description: "Learn Kindred Spirit.",
+            cost: 1,
+            prereqs: &[FIRST_SERGEANT_WILLPOWER],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::KindredSpirit,
+            },
+        },
+        TalentNode {
+            slot: CAPTAIN_RESERVES,
+            name: "Captain Reserves",
+            description: "Increase maximum mana by 100, HP by 25, and endurance by 25.",
+            cost: 1,
+            prereqs: &[ICE_STUN, KINDRED_SPIRIT],
+            effect: TalentEffect::Composite {
+                effects: CAPTAIN_RESERVE_EFFECTS,
+            },
+        },
+        TalentNode {
+            slot: ELEMENT_SWITCHING,
+            name: "Element Switching",
+            description: "Alternating elemental spell types can increase damage.",
+            cost: 1,
+            prereqs: &[CAPTAIN_RESERVES],
+            effect: TalentEffect::Passive,
+        },
+        TalentNode {
+            slot: SPELLCASTER_KINDRED_SPIRIT,
+            name: "Spellcaster Kindred Spirit",
+            description: "Learn Spellcaster Kindred Spirit.",
+            cost: 1,
+            prereqs: &[CAPTAIN_RESERVES],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::SpellcasterKindredSpirit,
+            },
+        },
+        TalentNode {
+            slot: BRIGADIER_GENERAL_INTUITION,
+            name: "Brigadier General Intuition",
+            description: "Increase Intuition by 5%.",
+            cost: 1,
+            prereqs: &[ELEMENT_SWITCHING, SPELLCASTER_KINDRED_SPIRIT],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Intuition],
-                percents: &[16],
+                percents: &[5],
             },
         },
         TalentNode {
-            slot: EYE_OF_THE_STORM,
-            name: "Eye of the Storm",
-            description: "Capstone: unite Harakim perception and will.",
+            slot: ELEMENTAL_ANGUISH,
+            name: "Elemental Anguish",
+            description: "Learn Anguish (Earth).",
             cost: 1,
-            prereqs: &[STRENGTH_OF_SAND_2, INSIGHT_OF_SAND_2],
+            prereqs: &[BRIGADIER_GENERAL_INTUITION],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::AnguishEarth,
+            },
+        },
+        TalentNode {
+            slot: SPECTRAL_PACT,
+            name: "Spectral Pact",
+            description: "Learn Spectral Pact.",
+            cost: 1,
+            prereqs: &[BRIGADIER_GENERAL_INTUITION],
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::SpectralPact,
+            },
+        },
+        TalentNode {
+            slot: FIELD_MARSHAL_INTUITION,
+            name: "Field Marshal Intuition",
+            description: "Increase Intuition by 5%.",
+            cost: 1,
+            prereqs: &[ELEMENTAL_ANGUISH, SPECTRAL_PACT],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Intuition],
-                percents: &[24],
+                percents: &[5],
+            },
+        },
+        TalentNode {
+            slot: BARON_WILLPOWER,
+            name: "Baron Willpower",
+            description: "Increase Willpower by 5%.",
+            cost: 1,
+            prereqs: &[FIELD_MARSHAL_INTUITION],
+            effect: TalentEffect::AttributesPercent {
+                attrs: &[Attribute::Willpower],
+                percents: &[5],
+            },
+        },
+        TalentNode {
+            slot: WARLORD_ASCENDANCY,
+            name: "Warlord Ascendancy",
+            description: "Increase Intuition and Willpower by 10%, maximum mana by 100, HP by 50, and endurance by 50.",
+            cost: 1,
+            prereqs: &[BARON_WILLPOWER],
+            effect: TalentEffect::Composite {
+                effects: WARLORD_EFFECTS,
             },
         },
     ],

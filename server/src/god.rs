@@ -3308,7 +3308,7 @@ impl God {
             return;
         }
 
-        if !(0..50).contains(&n) {
+        if !(0..core::skills::MAX_SKILLS as i32).contains(&n) {
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
@@ -4267,7 +4267,7 @@ impl God {
                 character.attrib[n][3] = template.attrib[n][3];
             }
 
-            for n in 0..50 {
+            for n in 0..core::skills::MAX_SKILLS {
                 if character.skill[n][0] == 0 && template.skill[n][0] != 0 {
                     character.skill[n][0] = template.skill[n][0];
                     log::info!("added skill {} to {}", n, character.get_name());

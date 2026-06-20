@@ -37,7 +37,7 @@ use client::filepaths;
 use client::font_cache::{self, TextEngine, TextStyle};
 use client::gfx_cache::GraphicsCache;
 use client::types::log_message::{LogMessage, LogMessageColor};
-use client::ui::hud::button_bar::{HudButtonBar, NUMBER_OF_BUTTONS};
+use client::ui::hud::button_bar::HudButtonBar;
 use client::ui::hud::chat_box::ChatBox;
 use client::ui::hud::inventory_panel::{InventoryPanel, InventoryPanelData};
 use client::ui::hud::look_panel::LookPanel;
@@ -79,7 +79,6 @@ const HUD_ARC_CENTER_X: i32 = TARGET_WIDTH_INT as i32 / 2;
 const HUD_ARC_CENTER_Y: i32 = TARGET_HEIGHT_INT as i32;
 const HUD_ARC_RADIUS: u32 = 60;
 const HUD_BUTTON_RADIUS: u32 = 16;
-const HUD_SPRITE_IDS: [usize; NUMBER_OF_BUTTONS] = [267, 267, 128, 35];
 /// X center of the HUD button column (lower-right).
 const HUD_BTN_CX: i32 = TARGET_WIDTH_INT as i32 - 30;
 /// Center Y of the bottom-most HUD button.
@@ -250,7 +249,6 @@ fn main() -> Result<(), String> {
         HUD_BTN_BOTTOM_CY,
         HUD_BTN_SPACING,
         HUD_BUTTON_RADIUS,
-        HUD_SPRITE_IDS,
     );
 
     // Column 3 / overlays: Complex panels (toggled via keys 1-5).

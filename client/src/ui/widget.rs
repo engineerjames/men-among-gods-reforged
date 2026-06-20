@@ -10,6 +10,7 @@ use super::RenderContext;
 use super::style::Padding;
 use crate::preferences::DisplayMode;
 use crate::types::controller::ControllerButton;
+use crate::types::mouse::{ExtraMouseButton, MouseModifier};
 
 // ---------------------------------------------------------------------------
 // Geometry
@@ -359,6 +360,13 @@ pub enum WidgetAction {
         slot: u8,
         /// The controller button to bind, or `None` to clear.
         button: Option<ControllerButton>,
+    },
+    /// Update an extra mouse button binding for a modifier target.
+    UpdateMouseModifierBinding {
+        /// Modifier behavior being configured.
+        modifier: MouseModifier,
+        /// The extra mouse button to bind, or `None` to clear.
+        button: Option<ExtraMouseButton>,
     },
     /// Spend one talent point on the node identified by a packed slot.
     ///

@@ -1,6 +1,6 @@
 //! Item structure
 
-use crate::{constants::ItemFlags, string_operations::c_string_to_str};
+use crate::{constants::ItemFlags, skills::MAX_SKILLS, string_operations::c_string_to_str};
 use bincode::{Decode, Encode};
 
 /// Item structure
@@ -42,7 +42,7 @@ pub struct Item {
     pub end: [i16; 3],  // 349
     pub mana: [i16; 3], // 355
 
-    pub skill: [[i8; 3]; 50], // 505
+    pub skill: [[i8; 3]; MAX_SKILLS], // 505
 
     pub armor: [i8; 2],  // 506
     pub weapon: [i8; 2], // 507
@@ -96,7 +96,7 @@ impl Default for Item {
             hp: [0; 3],
             end: [0; 3],
             mana: [0; 3],
-            skill: [[0; 3]; 50],
+            skill: [[0; 3]; MAX_SKILLS],
             armor: [0; 2],
             weapon: [0; 2],
             light: [0; 2],

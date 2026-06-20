@@ -1,9 +1,10 @@
 //! Purpose-built UI widget framework for the game client.
 //!
 //! Provides a lightweight [`Widget`] trait with nesting support and concrete
-//! widgets: [`Panel`], [`Label`], [`RectButton`], [`CircleButton`], and
-//! [`ChatBox`].  All rendering is done via SDL2 primitives and the existing
-//! bitmap font system — no additional dependencies are required.
+//! widgets: [`Panel`], [`Label`], [`RectButton`], [`CircleButton`],
+//! [`CircularImageButton`], and [`ChatBox`].  All rendering is done via SDL2
+//! primitives and the existing bitmap font system — no additional dependencies
+//! are required.
 
 pub mod controller_nav;
 pub mod forms;

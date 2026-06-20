@@ -450,6 +450,7 @@ impl Server {
         gs.globals.uptime_per_hour[hour] = gs.globals.uptime_per_hour[hour].wrapping_add(1);
 
         let ticker = gs.globals.ticker;
+        gs.tick_element_switch_states(ticker);
 
         // Background save scheduling (KeyDB only)
         self.maybe_enqueue_background_save(gs);

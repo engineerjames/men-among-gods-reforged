@@ -118,8 +118,15 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_BLESS
         | skills::SK_MSHIELD
         | skills::SK_RECALL
-        | skills::SK_BLAST => SpellEffectKind::Positive,
-        skills::SK_CURSE | skills::SK_STUN | skills::SK_WIMPY => SpellEffectKind::Negative,
+        | skills::SK_BLAST
+        | skills::SK_REVENANT_CONDUIT2
+        | skills::SK_SPECTRAL_PACT2 => SpellEffectKind::Positive,
+        skills::SK_CURSE
+        | skills::SK_STUN
+        | skills::SK_WIMPY
+        | skills::SK_ANGUISH_LAVA
+        | skills::SK_ANGUISH_EARTH
+        | skills::SK_ANGUISH_ICE => SpellEffectKind::Negative,
         // Eye potions and Potion of Golem are positive buffs.
         254 | 449 => SpellEffectKind::Positive,
         _ => return None,
