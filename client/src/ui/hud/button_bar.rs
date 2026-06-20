@@ -1,33 +1,35 @@
-//! A composite widget that arranges five circular buttons in a vertical
+//! A composite widget that arranges circular image buttons in a vertical
 //! column. Each button toggles a corresponding HUD panel.
 
-use sdl2::pixels::Color;
-
+use crate::filepaths;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, HudPanel, UiEvent, Widget, WidgetAction};
-use crate::ui::widgets::button::CircleButton;
+use crate::ui::widgets::button::CircularImageButton;
 
-/// Default fill color for the HUD buttons (semi-transparent dark slate).
-const BUTTON_FILL: Color = Color::RGBA(20, 20, 40, 200);
-
-/// Default border color for the HUD buttons.
-const BUTTON_BORDER: Color = Color::RGBA(140, 140, 160, 220);
-
+/// Number of panel toggle buttons displayed in the HUD button bar.
 pub const NUMBER_OF_BUTTONS: usize = 4;
+
+/// Whole-button image filenames in panel order.
+const BUTTON_IMAGE_FILES: [&str; NUMBER_OF_BUTTONS] = [
+    "skills.png",
+    "talent_tree.png",
+    "inventory.png",
+    "settings.png",
+];
 
 /// Index of the Talents button within the button column. Kept in sync with
 /// `panel_kinds` construction in `HudButtonBar::new` via a debug assertion.
 const TALENTS_BUTTON_INDEX: usize = 1;
 
-/// Five circular buttons arranged in a vertical column.
+/// Four circular image buttons arranged in a vertical column.
 ///
 /// Clicking a button produces a [`WidgetAction::TogglePanel`] action that the
 /// owning scene can drain to toggle the corresponding panel's visibility.
 pub struct HudButtonBar {
-    buttons: [CircleButton; NUMBER_OF_BUTTONS],
+    buttons: [CircularImageButton; NUMBER_OF_BUTTONS],
     panel_kinds: [HudPanel; NUMBER_OF_BUTTONS],
     pending_actions: Vec<WidgetAction>,
-    /// Cached bounding box that encloses all five buttons.
+    /// Cached bounding box that encloses all buttons.
     bounds: Bounds,
 }
 
@@ -40,21 +42,12 @@ impl HudButtonBar {
     /// * `bottom_cy` - Center Y of the bottom-most button.
     /// * `spacing` - Vertical distance between adjacent button centers.
     /// * `button_radius` - Radius of each individual circular button.
-    /// * `sprite_ids` - Sprite IDs for [QuestLog, Skills, Talents, Inventory, Settings] buttons.
     ///
     /// # Returns
     ///
     /// A new `HudButtonBar` ready for rendering.
-    pub fn new(
-        cx: i32,
-        bottom_cy: i32,
-        spacing: u32,
-        button_radius: u32,
-        sprite_ids: [usize; NUMBER_OF_BUTTONS],
-    ) -> Self {
+    pub fn new(cx: i32, bottom_cy: i32, spacing: u32, button_radius: u32) -> Self {
         let panel_kinds = [
-            // TODO: Further develop QuestLog panel once we have a server-side quest tracking system in place
-            // HudPanel::QuestLog,
             HudPanel::Skills,
             HudPanel::Talents,
             HudPanel::Inventory,
@@ -66,11 +59,15 @@ impl HudButtonBar {
         ));
 
         let positions = Self::compute_positions(cx, bottom_cy, spacing);
+        let button_dir = filepaths::get_asset_directory().join("gfx").join("buttons");
 
         let buttons = std::array::from_fn(|i| {
-            CircleButton::new(positions[i].0, positions[i].1, button_radius, BUTTON_FILL)
-                .with_border_color(BUTTON_BORDER)
-                .with_sprite(sprite_ids[i])
+            CircularImageButton::new(
+                positions[i].0,
+                positions[i].1,
+                button_radius,
+                button_dir.join(BUTTON_IMAGE_FILES[i]),
+            )
         });
 
         let bounds = Self::enclosing_bounds(&positions, button_radius);
@@ -97,11 +94,10 @@ impl HudButtonBar {
     ///
     /// # Returns
     ///
-    /// An array of five `(i32, i32)` center positions, ordered top to bottom.
+    /// An array of four `(i32, i32)` center positions, ordered top to bottom.
     fn compute_positions(cx: i32, bottom_cy: i32, spacing: u32) -> [(i32, i32); NUMBER_OF_BUTTONS] {
         let s = spacing as i32;
         [
-            // (cx, bottom_cy - 4 * s), // top (QuestLog)
             (cx, bottom_cy - 3 * s), // (Skills)
             (cx, bottom_cy - 2 * s), // (Talents)
             (cx, bottom_cy - s),     // (Inventory)
@@ -232,7 +228,7 @@ mod tests {
 
     #[test]
     fn click_produces_toggle_action() {
-        let bar = HudButtonBar::new(200, 300, 40, 16, [267, 267, 128, 35]);
+        let bar = HudButtonBar::new(200, 300, 40, 16);
         let positions = HudButtonBar::compute_positions(200, 300, 40);
         let (cx, cy) = positions[2]; // Inventory button (index 2: Skills, Talents, Inventory, Settings)
 
@@ -255,7 +251,7 @@ mod tests {
 
     #[test]
     fn click_outside_all_buttons_ignored() {
-        let mut bar = HudButtonBar::new(200, 300, 40, 16, [267, 267, 128, 35]);
+        let mut bar = HudButtonBar::new(200, 300, 40, 16);
         let resp = bar.handle_event(&UiEvent::MouseClick {
             x: 0,
             y: 0,
@@ -268,7 +264,7 @@ mod tests {
 
     #[test]
     fn take_actions_drains() {
-        let mut bar = HudButtonBar::new(200, 300, 40, 16, [267, 267, 128, 35]);
+        let mut bar = HudButtonBar::new(200, 300, 40, 16);
         let positions = HudButtonBar::compute_positions(200, 300, 40);
         let (cx, cy) = positions[0]; // Skills button (first active button)
 
@@ -285,7 +281,7 @@ mod tests {
 
     #[test]
     fn set_talent_points_badge_toggles_indicator() {
-        let mut bar = HudButtonBar::new(200, 300, 40, 16, [267, 267, 128, 35]);
+        let mut bar = HudButtonBar::new(200, 300, 40, 16);
 
         // Initially no badge.
         assert!(bar.buttons[TALENTS_BUTTON_INDEX].badge_text().is_none());

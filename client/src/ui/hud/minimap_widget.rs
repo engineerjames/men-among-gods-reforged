@@ -6,10 +6,11 @@
 
 use sdl2::pixels::Color;
 
+use crate::filepaths;
 use crate::ui::RenderContext;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
-use crate::ui::widgets::button::{CircleButton, RectButton};
+use crate::ui::widgets::button::{CircularImageButton, RectButton};
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -64,14 +65,8 @@ const PANEL_BG: Color = Color::RGBA(10, 10, 30, 200);
 /// Border color for the panel frame.
 const PANEL_BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 220);
 
-/// Fill color for the toggle circle button.
-const BUTTON_FILL: Color = Color::RGBA(20, 20, 40, 200);
-
-/// Border color for the toggle circle button.
-const BUTTON_BORDER: Color = Color::RGBA(120, 120, 140, 220);
-
-/// Sprite ID drawn centered inside the toggle button.
-const BUTTON_SPRITE: usize = 1231;
+/// Whole-button image filename for the minimap toggle.
+const BUTTON_IMAGE_FILE: &str = "map.png";
 
 // ---------------------------------------------------------------------------
 // MinimapWidget
@@ -85,8 +80,8 @@ const BUTTON_SPRITE: usize = 1231;
 /// buffer. The widget then blits those pixels to the screen during
 /// [`Widget::render`].
 pub struct MinimapWidget {
-    /// The circle toggle button.
-    button: CircleButton,
+    /// The circular image toggle button.
+    button: CircularImageButton,
     /// Button that reduces the sampled world area, magnifying the minimap.
     zoom_in_button: RectButton,
     /// Button that increases the sampled world area, zooming the minimap out.
@@ -135,9 +130,15 @@ impl MinimapWidget {
     ///
     /// A new `MinimapWidget` with the viewport hidden.
     pub fn new(button_cx: i32, button_cy: i32, button_radius: u32) -> Self {
-        let button = CircleButton::new(button_cx, button_cy, button_radius, BUTTON_FILL)
-            .with_border_color(BUTTON_BORDER)
-            .with_sprite(BUTTON_SPRITE);
+        let button = CircularImageButton::new(
+            button_cx,
+            button_cy,
+            button_radius,
+            filepaths::get_asset_directory()
+                .join("gfx")
+                .join("buttons")
+                .join(BUTTON_IMAGE_FILE),
+        );
 
         let view = MINIMAP_WIDGET_VIEW_SIZE;
         let panel_w = view + 2 * (PANEL_PADDING + PANEL_BORDER);
@@ -213,10 +214,10 @@ impl MinimapWidget {
         if label == "+" {
             RectButton::new(
                 Bounds::new(0, 0, ZOOM_BUTTON_W, ZOOM_BUTTON_H),
-                Background::SolidColor(BUTTON_FILL),
+                Background::SolidColor(Color::RGBA(20, 20, 40, 200)),
             )
             .with_border(Border {
-                color: BUTTON_BORDER,
+                color: Color::RGBA(120, 120, 140, 220),
                 width: 1,
             })
             .with_label(label, 1)
@@ -224,10 +225,10 @@ impl MinimapWidget {
         } else {
             RectButton::new(
                 Bounds::new(0, 0, ZOOM_BUTTON_W, ZOOM_BUTTON_H),
-                Background::SolidColor(BUTTON_FILL),
+                Background::SolidColor(Color::RGBA(20, 20, 40, 200)),
             )
             .with_border(Border {
-                color: BUTTON_BORDER,
+                color: Color::RGBA(120, 120, 140, 220),
                 width: 1,
             })
             .with_label(label, 1)

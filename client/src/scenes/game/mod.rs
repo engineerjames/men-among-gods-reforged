@@ -33,7 +33,6 @@ use mag_core::{
     ranks,
 };
 
-use crate::ui::hud::button_bar::NUMBER_OF_BUTTONS;
 use crate::{
     cert_trust,
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
@@ -126,8 +125,6 @@ const HUD_ARC_CENTER_Y: i32 = crate::constants::TARGET_HEIGHT_INT as i32;
 const HUD_ARC_RADIUS: u32 = 60;
 /// Radius of each individual HUD button.
 const HUD_BUTTON_RADIUS: u32 = 16;
-/// Sprite IDs for [QuestLog, Skills, Talents, Inventory, Settings] buttons.
-const HUD_SPRITE_IDS: [usize; NUMBER_OF_BUTTONS] = [267, 1004, 128, 35];
 /// X center of the HUD button column (lower-right, aligned with minimap).
 const HUD_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
 /// Center Y of the bottom-most HUD button (above the mode button).
@@ -152,8 +149,8 @@ const HUD_PANEL_BG: Color = Color::RGBA(10, 10, 30, 180);
 /// X center of the minimap toggle button (near top-right of screen).
 const MINIMAP_BTN_CX: i32 = crate::constants::TARGET_WIDTH_INT as i32 - 30;
 /// Y center of the minimap toggle button (one spacing above the top HUD button).
-/// The HUD column has 5 buttons (top at `HUD_BTN_BOTTOM_CY - 4 * spacing`), so
-/// the minimap button sits one spacing above that to avoid overlap.
+/// The HUD column has four buttons, so the minimap button sits one spacing
+/// above the top button to avoid overlap.
 const MINIMAP_BTN_CY: i32 = HUD_BTN_BOTTOM_CY - 5 * HUD_BTN_SPACING as i32;
 /// Radius of the minimap toggle button.
 const MINIMAP_BTN_RADIUS: u32 = 14;
@@ -456,7 +453,6 @@ impl GameScene {
                 HUD_BTN_BOTTOM_CY,
                 HUD_BTN_SPACING,
                 HUD_BUTTON_RADIUS,
-                HUD_SPRITE_IDS,
             ),
             rank_progress_line: RankProgressLine::new(
                 (TARGET_WIDTH_INT as i32 - 370) / 2,
