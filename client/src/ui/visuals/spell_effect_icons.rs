@@ -119,6 +119,10 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_MSHIELD
         | skills::SK_RECALL
         | skills::SK_BLAST
+        | skills::SK_RAINS_OF_RENEWAL
+        | skills::SK_SUNS_BLESSING2
+        | skills::SK_SEEING_RED
+        | skills::SK_INNER_STRENGTH
         | skills::SK_REVENANT_CONDUIT2
         | skills::SK_SPECTRAL_PACT2 => SpellEffectKind::Positive,
         skills::SK_CURSE
@@ -698,6 +702,24 @@ mod tests {
         let (spell, active, spell_type) = make_spell_state(0, 1, 8, skills::SK_PROTECT as i16);
         icons.sync(&spell, &active, &spell_type);
         assert!((icons.positives[0].fill - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn templar_and_harakim_self_buffs_render_as_positive() {
+        // These self-buffs are attached server-side with the temp markers
+        // below and must show up as positive active effects.
+        let cases = [
+            (skills::SK_RAINS_OF_RENEWAL as i16, "Rains of Renewal"),
+            (skills::SK_SUNS_BLESSING2 as i16, "Sun's Blessing"),
+            (skills::SK_SEEING_RED as i16, "Seeing Red"),
+            (skills::SK_INNER_STRENGTH as i16, "Inner Strength"),
+        ];
+        for (temp, name) in cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, SpellEffectKind::Positive, "{name} kind");
+            assert_eq!(meta.icon.name, name, "{name} icon");
+        }
     }
 
     #[test]
