@@ -1,40 +1,29 @@
 //! Circular speed-mode button.
 //!
-//! Composes [`CircleButton`] from `button.rs` and adds:
-//! - Mode cycling (Slow --> Normal --> Fast --> Slow) on click
-//! - Per-mode fill color and label
-//! - `WidgetAction::ChangeMode` emission
+//! Holds three [`CircularImageButton`] structs (one per speed mode) and swaps
+//! which one is active based on the current mode. Clicking the active button:
+//! - Cycles the mode (Slow --> Normal --> Fast --> Slow)
+//! - Switches the rendered image to match the new mode
+//! - Emits a `WidgetAction::ChangeMode`
 
-use sdl2::pixels::Color;
-
-use crate::font_cache;
+use crate::filepaths;
 
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
-use crate::ui::widgets::button::CircleButton;
+use crate::ui::widgets::button::CircularImageButton;
 
 // ---------------------------------------------------------------------------
 // Per-mode visuals
 // ---------------------------------------------------------------------------
 
-/// Fill colors for each mode index (0 = Slow, 1 = Normal, 2 = Fast).
-const MODE_COLORS: [Color; 3] = [
-    Color::RGBA(50, 140, 50, 200),  // Slow  – green
-    Color::RGBA(180, 160, 40, 200), // Normal – yellow
-    Color::RGBA(180, 50, 50, 200),  // Fast   – red
-];
+/// Number of selectable speed modes.
+const MODE_COUNT: usize = 3;
 
-/// Single-character labels for each mode.
-const MODE_LABELS: [&str; 3] = ["S", "N", "F"];
+/// Whole-button image filenames indexed by mode (0 = Slow, 1 = Normal, 2 = Fast).
+const MODE_IMAGE_FILES: [&str; MODE_COUNT] = ["slow.png", "normal.png", "fast.png"];
 
 /// Full mode names used for the hover tooltip.
-const MODE_HOVER_TEXTS: [&str; 3] = ["Slow mode", "Normal mode", "Fast mode"];
-
-/// Border color for the circle outline.
-const BORDER_COLOR: Color = Color::RGBA(180, 180, 200, 220);
-
-/// Bitmap font index for the mode label (yellow).
-const LABEL_FONT: usize = 1;
+const MODE_HOVER_TEXTS: [&str; MODE_COUNT] = ["Slow mode", "Normal mode", "Fast mode"];
 
 // ---------------------------------------------------------------------------
 // Widget
@@ -42,8 +31,8 @@ const LABEL_FONT: usize = 1;
 
 /// A circular button in the lower-right corner that cycles through speed modes.
 pub struct ModeButton {
-    /// Inner circle button (handles rendering, hit-testing, hover state).
-    inner: CircleButton,
+    /// One image button per mode; only the active mode's button is rendered.
+    buttons: [CircularImageButton; MODE_COUNT],
     /// Current mode: 0 = Slow, 1 = Normal, 2 = Fast.
     mode: i32,
     /// Queued actions to be drained by the scene.
@@ -63,14 +52,36 @@ impl ModeButton {
     ///
     /// A new `ModeButton` defaulting to mode 1 (Normal).
     pub fn new(center_x: i32, center_y: i32, radius: u32) -> Self {
-        let mode = 1i32;
-        let inner = CircleButton::new(center_x, center_y, radius, MODE_COLORS[mode as usize])
-            .with_border_color(BORDER_COLOR);
+        let button_dir = filepaths::get_asset_directory().join("gfx").join("buttons");
+        let buttons = std::array::from_fn(|i| {
+            CircularImageButton::new(
+                center_x,
+                center_y,
+                radius,
+                button_dir.join(MODE_IMAGE_FILES[i]),
+            )
+        });
         Self {
-            inner,
-            mode,
+            buttons,
+            mode: 1,
             pending_actions: Vec::new(),
         }
+    }
+
+    /// Returns the index of the currently active mode, clamped to a valid range.
+    fn active_index(&self) -> usize {
+        self.mode.clamp(0, MODE_COUNT as i32 - 1) as usize
+    }
+
+    /// Returns a shared reference to the currently active button.
+    fn active(&self) -> &CircularImageButton {
+        &self.buttons[self.active_index()]
+    }
+
+    /// Returns a mutable reference to the currently active button.
+    fn active_mut(&mut self) -> &mut CircularImageButton {
+        let idx = self.active_index();
+        &mut self.buttons[idx]
     }
 
     /// Synchronise the widget with the server-confirmed mode value.
@@ -82,20 +93,7 @@ impl ModeButton {
     ///
     /// * `mode` - Current mode from `character_info().mode`.
     pub fn sync(&mut self, mode: i32) {
-        self.mode = mode.clamp(0, 2);
-        self.apply_mode_visuals();
-    }
-
-    /// Rebuild the inner button so its fill reflects the current mode.
-    fn apply_mode_visuals(&mut self) {
-        let fill = MODE_COLORS[self.mode as usize];
-        self.inner = CircleButton::new(
-            self.inner.bounds().x + self.inner.bounds().width as i32 / 2,
-            self.inner.bounds().y + self.inner.bounds().height as i32 / 2,
-            self.inner.bounds().width / 2,
-            fill,
-        )
-        .with_border_color(BORDER_COLOR);
+        self.mode = mode.clamp(0, MODE_COUNT as i32 - 1);
     }
 
     /// Returns the hover tooltip describing the current mode, or `None` when
@@ -106,8 +104,8 @@ impl ModeButton {
     /// * `Some("Slow mode" | "Normal mode" | "Fast mode")` while hovered,
     ///   or `None`.
     pub fn hover_text(&self) -> Option<&'static str> {
-        if self.inner.is_hovered() {
-            Some(MODE_HOVER_TEXTS[self.mode.clamp(0, 2) as usize])
+        if self.active().is_hovered() {
+            Some(MODE_HOVER_TEXTS[self.active_index()])
         } else {
             None
         }
@@ -115,19 +113,21 @@ impl ModeButton {
 }
 
 impl Widget for ModeButton {
-    /// Returns the bounding rectangle of the circle.
+    /// Returns the bounding rectangle of the active circle.
     fn bounds(&self) -> &Bounds {
-        self.inner.bounds()
+        self.active().bounds()
     }
 
-    /// Moves the button's top-left corner.
+    /// Moves every button's top-left corner so they stay co-located.
     ///
     /// # Arguments
     ///
     /// * `x` - New left edge.
     /// * `y` - New top edge.
     fn set_position(&mut self, x: i32, y: i32) {
-        self.inner.set_position(x, y);
+        for button in &mut self.buttons {
+            button.set_position(x, y);
+        }
     }
 
     /// Handle input events.
@@ -143,12 +143,11 @@ impl Widget for ModeButton {
     /// `Consumed` if the click hit the circle, `Ignored` otherwise.
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
         match event {
-            UiEvent::MouseMove { .. } => self.inner.handle_event(event),
+            UiEvent::MouseMove { .. } => self.active_mut().handle_event(event),
             UiEvent::MouseClick { .. } => {
-                let resp = self.inner.handle_event(event);
+                let resp = self.active_mut().handle_event(event);
                 if resp == EventResponse::Consumed {
-                    self.mode = (self.mode + 1) % 3;
-                    self.apply_mode_visuals();
+                    self.mode = (self.mode + 1) % MODE_COUNT as i32;
                     self.pending_actions
                         .push(WidgetAction::ChangeMode(self.mode));
                 }
@@ -158,7 +157,7 @@ impl Widget for ModeButton {
         }
     }
 
-    /// Draw the mode button.
+    /// Draw the active mode button.
     ///
     /// # Arguments
     ///
@@ -168,24 +167,7 @@ impl Widget for ModeButton {
     ///
     /// `Ok(())` on success, or an SDL2 error string.
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
-        self.inner.render(ctx)?;
-
-        // Draw centered label on top of the circle.
-        let label = MODE_LABELS[self.mode as usize];
-        let bounds = self.inner.bounds();
-        let center_x = bounds.x + bounds.width as i32 / 2;
-        let text_y = bounds.y + (bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
-        font_cache::draw_text(
-            ctx.canvas,
-            ctx.gfx,
-            LABEL_FONT,
-            label,
-            center_x - font_cache::text_width(label) as i32 / 2,
-            text_y,
-            font_cache::TextStyle::PLAIN,
-        )?;
-
-        Ok(())
+        self.active_mut().render(ctx)
     }
 
     /// Drain any pending actions.
@@ -265,11 +247,11 @@ mod tests {
     }
 
     #[test]
-    fn hover_is_still_forwarded_to_inner_button() {
+    fn hover_is_still_forwarded_to_active_button() {
         let mut btn = ModeButton::new(100, 100, 18);
         let resp = btn.handle_event(&UiEvent::MouseMove { x: 100, y: 100 });
         assert_eq!(resp, EventResponse::Ignored);
-        assert!(btn.inner.is_hovered());
+        assert!(btn.active().is_hovered());
     }
 
     #[test]
