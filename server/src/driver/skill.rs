@@ -5591,7 +5591,7 @@ pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 96;
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_REVENANT_CONDUIT2 as u16;
