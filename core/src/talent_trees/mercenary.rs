@@ -338,7 +338,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: INTELLIGENCE_BOOST_1,
-            name: "Intelligence Boost I",
+            name: "Intuition Boost I",
             description: "Increase your Intuition attribute by 10%.",
             cost: 1,
             prereqs: &[CONTAGION],
@@ -360,7 +360,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: INTELLIGENCE_BOOST_2,
-            name: "Intelligence Boost II",
+            name: "Intuition Boost II",
             description: "Further increase your Intuition attribute by 10%.",
             cost: 1,
             prereqs: &[INTELLIGENCE_BOOST_1],

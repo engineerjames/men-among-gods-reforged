@@ -1,9 +1,9 @@
-//! Character inspection panel (right side of viewport).
+//! Character inspection panel (left side of viewport).
 //!
 //! Visible when `should_show_look()` is true and `should_show_shop()` is
 //! false. Displays the looked-at character's name, animated sprite (from
-//! the map tile's `obj2` field at 2× zoom), equipment grid, and
-//! HP/Endurance/Mana bars.
+//! the map tile's `obj2` field at native zoom), equipment grid with slot
+//! outlines and position labels, and HP/Endurance/Mana bars.
 
 use mag_core::constants::{
     TILEX, TILEY, WN_ARMS, WN_BELT, WN_BODY, WN_CLOAK, WN_FEET, WN_HEAD, WN_LEGS, WN_LHAND,
@@ -28,14 +28,14 @@ use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 const PAD: i32 = 6;
 /// Vertical gap between sections.
 const GAP: i32 = 4;
-/// Equipment grid cell size.
-const EQUIP_CELL: i32 = 24;
-/// Equipment grid columns.
-const EQUIP_COLS: i32 = 2;
+/// Equipment grid cell size (matches inventory panel `CELL`).
+const EQUIP_CELL: i32 = 35;
+/// Horizontal gap between the two equipment columns (matches inventory panel).
+const EQUIP_COL_GAP: i32 = 8;
 /// Equipment grid rows.
 const EQUIP_ROWS: i32 = 6;
-/// Sprite zoom factor.
-const SPRITE_ZOOM: u32 = 2;
+/// Sprite zoom factor (1 = native pixel size).
+const SPRITE_ZOOM: u32 = 1;
 /// Stat bar width.
 const BAR_W: i32 = 100;
 /// Stat bar height.
@@ -44,6 +44,16 @@ const BAR_H: i32 = 10;
 const BAR_GAP: i32 = 3;
 /// Font index (yellow bitmap).
 const FONT: usize = 1;
+/// Color for the outline drawn around each equipment cell.
+const CELL_GRID_COLOR: Color = Color::RGBA(80, 80, 100, 180);
+/// Dimmed label color for empty equipment slots.
+const SLOT_LABEL_COLOR: Color = Color::RGBA(110, 110, 130, 200);
+/// Human-readable labels drawn inside empty equipment cells, indexed the
+/// same as `EQUIP_WNTAB`.
+const EQUIP_LABELS: [&str; 12] = [
+    "Head", "Cloak", "Body", "Arms", "Neck", "Belt", "Weapon", "Shield", "Ring", "Ring", "Legs",
+    "Feet",
+];
 
 /// Rank sigil sprite width in pixels.
 const SIGIL_W: i32 = 32;
@@ -420,7 +430,7 @@ impl Widget for LookPanel {
         )?;
         y += header_h + GAP;
 
-        // Sprite (2× zoom, centered)
+        // Sprite (native zoom, centered)
         if self.snap.sprite_id > 0 {
             let tex = ctx.gfx.get_texture(self.snap.sprite_id as usize);
             let q = tex.query();
@@ -435,22 +445,55 @@ impl Widget for LookPanel {
             y += draw_h as i32 + GAP;
         }
 
-        // Equipment grid (2 cols × 6 rows)
-        let equip_x = cx - (EQUIP_COLS * EQUIP_CELL) / 2;
+        // Equipment grid (2 cols × 6 rows) — outlines + labels for empty slots.
+        // Layout matches the inventory panel: EQUIP_CELL px cells, EQUIP_COL_GAP between columns.
+        let grid_w = 2 * EQUIP_CELL + EQUIP_COL_GAP;
+        let equip_x = cx - grid_w / 2;
+
+        // Pass 1: draw all cell outlines.
+        ctx.canvas.set_draw_color(CELL_GRID_COLOR);
+        for n in 0..12usize {
+            let col = (n % 2) as i32;
+            let row = (n / 2) as i32;
+            let ex = equip_x + col * (EQUIP_CELL + EQUIP_COL_GAP);
+            let ey = y + row * EQUIP_CELL;
+            ctx.canvas.draw_rect(sdl2::rect::Rect::new(
+                ex,
+                ey,
+                EQUIP_CELL as u32,
+                EQUIP_CELL as u32,
+            ))?;
+        }
+
+        // Pass 2: items or labels.
         for n in 0..12usize {
             let sprite = self.snap.worn[n];
-            if sprite == 0 {
-                continue;
+            let col = (n % 2) as i32;
+            let row = (n / 2) as i32;
+            let ex = equip_x + col * (EQUIP_CELL + EQUIP_COL_GAP);
+            let ey = y + row * EQUIP_CELL;
+            if sprite != 0 {
+                let tex = ctx.gfx.get_texture(sprite as usize);
+                let q = tex.query();
+                ctx.canvas.copy(
+                    tex,
+                    None,
+                    Some(sdl2::rect::Rect::new(ex, ey, q.width, q.height)),
+                )?;
+            } else {
+                let label_cx = ex + EQUIP_CELL / 2;
+                let label_cy = ey + EQUIP_CELL / 2 - 5;
+                ctx.canvas.set_draw_color(SLOT_LABEL_COLOR);
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    FONT,
+                    EQUIP_LABELS[n],
+                    label_cx,
+                    label_cy,
+                    font_cache::TextStyle::centered(),
+                )?;
             }
-            let ex = equip_x + ((n % EQUIP_COLS as usize) as i32) * EQUIP_CELL;
-            let ey = y + ((n / EQUIP_COLS as usize) as i32) * EQUIP_CELL;
-            let tex = ctx.gfx.get_texture(sprite as usize);
-            let q = tex.query();
-            ctx.canvas.copy(
-                tex,
-                None,
-                Some(sdl2::rect::Rect::new(ex, ey, q.width, q.height)),
-            )?;
         }
         y += EQUIP_ROWS * EQUIP_CELL + GAP;
 

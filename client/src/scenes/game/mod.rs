@@ -167,11 +167,11 @@ const MODE_BTN_RADIUS: u32 = 18;
 // ---- Look panel (center-right) ---- //
 
 /// Width of the look panel.
-const LOOK_PANEL_W: u32 = 180;
+const LOOK_PANEL_W: u32 = 130;
 /// Height of the look panel.
 const LOOK_PANEL_H: u32 = 260;
-/// X position of the look panel (right side, 4 px margin).
-const LOOK_PANEL_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - LOOK_PANEL_W as i32 - 4;
+/// X position of the look panel (left side, 4 px margin).
+const LOOK_PANEL_X: i32 = 4;
 /// Y position of the look panel (vertically centered).
 const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 4;
 

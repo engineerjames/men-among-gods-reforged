@@ -139,7 +139,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: CORPORAL_INTUITION,
-            name: "Corporal Intuition",
+            name: "Intuition Boost I",
             description: "Increase Intuition by 5%.",
             cost: 1,
             prereqs: &[LAVA_BLAST, REVENANT_CONDUIT],
@@ -150,7 +150,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: STAFF_SERGEANT_INTUITION,
-            name: "Staff Sergeant Intuition",
+            name: "Intuition Boost II",
             description: "Increase Intuition by an additional 5%.",
             cost: 1,
             prereqs: &[CORPORAL_INTUITION],
@@ -161,7 +161,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: FIRST_SERGEANT_WILLPOWER,
-            name: "First Sergeant Willpower",
+            name: "Willpower Boost I",
             description: "Increase Willpower by 5%.",
             cost: 1,
             prereqs: &[STAFF_SERGEANT_INTUITION],
@@ -249,7 +249,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: FIELD_MARSHAL_INTUITION,
-            name: "Field Marshal Intuition",
+            name: "Intuition Boost III",
             description: "Increase Intuition by 5%.",
             cost: 1,
             prereqs: &[ELEMENTAL_ANGUISH, SPECTRAL_PACT],
@@ -260,7 +260,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: BARON_WILLPOWER,
-            name: "Baron Willpower",
+            name: "Willpower Boost II",
             description: "Increase Willpower by 5%.",
             cost: 1,
             prereqs: &[FIELD_MARSHAL_INTUITION],
