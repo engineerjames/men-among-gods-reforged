@@ -349,21 +349,23 @@ pub fn chance_base(gs: &mut GameState, cn: usize, skill: i32, d20: i32, power: i
 /// # Panics
 ///
 /// * Panics if `cn` is not a valid character index.
-pub fn chance(gs: &mut GameState, cn: usize, d20: i32) -> i32 {
+pub fn chance(_gs: &mut GameState, _cn: usize, _d20: i32) -> i32 {
     // Ported from C++ chance(int cn, int d20)
-    let mut d20 = d20;
-    let (flags, luck) = (gs.characters[cn].flags, gs.characters[cn].luck);
-    if (flags & CharacterFlags::Player.bits()) != 0 && luck < 0 {
-        d20 += luck / 500 - 1;
-    }
+    // let mut d20 = d20;
+    // let (flags, luck) = (gs.characters[cn].flags, gs.characters[cn].luck);
+    // if (flags & CharacterFlags::Player.bits()) != 0 && luck < 0 {
+    //     d20 += luck / 500 - 1;
+    // }
 
-    d20 = d20.clamp(0, 18);
+    // d20 = d20.clamp(0, 18);
 
-    let roll = crate::helpers::random_mod(20);
-    if roll as i32 > d20 {
-        gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
-        return -1;
-    }
+    // let roll = crate::helpers::random_mod(20);
+    // if roll as i32 > d20 {
+    //     gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
+    //     return -1;
+    // }
+
+    // TODO: Leave this commented out for now to remove the random chance to lose focus
     0
 }
 
