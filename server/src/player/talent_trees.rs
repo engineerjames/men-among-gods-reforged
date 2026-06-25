@@ -15,12 +15,13 @@ use core::{
     string_operations::c_string_to_str,
     talent_trees::{
         TalentEffect, TalentNode, TalentRef, apply_talent_point, available_talent_points,
-        find_node, talent_prereqs_met, tree_for,
+        find_node, is_talent_spent, reset_talent_points, talent_prereqs_met, tree_for,
     },
     types::Class,
 };
 
 use crate::game_state::GameState;
+use crate::points;
 
 /// Top-level "spend a point on a talent" entry point.
 ///
@@ -213,6 +214,133 @@ fn grant_skill_at_base(
     );
 
     Ok(())
+}
+
+/// Reset every learned talent back to an unspent state.
+///
+/// Reverses the full effect of each learned node, not just the spent points:
+///
+/// * Talent-granted skills are removed and the experience spent raising them
+///   above their granted base is refunded into the character's spendable
+///   point pool (see [`ungrant_skill`]).
+/// * Stat, attribute, dodge/armor/weapon, HP/mana/endurance, passive, and
+///   primary-hit-proc effects are recomputed from the learned talent bits in
+///   `really_update_char`, so clearing the bits and re-running
+///   [`GameState::do_update_char`] reverses them automatically.
+/// * The packed talent bits are cleared and the spent talent points refunded
+///   via [`core::talent_trees::reset_talent_points`].
+/// * Runtime proc bookkeeping (`talent_primary_hit_counts`) is cleared.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `cn` - Character slot index whose talents are being reset.
+pub fn reset_talents(gs: &mut GameState, cn: usize) {
+    let class = Class::from(gs.characters[cn].kindred);
+
+    if let Some(tree) = tree_for(class) {
+        for node in tree.nodes {
+            if is_talent_spent(
+                &gs.characters[cn].future1,
+                node.slot.mask,
+                node.slot.layer as usize,
+            ) {
+                dispatch_undo_effect(cn, gs, node.effect);
+            }
+        }
+    }
+
+    reset_talent_points(&mut gs.characters[cn].future1);
+
+    if let Some(count) = gs.talent_primary_hit_counts.get_mut(cn) {
+        *count = 0;
+    }
+
+    gs.do_update_char(cn);
+}
+
+/// Reverse the learning-time portion of a [`TalentEffect`].
+///
+/// Mirror of [`dispatch_immediate_effect`]: only effects that permanently
+/// mutate the character record at learn time need an explicit undo. Effects
+/// that are recomputed from learned talent bits during `really_update_char`
+/// are reversed simply by clearing those bits, so they are intentional no-ops
+/// here.
+///
+/// # Arguments
+///
+/// * `cn` - Character slot index.
+/// * `gs` - Mutable game state.
+/// * `effect` - The effect to reverse.
+fn dispatch_undo_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) {
+    match effect {
+        TalentEffect::GrantSkill { skill } => ungrant_skill(cn, gs, skill),
+        TalentEffect::GrantSkillAtBase { skill, .. } => ungrant_skill(cn, gs, skill),
+        TalentEffect::Composite { effects } => {
+            for effect in effects {
+                dispatch_undo_effect(cn, gs, *effect);
+            }
+        }
+        TalentEffect::Passive
+        | TalentEffect::SkillsFlat { .. }
+        | TalentEffect::SkillsPercent { .. }
+        | TalentEffect::AttributesFlat { .. }
+        | TalentEffect::AttributesPercent { .. }
+        | TalentEffect::DodgeChancePercent { .. }
+        | TalentEffect::ArmorPercent { .. }
+        | TalentEffect::WeaponPercent { .. }
+        | TalentEffect::HpManaEndFlat { .. }
+        | TalentEffect::PrimaryHitProc { .. } => {}
+    }
+}
+
+/// Remove a talent-granted skill and refund the experience spent raising it.
+///
+/// Talent-granted skills occupy reserved skill slots that are not present in
+/// any character template, so a reset removes them entirely. The experience
+/// the player spent raising the skill above its granted base (base value `1`)
+/// is summed using the same per-level cost as [`GameState::do_raise_skill`]
+/// and returned to the spendable point pool. `points_tot` is left untouched,
+/// matching the raise path which only debits `points`.
+///
+/// # Arguments
+///
+/// * `cn` - Character slot index.
+/// * `game_state` - Mutable game state.
+/// * `skill` - Talent-granted skill to remove.
+fn ungrant_skill(cn: usize, game_state: &mut GameState, skill: Skill) {
+    let idx = skill as usize;
+    let base_idx = SkillIndex::BaseValue as usize;
+    let diff_idx = SkillIndex::RaiseDifficulty as usize;
+
+    let base = i32::from(game_state.characters[cn].skill[idx][base_idx]);
+    if base == 0 {
+        return;
+    }
+
+    let diff = i32::from(game_state.characters[cn].skill[idx][diff_idx]);
+
+    // Refund the experience spent raising the skill from its granted base
+    // value of 1 up to its current base, matching `do_raise_skill`'s per-level
+    // `skill_needed` cost.
+    let mut refund: i32 = 0;
+    for value in 1..base {
+        refund = refund.saturating_add(points::skill_needed(value, diff));
+    }
+
+    let ch = &mut game_state.characters[cn];
+    ch.points = ch.points.saturating_add(refund);
+    ch.skill[idx][base_idx] = 0;
+    ch.skill[idx][SkillIndex::MaxValue as usize] = 0;
+    ch.skill[idx][diff_idx] = 0;
+    ch.set_do_update_flags();
+
+    log::info!(
+        "Removed talent-granted skill {:?} from character {} (refunded {} experience)",
+        skill,
+        c_string_to_str(&ch.name),
+        refund
+    );
 }
 
 #[cfg(test)]
@@ -820,6 +948,138 @@ mod tests {
             assert_eq!(t[TALENT_POINTS_INDEX], 2);
             assert_eq!(t[1], 0);
             assert_eq!(t[2], 0);
+        });
+    }
+
+    #[test]
+    fn reset_talents_refunds_points_and_clears_bits_via_game_state() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 2);
+            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 0);
+
+            reset_talents(gs, cn);
+
+            let t = &gs.characters[cn].future1;
+            assert_eq!(t[TALENT_POINTS_INDEX], 2);
+            assert_eq!(t[1], 0);
+            assert_eq!(t[2], 0);
+        });
+    }
+
+    #[test]
+    fn reset_talents_removes_granted_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            learn_talent(gs, cn, templar_slot("Renewal")).unwrap();
+
+            let idx = Skill::RainsOfRenewal as usize;
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                1
+            );
+
+            reset_talents(gs, cn);
+
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::MaxValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize],
+                0
+            );
+            // The talent point spent on the grant is also refunded.
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 1);
+        });
+    }
+
+    #[test]
+    fn reset_talents_refunds_experience_spent_raising_granted_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            gs.characters[cn].points = 100;
+            learn_talent(gs, cn, templar_slot("Renewal")).unwrap();
+
+            let idx = Skill::RainsOfRenewal as usize;
+            // Raise the granted skill from base 1 -> 3, spending 1 + 2 = 3 exp.
+            assert!(gs.do_raise_skill(cn, idx as i32));
+            assert!(gs.do_raise_skill(cn, idx as i32));
+            assert_eq!(gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize], 3);
+            assert_eq!(gs.characters[cn].points, 97);
+
+            reset_talents(gs, cn);
+
+            // Skill removed and the 3 experience returned to the pool.
+            assert_eq!(gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize], 0);
+            assert_eq!(gs.characters[cn].points, 100);
+        });
+    }
+
+    #[test]
+    fn reset_talents_clears_primary_hit_counts() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            gs.talent_primary_hit_counts[cn] = 4;
+
+            reset_talents(gs, cn);
+
+            assert_eq!(gs.talent_primary_hit_counts[cn], 0);
+        });
+    }
+
+    #[test]
+    fn reset_talents_leaves_no_residual_for_stat_only_talent() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 2);
+            let points_before = gs.characters[cn].points;
+            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
+
+            reset_talents(gs, cn);
+
+            // Stat/dodge talents are recomputed from bits, so resetting must not
+            // touch the experience pool.
+            assert_eq!(gs.characters[cn].points, points_before);
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 2);
+        });
+    }
+
+    #[test]
+    fn ungrant_skill_refunds_cubic_raise_cost() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            let idx = Skill::RainsOfRenewal as usize;
+            gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[idx][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
+            gs.characters[cn].points = 0;
+
+            ungrant_skill(cn, gs, Skill::RainsOfRenewal);
+
+            // skill_needed(value, 5) for value in 1..4 -> 1 + 2 + 3 = 6.
+            assert_eq!(gs.characters[cn].points, 6);
+            assert_eq!(gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize], 0);
+        });
+    }
+
+    #[test]
+    fn ungrant_skill_is_noop_for_absent_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn].points = 42;
+            ungrant_skill(cn, gs, Skill::RainsOfRenewal);
+            assert_eq!(gs.characters[cn].points, 42);
         });
     }
 
