@@ -4211,6 +4211,11 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     }
     gs.characters[cc].data[98] = ticker + COMPANION_TIMEOUT;
 
+    // Clear all text slots to prevent leftover bytes from previous content bleeding through.
+    for slot in &mut gs.characters[cc].text {
+        slot.fill(0);
+    }
+
     let text0 = b"#14#Yes! %s buys the farm!";
     gs.characters[cc].text[0][..text0.len()].copy_from_slice(text0);
     let text1 = b"#13#Yahoo! An enemy! Prepare to die, %s!";
