@@ -174,9 +174,6 @@ fn format_duration(secs: f32) -> String {
 struct SpellSlotEntry {
     /// Spell slot index in the server-provided 20-element arrays.
     slot_index: usize,
-    /// Sprite tile number from the `SetCharSpell` packet; used as the
-    /// texture cache key and to detect slot reuse.
-    sprite: i16,
     /// Remaining fill fraction in `[0.0, 1.0]` (`active / 16.0`).
     fill: f32,
     /// Pre-computed display metadata for this effect.
@@ -308,9 +305,13 @@ pub struct SpellEffectIcons {
     hovered: Option<HoveredIcon>,
     /// Observed decay trackers keyed by spell slot index.
     duration_trackers: HashMap<usize, DurationTracker>,
-    /// Lazily-loaded texture IDs for spell icons, keyed by sprite tile number.
+    /// Lazily-loaded texture IDs for spell icons, keyed by icon filename.
+    ///
+    /// Keying by filename rather than the server-provided `sprite[1]` value avoids
+    /// cache collisions when multiple abilities share the same `sprite[1]` placeholder
+    /// (e.g. several positive buffs currently all use `sprite[1] = 88`).
     /// `None` means loading was attempted and failed, so rendering should use the fallback tile.
-    icon_texture_ids: HashMap<i16, Option<usize>>,
+    icon_texture_ids: HashMap<&'static str, Option<usize>>,
 }
 
 impl SpellEffectIcons {
@@ -369,7 +370,6 @@ impl SpellEffectIcons {
             active_slots.push(i);
             let entry = SpellSlotEntry {
                 slot_index: i,
-                sprite,
                 fill,
                 meta,
             };
@@ -549,11 +549,14 @@ impl SpellEffectIcons {
 
     /// Lazily loads and returns the texture ID for the given spell metadata.
     ///
+    /// The texture is cached by `meta.icon_filename`, which is unique per icon
+    /// regardless of the `sprite[1]` value the server sends. This avoids cache
+    /// collisions when multiple abilities share the same `sprite[1]` placeholder.
+    ///
     /// # Arguments
     ///
     /// * `ctx` - Render context containing the graphics cache.
-    /// * `sprite` - Sprite tile number used as the texture cache key.
-    /// * `meta` - Display metadata containing the temporary icon filename.
+    /// * `meta` - Display metadata containing the icon filename used as the cache key.
     ///
     /// # Returns
     ///
@@ -561,10 +564,9 @@ impl SpellEffectIcons {
     fn texture_id_for(
         &mut self,
         ctx: &mut RenderContext<'_, '_>,
-        sprite: i16,
         meta: SpellIconMeta,
     ) -> Option<usize> {
-        if let Some(id) = self.icon_texture_ids.get(&sprite) {
+        if let Some(id) = self.icon_texture_ids.get(meta.icon_filename) {
             return *id;
         }
 
@@ -582,7 +584,7 @@ impl SpellEffectIcons {
                 None
             }
         };
-        self.icon_texture_ids.insert(sprite, texture_id);
+        self.icon_texture_ids.insert(meta.icon_filename, texture_id);
         texture_id
     }
 
@@ -614,7 +616,7 @@ impl SpellEffectIcons {
             ctx.canvas.set_draw_color(ICON_BG);
             ctx.canvas.fill_rect(rect)?;
 
-            if let Some(texture_id) = self.texture_id_for(ctx, entry.sprite, meta.icon) {
+            if let Some(texture_id) = self.texture_id_for(ctx, meta.icon) {
                 let texture = ctx.gfx.get_texture(texture_id);
                 ctx.canvas.copy(texture, None, Some(rect))?;
             } else {

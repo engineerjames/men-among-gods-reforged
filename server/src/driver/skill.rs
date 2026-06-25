@@ -1382,7 +1382,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         for n in 0..5 {
             gs.items[in_].attrib[n][1] = (power / 5 + 3) as i8;
         }
-        gs.items[in_].sprite[1] = 88;
+        gs.items[in_].sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         gs.items[in_].duration = (TICKS * 60 * 10) as u32;
         gs.items[in_].active = (TICKS * 60 * 10) as u32;
         gs.items[in_].temp = SK_BLESS as u16;
@@ -5066,7 +5066,7 @@ pub fn skill_rains_of_renewal(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_RAINS_OF_RENEWAL as u16;
@@ -5185,7 +5185,7 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = buff_duration as u32;
         item.active = buff_duration as u32;
         item.temp = SK_SUNS_BLESSING2 as u16;
@@ -5268,7 +5268,7 @@ pub fn skill_seeing_red(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_SEEING_RED as u16;
@@ -5420,7 +5420,7 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = buff_duration as u32;
         item.active = buff_duration as u32;
         item.temp = SK_INNER_STRENGTH as u16;
@@ -5691,7 +5691,7 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_SPECTRAL_PACT2 as u16;
