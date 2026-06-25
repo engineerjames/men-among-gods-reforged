@@ -11,6 +11,8 @@ use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
+const PERCENT_HEALTH_TEXT_OFFSET_Y: i32 = 47;
+
 #[derive(Copy, Clone)]
 enum HoverHighlight {
     Character {
@@ -741,7 +743,7 @@ impl GameScene {
                         // horizontally centered, shifted 64px up relative to sprite origin.
                         let text_len = text.len() as i32;
                         let np_rx = ground_x - (text_len * 5 / 2) + ch_xoff;
-                        let np_ry = ground_y - 54 + ch_yoff;
+                        let np_ry = ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y + ch_yoff;
                         font_cache::draw_text(
                             canvas,
                             gfx,

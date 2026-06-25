@@ -140,7 +140,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: DIVINE_BLESSING,
-            name: "Divine Blessing",
+            name: "Sun's Blessing",
             description: "Learn Sun's Blessing.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
