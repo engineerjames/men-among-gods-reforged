@@ -1361,13 +1361,9 @@ mod tests {
         assert_eq!(tree.nodes.len(), 16);
         assert_grants_skill(named_node(tree, "Renewal"), Skill::RainsOfRenewal);
         assert_grants_skill(named_node(tree, "Gash"), Skill::Gash);
+        assert_attribute_percent(named_node(tree, "Strength Boost I"), Attribute::Strength, 5);
         assert_attribute_percent(
-            named_node(tree, "Corporal Strength"),
-            Attribute::Strength,
-            5,
-        );
-        assert_attribute_percent(
-            named_node(tree, "Staff Sergeant Strength"),
+            named_node(tree, "Strength Boost II"),
             Attribute::Strength,
             5,
         );
@@ -1376,9 +1372,9 @@ mod tests {
             Skill::Meditate,
             5,
         );
-        assert_grants_skill(named_node(tree, "Divine Blessing"), Skill::SunsBlessing);
+        assert_grants_skill(named_node(tree, "Sun's Blessing"), Skill::SunsBlessing);
         assert_grants_skill(named_node(tree, "Seeing Red"), Skill::SeeingRed);
-        assert_hp_end(named_node(tree, "Captain Vitality"), 100, 50);
+        assert_hp_end(named_node(tree, "Vitality Boost I"), 100, 50);
         assert_primary_hit_proc(
             named_node(tree, "Renewing Strikes"),
             TalentPrimaryHitProcKind::HealSelfHp { hp: 50 },
@@ -1387,15 +1383,11 @@ mod tests {
             named_node(tree, "Judgment Strikes"),
             TalentPrimaryHitProcKind::DamageTarget { damage: 25 },
         );
-        assert_hp_end(named_node(tree, "Brigadier General Vitality"), 100, 50);
+        assert_hp_end(named_node(tree, "Vitality Boost II"), 100, 50);
         assert_grants_skill(named_node(tree, "Holy Fury"), Skill::ThunderousFury);
         assert_grants_skill(named_node(tree, "Inner Strength"), Skill::InnerStrength);
-        assert_attribute_percent(
-            named_node(tree, "Field Marshal Agility"),
-            Attribute::Agility,
-            5,
-        );
-        assert_attribute_percent(named_node(tree, "Baron Agility"), Attribute::Agility, 5);
+        assert_attribute_percent(named_node(tree, "Agility Boost I"), Attribute::Agility, 5);
+        assert_attribute_percent(named_node(tree, "Agility Boost II"), Attribute::Agility, 5);
     }
 
     #[test]
@@ -1406,17 +1398,17 @@ mod tests {
         assert_grants_skill(named_node(tree, "Lava Blast"), Skill::LavaBlast);
         assert_grants_skill(named_node(tree, "Revenant Conduit"), Skill::RevenantConduit);
         assert_attribute_percent(
-            named_node(tree, "Corporal Intuition"),
+            named_node(tree, "Intuition Boost I"),
             Attribute::Intuition,
             5,
         );
         assert_attribute_percent(
-            named_node(tree, "Staff Sergeant Intuition"),
+            named_node(tree, "Intuition Boost II"),
             Attribute::Intuition,
             5,
         );
         assert_attribute_percent(
-            named_node(tree, "First Sergeant Willpower"),
+            named_node(tree, "Willpower Boost I"),
             Attribute::Willpower,
             5,
         );
@@ -1429,18 +1421,22 @@ mod tests {
             Skill::SpellcasterKindredSpirit,
         );
         assert_attribute_percent(
-            named_node(tree, "Brigadier General Intuition"),
+            named_node(tree, "Intuition Boost II"),
             Attribute::Intuition,
             5,
         );
         assert_grants_skill(named_node(tree, "Elemental Anguish"), Skill::AnguishEarth);
         assert_grants_skill(named_node(tree, "Spectral Pact"), Skill::SpectralPact);
         assert_attribute_percent(
-            named_node(tree, "Field Marshal Intuition"),
+            named_node(tree, "Intuition Boost III"),
             Attribute::Intuition,
             5,
         );
-        assert_attribute_percent(named_node(tree, "Baron Willpower"), Attribute::Willpower, 5);
+        assert_attribute_percent(
+            named_node(tree, "Willpower Boost II"),
+            Attribute::Willpower,
+            5,
+        );
         assert_hp_mana_end(named_node(tree, "Warlord Ascendancy"), 50, 100, 50);
     }
 

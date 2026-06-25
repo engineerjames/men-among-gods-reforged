@@ -218,7 +218,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: BRIGADIER_GENERAL_INTUITION,
-            name: "Brigadier General Intuition",
+            name: "Intuition Boost II",
             description: "Increase Intuition by 5%.",
             cost: 1,
             prereqs: &[ELEMENT_SWITCHING, SPELLCASTER_KINDRED_SPIRIT],
