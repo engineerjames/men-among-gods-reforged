@@ -11,7 +11,30 @@ use core::string_operations::c_string_to_str;
 use core::traits;
 use core::types::Character;
 
+const NPC_SELF_SPELL_EVAL_INTERVAL: i32 = 4;
+const NPC_COMBAT_SPELL_EVAL_INTERVAL: i32 = 3;
+
 // Helper functions
+
+fn npc_spell_eval_due(next_ticks: &mut [i32], cn: usize, ticker: i32, interval: i32) -> bool {
+    let next_tick = next_ticks[cn];
+    if next_tick == 0 {
+        let first_tick = ticker + (cn as i32 % interval);
+        if first_tick <= ticker {
+            next_ticks[cn] = ticker + interval;
+            return true;
+        }
+        next_ticks[cn] = first_tick;
+        return false;
+    }
+
+    if ticker < next_tick {
+        return false;
+    }
+
+    next_ticks[cn] = ticker + interval;
+    true
+}
 
 /// Returns the X offset for a given frustration value.
 ///
@@ -1714,7 +1737,6 @@ pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize)
 ///
 /// * Panics if any legacy id or index parameter used by `npc_try_spell` is outside the corresponding game-state collection.
 pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> bool {
-    let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::NpcTrySpell);
     if !npc_spell_preconditions_met(&gs.characters[cn], &gs.characters[co], spell) {
         return false;
     }
@@ -1948,6 +1970,12 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
 
     let ticker = gs.globals.ticker;
     let _flags = gs.globals.flags;
+    let should_eval_self_spells = npc_spell_eval_due(
+        &mut gs.npc_next_self_spell_eval_tick,
+        cn,
+        ticker,
+        NPC_SELF_SPELL_EVAL_INTERVAL,
+    );
 
     // reset panic mode if expired
     if gs.characters[cn].data[78] < ticker {
@@ -2076,7 +2104,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     }
 
     // generic spell management
-    {
+    if should_eval_self_spells {
         let a_mana = gs.characters[cn].a_mana;
         let med_skill = gs.characters[cn].skill[skills::SK_MEDIT][0];
         if a_mana > i32::from(gs.characters[cn].mana[5]) * 850 && med_skill != 0 {
@@ -2121,7 +2149,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     }
 
     // create light
-    {
+    if should_eval_self_spells {
         let data62 = gs.characters[cn].data[62];
         let _data58 = gs.characters[cn].data[58];
         if data62 > _data58 {
@@ -2208,55 +2236,64 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
                 return true;
             }
 
-            if co != 0
-                && (gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 600
-                    || helpers::random_mod_i32(10) == 0)
-                && npc_try_spell(gs, cn, co, skills::SK_BLAST)
-            {
-                return true;
-            }
+            let should_eval_combat_spells = npc_spell_eval_due(
+                &mut gs.npc_next_combat_spell_eval_tick,
+                cn,
+                ticker,
+                NPC_COMBAT_SPELL_EVAL_INTERVAL,
+            );
 
-            if co != 0
-                && gs.globals.ticker > gs.characters[cn].data[75]
-                && npc_try_spell(gs, cn, co, skills::SK_STUN)
-            {
-                gs.characters[cn].data[75] = gs.globals.ticker
-                    + i32::from(gs.characters[cn].skill[skills::SK_STUN][5])
-                    + TICKS * 8;
-                return true;
-            }
+            if should_eval_combat_spells {
+                if co != 0
+                    && (gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 600
+                        || helpers::random_mod_i32(10) == 0)
+                    && npc_try_spell(gs, cn, co, skills::SK_BLAST)
+                {
+                    return true;
+                }
 
-            if gs.characters[cn].a_mana > 75000 && npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
-                return true;
-            }
-            if npc_try_spell(gs, cn, cn, skills::SK_PROTECT) {
-                return true;
-            }
-            if npc_try_spell(gs, cn, cn, skills::SK_MSHIELD) {
-                return true;
-            }
-            if npc_try_spell(gs, cn, cn, skills::SK_ENHANCE) {
-                return true;
-            }
-            if npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
-                return true;
-            }
-            if co != 0 && npc_try_spell(gs, cn, co, skills::SK_CURSE) {
-                return true;
-            }
-            if co != 0
-                && gs.globals.ticker > gs.characters[cn].data[74] + (TICKS * 10)
-                && npc_try_spell(gs, cn, co, skills::SK_GHOST)
-            {
-                gs.characters[cn].data[74] = gs.globals.ticker;
-                return true;
-            }
+                if co != 0
+                    && gs.globals.ticker > gs.characters[cn].data[75]
+                    && npc_try_spell(gs, cn, co, skills::SK_STUN)
+                {
+                    gs.characters[cn].data[75] = gs.globals.ticker
+                        + i32::from(gs.characters[cn].skill[skills::SK_STUN][5])
+                        + TICKS * 8;
+                    return true;
+                }
 
-            if co != 0
-                && gs.characters[co].armor + 5 > gs.characters[cn].weapon
-                && npc_try_spell(gs, cn, co, skills::SK_BLAST)
-            {
-                return true;
+                if gs.characters[cn].a_mana > 75000 && npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
+                    return true;
+                }
+                if npc_try_spell(gs, cn, cn, skills::SK_PROTECT) {
+                    return true;
+                }
+                if npc_try_spell(gs, cn, cn, skills::SK_MSHIELD) {
+                    return true;
+                }
+                if npc_try_spell(gs, cn, cn, skills::SK_ENHANCE) {
+                    return true;
+                }
+                if npc_try_spell(gs, cn, cn, skills::SK_BLESS) {
+                    return true;
+                }
+                if co != 0 && npc_try_spell(gs, cn, co, skills::SK_CURSE) {
+                    return true;
+                }
+                if co != 0
+                    && gs.globals.ticker > gs.characters[cn].data[74] + (TICKS * 10)
+                    && npc_try_spell(gs, cn, co, skills::SK_GHOST)
+                {
+                    gs.characters[cn].data[74] = gs.globals.ticker;
+                    return true;
+                }
+
+                if co != 0
+                    && gs.characters[co].armor + 5 > gs.characters[cn].weapon
+                    && npc_try_spell(gs, cn, co, skills::SK_BLAST)
+                {
+                    return true;
+                }
             }
         }
     }
@@ -2317,7 +2354,6 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     let min_x = std::cmp::max(i32::from(ch_pos.0) - 8, 1) as usize;
     let max_x = std::cmp::min(i32::from(ch_pos.0) + 8, SERVER_MAPX - 1) as usize;
 
-    let _prof_itemscan = crate::tick_profile::scope(crate::tick_profile::Stage::NhItemscan);
     for y in min_y..=max_y {
         for x in min_x..=max_x {
             let m = x + y * SERVER_MAPX as usize;
@@ -3982,6 +4018,27 @@ mod tests {
     }
 
     // ---- npc_sight_turn_in tests ----
+
+    #[test]
+    fn npc_spell_eval_due_staggers_first_tick_and_then_uses_interval() {
+        let mut next_ticks = vec![0; 8];
+
+        assert!(!npc_spell_eval_due(&mut next_ticks, 1, 100, 4));
+        assert_eq!(next_ticks[1], 101);
+        assert!(npc_spell_eval_due(&mut next_ticks, 1, 101, 4));
+        assert_eq!(next_ticks[1], 105);
+        assert!(!npc_spell_eval_due(&mut next_ticks, 1, 104, 4));
+        assert!(npc_spell_eval_due(&mut next_ticks, 1, 105, 4));
+        assert_eq!(next_ticks[1], 109);
+    }
+
+    #[test]
+    fn npc_spell_eval_due_runs_immediately_for_matching_phase() {
+        let mut next_ticks = vec![0; 8];
+
+        assert!(npc_spell_eval_due(&mut next_ticks, 4, 100, 4));
+        assert_eq!(next_ticks[4], 104);
+    }
 
     #[test]
     fn sight_turn_in_teaches_skill_and_consumes_one_item() {

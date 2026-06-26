@@ -8788,7 +8788,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.characters[cn].goto_x = 0;
 
     // Set new position
-    gs.map[m3].ch = cn as u32;
+    gs.set_map_ch(m3, cn as u32);
     gs.map[m3].to_ch = 0;
     gs.characters[cn].x = (m3 % SERVER_MAPX as usize) as i16;
     gs.characters[cn].y = (m3 / SERVER_MAPX as usize) as i16;

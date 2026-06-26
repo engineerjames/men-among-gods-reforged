@@ -11,7 +11,6 @@ use crate::{driver, helpers};
 /// * `gs` - Mutable reference to the unified game state.
 /// * `cn` - Character number (index)
 pub fn act_idle(gs: &mut GameState, cn: usize) {
-    let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::ActIdle);
     let should_notify = (gs.globals.ticker & 15) == (cn as i32 & 15);
     if should_notify {
         let (x, y) = (
@@ -2497,33 +2496,18 @@ pub fn driver(gs: &mut GameState, cn: usize) {
         & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
         != 0;
     if !is_player_or_usurp {
-        let __t = std::time::Instant::now();
         driver::npc_driver_high(gs, cn);
-        crate::tick_profile::add(
-            crate::tick_profile::Stage::NpcHigh,
-            __t.elapsed().as_secs_f32() * 1000.0,
-        );
     }
 
     let use_nr = gs.characters[cn].use_nr;
     if use_nr != 0 {
-        let __t = std::time::Instant::now();
         drv_use(gs, cn, i32::from(use_nr));
-        crate::tick_profile::add(
-            crate::tick_profile::Stage::UseItem,
-            __t.elapsed().as_secs_f32() * 1000.0,
-        );
         return;
     }
 
     let skill_nr = gs.characters[cn].skill_nr;
     if skill_nr != 0 {
-        let __t = std::time::Instant::now();
         drv_skill(gs, cn);
-        crate::tick_profile::add(
-            crate::tick_profile::Stage::Skill,
-            __t.elapsed().as_secs_f32() * 1000.0,
-        );
         return;
     }
 
@@ -2532,51 +2516,30 @@ pub fn driver(gs: &mut GameState, cn: usize) {
         != 0;
     let attack_cn = gs.characters[cn].attack_cn;
     if is_player_or_usurp && attack_cn == 0 {
-        let __t = std::time::Instant::now();
         player::tick::player_driver_med(gs, cn);
-        crate::tick_profile::add(
-            crate::tick_profile::Stage::PlayerMed,
-            __t.elapsed().as_secs_f32() * 1000.0,
-        );
     }
 
     let goto_x = gs.characters[cn].goto_x;
     if goto_x != 0 {
         let goto_y = gs.characters[cn].goto_y;
-        let __t = std::time::Instant::now();
         drv_moveto(gs, cn, goto_x as usize, goto_y as usize);
-        crate::tick_profile::add(
-            crate::tick_profile::Stage::Moveto,
-            __t.elapsed().as_secs_f32() * 1000.0,
-        );
         return;
     }
 
     let attack_cn = gs.characters[cn].attack_cn;
     if attack_cn != 0 {
-        let __t = std::time::Instant::now();
         drv_attack_char(gs, cn, attack_cn as usize);
-        crate::tick_profile::add(
-            crate::tick_profile::Stage::Attack,
-            __t.elapsed().as_secs_f32() * 1000.0,
-        );
         return;
     }
 
     let misc_action = gs.characters[cn].misc_action;
-    let __t_misc = std::time::Instant::now();
     match u32::from(misc_action) {
         x if x == core::constants::DR_IDLE => {
             let is_player = (gs.characters[cn].flags
                 & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
                 != 0;
             if !is_player {
-                let __t = std::time::Instant::now();
                 driver::npc_driver_low(gs, cn);
-                crate::tick_profile::add(
-                    crate::tick_profile::Stage::NpcLow,
-                    __t.elapsed().as_secs_f32() * 1000.0,
-                );
             }
         }
         x if x == core::constants::DR_DROP => {
@@ -2615,8 +2578,4 @@ pub fn driver(gs: &mut GameState, cn: usize) {
             gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
         }
     }
-    crate::tick_profile::add(
-        crate::tick_profile::Stage::Misc,
-        __t_misc.elapsed().as_secs_f32() * 1000.0,
-    );
 }

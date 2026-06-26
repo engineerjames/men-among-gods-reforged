@@ -449,9 +449,7 @@ impl GameState {
             let (cc_x, cc_y) = (self.characters[cc].x, self.characters[cc].y);
             let idx = cc_x as usize + cc_y as usize * core::constants::SERVER_MAPX as usize;
             if idx < self.map.len() {
-                if self.map[idx].ch == cc as u32 {
-                    self.map[idx].ch = 0;
-                }
+                self.clear_map_ch_if(idx, cc as u32);
                 if self.map[idx].to_ch == cc as u32 {
                     self.map[idx].to_ch = 0;
                 }

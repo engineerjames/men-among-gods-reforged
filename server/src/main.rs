@@ -20,7 +20,6 @@ mod populate;
 mod server;
 mod state;
 mod talk;
-mod tick_profile;
 mod tls;
 
 use core::logout_reasons::LogoutReason;

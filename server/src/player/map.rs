@@ -32,7 +32,7 @@ pub fn plr_map_remove(gs: &mut GameState, cn: usize) {
     let (x, y) = (ch.x, ch.y);
     let is_body = (ch.flags & CharacterFlags::Body.bits()) != 0;
 
-    gs.map[m].ch = 0;
+    gs.set_map_ch(m, 0);
     gs.map[to_m].to_ch = 0;
     if light != 0 {
         gs.do_add_light(i32::from(x), i32::from(y), -i32::from(light));
@@ -118,7 +118,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
 
                         let idx =
                             (nx as usize) + (ny as usize) * core::constants::SERVER_MAPX as usize;
-                        gs.map[idx].ch = cn as u32;
+                        gs.set_map_ch(idx, cn as u32);
 
                         if light != 0 {
                             gs.do_add_light(nx, ny, i32::from(light));
@@ -148,7 +148,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
 
                     let idx =
                         (frx as usize) + (fry as usize) * core::constants::SERVER_MAPX as usize;
-                    gs.map[idx].ch = cn as u32;
+                    gs.set_map_ch(idx, cn as u32);
 
                     if light != 0 {
                         gs.do_add_light(frx, fry, i32::from(light));
@@ -229,7 +229,7 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
     }
 
     // Set character on map
-    gs.map[m].ch = cn as u32;
+    gs.set_map_ch(m, cn as u32);
     gs.map[m].to_ch = 0;
 
     if !is_body {

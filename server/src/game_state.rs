@@ -40,6 +40,13 @@ pub struct ElementSwitchState {
 use server::keydb::connection as keydb;
 use server::keydb::store;
 
+const AREA_NOTIFY_BUCKET_SIZE: usize = 16;
+const AREA_NOTIFY_BUCKET_COLS: usize =
+    core::constants::SERVER_MAPX as usize / AREA_NOTIFY_BUCKET_SIZE;
+const AREA_NOTIFY_BUCKET_ROWS: usize =
+    core::constants::SERVER_MAPY as usize / AREA_NOTIFY_BUCKET_SIZE;
+const AREA_NOTIFY_BUCKET_COUNT: usize = AREA_NOTIFY_BUCKET_COLS * AREA_NOTIFY_BUCKET_ROWS;
+
 /// The unified in-memory game state for the server.
 ///
 /// Owns all world data (maps, items, characters, effects, globals), visibility
@@ -113,6 +120,10 @@ pub struct GameState {
     pub talent_primary_hit_counts: Vec<u8>,
     /// Runtime-only last-element state for the Harakim Element Switching passive.
     pub element_switch_states: HashMap<usize, ElementSwitchState>,
+    /// Runtime-only next tick for non-urgent NPC self-spell evaluation.
+    pub npc_next_self_spell_eval_tick: Vec<i32>,
+    /// Runtime-only next tick for NPC combat spell evaluation.
+    pub npc_next_combat_spell_eval_tick: Vec<i32>,
 
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
@@ -122,6 +133,9 @@ pub struct GameState {
     pub pathfinder: PathFinder,
     /// Optional worker-thread pathfinding service.
     pub pathfinding_service: Option<PathfindingService>,
+
+    /// Runtime-only spatial index for area notifications.
+    area_notify_buckets: Vec<Vec<u32>>,
 
     // -- Persistence (private) --
     /// Set to `true` until loaded runtime data needs a final persistence pass.
@@ -214,11 +228,14 @@ impl GameState {
             penta_needed: 5,
             talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
             element_switch_states: HashMap::new(),
+            npc_next_self_spell_eval_tick: vec![0; core::constants::MAXCHARS],
+            npc_next_combat_spell_eval_tick: vec![0; core::constants::MAXCHARS],
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding
             pathfinder: PathFinder::new(),
             pathfinding_service: None,
+            area_notify_buckets: vec![Vec::new(); AREA_NOTIFY_BUCKET_COUNT],
             // Persistence is enabled only after KeyDB data loads successfully.
             saved_cleanly: true,
             // Runtime mode flags
@@ -235,6 +252,142 @@ impl GameState {
     pub(crate) fn tick_element_switch_states(&mut self, current_tick: i32) {
         self.element_switch_states
             .retain(|_, state| state.expires_at_tick > current_tick);
+    }
+
+    fn area_notify_bucket_index_for_map_index(map_index: usize) -> Option<usize> {
+        let width = core::constants::SERVER_MAPX as usize;
+        let height = core::constants::SERVER_MAPY as usize;
+        if map_index >= width * height {
+            return None;
+        }
+        let x = map_index % width;
+        let y = map_index / width;
+        Some(
+            (x / AREA_NOTIFY_BUCKET_SIZE) + (y / AREA_NOTIFY_BUCKET_SIZE) * AREA_NOTIFY_BUCKET_COLS,
+        )
+    }
+
+    fn remove_area_notify_bucket_entry(&mut self, map_index: usize, character_id: u32) {
+        if character_id == 0 {
+            return;
+        }
+        let Some(bucket_index) = Self::area_notify_bucket_index_for_map_index(map_index) else {
+            return;
+        };
+        if let Some(pos) = self.area_notify_buckets[bucket_index]
+            .iter()
+            .position(|&entry| entry == character_id)
+        {
+            self.area_notify_buckets[bucket_index].swap_remove(pos);
+        }
+    }
+
+    fn add_area_notify_bucket_entry(&mut self, map_index: usize, character_id: u32) {
+        if character_id == 0 {
+            return;
+        }
+        let Some(bucket_index) = Self::area_notify_bucket_index_for_map_index(map_index) else {
+            return;
+        };
+        if !self.area_notify_buckets[bucket_index].contains(&character_id) {
+            self.area_notify_buckets[bucket_index].push(character_id);
+        }
+    }
+
+    /// Set a map tile's active character and keep the area-notify bucket grid in sync.
+    ///
+    /// # Arguments
+    ///
+    /// * `map_index` - Linear map tile index.
+    /// * `character_id` - Character id to store in `map[map_index].ch`, or `0` to clear it.
+    pub(crate) fn set_map_ch(&mut self, map_index: usize, character_id: u32) {
+        if map_index >= self.map.len() {
+            return;
+        }
+        let old_character_id = self.map[map_index].ch;
+        if old_character_id == character_id {
+            return;
+        }
+        self.remove_area_notify_bucket_entry(map_index, old_character_id);
+        self.map[map_index].ch = character_id;
+        self.add_area_notify_bucket_entry(map_index, character_id);
+    }
+
+    /// Clear a map tile's active character if it matches the expected id.
+    ///
+    /// # Arguments
+    ///
+    /// * `map_index` - Linear map tile index.
+    /// * `character_id` - Character id expected in `map[map_index].ch`.
+    pub(crate) fn clear_map_ch_if(&mut self, map_index: usize, character_id: u32) {
+        if map_index < self.map.len() && self.map[map_index].ch == character_id {
+            self.set_map_ch(map_index, 0);
+        }
+    }
+
+    /// Rebuild the area-notify bucket grid from current map occupancy.
+    pub(crate) fn rebuild_area_notify_buckets(&mut self) {
+        for bucket in &mut self.area_notify_buckets {
+            bucket.clear();
+        }
+        for map_index in 0..self.map.len() {
+            let character_id = self.map[map_index].ch;
+            self.add_area_notify_bucket_entry(map_index, character_id);
+        }
+    }
+
+    /// Return active character candidates inside an inclusive coordinate rectangle.
+    ///
+    /// # Arguments
+    ///
+    /// * `min_x` - Inclusive minimum x coordinate.
+    /// * `max_x` - Inclusive maximum x coordinate.
+    /// * `min_y` - Inclusive minimum y coordinate.
+    /// * `max_y` - Inclusive maximum y coordinate.
+    ///
+    /// # Returns
+    ///
+    /// * Character ids currently indexed in buckets overlapping the rectangle.
+    pub(crate) fn area_notify_candidates(
+        &self,
+        min_x: usize,
+        max_x: usize,
+        min_y: usize,
+        max_y: usize,
+    ) -> Vec<u32> {
+        let min_bucket_x = min_x / AREA_NOTIFY_BUCKET_SIZE;
+        let max_bucket_x = max_x / AREA_NOTIFY_BUCKET_SIZE;
+        let min_bucket_y = min_y / AREA_NOTIFY_BUCKET_SIZE;
+        let max_bucket_y = max_y / AREA_NOTIFY_BUCKET_SIZE;
+
+        let mut candidates = Vec::new();
+        for bucket_y in min_bucket_y..=max_bucket_y.min(AREA_NOTIFY_BUCKET_ROWS - 1) {
+            for bucket_x in min_bucket_x..=max_bucket_x.min(AREA_NOTIFY_BUCKET_COLS - 1) {
+                let bucket_index = bucket_x + bucket_y * AREA_NOTIFY_BUCKET_COLS;
+                for &character_id in &self.area_notify_buckets[bucket_index] {
+                    let character_index = character_id as usize;
+                    if character_index >= self.characters.len() {
+                        continue;
+                    }
+                    let character = &self.characters[character_index];
+                    let x = character.x;
+                    let y = character.y;
+                    if x < 0 || y < 0 {
+                        continue;
+                    }
+                    let x = x as usize;
+                    let y = y as usize;
+                    if x < min_x || x > max_x || y < min_y || y > max_y {
+                        continue;
+                    }
+                    let map_index = x + y * core::constants::SERVER_MAPX as usize;
+                    if map_index < self.map.len() && self.map[map_index].ch == character_id {
+                        candidates.push(character_id);
+                    }
+                }
+            }
+        }
+        candidates
     }
 
     /// Initialize a new `GameState` by loading all data from KeyDB.
@@ -302,6 +455,8 @@ impl GameState {
         self.bad_names = data.bad_names;
         self.bad_words = data.bad_words;
         self.message_of_the_day = data.message_of_the_day;
+
+        self.rebuild_area_notify_buckets();
 
         self.mark_talent_characters_for_stat_recompute();
 
@@ -439,5 +594,44 @@ mod tests {
     fn normalize_motd_empty() {
         let result = GameState::normalize_message_of_the_day(String::new());
         assert_eq!(result, "");
+    }
+
+    #[test]
+    fn area_notify_buckets_track_set_move_and_clear() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let cn = 42_u32;
+            let first = 10 + 10 * core::constants::SERVER_MAPX as usize;
+            let second = 30 + 10 * core::constants::SERVER_MAPX as usize;
+
+            gs.characters[cn as usize].x = 10;
+            gs.characters[cn as usize].y = 10;
+            gs.set_map_ch(first, cn);
+            assert_eq!(gs.area_notify_candidates(1, 20, 1, 20), vec![cn]);
+
+            gs.characters[cn as usize].x = 30;
+            gs.characters[cn as usize].y = 10;
+            gs.set_map_ch(first, 0);
+            gs.set_map_ch(second, cn);
+            assert!(gs.area_notify_candidates(1, 20, 1, 20).is_empty());
+            assert_eq!(gs.area_notify_candidates(21, 40, 1, 20), vec![cn]);
+
+            gs.clear_map_ch_if(second, cn);
+            assert!(gs.area_notify_candidates(21, 40, 1, 20).is_empty());
+        });
+    }
+
+    #[test]
+    fn rebuild_area_notify_buckets_indexes_existing_map_occupancy() {
+        crate::test_helpers::with_test_gs(|gs| {
+            let cn = 43_u32;
+            let map_index = 18 + 18 * core::constants::SERVER_MAPX as usize;
+            gs.characters[cn as usize].x = 18;
+            gs.characters[cn as usize].y = 18;
+            gs.map[map_index].ch = cn;
+
+            assert!(gs.area_notify_candidates(1, 30, 1, 30).is_empty());
+            gs.rebuild_area_notify_buckets();
+            assert_eq!(gs.area_notify_candidates(1, 30, 1, 30), vec![cn]);
+        });
     }
 }

@@ -31,25 +31,22 @@ impl GameState {
         dat3: i32,
         dat4: i32,
     ) {
-        let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::AreaNotify);
-        for y in std::cmp::max(0, ys - core::constants::AREA_SIZE)
-            ..std::cmp::min(
-                core::constants::SERVER_MAPY,
-                ys + core::constants::AREA_SIZE + 1,
-            )
-        {
-            let m = y * core::constants::SERVER_MAPX;
-            for x in std::cmp::max(0, xs - core::constants::AREA_SIZE)
-                ..std::cmp::min(
-                    core::constants::SERVER_MAPX,
-                    xs + core::constants::AREA_SIZE + 1,
-                )
-            {
-                let cc = self.map[(x + m) as usize].ch;
+        let min_x = std::cmp::max(0, xs - core::constants::AREA_SIZE) as usize;
+        let max_x = (std::cmp::min(
+            core::constants::SERVER_MAPX,
+            xs + core::constants::AREA_SIZE + 1,
+        ) - 1) as usize;
+        let min_y = std::cmp::max(0, ys - core::constants::AREA_SIZE) as usize;
+        let max_y = (std::cmp::min(
+            core::constants::SERVER_MAPY,
+            ys + core::constants::AREA_SIZE + 1,
+        ) - 1) as usize;
 
-                if cc != 0 && cc != cn as u32 && cc != co as u32 {
-                    self.do_notify_character(cc, notify_type, dat1, dat2, dat3, dat4);
-                }
+        let candidates = self.area_notify_candidates(min_x, max_x, min_y, max_y);
+
+        for cc in candidates {
+            if cc != 0 && cc != cn as u32 && cc != co as u32 {
+                self.do_notify_character(cc, notify_type, dat1, dat2, dat3, dat4);
             }
         }
     }

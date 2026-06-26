@@ -623,7 +623,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
 
             let ch_was_here = gs.map[map_index].ch == character_id as u32;
             if ch_was_here {
-                gs.map[map_index].ch = 0;
+                gs.set_map_ch(map_index, 0);
                 if light != 0 {
                     gs.do_add_light(
                         i32::from(character_x),

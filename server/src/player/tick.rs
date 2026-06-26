@@ -471,7 +471,6 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 ///
 /// * Value returned by `speedo`.
 pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
-    let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::Speedo);
     let speed = (gs.characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
     let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
     i32::from(SPEEDTAB[speed][ctick])
