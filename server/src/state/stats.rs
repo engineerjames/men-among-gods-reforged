@@ -1169,7 +1169,7 @@ impl GameState {
         helpers::sync_weapon_skill(&mut self.characters[cn].skill);
 
         let skill_idx = skills::canonicalize_weapon_skill(skill as usize);
-        if skill_idx >= 50 {
+        if skill_idx >= skills::MAX_SKILLS {
             return false;
         }
 
@@ -1994,6 +1994,35 @@ mod tests {
                 gs.characters[cn].skill[skills::SK_LAVA_BLAST][SkillIndex::TotalValue as usize] > 1,
                 "slot 56 should receive attribute contribution during recompute"
             );
+        });
+    }
+
+    #[test]
+    fn do_raise_skill_allows_harakim_talent_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            // Revenant Conduit (slot 50) was previously blocked by a stale
+            // `>= 50` bound; raising it now succeeds.
+            let idx = skills::SK_REVENANT_CONDUIT;
+            gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize] = 1;
+            gs.characters[cn].skill[idx][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
+            gs.characters[cn].points = 1_000_000;
+
+            assert!(gs.do_raise_skill(cn, idx as i32));
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                2
+            );
+        });
+    }
+
+    #[test]
+    fn do_raise_skill_rejects_out_of_range_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].points = 1_000_000;
+            assert!(!gs.do_raise_skill(cn, skills::MAX_SKILLS as i32));
         });
     }
 

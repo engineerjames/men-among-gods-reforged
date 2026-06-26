@@ -249,9 +249,11 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         | skills::SK_STUN
         | skills::SK_WIMPY
         | skills::SK_RAINS_OF_RENEWAL
-        | skills::SK_SUNS_BLESSING
         | skills::SK_SEEING_RED
         | skills::SK_INNER_STRENGTH => spell_icon_meta(skill_nr),
+        // Sun's Blessing active buff — server item uses the *2 temp marker,
+        // so reuse the castable skill's icon metadata.
+        skills::SK_SUNS_BLESSING2 => spell_icon_meta(skills::SK_SUNS_BLESSING),
         skills::SK_BLAST => Some(SpellIconMeta {
             name: "Spell Exhaustion",
             color: Color::RGB(200, 140, 40),

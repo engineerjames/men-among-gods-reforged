@@ -202,6 +202,25 @@ impl ChatBox {
         self.delete_before_cursor();
     }
 
+    /// Scrolls the message log by one page.
+    ///
+    /// `scroll_offset` is measured from the newest message (0 = newest at the
+    /// bottom), so scrolling up toward older history increases it. Clamping to
+    /// the valid range happens in [`Self::sync_scroll`] before rendering.
+    ///
+    /// # Arguments
+    ///
+    /// * `up` - When `true`, scroll toward older messages; otherwise toward newer.
+    fn page_scroll(&mut self, up: bool) {
+        let step = self.visible_lines.saturating_sub(1).max(1);
+        if up {
+            self.scroll_offset = self.scroll_offset.saturating_add(step);
+        } else {
+            self.scroll_offset = self.scroll_offset.saturating_sub(step);
+        }
+        self.idle_elapsed = 0.0;
+    }
+
     /// Runs the follow-tail and clamping logic for the scroll offset.
     ///
     /// Call this once per frame before rendering so that new messages push the
@@ -472,6 +491,14 @@ impl Widget for ChatBox {
                             self.history_back();
                             return EventResponse::Consumed;
                         }
+                        Keycode::PageUp => {
+                            self.page_scroll(true);
+                            return EventResponse::Consumed;
+                        }
+                        Keycode::PageDown => {
+                            self.page_scroll(false);
+                            return EventResponse::Consumed;
+                        }
                         _ => {}
                     }
                     return EventResponse::Ignored;
@@ -506,6 +533,14 @@ impl Widget for ChatBox {
                     Keycode::End => {
                         self.input_cursor = self.input_buf.len();
                         self.reset_caret_blink();
+                        EventResponse::Consumed
+                    }
+                    Keycode::PageUp => {
+                        self.page_scroll(true);
+                        EventResponse::Consumed
+                    }
+                    Keycode::PageDown => {
+                        self.page_scroll(false);
                         EventResponse::Consumed
                     }
                     Keycode::Up => {
@@ -700,6 +735,48 @@ mod tests {
         cb.sync_scroll();
         // Not scrolled, so offset stays 0.
         assert_eq!(cb.scroll_offset, 0);
+    }
+
+    #[test]
+    fn page_up_and_down_scroll_the_log() {
+        let mut cb = test_chat_box();
+        // visible_lines == 15, so the page step is 14.
+        let step = cb.visible_lines.saturating_sub(1).max(1);
+        for i in 0..50 {
+            cb.push_message(make_msg(&format!("msg {}", i), LogMessageColor::Yellow));
+        }
+
+        // PageUp scrolls toward older messages even when unfocused.
+        let resp = cb.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::PageUp,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(cb.scroll_offset, step);
+
+        // PageDown scrolls back toward the newest messages.
+        let resp = cb.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::PageDown,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(cb.scroll_offset, 0);
+    }
+
+    #[test]
+    fn page_up_works_while_focused() {
+        let mut cb = test_chat_box();
+        cb.focused = true;
+        let step = cb.visible_lines.saturating_sub(1).max(1);
+        for i in 0..50 {
+            cb.push_message(make_msg(&format!("msg {}", i), LogMessageColor::Yellow));
+        }
+        let resp = cb.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::PageUp,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(cb.scroll_offset, step);
     }
 
     #[test]

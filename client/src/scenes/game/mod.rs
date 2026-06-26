@@ -31,6 +31,7 @@ use mag_core::{
     client_commands::ClientCommand,
     constants::{TILEX, TILEY},
     ranks,
+    skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex},
 };
 
 use crate::{
@@ -167,11 +168,11 @@ const MODE_BTN_RADIUS: u32 = 18;
 // ---- Look panel (center-right) ---- //
 
 /// Width of the look panel.
-const LOOK_PANEL_W: u32 = 180;
+const LOOK_PANEL_W: u32 = 130;
 /// Height of the look panel.
 const LOOK_PANEL_H: u32 = 260;
-/// X position of the look panel (right side, 4 px margin).
-const LOOK_PANEL_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - LOOK_PANEL_W as i32 - 4;
+/// X position of the look panel (left side, 4 px margin).
+const LOOK_PANEL_X: i32 = 4;
 /// Y position of the look panel (vertically centered).
 const LOOK_PANEL_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32 - LOOK_PANEL_H as i32) / 4;
 
@@ -198,6 +199,44 @@ const HELPER_TEXT_CURSOR_GAP_X: i32 = 12;
 const HELPER_TEXT_CURSOR_GAP_Y: i32 = 16;
 /// Vertical gap used when the helper text is flipped to sit above the cursor.
 const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
+
+/// Rewrite saved Blast/Lava Blast bindings to match the currently learned skill.
+///
+/// # Arguments
+///
+/// * `primary` - Primary skill-bar keybinds to normalize.
+/// * `secondary` - Secondary skill-bar keybinds to normalize.
+/// * `skills` - Latest skill rows received from the server.
+///
+/// # Returns
+///
+/// * `true` if any saved keybind was changed.
+fn normalize_lava_blast_keybind_arrays(
+    primary: &mut [Option<usize>],
+    secondary: &mut [Option<usize>],
+    skills: &[[u8; SkillIndex::MaxIndex as usize]],
+) -> bool {
+    let blast_learned = skills[SK_BLAST][SkillIndex::BaseValue as usize] > 0;
+    let lava_blast_learned = skills[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] > 0;
+    let replacement = match (blast_learned, lava_blast_learned) {
+        (false, true) => Some((SK_BLAST, SK_LAVA_BLAST)),
+        (true, false) => Some((SK_LAVA_BLAST, SK_BLAST)),
+        _ => None,
+    };
+
+    let Some((from, to)) = replacement else {
+        return false;
+    };
+
+    let mut changed = false;
+    for slot in primary.iter_mut().chain(secondary.iter_mut()) {
+        if *slot == Some(from) {
+            *slot = Some(to);
+            changed = true;
+        }
+    }
+    changed
+}
 
 /// Computes the on-screen origin for a helper-text block of the given pixel
 /// size, given the cursor position and the logical screen dimensions.
@@ -418,6 +457,26 @@ pub struct GameScene {
 }
 
 impl GameScene {
+    /// Rewrite saved Blast/Lava Blast bindings to the currently learned replacement.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Mutable application state containing active character settings.
+    /// * `skills` - Latest skill rows received from the server.
+    fn normalize_lava_blast_keybinds(
+        &self,
+        app_state: &mut AppState<'_>,
+        skills: &[[u8; SkillIndex::MaxIndex as usize]],
+    ) {
+        if normalize_lava_blast_keybind_arrays(
+            &mut app_state.settings.character.skill_keybinds,
+            &mut app_state.settings.character.skill_keybinds_secondary,
+            skills,
+        ) {
+            self.save_active_profile(app_state);
+        }
+    }
+
     /// Create a new `GameScene` with default (zeroed) state.
     ///
     /// # Returns
@@ -1757,6 +1816,13 @@ impl Scene for GameScene {
         if let Some(ps) = app_state.player_state.as_ref() {
             self.sync_chat_messages(ps);
         }
+        if let Some(skills) = app_state
+            .player_state
+            .as_ref()
+            .map(|ps| ps.character_info().skill)
+        {
+            self.normalize_lava_blast_keybinds(app_state, &skills);
+        }
 
         self.perf_profiler.begin_frame();
 
@@ -2132,10 +2198,16 @@ mod tests {
     use super::{
         GameScene, HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X,
         HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, helper_text_origin,
+        normalize_lava_blast_keybind_arrays,
     };
+    use mag_core::skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex};
 
     const SCREEN_W: i32 = 800;
     const SCREEN_H: i32 = 600;
+
+    fn empty_skill_rows() -> [[u8; SkillIndex::MaxIndex as usize]; 100] {
+        [[0; SkillIndex::MaxIndex as usize]; 100]
+    }
 
     #[test]
     fn helper_text_default_anchor_in_center() {
@@ -2186,5 +2258,37 @@ mod tests {
         scene.mouse_ctrl_held = false;
         scene.ctrl_held = true;
         assert!(scene.effective_ctrl_held());
+    }
+
+    #[test]
+    fn lava_blast_keybind_normalization_rewrites_blast_when_replacement_is_learned() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[0] = Some(SK_BLAST);
+        secondary[1] = Some(SK_BLAST);
+        let mut skills = empty_skill_rows();
+        skills[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 4;
+
+        let changed = normalize_lava_blast_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[0], Some(SK_LAVA_BLAST));
+        assert_eq!(secondary[1], Some(SK_LAVA_BLAST));
+    }
+
+    #[test]
+    fn lava_blast_keybind_normalization_rewrites_back_after_reset() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[0] = Some(SK_LAVA_BLAST);
+        secondary[1] = Some(SK_LAVA_BLAST);
+        let mut skills = empty_skill_rows();
+        skills[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
+
+        let changed = normalize_lava_blast_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[0], Some(SK_BLAST));
+        assert_eq!(secondary[1], Some(SK_BLAST));
     }
 }

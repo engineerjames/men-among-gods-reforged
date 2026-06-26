@@ -1842,17 +1842,18 @@ pub fn plr_cmd_learn_talent(gs: &mut GameState, nr: usize) {
 
 /// Handle the `CmdResetTalents` packet.
 ///
-/// Refunds every spent talent point back into the unspent pool and
-/// broadcasts a fresh snapshot.  Note that bonuses applied by previously
-/// learned talents are NOT reversed (see
-/// [`crate::player::talent_trees::reset_talent_points`]).
+/// Fully reverses every learned talent: talent-granted skills are removed and
+/// the experience spent raising them is refunded, recomputed stat bonuses drop
+/// off via `really_update_char`, spent talent points are returned to the
+/// unspent pool, and a fresh snapshot is broadcast (see
+/// [`crate::player::talent_trees::reset_talents`]).
 ///
 /// # Arguments
 ///
 /// * `nr` - Player slot index issuing the command.
 pub fn plr_cmd_reset_talents(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
-    core::talent_trees::reset_talent_points(&mut gs.characters[cn].future1);
+    crate::player::talent_trees::reset_talents(gs, cn);
     log::info!(
         "Player {} (cn={}) reset all talent points",
         c_string_to_str(&gs.characters[cn].name),

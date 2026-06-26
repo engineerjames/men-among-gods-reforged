@@ -52,6 +52,21 @@ const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
 /// Bitmap font index (yellow, sprite 701).
 const UI_FONT: usize = 1;
 
+/// Size of the close button icon square in pixels (matches TitleBar).
+const CLOSE_ICON_SIZE: i32 = 12;
+
+/// Horizontal padding between the panel edge and the close icon.
+const CLOSE_ICON_PAD_X: i32 = 3;
+
+/// Outline color for the close icon box.
+const CLOSE_ICON_OUTLINE: Color = Color::RGBA(180, 180, 200, 220);
+
+/// Color of the X lines drawn inside the close icon.
+const CLOSE_X_COLOR: Color = Color::RGBA(200, 220, 255, 240);
+
+/// Additive hover highlight alpha for icon buttons.
+const ICON_HOVER_ALPHA: u8 = 64;
+
 // ---------------------------------------------------------------------------
 // Data snapshot
 // ---------------------------------------------------------------------------
@@ -98,6 +113,8 @@ pub struct ShopPanel {
     actions: Vec<WidgetAction>,
     /// Controller-selected slot index (0–61), or `None` when mouse is active.
     controller_selected: Option<usize>,
+    /// Whether the mouse cursor is currently over the close button.
+    hovered_close: bool,
 }
 
 impl ShopPanel {
@@ -120,6 +137,7 @@ impl ShopPanel {
             mouse_y: 0,
             actions: Vec::new(),
             controller_selected: None,
+            hovered_close: false,
         }
     }
 
@@ -163,6 +181,23 @@ impl ShopPanel {
                 });
             }
         }
+    }
+
+    // ── Close button ────────────────────────────────────────────────────
+
+    /// Pixel rect of the close (×) button, positioned in the panel header.
+    ///
+    /// # Returns
+    ///
+    /// A [`Bounds`] covering the clickable close icon area.
+    fn close_button_rect(&self) -> Bounds {
+        let icon_pad_y = (PAD_TOP - CLOSE_ICON_SIZE) / 2;
+        Bounds::new(
+            self.bounds.x + self.bounds.width as i32 - CLOSE_ICON_PAD_X - CLOSE_ICON_SIZE,
+            self.bounds.y + icon_pad_y,
+            CLOSE_ICON_SIZE as u32,
+            CLOSE_ICON_SIZE as u32,
+        )
     }
 
     // ── Hit-testing helpers ─────────────────────────────────────────────
@@ -336,12 +371,19 @@ impl Widget for ShopPanel {
             UiEvent::MouseMove { x, y } => {
                 self.mouse_x = *x;
                 self.mouse_y = *y;
+                self.hovered_close = self.close_button_rect().contains_point(*x, *y);
                 // Don't consume moves — let other widgets track the cursor too.
                 EventResponse::Ignored
             }
             UiEvent::MouseClick { x, y, button, .. } => {
                 self.mouse_x = *x;
                 self.mouse_y = *y;
+
+                // Close button takes priority.
+                if self.close_button_rect().contains_point(*x, *y) {
+                    self.actions.push(WidgetAction::CloseShop);
+                    return EventResponse::Consumed;
+                }
 
                 // Click outside the panel --> close shop.
                 if !self.bounds.contains_point(*x, *y) {
@@ -455,6 +497,39 @@ impl Widget for ShopPanel {
             self.bounds.y + 4,
             font_cache::TextStyle::PLAIN,
         )?;
+
+        // Close (×) button in the top-right corner of the header.
+        {
+            let cr = self.close_button_rect();
+            let close_sdl = sdl2::rect::Rect::new(cr.x, cr.y, cr.width, cr.height);
+            ctx.canvas.set_draw_color(CLOSE_ICON_OUTLINE);
+            ctx.canvas.draw_rect(close_sdl)?;
+
+            // X diagonal lines.
+            let inset = 3_i32;
+            let x0 = cr.x + inset;
+            let y0 = cr.y + inset;
+            let x1 = cr.x + CLOSE_ICON_SIZE - inset - 1;
+            let y1 = cr.y + CLOSE_ICON_SIZE - inset - 1;
+            ctx.canvas.set_draw_color(CLOSE_X_COLOR);
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(x0, y0),
+                sdl2::rect::Point::new(x1, y1),
+            )?;
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(x1, y0),
+                sdl2::rect::Point::new(x0, y1),
+            )?;
+
+            // Hover highlight (additive).
+            if self.hovered_close {
+                ctx.canvas.set_blend_mode(BlendMode::Add);
+                ctx.canvas
+                    .set_draw_color(Color::RGBA(255, 255, 255, ICON_HOVER_ALPHA));
+                ctx.canvas.fill_rect(close_sdl)?;
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
+            }
+        }
 
         let grid_x = self.bounds.x + PAD_X;
         let grid_y = self.bounds.y + PAD_TOP;
@@ -583,6 +658,31 @@ mod tests {
         data.items[0] = 100; // put an item in slot 0
         data.prices[0] = 500;
         data
+    }
+
+    #[test]
+    fn click_close_button_closes_shop() {
+        let mut panel = make_panel();
+        panel.update_data(make_visible_data());
+
+        // The close button is in the top-right corner of the panel header.
+        let icon_pad_y = (PAD_TOP - CLOSE_ICON_SIZE) / 2;
+        let cx = 100 + SHOP_PANEL_W as i32 - CLOSE_ICON_PAD_X - CLOSE_ICON_SIZE / 2;
+        let cy = 100 + icon_pad_y + CLOSE_ICON_SIZE / 2;
+        let click = UiEvent::MouseClick {
+            x: cx,
+            y: cy,
+            button: MouseButton::Left,
+            modifiers: crate::ui::widget::KeyModifiers {
+                ctrl: false,
+                shift: false,
+                alt: false,
+            },
+        };
+        assert_eq!(panel.handle_event(&click), EventResponse::Consumed);
+        let actions = panel.take_actions();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], WidgetAction::CloseShop));
     }
 
     #[test]

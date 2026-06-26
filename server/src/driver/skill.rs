@@ -349,21 +349,23 @@ pub fn chance_base(gs: &mut GameState, cn: usize, skill: i32, d20: i32, power: i
 /// # Panics
 ///
 /// * Panics if `cn` is not a valid character index.
-pub fn chance(gs: &mut GameState, cn: usize, d20: i32) -> i32 {
+pub fn chance(_gs: &mut GameState, _cn: usize, _d20: i32) -> i32 {
     // Ported from C++ chance(int cn, int d20)
-    let mut d20 = d20;
-    let (flags, luck) = (gs.characters[cn].flags, gs.characters[cn].luck);
-    if (flags & CharacterFlags::Player.bits()) != 0 && luck < 0 {
-        d20 += luck / 500 - 1;
-    }
+    // let mut d20 = d20;
+    // let (flags, luck) = (gs.characters[cn].flags, gs.characters[cn].luck);
+    // if (flags & CharacterFlags::Player.bits()) != 0 && luck < 0 {
+    //     d20 += luck / 500 - 1;
+    // }
 
-    d20 = d20.clamp(0, 18);
+    // d20 = d20.clamp(0, 18);
 
-    let roll = crate::helpers::random_mod(20);
-    if roll as i32 > d20 {
-        gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
-        return -1;
-    }
+    // let roll = crate::helpers::random_mod(20);
+    // if roll as i32 > d20 {
+    //     gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus!\n");
+    //     return -1;
+    // }
+
+    // TODO: Leave this commented out for now to remove the random chance to lose focus
     0
 }
 
@@ -1380,7 +1382,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         for n in 0..5 {
             gs.items[in_].attrib[n][1] = (power / 5 + 3) as i8;
         }
-        gs.items[in_].sprite[1] = 88;
+        gs.items[in_].sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         gs.items[in_].duration = (TICKS * 60 * 10) as u32;
         gs.items[in_].active = (TICKS * 60 * 10) as u32;
         gs.items[in_].temp = SK_BLESS as u16;
@@ -3886,6 +3888,108 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
 /// # Panics
 ///
 /// * Panics if `cn`, the selected target index, or the created companion index is invalid.
+///
+/// Recomputes a ghost companion's attributes, skills, and vital pools from its
+/// owner's current Ghost Companion skill, applying any active Revenant Conduit
+/// boost the owner currently has.
+///
+/// This is shared between [`skill_ghost`] (at summon time) and
+/// [`skill_revenant_conduit`] (so toggling the conduit on or off immediately
+/// re-stats existing companions instead of only affecting future summons).
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Owner (caster) character index.
+/// * `cc` - Companion character index to re-stat.
+///
+/// # Returns
+///
+/// * The derived `base` value used to scale the companion's stats.
+fn recompute_companion_stats(gs: &mut GameState, cn: usize, cc: usize) -> i32 {
+    // Revenant Conduit: while the buff is active, the effective Ghost
+    // Companion skill is boosted by `item.power` percent.
+    let mut effective_ghost = i32::from(gs.characters[cn].skill[SK_GHOST][5]);
+    let mut conduit_boost = 0i32;
+    for n in 0..20 {
+        let in_ = gs.characters[cn].spell[n] as usize;
+        if in_ != 0 && gs.items[in_].temp == SK_REVENANT_CONDUIT2 as u16 {
+            conduit_boost = gs.items[in_].power as i32;
+            break;
+        }
+    }
+    if conduit_boost > 0 {
+        effective_ghost = effective_ghost * (100 + conduit_boost) / 100;
+    }
+    let mut base = (effective_ghost * 4) / 11;
+    let kindred = gs.characters[cn].kindred;
+    base = spell_race_mod(gs, base, kindred);
+
+    for n in 0..5 {
+        let mut tmp = base;
+        tmp = tmp * 3 / std::cmp::max(1, i32::from(gs.characters[cc].attrib[n][3]));
+        gs.characters[cc].attrib[n][0] = std::cmp::max(
+            10,
+            std::cmp::min(i32::from(gs.characters[cc].attrib[n][2]), tmp) as u8,
+        );
+    }
+
+    for n in 0..core::skills::MAX_SKILLS {
+        let mut tmp = base;
+        tmp = tmp * 3 / std::cmp::max(1, i32::from(gs.characters[cc].skill[n][3]));
+        if gs.characters[cc].skill[n][2] != 0 {
+            gs.characters[cc].skill[n][0] = std::cmp::min(gs.characters[cc].skill[n][2], tmp as u8);
+        }
+    }
+
+    let has_spellcaster_kindred_spirit = gs.characters[cn].skill[SK_SPELLCASTER_KINDRED_SPIRIT][0]
+        != 0
+        && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
+    if has_spellcaster_kindred_spirit {
+        gs.characters[cc].skill[SK_BLAST][0] = gs.characters[cc].skill[SK_BLAST][0].max(1);
+        gs.characters[cc].skill[SK_BLAST][2] = gs.characters[cc].skill[SK_BLAST][2].max(100);
+        gs.characters[cc].skill[SK_BLAST][3] = gs.characters[cc].skill[SK_BLAST][3].max(5);
+    }
+
+    gs.characters[cc].hp[0] = std::cmp::max(
+        50,
+        std::cmp::min(i32::from(gs.characters[cc].hp[2]), base * 5),
+    ) as u16;
+    gs.characters[cc].end[0] = std::cmp::max(
+        50,
+        std::cmp::min(i32::from(gs.characters[cc].end[2]), base * 5),
+    ) as u16;
+    gs.characters[cc].mana[0] = 0;
+
+    base
+}
+
+/// Re-stats every live ghost companion owned by `cn`.
+///
+/// Used when the owner's Revenant Conduit buff is toggled on or off so the
+/// boost (or its removal) applies to companions that were summoned earlier.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Owner (caster) character index.
+fn restat_owned_companions(gs: &mut GameState, cn: usize) {
+    for cc in 1..gs.characters.len() {
+        if gs.characters[cc].used == USE_EMPTY {
+            continue;
+        }
+        // Ghost companions store their owner in data[63] (see `skill_ghost`).
+        if gs.characters[cc].data[63] as usize != cn {
+            continue;
+        }
+        if gs.characters[cc].temp != CT_COMPANION as u16 {
+            continue;
+        }
+        recompute_companion_stats(gs, cn, cc);
+        gs.do_update_char(cc);
+    }
+}
+
 pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     // Check if in build mode
     if (gs.characters[cn].flags & CharacterFlags::BuildMode.bits()) != 0 {
@@ -3896,9 +4000,6 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     // Inspect both companion slots. Kindred Spirit grants access to the
     // second slot; without it, only `CHD_COMPANION` is usable.
     let has_kindred_spirit = gs.characters[cn].skill[SK_KINDRED_SPIRIT][0] != 0
-        && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
-    let has_spellcaster_kindred_spirit = gs.characters[cn].skill[SK_SPELLCASTER_KINDRED_SPIRIT][0]
-        != 0
         && (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0;
 
     let companion_slot_state = |gs: &GameState, slot: usize| -> Option<usize> {
@@ -4082,24 +4183,6 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
         gs.characters[cn].data[target_slot] = cc as i32;
     }
 
-    // Revenant Conduit: while the buff is active, the effective Ghost
-    // Companion skill is boosted by `item.power` percent.
-    let mut effective_ghost = i32::from(gs.characters[cn].skill[SK_GHOST][5]);
-    let mut conduit_boost = 0i32;
-    for n in 0..20 {
-        let in_ = gs.characters[cn].spell[n] as usize;
-        if in_ != 0 && gs.items[in_].temp == SK_REVENANT_CONDUIT2 as u16 {
-            conduit_boost = gs.items[in_].power as i32;
-            break;
-        }
-    }
-    if conduit_boost > 0 {
-        effective_ghost = effective_ghost * (100 + conduit_boost) / 100;
-    }
-    let mut base = (effective_ghost * 4) / 11;
-    let kindred = gs.characters[cn].kindred;
-    base = spell_race_mod(gs, base, kindred);
-
     let ticker = gs.globals.ticker;
 
     let co_id = if co != 0 {
@@ -4129,6 +4212,11 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     }
     gs.characters[cc].data[98] = ticker + COMPANION_TIMEOUT;
 
+    // Clear all text slots to prevent leftover bytes from previous content bleeding through.
+    for slot in &mut gs.characters[cc].text {
+        slot.fill(0);
+    }
+
     let text0 = b"#14#Yes! %s buys the farm!";
     gs.characters[cc].text[0][..text0.len()].copy_from_slice(text0);
     let text1 = b"#13#Yahoo! An enemy! Prepare to die, %s!";
@@ -4141,38 +4229,7 @@ pub fn skill_ghost(gs: &mut GameState, cn: usize) {
     gs.characters[cc].data[CHD_TALKATIVE] =
         gs.character_templates[CT_COMPANION as usize].data[CHD_TALKATIVE];
 
-    for n in 0..5 {
-        let mut tmp = base;
-        tmp = tmp * 3 / std::cmp::max(1, i32::from(gs.characters[cc].attrib[n][3]));
-        gs.characters[cc].attrib[n][0] = std::cmp::max(
-            10,
-            std::cmp::min(i32::from(gs.characters[cc].attrib[n][2]), tmp) as u8,
-        );
-    }
-
-    for n in 0..core::skills::MAX_SKILLS {
-        let mut tmp = base;
-        tmp = tmp * 3 / std::cmp::max(1, i32::from(gs.characters[cc].skill[n][3]));
-        if gs.characters[cc].skill[n][2] != 0 {
-            gs.characters[cc].skill[n][0] = std::cmp::min(gs.characters[cc].skill[n][2], tmp as u8);
-        }
-    }
-
-    if has_spellcaster_kindred_spirit {
-        gs.characters[cc].skill[SK_BLAST][0] = gs.characters[cc].skill[SK_BLAST][0].max(1);
-        gs.characters[cc].skill[SK_BLAST][2] = gs.characters[cc].skill[SK_BLAST][2].max(100);
-        gs.characters[cc].skill[SK_BLAST][3] = gs.characters[cc].skill[SK_BLAST][3].max(5);
-    }
-
-    gs.characters[cc].hp[0] = std::cmp::max(
-        50,
-        std::cmp::min(i32::from(gs.characters[cc].hp[2]), base * 5),
-    ) as u16;
-    gs.characters[cc].end[0] = std::cmp::max(
-        50,
-        std::cmp::min(i32::from(gs.characters[cc].end[2]), base * 5),
-    ) as u16;
-    gs.characters[cc].mana[0] = 0;
+    let base = recompute_companion_stats(gs, cn, cc);
 
     let mut pts = 0i32;
 
@@ -5015,7 +5072,7 @@ pub fn skill_rains_of_renewal(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_RAINS_OF_RENEWAL as u16;
@@ -5134,7 +5191,7 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = buff_duration as u32;
         item.active = buff_duration as u32;
         item.temp = SK_SUNS_BLESSING2 as u16;
@@ -5217,7 +5274,7 @@ pub fn skill_seeing_red(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_SEEING_RED as u16;
@@ -5369,7 +5426,7 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = buff_duration as u32;
         item.active = buff_duration as u32;
         item.temp = SK_INNER_STRENGTH as u16;
@@ -5461,18 +5518,58 @@ pub(crate) fn has_active_spell_temp(gs: &GameState, cn: usize, skill_temp: u16) 
     false
 }
 
+/// Removes every active spell slot whose item `temp` matches `skill_temp`.
+///
+/// Unlike [`remove_spells`], this only clears the matching buff(s) and leaves
+/// the caster's other active spells intact. Used to support toggling a
+/// self-buff off by recasting it.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+/// * `skill_temp` - The `item.temp` marker to remove.
+///
+/// # Returns
+///
+/// * `true` if at least one matching spell slot was removed.
+pub(crate) fn remove_active_spell_temp(gs: &mut GameState, cn: usize, skill_temp: u16) -> bool {
+    let mut removed = false;
+    for n in 0..20 {
+        let in_ = gs.characters[cn].spell[n] as usize;
+        if in_ != 0 && gs.items[in_].temp == skill_temp {
+            gs.items[in_].used = core::constants::USE_EMPTY;
+            gs.characters[cn].spell[n] = 0;
+            removed = true;
+        }
+    }
+    if removed {
+        gs.do_update_char(cn);
+    }
+    removed
+}
+
 /// Active self-buff: Revenant Conduit. Spends mana up front and attaches a
-/// spell item that boosts the caster's effective Ghost Companion skill at
-/// summon time (`skill_ghost` checks for the item) while draining endurance
-/// over time (the drain is processed in `state/stats.rs`).
+/// spell item that boosts the caster's effective Ghost Companion skill while
+/// draining endurance over time (the drain is processed in `state/stats.rs`).
+///
+/// The boost applies both to companions summoned while the conduit is open
+/// (checked in `skill_ghost`) and to any companions the caster already has
+/// (re-statted on cast). Recasting while the conduit is open toggles it off
+/// and re-stats existing companions back down.
 ///
 /// # Arguments
 ///
 /// * `gs` - Game state.
 /// * `cn` - Caster character index.
 pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
+    // Recasting while the conduit is open closes it (toggle off). The boost is
+    // removed, so re-stat existing companions back down immediately.
     if has_active_spell_temp(gs, cn, SK_REVENANT_CONDUIT2 as u16) {
-        gs.do_character_log(cn, FontColor::Red, "The conduit is already open.\n");
+        remove_active_spell_temp(gs, cn, SK_REVENANT_CONDUIT2 as u16);
+        restat_owned_companions(gs, cn);
+        gs.do_character_log(cn, FontColor::Green, "The conduit closes.\n");
+        chlog!(cn, "Uncast Revenant Conduit");
         return;
     }
     if gs.characters[cn].a_end < 50 * 1000 {
@@ -5502,7 +5599,7 @@ pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 96;
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_REVENANT_CONDUIT2 as u16;
@@ -5516,6 +5613,9 @@ pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
         );
         return;
     }
+
+    // Boost any companions the caster already has, not just future summons.
+    restat_owned_companions(gs, cn);
 
     gs.do_character_log(
         cn,
@@ -5597,7 +5697,7 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         name_bytes[..nlen].copy_from_slice(&name[..nlen]);
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88;
+        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         item.duration = duration as u32;
         item.active = duration as u32;
         item.temp = SK_SPECTRAL_PACT2 as u16;

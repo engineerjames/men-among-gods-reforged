@@ -107,7 +107,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: CORPORAL_STRENGTH,
-            name: "Corporal Strength",
+            name: "Strength Boost I",
             description: "Increase Strength by 5%.",
             cost: 1,
             prereqs: &[RENEWAL, GASH],
@@ -118,7 +118,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: STAFF_SERGEANT_STRENGTH,
-            name: "Staff Sergeant Strength",
+            name: "Strength Boost II",
             description: "Increase Strength by an additional 5%.",
             cost: 1,
             prereqs: &[CORPORAL_STRENGTH],
@@ -140,7 +140,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: DIVINE_BLESSING,
-            name: "Divine Blessing",
+            name: "Sun's Blessing",
             description: "Learn Sun's Blessing.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
@@ -160,7 +160,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: CAPTAIN_VITALITY,
-            name: "Captain Vitality",
+            name: "Vitality Boost I",
             description: "Increase maximum HP by 100 and endurance by 50.",
             cost: 1,
             prereqs: &[DIVINE_BLESSING, SEEING_RED],
@@ -198,7 +198,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: BRIGADIER_GENERAL_VITALITY,
-            name: "Brigadier General Vitality",
+            name: "Vitality Boost II",
             description: "Increase maximum HP by 100 and endurance by 50.",
             cost: 1,
             prereqs: &[RENEWING_STRIKES, JUDGMENT_STRIKES],
@@ -230,7 +230,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: FIELD_MARSHAL_AGILITY,
-            name: "Field Marshal Agility",
+            name: "Agility Boost I",
             description: "Increase Agility by 5%.",
             cost: 1,
             prereqs: &[HOLY_FURY, INNER_STRENGTH],
@@ -241,7 +241,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         },
         TalentNode {
             slot: BARON_AGILITY,
-            name: "Baron Agility",
+            name: "Agility Boost II",
             description: "Increase Agility by an additional 5%.",
             cost: 1,
             prereqs: &[FIELD_MARSHAL_AGILITY],

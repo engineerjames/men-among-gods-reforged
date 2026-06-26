@@ -161,6 +161,13 @@ pub enum TalentEffect {
         /// Minimum base value after the talent is learned.
         base: u8,
     },
+    /// Replace one learned skill with another while preserving investment.
+    ReplaceSkill {
+        /// Skill removed while the talent is learned.
+        from: Skill,
+        /// Skill made available while the talent is learned.
+        to: Skill,
+    },
     /// Apply several effects from one learned node.
     Composite {
         /// Nested effects applied as though each were learned separately.
@@ -612,7 +619,8 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
         | TalentEffect::GrantSkill { .. }
-        | TalentEffect::GrantSkillAtBase { .. } => None,
+        | TalentEffect::GrantSkillAtBase { .. }
+        | TalentEffect::ReplaceSkill { .. } => None,
     }
 }
 
@@ -697,6 +705,7 @@ fn accumulate_stat_bonus(
         TalentEffect::Passive
         | TalentEffect::GrantSkill { .. }
         | TalentEffect::GrantSkillAtBase { .. }
+        | TalentEffect::ReplaceSkill { .. }
         | TalentEffect::PrimaryHitProc { .. } => {}
     }
 }
@@ -1187,6 +1196,7 @@ mod tests {
             | TalentEffect::HpManaEndFlat { .. }
             | TalentEffect::GrantSkill { .. }
             | TalentEffect::GrantSkillAtBase { .. }
+            | TalentEffect::ReplaceSkill { .. }
             | TalentEffect::PrimaryHitProc { .. } => {}
         }
     }
@@ -1361,13 +1371,9 @@ mod tests {
         assert_eq!(tree.nodes.len(), 16);
         assert_grants_skill(named_node(tree, "Renewal"), Skill::RainsOfRenewal);
         assert_grants_skill(named_node(tree, "Gash"), Skill::Gash);
+        assert_attribute_percent(named_node(tree, "Strength Boost I"), Attribute::Strength, 5);
         assert_attribute_percent(
-            named_node(tree, "Corporal Strength"),
-            Attribute::Strength,
-            5,
-        );
-        assert_attribute_percent(
-            named_node(tree, "Staff Sergeant Strength"),
+            named_node(tree, "Strength Boost II"),
             Attribute::Strength,
             5,
         );
@@ -1376,9 +1382,9 @@ mod tests {
             Skill::Meditate,
             5,
         );
-        assert_grants_skill(named_node(tree, "Divine Blessing"), Skill::SunsBlessing);
+        assert_grants_skill(named_node(tree, "Sun's Blessing"), Skill::SunsBlessing);
         assert_grants_skill(named_node(tree, "Seeing Red"), Skill::SeeingRed);
-        assert_hp_end(named_node(tree, "Captain Vitality"), 100, 50);
+        assert_hp_end(named_node(tree, "Vitality Boost I"), 100, 50);
         assert_primary_hit_proc(
             named_node(tree, "Renewing Strikes"),
             TalentPrimaryHitProcKind::HealSelfHp { hp: 50 },
@@ -1387,15 +1393,11 @@ mod tests {
             named_node(tree, "Judgment Strikes"),
             TalentPrimaryHitProcKind::DamageTarget { damage: 25 },
         );
-        assert_hp_end(named_node(tree, "Brigadier General Vitality"), 100, 50);
+        assert_hp_end(named_node(tree, "Vitality Boost II"), 100, 50);
         assert_grants_skill(named_node(tree, "Holy Fury"), Skill::ThunderousFury);
         assert_grants_skill(named_node(tree, "Inner Strength"), Skill::InnerStrength);
-        assert_attribute_percent(
-            named_node(tree, "Field Marshal Agility"),
-            Attribute::Agility,
-            5,
-        );
-        assert_attribute_percent(named_node(tree, "Baron Agility"), Attribute::Agility, 5);
+        assert_attribute_percent(named_node(tree, "Agility Boost I"), Attribute::Agility, 5);
+        assert_attribute_percent(named_node(tree, "Agility Boost II"), Attribute::Agility, 5);
     }
 
     #[test]
@@ -1403,20 +1405,24 @@ mod tests {
         let tree = tree_for(Class::Harakim).unwrap();
 
         assert_eq!(tree.nodes.len(), 16);
-        assert_grants_skill(named_node(tree, "Lava Blast"), Skill::LavaBlast);
+        assert_replaces_skill(
+            named_node(tree, "Lava Blast"),
+            Skill::Blast,
+            Skill::LavaBlast,
+        );
         assert_grants_skill(named_node(tree, "Revenant Conduit"), Skill::RevenantConduit);
         assert_attribute_percent(
-            named_node(tree, "Corporal Intuition"),
+            named_node(tree, "Intuition Boost I"),
             Attribute::Intuition,
             5,
         );
         assert_attribute_percent(
-            named_node(tree, "Staff Sergeant Intuition"),
+            named_node(tree, "Intuition Boost II"),
             Attribute::Intuition,
             5,
         );
         assert_attribute_percent(
-            named_node(tree, "First Sergeant Willpower"),
+            named_node(tree, "Willpower Boost I"),
             Attribute::Willpower,
             5,
         );
@@ -1429,18 +1435,22 @@ mod tests {
             Skill::SpellcasterKindredSpirit,
         );
         assert_attribute_percent(
-            named_node(tree, "Brigadier General Intuition"),
+            named_node(tree, "Intuition Boost III"),
             Attribute::Intuition,
             5,
         );
         assert_grants_skill(named_node(tree, "Elemental Anguish"), Skill::AnguishEarth);
         assert_grants_skill(named_node(tree, "Spectral Pact"), Skill::SpectralPact);
         assert_attribute_percent(
-            named_node(tree, "Field Marshal Intuition"),
+            named_node(tree, "Intuition Boost IV"),
             Attribute::Intuition,
             5,
         );
-        assert_attribute_percent(named_node(tree, "Baron Willpower"), Attribute::Willpower, 5);
+        assert_attribute_percent(
+            named_node(tree, "Willpower Boost II"),
+            Attribute::Willpower,
+            5,
+        );
         assert_hp_mana_end(named_node(tree, "Warlord Ascendancy"), 50, 100, 50);
     }
 
@@ -1483,6 +1493,16 @@ mod tests {
                 assert_eq!(base, expected_base);
             }
             other => panic!("expected GrantSkillAtBase, got {other:?}"),
+        }
+    }
+
+    fn assert_replaces_skill(node: &TalentNode, expected_from: Skill, expected_to: Skill) {
+        match node.effect {
+            TalentEffect::ReplaceSkill { from, to } => {
+                assert_eq!(from, expected_from);
+                assert_eq!(to, expected_to);
+            }
+            other => panic!("expected ReplaceSkill, got {other:?}"),
         }
     }
 

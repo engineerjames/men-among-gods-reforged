@@ -8,8 +8,9 @@
 use mag_core::skills::{
     SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONTAGION, SK_CURSE, SK_DELIVER_DEATH, SK_DISARM,
     SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL, SK_IDENT, SK_INNER_STRENGTH,
-    SK_LIGHT, SK_MSHIELD, SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REPAIR,
-    SK_SEEING_RED, SK_STUN, SK_SUNS_BLESSING, SK_THUNDEROUS_FURY, SK_WARCRY, SK_WIMPY,
+    SK_LAVA_BLAST, SK_LIGHT, SK_MSHIELD, SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL,
+    SK_REPAIR, SK_REVENANT_CONDUIT, SK_SEEING_RED, SK_STUN, SK_SUNS_BLESSING, SK_THUNDEROUS_FURY,
+    SK_WARCRY, SK_WIMPY,
 };
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -79,6 +80,7 @@ pub const BINDABLE_SKILLS: &[usize] = &[
     SK_BLESS,
     SK_IDENT,
     SK_BLAST,
+    SK_LAVA_BLAST,
     SK_DISPEL,
     SK_HEAL,
     SK_GHOST,
@@ -90,6 +92,7 @@ pub const BINDABLE_SKILLS: &[usize] = &[
     SK_CONTAGION,
     SK_BLADE_DANCE,
     SK_RAINS_OF_RENEWAL,
+    SK_REVENANT_CONDUIT,
     SK_GASH,
     SK_SUNS_BLESSING,
     SK_SEEING_RED,
@@ -639,13 +642,13 @@ mod tests {
     #[test]
     fn show_filters_unlearned_skills() {
         let mut popup = SkillPickerPopup::new();
-        // Only skill 0 is learned.
         let mut skills = [[0u8; 6]; 100];
         skills[SK_BLAST][0] = 5;
+        skills[SK_LAVA_BLAST][0] = 4;
         popup.show(0, 0, 0, &skills);
-        // Only skill 0 should appear (it's first in BINDABLE_SKILLS).
-        assert_eq!(popup.entries.len(), 1);
+        assert_eq!(popup.entries.len(), 2);
         assert_eq!(popup.entries[0].skill_nr, SK_BLAST);
+        assert_eq!(popup.entries[1].skill_nr, SK_LAVA_BLAST);
         // Show with no learned skills — popup should have no entries.
         popup.show(0, 0, 0, &[[0u8; 6]; 100]);
         assert!(popup.entries.is_empty());

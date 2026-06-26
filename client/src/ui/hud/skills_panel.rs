@@ -206,7 +206,7 @@ impl SkillsPanel {
     fn col_x(&self) -> (i32, i32, i32, i32, i32) {
         let cb = self.content_bounds();
         let name_x = cb.x + 18;
-        let value_x = cb.x + 146;
+        let value_x = cb.x + 120;
         let plus_x = cb.x + 165;
         let minus_x = cb.x + 180;
         let cost_x = cb.x + 195;
@@ -957,7 +957,7 @@ impl Widget for SkillsPanel {
             let value_bare = i32::from(data.attrib[n][0]) + raised;
             let cost = Self::attrib_cost(data, n, value_bare);
 
-            let line = format!("{:<14} {:3}", attr_name, value_total);
+            let line = format!("{:<16} {:3}", attr_name, value_total);
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
@@ -1032,7 +1032,7 @@ impl Widget for SkillsPanel {
             let y = self.pool_row_y(p);
             let raised = self.stat_raised[*stat_idx];
 
-            let line = format!("{:<14} {:3}", name, value);
+            let line = format!("{:<16} {:3}", name, value);
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
@@ -1110,7 +1110,7 @@ impl Widget for SkillsPanel {
                 let value_bare = i32::from(data.skill[skill_id][0]) + raised;
                 let cost = Self::skill_cost(data, skill_id, value_bare);
 
-                let line = format!("{:<14} {:3}", name, value_total);
+                let line = format!("{:<16} {:3}", name, value_total);
                 font_cache::draw_text(
                     ctx.canvas,
                     ctx.gfx,

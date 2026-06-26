@@ -119,6 +119,10 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_MSHIELD
         | skills::SK_RECALL
         | skills::SK_BLAST
+        | skills::SK_RAINS_OF_RENEWAL
+        | skills::SK_SUNS_BLESSING2
+        | skills::SK_SEEING_RED
+        | skills::SK_INNER_STRENGTH
         | skills::SK_REVENANT_CONDUIT2
         | skills::SK_SPECTRAL_PACT2 => SpellEffectKind::Positive,
         skills::SK_CURSE
@@ -170,9 +174,6 @@ fn format_duration(secs: f32) -> String {
 struct SpellSlotEntry {
     /// Spell slot index in the server-provided 20-element arrays.
     slot_index: usize,
-    /// Sprite tile number from the `SetCharSpell` packet; used as the
-    /// texture cache key and to detect slot reuse.
-    sprite: i16,
     /// Remaining fill fraction in `[0.0, 1.0]` (`active / 16.0`).
     fill: f32,
     /// Pre-computed display metadata for this effect.
@@ -304,9 +305,13 @@ pub struct SpellEffectIcons {
     hovered: Option<HoveredIcon>,
     /// Observed decay trackers keyed by spell slot index.
     duration_trackers: HashMap<usize, DurationTracker>,
-    /// Lazily-loaded texture IDs for spell icons, keyed by sprite tile number.
+    /// Lazily-loaded texture IDs for spell icons, keyed by icon filename.
+    ///
+    /// Keying by filename rather than the server-provided `sprite[1]` value avoids
+    /// cache collisions when multiple abilities share the same `sprite[1]` placeholder
+    /// (e.g. several positive buffs currently all use `sprite[1] = 88`).
     /// `None` means loading was attempted and failed, so rendering should use the fallback tile.
-    icon_texture_ids: HashMap<i16, Option<usize>>,
+    icon_texture_ids: HashMap<&'static str, Option<usize>>,
 }
 
 impl SpellEffectIcons {
@@ -365,7 +370,6 @@ impl SpellEffectIcons {
             active_slots.push(i);
             let entry = SpellSlotEntry {
                 slot_index: i,
-                sprite,
                 fill,
                 meta,
             };
@@ -545,11 +549,14 @@ impl SpellEffectIcons {
 
     /// Lazily loads and returns the texture ID for the given spell metadata.
     ///
+    /// The texture is cached by `meta.icon_filename`, which is unique per icon
+    /// regardless of the `sprite[1]` value the server sends. This avoids cache
+    /// collisions when multiple abilities share the same `sprite[1]` placeholder.
+    ///
     /// # Arguments
     ///
     /// * `ctx` - Render context containing the graphics cache.
-    /// * `sprite` - Sprite tile number used as the texture cache key.
-    /// * `meta` - Display metadata containing the temporary icon filename.
+    /// * `meta` - Display metadata containing the icon filename used as the cache key.
     ///
     /// # Returns
     ///
@@ -557,10 +564,9 @@ impl SpellEffectIcons {
     fn texture_id_for(
         &mut self,
         ctx: &mut RenderContext<'_, '_>,
-        sprite: i16,
         meta: SpellIconMeta,
     ) -> Option<usize> {
-        if let Some(id) = self.icon_texture_ids.get(&sprite) {
+        if let Some(id) = self.icon_texture_ids.get(meta.icon_filename) {
             return *id;
         }
 
@@ -578,7 +584,7 @@ impl SpellEffectIcons {
                 None
             }
         };
-        self.icon_texture_ids.insert(sprite, texture_id);
+        self.icon_texture_ids.insert(meta.icon_filename, texture_id);
         texture_id
     }
 
@@ -610,7 +616,7 @@ impl SpellEffectIcons {
             ctx.canvas.set_draw_color(ICON_BG);
             ctx.canvas.fill_rect(rect)?;
 
-            if let Some(texture_id) = self.texture_id_for(ctx, entry.sprite, meta.icon) {
+            if let Some(texture_id) = self.texture_id_for(ctx, meta.icon) {
                 let texture = ctx.gfx.get_texture(texture_id);
                 ctx.canvas.copy(texture, None, Some(rect))?;
             } else {
@@ -698,6 +704,24 @@ mod tests {
         let (spell, active, spell_type) = make_spell_state(0, 1, 8, skills::SK_PROTECT as i16);
         icons.sync(&spell, &active, &spell_type);
         assert!((icons.positives[0].fill - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn templar_and_harakim_self_buffs_render_as_positive() {
+        // These self-buffs are attached server-side with the temp markers
+        // below and must show up as positive active effects.
+        let cases = [
+            (skills::SK_RAINS_OF_RENEWAL as i16, "Rains of Renewal"),
+            (skills::SK_SUNS_BLESSING2 as i16, "Sun's Blessing"),
+            (skills::SK_SEEING_RED as i16, "Seeing Red"),
+            (skills::SK_INNER_STRENGTH as i16, "Inner Strength"),
+        ];
+        for (temp, name) in cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, SpellEffectKind::Positive, "{name} kind");
+            assert_eq!(meta.icon.name, name, "{name} icon");
+        }
     }
 
     #[test]

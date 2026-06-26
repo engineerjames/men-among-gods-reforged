@@ -15,12 +15,13 @@ use core::{
     string_operations::c_string_to_str,
     talent_trees::{
         TalentEffect, TalentNode, TalentRef, apply_talent_point, available_talent_points,
-        find_node, talent_prereqs_met, tree_for,
+        find_node, is_talent_spent, reset_talent_points, talent_prereqs_met, tree_for,
     },
     types::Class,
 };
 
 use crate::game_state::GameState;
+use crate::points;
 
 /// Top-level "spend a point on a talent" entry point.
 ///
@@ -52,8 +53,9 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, slot: TalentRef) -> Result<()
         ));
     }
 
+    let mut updated_talents = gs.characters[cn].future1;
     {
-        let talents = &mut gs.characters[cn].future1;
+        let talents = &mut updated_talents;
 
         if !talent_prereqs_met(talents, node) {
             return Err(format!(
@@ -75,6 +77,7 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, slot: TalentRef) -> Result<()
     }
 
     dispatch_immediate_effect(cn, gs, node.effect)?;
+    gs.characters[cn].future1 = updated_talents;
 
     gs.do_update_char(cn);
 
@@ -107,6 +110,7 @@ fn dispatch_immediate_effect(
     match effect {
         TalentEffect::GrantSkill { skill } => grant_skill(cn, gs, skill),
         TalentEffect::GrantSkillAtBase { skill, base } => grant_skill_at_base(cn, gs, skill, base),
+        TalentEffect::ReplaceSkill { from, to } => replace_skill(cn, gs, from, to),
         TalentEffect::Composite { effects } => {
             for effect in effects {
                 dispatch_immediate_effect(cn, gs, *effect)?;
@@ -215,12 +219,219 @@ fn grant_skill_at_base(
     Ok(())
 }
 
+/// Reset every learned talent back to an unspent state.
+///
+/// Reverses the full effect of each learned node, not just the spent points:
+///
+/// * Talent-granted skills are removed and the experience spent raising them
+///   above their granted base is refunded into the character's spendable
+///   point pool (see [`ungrant_skill`]).
+/// * Stat, attribute, dodge/armor/weapon, HP/mana/endurance, passive, and
+///   primary-hit-proc effects are recomputed from the learned talent bits in
+///   `really_update_char`, so clearing the bits and re-running
+///   [`GameState::do_update_char`] reverses them automatically.
+/// * The packed talent bits are cleared and the spent talent points refunded
+///   via [`core::talent_trees::reset_talent_points`].
+/// * Runtime proc bookkeeping (`talent_primary_hit_counts`) is cleared.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `cn` - Character slot index whose talents are being reset.
+pub fn reset_talents(gs: &mut GameState, cn: usize) {
+    let class = Class::from(gs.characters[cn].kindred);
+
+    if let Some(tree) = tree_for(class) {
+        for node in tree.nodes {
+            if is_talent_spent(
+                &gs.characters[cn].future1,
+                node.slot.mask,
+                node.slot.layer as usize,
+            ) {
+                dispatch_undo_effect(cn, gs, node.effect);
+            }
+        }
+    }
+
+    reset_talent_points(&mut gs.characters[cn].future1);
+
+    if let Some(count) = gs.talent_primary_hit_counts.get_mut(cn) {
+        *count = 0;
+    }
+
+    gs.do_update_char(cn);
+}
+
+/// Reverse the learning-time portion of a [`TalentEffect`].
+///
+/// Mirror of [`dispatch_immediate_effect`]: only effects that permanently
+/// mutate the character record at learn time need an explicit undo. Effects
+/// that are recomputed from learned talent bits during `really_update_char`
+/// are reversed simply by clearing those bits, so they are intentional no-ops
+/// here.
+///
+/// # Arguments
+///
+/// * `cn` - Character slot index.
+/// * `gs` - Mutable game state.
+/// * `effect` - The effect to reverse.
+fn dispatch_undo_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) {
+    match effect {
+        TalentEffect::GrantSkill { skill } => ungrant_skill(cn, gs, skill),
+        TalentEffect::GrantSkillAtBase { skill, .. } => ungrant_skill(cn, gs, skill),
+        TalentEffect::ReplaceSkill { from, to } => {
+            if let Err(err) = replace_skill(cn, gs, to, from) {
+                log::error!("Failed to reverse talent skill replacement: {err}");
+            }
+        }
+        TalentEffect::Composite { effects } => {
+            for effect in effects {
+                dispatch_undo_effect(cn, gs, *effect);
+            }
+        }
+        TalentEffect::Passive
+        | TalentEffect::SkillsFlat { .. }
+        | TalentEffect::SkillsPercent { .. }
+        | TalentEffect::AttributesFlat { .. }
+        | TalentEffect::AttributesPercent { .. }
+        | TalentEffect::DodgeChancePercent { .. }
+        | TalentEffect::ArmorPercent { .. }
+        | TalentEffect::WeaponPercent { .. }
+        | TalentEffect::HpManaEndFlat { .. }
+        | TalentEffect::PrimaryHitProc { .. } => {}
+    }
+}
+
+/// Replace one skill row with another while preserving trainable investment.
+///
+/// This is used for talents that turn an existing skill into a class-specific
+/// replacement. Computed values are cleared and recalculated by the normal
+/// character update path after the talent mutation completes.
+///
+/// # Arguments
+///
+/// * `cn` - Character slot index.
+/// * `game_state` - Mutable game state.
+/// * `from` - Skill row to remove while the talent state is active.
+/// * `to` - Skill row to populate from `from`.
+///
+/// # Returns
+///
+/// * `Ok(())` when the replacement succeeds.
+/// * `Err` when `to` already has a base value and would be overwritten.
+fn replace_skill(
+    cn: usize,
+    game_state: &mut GameState,
+    from: Skill,
+    to: Skill,
+) -> Result<(), String> {
+    let from_idx = from as usize;
+    let to_idx = to as usize;
+    if from_idx == to_idx {
+        return Ok(());
+    }
+
+    let base_idx = SkillIndex::BaseValue as usize;
+    let preset_idx = SkillIndex::PresetModifier as usize;
+    let max_idx = SkillIndex::MaxValue as usize;
+    let diff_idx = SkillIndex::RaiseDifficulty as usize;
+    let dynamic_idx = SkillIndex::DynamicModifier as usize;
+    let total_idx = SkillIndex::TotalValue as usize;
+
+    let ch = &mut game_state.characters[cn];
+    if ch.skill[to_idx][base_idx] > 0 {
+        return Err(format!(
+            "Character {} already has replacement skill {:?}",
+            c_string_to_str(&ch.name),
+            to
+        ));
+    }
+
+    let from_base = ch.skill[from_idx][base_idx];
+    let from_preset = ch.skill[from_idx][preset_idx];
+    let from_max = ch.skill[from_idx][max_idx];
+    let from_diff = ch.skill[from_idx][diff_idx];
+
+    ch.skill[to_idx][base_idx] = if from_base == 0 { 1 } else { from_base };
+    ch.skill[to_idx][preset_idx] = from_preset;
+    ch.skill[to_idx][max_idx] = if from_max == 0 { 100 } else { from_max };
+    ch.skill[to_idx][diff_idx] = if from_diff == 0 { 5 } else { from_diff };
+    ch.skill[to_idx][dynamic_idx] = 0;
+    ch.skill[to_idx][total_idx] = 0;
+
+    ch.skill[from_idx][base_idx] = 0;
+    ch.skill[from_idx][preset_idx] = 0;
+    ch.skill[from_idx][max_idx] = 0;
+    ch.skill[from_idx][diff_idx] = 0;
+    ch.skill[from_idx][dynamic_idx] = 0;
+    ch.skill[from_idx][total_idx] = 0;
+    ch.set_do_update_flags();
+
+    log::info!(
+        "Replaced skill {:?} with {:?} for character {}",
+        from,
+        to,
+        c_string_to_str(&ch.name)
+    );
+
+    Ok(())
+}
+
+/// Remove a talent-granted skill and refund the experience spent raising it.
+///
+/// Talent-granted skills occupy reserved skill slots that are not present in
+/// any character template, so a reset removes them entirely. The experience
+/// the player spent raising the skill above its granted base (base value `1`)
+/// is summed using the same per-level cost as [`GameState::do_raise_skill`]
+/// and returned to the spendable point pool. `points_tot` is left untouched,
+/// matching the raise path which only debits `points`.
+///
+/// # Arguments
+///
+/// * `cn` - Character slot index.
+/// * `game_state` - Mutable game state.
+/// * `skill` - Talent-granted skill to remove.
+fn ungrant_skill(cn: usize, game_state: &mut GameState, skill: Skill) {
+    let idx = skill as usize;
+    let base_idx = SkillIndex::BaseValue as usize;
+    let diff_idx = SkillIndex::RaiseDifficulty as usize;
+
+    let base = i32::from(game_state.characters[cn].skill[idx][base_idx]);
+    if base == 0 {
+        return;
+    }
+
+    let diff = i32::from(game_state.characters[cn].skill[idx][diff_idx]);
+
+    // Refund the experience spent raising the skill from its granted base
+    // value of 1 up to its current base, matching `do_raise_skill`'s per-level
+    // `skill_needed` cost.
+    let mut refund: i32 = 0;
+    for value in 1..base {
+        refund = refund.saturating_add(points::skill_needed(value, diff));
+    }
+
+    let ch = &mut game_state.characters[cn];
+    ch.points = ch.points.saturating_add(refund);
+    ch.skill[idx][base_idx] = 0;
+    ch.skill[idx][SkillIndex::MaxValue as usize] = 0;
+    ch.skill[idx][diff_idx] = 0;
+    ch.set_do_update_flags();
+
+    log::info!(
+        "Removed talent-granted skill {:?} from character {} (refunded {} experience)",
+        skill,
+        c_string_to_str(&ch.name),
+        refund
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::test_helpers::with_test_gs;
     use core::constants::CharacterFlags;
-    use core::skills::{Attribute, SK_ELEMENT_SWITCHING, SK_ICE_STUN};
+    use core::skills::{Attribute, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_LAVA_BLAST};
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
@@ -626,7 +837,37 @@ mod tests {
     }
 
     #[test]
-    fn learn_harakim_lava_blast_grants_lava_blast_skill() {
+    fn learn_harakim_lava_blast_replaces_blast_with_existing_investment() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize] = 5;
+
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                4
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::RaiseDifficulty as usize],
+                5
+            );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_lava_blast_seeds_replacement_when_blast_is_absent() {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_HARAKIM, 1);
@@ -634,17 +875,72 @@ mod tests {
             learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
 
             assert_eq!(
-                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::BaseValue as usize],
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
                 1
             );
             assert_eq!(
-                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::MaxValue as usize],
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::MaxValue as usize],
                 100
             );
             assert_eq!(
-                gs.characters[cn].skill[Skill::LavaBlast as usize]
-                    [SkillIndex::RaiseDifficulty as usize],
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::RaiseDifficulty as usize],
                 5
+            );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_lava_blast_rejects_existing_replacement_without_spending_point() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 2;
+
+            let err = learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap_err();
+
+            assert!(err.contains("already has replacement skill"), "got: {err}");
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 1);
+            assert_eq!(gs.characters[cn].future1[1], 0);
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                4
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                2
+            );
+        });
+    }
+
+    #[test]
+    fn reset_talents_swaps_lava_blast_back_to_blast() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize] = 5;
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+            gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 6;
+
+            reset_talents(gs, cn);
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                6
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize],
+                5
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                0
             );
         });
     }
@@ -824,13 +1120,155 @@ mod tests {
     }
 
     #[test]
+    fn reset_talents_refunds_points_and_clears_bits_via_game_state() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 2);
+            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 0);
+
+            reset_talents(gs, cn);
+
+            let t = &gs.characters[cn].future1;
+            assert_eq!(t[TALENT_POINTS_INDEX], 2);
+            assert_eq!(t[1], 0);
+            assert_eq!(t[2], 0);
+        });
+    }
+
+    #[test]
+    fn reset_talents_removes_granted_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            learn_talent(gs, cn, templar_slot("Renewal")).unwrap();
+
+            let idx = Skill::RainsOfRenewal as usize;
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                1
+            );
+
+            reset_talents(gs, cn);
+
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::MaxValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize],
+                0
+            );
+            // The talent point spent on the grant is also refunded.
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 1);
+        });
+    }
+
+    #[test]
+    fn reset_talents_refunds_experience_spent_raising_granted_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            gs.characters[cn].points = 100;
+            learn_talent(gs, cn, templar_slot("Renewal")).unwrap();
+
+            let idx = Skill::RainsOfRenewal as usize;
+            // Raise the granted skill from base 1 -> 3, spending 1 + 2 = 3 exp.
+            assert!(gs.do_raise_skill(cn, idx as i32));
+            assert!(gs.do_raise_skill(cn, idx as i32));
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                3
+            );
+            assert_eq!(gs.characters[cn].points, 97);
+
+            reset_talents(gs, cn);
+
+            // Skill removed and the 3 experience returned to the pool.
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(gs.characters[cn].points, 100);
+        });
+    }
+
+    #[test]
+    fn reset_talents_clears_primary_hit_counts() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            gs.talent_primary_hit_counts[cn] = 4;
+
+            reset_talents(gs, cn);
+
+            assert_eq!(gs.talent_primary_hit_counts[cn], 0);
+        });
+    }
+
+    #[test]
+    fn reset_talents_leaves_no_residual_for_stat_only_talent() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 2);
+            let points_before = gs.characters[cn].points;
+            learn_talent(gs, cn, mercenary_slot("Distract")).unwrap();
+            learn_talent(gs, cn, mercenary_slot("Dodge Boost I")).unwrap();
+
+            reset_talents(gs, cn);
+
+            // Stat/dodge talents are recomputed from bits, so resetting must not
+            // touch the experience pool.
+            assert_eq!(gs.characters[cn].points, points_before);
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 2);
+        });
+    }
+
+    #[test]
+    fn ungrant_skill_refunds_cubic_raise_cost() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            let idx = Skill::RainsOfRenewal as usize;
+            gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[idx][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
+            gs.characters[cn].points = 0;
+
+            ungrant_skill(cn, gs, Skill::RainsOfRenewal);
+
+            // skill_needed(value, 5) for value in 1..4 -> 1 + 2 + 3 = 6.
+            assert_eq!(gs.characters[cn].points, 6);
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                0
+            );
+        });
+    }
+
+    #[test]
+    fn ungrant_skill_is_noop_for_absent_skill() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            gs.characters[cn].points = 42;
+            ungrant_skill(cn, gs, Skill::RainsOfRenewal);
+            assert_eq!(gs.characters[cn].points, 42);
+        });
+    }
+
+    #[test]
     fn core_node_effects_have_distinct_class_flavors() {
         assert_grant_effect(
             tree_for(Class::Templar).unwrap().nodes[0].effect,
             Skill::RainsOfRenewal,
         );
-        assert_grant_effect(
+        assert_replace_effect(
             tree_for(Class::Harakim).unwrap().nodes[0].effect,
+            Skill::Blast,
             Skill::LavaBlast,
         );
         assert_effect(
@@ -856,6 +1294,16 @@ mod tests {
         match effect {
             TalentEffect::GrantSkill { skill } => assert_eq!(skill, expected_skill),
             other => panic!("expected GrantSkill, got {other:?}"),
+        }
+    }
+
+    fn assert_replace_effect(effect: TalentEffect, expected_from: Skill, expected_to: Skill) {
+        match effect {
+            TalentEffect::ReplaceSkill { from, to } => {
+                assert_eq!(from, expected_from);
+                assert_eq!(to, expected_to);
+            }
+            other => panic!("expected ReplaceSkill, got {other:?}"),
         }
     }
 }

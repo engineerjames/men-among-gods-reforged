@@ -188,6 +188,7 @@ const ALL_COMMANDS: &[&str] = &[
     "perase",
     "poh",
     "pol",
+    "potion",
     "prof",
     "purple",
     "quest",
@@ -1098,6 +1099,11 @@ impl GameState {
                 self.do_playtest_quest(cn);
                 return;
             }
+            Some("potion") if f_p && self.playtest_mode => {
+                log::debug!("Processing potion command for {}", cn);
+                self.do_playtest_potion(cn);
+                return;
+            }
             Some("exit") if f_u => {
                 log::debug!("Processing exit command for {}", cn);
                 God::exit_usurp(self, cn);
@@ -1822,6 +1828,40 @@ impl GameState {
             FontColor::Green,
             "You have been given a full set of playtest equipment.\n",
         );
+    }
+
+    fn do_playtest_potion(&mut self, cn: usize) {
+        log::info!(
+            "do_playtest_potion: character {} used /potion command",
+            c_string_to_str(&self.characters[cn].name)
+        );
+
+        let potion_template_id = 148; // Potion of life
+        let Some(item_id) = God::create_item(self, potion_template_id) else {
+            log::warn!(
+                "do_playtest_potion: could not create item from template {} for character {}",
+                potion_template_id,
+                cn
+            );
+            self.do_character_log(
+                cn,
+                FontColor::Red,
+                "Could not create item (server item pool full).\n",
+            );
+            return;
+        };
+
+        if !God::give_character_item(self, cn, item_id) {
+            // Destroy the orphaned item so it doesn't leak.
+            self.items[item_id].used = core::constants::USE_EMPTY;
+            self.do_character_log(cn, FontColor::Red, "Not enough inventory space.\n");
+        } else {
+            self.do_character_log(
+                cn,
+                FontColor::Green,
+                "You have been given a potion of life.\n",
+            );
+        }
     }
 }
 
