@@ -33,6 +33,28 @@ samply record cargo run --bin server
 ```
 This will generate a flamegraph that you can use to analyze the performance of the server.
 
+### Pathfinding timing comparison
+
+The server reports aggregated pathfinding metrics on the same cadence as the
+existing tick timing logs when debug logging is enabled.  The async pathfinder
+is disabled by default; set `MAG_ASYNC_PATHFINDING=1` to route exact-target
+movement path requests through a small worker pool.
+
+For a pre/post comparison, run the same seeded world and player/NPC scenario
+twice, changing only `MAG_ASYNC_PATHFINDING`:
+
+```bash
+# Baseline synchronous pathfinding
+cargo run --bin server
+
+# Async exact-target pathfinding
+MAG_ASYNC_PATHFINDING=1 cargo run --bin server
+```
+
+Compare the `Tick time` and `Pathfinding` debug log lines, and optionally record
+both runs with `samply record cargo run --profile profiling --bin server` using
+the same world snapshot, KeyDB state, active NPC/player load, and run duration.
+
 # Client
 The client uses [SDL2](https://www.libsdl.org/) via the [Rust SDL2 bindings](https://github.com/Rust-SDL2/rust-sdl2) for rendering, input handling, and audio.
 

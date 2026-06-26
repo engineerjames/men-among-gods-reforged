@@ -1928,10 +1928,8 @@ fn is_char_moveto_step_passable(gs: &GameState, cn: usize, dir: u8) -> bool {
         _ => return false,
     };
 
-    if next_x < 1
-        || next_x >= core::constants::SERVER_MAPX
-        || next_y < 1
-        || next_y >= core::constants::SERVER_MAPY
+    if !(1..core::constants::SERVER_MAPX).contains(&next_x)
+        || !(1..core::constants::SERVER_MAPY).contains(&next_y)
     {
         return false;
     }

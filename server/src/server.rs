@@ -386,7 +386,7 @@ impl Server {
                 // TODO: Update this to be a proper moving average of the load
                 // gs.globals.load_avg = self.tick_perf_stats.stats().mean as i32;
 
-                log::debug!(
+                log::info!(
                     "Tick time: {:.2} ms (max: {:.2} ms), Load: {:.2}%",
                     tick_duration,
                     self.tick_perf_stats.stats().max,
@@ -395,7 +395,7 @@ impl Server {
 
                 let path_stats = gs.pathfinder.take_interval_stats();
                 if !path_stats.is_empty() {
-                    log::debug!(
+                    log::info!(
                         "Pathfinding: calls={} ok={} fail={} bad_target={} cap={} mean={:.3} ms max={:.3} ms nodes(mean/max)={:.1}/{} visited(mean/max)={:.1}/{}",
                         path_stats.calls,
                         path_stats.successes,
@@ -428,7 +428,7 @@ impl Server {
             let io_duration = Instant::now().duration_since(pre_io_time).as_secs_f32() * 1000.0;
             self.net_io_perf_stats.push(io_duration);
 
-            log::debug!(
+            log::info!(
                 "Network I/O time: {:.2} ms (max: {:.2} ms)",
                 io_duration,
                 self.net_io_perf_stats.stats().max,

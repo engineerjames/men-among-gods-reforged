@@ -8,9 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread::{self, JoinHandle};
 
-use crate::path_finding::{
-    PathFinder, PathFindingRequest, PathFindingStats, PathFindingTarget, SnapshotPassability,
-};
+use crate::path_finding::{PathFinder, PathFindingRequest, PathFindingStats, SnapshotPassability};
 
 /// Environment variable that enables asynchronous pathfinding when set.
 pub const ENABLE_ASYNC_PATHFINDING_ENV: &str = "MAG_ASYNC_PATHFINDING";
@@ -333,6 +331,7 @@ fn env_flag_enabled(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::path_finding::PathFindingTarget;
 
     #[test]
     fn spawn_rejects_zero_workers() {
