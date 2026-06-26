@@ -452,7 +452,7 @@ impl Widget for LookPanel {
 
         // Pass 1: draw all cell outlines.
         ctx.canvas.set_draw_color(CELL_GRID_COLOR);
-        for n in 0..12usize {
+        for n in 0..EQUIP_LABELS.len() {
             let col = (n % 2) as i32;
             let row = (n / 2) as i32;
             let ex = equip_x + col * (EQUIP_CELL + EQUIP_COL_GAP);
@@ -466,8 +466,7 @@ impl Widget for LookPanel {
         }
 
         // Pass 2: items or labels.
-        for n in 0..12usize {
-            let sprite = self.snap.worn[n];
+        for (n, (&sprite, &label)) in self.snap.worn.iter().zip(EQUIP_LABELS.iter()).enumerate() {
             let col = (n % 2) as i32;
             let row = (n / 2) as i32;
             let ex = equip_x + col * (EQUIP_CELL + EQUIP_COL_GAP);
@@ -488,7 +487,7 @@ impl Widget for LookPanel {
                     ctx.canvas,
                     ctx.gfx,
                     FONT,
-                    EQUIP_LABELS[n],
+                    label,
                     label_cx,
                     label_cy,
                     font_cache::TextStyle::centered(),

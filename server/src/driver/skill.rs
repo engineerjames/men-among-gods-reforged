@@ -3888,6 +3888,7 @@ pub fn skill_dispel(gs: &mut GameState, cn: usize) {
 /// # Panics
 ///
 /// * Panics if `cn`, the selected target index, or the created companion index is invalid.
+///
 /// Recomputes a ghost companion's attributes, skills, and vital pools from its
 /// owner's current Ghost Companion skill, applying any active Revenant Conduit
 /// boost the owner currently has.
