@@ -431,7 +431,7 @@ mod tests {
     use super::*;
     use crate::test_helpers::with_test_gs;
     use core::constants::CharacterFlags;
-    use core::skills::{Attribute, SK_ELEMENT_SWITCHING, SK_ICE_STUN};
+    use core::skills::{Attribute, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_LAVA_BLAST};
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
@@ -837,7 +837,37 @@ mod tests {
     }
 
     #[test]
-    fn learn_harakim_lava_blast_grants_lava_blast_skill() {
+    fn learn_harakim_lava_blast_replaces_blast_with_existing_investment() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize] = 5;
+
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                4
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::RaiseDifficulty as usize],
+                5
+            );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_lava_blast_seeds_replacement_when_blast_is_absent() {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_HARAKIM, 1);
@@ -845,17 +875,72 @@ mod tests {
             learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
 
             assert_eq!(
-                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::BaseValue as usize],
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
                 1
             );
             assert_eq!(
-                gs.characters[cn].skill[Skill::LavaBlast as usize][SkillIndex::MaxValue as usize],
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::MaxValue as usize],
                 100
             );
             assert_eq!(
-                gs.characters[cn].skill[Skill::LavaBlast as usize]
-                    [SkillIndex::RaiseDifficulty as usize],
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::RaiseDifficulty as usize],
                 5
+            );
+        });
+    }
+
+    #[test]
+    fn learn_harakim_lava_blast_rejects_existing_replacement_without_spending_point() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 2;
+
+            let err = learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap_err();
+
+            assert!(err.contains("already has replacement skill"), "got: {err}");
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 1);
+            assert_eq!(gs.characters[cn].future1[1], 0);
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                4
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                2
+            );
+        });
+    }
+
+    #[test]
+    fn reset_talents_swaps_lava_blast_back_to_blast() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize] = 5;
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+            gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 6;
+
+            reset_talents(gs, cn);
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                6
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize],
+                5
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                0
             );
         });
     }
@@ -1181,8 +1266,9 @@ mod tests {
             tree_for(Class::Templar).unwrap().nodes[0].effect,
             Skill::RainsOfRenewal,
         );
-        assert_grant_effect(
+        assert_replace_effect(
             tree_for(Class::Harakim).unwrap().nodes[0].effect,
+            Skill::Blast,
             Skill::LavaBlast,
         );
         assert_effect(
@@ -1208,6 +1294,16 @@ mod tests {
         match effect {
             TalentEffect::GrantSkill { skill } => assert_eq!(skill, expected_skill),
             other => panic!("expected GrantSkill, got {other:?}"),
+        }
+    }
+
+    fn assert_replace_effect(effect: TalentEffect, expected_from: Skill, expected_to: Skill) {
+        match effect {
+            TalentEffect::ReplaceSkill { from, to } => {
+                assert_eq!(from, expected_from);
+                assert_eq!(to, expected_to);
+            }
+            other => panic!("expected ReplaceSkill, got {other:?}"),
         }
     }
 }

@@ -1034,7 +1034,7 @@ const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "Anguish (Lava)",
     "Anguish (Earth)",
     "Anguish (Ice)",
-    "",
+    "Lava Blast",
     "",
     "",
     "",
@@ -1206,6 +1206,7 @@ mod tests {
         assert_eq!(get_skill_name(SK_SEEING_RED), "Seeing Red");
         assert_eq!(get_skill_name(SK_THUNDEROUS_FURY), "Thunderous Fury");
         assert_eq!(get_skill_name(SK_INNER_STRENGTH), "Inner Strength");
+        assert_eq!(get_skill_name(SK_LAVA_BLAST), "Lava Blast");
 
         // Test empty skills (reserved slots)
         assert_eq!(get_skill_name(49), "");
