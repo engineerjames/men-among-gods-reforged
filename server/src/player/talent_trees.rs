@@ -53,8 +53,9 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, slot: TalentRef) -> Result<()
         ));
     }
 
+    let mut updated_talents = gs.characters[cn].future1;
     {
-        let talents = &mut gs.characters[cn].future1;
+        let talents = &mut updated_talents;
 
         if !talent_prereqs_met(talents, node) {
             return Err(format!(
@@ -76,6 +77,7 @@ pub fn learn_talent(gs: &mut GameState, cn: usize, slot: TalentRef) -> Result<()
     }
 
     dispatch_immediate_effect(cn, gs, node.effect)?;
+    gs.characters[cn].future1 = updated_talents;
 
     gs.do_update_char(cn);
 
@@ -108,6 +110,7 @@ fn dispatch_immediate_effect(
     match effect {
         TalentEffect::GrantSkill { skill } => grant_skill(cn, gs, skill),
         TalentEffect::GrantSkillAtBase { skill, base } => grant_skill_at_base(cn, gs, skill, base),
+        TalentEffect::ReplaceSkill { from, to } => replace_skill(cn, gs, from, to),
         TalentEffect::Composite { effects } => {
             for effect in effects {
                 dispatch_immediate_effect(cn, gs, *effect)?;
@@ -276,6 +279,11 @@ fn dispatch_undo_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) {
     match effect {
         TalentEffect::GrantSkill { skill } => ungrant_skill(cn, gs, skill),
         TalentEffect::GrantSkillAtBase { skill, .. } => ungrant_skill(cn, gs, skill),
+        TalentEffect::ReplaceSkill { from, to } => {
+            if let Err(err) = replace_skill(cn, gs, to, from) {
+                log::error!("Failed to reverse talent skill replacement: {err}");
+            }
+        }
         TalentEffect::Composite { effects } => {
             for effect in effects {
                 dispatch_undo_effect(cn, gs, *effect);
@@ -292,6 +300,81 @@ fn dispatch_undo_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) {
         | TalentEffect::HpManaEndFlat { .. }
         | TalentEffect::PrimaryHitProc { .. } => {}
     }
+}
+
+/// Replace one skill row with another while preserving trainable investment.
+///
+/// This is used for talents that turn an existing skill into a class-specific
+/// replacement. Computed values are cleared and recalculated by the normal
+/// character update path after the talent mutation completes.
+///
+/// # Arguments
+///
+/// * `cn` - Character slot index.
+/// * `game_state` - Mutable game state.
+/// * `from` - Skill row to remove while the talent state is active.
+/// * `to` - Skill row to populate from `from`.
+///
+/// # Returns
+///
+/// * `Ok(())` when the replacement succeeds.
+/// * `Err` when `to` already has a base value and would be overwritten.
+fn replace_skill(
+    cn: usize,
+    game_state: &mut GameState,
+    from: Skill,
+    to: Skill,
+) -> Result<(), String> {
+    let from_idx = from as usize;
+    let to_idx = to as usize;
+    if from_idx == to_idx {
+        return Ok(());
+    }
+
+    let base_idx = SkillIndex::BaseValue as usize;
+    let preset_idx = SkillIndex::PresetModifier as usize;
+    let max_idx = SkillIndex::MaxValue as usize;
+    let diff_idx = SkillIndex::RaiseDifficulty as usize;
+    let dynamic_idx = SkillIndex::DynamicModifier as usize;
+    let total_idx = SkillIndex::TotalValue as usize;
+
+    let ch = &mut game_state.characters[cn];
+    if ch.skill[to_idx][base_idx] > 0 {
+        return Err(format!(
+            "Character {} already has replacement skill {:?}",
+            c_string_to_str(&ch.name),
+            to
+        ));
+    }
+
+    let from_base = ch.skill[from_idx][base_idx];
+    let from_preset = ch.skill[from_idx][preset_idx];
+    let from_max = ch.skill[from_idx][max_idx];
+    let from_diff = ch.skill[from_idx][diff_idx];
+
+    ch.skill[to_idx][base_idx] = if from_base == 0 { 1 } else { from_base };
+    ch.skill[to_idx][preset_idx] = from_preset;
+    ch.skill[to_idx][max_idx] = if from_max == 0 { 100 } else { from_max };
+    ch.skill[to_idx][diff_idx] = if from_diff == 0 { 5 } else { from_diff };
+    ch.skill[to_idx][dynamic_idx] = 0;
+    ch.skill[to_idx][total_idx] = 0;
+
+    ch.skill[from_idx][base_idx] = 0;
+    ch.skill[from_idx][preset_idx] = 0;
+    ch.skill[from_idx][max_idx] = 0;
+    ch.skill[from_idx][diff_idx] = 0;
+    ch.skill[from_idx][dynamic_idx] = 0;
+    ch.skill[from_idx][total_idx] = 0;
+    ch.set_do_update_flags();
+
+    log::info!(
+        "Replaced skill {:?} with {:?} for character {}",
+        from,
+        to,
+        c_string_to_str(&ch.name)
+    );
+
+    Ok(())
 }
 
 /// Remove a talent-granted skill and refund the experience spent raising it.

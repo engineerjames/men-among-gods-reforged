@@ -123,8 +123,9 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             description: "Learn Lava Blast.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::GrantSkill {
-                skill: Skill::LavaBlast,
+            effect: TalentEffect::ReplaceSkill {
+                from: Skill::Blast,
+                to: Skill::LavaBlast,
             },
         },
         TalentNode {

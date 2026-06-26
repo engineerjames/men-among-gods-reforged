@@ -161,6 +161,13 @@ pub enum TalentEffect {
         /// Minimum base value after the talent is learned.
         base: u8,
     },
+    /// Replace one learned skill with another while preserving investment.
+    ReplaceSkill {
+        /// Skill removed while the talent is learned.
+        from: Skill,
+        /// Skill made available while the talent is learned.
+        to: Skill,
+    },
     /// Apply several effects from one learned node.
     Composite {
         /// Nested effects applied as though each were learned separately.
@@ -612,7 +619,8 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
         | TalentEffect::GrantSkill { .. }
-        | TalentEffect::GrantSkillAtBase { .. } => None,
+        | TalentEffect::GrantSkillAtBase { .. }
+        | TalentEffect::ReplaceSkill { .. } => None,
     }
 }
 
@@ -697,6 +705,7 @@ fn accumulate_stat_bonus(
         TalentEffect::Passive
         | TalentEffect::GrantSkill { .. }
         | TalentEffect::GrantSkillAtBase { .. }
+        | TalentEffect::ReplaceSkill { .. }
         | TalentEffect::PrimaryHitProc { .. } => {}
     }
 }
@@ -1187,6 +1196,7 @@ mod tests {
             | TalentEffect::HpManaEndFlat { .. }
             | TalentEffect::GrantSkill { .. }
             | TalentEffect::GrantSkillAtBase { .. }
+            | TalentEffect::ReplaceSkill { .. }
             | TalentEffect::PrimaryHitProc { .. } => {}
         }
     }
@@ -1395,7 +1405,11 @@ mod tests {
         let tree = tree_for(Class::Harakim).unwrap();
 
         assert_eq!(tree.nodes.len(), 16);
-        assert_grants_skill(named_node(tree, "Lava Blast"), Skill::LavaBlast);
+        assert_replaces_skill(
+            named_node(tree, "Lava Blast"),
+            Skill::Blast,
+            Skill::LavaBlast,
+        );
         assert_grants_skill(named_node(tree, "Revenant Conduit"), Skill::RevenantConduit);
         assert_attribute_percent(
             named_node(tree, "Intuition Boost I"),
@@ -1479,6 +1493,16 @@ mod tests {
                 assert_eq!(base, expected_base);
             }
             other => panic!("expected GrantSkillAtBase, got {other:?}"),
+        }
+    }
+
+    fn assert_replaces_skill(node: &TalentNode, expected_from: Skill, expected_to: Skill) {
+        match node.effect {
+            TalentEffect::ReplaceSkill { from, to } => {
+                assert_eq!(from, expected_from);
+                assert_eq!(to, expected_to);
+            }
+            other => panic!("expected ReplaceSkill, got {other:?}"),
         }
     }
 
