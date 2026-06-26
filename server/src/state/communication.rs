@@ -31,6 +31,7 @@ impl GameState {
         dat3: i32,
         dat4: i32,
     ) {
+        let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::AreaNotify);
         for y in std::cmp::max(0, ys - core::constants::AREA_SIZE)
             ..std::cmp::min(
                 core::constants::SERVER_MAPY,

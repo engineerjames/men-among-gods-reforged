@@ -36,7 +36,7 @@ This will generate a flamegraph that you can use to analyze the performance of t
 ### Pathfinding timing comparison
 
 The server reports aggregated pathfinding metrics on the same cadence as the
-existing tick timing logs when debug logging is enabled.  The async pathfinder
+existing tick timing logs at the default info log level.  The async pathfinder
 is disabled by default; set `MAG_ASYNC_PATHFINDING=1` to route exact-target
 movement path requests through a small worker pool.
 

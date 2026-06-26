@@ -112,6 +112,7 @@ services:
       MAG_ADMIN_RELOAD_DISABLED: ${MAG_ADMIN_RELOAD_DISABLED:-}
       MAG_PLAYTEST: ${MAG_PLAYTEST:-}
       MAG_GOD_PASSWORD: ${MAG_GOD_PASSWORD:?MAG_GOD_PASSWORD is required}
+      MAG_ASYNC_PATHFINDING: ${MAG_ASYNC_PATHFINDING:-}
     volumes:
       - tls-certs:/certs:ro
     ports:

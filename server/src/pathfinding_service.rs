@@ -193,7 +193,7 @@ impl PathfindingService {
         items: &[core::types::Item],
     ) -> bool {
         if let Some(pending) = self.pending_by_character.get(&character_id)
-            && pending.request == request
+            && pending.request.same_query(&request)
         {
             return false;
         }
@@ -392,6 +392,33 @@ mod tests {
 
         assert!(service.submit_if_absent(1, request, &map, &items));
         assert!(!service.submit_if_absent(1, request, &map, &items));
+        service.shutdown();
+    }
+
+    #[test]
+    fn pending_request_matches_despite_advancing_tick() {
+        let mut service = PathfindingService::spawn(1);
+        let character = core::types::Character {
+            x: 10,
+            y: 10,
+            dir: core::constants::DX_RIGHT,
+            flags: core::constants::CharacterFlags::Player.bits(),
+            ..core::types::Character::default()
+        };
+        let target = PathFindingTarget::new(12, 10, 0, 0, 0);
+        let map_len = core::constants::SERVER_MAPX as usize * core::constants::SERVER_MAPY as usize;
+        let map = vec![core::types::Map::default(); map_len];
+        let items = vec![core::types::Item::default(); core::constants::MAXITEM];
+
+        // Same character/target, but the world tick has advanced. This must
+        // still be treated as the same in-flight query, otherwise the request
+        // would be resubmitted every tick and a worker result would never be
+        // accepted.
+        let request_tick_1 = PathFindingRequest::from_character(&character, 1, target);
+        let request_tick_2 = PathFindingRequest::from_character(&character, 2, target);
+
+        assert!(service.submit_if_absent(1, request_tick_1, &map, &items));
+        assert!(!service.submit_if_absent(1, request_tick_2, &map, &items));
         service.shutdown();
     }
 }

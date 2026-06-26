@@ -827,6 +827,7 @@ pub fn plr_cmd_shop(gs: &mut GameState, nr: usize) {
 /// * `dx` - Horizontal movement delta.
 /// * `dy` - Vertical movement delta.
 fn plr_move_by(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
+    let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::MoveExec);
     // Anguish (Earth): while a debuff with SK_ANGUISH_EARTH temp is active
     // on this character, all directional movement is suppressed. The
     // character can still turn, attack, and cast.
@@ -871,6 +872,7 @@ fn plr_move_by(gs: &mut GameState, cn: usize, dx: i16, dy: i16) {
 /// * `cn` - Character index rotating.
 /// * `dir` - New facing direction.
 fn plr_turn(gs: &mut GameState, cn: usize, dir: u8) {
+    let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::TurnExec);
     notify_character_tile(gs, cn);
     gs.characters[cn].dir = dir;
     gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
@@ -1682,6 +1684,7 @@ pub fn plr_misc(gs: &mut GameState, cn: usize) {
 /// * `gs` - Active game state used to mutate the character.
 /// * `cn` - Character index whose status should be reset.
 pub fn plr_reset_status(gs: &mut GameState, cn: usize) {
+    let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::ResetStatus);
     gs.characters[cn].status = match gs.characters[cn].dir {
         core::constants::DX_UP => 0,
         core::constants::DX_DOWN => 1,

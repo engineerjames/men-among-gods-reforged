@@ -67,6 +67,125 @@ fn kick_matching_ban_target(gs: &mut GameState, target: &BanTarget) -> usize {
     kicked
 }
 
+/// Rolling per-phase timing statistics for the major `game_tick` stages.
+///
+/// Each buffer accumulates the wall-clock time (in milliseconds) spent in one
+/// phase of `game_tick`, sampled every tick. Used to break down where tick
+/// time is being spent across the major subsystems.
+struct TickPhaseStats {
+    /// Time in the `plr_tick` loop (sending ticks to players).
+    player_tick: StatisticsBuffer<f32>,
+    /// Time processing inbound player commands plus `plr_idle`.
+    player_cmd: StatisticsBuffer<f32>,
+    /// Time in the login-state machine loop (`plr_state`).
+    player_state: StatisticsBuffer<f32>,
+    /// Time building per-player visible maps (`plr_getmap`).
+    player_getmap: StatisticsBuffer<f32>,
+    /// Time sending per-player change packets (`plr_change`).
+    player_change: StatisticsBuffer<f32>,
+    /// Time in the main character action loop (NPC AI, movement, regen).
+    character_act: StatisticsBuffer<f32>,
+    /// Time in the population/spawn tick.
+    populate: StatisticsBuffer<f32>,
+    /// Time in the effect manager tick.
+    effects: StatisticsBuffer<f32>,
+    /// Time in the item driver tick.
+    item_driver: StatisticsBuffer<f32>,
+    /// Time in the global/world tick.
+    global: StatisticsBuffer<f32>,
+
+    /// `character_act` sub-phase: `really_update_char` (deferred updates).
+    ca_update: StatisticsBuffer<f32>,
+    /// `character_act` sub-phase: `check_expire` (non-active expiry sweep).
+    ca_expire: StatisticsBuffer<f32>,
+    /// `character_act` sub-phase: `check_valid` (periodic validation).
+    ca_valid: StatisticsBuffer<f32>,
+    /// `character_act` sub-phase: `group_active` (sleeping-NPC activity check).
+    ca_group_active: StatisticsBuffer<f32>,
+    /// `character_act` sub-phase: `plr_act` (per-character action driver).
+    ca_act: StatisticsBuffer<f32>,
+    /// `character_act` sub-phase: `do_regenerate` (HP/end/mana regen).
+    ca_regen: StatisticsBuffer<f32>,
+
+    /// driver stage: `npc_driver_high` (high-prio NPC AI).
+    drv_npc_high: StatisticsBuffer<f32>,
+    /// driver stage: `npc_driver_low` (low-prio NPC AI).
+    drv_npc_low: StatisticsBuffer<f32>,
+    /// driver stage: `drv_moveto` (movement + pathfinding).
+    drv_moveto: StatisticsBuffer<f32>,
+    /// driver stage: `drv_attack_char` (combat approach).
+    drv_attack: StatisticsBuffer<f32>,
+    /// driver stage: `drv_skill` (skill/spell cast).
+    drv_skill: StatisticsBuffer<f32>,
+    /// driver stage: `drv_use` (item use).
+    drv_use: StatisticsBuffer<f32>,
+    /// driver stage: misc-action dispatch (includes `npc_driver_low`).
+    drv_misc: StatisticsBuffer<f32>,
+    /// driver stage: `player_driver_med` (player medium driver).
+    drv_player_med: StatisticsBuffer<f32>,
+    /// inner: `npc_driver_high` 17x17 item scan loop.
+    drv_nh_itemscan: StatisticsBuffer<f32>,
+    /// inner: total time in `npc_try_spell` (subset of `npc_driver_high`).
+    drv_npc_try_spell: StatisticsBuffer<f32>,
+
+    /// plr_act stage: `act_idle` (idle handling incl. area notify).
+    pa_act_idle: StatisticsBuffer<f32>,
+    /// plr_act stage: `do_area_notify` (cross-cutting area broadcast).
+    pa_area_notify: StatisticsBuffer<f32>,
+    /// plr_act stage: `speedo` (speed-table lookup).
+    pa_speedo: StatisticsBuffer<f32>,
+    /// plr_act stage: `plr_move_by` (movement execution).
+    pa_move_exec: StatisticsBuffer<f32>,
+    /// plr_act stage: `plr_turn` (turn execution).
+    pa_turn_exec: StatisticsBuffer<f32>,
+    /// plr_act stage: `plr_reset_status` (status reset before driver).
+    pa_reset_status: StatisticsBuffer<f32>,
+}
+
+impl TickPhaseStats {
+    /// Construct an empty set of per-phase timing buffers.
+    ///
+    /// # Returns
+    ///
+    /// * A new `TickPhaseStats` with each buffer sized for 100 samples.
+    fn new() -> Self {
+        Self {
+            player_tick: StatisticsBuffer::new(100),
+            player_cmd: StatisticsBuffer::new(100),
+            player_state: StatisticsBuffer::new(100),
+            player_getmap: StatisticsBuffer::new(100),
+            player_change: StatisticsBuffer::new(100),
+            character_act: StatisticsBuffer::new(100),
+            populate: StatisticsBuffer::new(100),
+            effects: StatisticsBuffer::new(100),
+            item_driver: StatisticsBuffer::new(100),
+            global: StatisticsBuffer::new(100),
+            ca_update: StatisticsBuffer::new(100),
+            ca_expire: StatisticsBuffer::new(100),
+            ca_valid: StatisticsBuffer::new(100),
+            ca_group_active: StatisticsBuffer::new(100),
+            ca_act: StatisticsBuffer::new(100),
+            ca_regen: StatisticsBuffer::new(100),
+            drv_npc_high: StatisticsBuffer::new(100),
+            drv_npc_low: StatisticsBuffer::new(100),
+            drv_moveto: StatisticsBuffer::new(100),
+            drv_attack: StatisticsBuffer::new(100),
+            drv_skill: StatisticsBuffer::new(100),
+            drv_use: StatisticsBuffer::new(100),
+            drv_misc: StatisticsBuffer::new(100),
+            drv_player_med: StatisticsBuffer::new(100),
+            drv_nh_itemscan: StatisticsBuffer::new(100),
+            drv_npc_try_spell: StatisticsBuffer::new(100),
+            pa_act_idle: StatisticsBuffer::new(100),
+            pa_area_notify: StatisticsBuffer::new(100),
+            pa_speedo: StatisticsBuffer::new(100),
+            pa_move_exec: StatisticsBuffer::new(100),
+            pa_turn_exec: StatisticsBuffer::new(100),
+            pa_reset_status: StatisticsBuffer::new(100),
+        }
+    }
+}
+
 /// The server runtime object which manages networking and tick timing.
 ///
 /// Holds the listener socket and timing state used by the main loop. Create
@@ -121,6 +240,9 @@ pub struct Server {
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
+
+    /// Rolling per-phase `game_tick` timing statistics.
+    tick_phase_stats: TickPhaseStats,
 }
 
 impl Server {
@@ -147,6 +269,7 @@ impl Server {
             world_action_watcher: None,
             ban_action_watcher: None,
             save_tick_counter: 0,
+            tick_phase_stats: TickPhaseStats::new(),
         }
     }
 
@@ -479,6 +602,7 @@ impl Server {
         self.maybe_enqueue_background_save(gs);
 
         // Send tick to players and count online
+        let phase_start = Instant::now();
         let mut online = 0;
         for n in 1..gs.players.len() {
             if gs.players[n].sock.is_none() {
@@ -502,6 +626,9 @@ impl Server {
                 online += 1;
             }
         }
+        self.tick_phase_stats
+            .player_tick
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
 
         // Update max online statistics
         if online > gs.globals.max_online {
@@ -512,6 +639,7 @@ impl Server {
         }
 
         // Check for player commands and translate to character commands
+        let phase_start = Instant::now();
         for n in 1..gs.players.len() {
             if gs.players[n].sock.is_none() {
                 continue;
@@ -531,8 +659,12 @@ impl Server {
 
             player::tick::plr_idle(gs, n);
         }
+        self.tick_phase_stats
+            .player_cmd
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
 
         // Do login stuff for players not in normal state
+        let phase_start = Instant::now();
         for n in 1..gs.players.len() {
             if gs.players[n].sock.is_none() {
                 continue;
@@ -543,8 +675,13 @@ impl Server {
 
             player::tick::plr_state(gs, n);
         }
+        self.tick_phase_stats
+            .player_state
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
 
         // Send changes to players in normal state
+        let mut getmap_ms = 0.0f32;
+        let mut change_ms = 0.0f32;
         for n in 1..gs.players.len() {
             if gs.players[n].sock.is_none() {
                 continue;
@@ -553,9 +690,16 @@ impl Server {
                 continue;
             }
 
+            let phase_start = Instant::now();
             player::map::plr_getmap(gs, n);
+            getmap_ms += phase_start.elapsed().as_secs_f32() * 1000.0;
+
+            let phase_start = Instant::now();
             player::tick::plr_change(gs, n);
+            change_ms += phase_start.elapsed().as_secs_f32() * 1000.0;
         }
+        self.tick_phase_stats.player_getmap.push(getmap_ms);
+        self.tick_phase_stats.player_change.push(change_ms);
 
         // Let characters act
         let mut cnt = 0;
@@ -568,6 +712,16 @@ impl Server {
             self.wakeup_character(gs);
         }
 
+        let phase_start = Instant::now();
+        let mut ca_update_ms = 0.0f32;
+        let mut ca_expire_ms = 0.0f32;
+        let mut ca_valid_ms = 0.0f32;
+        let mut ca_group_active_ms = 0.0f32;
+        let mut ca_act_ms = 0.0f32;
+        let mut ca_regen_ms = 0.0f32;
+        // Clear any driver-stage time accumulated before the character loop
+        // (e.g. by command processing) so the drained totals reflect this loop.
+        let _ = crate::tick_profile::drain();
         for n in 1..core::constants::MAXCHARS {
             let char_state = {
                 if gs.characters[n].used == core::constants::USE_EMPTY {
@@ -589,13 +743,17 @@ impl Server {
                 CharacterTickState::Empty => continue,
                 CharacterTickState::NeedsUpdate => {
                     cnt += 1;
+                    let sub_start = Instant::now();
                     gs.really_update_char(n);
+                    ca_update_ms += sub_start.elapsed().as_secs_f32() * 1000.0;
 
                     gs.characters[n].flags &= !CharacterFlags::Update.bits();
                 }
                 CharacterTickState::CheckExpire => {
                     cnt += 1;
+                    let sub_start = Instant::now();
                     self.check_expire(gs, n);
+                    ca_expire_ms += sub_start.elapsed().as_secs_f32() * 1000.0;
                 }
                 CharacterTickState::Body => {
                     cnt += 1;
@@ -622,16 +780,26 @@ impl Server {
             }
 
             // Check if character should be active
-            if gs.characters[n].status < 8 && !self.group_active(gs, n) {
-                continue;
+            if gs.characters[n].status < 8 {
+                let sub_start = Instant::now();
+                let is_group_active = self.group_active(gs, n);
+                ca_group_active_ms += sub_start.elapsed().as_secs_f32() * 1000.0;
+                if !is_group_active {
+                    continue;
+                }
             }
 
             awake += 1;
 
             if gs.characters[n].used == core::constants::USE_ACTIVE {
                 // Periodic validation
-                if (n & 1023) == (ticker as usize & 1023) && !self.check_valid(gs, n) {
-                    continue;
+                if (n & 1023) == (ticker as usize & 1023) {
+                    let sub_start = Instant::now();
+                    let is_valid = self.check_valid(gs, n);
+                    ca_valid_ms += sub_start.elapsed().as_secs_f32() * 1000.0;
+                    if !is_valid {
+                        continue;
+                    }
                 }
 
                 gs.characters[n].current_online_time += 1;
@@ -661,11 +829,75 @@ impl Server {
                     }
                 }
 
+                let sub_start = Instant::now();
                 player::tick::plr_act(gs, n);
+                ca_act_ms += sub_start.elapsed().as_secs_f32() * 1000.0;
             }
 
+            let sub_start = Instant::now();
             gs.do_regenerate(n);
+            ca_regen_ms += sub_start.elapsed().as_secs_f32() * 1000.0;
         }
+        self.tick_phase_stats
+            .character_act
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
+        self.tick_phase_stats.ca_update.push(ca_update_ms);
+        self.tick_phase_stats.ca_expire.push(ca_expire_ms);
+        self.tick_phase_stats.ca_valid.push(ca_valid_ms);
+        self.tick_phase_stats
+            .ca_group_active
+            .push(ca_group_active_ms);
+        self.tick_phase_stats.ca_act.push(ca_act_ms);
+        self.tick_phase_stats.ca_regen.push(ca_regen_ms);
+        let drv = crate::tick_profile::drain();
+        self.tick_phase_stats
+            .drv_npc_high
+            .push(drv[crate::tick_profile::Stage::NpcHigh as usize]);
+        self.tick_phase_stats
+            .drv_npc_low
+            .push(drv[crate::tick_profile::Stage::NpcLow as usize]);
+        self.tick_phase_stats
+            .drv_moveto
+            .push(drv[crate::tick_profile::Stage::Moveto as usize]);
+        self.tick_phase_stats
+            .drv_attack
+            .push(drv[crate::tick_profile::Stage::Attack as usize]);
+        self.tick_phase_stats
+            .drv_skill
+            .push(drv[crate::tick_profile::Stage::Skill as usize]);
+        self.tick_phase_stats
+            .drv_use
+            .push(drv[crate::tick_profile::Stage::UseItem as usize]);
+        self.tick_phase_stats
+            .drv_misc
+            .push(drv[crate::tick_profile::Stage::Misc as usize]);
+        self.tick_phase_stats
+            .drv_player_med
+            .push(drv[crate::tick_profile::Stage::PlayerMed as usize]);
+        self.tick_phase_stats
+            .drv_nh_itemscan
+            .push(drv[crate::tick_profile::Stage::NhItemscan as usize]);
+        self.tick_phase_stats
+            .drv_npc_try_spell
+            .push(drv[crate::tick_profile::Stage::NpcTrySpell as usize]);
+        self.tick_phase_stats
+            .pa_act_idle
+            .push(drv[crate::tick_profile::Stage::ActIdle as usize]);
+        self.tick_phase_stats
+            .pa_area_notify
+            .push(drv[crate::tick_profile::Stage::AreaNotify as usize]);
+        self.tick_phase_stats
+            .pa_speedo
+            .push(drv[crate::tick_profile::Stage::Speedo as usize]);
+        self.tick_phase_stats
+            .pa_move_exec
+            .push(drv[crate::tick_profile::Stage::MoveExec as usize]);
+        self.tick_phase_stats
+            .pa_turn_exec
+            .push(drv[crate::tick_profile::Stage::TurnExec as usize]);
+        self.tick_phase_stats
+            .pa_reset_status
+            .push(drv[crate::tick_profile::Stage::ResetStatus as usize]);
 
         // Update global stats
         gs.globals.character_cnt = cnt;
@@ -674,11 +906,115 @@ impl Server {
         gs.globals.players_online = plon;
 
         // Run subsystem ticks
+        let phase_start = Instant::now();
         populate::pop_tick(gs);
-        EffectManager::effect_tick(gs);
-        driver::item_tick(gs);
+        self.tick_phase_stats
+            .populate
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
 
+        let phase_start = Instant::now();
+        EffectManager::effect_tick(gs);
+        self.tick_phase_stats
+            .effects
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
+
+        let phase_start = Instant::now();
+        driver::item_tick(gs);
+        self.tick_phase_stats
+            .item_driver
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
+
+        let phase_start = Instant::now();
         self.global_tick(gs);
+        self.tick_phase_stats
+            .global
+            .push(phase_start.elapsed().as_secs_f32() * 1000.0);
+
+        // Log the per-phase tick timing breakdown on the measurement interval.
+        if gs
+            .globals
+            .ticker
+            .unsigned_abs()
+            .is_multiple_of(self.measurement_interval)
+        {
+            let s = &self.tick_phase_stats;
+            log::info!(
+                "Tick phases (mean/max ms): player_tick={:.3}/{:.3} player_cmd={:.3}/{:.3} player_state={:.3}/{:.3} player_getmap={:.3}/{:.3} player_change={:.3}/{:.3} character_act={:.3}/{:.3} populate={:.3}/{:.3} effects={:.3}/{:.3} item_driver={:.3}/{:.3} global={:.3}/{:.3}",
+                s.player_tick.stats().mean,
+                s.player_tick.stats().max,
+                s.player_cmd.stats().mean,
+                s.player_cmd.stats().max,
+                s.player_state.stats().mean,
+                s.player_state.stats().max,
+                s.player_getmap.stats().mean,
+                s.player_getmap.stats().max,
+                s.player_change.stats().mean,
+                s.player_change.stats().max,
+                s.character_act.stats().mean,
+                s.character_act.stats().max,
+                s.populate.stats().mean,
+                s.populate.stats().max,
+                s.effects.stats().mean,
+                s.effects.stats().max,
+                s.item_driver.stats().mean,
+                s.item_driver.stats().max,
+                s.global.stats().mean,
+                s.global.stats().max,
+            );
+            log::info!(
+                "Tick character_act (mean/max ms): ca_update={:.3}/{:.3} ca_expire={:.3}/{:.3} ca_valid={:.3}/{:.3} ca_group_active={:.3}/{:.3} ca_act={:.3}/{:.3} ca_regen={:.3}/{:.3}",
+                s.ca_update.stats().mean,
+                s.ca_update.stats().max,
+                s.ca_expire.stats().mean,
+                s.ca_expire.stats().max,
+                s.ca_valid.stats().mean,
+                s.ca_valid.stats().max,
+                s.ca_group_active.stats().mean,
+                s.ca_group_active.stats().max,
+                s.ca_act.stats().mean,
+                s.ca_act.stats().max,
+                s.ca_regen.stats().mean,
+                s.ca_regen.stats().max,
+            );
+            log::info!(
+                "Tick driver (mean/max ms): npc_high={:.3}/{:.3} npc_low={:.3}/{:.3} moveto={:.3}/{:.3} attack={:.3}/{:.3} skill={:.3}/{:.3} use={:.3}/{:.3} misc={:.3}/{:.3} player_med={:.3}/{:.3} nh_itemscan={:.3}/{:.3} npc_try_spell={:.3}/{:.3}",
+                s.drv_npc_high.stats().mean,
+                s.drv_npc_high.stats().max,
+                s.drv_npc_low.stats().mean,
+                s.drv_npc_low.stats().max,
+                s.drv_moveto.stats().mean,
+                s.drv_moveto.stats().max,
+                s.drv_attack.stats().mean,
+                s.drv_attack.stats().max,
+                s.drv_skill.stats().mean,
+                s.drv_skill.stats().max,
+                s.drv_use.stats().mean,
+                s.drv_use.stats().max,
+                s.drv_misc.stats().mean,
+                s.drv_misc.stats().max,
+                s.drv_player_med.stats().mean,
+                s.drv_player_med.stats().max,
+                s.drv_nh_itemscan.stats().mean,
+                s.drv_nh_itemscan.stats().max,
+                s.drv_npc_try_spell.stats().mean,
+                s.drv_npc_try_spell.stats().max,
+            );
+            log::info!(
+                "Tick plr_act (mean/max ms): act_idle={:.3}/{:.3} area_notify={:.3}/{:.3} speedo={:.3}/{:.3} move_exec={:.3}/{:.3} turn_exec={:.3}/{:.3} reset_status={:.3}/{:.3}",
+                s.pa_act_idle.stats().mean,
+                s.pa_act_idle.stats().max,
+                s.pa_area_notify.stats().mean,
+                s.pa_area_notify.stats().max,
+                s.pa_speedo.stats().mean,
+                s.pa_speedo.stats().max,
+                s.pa_move_exec.stats().mean,
+                s.pa_move_exec.stats().max,
+                s.pa_turn_exec.stats().mean,
+                s.pa_turn_exec.stats().max,
+                s.pa_reset_status.stats().mean,
+                s.pa_reset_status.stats().max,
+            );
+        }
     }
 
     // Helper enum for character tick state

@@ -1714,6 +1714,7 @@ pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize)
 ///
 /// * Panics if any legacy id or index parameter used by `npc_try_spell` is outside the corresponding game-state collection.
 pub fn npc_try_spell(gs: &mut GameState, cn: usize, co: usize, spell: usize) -> bool {
+    let _prof = crate::tick_profile::scope(crate::tick_profile::Stage::NpcTrySpell);
     if !npc_spell_preconditions_met(&gs.characters[cn], &gs.characters[co], spell) {
         return false;
     }
@@ -2316,6 +2317,7 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     let min_x = std::cmp::max(i32::from(ch_pos.0) - 8, 1) as usize;
     let max_x = std::cmp::min(i32::from(ch_pos.0) + 8, SERVER_MAPX - 1) as usize;
 
+    let _prof_itemscan = crate::tick_profile::scope(crate::tick_profile::Stage::NhItemscan);
     for y in min_y..=max_y {
         for x in min_x..=max_x {
             let m = x + y * SERVER_MAPX as usize;

@@ -258,9 +258,29 @@ impl PathFindingRequest {
     ) -> Self {
         Self {
             character: PathFindingCharacter::from_character(character),
+            // current_tick is set below; it is intentionally excluded from
+            // request identity (see `same_query`).
             current_tick,
             target,
         }
+    }
+
+    /// Return whether two requests describe the same pathfinding query.
+    ///
+    /// Compares the character snapshot and target only. `current_tick` is
+    /// deliberately ignored: it advances every tick while a request is in
+    /// flight, so including it would make an in-flight result never match the
+    /// request that produced it, causing perpetual resubmission.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - The request to compare against.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the character snapshot and target are identical.
+    pub fn same_query(&self, other: &Self) -> bool {
+        self.character == other.character && self.target == other.target
     }
 }
 
