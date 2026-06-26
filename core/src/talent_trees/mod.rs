@@ -1421,14 +1421,14 @@ mod tests {
             Skill::SpellcasterKindredSpirit,
         );
         assert_attribute_percent(
-            named_node(tree, "Intuition Boost II"),
+            named_node(tree, "Intuition Boost III"),
             Attribute::Intuition,
             5,
         );
         assert_grants_skill(named_node(tree, "Elemental Anguish"), Skill::AnguishEarth);
         assert_grants_skill(named_node(tree, "Spectral Pact"), Skill::SpectralPact);
         assert_attribute_percent(
-            named_node(tree, "Intuition Boost III"),
+            named_node(tree, "Intuition Boost IV"),
             Attribute::Intuition,
             5,
         );

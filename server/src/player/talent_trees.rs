@@ -1013,13 +1013,19 @@ mod tests {
             // Raise the granted skill from base 1 -> 3, spending 1 + 2 = 3 exp.
             assert!(gs.do_raise_skill(cn, idx as i32));
             assert!(gs.do_raise_skill(cn, idx as i32));
-            assert_eq!(gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize], 3);
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                3
+            );
             assert_eq!(gs.characters[cn].points, 97);
 
             reset_talents(gs, cn);
 
             // Skill removed and the 3 experience returned to the pool.
-            assert_eq!(gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize], 0);
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                0
+            );
             assert_eq!(gs.characters[cn].points, 100);
         });
     }
@@ -1069,7 +1075,10 @@ mod tests {
 
             // skill_needed(value, 5) for value in 1..4 -> 1 + 2 + 3 = 6.
             assert_eq!(gs.characters[cn].points, 6);
-            assert_eq!(gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize], 0);
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                0
+            );
         });
     }
 
