@@ -1675,6 +1675,9 @@ pub fn char_moveto(
     x2: i32,
     y2: i32,
 ) -> i32 {
+    let target = crate::path_finding::PathFindingTarget::new(
+        x as i16, y as i16, flag as u8, x2 as i16, y2 as i16,
+    );
     let (cx, cy) = (
         i32::from(gs.characters[cn].x),
         i32::from(gs.characters[cn].y),
@@ -1695,6 +1698,10 @@ pub fn char_moveto(
     let ticker = i64::from(gs.globals.ticker);
     if i64::from(unreach) > ticker && unreachx == x && unreachy == y {
         return -1;
+    }
+
+    if let Some(ret) = try_async_char_moveto(gs, cn, target) {
+        return ret;
     }
 
     let dir = {
@@ -1719,6 +1726,80 @@ pub fn char_moveto(
         return -1;
     }
 
+    apply_char_moveto_dir(gs, cn, dir)
+}
+
+fn try_async_char_moveto(
+    gs: &mut GameState,
+    cn: usize,
+    target: crate::path_finding::PathFindingTarget,
+) -> Option<i32> {
+    if target.flag != 0 || gs.pathfinding_service.is_none() {
+        return None;
+    }
+
+    let current_tick = gs.globals.ticker as u32;
+    let request = crate::path_finding::PathFindingRequest::from_character(
+        &gs.characters[cn],
+        current_tick,
+        target,
+    );
+
+    let response = gs
+        .pathfinding_service
+        .as_ref()
+        .and_then(|service| service.completed_for(cn));
+    if let Some(response) = response {
+        if response.request == request {
+            let direction = response.direction;
+            if let Some(service) = &mut gs.pathfinding_service {
+                service.discard_completed(cn);
+            }
+            if let Some(direction) = direction {
+                if direction == 0 || is_char_moveto_step_passable(gs, cn, direction) {
+                    return Some(apply_char_moveto_dir(gs, cn, Some(direction)));
+                }
+                return Some(0);
+            }
+
+            let confirmed = {
+                let character = gs.characters[cn];
+                gs.pathfinder.find_path(
+                    &character,
+                    &gs.map,
+                    &gs.items,
+                    current_tick,
+                    target.x1,
+                    target.y1,
+                    target.flag,
+                    target.x2,
+                    target.y2,
+                )
+            };
+            if confirmed.is_none() {
+                gs.characters[cn].unreach = gs.globals.ticker + core::constants::TICKS;
+                gs.characters[cn].unreachx = i32::from(target.x1);
+                gs.characters[cn].unreachy = i32::from(target.y1);
+                return Some(-1);
+            }
+            return Some(apply_char_moveto_dir(gs, cn, confirmed));
+        }
+
+        if let Some(service) = &mut gs.pathfinding_service {
+            service.discard_completed(cn);
+        }
+    }
+
+    if let Some(service) = &mut gs.pathfinding_service
+        && !service.has_pending(cn)
+    {
+        service.submit_if_absent(cn, request, &gs.map, &gs.items);
+    }
+
+    Some(0)
+}
+
+fn apply_char_moveto_dir(gs: &mut GameState, cn: usize, dir: Option<u8>) -> i32 {
     if dir == Some(0) {
         return 0;
     }
@@ -1830,6 +1911,38 @@ pub fn char_moveto(
         }
         _ => -1,
     }
+}
+
+fn is_char_moveto_step_passable(gs: &GameState, cn: usize, dir: u8) -> bool {
+    let x = i32::from(gs.characters[cn].x);
+    let y = i32::from(gs.characters[cn].y);
+    let (next_x, next_y) = match dir {
+        d if d == core::constants::DX_RIGHTDOWN => (x + 1, y + 1),
+        d if d == core::constants::DX_RIGHTUP => (x + 1, y - 1),
+        d if d == core::constants::DX_LEFTDOWN => (x - 1, y + 1),
+        d if d == core::constants::DX_LEFTUP => (x - 1, y - 1),
+        d if d == core::constants::DX_RIGHT => (x + 1, y),
+        d if d == core::constants::DX_LEFT => (x - 1, y),
+        d if d == core::constants::DX_DOWN => (x, y + 1),
+        d if d == core::constants::DX_UP => (x, y - 1),
+        _ => return false,
+    };
+
+    if next_x < 1
+        || next_x >= core::constants::SERVER_MAPX
+        || next_y < 1
+        || next_y >= core::constants::SERVER_MAPY
+    {
+        return false;
+    }
+
+    let map_index = next_x as usize + next_y as usize * core::constants::SERVER_MAPX as usize;
+    crate::path_finding::PathFinder::is_world_tile_passable(
+        &gs.map,
+        &gs.items,
+        map_index,
+        crate::path_finding::PathFindingCharacter::from_character(&gs.characters[cn]).mapblock(),
+    )
 }
 
 /// Handles the legacy `drv_moveto` generic driver hook.

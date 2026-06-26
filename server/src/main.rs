@@ -13,6 +13,7 @@ pub mod helpers;
 mod lab9;
 mod network_manager;
 mod path_finding;
+mod pathfinding_service;
 mod player;
 mod points;
 mod populate;

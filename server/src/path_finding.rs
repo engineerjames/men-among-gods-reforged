@@ -7,10 +7,375 @@
 use std::cmp::Ordering;
 use std::cmp::{max, min};
 use std::collections::BinaryHeap;
+use std::time::Instant;
 
 use core::{constants::*, traits};
 
 const MAX_NODES: usize = 4096;
+
+/// Aggregated pathfinding measurements for one reporting interval.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct PathFindingStats {
+    /// Number of pathfinding requests observed.
+    pub calls: u64,
+    /// Number of requests that produced a movement direction.
+    pub successes: u64,
+    /// Number of requests that did not produce a movement direction.
+    pub failures: u64,
+    /// Number of requests skipped because the target was recently known bad.
+    pub bad_target_skips: u64,
+    /// Number of requests whose search limit was capped at `MAX_NODES`.
+    pub max_step_cap_hits: u64,
+    /// Total elapsed time spent in pathfinding requests, in microseconds.
+    pub total_elapsed_micros: u64,
+    /// Maximum elapsed time for a single pathfinding request, in microseconds.
+    pub max_elapsed_micros: u64,
+    /// Total node allocations observed across requests.
+    pub total_nodes: u64,
+    /// Maximum node allocations observed for a single request.
+    pub max_nodes: usize,
+    /// Total visited nodes observed across requests.
+    pub total_visited: u64,
+    /// Maximum visited nodes observed for a single request.
+    pub max_visited: usize,
+}
+
+impl PathFindingStats {
+    /// Returns whether this interval contains no pathfinding requests.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when no pathfinding calls were recorded.
+    pub fn is_empty(&self) -> bool {
+        self.calls == 0
+    }
+
+    /// Returns mean request time for this interval, in milliseconds.
+    ///
+    /// # Returns
+    ///
+    /// * Mean elapsed request time in milliseconds, or `0.0` with no calls.
+    pub fn mean_elapsed_ms(&self) -> f64 {
+        if self.calls == 0 {
+            0.0
+        } else {
+            self.total_elapsed_micros as f64 / self.calls as f64 / 1000.0
+        }
+    }
+
+    /// Returns maximum request time for this interval, in milliseconds.
+    ///
+    /// # Returns
+    ///
+    /// * Maximum elapsed request time in milliseconds.
+    pub fn max_elapsed_ms(&self) -> f64 {
+        self.max_elapsed_micros as f64 / 1000.0
+    }
+
+    /// Returns mean allocated-node count for this interval.
+    ///
+    /// # Returns
+    ///
+    /// * Mean allocated nodes per request, or `0.0` with no calls.
+    pub fn mean_nodes(&self) -> f64 {
+        if self.calls == 0 {
+            0.0
+        } else {
+            self.total_nodes as f64 / self.calls as f64
+        }
+    }
+
+    /// Returns mean visited-node count for this interval.
+    ///
+    /// # Returns
+    ///
+    /// * Mean visited nodes per request, or `0.0` with no calls.
+    pub fn mean_visited(&self) -> f64 {
+        if self.calls == 0 {
+            0.0
+        } else {
+            self.total_visited as f64 / self.calls as f64
+        }
+    }
+
+    /// Merge another interval into this one.
+    ///
+    /// # Arguments
+    ///
+    /// * `other` - Measurements to add to this interval.
+    pub fn merge(&mut self, other: Self) {
+        self.calls = self.calls.saturating_add(other.calls);
+        self.successes = self.successes.saturating_add(other.successes);
+        self.failures = self.failures.saturating_add(other.failures);
+        self.bad_target_skips = self.bad_target_skips.saturating_add(other.bad_target_skips);
+        self.max_step_cap_hits = self
+            .max_step_cap_hits
+            .saturating_add(other.max_step_cap_hits);
+        self.total_elapsed_micros = self
+            .total_elapsed_micros
+            .saturating_add(other.total_elapsed_micros);
+        self.max_elapsed_micros = self.max_elapsed_micros.max(other.max_elapsed_micros);
+        self.total_nodes = self.total_nodes.saturating_add(other.total_nodes);
+        self.max_nodes = self.max_nodes.max(other.max_nodes);
+        self.total_visited = self.total_visited.saturating_add(other.total_visited);
+        self.max_visited = self.max_visited.max(other.max_visited);
+    }
+}
+
+/// Character fields required by pathfinding.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PathFindingCharacter {
+    /// Current X coordinate.
+    pub x: i16,
+    /// Current Y coordinate.
+    pub y: i16,
+    /// Current facing direction.
+    pub dir: u8,
+    /// Character kindred flags.
+    pub kindred: i32,
+    /// Character runtime flags.
+    pub flags: u64,
+    /// Current attack target, if any.
+    pub attack_cn: u16,
+    /// Driver-specific pathfinding hint stored in character data slot 78.
+    pub data_78: i32,
+    /// Template id used for legacy pathfinding special cases.
+    pub temp: u16,
+}
+
+impl PathFindingCharacter {
+    /// Copy pathfinding-relevant fields from a full character record.
+    ///
+    /// # Arguments
+    ///
+    /// * `character` - Full game character record to snapshot.
+    ///
+    /// # Returns
+    ///
+    /// * A compact pathfinding character snapshot.
+    pub fn from_character(character: &core::types::Character) -> Self {
+        Self {
+            x: character.x,
+            y: character.y,
+            dir: character.dir,
+            kindred: character.kindred,
+            flags: character.flags,
+            attack_cn: character.attack_cn,
+            data_78: character.data[78],
+            temp: character.temp,
+        }
+    }
+
+    /// Return map flags that block this character's movement.
+    ///
+    /// # Returns
+    ///
+    /// * Bitmask of map flags treated as impassable.
+    pub fn mapblock(self) -> u64 {
+        let mapblock = if (self.kindred as u32 & traits::KIN_MONSTER) != 0
+            && (self.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits())) == 0
+        {
+            u64::from(MF_NOMONST) | u64::from(MF_MOVEBLOCK)
+        } else {
+            u64::from(MF_MOVEBLOCK)
+        };
+
+        if (self.flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) == 0 {
+            mapblock | u64::from(MF_DEATHTRAP)
+        } else {
+            mapblock
+        }
+    }
+}
+
+/// Target coordinates and mode for one pathfinding request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PathFindingTarget {
+    /// Primary target X coordinate.
+    pub x1: i16,
+    /// Primary target Y coordinate.
+    pub y1: i16,
+    /// Mode: 0 = exact target, 1 = adjacent to target, 2 = two targets.
+    pub flag: u8,
+    /// Secondary target X coordinate for mode 2.
+    pub x2: i16,
+    /// Secondary target Y coordinate for mode 2.
+    pub y2: i16,
+}
+
+impl PathFindingTarget {
+    /// Create a pathfinding target tuple.
+    ///
+    /// # Arguments
+    ///
+    /// * `x1` - Primary target X coordinate.
+    /// * `y1` - Primary target Y coordinate.
+    /// * `flag` - Pathfinding mode.
+    /// * `x2` - Secondary target X coordinate.
+    /// * `y2` - Secondary target Y coordinate.
+    ///
+    /// # Returns
+    ///
+    /// * A target tuple suitable for pathfinding requests.
+    pub fn new(x1: i16, y1: i16, flag: u8, x2: i16, y2: i16) -> Self {
+        Self {
+            x1,
+            y1,
+            flag,
+            x2,
+            y2,
+        }
+    }
+}
+
+/// Owned inputs for one pathfinding request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PathFindingRequest {
+    /// Character fields used by pathfinding.
+    pub character: PathFindingCharacter,
+    /// Current world tick for bad-target suppression.
+    pub current_tick: u32,
+    /// Target coordinates and mode.
+    pub target: PathFindingTarget,
+}
+
+impl PathFindingRequest {
+    /// Build a request by copying fields from a full character record.
+    ///
+    /// # Arguments
+    ///
+    /// * `character` - Full game character record to snapshot.
+    /// * `current_tick` - Current world tick for bad-target suppression.
+    /// * `target` - Target coordinates and mode.
+    ///
+    /// # Returns
+    ///
+    /// * A pathfinding request suitable for synchronous or worker execution.
+    pub fn from_character(
+        character: &core::types::Character,
+        current_tick: u32,
+        target: PathFindingTarget,
+    ) -> Self {
+        Self {
+            character: PathFindingCharacter::from_character(character),
+            current_tick,
+            target,
+        }
+    }
+}
+
+/// Source of movement passability for A* expansion.
+pub(crate) trait PassabilitySource {
+    /// Return whether the linear map tile index can be traversed.
+    ///
+    /// # Arguments
+    ///
+    /// * `m` - Linear map tile index.
+    /// * `mapblock` - Movement-blocking map flags for the character.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the tile is passable.
+    fn is_passable(&self, m: usize, mapblock: u64) -> bool;
+}
+
+struct WorldPassability<'a> {
+    map: &'a [core::types::Map],
+    items: &'a [core::types::Item],
+}
+
+impl PassabilitySource for WorldPassability<'_> {
+    fn is_passable(&self, m: usize, mapblock: u64) -> bool {
+        PathFinder::is_world_tile_passable(self.map, self.items, m, mapblock)
+    }
+}
+
+/// Compact passability snapshot for worker-thread pathfinding.
+pub struct SnapshotPassability {
+    origin_x: usize,
+    origin_y: usize,
+    width: usize,
+    height: usize,
+    passable: Vec<bool>,
+}
+
+impl SnapshotPassability {
+    /// Build a rectangular passability snapshot around a request.
+    ///
+    /// # Arguments
+    ///
+    /// * `map` - Read-only world map tiles.
+    /// * `items` - Read-only item table used for move-block checks.
+    /// * `mapblock` - Movement-blocking map flags for the character.
+    /// * `request` - Pathfinding request used to choose the rectangle.
+    /// * `margin` - Extra tiles to include around the start and target bounds.
+    ///
+    /// # Returns
+    ///
+    /// * A compact passability snapshot covering the chosen rectangle.
+    pub fn from_world_window(
+        map: &[core::types::Map],
+        items: &[core::types::Item],
+        mapblock: u64,
+        request: &PathFindingRequest,
+        margin: usize,
+    ) -> Self {
+        let character = request.character;
+        let target = request.target;
+
+        let min_target_x = target.x1.min(target.x2.max(0));
+        let max_target_x = target.x1.max(target.x2.max(0));
+        let min_target_y = target.y1.min(target.y2.max(0));
+        let max_target_y = target.y1.max(target.y2.max(0));
+
+        let min_x = character.x.min(min_target_x).max(1) as usize;
+        let max_x = character.x.max(max_target_x).max(1) as usize;
+        let min_y = character.y.min(min_target_y).max(1) as usize;
+        let max_y = character.y.max(max_target_y).max(1) as usize;
+
+        let origin_x = min_x.saturating_sub(margin).max(1);
+        let origin_y = min_y.saturating_sub(margin).max(1);
+        let end_x = (max_x + margin).min(SERVER_MAPX as usize - 1);
+        let end_y = (max_y + margin).min(SERVER_MAPY as usize - 1);
+        let width = end_x.saturating_sub(origin_x) + 1;
+        let height = end_y.saturating_sub(origin_y) + 1;
+
+        let mut passable = Vec::with_capacity(width * height);
+        for y in origin_y..=end_y {
+            for x in origin_x..=end_x {
+                let m = x + y * SERVER_MAPX as usize;
+                passable.push(PathFinder::is_world_tile_passable(map, items, m, mapblock));
+            }
+        }
+
+        Self {
+            origin_x,
+            origin_y,
+            width,
+            height,
+            passable,
+        }
+    }
+}
+
+impl PassabilitySource for SnapshotPassability {
+    fn is_passable(&self, m: usize, _mapblock: u64) -> bool {
+        let x = m % SERVER_MAPX as usize;
+        let y = m / SERVER_MAPX as usize;
+        if x < self.origin_x || y < self.origin_y {
+            return false;
+        }
+        let rel_x = x - self.origin_x;
+        let rel_y = y - self.origin_y;
+        if rel_x >= self.width || rel_y >= self.height {
+            return false;
+        }
+        self.passable
+            .get(rel_x + rel_y * self.width)
+            .copied()
+            .unwrap_or(false)
+    }
+}
 
 /// A node in the A* search graph
 #[derive(Clone, Copy, Debug)]
@@ -76,6 +441,8 @@ pub struct PathFinder {
     bad_targets: Vec<BadTarget>,
     /// Set when exceeding maxstep allocations.
     failed: bool,
+    /// Aggregated measurements since the last report.
+    interval_stats: PathFindingStats,
 }
 
 impl PathFinder {
@@ -95,7 +462,71 @@ impl PathFinder {
             touched_visited: Vec::with_capacity(MAX_NODES),
             bad_targets: vec![BadTarget { tick: 0 }; map_size],
             failed: false,
+            interval_stats: PathFindingStats::default(),
         }
+    }
+
+    /// Return and reset pathfinding measurements for the current interval.
+    ///
+    /// # Returns
+    ///
+    /// * Aggregated measurements captured since the previous call.
+    pub fn take_interval_stats(&mut self) -> PathFindingStats {
+        let stats = self.interval_stats;
+        self.interval_stats = PathFindingStats::default();
+        stats
+    }
+
+    /// Merge externally-collected pathfinding measurements into this interval.
+    ///
+    /// # Arguments
+    ///
+    /// * `stats` - Measurements collected by pathfinding workers.
+    pub fn merge_interval_stats(&mut self, stats: PathFindingStats) {
+        self.interval_stats.merge(stats);
+    }
+
+    /// Record one completed pathfinding request in the interval counters.
+    fn record_request_stats(
+        &mut self,
+        started_at: Instant,
+        result: Option<u8>,
+        bad_target_skip: bool,
+        max_step_capped: bool,
+        nodes: usize,
+        visited: usize,
+    ) -> Option<u8> {
+        let elapsed_micros = started_at.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
+
+        self.interval_stats.calls += 1;
+        if result.is_some() {
+            self.interval_stats.successes += 1;
+        } else {
+            self.interval_stats.failures += 1;
+        }
+        if bad_target_skip {
+            self.interval_stats.bad_target_skips += 1;
+        }
+        if max_step_capped {
+            self.interval_stats.max_step_cap_hits += 1;
+        }
+
+        self.interval_stats.total_elapsed_micros = self
+            .interval_stats
+            .total_elapsed_micros
+            .saturating_add(elapsed_micros);
+        self.interval_stats.max_elapsed_micros =
+            self.interval_stats.max_elapsed_micros.max(elapsed_micros);
+        self.interval_stats.total_nodes =
+            self.interval_stats.total_nodes.saturating_add(nodes as u64);
+        self.interval_stats.max_nodes = self.interval_stats.max_nodes.max(nodes);
+        self.interval_stats.total_visited = self
+            .interval_stats
+            .total_visited
+            .saturating_add(visited as u64);
+        self.interval_stats.max_visited = self.interval_stats.max_visited.max(visited);
+
+        result
     }
 
     /// Reset internal search state prior to running a new A* invocation.
@@ -173,7 +604,7 @@ impl PathFinder {
     }
 
     /// Check if a map tile is passable
-    fn is_passable(
+    pub(crate) fn is_world_tile_passable(
         map: &[core::types::Map],
         items: &[core::types::Item],
         m: usize,
@@ -283,8 +714,7 @@ impl PathFinder {
     fn add_successors(
         &mut self,
         node: &Node,
-        map: &[core::types::Map],
-        items: &[core::types::Item],
+        passability: &impl PassabilitySource,
         mapblock: u64,
         mode: u8,
         tx1: i16,
@@ -302,10 +732,10 @@ impl PathFinder {
         let down_m = (base_x + (base_y + 1) * SERVER_MAPX) as usize;
         let up_m = (base_x + (base_y - 1) * SERVER_MAPX) as usize;
 
-        let can_right = Self::is_passable(map, items, right_m, mapblock);
-        let can_left = Self::is_passable(map, items, left_m, mapblock);
-        let can_down = Self::is_passable(map, items, down_m, mapblock);
-        let can_up = Self::is_passable(map, items, up_m, mapblock);
+        let can_right = passability.is_passable(right_m, mapblock);
+        let can_left = passability.is_passable(left_m, mapblock);
+        let can_down = passability.is_passable(down_m, mapblock);
+        let can_up = passability.is_passable(up_m, mapblock);
 
         // Right
         if can_right {
@@ -384,7 +814,7 @@ impl PathFinder {
         // Right-Down
         if can_right && can_down {
             let rd_m = (base_x + 1 + (base_y + 1) * SERVER_MAPX) as usize;
-            if Self::is_passable(map, items, rd_m, mapblock) {
+            if passability.is_passable(rd_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTDOWN);
                 self.add_node(
                     node.x + 1,
@@ -409,7 +839,7 @@ impl PathFinder {
         // Right-Up
         if can_right && can_up {
             let ru_m = (base_x + 1 + (base_y - 1) * SERVER_MAPX) as usize;
-            if Self::is_passable(map, items, ru_m, mapblock) {
+            if passability.is_passable(ru_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_RIGHTUP);
                 self.add_node(
                     node.x + 1,
@@ -430,7 +860,7 @@ impl PathFinder {
         // Left-Down
         if can_left && can_down {
             let ld_m = (base_x - 1 + (base_y + 1) * SERVER_MAPX) as usize;
-            if Self::is_passable(map, items, ld_m, mapblock) {
+            if passability.is_passable(ld_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTDOWN);
                 self.add_node(
                     node.x - 1,
@@ -451,7 +881,7 @@ impl PathFinder {
         // Left-Up
         if can_left && can_up {
             let lu_m = (base_x - 1 + (base_y - 1) * SERVER_MAPX) as usize;
-            if Self::is_passable(map, items, lu_m, mapblock) {
+            if passability.is_passable(lu_m, mapblock) {
                 let cost = node.cost + 3 + turn_count(node.cdir, DX_LEFTUP);
                 self.add_node(
                     node.x - 1,
@@ -477,8 +907,7 @@ impl PathFinder {
         fx: i16,
         fy: i16,
         cdir: u8,
-        map: &[core::types::Map],
-        items: &[core::types::Item],
+        passability: &impl PassabilitySource,
         mapblock: u64,
         mode: u8,
         tx1: i16,
@@ -541,7 +970,15 @@ impl PathFinder {
 
             // Add successors
             self.add_successors(
-                &current, map, items, mapblock, mode, tx1, ty1, tx2, ty2, max_step,
+                &current,
+                passability,
+                mapblock,
+                mode,
+                tx1,
+                ty1,
+                tx2,
+                ty2,
+                max_step,
             );
 
             if self.failed {
@@ -550,6 +987,110 @@ impl PathFinder {
         }
 
         None
+    }
+
+    /// Find a path for copied request fields and a passability source.
+    #[allow(clippy::too_many_lines)]
+    pub(crate) fn find_path_for_request(
+        &mut self,
+        request: &PathFindingRequest,
+        passability: &impl PassabilitySource,
+    ) -> Option<u8> {
+        let started_at = Instant::now();
+        let character = request.character;
+        let target = request.target;
+
+        // Bounds checking
+        if character.x < 1 || character.x >= SERVER_MAPX as i16 {
+            return self.record_request_stats(started_at, None, false, false, 0, 0);
+        }
+        if character.y < 1 || character.y >= SERVER_MAPY as i16 {
+            return self.record_request_stats(started_at, None, false, false, 0, 0);
+        }
+        if target.x1 < 1 || target.x1 >= SERVER_MAPX as i16 {
+            return self.record_request_stats(started_at, None, false, false, 0, 0);
+        }
+        if target.y1 < 1 || target.y1 >= SERVER_MAPY as i16 {
+            return self.record_request_stats(started_at, None, false, false, 0, 0);
+        }
+        if target.x2 < 0 || target.x2 >= SERVER_MAPX as i16 {
+            return self.record_request_stats(started_at, None, false, false, 0, 0);
+        }
+        if target.y2 < 0 || target.y2 >= SERVER_MAPY as i16 {
+            return self.record_request_stats(started_at, None, false, false, 0, 0);
+        }
+
+        // Check if target is marked as bad
+        if self.is_bad_target(target.x1, target.y1, request.current_tick) {
+            return self.record_request_stats(started_at, None, true, false, 0, 0);
+        }
+
+        let mapblock = character.mapblock();
+
+        // Check if target is passable (for exact target mode)
+        if target.flag == 0 {
+            let target_m = (i32::from(target.x1) + i32::from(target.y1) * SERVER_MAPX) as usize;
+            if !passability.is_passable(target_m, mapblock) {
+                return self.record_request_stats(started_at, None, false, false, 0, 0);
+            }
+        }
+
+        // Calculate max steps
+        let distance = max(
+            (character.x - target.x1).abs(),
+            (character.y - target.y1).abs(),
+        ) as usize;
+        let mut max_step = if character.attack_cn != 0
+            || ((character.flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
+                == 0
+                && character.data_78 != 0)
+        {
+            distance * 4 + 50
+        } else {
+            distance * 8 + 100
+        };
+
+        // Special case for temp == 498 (hack for grolmy in stunrun.c)
+        if character.temp == 498 {
+            max_step += 4000;
+        }
+
+        let max_step_capped = max_step > MAX_NODES;
+        if max_step > MAX_NODES {
+            max_step = MAX_NODES;
+        }
+
+        // Reset state for new search
+        self.reset();
+
+        // Run A* search
+        let result = self.astar(
+            character.x,
+            character.y,
+            character.dir,
+            passability,
+            mapblock,
+            target.flag,
+            target.x1,
+            target.y1,
+            target.x2,
+            target.y2,
+            max_step,
+        );
+
+        // Mark as bad target if failed
+        if result.is_none() {
+            self.add_bad_target(target.x1, target.y1, request.current_tick);
+        }
+
+        self.record_request_stats(
+            started_at,
+            result,
+            false,
+            max_step_capped,
+            self.nodes.len(),
+            self.touched_visited.len(),
+        )
     }
 
     /// Find path from character to target.
@@ -578,104 +1119,10 @@ impl PathFinder {
         x2: i16,
         y2: i16,
     ) -> Option<u8> {
-        // Bounds checking
-        if character.x < 1 || character.x >= SERVER_MAPX as i16 {
-            return None;
-        }
-        if character.y < 1 || character.y >= SERVER_MAPY as i16 {
-            return None;
-        }
-        if x1 < 1 || x1 >= SERVER_MAPX as i16 {
-            return None;
-        }
-        if y1 < 1 || y1 >= SERVER_MAPY as i16 {
-            return None;
-        }
-        if x2 < 0 || x2 >= SERVER_MAPX as i16 {
-            return None;
-        }
-        if y2 < 0 || y2 >= SERVER_MAPY as i16 {
-            return None;
-        }
-
-        // Check if target is marked as bad
-        if self.is_bad_target(x1, y1, current_tick) {
-            return None;
-        }
-
-        // Determine movement blocking flags
-        let mapblock = if (character.kindred as u32 & traits::KIN_MONSTER) != 0
-            && (character.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
-                == 0
-        {
-            u64::from(MF_NOMONST) | u64::from(MF_MOVEBLOCK)
-        } else {
-            u64::from(MF_MOVEBLOCK)
-        };
-
-        let mapblock = if (character.flags
-            & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
-            == 0
-        {
-            mapblock | u64::from(MF_DEATHTRAP)
-        } else {
-            mapblock
-        };
-
-        // Check if target is passable (for exact target mode)
-        if flag == 0 {
-            let target_m = (i32::from(x1) + i32::from(y1) * SERVER_MAPX) as usize;
-            if !Self::is_passable(map, items, target_m, mapblock) {
-                return None;
-            }
-        }
-
-        // Calculate max steps
-        let distance = max((character.x - x1).abs(), (character.y - y1).abs()) as usize;
-        let mut max_step = if character.attack_cn != 0
-            || ((character.flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits()))
-                == 0
-                && character.data[78] != 0)
-        {
-            distance * 4 + 50
-        } else {
-            distance * 8 + 100
-        };
-
-        // Special case for temp == 498 (hack for grolmy in stunrun.c)
-        if character.temp == 498 {
-            max_step += 4000;
-        }
-
-        if max_step > MAX_NODES {
-            max_step = MAX_NODES;
-        }
-
-        // Reset state for new search
-        self.reset();
-
-        // Run A* search
-        let result = self.astar(
-            character.x,
-            character.y,
-            character.dir,
-            map,
-            items,
-            mapblock,
-            flag,
-            x1,
-            y1,
-            x2,
-            y2,
-            max_step,
-        );
-
-        // Mark as bad target if failed
-        if result.is_none() {
-            self.add_bad_target(x1, y1, current_tick);
-        }
-
-        result
+        let target = PathFindingTarget::new(x1, y1, flag, x2, y2);
+        let request = PathFindingRequest::from_character(character, current_tick, target);
+        let passability = WorldPassability { map, items };
+        self.find_path_for_request(&request, &passability)
     }
 }
 
@@ -800,5 +1247,35 @@ mod tests {
         let pf = PathFinder::new();
         assert_eq!(pf.nodes.capacity(), MAX_NODES);
         assert_eq!(pf.node_map.len(), (SERVER_MAPX * SERVER_MAPY) as usize);
+    }
+
+    #[test]
+    fn request_entrypoint_matches_find_path() {
+        let mut character = core::types::Character {
+            x: 10,
+            y: 10,
+            dir: DX_RIGHT,
+            flags: CharacterFlags::Player.bits(),
+            ..core::types::Character::default()
+        };
+        character.data[78] = 0;
+        let map_len = SERVER_MAPX as usize * SERVER_MAPY as usize;
+        let map = vec![core::types::Map::default(); map_len];
+        let items = vec![core::types::Item::default(); MAXITEM];
+
+        let mut legacy_pathfinder = PathFinder::new();
+        let legacy = legacy_pathfinder.find_path(&character, &map, &items, 1, 12, 10, 0, 0, 0);
+
+        let target = PathFindingTarget::new(12, 10, 0, 0, 0);
+        let request = PathFindingRequest::from_character(&character, 1, target);
+        let passability = WorldPassability {
+            map: &map,
+            items: &items,
+        };
+        let mut request_pathfinder = PathFinder::new();
+        let request_result = request_pathfinder.find_path_for_request(&request, &passability);
+
+        assert_eq!(legacy, request_result);
+        assert_eq!(request_result, Some(DX_RIGHT));
     }
 }

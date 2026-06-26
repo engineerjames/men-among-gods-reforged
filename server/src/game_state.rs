@@ -1,4 +1,5 @@
 use crate::path_finding::PathFinder;
+use crate::pathfinding_service::PathfindingService;
 use crate::types::server_player::ServerPlayer;
 use core::constants::{CharacterFlags, USE_EMPTY};
 use core::talent_trees::total_points_spent;
@@ -119,6 +120,8 @@ pub struct GameState {
     // -- Pathfinding --
     /// A* pathfinder with pre-allocated node/visited buffers.
     pub pathfinder: PathFinder,
+    /// Optional worker-thread pathfinding service.
+    pub pathfinding_service: Option<PathfindingService>,
 
     // -- Persistence (private) --
     /// Set to `true` until loaded runtime data needs a final persistence pass.
@@ -215,6 +218,7 @@ impl GameState {
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding
             pathfinder: PathFinder::new(),
+            pathfinding_service: None,
             // Persistence is enabled only after KeyDB data loads successfully.
             saved_cleanly: true,
             // Runtime mode flags
@@ -248,6 +252,10 @@ impl GameState {
     pub fn initialize() -> Result<GameState, String> {
         let mut gs = Self::new();
         gs.load_from_keydb()?;
+        gs.pathfinding_service = PathfindingService::spawn_from_env();
+        if gs.pathfinding_service.is_some() {
+            log::info!("Async pathfinding enabled via MAG_ASYNC_PATHFINDING.");
+        }
         gs.saved_cleanly = false;
         Ok(gs)
     }
@@ -364,6 +372,11 @@ impl GameState {
     /// Perform a clean shutdown of the game state by clearing the dirty flag
     /// and saving all data to KeyDB.
     pub fn shutdown(&mut self) {
+        if let Some(service) = &mut self.pathfinding_service {
+            service.shutdown();
+        }
+        self.pathfinding_service = None;
+
         self.globals.set_dirty(false);
         if let Err(e) = self.save() {
             log::error!("Failed to save game state during shutdown: {}", e);

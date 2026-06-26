@@ -392,6 +392,24 @@ impl Server {
                     self.tick_perf_stats.stats().max,
                     gs.globals.load,
                 );
+
+                let path_stats = gs.pathfinder.take_interval_stats();
+                if !path_stats.is_empty() {
+                    log::debug!(
+                        "Pathfinding: calls={} ok={} fail={} bad_target={} cap={} mean={:.3} ms max={:.3} ms nodes(mean/max)={:.1}/{} visited(mean/max)={:.1}/{}",
+                        path_stats.calls,
+                        path_stats.successes,
+                        path_stats.failures,
+                        path_stats.bad_target_skips,
+                        path_stats.max_step_cap_hits,
+                        path_stats.mean_elapsed_ms(),
+                        path_stats.max_elapsed_ms(),
+                        path_stats.mean_nodes(),
+                        path_stats.max_nodes,
+                        path_stats.mean_visited(),
+                        path_stats.max_visited,
+                    );
+                }
             }
         }
 
@@ -451,6 +469,11 @@ impl Server {
 
         let ticker = gs.globals.ticker;
         gs.tick_element_switch_states(ticker);
+
+        if let Some(service) = &mut gs.pathfinding_service {
+            let stats = service.drain_completed();
+            gs.pathfinder.merge_interval_stats(stats);
+        }
 
         // Background save scheduling (KeyDB only)
         self.maybe_enqueue_background_save(gs);
