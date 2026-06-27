@@ -203,6 +203,17 @@ impl MinimapWidget {
         }
     }
 
+    /// Sets the draw opacity for the toggle button only.
+    ///
+    /// The minimap viewport panel itself is not affected.
+    ///
+    /// # Arguments
+    ///
+    /// * `alpha` - Opacity value (0 = invisible, 255 = fully opaque).
+    pub fn set_button_alpha(&mut self, alpha: u8) {
+        self.button.set_draw_alpha(alpha);
+    }
+
     /// Returns the world-window size currently sampled into the viewport.
     fn current_sample_size(&self) -> usize {
         ZOOM_SAMPLE_SIZES[self.zoom_level] as usize

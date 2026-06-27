@@ -110,6 +110,17 @@ impl ModeButton {
             None
         }
     }
+
+    /// Sets the draw opacity for all mode buttons.
+    ///
+    /// # Arguments
+    ///
+    /// * `alpha` - Opacity value (0 = invisible, 255 = fully opaque).
+    pub fn set_alpha(&mut self, alpha: u8) {
+        for btn in &mut self.buttons {
+            btn.set_draw_alpha(alpha);
+        }
+    }
 }
 
 impl Widget for ModeButton {
