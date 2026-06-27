@@ -55,7 +55,7 @@ use crate::{
         hud::mode_button::ModeButton,
         hud::settings_panel::{SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
         hud::shop_panel::ShopPanel,
-        hud::skill_bar::SkillBar,
+        hud::skill_bar::{SkillBar, TOP_CELL_POSITIONS},
         hud::skill_picker_popup::SkillPickerPopup,
         hud::skills_panel::SkillsPanel,
         hud::talent_panel::TalentPanel,
@@ -495,12 +495,18 @@ impl GameScene {
             - 8;
         keyboard.set_position(keyboard.bounds().x, keyboard_y);
 
+        // Compute spell-effect icon positions:
+        // - Positive icons start at the first skill-bar slot's x position.
+        // - Negative icons right-align with the weapon/armor panel.
+        let weapon_armor_panel =
+            WeaponArmorPanel::new(WEAPON_ARMOR_PANEL_X, WEAPON_ARMOR_PANEL_Y, HUD_PANEL_BG);
+        let positive_start_x =
+            (TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2 + TOP_CELL_POSITIONS[0].0;
+        let wap_bounds = weapon_armor_panel.bounds();
+        let negative_right_x = wap_bounds.x + wap_bounds.width as i32;
+
         Self {
-            weapon_armor_panel: WeaponArmorPanel::new(
-                WEAPON_ARMOR_PANEL_X,
-                WEAPON_ARMOR_PANEL_Y,
-                HUD_PANEL_BG,
-            ),
+            weapon_armor_panel,
             rank_sigil: RankSigil::new(RANK_SIGIL_X, RANK_SIGIL_Y, HUD_PANEL_BG),
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
@@ -552,7 +558,11 @@ impl GameScene {
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
             vitality_bars: VitalityChevrons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
-            spell_effect_icons: SpellEffectIcons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
+            spell_effect_icons: SpellEffectIcons::new(
+                positive_start_x,
+                negative_right_x,
+                VITALITY_BARS_Y,
+            ),
             look_panel: LookPanel::new(
                 Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
                 HUD_PANEL_BG,
@@ -1904,6 +1914,8 @@ impl Scene for GameScene {
                 let rank_index = ranks::points2rank(ci.points_tot as u32);
                 self.rank_sigil.sync(rank_index as usize);
                 self.weapon_armor_panel.sync(ci.weapon, ci.armor);
+                let wap = self.weapon_armor_panel.bounds();
+                self.spell_effect_icons.negative_right_x = wap.x + wap.width as i32;
                 self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);
                 self.vitality_bars.sync(
