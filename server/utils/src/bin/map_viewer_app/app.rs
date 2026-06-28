@@ -932,6 +932,43 @@ fn dd_tile_center_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
     (rx, ry + 8)
 }
 
+/// Return the tile containing a map-space point inside the isometric diamond grid.
+fn map_point_to_tile(map_pos: Vec2) -> Option<(usize, usize)> {
+    let offset_x = 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32);
+    let offset_y = YPOS;
+    let rx_prime = map_pos.x - offset_x as f32;
+    let ry_prime = map_pos.y - offset_y as f32;
+
+    let xpos = rx_prime + 2.0 * ry_prime;
+    let ypos = rx_prime - 2.0 * ry_prime;
+    let guess_x = (xpos / 32.0).floor() as i32;
+    let guess_y = (ypos / 32.0).floor() as i32;
+
+    let mut best: Option<(usize, usize, f32)> = None;
+    for y in (guess_y - 1)..=(guess_y + 1) {
+        for x in (guess_x - 1)..=(guess_x + 1) {
+            if x < 0 || y < 0 || x >= SERVER_MAPX || y >= SERVER_MAPY {
+                continue;
+            }
+
+            let xpos = x * 32;
+            let ypos = y * 32;
+            let (cx, cy_top) = dd_tile_origin_screen_pos(xpos, ypos);
+            let dx = (map_pos.x - cx as f32).abs();
+            let dy = (map_pos.y - (cy_top + 8) as f32).abs();
+            let metric = dx * 8.0 + dy * 16.0;
+            if metric <= 128.0 {
+                match best {
+                    Some((_, _, current_metric)) if metric >= current_metric => {}
+                    _ => best = Some((x as usize, y as usize, metric)),
+                }
+            }
+        }
+    }
+
+    best.map(|(x, y, _)| (x, y))
+}
+
 #[inline]
 fn dd_copysprite_screen_pos(
     xpos: i32,
@@ -1581,47 +1618,13 @@ impl eframe::App for MapViewerApp {
                 }
             }
 
-            // Compute hovered tile from mouse position (invert tile-origin mapping).
+            // Compute hovered tile from mouse position using the isometric floor diamond.
             self.hovered_tile = ctx.pointer_latest_pos().and_then(|pos| {
                 if !rect.contains(pos) {
                     return None;
                 }
 
-                // Convert to map coordinate space
-                let screen_pos = screen_to_map(rect, self.pan, self.zoom, pos);
-
-                // Invert dd_tile_origin_screen_pos:
-                // rx = (xpos / 2) + (ypos / 2) + 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32)
-                // ry = (xpos / 4) - (ypos / 4) + YPOS
-                //
-                // Solving for xpos, ypos:
-                // Let rx' = rx - offset_x, ry' = ry - offset_y
-                // rx' = xpos/2 + ypos/2
-                // ry' = xpos/4 - ypos/4
-                // => xpos/2 = rx' - ypos/2
-                // => xpos/4 = ry' + ypos/4
-                // => 2*ry' + ypos/2 = rx' - ypos/2
-                // => ypos = rx' - 2*ry'
-                // => xpos = 2*rx' - ypos = 2*rx' - (rx' - 2*ry') = rx' + 2*ry'
-
-                let offset_x = 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32);
-                let offset_y = YPOS;
-                let rx_prime = screen_pos.x - offset_x as f32;
-                let ry_prime = screen_pos.y - offset_y as f32;
-
-                let xpos = rx_prime + 2.0 * ry_prime;
-                let ypos = rx_prime - 2.0 * ry_prime;
-
-                let x = (xpos / 32.0).floor() as i32;
-                let y = (ypos / 32.0).floor() as i32;
-                if x < 0 || y < 0 {
-                    return None;
-                }
-                let (x, y) = (x as usize, y as usize);
-                if x >= SERVER_MAPX as usize || y >= SERVER_MAPY as usize {
-                    return None;
-                }
-                Some((x, y))
+                map_point_to_tile(screen_to_map(rect, self.pan, self.zoom, pos))
             });
 
             let painter = ui.painter_at(rect);
@@ -1872,7 +1875,8 @@ fn paint_sprite_dd(
 
 #[cfg(test)]
 mod tests {
-    use super::line_tiles;
+    use super::{dd_tile_center_screen_pos, line_tiles, map_point_to_tile};
+    use eframe::egui::Vec2;
 
     #[test]
     fn line_tiles_single_point() {
@@ -1924,6 +1928,29 @@ mod tests {
         assert_eq!(
             line_tiles((5, 3), (1, 1)),
             vec![(5, 3), (4, 2), (3, 2), (2, 1), (1, 1)]
+        );
+    }
+
+    #[test]
+    fn map_point_to_tile_resolves_tile_center_to_same_tile() {
+        let (cx, cy) = dd_tile_center_screen_pos(10 * 32, 20 * 32);
+        assert_eq!(
+            map_point_to_tile(Vec2::new(cx as f32, cy as f32)),
+            Some((10, 20))
+        );
+    }
+
+    #[test]
+    fn map_point_to_tile_separates_vertical_neighbor_centers() {
+        let (cx, cy) = dd_tile_center_screen_pos(10 * 32, 20 * 32);
+        let (below_cx, below_cy) = dd_tile_center_screen_pos(10 * 32, 21 * 32);
+        assert_eq!(
+            map_point_to_tile(Vec2::new(cx as f32, cy as f32)),
+            Some((10, 20))
+        );
+        assert_eq!(
+            map_point_to_tile(Vec2::new(below_cx as f32, below_cy as f32)),
+            Some((10, 21))
         );
     }
 }
