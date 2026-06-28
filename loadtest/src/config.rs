@@ -6,6 +6,7 @@ use serde::Deserialize;
 /// Top-level load-test configuration, loaded from a TOML file.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
+#[derive(Default)]
 pub struct LoadTestConfig {
     /// Game server connection settings.
     pub server: ServerConfig,
@@ -21,20 +22,6 @@ pub struct LoadTestConfig {
     pub ping: PingConfig,
     /// Bot account/character creation settings.
     pub accounts: AccountConfig,
-}
-
-impl Default for LoadTestConfig {
-    fn default() -> Self {
-        Self {
-            server: ServerConfig::default(),
-            api: ApiConfig::default(),
-            run: RunConfig::default(),
-            movement: MovementConfig::default(),
-            impairment: ImpairmentConfig::default(),
-            ping: PingConfig::default(),
-            accounts: AccountConfig::default(),
-        }
-    }
 }
 
 /// Game server connection parameters.
