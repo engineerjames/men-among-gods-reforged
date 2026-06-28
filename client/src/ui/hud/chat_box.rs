@@ -429,10 +429,10 @@ impl ChatBox {
             return None;
         }
 
-        if command_lower == "tell" {
-            if let Some(target) = parts.next() {
-                return Some(format!("{sigil}{command} {target} "));
-            }
+        if command_lower == "tell"
+            && let Some(target) = parts.next()
+        {
+            return Some(format!("{sigil}{command} {target} "));
         }
 
         Some(format!("{sigil}{command} "))

@@ -337,9 +337,7 @@ impl MapViewerApp {
 
     /// Return the currently selected palette entry, clearing stale selection.
     fn selected_palette_entry(&mut self) -> Option<PaletteEntry> {
-        let Some(index) = self.selected_palette_index else {
-            return None;
-        };
+        let index = self.selected_palette_index?;
         let Some(entry) = self.palette.get(index).copied() else {
             self.selected_palette_index = None;
             return None;
