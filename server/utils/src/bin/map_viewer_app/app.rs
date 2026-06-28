@@ -929,7 +929,7 @@ fn dd_tile_origin_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
 /// Return the visual center of the isometric tile in map-space pixels.
 fn dd_tile_center_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
     let (rx, ry) = dd_tile_origin_screen_pos(xpos, ypos);
-    (rx + 16, ry)
+    (rx, ry + 8)
 }
 
 #[inline]
