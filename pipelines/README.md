@@ -39,21 +39,23 @@ bash pipelines/install_linux_deps.sh
 
 ### Update product version before release
 
-Run the release-version updater from a clean working tree, review the diff, run
-the verification you want for the release, then commit the version bump before
-dispatching the GitHub release workflow.
+Edit the `version` field in the root `Cargo.toml` `[workspace.package]` section, run verification tests, then commit the version bump before dispatching the GitHub release workflow.
 
-```bash
-python3 scripts/update_release_version.py --version 1.2.1
-cargo test --workspace --all-targets
-cargo clippy --workspace --all-targets -- -D warnings
+```toml
+[workspace.package]
+version = "1.2.1"
 ```
 
-The updater uses bare semver (`1.2.1`) as the Cargo product version and prints
-the derived release tag (`v1.2.1`) to use for packaging and the GitHub workflow.
-Protocol compatibility values in `core::constants::VERSION` and
-`core::constants::MINVERSION` are intentionally separate from routine product
-release bumps.
+Then verify and commit:
+
+```bash
+cargo test --workspace --all-targets
+cargo clippy --workspace --all-targets -- -D warnings
+git add Cargo.toml && git commit -m "Bump version to 1.2.1"
+```
+
+Use the bare semver version (`1.2.1`) as the Cargo product version; the GitHub release workflow will use this to create the release tag (`v1.2.1`) for packaging.
+Protocol compatibility values in `core::constants::VERSION` and `core::constants::MINVERSION` are intentionally separate from routine product release bumps.
 
 ### Build release binaries
 

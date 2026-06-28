@@ -27,10 +27,6 @@ use mag_core::skills;
 // Layout constants
 // ---------------------------------------------------------------------------
 
-/// Half-width of the vitality chevron group; icons start at this distance
-/// from the chevron centre.
-const HP_HALF_W: i32 = 40;
-
 /// Side length of each square spell-effect icon in pixels.
 const ICON_SIZE: i32 = 20;
 
@@ -280,22 +276,20 @@ impl DurationTracker {
 // SpellEffectIcons
 // ---------------------------------------------------------------------------
 
-/// HUD visual that renders active spell-effect icons beside the vitality
-/// chevrons.
+/// HUD visual that renders active spell-effect icons in the bottom HUD area.
 ///
-/// Positive effects are drawn left of the chevrons and negative effects to
-/// the right. Icons are bottom-aligned to the vitality chevron feet and extend
-/// outward from the chevrons in active-slot order.
+/// Positive effects are drawn in a row starting at `positive_start_x` and
+/// growing to the right. Negative effects are drawn in a row ending at
+/// `negative_right_x` and growing to the left.
 ///
-/// Modify the public [`x`] and [`y`] fields to reposition the widget without
+/// Modify the public position fields to reposition the widget without
 /// recreating it.
-///
-/// [`x`]: SpellEffectIcons::x
-/// [`y`]: SpellEffectIcons::y
 pub struct SpellEffectIcons {
-    /// Horizontal centre of the vitality chevron group.
-    pub x: i32,
-    /// Bottom y coordinate of the vitality chevron group.
+    /// Left edge of the first positive spell-effect icon.
+    pub positive_start_x: i32,
+    /// Right edge of the first negative spell-effect icon.
+    pub negative_right_x: i32,
+    /// Bottom y coordinate used for vertical icon placement.
     pub y: i32,
     /// Active positive effects, ordered nearest-to-chevrons outward.
     positives: Vec<SpellSlotEntry>,
@@ -315,20 +309,21 @@ pub struct SpellEffectIcons {
 }
 
 impl SpellEffectIcons {
-    /// Creates a new `SpellEffectIcons` visual positioned to flank vitality
-    /// chevrons centred at `x` with feet at `y`.
+    /// Creates a new `SpellEffectIcons` visual.
     ///
     /// # Arguments
     ///
-    /// * `x` - Horizontal centre of the vitality chevron group.
-    /// * `y` - Bottom y coordinate of the vitality chevron group.
+    /// * `positive_start_x` - Left edge of the first positive icon (row grows right).
+    /// * `negative_right_x` - Right edge of the first negative icon (row grows left).
+    /// * `y` - Bottom y coordinate used for vertical icon placement.
     ///
     /// # Returns
     ///
     /// * A new `SpellEffectIcons` with no active effects.
-    pub fn new(x: i32, y: i32) -> Self {
+    pub fn new(positive_start_x: i32, negative_right_x: i32, y: i32) -> Self {
         Self {
-            x,
+            positive_start_x,
+            negative_right_x,
             y,
             positives: Vec::new(),
             negatives: Vec::new(),
@@ -413,7 +408,8 @@ impl SpellEffectIcons {
     /// # Arguments
     ///
     /// * `kind` - Which side (`Positive` = left, `Negative` = right).
-    /// * `index` - Zero-based icon index; index 0 is nearest the chevrons.
+    /// * `index` - Zero-based icon index; index 0 is the leftmost positive or
+    ///   rightmost negative icon.
     ///
     /// # Returns
     ///
@@ -422,19 +418,18 @@ impl SpellEffectIcons {
         let top = self.y - ICON_SIZE - ICON_Y_OFFSET;
         let offset = index as i32 * ICON_STRIDE;
         match kind {
-            SpellEffectKind::Positive => {
-                let right = self.x - HP_HALF_W;
-                Rect::new(
-                    right - ICON_SIZE - offset,
-                    top,
-                    ICON_SIZE as u32,
-                    ICON_SIZE as u32,
-                )
-            }
-            SpellEffectKind::Negative => {
-                let left = self.x + HP_HALF_W;
-                Rect::new(left + offset, top, ICON_SIZE as u32, ICON_SIZE as u32)
-            }
+            SpellEffectKind::Positive => Rect::new(
+                self.positive_start_x + offset,
+                top,
+                ICON_SIZE as u32,
+                ICON_SIZE as u32,
+            ),
+            SpellEffectKind::Negative => Rect::new(
+                self.negative_right_x - ICON_SIZE - offset,
+                top,
+                ICON_SIZE as u32,
+                ICON_SIZE as u32,
+            ),
         }
     }
 
@@ -679,7 +674,7 @@ mod tests {
 
     #[test]
     fn sync_separates_positive_and_negative() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let mut spell = [0i32; 20];
         let mut active = [0i8; 20];
         let mut spell_type = [0i16; 20];
@@ -700,7 +695,7 @@ mod tests {
 
     #[test]
     fn fill_fraction() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, active, spell_type) = make_spell_state(0, 1, 8, skills::SK_PROTECT as i16);
         icons.sync(&spell, &active, &spell_type);
         assert!((icons.positives[0].fill - 0.5).abs() < 0.01);
@@ -726,7 +721,7 @@ mod tests {
 
     #[test]
     fn hover_text_format() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, active, spell_type) = make_spell_state(0, 1, 12, skills::SK_BLESS as i16);
         icons.sync(&spell, &active, &spell_type);
         icons.hovered = Some(HoveredIcon {
@@ -752,7 +747,7 @@ mod tests {
 
     #[test]
     fn positive_duration_appears_after_first_decay_sample() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (mut spell, mut active, spell_type) =
             make_spell_state(0, 1, 16, skills::SK_PROTECT as i16);
         icons.sync(&spell, &active, &spell_type);
@@ -772,7 +767,7 @@ mod tests {
 
     #[test]
     fn unchanged_fill_does_not_reset_decay_sample() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, mut active, spell_type) = make_spell_state(0, 1, 16, skills::SK_CURSE as i16);
         icons.sync(&spell, &active, &spell_type);
         icons.duration_trackers.get_mut(&0).unwrap().last_change_at =
@@ -791,7 +786,7 @@ mod tests {
 
     #[test]
     fn sync_caps_at_max_icons() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let spell = [1i32; 20];
         let active = [8i8; 20];
         let spell_type = [skills::SK_PROTECT as i16; 20];
@@ -802,7 +797,7 @@ mod tests {
 
     #[test]
     fn empty_slots_skipped() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let mut spell = [0i32; 20];
         let mut active = [0i8; 20];
         let mut spell_type = [0i16; 20];
@@ -821,24 +816,40 @@ mod tests {
     }
 
     #[test]
-    fn icon_rect_positions_flank_chevrons() {
-        let icons = SpellEffectIcons::new(400, 500);
-        let positive_0 = icons.icon_rect(SpellEffectKind::Positive, 0);
-        let positive_1 = icons.icon_rect(SpellEffectKind::Positive, 1);
-        let negative_0 = icons.icon_rect(SpellEffectKind::Negative, 0);
-        let negative_1 = icons.icon_rect(SpellEffectKind::Negative, 1);
+    fn icon_rect_positive_grows_right_from_start() {
+        let icons = SpellEffectIcons::new(100, 700, 500);
+        let p0 = icons.icon_rect(SpellEffectKind::Positive, 0);
+        let p1 = icons.icon_rect(SpellEffectKind::Positive, 1);
 
-        assert_eq!(positive_0.right(), 400 - HP_HALF_W);
-        assert_eq!(positive_1.right(), positive_0.x() - ICON_GAP);
-        assert_eq!(negative_0.x(), 400 + HP_HALF_W);
-        assert_eq!(negative_1.x(), negative_0.right() + ICON_GAP);
-        assert_eq!(positive_0.y(), 500 - ICON_SIZE - ICON_Y_OFFSET);
-        assert_eq!(negative_0.y(), 500 - ICON_SIZE - ICON_Y_OFFSET);
+        // First positive icon starts at positive_start_x.
+        assert_eq!(p0.x(), 100);
+        assert_eq!(p0.width(), ICON_SIZE as u32);
+        // Second positive icon is one stride to the right.
+        assert_eq!(p1.x(), 100 + ICON_STRIDE);
+        // Both share the same y.
+        assert_eq!(p0.y(), 500 - ICON_SIZE - ICON_Y_OFFSET);
+        assert_eq!(p1.y(), p0.y());
+    }
+
+    #[test]
+    fn icon_rect_negative_grows_left_from_right_edge() {
+        let icons = SpellEffectIcons::new(100, 700, 500);
+        let n0 = icons.icon_rect(SpellEffectKind::Negative, 0);
+        let n1 = icons.icon_rect(SpellEffectKind::Negative, 1);
+
+        // First negative icon's right edge aligns with negative_right_x.
+        assert_eq!(n0.right(), 700);
+        assert_eq!(n0.width(), ICON_SIZE as u32);
+        // Second negative icon is one stride to the left.
+        assert_eq!(n1.right(), n0.x() - ICON_GAP);
+        // Both share the same y.
+        assert_eq!(n0.y(), 500 - ICON_SIZE - ICON_Y_OFFSET);
+        assert_eq!(n1.y(), n0.y());
     }
 
     #[test]
     fn hover_hit_tests_full_icon_bounds() {
-        let mut icons = SpellEffectIcons::new(400, 500);
+        let mut icons = SpellEffectIcons::new(100, 700, 500);
         let (spell, active, spell_type) = make_spell_state(0, 1, 16, skills::SK_WIMPY as i16);
         icons.sync(&spell, &active, &spell_type);
         let rect = icons.icon_rect(SpellEffectKind::Negative, 0);

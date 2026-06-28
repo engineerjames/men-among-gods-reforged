@@ -580,6 +580,8 @@ pub struct CircularImageButton {
     load_failed: bool,
     hovered: bool,
     hover_alpha: u8,
+    /// Overall draw opacity (0 = invisible, 255 = fully opaque).
+    draw_alpha: u8,
     /// Cached bounding box, kept in sync with center/radius.
     cached_bounds: Bounds,
     /// Optional small text badge drawn in the upper-right corner.
@@ -611,10 +613,23 @@ impl CircularImageButton {
             load_failed: false,
             hovered: false,
             hover_alpha: 96,
+            draw_alpha: 255,
             cached_bounds: CircleButton::compute_bounds(center_x, center_y, radius),
             badge_text: None,
             badge_color: DEFAULT_BADGE_COLOR,
         }
+    }
+
+    /// Sets the overall draw opacity for this button.
+    ///
+    /// When `alpha` is 0 the button is invisible and rendering is skipped
+    /// entirely.  Values between 0 and 255 modulate the texture alpha.
+    ///
+    /// # Arguments
+    ///
+    /// * `alpha` - Opacity value (0 = invisible, 255 = fully opaque).
+    pub fn set_draw_alpha(&mut self, alpha: u8) {
+        self.draw_alpha = alpha;
     }
 
     /// Sets the badge text color.
@@ -692,7 +707,13 @@ impl CircularImageButton {
             return self.texture_id;
         }
 
-        match ctx.gfx.load_texture_from_path(&self.image_path) {
+        // Enable linear filtering for button images to avoid visual distortion
+        // when the logical resolution is scaled down to a small window.
+        sdl2::hint::set("SDL_RENDER_SCALE_QUALITY", "1");
+        let result = ctx.gfx.load_texture_from_path(&self.image_path);
+        sdl2::hint::set("SDL_RENDER_SCALE_QUALITY", "0");
+
+        match result {
             Ok(id) => {
                 self.texture_id = Some(id);
                 Some(id)
@@ -771,8 +792,13 @@ impl Widget for CircularImageButton {
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if self.draw_alpha == 0 {
+            return Ok(());
+        }
+
         if let Some(id) = self.ensure_texture_id(ctx) {
             let texture = ctx.gfx.get_texture(id);
+            texture.set_alpha_mod(self.draw_alpha);
             ctx.canvas.set_blend_mode(BlendMode::Blend);
             ctx.canvas.copy(
                 texture,
@@ -784,9 +810,10 @@ impl Widget for CircularImageButton {
                     self.cached_bounds.height,
                 )),
             )?;
+            ctx.gfx.get_texture(id).set_alpha_mod(255);
         }
 
-        if self.hovered {
+        if self.hovered && self.draw_alpha >= 128 {
             ctx.canvas.set_blend_mode(BlendMode::Add);
             ctx.canvas
                 .set_draw_color(Color::RGBA(255, 255, 255, self.hover_alpha));
@@ -794,7 +821,10 @@ impl Widget for CircularImageButton {
             ctx.canvas.set_blend_mode(BlendMode::Blend);
         }
 
-        self.render_badge(ctx)
+        if self.draw_alpha >= 128 {
+            self.render_badge(ctx)?;
+        }
+        Ok(())
     }
 }
 

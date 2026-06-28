@@ -157,6 +157,17 @@ impl HudButtonBar {
         };
         self.buttons[TALENTS_BUTTON_INDEX].set_badge(badge);
     }
+
+    /// Sets the draw opacity for all buttons in the bar.
+    ///
+    /// # Arguments
+    ///
+    /// * `alpha` - Opacity value (0 = invisible, 255 = fully opaque).
+    pub fn set_alpha(&mut self, alpha: u8) {
+        for btn in &mut self.buttons {
+            btn.set_draw_alpha(alpha);
+        }
+    }
 }
 
 impl Widget for HudButtonBar {

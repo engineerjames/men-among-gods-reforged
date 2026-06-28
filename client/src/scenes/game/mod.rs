@@ -55,7 +55,7 @@ use crate::{
         hud::mode_button::ModeButton,
         hud::settings_panel::{SETTINGS_PANEL_H, SettingsPanel, SettingsPanelData},
         hud::shop_panel::ShopPanel,
-        hud::skill_bar::SkillBar,
+        hud::skill_bar::{SkillBar, TOP_CELL_POSITIONS},
         hud::skill_picker_popup::SkillPickerPopup,
         hud::skills_panel::SkillsPanel,
         hud::talent_panel::TalentPanel,
@@ -73,6 +73,17 @@ use crate::{
 // ---------------------------------------------------------------------------
 // Layout / tuning constants (all pub(super) so submodules can import them)
 // ---------------------------------------------------------------------------
+
+// ---- Right-side HUD button fade ---- //
+
+/// Seconds to fade in from invisible to fully opaque.
+const HUD_FADE_IN_SECS: f32 = 0.5;
+/// Seconds of idle (mouse outside the right zone) before fade-out begins.
+const HUD_FADE_OUT_DELAY_SECS: f32 = 3.0;
+/// Seconds to fade out from fully opaque to invisible.
+const HUD_FADE_OUT_SECS: f32 = 1.0;
+/// Minimum mouse X position to keep the right-side HUD buttons visible.
+const HUD_FADE_THRESHOLD_X: i32 = 810;
 
 /// Maximum complete network tick groups processed per frame.
 ///
@@ -454,6 +465,10 @@ pub struct GameScene {
     pub(super) kb_stick_neg_y: bool,
     /// On-screen keyboard for controller chat input.
     keyboard: OnScreenKeyboard,
+    /// Seconds elapsed since the mouse last left the right-side HUD zone.
+    hud_btn_idle_elapsed: f32,
+    /// Current fade factor for right-side HUD buttons (0.0 = invisible, 1.0 = opaque).
+    hud_btn_fade_t: f32,
 }
 
 impl GameScene {
@@ -495,12 +510,18 @@ impl GameScene {
             - 8;
         keyboard.set_position(keyboard.bounds().x, keyboard_y);
 
+        // Compute spell-effect icon positions:
+        // - Positive icons start at the first skill-bar slot's x position.
+        // - Negative icons right-align with the weapon/armor panel.
+        let weapon_armor_panel =
+            WeaponArmorPanel::new(WEAPON_ARMOR_PANEL_X, WEAPON_ARMOR_PANEL_Y, HUD_PANEL_BG);
+        let positive_start_x =
+            (TARGET_WIDTH_INT as i32 - SkillBar::width() as i32) / 2 + TOP_CELL_POSITIONS[0].0;
+        let wap_bounds = weapon_armor_panel.bounds();
+        let negative_right_x = wap_bounds.x + wap_bounds.width as i32;
+
         Self {
-            weapon_armor_panel: WeaponArmorPanel::new(
-                WEAPON_ARMOR_PANEL_X,
-                WEAPON_ARMOR_PANEL_Y,
-                HUD_PANEL_BG,
-            ),
+            weapon_armor_panel,
             rank_sigil: RankSigil::new(RANK_SIGIL_X, RANK_SIGIL_Y, HUD_PANEL_BG),
             chat_box: ChatBox::new(
                 Bounds::new(CHATBOX_X, CHATBOX_Y, CHATBOX_W, CHATBOX_H),
@@ -552,7 +573,11 @@ impl GameScene {
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
             mode_button: ModeButton::new(MODE_BTN_CX, MODE_BTN_CY, MODE_BTN_RADIUS),
             vitality_bars: VitalityChevrons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
-            spell_effect_icons: SpellEffectIcons::new(VITALITY_BARS_X, VITALITY_BARS_Y),
+            spell_effect_icons: SpellEffectIcons::new(
+                positive_start_x,
+                negative_right_x,
+                VITALITY_BARS_Y,
+            ),
             look_panel: LookPanel::new(
                 Bounds::new(LOOK_PANEL_X, LOOK_PANEL_Y, LOOK_PANEL_W, LOOK_PANEL_H),
                 HUD_PANEL_BG,
@@ -606,6 +631,8 @@ impl GameScene {
             kb_stick_pos_y: false,
             kb_stick_neg_y: false,
             keyboard,
+            hud_btn_idle_elapsed: 0.0,
+            hud_btn_fade_t: 1.0,
         }
     }
 
@@ -1642,6 +1669,29 @@ impl Scene for GameScene {
         self.shop_panel.update(dt);
         self.perf_profiler.check_expired();
 
+        // --- Right-side HUD button fade ---
+        {
+            let dt_secs = dt.as_secs_f32();
+            if self.mouse_x > HUD_FADE_THRESHOLD_X {
+                self.hud_btn_idle_elapsed = 0.0;
+                self.hud_btn_fade_t = (self.hud_btn_fade_t + dt_secs / HUD_FADE_IN_SECS).min(1.0);
+            } else {
+                self.hud_btn_idle_elapsed += dt_secs;
+                if self.hud_btn_idle_elapsed >= HUD_FADE_OUT_DELAY_SECS {
+                    self.hud_btn_fade_t =
+                        (self.hud_btn_fade_t - dt_secs / HUD_FADE_OUT_SECS).max(0.0);
+                }
+            }
+            let alpha = (self.hud_btn_fade_t * 255.0) as u8;
+            self.hud_buttons.set_alpha(alpha);
+            self.mode_button.set_alpha(alpha);
+            if self.minimap_widget.is_visible() {
+                self.minimap_widget.set_button_alpha(255);
+            } else {
+                self.minimap_widget.set_button_alpha(alpha);
+            }
+        }
+
         // Sync controller mode from the central AppState flag.
         self.controller_mode = app_state.controller_active;
 
@@ -1904,6 +1954,8 @@ impl Scene for GameScene {
                 let rank_index = ranks::points2rank(ci.points_tot as u32);
                 self.rank_sigil.sync(rank_index as usize);
                 self.weapon_armor_panel.sync(ci.weapon, ci.armor);
+                let wap = self.weapon_armor_panel.bounds();
+                self.spell_effect_icons.negative_right_x = wap.x + wap.width as i32;
                 self.rank_progress_line.sync(ci.points_tot as u32);
                 self.mode_button.sync(ci.mode);
                 self.vitality_bars.sync(

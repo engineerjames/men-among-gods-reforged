@@ -85,8 +85,10 @@ const HUD_BTN_CX: i32 = TARGET_WIDTH_INT as i32 - 30;
 const HUD_BTN_BOTTOM_CY: i32 = TARGET_HEIGHT_INT as i32 - 60;
 /// Vertical spacing between adjacent HUD button centers.
 const HUD_BTN_SPACING: u32 = 40;
-/// X center for the spell-effect icon demo.
-const SPELL_ICONS_X: i32 = TARGET_WIDTH_INT as i32 / 2;
+/// Left-edge X for positive spell-effect icons (aligned with the first skill-bar slot).
+const SPELL_ICONS_POS_X: i32 = (TARGET_WIDTH_INT as i32 - 500) / 2 + 72;
+/// Right-edge X for negative spell-effect icons.
+const SPELL_ICONS_NEG_RIGHT_X: i32 = TARGET_WIDTH_INT as i32 - 294;
 /// Bottom Y for the spell-effect icon demo.
 const SPELL_ICONS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 
@@ -334,7 +336,8 @@ fn main() -> Result<(), String> {
         show_secondary: false,
     });
 
-    let mut spell_effect_icons = SpellEffectIcons::new(SPELL_ICONS_X, SPELL_ICONS_Y);
+    let mut spell_effect_icons =
+        SpellEffectIcons::new(SPELL_ICONS_POS_X, SPELL_ICONS_NEG_RIGHT_X, SPELL_ICONS_Y);
     let mut demo_spell = [0i32; 20];
     let mut demo_active = [0i8; 20];
     let mut demo_spell_type = [0i16; 20];

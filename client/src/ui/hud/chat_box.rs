@@ -24,6 +24,9 @@ const MAX_INPUT_LEN: usize = 120;
 /// Maximum number of previously sent messages kept in history.
 const MAX_HISTORY_LEN: usize = 100;
 
+/// Command names that Tab history should treat as reusable chat prefixes.
+const CHAT_PREFIX_COMMANDS: &[&str] = &["shout", "gtell", "itell", "stell", "tell", "me", "emote"];
+
 /// Height reserved for the input area (separator gap + one line of text).
 const INPUT_AREA_H: u32 = font_cache::BITMAP_GLYPH_H + 4; // 2px gap above + 2px below
 
@@ -67,6 +70,7 @@ pub struct ChatBox {
     sent_chat_history: Vec<String>,
     chat_history_index: Option<usize>,
     chat_history_draft: Option<String>,
+    chat_prefix_history_index: Option<usize>,
 
     // -- Focus & actions --
     focused: bool,
@@ -112,6 +116,7 @@ impl ChatBox {
             sent_chat_history: Vec::new(),
             chat_history_index: None,
             chat_history_draft: None,
+            chat_prefix_history_index: None,
             focused: false,
             pending_actions: Vec::new(),
             idle_elapsed: 0.0,
@@ -394,8 +399,66 @@ impl ChatBox {
         }
         self.chat_history_index = None;
         self.chat_history_draft = None;
+        self.chat_prefix_history_index = None;
 
         self.pending_actions.push(WidgetAction::SendChat(text));
+    }
+
+    /// Extracts a reusable chat command prefix from a sent message.
+    ///
+    /// # Arguments
+    ///
+    /// * `message` - The previously sent chat input to inspect.
+    ///
+    /// # Returns
+    ///
+    /// A command prefix ending in a space when the message is a supported chat
+    /// command, otherwise `None`.
+    fn chat_command_prefix(message: &str) -> Option<String> {
+        let trimmed = message.trim_start();
+        let sigil = trimmed
+            .chars()
+            .next()
+            .filter(|ch| *ch == '/' || *ch == '#')?;
+        let without_sigil = &trimmed[sigil.len_utf8()..];
+        let mut parts = without_sigil.split_whitespace();
+        let command = parts.next()?;
+        let command_lower = command.to_ascii_lowercase();
+
+        if !CHAT_PREFIX_COMMANDS.contains(&command_lower.as_str()) {
+            return None;
+        }
+
+        if command_lower == "tell"
+            && let Some(target) = parts.next()
+        {
+            return Some(format!("{sigil}{command} {target} "));
+        }
+
+        Some(format!("{sigil}{command} "))
+    }
+
+    /// Navigates backward through recently used reusable chat command prefixes.
+    fn chat_prefix_back(&mut self) {
+        let prefixes: Vec<String> = self
+            .sent_chat_history
+            .iter()
+            .filter_map(|message| Self::chat_command_prefix(message))
+            .collect();
+
+        if prefixes.is_empty() {
+            return;
+        }
+
+        let next_index = match self.chat_prefix_history_index {
+            Some(0) => prefixes.len() - 1,
+            Some(idx) => idx - 1,
+            None => prefixes.len() - 1,
+        };
+        self.chat_prefix_history_index = Some(next_index);
+        self.chat_history_index = None;
+        self.chat_history_draft = None;
+        self.replace_input(prefixes[next_index].clone());
     }
 
     /// Navigates backward (older) in the sent history.
@@ -545,6 +608,10 @@ impl Widget for ChatBox {
                     }
                     Keycode::Up => {
                         self.history_back();
+                        EventResponse::Consumed
+                    }
+                    Keycode::Tab => {
+                        self.chat_prefix_back();
                         EventResponse::Consumed
                     }
                     Keycode::Down => {
@@ -1193,6 +1260,59 @@ mod tests {
         };
         cb.handle_event(&down);
         assert_eq!(cb.input_text(), "my draft");
+    }
+
+    #[test]
+    fn tab_cycles_chat_command_prefixes_only() {
+        let mut cb = test_chat_box();
+        for text in [
+            "/autoloot",
+            "/tell bob hello!",
+            "/rank",
+            "/gtell meet at temple",
+            "plain speech",
+            "/shout incoming",
+        ] {
+            cb.input_buf = text.to_owned();
+            cb.submit_input();
+        }
+        cb.take_actions();
+        cb.focused = true;
+
+        let tab = UiEvent::KeyDown {
+            keycode: Keycode::Tab,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        };
+
+        assert_eq!(cb.handle_event(&tab), EventResponse::Consumed);
+        assert_eq!(cb.input_text(), "/shout ");
+        assert_eq!(cb.input_cursor, cb.input_text().len());
+
+        cb.handle_event(&tab);
+        assert_eq!(cb.input_text(), "/gtell ");
+
+        cb.handle_event(&tab);
+        assert_eq!(cb.input_text(), "/tell bob ");
+
+        cb.handle_event(&tab);
+        assert_eq!(cb.input_text(), "/shout ");
+    }
+
+    #[test]
+    fn tab_accepts_hash_commands_and_preserves_sigil() {
+        let mut cb = test_chat_box();
+        cb.input_buf = "#tell Alice thanks".to_owned();
+        cb.submit_input();
+        cb.take_actions();
+        cb.focused = true;
+
+        let resp = cb.handle_event(&UiEvent::KeyDown {
+            keycode: Keycode::Tab,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(cb.input_text(), "#tell Alice ");
     }
 
     #[test]
