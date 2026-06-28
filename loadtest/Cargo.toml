@@ -1,0 +1,26 @@
+[package]
+name = "mag-loadtest"
+version.workspace = true
+edition = "2024"
+
+[[bin]]
+name = "mag-loadtest"
+path = "src/main.rs"
+
+[dependencies]
+mag_core = { path = "../core", package = "core" }
+anyhow.workspace = true
+argon2.workspace = true
+flate2.workspace = true
+log.workspace = true
+rand.workspace = true
+serde.workspace = true
+# reqwest: use async (non-blocking) client with the same features as the workspace dep
+reqwest = { workspace = true }
+# rustls: enable ring + tls12 for TLS client connections to the game server
+rustls = { workspace = true, features = ["ring", "tls12", "logging"] }
+tokio = { version = "1", features = ["full"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["logging"] }
+toml = "0.8"
+clap = { version = "4", features = ["derive"] }
+env_logger = "0.11"
