@@ -926,47 +926,43 @@ fn dd_tile_origin_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
 }
 
 #[inline]
-/// Return the visual center of the isometric tile in map-space pixels.
+/// Return the visual center of the isometric floor diamond in map-space pixels.
+///
+/// `dd_tile_origin_screen_pos` is the pre-sprite-offset anchor (`ry`). The
+/// background floor sprite is a 32x32 image drawn with its top-left at
+/// `(rx - 16, ry - 32)` (see `dd_copysprite_screen_pos` with `xs == ys == 1`),
+/// so the sprite spans `y` in `[ry - 32, ry]`. The actual floor diamond is the
+/// bottom half of that sprite, giving a visual center of `ry - 8`. Using this
+/// exact center keeps the hover/selection markers and tile picking aligned with
+/// the rendered tile.
 fn dd_tile_center_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
     let (rx, ry) = dd_tile_origin_screen_pos(xpos, ypos);
-    (rx, ry + 8)
+    (rx, ry - 8)
 }
 
 /// Return the tile containing a map-space point inside the isometric diamond grid.
+///
+/// This inverts the isometric projection exactly. In screen space, stepping one
+/// tile in `x` moves the diamond center by `(+16, +8)` and one tile in `y` moves
+/// it by `(+16, -8)`. Expressed in those basis vectors, the floor diamonds form
+/// a unit square grid, so the containing tile is found by rounding — there are no
+/// boundary ties or neighbour bias.
 fn map_point_to_tile(map_pos: Vec2) -> Option<(usize, usize)> {
-    let offset_x = 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32);
-    let offset_y = YPOS;
-    let rx_prime = map_pos.x - offset_x as f32;
-    let ry_prime = map_pos.y - offset_y as f32;
+    // Anchor: the center of tile (0, 0). Derived from the same helper used to
+    // draw the markers so picking and rendering can never drift apart.
+    let (ax, ay) = dd_tile_center_screen_pos(0, 0);
+    // `u = x + y` and `v = x - y` recovered from the projection.
+    let u = (map_pos.x - ax as f32) / 16.0;
+    let v = (map_pos.y - ay as f32) / 8.0;
 
-    let xpos = rx_prime + 2.0 * ry_prime;
-    let ypos = rx_prime - 2.0 * ry_prime;
-    let guess_x = (xpos / 32.0).floor() as i32;
-    let guess_y = (ypos / 32.0).floor() as i32;
+    let x = ((u + v) * 0.5).round() as i32;
+    let y = ((u - v) * 0.5).round() as i32;
 
-    let mut best: Option<(usize, usize, f32)> = None;
-    for y in (guess_y - 1)..=(guess_y + 1) {
-        for x in (guess_x - 1)..=(guess_x + 1) {
-            if x < 0 || y < 0 || x >= SERVER_MAPX || y >= SERVER_MAPY {
-                continue;
-            }
-
-            let xpos = x * 32;
-            let ypos = y * 32;
-            let (cx, cy_top) = dd_tile_origin_screen_pos(xpos, ypos);
-            let dx = (map_pos.x - cx as f32).abs();
-            let dy = (map_pos.y - (cy_top + 8) as f32).abs();
-            let metric = dx * 8.0 + dy * 16.0;
-            if metric <= 128.0 {
-                match best {
-                    Some((_, _, current_metric)) if metric >= current_metric => {}
-                    _ => best = Some((x as usize, y as usize, metric)),
-                }
-            }
-        }
+    if x < 0 || y < 0 || x >= SERVER_MAPX || y >= SERVER_MAPY {
+        return None;
     }
 
-    best.map(|(x, y, _)| (x, y))
+    Some((x as usize, y as usize))
 }
 
 #[inline]
@@ -1952,5 +1948,44 @@ mod tests {
             map_point_to_tile(Vec2::new(below_cx as f32, below_cy as f32)),
             Some((10, 21))
         );
+    }
+
+    #[test]
+    fn map_point_to_tile_matches_screen_stacked_neighbors() {
+        // Tiles stack vertically on screen: a point one diamond-height below a
+        // tile center belongs to (x + 1, y - 1); one above belongs to
+        // (x - 1, y + 1). This locks the floor-diamond center orientation so it
+        // cannot silently flip sign again.
+        let (cx, cy) = dd_tile_center_screen_pos(10 * 32, 20 * 32);
+        assert_eq!(
+            map_point_to_tile(Vec2::new(cx as f32, cy as f32 + 16.0)),
+            Some((11, 19))
+        );
+        assert_eq!(
+            map_point_to_tile(Vec2::new(cx as f32, cy as f32 - 16.0)),
+            Some((9, 21))
+        );
+    }
+
+    #[test]
+    fn map_point_to_tile_stays_on_tile_across_interior() {
+        // Every point inside a tile's diamond must resolve to that tile.
+        let (cx, cy) = dd_tile_center_screen_pos(40 * 32, 25 * 32);
+        let interior = [
+            (0.0, 0.0),
+            (10.0, 0.0),
+            (-10.0, 0.0),
+            (0.0, 5.0),
+            (0.0, -5.0),
+            (6.0, 3.0),
+            (-6.0, -3.0),
+        ];
+        for (dx, dy) in interior {
+            assert_eq!(
+                map_point_to_tile(Vec2::new(cx as f32 + dx, cy as f32 + dy)),
+                Some((40, 25)),
+                "interior offset ({dx}, {dy}) should stay on (40, 25)"
+            );
+        }
     }
 }
