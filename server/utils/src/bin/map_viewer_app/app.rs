@@ -42,6 +42,9 @@ pub(crate) struct MapViewerApp {
     // Camera pan in screen pixels.
     pan: Vec2,
 
+    // Camera zoom applied to map-space pixels.
+    zoom: f32,
+
     // True once we auto-center after loading map/graphics.
     pan_initialized: bool,
 
@@ -66,6 +69,7 @@ pub(crate) struct MapViewerApp {
     draft_sprite: u16,
     draft_item_instance_id: u32,
     palette_rect: Option<Rect>,
+    line_anchor: Option<(usize, usize)>,
 
     /// Active data backend (live KeyDB or snapshot file).
     data_source: DataSource,
@@ -107,6 +111,7 @@ impl MapViewerApp {
         Self {
             data_source,
             admin_client,
+            zoom: 1.0,
             ..Self::default()
         }
     }
@@ -119,6 +124,7 @@ impl MapViewerApp {
         self.hovered_tile = None;
         self.selected_tile = None;
         self.selected_palette_index = None;
+        self.line_anchor = None;
         self.dirty = false;
         self.dirty_tiles.clear();
     }
@@ -133,6 +139,7 @@ impl MapViewerApp {
         self.hovered_tile = None;
         self.selected_tile = None;
         self.selected_palette_index = None;
+        self.line_anchor = None;
         self.dirty = false;
         self.dirty_tiles.clear();
     }
@@ -326,6 +333,49 @@ impl MapViewerApp {
     fn mark_tile_dirty(&mut self, x: usize, y: usize) {
         self.dirty = true;
         self.dirty_tiles.insert((x, y));
+    }
+
+    /// Return the currently selected palette entry, clearing stale selection.
+    fn selected_palette_entry(&mut self) -> Option<PaletteEntry> {
+        let Some(index) = self.selected_palette_index else {
+            return None;
+        };
+        let Some(entry) = self.palette.get(index).copied() else {
+            self.selected_palette_index = None;
+            return None;
+        };
+        Some(entry)
+    }
+
+    /// Apply a palette entry to one map tile and mark it dirty when changed.
+    fn apply_palette_to_tile(&mut self, x: usize, y: usize, entry: PaletteEntry) -> bool {
+        let idx = tile_index(x, y);
+        let Some(current) = self.map_tiles.get(idx).copied() else {
+            return false;
+        };
+
+        let mut tile = current;
+        match entry.kind {
+            PaletteEntryKind::Sprite(sprite) => {
+                if sprite != 0 {
+                    tile.fsprite = sprite;
+                }
+            }
+            PaletteEntryKind::Item(it) => {
+                if it != 0 {
+                    tile.it = it;
+                    tile.fsprite = 0;
+                }
+            }
+        }
+
+        if tile == current {
+            return false;
+        }
+
+        self.map_tiles[idx] = tile;
+        self.mark_tile_dirty(x, y);
+        true
     }
 
     /// Push every dirty map tile to the admin API and clear the dirty set.
@@ -851,6 +901,22 @@ fn tile_index(x: usize, y: usize) -> usize {
     y * (SERVER_MAPX as usize) + x
 }
 
+const MIN_ZOOM: f32 = 0.25;
+const MAX_ZOOM: f32 = 4.0;
+const ZOOM_STEP: f32 = 1.15;
+
+#[inline]
+/// Convert map-space pixels into screen-space coordinates.
+fn map_to_screen(rect: Rect, pan: Vec2, zoom: f32, map_pos: Vec2) -> Pos2 {
+    rect.min + pan + map_pos * zoom
+}
+
+#[inline]
+/// Convert screen-space coordinates into map-space pixels.
+fn screen_to_map(rect: Rect, pan: Vec2, zoom: f32, screen_pos: Pos2) -> Vec2 {
+    (screen_pos - rect.min - pan) / zoom
+}
+
 #[inline]
 fn dd_tile_origin_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
     // Ported from client gameplay `legacy_engine::copysprite_screen_pos` (dd.c copysprite).
@@ -859,6 +925,13 @@ fn dd_tile_origin_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
     let rx = (xpos / 2) + (ypos / 2) + 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32);
     let ry = (xpos / 4) - (ypos / 4) + YPOS;
     (rx, ry)
+}
+
+#[inline]
+/// Return the visual center of the isometric tile in map-space pixels.
+fn dd_tile_center_screen_pos(xpos: i32, ypos: i32) -> (i32, i32) {
+    let (rx, ry) = dd_tile_origin_screen_pos(xpos, ypos);
+    (rx + 16, ry)
 }
 
 #[inline]
@@ -883,6 +956,38 @@ fn clamp_range(min: i32, max: i32, lo: i32, hi: i32) -> (usize, usize) {
     let min = min.clamp(lo, hi);
     let max = max.clamp(lo, hi);
     (min as usize, max as usize)
+}
+
+/// Return every map tile touched by a straight Bresenham line.
+fn line_tiles(start: (usize, usize), end: (usize, usize)) -> Vec<(usize, usize)> {
+    let (mut x0, mut y0) = (start.0 as i32, start.1 as i32);
+    let (x1, y1) = (end.0 as i32, end.1 as i32);
+    let dx = (x1 - x0).abs();
+    let dy = -(y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx + dy;
+    let mut points = Vec::new();
+
+    loop {
+        if x0 >= 0 && y0 >= 0 && x0 < SERVER_MAPX && y0 < SERVER_MAPY {
+            points.push((x0 as usize, y0 as usize));
+        }
+        if x0 == x1 && y0 == y1 {
+            break;
+        }
+        let e2 = 2 * err;
+        if e2 >= dy {
+            err += dy;
+            x0 += sx;
+        }
+        if e2 <= dx {
+            err += dx;
+            y0 += sy;
+        }
+    }
+
+    points
 }
 
 impl eframe::App for MapViewerApp {
@@ -940,14 +1045,6 @@ impl eframe::App for MapViewerApp {
             {
                 self.load_graphics_zip(zip_path);
             }
-        }
-
-        // Preload graphics incrementally
-        if let Some(cache) = self.graphics_zip.as_mut()
-            && !cache.loading_done
-        {
-            let _ = cache.preload_step(ctx);
-            ctx.request_repaint();
         }
 
         // Keyboard pan (WASD).
@@ -1187,29 +1284,19 @@ impl eframe::App for MapViewerApp {
                 ui.label(format!("Map size: {} x {}", SERVER_MAPX, SERVER_MAPY));
                 ui.label(format!("Loaded tiles: {}", self.map_tiles.len()));
 
-                // Show loading progress
-                if let Some(cache) = &self.graphics_zip
-                    && !cache.loading_done
-                {
-                    let (loaded, total) = cache.loading_progress();
-                    ui.separator();
-                    ui.label(format!("Loading sprites: {}/{}", loaded, total));
-                    if total > 0 {
-                        let progress = loaded as f32 / total as f32;
-                        ui.add(
-                            egui::ProgressBar::new(progress)
-                                .text(format!("{:.0}%", progress * 100.0)),
-                        );
-                    }
-                }
-
                 ui.separator();
                 ui.label("Controls:");
                 ui.label("- WASD: pan");
                 ui.label("- Drag: pan");
+                ui.label("- Mouse wheel: zoom");
+                ui.label("- Shift + left click: line mode");
 
                 ui.separator();
                 ui.label(format!("Pan: [{:.1}, {:.1}]", self.pan.x, self.pan.y));
+                ui.label(format!("Zoom: {:.0}%", self.zoom * 100.0));
+                if let Some((x, y)) = self.line_anchor {
+                    ui.label(format!("Line anchor: ({}, {})", x, y));
+                }
 
                 ui.separator();
                 {
@@ -1424,7 +1511,8 @@ impl eframe::App for MapViewerApp {
                 let clicked_palette = pointer_pos.is_some_and(|p| palette_rect.contains(p));
 
                 if !clicked_palette {
-                    let Some(sel_idx) = self.selected_palette_index else {
+                    let Some(entry) = self.selected_palette_entry() else {
+                        self.line_anchor = None;
                         // No palette selection => select the tile (freeze details).
                         if let Some((x, y)) = self.hovered_tile {
                             self.selected_tile = Some((x, y));
@@ -1432,39 +1520,35 @@ impl eframe::App for MapViewerApp {
                         }
                         return;
                     };
-                    if sel_idx >= self.palette.len() {
-                        self.selected_palette_index = None;
-                        return;
-                    }
                     let Some((x, y)) = self.hovered_tile else {
+                        self.line_anchor = None;
                         return;
                     };
-                    let idx = tile_index(x, y);
-                    if idx >= self.map_tiles.len() {
-                        return;
-                    }
 
-                    let mut tile = self.map_tiles[idx];
-                    match self.palette[sel_idx].kind {
-                        PaletteEntryKind::Sprite(sprite) => {
-                            if sprite != 0 {
-                                tile.fsprite = sprite;
-                            }
+                    let shift_held = ctx.input(|i| i.modifiers.shift);
+                    let changed = if shift_held {
+                        let start = self.line_anchor.unwrap_or((x, y));
+                        let mut changed = false;
+                        for (line_x, line_y) in line_tiles(start, (x, y)) {
+                            changed |= self.apply_palette_to_tile(line_x, line_y, entry);
                         }
-                        PaletteEntryKind::Item(it) => {
-                            if it != 0 {
-                                tile.it = it;
-                                tile.fsprite = 0;
-                            }
-                        }
-                    }
+                        self.line_anchor = Some((x, y));
+                        changed
+                    } else {
+                        self.line_anchor = None;
+                        self.apply_palette_to_tile(x, y, entry)
+                    };
 
-                    if tile != self.map_tiles[idx] {
-                        self.map_tiles[idx] = tile;
-                        self.mark_tile_dirty(x, y);
+                    if changed {
                         ctx.request_repaint();
                     }
+                } else {
+                    self.line_anchor = None;
                 }
+            }
+
+            if !ctx.input(|i| i.modifiers.shift) {
+                self.line_anchor = None;
             }
 
             // Auto-center on first paint after load.
@@ -1474,8 +1558,29 @@ impl eframe::App for MapViewerApp {
                 let xpos = (mid_x as i32) * 32;
                 let ypos = (mid_y as i32) * 32;
                 let (tx, ty) = dd_tile_origin_screen_pos(xpos, ypos);
-                self.pan = (rect.center() - rect.min) - Vec2::new(tx as f32, ty as f32);
+                self.pan = (rect.center() - rect.min) - Vec2::new(tx as f32, ty as f32) * self.zoom;
                 self.pan_initialized = true;
+            }
+
+            let zoom_delta = ctx.input(|i| i.raw_scroll_delta.y);
+            if zoom_delta != 0.0
+                && let Some(pointer_pos) = ctx.pointer_latest_pos()
+                && rect.contains(pointer_pos)
+                && !palette_rect.contains(pointer_pos)
+            {
+                let old_zoom = self.zoom;
+                let factor = if zoom_delta > 0.0 {
+                    ZOOM_STEP
+                } else {
+                    1.0 / ZOOM_STEP
+                };
+                let new_zoom = (old_zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
+                if (new_zoom - old_zoom).abs() > f32::EPSILON {
+                    let map_under_pointer = screen_to_map(rect, self.pan, old_zoom, pointer_pos);
+                    self.zoom = new_zoom;
+                    self.pan = pointer_pos - rect.min - map_under_pointer * new_zoom;
+                    ctx.request_repaint();
+                }
             }
 
             // Compute hovered tile from mouse position (invert tile-origin mapping).
@@ -1485,7 +1590,7 @@ impl eframe::App for MapViewerApp {
                 }
 
                 // Convert to map coordinate space
-                let screen_pos = pos - rect.min - self.pan;
+                let screen_pos = screen_to_map(rect, self.pan, self.zoom, pos);
 
                 // Invert dd_tile_origin_screen_pos:
                 // rx = (xpos / 2) + (ypos / 2) + 32 + XPOS - (((TILEX as i32 - 34) / 2) * 32)
@@ -1547,7 +1652,7 @@ impl eframe::App for MapViewerApp {
             let mut min_y = f32::INFINITY;
             let mut max_y = f32::NEG_INFINITY;
             for c in corners {
-                let local = c - rect.min - self.pan;
+                let local = screen_to_map(rect, self.pan, self.zoom, c);
                 let base_x = local.x - (32 + XPOS - (((TILEX as i32 - 34) / 2) * 32)) as f32;
                 let base_y = local.y - (YPOS as f32);
                 let xf = 0.5 * (base_x / 16.0 + base_y / 8.0);
@@ -1617,6 +1722,7 @@ impl eframe::App for MapViewerApp {
                             tile.sprite as usize,
                             rect,
                             self.pan,
+                            self.zoom,
                             xpos,
                             ypos,
                             0,
@@ -1642,6 +1748,7 @@ impl eframe::App for MapViewerApp {
                             sprite_id as usize,
                             rect,
                             self.pan,
+                            self.zoom,
                             xpos,
                             ypos,
                             0,
@@ -1672,6 +1779,7 @@ impl eframe::App for MapViewerApp {
                                     item_sprite as usize,
                                     rect,
                                     self.pan,
+                                    self.zoom,
                                     xpos,
                                     ypos,
                                     0,
@@ -1690,18 +1798,38 @@ impl eframe::App for MapViewerApp {
             if let Some((x, y)) = self.hovered_tile {
                 let xpos = (x as i32) * 32;
                 let ypos = (y as i32) * 32;
-                let (tx, ty) = dd_tile_origin_screen_pos(xpos, ypos);
-                let pos = rect.min + self.pan + Vec2::new(tx as f32, ty as f32);
-                painter.circle_stroke(pos, 6.0, (2.0, egui::Color32::YELLOW));
+                let (tx, ty) = dd_tile_center_screen_pos(xpos, ypos);
+                let pos = map_to_screen(rect, self.pan, self.zoom, Vec2::new(tx as f32, ty as f32));
+                let radius = (6.0 * self.zoom).clamp(4.0, 14.0);
+                painter.circle_stroke(pos, radius, (2.0, egui::Color32::YELLOW));
+            }
+
+            if let (Some((ax, ay)), Some((hx, hy))) = (self.line_anchor, self.hovered_tile) {
+                let start_xpos = (ax as i32) * 32;
+                let start_ypos = (ay as i32) * 32;
+                let end_xpos = (hx as i32) * 32;
+                let end_ypos = (hy as i32) * 32;
+                let (sx, sy) = dd_tile_center_screen_pos(start_xpos, start_ypos);
+                let (ex, ey) = dd_tile_center_screen_pos(end_xpos, end_ypos);
+                let start =
+                    map_to_screen(rect, self.pan, self.zoom, Vec2::new(sx as f32, sy as f32));
+                let end = map_to_screen(rect, self.pan, self.zoom, Vec2::new(ex as f32, ey as f32));
+                painter.line_segment([start, end], (2.0, egui::Color32::LIGHT_GREEN));
+                painter.circle_stroke(
+                    start,
+                    (5.0 * self.zoom).clamp(4.0, 12.0),
+                    (2.0, egui::Color32::LIGHT_GREEN),
+                );
             }
 
             // Highlight selected tile (persistent).
             if let Some((x, y)) = self.selected_tile {
                 let xpos = (x as i32) * 32;
                 let ypos = (y as i32) * 32;
-                let (tx, ty) = dd_tile_origin_screen_pos(xpos, ypos);
-                let pos = rect.min + self.pan + Vec2::new(tx as f32, ty as f32);
-                painter.circle_stroke(pos, 7.0, (3.0, egui::Color32::from_rgb(255, 50, 50)));
+                let (tx, ty) = dd_tile_center_screen_pos(xpos, ypos);
+                let pos = map_to_screen(rect, self.pan, self.zoom, Vec2::new(tx as f32, ty as f32));
+                let radius = (7.0 * self.zoom).clamp(5.0, 16.0);
+                painter.circle_stroke(pos, radius, (3.0, egui::Color32::from_rgb(255, 50, 50)));
             }
         });
     }
@@ -1715,6 +1843,7 @@ fn paint_sprite_dd(
     sprite_id: usize,
     rect: Rect,
     pan: Vec2,
+    zoom: f32,
     xpos: i32,
     ypos: i32,
     xoff: i32,
@@ -1730,8 +1859,8 @@ fn paint_sprite_dd(
     };
 
     let (rx, ry) = dd_copysprite_screen_pos(xpos, ypos, xoff, yoff, xs, ys);
-    let top_left = rect.min + pan + Vec2::new(rx as f32, ry as f32);
-    let dst = Rect::from_min_size(top_left, texture.size_vec2());
+    let top_left = map_to_screen(rect, pan, zoom, Vec2::new(rx as f32, ry as f32));
+    let dst = Rect::from_min_size(top_left, texture.size_vec2() * zoom);
 
     painter.image(
         texture.id(),
@@ -1741,4 +1870,62 @@ fn paint_sprite_dd(
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::line_tiles;
+
+    #[test]
+    fn line_tiles_single_point() {
+        assert_eq!(line_tiles((7, 9), (7, 9)), vec![(7, 9)]);
+    }
+
+    #[test]
+    fn line_tiles_horizontal_includes_endpoints() {
+        assert_eq!(
+            line_tiles((2, 4), (6, 4)),
+            vec![(2, 4), (3, 4), (4, 4), (5, 4), (6, 4)]
+        );
+    }
+
+    #[test]
+    fn line_tiles_vertical_includes_endpoints() {
+        assert_eq!(
+            line_tiles((3, 2), (3, 6)),
+            vec![(3, 2), (3, 3), (3, 4), (3, 5), (3, 6)]
+        );
+    }
+
+    #[test]
+    fn line_tiles_diagonal_includes_endpoints() {
+        assert_eq!(
+            line_tiles((1, 1), (4, 4)),
+            vec![(1, 1), (2, 2), (3, 3), (4, 4)]
+        );
+    }
+
+    #[test]
+    fn line_tiles_shallow_slope() {
+        assert_eq!(
+            line_tiles((1, 1), (5, 3)),
+            vec![(1, 1), (2, 2), (3, 2), (4, 3), (5, 3)]
+        );
+    }
+
+    #[test]
+    fn line_tiles_steep_slope() {
+        assert_eq!(
+            line_tiles((1, 1), (3, 5)),
+            vec![(1, 1), (2, 2), (2, 3), (3, 4), (3, 5)]
+        );
+    }
+
+    #[test]
+    fn line_tiles_reversed_matches_reverse_order() {
+        assert_eq!(
+            line_tiles((5, 3), (1, 1)),
+            vec![(5, 3), (4, 2), (3, 2), (2, 1), (1, 1)]
+        );
+    }
 }
