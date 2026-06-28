@@ -13,17 +13,17 @@ base_url = "https://127.0.0.1:5554"
 
 [run]
 # Number of bot clients to simulate concurrently.
-num_clients = 10
+num_clients = 20
 # Seconds over which all clients ramp up (connections staggered evenly).
 ramp_up_secs = 5.0
 # Total wall-clock test duration in seconds.
-duration_secs = 60.0
+duration_secs = 600.0
 # Seconds between periodic metric summaries printed to stdout.
 report_interval_secs = 10.0
 
 [movement]
 # Maximum ± tile radius for random move targets around the bot's current position.
-radius = 5
+radius = 10
 # Milliseconds between CL_MOVE commands.
 interval_ms = 500
 

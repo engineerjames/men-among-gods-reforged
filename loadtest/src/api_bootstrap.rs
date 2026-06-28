@@ -203,7 +203,7 @@ pub async fn bootstrap_client(
         ch.id
     } else {
         // No characters yet — create one.
-        let char_name = format!("{}-bot-{}", config.accounts.prefix, index);
+        let char_name = bot_char_name(&config.accounts.prefix, index);
         let created = create_character(&http, &base, &jwt, &char_name, config, rate_limiter)
             .await
             .with_context(|| format!("create character for {username}"))?;
@@ -298,6 +298,61 @@ async fn create_character(
         .context("parse create character response")
 }
 
+/// Generates an API-valid character name for bot `index`.
+///
+/// The API requires ASCII letters only, length 4–15.  Strategy: strip
+/// non-alphabetic characters from `prefix`, then append a base-26 letter
+/// suffix encoding `index` (`a`=0, `b`=1, …, `z`=25, `aa`=26, …).  The
+/// prefix is truncated so the combined name stays within 15 characters.
+///
+/// # Arguments
+///
+/// * `prefix` - Account prefix from config (non-alpha chars are stripped).
+/// * `index` - Bot index used to derive a unique name suffix.
+///
+/// # Returns
+///
+/// * A unique, API-valid character name string.
+pub(crate) fn bot_char_name(prefix: &str, index: usize) -> String {
+    let suffix = index_to_alpha(index);
+    // Keep only alpha chars from the prefix.
+    let raw_prefix: String = prefix.chars().filter(|c| c.is_ascii_alphabetic()).collect();
+    // Budget: combined name must fit in 15 chars.
+    let prefix_budget = 15usize.saturating_sub(suffix.len());
+    let trimmed_prefix: String = raw_prefix.chars().take(prefix_budget).collect();
+    let combined = format!("{trimmed_prefix}{suffix}");
+    // Pad with 'a' to hit the 4-char minimum if necessary.
+    if combined.len() < 4 {
+        let pad_len = 4 - combined.len();
+        format!("{combined}{}", "a".repeat(pad_len))
+    } else {
+        combined
+    }
+}
+
+/// Encodes a non-negative integer as a base-26 lowercase letter sequence.
+///
+/// 0 → "a", 25 → "z", 26 → "aa", 51 → "az", 52 → "ba", and so on.
+///
+/// # Arguments
+///
+/// * `n` - Non-negative integer to encode.
+///
+/// # Returns
+///
+/// * A non-empty lowercase ASCII string.
+fn index_to_alpha(mut n: usize) -> String {
+    let mut bytes = Vec::new();
+    loop {
+        bytes.push(b'a' + (n % 26) as u8);
+        if n < 26 {
+            break;
+        }
+        n = n / 26 - 1;
+    }
+    bytes.iter().rev().map(|&b| b as char).collect()
+}
+
 /// Builds an async `reqwest::Client` that accepts self-signed certificates.
 ///
 /// Self-signed certs are expected on local / staging API servers.
@@ -316,6 +371,55 @@ fn build_http_client() -> anyhow::Result<reqwest::Client> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn index_to_alpha_base26() {
+        assert_eq!(index_to_alpha(0), "a");
+        assert_eq!(index_to_alpha(25), "z");
+        assert_eq!(index_to_alpha(26), "aa");
+        assert_eq!(index_to_alpha(27), "ab");
+        assert_eq!(index_to_alpha(51), "az");
+        assert_eq!(index_to_alpha(52), "ba");
+        assert_eq!(index_to_alpha(701), "zz");
+        assert_eq!(index_to_alpha(702), "aaa");
+    }
+
+    #[test]
+    fn bot_char_name_ascii_letters_only() {
+        for i in 0..100 {
+            let name = bot_char_name("loadtest", i);
+            assert!(
+                name.chars().all(|c| c.is_ascii_alphabetic()),
+                "name '{name}' at index {i} contains non-alpha chars"
+            );
+            assert!(
+                name.len() >= 4 && name.len() <= 15,
+                "name '{name}' at index {i} has invalid length {}",
+                name.len()
+            );
+        }
+    }
+
+    #[test]
+    fn bot_char_name_unique_per_index() {
+        let names: Vec<_> = (0..50).map(|i| bot_char_name("loadtest", i)).collect();
+        let unique: std::collections::HashSet<_> = names.iter().collect();
+        assert_eq!(names.len(), unique.len(), "duplicate names detected");
+    }
+
+    #[test]
+    fn bot_char_name_strips_non_alpha_prefix() {
+        let name = bot_char_name("load-test-99", 0);
+        assert!(name.chars().all(|c| c.is_ascii_alphabetic()));
+    }
+
+    #[test]
+    fn bot_char_name_pads_short_prefix() {
+        // Empty prefix: result must still be ≥4 chars.
+        let name = bot_char_name("", 0); // suffix = "a", pad to 4 → "aaaa"
+        assert!(name.len() >= 4);
+        assert!(name.chars().all(|c| c.is_ascii_alphabetic()));
+    }
 
     #[test]
     fn hash_password_is_deterministic() {

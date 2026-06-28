@@ -401,7 +401,8 @@ pub fn plr_cmd_move(gs: &mut GameState, nr: usize) {
 
     let ticker = gs.globals.ticker;
 
-    log::info!(
+    // Set to debug because otherwise this is incredibly noisy
+    log::debug!(
         "plr_cmd_move: current_position = ({},{})",
         gs.characters[cn].x,
         gs.characters[cn].y,

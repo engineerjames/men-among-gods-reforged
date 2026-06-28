@@ -1,8 +1,8 @@
 //! Lock-free metrics store aggregated across all simulated clients.
 
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
     Mutex,
+    atomic::{AtomicU64, Ordering},
 };
 use std::time::Duration;
 
@@ -24,6 +24,11 @@ pub struct Metrics {
     pub tick_gap_late: AtomicU64,
     /// Total outbound command packets sent (move + ping + CTick).
     pub pkts_out: AtomicU64,
+    /// Sum of per-client actual connected durations in milliseconds.
+    ///
+    /// Accumulated at disconnect time so the final report can compute ticks/s
+    /// relative to actual connection time rather than wall-clock run duration.
+    pub total_client_connected_ms: AtomicU64,
     /// Collected RTT samples in milliseconds, from CL_PING / SV_PONG exchanges.
     pub rtt_samples: Mutex<Vec<u32>>,
 }
@@ -44,6 +49,7 @@ impl Metrics {
             ticks_total: AtomicU64::new(0),
             tick_gap_late: AtomicU64::new(0),
             pkts_out: AtomicU64::new(0),
+            total_client_connected_ms: AtomicU64::new(0),
             rtt_samples: Mutex::new(Vec::new()),
         }
     }
@@ -73,15 +79,19 @@ impl Metrics {
         let pkts_out = self.pkts_out.load(Ordering::Relaxed);
         let late = self.tick_gap_late.load(Ordering::Relaxed);
 
-        let tps = if elapsed.as_secs_f64() > 0.0 && connected > 0 {
-            ticks as f64 / elapsed.as_secs_f64() / connected as f64
+        // Use currently-active clients (connected − already-disconnected) so the
+        // rate isn't diluted during ramp-up when not all clients have joined yet.
+        let disconnects = self.disconnects.load(Ordering::Relaxed);
+        let active = connected.saturating_sub(disconnects).max(1);
+        let tps = if elapsed.as_secs_f64() > 0.0 {
+            ticks as f64 / elapsed.as_secs_f64() / active as f64
         } else {
             0.0
         };
 
         println!(
-            "[{:>6.1}s] clients={connected} errors={errors} | \
-             ticks={ticks} (~{tps:.1}/s/client) late_gaps={late} | \
+            "[{:>6.1}s] clients={active}/{connected} errors={errors} | \
+             ticks={ticks} (~{tps:.1}/s/client*) late_gaps={late} | \
              in={} out={} pkts_out={pkts_out}",
             elapsed.as_secs_f64(),
             human_bytes(bytes_in),
@@ -104,10 +114,20 @@ impl Metrics {
         let pkts_out = self.pkts_out.load(Ordering::Relaxed);
         let late = self.tick_gap_late.load(Ordering::Relaxed);
 
-        let tps = if elapsed.as_secs_f64() > 0.0 && connected > 0 {
-            ticks as f64 / elapsed.as_secs_f64() / connected as f64
+        // Use sum of actual per-client connection durations so bootstrap time
+        // and ramp-up delay are excluded from the denominator.
+        let total_conn_ms = self.total_client_connected_ms.load(Ordering::Relaxed);
+        let (tps, tps_note) = if total_conn_ms > 0 {
+            let conn_secs = total_conn_ms as f64 / 1000.0;
+            (ticks as f64 / conn_secs, "")
+        } else if elapsed.as_secs_f64() > 0.0 && connected > 0 {
+            // Fallback when no client has disconnected yet (should not happen in final).
+            (
+                ticks as f64 / elapsed.as_secs_f64() / connected as f64,
+                " (approx; no client has disconnected)",
+            )
         } else {
-            0.0
+            (0.0, "")
         };
 
         println!("\n=== Load Test Final Report ===");
@@ -117,8 +137,14 @@ impl Metrics {
         println!("  Errors:        {errors}");
         println!("  Disconnected:  {disconnects}");
         println!("--- Server Ticks ---");
+        let avg_conn_secs = if connected > 0 {
+            total_conn_ms as f64 / 1000.0 / connected as f64
+        } else {
+            0.0
+        };
         println!("  Total ticks:   {ticks}");
-        println!("  Avg ticks/s/client: {tps:.2} (target: 36.00)");
+        println!("  Avg conn time: {avg_conn_secs:.1}s/client");
+        println!("  Avg ticks/s/client: {tps:.2} (target: 36.00){tps_note}");
         println!("  Late gaps (>100ms): {late}");
         println!("--- Throughput ---");
         println!("  Bytes in:      {}", human_bytes(bytes_in));
@@ -136,7 +162,7 @@ impl Metrics {
                 let n = sorted.len();
                 let min = sorted[0];
                 let max = sorted[n - 1];
-                let avg = sorted.iter().map(|&v| v as u64).sum::<u64>() / n as u64;
+                let avg = sorted.iter().map(|&v| u64::from(v)).sum::<u64>() / n as u64;
                 let p95 = sorted[(n as f64 * 0.95) as usize];
                 println!("--- RTT (CL_PING/SV_PONG, n={n}) ---");
                 println!("  min={min}ms  avg={avg}ms  p95={p95}ms  max={max}ms");

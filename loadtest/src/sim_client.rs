@@ -144,6 +144,7 @@ pub async fn run(
     }
 
     metrics.connected.fetch_add(1, Ordering::Relaxed);
+    let connected_at = Instant::now();
     log::info!("Client {index}: logged in (character_id={character_id})");
 
     // Split the TLS stream so reads and writes are independent.
@@ -159,6 +160,9 @@ pub async fn run(
     )
     .await;
 
+    metrics
+        .total_client_connected_ms
+        .fetch_add(connected_at.elapsed().as_millis() as u64, Ordering::Relaxed);
     metrics.disconnects.fetch_add(1, Ordering::Relaxed);
     log::info!("Client {index}: disconnected");
 }
@@ -275,7 +279,7 @@ async fn game_loop(
                 let dy: i16 = rng.gen_range(-radius..=radius);
                 let tx = x.saturating_add(dx);
                 let ty = y.saturating_add(dy);
-                let cmd = ClientCommand::new_move(tx, ty as i32);
+                let cmd = ClientCommand::new_move(tx, i32::from(ty));
                 send_impaired(
                     index,
                     &mut write_half,
