@@ -64,6 +64,10 @@ struct Cli {
     /// Override: account API base URL.
     #[arg(long)]
     api_url: Option<String>,
+
+    /// Override: shared account API request rate for all simulated clients.
+    #[arg(long)]
+    api_rps: Option<u64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -91,10 +95,11 @@ async fn main() -> anyhow::Result<()> {
         config.run.ramp_up_secs,
     );
     log::info!(
-        "  Server: {}:{} | API: {}",
+        "  Server: {}:{} | API: {} ({} req/s shared)",
         config.server.host,
         config.server.port,
         config.api.base_url,
+        config.api.requests_per_second,
     );
     log::info!(
         "  Movement: radius={} interval={}ms | Impairment: latency={}ms jitter={}ms drop={:.1}%",
@@ -107,8 +112,9 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Arc::new(config);
     let metrics = Arc::new(Metrics::new());
-    // Rate limiter: ~25 req/s stays well under the API's 30 req/s per-IP limit.
-    let rate_limiter = Arc::new(RateLimiter::new(25));
+    // Every simulated client shares one source IP, and the API public limiter
+    // uses a fixed one-second KeyDB counter. Keep bootstrap deliberately slow.
+    let rate_limiter = Arc::new(RateLimiter::new(config.api.requests_per_second));
 
     // Shutdown broadcast: fires once when the run duration elapses.
     let (shutdown_tx, _) = broadcast::channel::<()>(1);
@@ -220,6 +226,9 @@ fn apply_overrides(config: &mut LoadTestConfig, cli: &Cli) {
     if let Some(ref u) = cli.api_url {
         config.api.base_url.clone_from(u);
     }
+    if let Some(rps) = cli.api_rps {
+        config.api.requests_per_second = rps.max(1);
+    }
 }
 
 #[cfg(test)]
@@ -243,11 +252,13 @@ mod tests {
             server_host: Some("10.0.0.1".into()),
             server_port: Some(5556),
             api_url: None,
+            api_rps: Some(2),
         };
         apply_overrides(&mut cfg, &cli);
         assert_eq!(cfg.run.num_clients, 99);
         assert!((cfg.run.duration_secs - 120.0).abs() < f64::EPSILON);
         assert_eq!(cfg.server.host, "10.0.0.1");
         assert_eq!(cfg.server.port, 5556);
+        assert_eq!(cfg.api.requests_per_second, 2);
     }
 }

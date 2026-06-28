@@ -62,12 +62,19 @@ impl Default for ServerConfig {
 pub struct ApiConfig {
     /// Base URL of the account API, e.g. `https://127.0.0.1:5554`.
     pub base_url: String,
+    /// Shared account-API request rate for all simulated clients.
+    ///
+    /// Every bot normally comes from the same source IP, so this must be well
+    /// below the API's per-IP public limiter. Use `1` when running against the
+    /// local Docker stack unless you have deliberately raised the API limit.
+    pub requests_per_second: u64,
 }
 
 impl Default for ApiConfig {
     fn default() -> Self {
         Self {
             base_url: "https://127.0.0.1:5554".into(),
+            requests_per_second: 1,
         }
     }
 }
@@ -229,6 +236,7 @@ mod tests {
     fn default_config_parses() {
         let cfg: LoadTestConfig = toml::from_str("").unwrap();
         assert_eq!(cfg.server.port, 5555);
+        assert_eq!(cfg.api.requests_per_second, 1);
         assert_eq!(cfg.run.num_clients, 10);
         assert!((cfg.run.duration_secs - 60.0).abs() < f64::EPSILON);
     }

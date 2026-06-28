@@ -110,7 +110,7 @@ pub async fn run(
     let (jwt, character_id) = match bootstrap_result {
         Ok(v) => v,
         Err(e) => {
-            log::warn!("Client {index}: bootstrap failed — {e}");
+            log::warn!("Client {index}: bootstrap failed — {e:#}");
             metrics.connect_errors.fetch_add(1, Ordering::Relaxed);
             return;
         }

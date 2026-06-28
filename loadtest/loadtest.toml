@@ -10,14 +10,17 @@ port = 5555
 [api]
 # Base URL of the account API (HTTPS with self-signed cert accepted).
 base_url = "https://127.0.0.1:5554"
+# Shared account-API request rate for all simulated clients.
+# The local Docker stack sees all bots as one source IP, so keep this very low.
+requests_per_second = 40
 
 [run]
 # Number of bot clients to simulate concurrently.
-num_clients = 20
+num_clients = 100
 # Seconds over which all clients ramp up (connections staggered evenly).
 ramp_up_secs = 5.0
 # Total wall-clock test duration in seconds.
-duration_secs = 600.0
+duration_secs = 200.0
 # Seconds between periodic metric summaries printed to stdout.
 report_interval_secs = 10.0
 
@@ -25,7 +28,7 @@ report_interval_secs = 10.0
 # Maximum ± tile radius for random move targets around the bot's current position.
 radius = 10
 # Milliseconds between CL_MOVE commands.
-interval_ms = 500
+interval_ms = 5000
 
 [impairment]
 # Fixed added outbound latency in milliseconds (0 = no impairment).

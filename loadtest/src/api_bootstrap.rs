@@ -6,8 +6,7 @@
 //! Rate limiting is handled by a shared [`RateLimiter`] that caps API requests at ~25/s
 //! to stay safely under the server's per-IP 30 req/s limit.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, anyhow};
 use argon2::password_hash::SaltString;
@@ -18,7 +17,7 @@ use mag_core::types::api::{
     CreateGameLoginTicketResponse, GetCharactersResponse, LoginRequest, LoginResponse,
 };
 use reqwest::StatusCode;
-use tokio::sync::Semaphore;
+use tokio::sync::Mutex;
 
 use crate::config::LoadTestConfig;
 
@@ -26,14 +25,15 @@ use crate::config::LoadTestConfig;
 // Rate limiter
 // ---------------------------------------------------------------------------
 
-/// Token-bucket rate limiter backed by a [`Semaphore`].
+/// Strict-spacing rate limiter for account API calls.
 ///
-/// A background task refills the bucket at a fixed rate.  Each API call
-/// acquires one token before proceeding.
+/// Unlike a token bucket, this limiter cannot accumulate burst capacity while
+/// clients are busy hashing passwords or waiting on network I/O. Every acquire
+/// reserves one send slot separated by `spacing` from the previous slot.
 pub struct RateLimiter {
-    sem: Arc<Semaphore>,
-    /// Keep the refill task alive for the lifetime of the limiter.
-    _refill_task: tokio::task::JoinHandle<()>,
+    next_allowed: Mutex<Instant>,
+    spacing: Duration,
+    send_lock: Mutex<()>,
 }
 
 impl RateLimiter {
@@ -45,33 +45,130 @@ impl RateLimiter {
     ///
     /// # Returns
     ///
-    /// * A new [`RateLimiter`] backed by a Tokio semaphore.
+    /// * A new [`RateLimiter`] that serializes request starts.
     pub fn new(per_second: u64) -> Self {
-        let sem = Arc::new(Semaphore::new(0));
-        let sem2 = sem.clone();
-        let task = tokio::spawn(async move {
-            let interval_us = 1_000_000u64 / per_second.max(1);
-            let max_burst = (per_second * 2) as usize;
-            let mut iv = tokio::time::interval(Duration::from_micros(interval_us));
-            loop {
-                iv.tick().await;
-                if sem2.available_permits() < max_burst {
-                    sem2.add_permits(1);
-                }
-            }
-        });
         Self {
-            sem,
-            _refill_task: task,
+            next_allowed: Mutex::new(Instant::now()),
+            spacing: Duration::from_micros(1_000_000u64 / per_second.max(1)),
+            send_lock: Mutex::new(()),
         }
     }
 
-    /// Acquires one token, waiting if the bucket is empty.
+    /// Reserves the next request slot, waiting until that slot begins.
     ///
-    /// Tokens are consumed (not returned) to enforce the rate cap.
+    /// Calls are serialized so no burst can form, even if many client tasks
+    /// wake up at the same time.
     pub async fn acquire(&self) {
-        self.sem.acquire().await.unwrap().forget();
+        let sleep_for = {
+            let mut next_allowed = self.next_allowed.lock().await;
+            let now = Instant::now();
+            let slot = (*next_allowed).max(now);
+            *next_allowed = slot + self.spacing;
+            slot.saturating_duration_since(now)
+        };
+
+        if !sleep_for.is_zero() {
+            tokio::time::sleep(sleep_for).await;
+        }
     }
+
+    /// Pushes the next allowable request slot into the future.
+    ///
+    /// Used when the API returns `429 Too Many Requests`, whose rate-limit
+    /// counter is shared by every simulated client because they come from the
+    /// same source IP.
+    ///
+    /// # Arguments
+    ///
+    /// * `duration` - Minimum shared cooldown before any future API request.
+    pub async fn cooldown(&self, duration: Duration) {
+        let mut next_allowed = self.next_allowed.lock().await;
+        let cooldown_until = Instant::now() + duration;
+        if *next_allowed < cooldown_until {
+            *next_allowed = cooldown_until;
+        }
+    }
+
+    /// Executes a single API request under this limiter's global send lock.
+    ///
+    /// Only one request is in flight at a time.  That is intentionally
+    /// conservative: the API's public limit is keyed only by source IP, so all
+    /// simulated clients share the same bucket.
+    ///
+    /// # Arguments
+    ///
+    /// * `builder` - Request builder to send.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Response)` for the request response.
+    /// * `Err` for network or TLS failures.
+    pub async fn send(
+        &self,
+        builder: reqwest::RequestBuilder,
+    ) -> anyhow::Result<reqwest::Response> {
+        let _guard = self.send_lock.lock().await;
+        self.acquire().await;
+        builder.send().await.context("HTTP send")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// API send helper with 429 retry
+// ---------------------------------------------------------------------------
+
+/// Sends `builder` through the shared API limiter, retrying on HTTP 429.
+///
+/// On a 429 the `Retry-After` response header is honoured; a fresh token is
+/// re-acquired before each retry so aggregate throughput stays within budget.
+/// A 429 is treated as backpressure, not a fatal bootstrap error.
+///
+/// # Arguments
+///
+/// * `rate_limiter` - Shared strict-spacing rate limiter.
+/// * `builder` - Pre-configured `reqwest::RequestBuilder` (must be cloneable
+///   via [`reqwest::RequestBuilder::try_clone`]).
+///
+/// # Returns
+///
+/// * `Ok(Response)` — the final non-429 response.
+/// * `Err` on network or TLS failures.
+async fn api_send(
+    rate_limiter: &RateLimiter,
+    builder: reqwest::RequestBuilder,
+) -> anyhow::Result<reqwest::Response> {
+    let mut attempt = 0u32;
+    loop {
+        let current = builder
+            .try_clone()
+            .ok_or_else(|| anyhow!("request cannot be cloned for 429 retry"))?;
+        let resp = rate_limiter.send(current).await?;
+
+        if resp.status() != StatusCode::TOO_MANY_REQUESTS {
+            return Ok(resp);
+        }
+
+        attempt = attempt.saturating_add(1);
+        // A 429 means the shared source-IP counter is already hot. Add a
+        // cushion beyond Retry-After so all waiting clients cool down together
+        // instead of immediately entering the next fixed 1-second bucket.
+        let wait_ms = retry_after_ms(&resp) + 2_000;
+        rate_limiter.cooldown(Duration::from_millis(wait_ms)).await;
+        log::warn!("HTTP 429, retrying in {wait_ms}ms (attempt {})", attempt);
+        tokio::time::sleep(Duration::from_millis(wait_ms)).await;
+    }
+}
+
+/// Extracts the retry delay from a 429 `Retry-After` header in milliseconds.
+///
+/// Defaults to 5 000 ms when the header is absent or unparseable.
+fn retry_after_ms(resp: &reqwest::Response) -> u64 {
+    resp.headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(|secs| secs * 1000 + 100)
+        .unwrap_or(5000)
 }
 
 // ---------------------------------------------------------------------------
@@ -130,23 +227,30 @@ pub async fn bootstrap_client(
     let base = config.api.base_url.trim_end_matches('/').to_owned();
     let username = format!("{}-{}", config.accounts.prefix, index);
     let email = format!("{username}@{}", config.accounts.email_domain);
+    // Run Argon2 on a blocking thread so it cannot starve the tokio runtime.
+    // Argon2 with default parameters takes several seconds in a debug build.
+    let username_for_hash = username.clone();
+    let password_for_hash = config.accounts.password.clone();
     let password_hash =
-        hash_password(&username, &config.accounts.password).context("hash_password")?;
+        tokio::task::spawn_blocking(move || hash_password(&username_for_hash, &password_for_hash))
+            .await
+            .context("spawn_blocking hash_password")?
+            .context("hash_password")?;
 
     let http = build_http_client()?;
 
     // 1. Ensure account exists (create or tolerate 409 Conflict)
-    rate_limiter.acquire().await;
-    let resp = http
-        .post(format!("{base}/accounts"))
-        .json(&CreateAccountRequest {
-            email: email.clone(),
-            username: username.clone(),
-            password: password_hash.clone(),
-        })
-        .send()
-        .await
-        .context("create account request")?;
+    let resp = api_send(
+        rate_limiter,
+        http.post(format!("{base}/accounts"))
+            .json(&CreateAccountRequest {
+                email: email.clone(),
+                username: username.clone(),
+                password: password_hash.clone(),
+            }),
+    )
+    .await
+    .context("create account request")?;
 
     match resp.status() {
         StatusCode::CONFLICT => {} // account already exists, continue
@@ -160,16 +264,15 @@ pub async fn bootstrap_client(
     }
 
     // 2. Login → JWT
-    rate_limiter.acquire().await;
-    let resp = http
-        .post(format!("{base}/login"))
-        .json(&LoginRequest {
+    let resp = api_send(
+        rate_limiter,
+        http.post(format!("{base}/login")).json(&LoginRequest {
             username: username.clone(),
             password: password_hash,
-        })
-        .send()
-        .await
-        .context("login request")?;
+        }),
+    )
+    .await
+    .context("login request")?;
 
     if !resp.status().is_success() {
         let s = resp.status();
@@ -184,13 +287,12 @@ pub async fn bootstrap_client(
         .ok_or_else(|| anyhow!("empty JWT for {username}"))?;
 
     // 3. Get or create character
-    rate_limiter.acquire().await;
-    let char_resp = http
-        .get(format!("{base}/characters"))
-        .bearer_auth(&jwt)
-        .send()
-        .await
-        .context("get characters request")?;
+    let char_resp = api_send(
+        rate_limiter,
+        http.get(format!("{base}/characters")).bearer_auth(&jwt),
+    )
+    .await
+    .context("get characters request")?;
 
     if !char_resp.status().is_success() {
         let s = char_resp.status();
@@ -206,7 +308,7 @@ pub async fn bootstrap_client(
         let char_name = bot_char_name(&config.accounts.prefix, index);
         let created = create_character(&http, &base, &jwt, &char_name, config, rate_limiter)
             .await
-            .with_context(|| format!("create character for {username}"))?;
+            .with_context(|| format!("create character '{char_name}' (account: {username})"))?;
         created.id
     };
 
@@ -237,17 +339,17 @@ pub async fn mint_ticket(
     let base = config.api.base_url.trim_end_matches('/').to_owned();
     let http = build_http_client()?;
 
-    rate_limiter.acquire().await;
-    let resp = http
-        .post(format!("{base}/game/login_ticket"))
-        .bearer_auth(jwt)
-        .json(&CreateGameLoginTicketRequest {
-            character_id,
-            client_version: VERSION,
-        })
-        .send()
-        .await
-        .context("mint ticket request")?;
+    let resp = api_send(
+        rate_limiter,
+        http.post(format!("{base}/game/login_ticket"))
+            .bearer_auth(jwt)
+            .json(&CreateGameLoginTicketRequest {
+                character_id,
+                client_version: VERSION,
+            }),
+    )
+    .await
+    .context("mint ticket request")?;
 
     if !resp.status().is_success() {
         let s = resp.status();
@@ -273,19 +375,19 @@ async fn create_character(
     config: &LoadTestConfig,
     rate_limiter: &RateLimiter,
 ) -> anyhow::Result<CharacterSummary> {
-    rate_limiter.acquire().await;
-    let resp = http
-        .post(format!("{base}/characters"))
-        .bearer_auth(jwt)
-        .json(&CreateCharacterRequest {
-            name: name.to_owned(),
-            description: None,
-            sex: config.accounts.sex(),
-            class: config.accounts.class(),
-        })
-        .send()
-        .await
-        .context("create character request")?;
+    let resp = api_send(
+        rate_limiter,
+        http.post(format!("{base}/characters"))
+            .bearer_auth(jwt)
+            .json(&CreateCharacterRequest {
+                name: name.to_owned(),
+                description: None,
+                sex: config.accounts.sex(),
+                class: config.accounts.class(),
+            }),
+    )
+    .await
+    .context("create character request")?;
 
     if !resp.status().is_success() {
         let s = resp.status();
