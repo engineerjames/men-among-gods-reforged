@@ -78,6 +78,9 @@ pub struct RunConfig {
     pub duration_secs: f64,
     /// Seconds between periodic metric reports to stdout.
     pub report_interval_secs: f64,
+    /// Minimum seconds between successive characters logging into the game
+    /// server (spacing spawn events), on top of `ramp_up_secs`.
+    pub login_stagger_secs: f64,
 }
 
 impl Default for RunConfig {
@@ -87,6 +90,7 @@ impl Default for RunConfig {
             ramp_up_secs: 5.0,
             duration_secs: 60.0,
             report_interval_secs: 10.0,
+            login_stagger_secs: 0.0,
         }
     }
 }
@@ -99,6 +103,11 @@ pub struct MovementConfig {
     pub radius: i16,
     /// Milliseconds between movement command sends.
     pub interval_ms: u64,
+    /// Enable one-shot login dispersion: right after a bot's first confirmed
+    /// world position, it says the god password (from the `MAG_GOD_PASSWORD`
+    /// environment variable) and then `/goto`s to a random in-bounds map
+    /// location, before falling back to normal random movement.
+    pub enable_dispersion: bool,
 }
 
 impl Default for MovementConfig {
@@ -106,6 +115,7 @@ impl Default for MovementConfig {
         Self {
             radius: 5,
             interval_ms: 500,
+            enable_dispersion: false,
         }
     }
 }
@@ -226,6 +236,13 @@ mod tests {
         assert_eq!(cfg.api.requests_per_second, 1);
         assert_eq!(cfg.run.num_clients, 10);
         assert!((cfg.run.duration_secs - 60.0).abs() < f64::EPSILON);
+        assert!(!cfg.movement.enable_dispersion);
+    }
+
+    #[test]
+    fn dispersion_flag_parses() {
+        let cfg: LoadTestConfig = toml::from_str("[movement]\nenable_dispersion = true\n").unwrap();
+        assert!(cfg.movement.enable_dispersion);
     }
 
     #[test]

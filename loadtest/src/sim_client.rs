@@ -4,14 +4,21 @@
 //!
 //! 1. Sleep for the staggered ramp-up delay.
 //! 2. Call the account API to ensure an account + character exist (`bootstrap_client`).
-//! 3. Mint a fresh one-time login ticket (`mint_ticket`).
-//! 4. Establish a TLS connection and complete the game-login handshake.
-//! 5. Enter the main loop:
+//! 3. Wait for a reserved slot on the shared [`LoginGate`], which paces game-server
+//!    logins so recently spawned characters have time to move away from the spawn
+//!    point before the next one arrives (`run.login_stagger_secs`).
+//! 4. Mint a fresh one-time login ticket (`mint_ticket`).
+//! 5. Establish a TLS connection and complete the game-login handshake.
+//! 6. Enter the main loop:
 //!    - Read framed server packets, track position from `SV_SETORIGIN`, record RTT from `SV_PONG`.
 //!    - Increment the client ticker on each frame; send `CL_CTICK` every 16 frames.
+//!    - The first time a position is known, and if `movement.enable_dispersion` is set,
+//!      say the god password and `/goto` a random in-bounds location once (see
+//!      [`maybe_send_dispersion`]), spreading newly spawned characters away from the
+//!      shared spawn point.
 //!    - Send a random movement command every `movement.interval_ms` milliseconds.
 //!    - Optionally send `CL_PING` every `ping.interval_secs` seconds.
-//! 6. On shutdown, the task exits and bumps the disconnect counter.
+//! 7. On shutdown, the task exits and bumps the disconnect counter.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,7 +26,7 @@ use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use mag_core::client_commands::ClientCommand;
-use mag_core::constants::{TILEX, TILEY};
+use mag_core::constants::{SERVER_MAPX, SERVER_MAPY, TILEX, TILEY};
 use mag_core::server_commands::{ServerCommand, ServerCommandData};
 use rand::Rng;
 use rand::SeedableRng;
@@ -30,9 +37,15 @@ use tokio::time::{Duration, MissedTickBehavior, interval};
 
 use crate::api_bootstrap::{RateLimiter, bootstrap_client, mint_ticket};
 use crate::config::LoadTestConfig;
+use crate::login_gate::LoginGate;
 use crate::metrics::Metrics;
 use crate::net_impair;
 use crate::protocol::{FramedReader, GameStream, TlsGameStream};
+
+/// Margin (in tiles) kept away from the map edges when picking a random
+/// dispersion `/goto` target, avoiding `usize` underflow in the server's
+/// fuzzy-placement logic (`God::transfer_char` tries the target ± 3 tiles).
+const DISPERSION_MARGIN: i32 = 20;
 
 // ---------------------------------------------------------------------------
 // Per-client state
@@ -55,6 +68,9 @@ struct ClientState {
     last_tick_instant: Option<Instant>,
     /// Milliseconds elapsed since the task started, used as CL_PING timestamp.
     start: Instant,
+    /// Whether the one-shot login dispersion sequence (god password + `/goto`)
+    /// has already been sent for this client.
+    dispersion_done: bool,
 }
 
 impl ClientState {
@@ -68,6 +84,7 @@ impl ClientState {
             ping_times: HashMap::new(),
             last_tick_instant: None,
             start: Instant::now(),
+            dispersion_done: false,
         }
     }
 }
@@ -83,12 +100,19 @@ impl ClientState {
 /// * `index` - Bot index, used for username derivation and log messages.
 /// * `config` - Shared load-test configuration.
 /// * `rate_limiter` - Shared API rate limiter.
+/// * `login_gate` - Shared gate serializing game-server logins, giving
+///   recently spawned characters time to move away from the spawn point
+///   before the next character logs in.
+/// * `god_password` - God password used for one-shot login dispersion; empty
+///   when `movement.enable_dispersion` is disabled.
 /// * `metrics` - Shared metrics store.
 /// * `shutdown` - Broadcast receiver; fires when the run duration elapses.
 pub async fn run(
     index: usize,
     config: Arc<LoadTestConfig>,
     rate_limiter: Arc<RateLimiter>,
+    login_gate: Arc<LoginGate>,
+    god_password: Arc<String>,
     metrics: Arc<Metrics>,
     mut shutdown: broadcast::Receiver<()>,
 ) {
@@ -115,6 +139,14 @@ pub async fn run(
             return;
         }
     };
+
+    // Wait for this client's reserved login slot before minting a ticket and
+    // connecting, so successive character spawns stay spaced apart even if
+    // several clients finish bootstrap around the same time.
+    tokio::select! {
+        _ = login_gate.acquire() => {}
+        _ = shutdown.recv() => return,
+    }
 
     // Mint a fresh ticket just before connecting (30 s TTL).
     let ticket = match mint_ticket(&jwt, character_id, &config, &rate_limiter).await {
@@ -155,6 +187,7 @@ pub async fn run(
         read_half,
         write_half,
         config,
+        god_password,
         metrics.clone(),
         &mut shutdown,
     )
@@ -176,6 +209,7 @@ async fn game_loop(
     read_half: ReadHalf<TlsGameStream>,
     mut write_half: WriteHalf<TlsGameStream>,
     config: Arc<LoadTestConfig>,
+    god_password: Arc<String>,
     metrics: Arc<Metrics>,
     shutdown: &mut broadcast::Receiver<()>,
 ) {
@@ -266,6 +300,20 @@ async fn game_loop(
 
                             // One frame = one server tick.
                             on_tick(index, &mut state, &mut write_half, &metrics).await;
+
+                            // One-shot login dispersion: fires exactly once, right after
+                            // the first confirmed world position, before normal periodic
+                            // movement continues below.
+                            maybe_send_dispersion(
+                                index,
+                                &mut state,
+                                &mut write_half,
+                                &config,
+                                &god_password,
+                                &mut rng,
+                                &metrics,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -422,6 +470,118 @@ async fn send_impaired(
     metrics.pkts_out.fetch_add(1, Ordering::Relaxed);
 }
 
+/// Sends the one-shot login dispersion sequence exactly once per client.
+///
+/// The first time a world position is known (`state.self_x.is_some()`) and
+/// dispersion is enabled, this says the god password (granting God/Imp flags
+/// server-side) and then `/goto`s a random in-bounds map location, so the
+/// character moves away from the crowded shared spawn point before normal
+/// periodic movement takes over. No-op (and cheap to call every frame) once
+/// `state.dispersion_done` is set or dispersion is disabled/unconfigured.
+///
+/// # Arguments
+///
+/// * `index` - Bot index, used in log messages.
+/// * `state` - Mutable per-client state; consulted for the current position
+///   and updated to mark dispersion as done.
+/// * `write_half` - Write half of the TLS connection to send packets on.
+/// * `config` - Shared load-test configuration (`movement.enable_dispersion`).
+/// * `god_password` - God password to say; dispersion is skipped when empty.
+/// * `rng` - Shared RNG used to pick the random `/goto` target.
+/// * `metrics` - Shared metrics store, updated with dispersion counters.
+async fn maybe_send_dispersion(
+    index: usize,
+    state: &mut ClientState,
+    write_half: &mut WriteHalf<TlsGameStream>,
+    config: &LoadTestConfig,
+    god_password: &str,
+    rng: &mut StdRng,
+    metrics: &Metrics,
+) {
+    if state.dispersion_done || god_password.is_empty() || !config.movement.enable_dispersion {
+        return;
+    }
+    if state.self_x.is_none() {
+        return;
+    }
+
+    // Mark done immediately so this only ever fires once, even if this
+    // function runs again before the sends below complete.
+    state.dispersion_done = true;
+
+    let (tx, ty) = random_dispersion_target(rng);
+    let goto_text = format!("/goto {tx} {ty}");
+
+    let ok = send_say_text(write_half, god_password, metrics).await
+        && send_say_text(write_half, &goto_text, metrics).await;
+
+    if ok {
+        metrics.dispersion_sent.fetch_add(1, Ordering::Relaxed);
+        log::info!("Client {index}: dispersion — said god password, /goto {tx} {ty}");
+    } else {
+        metrics.dispersion_errors.fetch_add(1, Ordering::Relaxed);
+        log::warn!("Client {index}: dispersion send failed");
+    }
+}
+
+/// Picks a random, in-bounds `/goto` target on the server map.
+///
+/// Coordinates are drawn uniformly from within [`DISPERSION_MARGIN`] tiles of
+/// each map edge. This is a best-effort "valid" location: it guarantees the
+/// coordinates are within `SERVER_MAPX`/`SERVER_MAPY` bounds with enough
+/// margin to avoid edge-underflow in the server's fuzzy placement logic, but
+/// does not guarantee the target tile itself is walkable — the server's
+/// `/goto` handler already retries a few nearby tiles and simply logs a
+/// failure message if the whole area is blocked.
+///
+/// # Arguments
+///
+/// * `rng` - RNG used to pick the coordinates.
+///
+/// # Returns
+///
+/// * A random `(x, y)` pair within the safe map bounds.
+fn random_dispersion_target(rng: &mut StdRng) -> (i32, i32) {
+    let x = rng.gen_range(DISPERSION_MARGIN..SERVER_MAPX - DISPERSION_MARGIN);
+    let y = rng.gen_range(DISPERSION_MARGIN..SERVER_MAPY - DISPERSION_MARGIN);
+    (x, y)
+}
+
+/// Sends a chat/say command, bypassing network impairment.
+///
+/// Splits `text` into the 8 `CmdInput1..8` packets expected by the server
+/// (mirrors the real client's `new_say_packets` usage) and writes them in
+/// order. Like `CL_CTICK`, dispersion setup traffic is not subject to
+/// simulated latency/jitter/drop, since it is one-shot setup rather than
+/// simulated gameplay traffic.
+///
+/// # Arguments
+///
+/// * `write_half` - Write half of the TLS connection to send packets on.
+/// * `text` - Chat text to send (up to 120 bytes; longer text is truncated).
+/// * `metrics` - Shared metrics store, updated with bytes/packets sent.
+///
+/// # Returns
+///
+/// * `true` if all 8 packets were written successfully, `false` on the first
+///   write error (the caller should treat this as a failed dispersion attempt).
+async fn send_say_text(
+    write_half: &mut WriteHalf<TlsGameStream>,
+    text: &str,
+    metrics: &Metrics,
+) -> bool {
+    for pkt in ClientCommand::new_say_packets(text.as_bytes()) {
+        let bytes = pkt.to_bytes();
+        let len = bytes.len();
+        if write_half.write_all(&bytes).await.is_err() {
+            return false;
+        }
+        metrics.bytes_out.fetch_add(len as u64, Ordering::Relaxed);
+        metrics.pkts_out.fetch_add(1, Ordering::Relaxed);
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -453,5 +613,21 @@ mod tests {
         };
         assert!((delay_for(0) - 0.0).abs() < 1e-9);
         assert!((delay_for(4) - 10.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn client_state_dispersion_starts_undone() {
+        let s = ClientState::new();
+        assert!(!s.dispersion_done);
+    }
+
+    #[test]
+    fn random_dispersion_target_within_bounds() {
+        let mut rng = StdRng::seed_from_u64(42);
+        for _ in 0..1000 {
+            let (x, y) = random_dispersion_target(&mut rng);
+            assert!((DISPERSION_MARGIN..SERVER_MAPX - DISPERSION_MARGIN).contains(&x));
+            assert!((DISPERSION_MARGIN..SERVER_MAPY - DISPERSION_MARGIN).contains(&y));
+        }
     }
 }

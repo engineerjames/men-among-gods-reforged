@@ -2841,6 +2841,7 @@ dependencies = [
  "argon2",
  "clap",
  "core",
+ "dotenvy",
  "env_logger",
  "flate2",
  "log",
