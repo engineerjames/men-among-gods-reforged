@@ -4,11 +4,14 @@
 //!
 //! 1. Sleep for the staggered ramp-up delay.
 //! 2. Call the account API to ensure an account + character exist (`bootstrap_client`).
-//! 3. Wait for a reserved slot on the shared [`LoginGate`], which paces game-server
-//!    logins so recently spawned characters have time to move away from the spawn
-//!    point before the next one arrives (`run.login_stagger_secs`).
+//! 3. Acquire exclusive access to the shared [`LoginGate`] (`run.login_stagger_secs`),
+//!    which serializes ticket-mint/connect/handshake across all clients so recently
+//!    spawned characters have time to move away from the spawn point before the next
+//!    one arrives — the gate is held until this client's login actually finishes (or
+//!    fails), not released on a pre-computed schedule.
 //! 4. Mint a fresh one-time login ticket (`mint_ticket`).
-//! 5. Establish a TLS connection and complete the game-login handshake.
+//! 5. Establish a TLS connection and complete the game-login handshake, then release
+//!    the `LoginGate`.
 //! 6. Enter the main loop:
 //!    - Read framed server packets, track position from `SV_SETORIGIN`, record RTT from `SV_PONG`.
 //!    - Increment the client ticker on each frame; send `CL_CTICK` every 16 frames.
@@ -100,9 +103,9 @@ impl ClientState {
 /// * `index` - Bot index, used for username derivation and log messages.
 /// * `config` - Shared load-test configuration.
 /// * `rate_limiter` - Shared API rate limiter.
-/// * `login_gate` - Shared gate serializing game-server logins, giving
-///   recently spawned characters time to move away from the spawn point
-///   before the next character logs in.
+/// * `login_gate` - Shared gate granting exclusive access to the ticket-mint/
+///   connect/handshake sequence, giving recently spawned characters time to
+///   move away from the spawn point before the next character logs in.
 /// * `god_password` - God password used for one-shot login dispersion; empty
 ///   when `movement.enable_dispersion` is disabled.
 /// * `http` - Shared HTTP client reused across every bot task; building a
@@ -144,13 +147,15 @@ pub async fn run(
         }
     };
 
-    // Wait for this client's reserved login slot before minting a ticket and
-    // connecting, so successive character spawns stay spaced apart even if
-    // several clients finish bootstrap around the same time.
-    tokio::select! {
-        _ = login_gate.acquire() => {}
+    // Wait for exclusive access to the login sequence: only one client mints
+    // a ticket, connects, and completes the handshake at a time, and the
+    // next client's cooldown only starts once *this* client's login actually
+    // finishes (or fails) — see `LoginGate` for why a simpler "pre-scheduled
+    // slot" design can be defeated by shared downstream API rate-limit bursts.
+    let login_slot = tokio::select! {
+        slot = login_gate.acquire() => slot,
         _ = shutdown.recv() => return,
-    }
+    };
 
     // Mint a fresh ticket just before connecting (30 s TTL).
     let ticket = match mint_ticket(&jwt, character_id, &config, &http, &rate_limiter).await {
@@ -182,6 +187,11 @@ pub async fn run(
     metrics.connected.fetch_add(1, Ordering::Relaxed);
     let connected_at = Instant::now();
     log::info!("Client {index}: logged in (character_id={character_id})");
+
+    // The character has fully spawned into the world — release the gate so
+    // the next client's cooldown starts counting from now, giving this
+    // character time to move away from the spawn point.
+    drop(login_slot);
 
     // Split the TLS stream so reads and writes are independent.
     let (read_half, write_half) = tokio::io::split(stream.into_inner());

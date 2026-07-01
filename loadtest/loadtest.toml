@@ -12,7 +12,7 @@ port = 5555
 base_url = "https://127.0.0.1:5554"
 # Shared account-API request rate for all simulated clients.
 # The local Docker stack sees all bots as one source IP, so keep this very low.
-requests_per_second = 40
+requests_per_second = 30
 
 [run]
 # Number of bot clients to simulate concurrently.
@@ -22,15 +22,15 @@ requests_per_second = 40
 # open-file limit before running (e.g. `ulimit -n 4096` on macOS/Linux,
 # default is often 256 on macOS) or you'll see "Too many open files" (EMFILE)
 # bootstrap errors once the limit is hit.
-num_clients = 300
+num_clients = 400
 # Seconds over which all clients ramp up (connections staggered evenly).
 ramp_up_secs = 5.0
 # Total wall-clock test duration in seconds.
-duration_secs = 600.0
+duration_secs = 1200.0
 # Seconds between periodic metric summaries printed to stdout.
 report_interval_secs = 10.0
 # Minimum seconds between successive characters logging into the game server.
-login_stagger_secs = 1.0
+login_stagger_secs = 0.1
 
 [movement]
 # Maximum ± tile radius for random move targets around the bot's current position.
