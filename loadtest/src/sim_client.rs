@@ -105,6 +105,9 @@ impl ClientState {
 ///   before the next character logs in.
 /// * `god_password` - God password used for one-shot login dispersion; empty
 ///   when `movement.enable_dispersion` is disabled.
+/// * `http` - Shared HTTP client reused across every bot task; building a
+///   fresh client per bot/request multiplies connection-pool/TLS-context fd
+///   usage and can exhaust the process's open-file limit under load.
 /// * `metrics` - Shared metrics store.
 /// * `shutdown` - Broadcast receiver; fires when the run duration elapses.
 pub async fn run(
@@ -113,6 +116,7 @@ pub async fn run(
     rate_limiter: Arc<RateLimiter>,
     login_gate: Arc<LoginGate>,
     god_password: Arc<String>,
+    http: Arc<reqwest::Client>,
     metrics: Arc<Metrics>,
     mut shutdown: broadcast::Receiver<()>,
 ) {
@@ -130,7 +134,7 @@ pub async fn run(
     }
 
     // Bootstrap: ensure account and character exist.
-    let bootstrap_result = bootstrap_client(index, &config, &rate_limiter).await;
+    let bootstrap_result = bootstrap_client(index, &config, &http, &rate_limiter).await;
     let (jwt, character_id) = match bootstrap_result {
         Ok(v) => v,
         Err(e) => {
@@ -149,7 +153,7 @@ pub async fn run(
     }
 
     // Mint a fresh ticket just before connecting (30 s TTL).
-    let ticket = match mint_ticket(&jwt, character_id, &config, &rate_limiter).await {
+    let ticket = match mint_ticket(&jwt, character_id, &config, &http, &rate_limiter).await {
         Ok(t) => t,
         Err(e) => {
             log::warn!("Client {index}: ticket mint failed — {e}");

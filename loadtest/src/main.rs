@@ -143,6 +143,11 @@ async fn main() -> anyhow::Result<()> {
     let config = Arc::new(config);
     let god_password = Arc::new(god_password);
     let metrics = Arc::new(Metrics::new());
+    // Built once and shared (cloned) across every bot task. A fresh
+    // reqwest::Client per bot/request would create its own connection
+    // pool/TLS context and can exhaust the process's open-file limit under
+    // heavy concurrency (see api_bootstrap::build_http_client).
+    let http = Arc::new(api_bootstrap::build_http_client()?);
     // Every simulated client shares one source IP, and the API public limiter
     // uses a fixed one-second KeyDB counter. Keep bootstrap deliberately slow.
     let rate_limiter = Arc::new(RateLimiter::new(config.api.requests_per_second));
@@ -163,6 +168,7 @@ async fn main() -> anyhow::Result<()> {
         let rate_limiter = rate_limiter.clone();
         let login_gate = login_gate.clone();
         let god_password = god_password.clone();
+        let http = http.clone();
         let shutdown_rx = shutdown_tx.subscribe();
         tasks.spawn(async move {
             sim_client::run(
@@ -171,6 +177,7 @@ async fn main() -> anyhow::Result<()> {
                 rate_limiter,
                 login_gate,
                 god_password,
+                http,
                 metrics,
                 shutdown_rx,
             )

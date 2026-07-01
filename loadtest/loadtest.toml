@@ -16,6 +16,12 @@ requests_per_second = 40
 
 [run]
 # Number of bot clients to simulate concurrently.
+# Each connected bot holds one persistent TCP/TLS socket to the game server
+# for its whole session, plus a handful of shared keep-alive connections to
+# the account API. For num_clients above a couple hundred, raise your shell's
+# open-file limit before running (e.g. `ulimit -n 4096` on macOS/Linux,
+# default is often 256 on macOS) or you'll see "Too many open files" (EMFILE)
+# bootstrap errors once the limit is hit.
 num_clients = 300
 # Seconds over which all clients ramp up (connections staggered evenly).
 ramp_up_secs = 5.0
