@@ -73,3 +73,20 @@ password = "loadtest1234"
 class = "mercenary"
 # Character sex: "male" | "female"
 sex = "male"
+
+# Periodic slash-commands each bot client sends, each on its own interval.
+# Every entry is one `[[commands]]` table with a `command` string and an
+# `interval_secs` float; add as many as you like. Omit this section (or leave
+# it empty) to disable periodic commands entirely.
+[[commands]]
+command = "/rank"
+interval_secs = 1.0
+
+[[commands]]
+command = "/who"
+interval_secs = 2.0
+
+[[commands]]
+command = "/help"
+interval_secs = 1.5
+

@@ -22,6 +22,8 @@ pub struct LoadTestConfig {
     pub ping: PingConfig,
     /// Bot account/character creation settings.
     pub accounts: AccountConfig,
+    /// Periodic slash-commands each client issues on independent intervals.
+    pub commands: Vec<CommandEntry>,
 }
 
 /// Game server connection parameters.
@@ -166,6 +168,23 @@ impl Default for PingConfig {
     }
 }
 
+/// A single periodic slash-command a bot client repeatedly sends.
+///
+/// Declared as a TOML array of tables under `[[commands]]`, e.g.:
+///
+/// ```toml
+/// [[commands]]
+/// command = "/rank"
+/// interval_secs = 1.0
+/// ```
+#[derive(Debug, Deserialize, Clone)]
+pub struct CommandEntry {
+    /// Command text to send verbatim as chat input, e.g. `"/rank"`.
+    pub command: String,
+    /// Seconds between successive sends of this command, per client.
+    pub interval_secs: f64,
+}
+
 /// Bot account and character creation settings.
 #[derive(Debug, Deserialize, Clone)]
 #[serde(default)]
@@ -237,6 +256,28 @@ mod tests {
         assert_eq!(cfg.run.num_clients, 10);
         assert!((cfg.run.duration_secs - 60.0).abs() < f64::EPSILON);
         assert!(!cfg.movement.enable_dispersion);
+        assert!(cfg.commands.is_empty());
+    }
+
+    #[test]
+    fn commands_section_parses() {
+        let cfg: LoadTestConfig = toml::from_str(
+            r#"
+            [[commands]]
+            command = "/rank"
+            interval_secs = 1.0
+
+            [[commands]]
+            command = "/who"
+            interval_secs = 2.0
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cfg.commands.len(), 2);
+        assert_eq!(cfg.commands[0].command, "/rank");
+        assert!((cfg.commands[0].interval_secs - 1.0).abs() < f64::EPSILON);
+        assert_eq!(cfg.commands[1].command, "/who");
+        assert!((cfg.commands[1].interval_secs - 2.0).abs() < f64::EPSILON);
     }
 
     #[test]

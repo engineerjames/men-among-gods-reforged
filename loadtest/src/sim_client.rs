@@ -21,6 +21,8 @@
 //!      shared spawn point.
 //!    - Send a random movement command every `movement.interval_ms` milliseconds.
 //!    - Optionally send `CL_PING` every `ping.interval_secs` seconds.
+//!    - Send each configured `[[commands]]` entry (e.g. `/rank`, `/who`) on its
+//!      own `interval_secs` (see [`maybe_send_commands`]).
 //! 7. On shutdown, the task exits and bumps the disconnect counter.
 
 use std::collections::HashMap;
@@ -263,6 +265,20 @@ async fn game_loop(
     // Delay first ping until we have at least one server tick.
     ping_timer.reset();
 
+    // Periodic slash-commands (`[[commands]]`): each entry fires on its own
+    // interval, tracked as an absolute due-time so entries with different
+    // periods don't need one `select!` branch each (which would require a
+    // fixed, compile-time-known count). Checked on a fine-grained shared
+    // tick; see `maybe_send_commands`.
+    let now = Instant::now();
+    let mut command_due: Vec<Instant> = config
+        .commands
+        .iter()
+        .map(|c| now + Duration::from_secs_f64(c.interval_secs.max(0.0)))
+        .collect();
+    let mut command_timer = interval(Duration::from_millis(100));
+    command_timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
     'main: loop {
         // Precompute flag so the borrow checker is happy inside select!
         let has_position = state.self_x.is_some();
@@ -366,6 +382,18 @@ async fn game_loop(
                     cmd,
                     &config,
                     &mut rng,
+                    &metrics,
+                )
+                .await;
+            }
+
+            // Periodic slash-commands (`[[commands]]`)
+            _ = command_timer.tick(), if has_position && !config.commands.is_empty() => {
+                maybe_send_commands(
+                    index,
+                    &config,
+                    &mut command_due,
+                    &mut write_half,
                     &metrics,
                 )
                 .await;
@@ -594,6 +622,47 @@ async fn send_say_text(
         metrics.pkts_out.fetch_add(1, Ordering::Relaxed);
     }
     true
+}
+
+/// Sends every configured `[[commands]]` entry whose due time has elapsed,
+/// then reschedules it for `now + interval_secs`.
+///
+/// Called on a fixed, coarse-grained shared timer (see `command_timer` in
+/// [`game_loop`]) rather than one `select!` branch per entry, since the
+/// number of configured commands is only known at runtime. Rescheduling from
+/// `now` (rather than accumulating `due += interval`) means a delayed check
+/// only pushes that one send back instead of causing a catch-up burst.
+///
+/// # Arguments
+///
+/// * `index` - Bot index, used in log messages.
+/// * `config` - Shared load-test configuration (`commands` entries).
+/// * `command_due` - Mutable per-client due-time for each `config.commands`
+///   entry, indexed in the same order; updated in place after a send.
+/// * `write_half` - Write half of the TLS connection to send packets on.
+/// * `metrics` - Shared metrics store, updated with sent/error counters.
+async fn maybe_send_commands(
+    index: usize,
+    config: &LoadTestConfig,
+    command_due: &mut [Instant],
+    write_half: &mut WriteHalf<TlsGameStream>,
+    metrics: &Metrics,
+) {
+    let now = Instant::now();
+    for (i, entry) in config.commands.iter().enumerate() {
+        if now < command_due[i] {
+            continue;
+        }
+        command_due[i] = now + Duration::from_secs_f64(entry.interval_secs.max(0.0));
+
+        if send_say_text(write_half, &entry.command, metrics).await {
+            metrics.commands_sent.fetch_add(1, Ordering::Relaxed);
+            log::trace!("Client {index}: sent command {:?}", entry.command);
+        } else {
+            metrics.commands_errors.fetch_add(1, Ordering::Relaxed);
+            log::debug!("Client {index}: failed to send command {:?}", entry.command);
+        }
+    }
 }
 
 #[cfg(test)]

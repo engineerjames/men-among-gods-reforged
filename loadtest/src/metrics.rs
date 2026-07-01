@@ -34,6 +34,10 @@ pub struct Metrics {
     pub dispersion_sent: AtomicU64,
     /// Clients whose login dispersion sequence failed to send.
     pub dispersion_errors: AtomicU64,
+    /// Total periodic slash-commands (from `[[commands]]`) sent successfully.
+    pub commands_sent: AtomicU64,
+    /// Total periodic slash-commands that failed to send.
+    pub commands_errors: AtomicU64,
     /// Collected RTT samples in milliseconds, from CL_PING / SV_PONG exchanges.
     pub rtt_samples: Mutex<Vec<u32>>,
 }
@@ -57,6 +61,8 @@ impl Metrics {
             total_client_connected_ms: AtomicU64::new(0),
             dispersion_sent: AtomicU64::new(0),
             dispersion_errors: AtomicU64::new(0),
+            commands_sent: AtomicU64::new(0),
+            commands_errors: AtomicU64::new(0),
             rtt_samples: Mutex::new(Vec::new()),
         }
     }
@@ -172,6 +178,14 @@ impl Metrics {
             println!("--- Dispersion ---");
             println!("  Sent:          {dispersion_sent}");
             println!("  Errors:        {dispersion_errors}");
+        }
+
+        let commands_sent = self.commands_sent.load(Ordering::Relaxed);
+        let commands_errors = self.commands_errors.load(Ordering::Relaxed);
+        if commands_sent > 0 || commands_errors > 0 {
+            println!("--- Periodic Commands ---");
+            println!("  Sent:          {commands_sent}");
+            println!("  Errors:        {commands_errors}");
         }
 
         // RTT stats
