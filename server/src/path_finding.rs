@@ -310,9 +310,9 @@ impl PathFinder {
         // entirely when the neighbor would be out of range — instead of
         // indexing unconditionally and panicking.
         let in_bounds_right = base_x + 1 < SERVER_MAPX;
-        let in_bounds_left = base_x - 1 >= 0;
+        let in_bounds_left = base_x > 0;
         let in_bounds_down = base_y + 1 < SERVER_MAPY;
-        let in_bounds_up = base_y - 1 >= 0;
+        let in_bounds_up = base_y > 0;
 
         let can_right = in_bounds_right && Self::is_passable(map, items, right_m, mapblock);
         let can_left = in_bounds_left && Self::is_passable(map, items, left_m, mapblock);

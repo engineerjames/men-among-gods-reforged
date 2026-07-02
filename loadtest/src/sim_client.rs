@@ -115,6 +115,7 @@ impl ClientState {
 ///   usage and can exhaust the process's open-file limit under load.
 /// * `metrics` - Shared metrics store.
 /// * `shutdown` - Broadcast receiver; fires when the run duration elapses.
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     index: usize,
     config: Arc<LoadTestConfig>,
