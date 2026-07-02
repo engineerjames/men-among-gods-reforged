@@ -638,7 +638,7 @@ pub const SPR_MERCENARY: u16 = SPR_HARAKIM + 1024;
 // Maximum Players
 // =============================================================================
 
-pub const MAXPLAYER: usize = 250;
+pub const MAXPLAYER: usize = 500;
 
 // =============================================================================
 // Buffer Sizes (from server.cpp)

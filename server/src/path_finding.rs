@@ -302,10 +302,22 @@ impl PathFinder {
         let down_m = (base_x + (base_y + 1) * SERVER_MAPX) as usize;
         let up_m = (base_x + (base_y - 1) * SERVER_MAPX) as usize;
 
-        let can_right = Self::is_passable(map, items, right_m, mapblock);
-        let can_left = Self::is_passable(map, items, left_m, mapblock);
-        let can_down = Self::is_passable(map, items, down_m, mapblock);
-        let can_up = Self::is_passable(map, items, up_m, mapblock);
+        // A node can sit on the map's outer edge (x/y == SERVER_MAPX/Y - 1 is
+        // accepted by `add_node`'s own bounds check), so a cardinal neighbor
+        // can land one tile past the flat `map`/`bad_targets` arrays'
+        // bounds. Guard each `is_passable` lookup with an explicit in-bounds
+        // check first — short-circuiting `&&` skips the array index
+        // entirely when the neighbor would be out of range — instead of
+        // indexing unconditionally and panicking.
+        let in_bounds_right = base_x + 1 < SERVER_MAPX;
+        let in_bounds_left = base_x > 0;
+        let in_bounds_down = base_y + 1 < SERVER_MAPY;
+        let in_bounds_up = base_y > 0;
+
+        let can_right = in_bounds_right && Self::is_passable(map, items, right_m, mapblock);
+        let can_left = in_bounds_left && Self::is_passable(map, items, left_m, mapblock);
+        let can_down = in_bounds_down && Self::is_passable(map, items, down_m, mapblock);
+        let can_up = in_bounds_up && Self::is_passable(map, items, up_m, mapblock);
 
         // Right
         if can_right {
@@ -800,5 +812,30 @@ mod tests {
         let pf = PathFinder::new();
         assert_eq!(pf.nodes.capacity(), MAX_NODES);
         assert_eq!(pf.node_map.len(), (SERVER_MAPX * SERVER_MAPY) as usize);
+    }
+
+    /// Regression test for a reported panic: `add_successors` computed
+    /// cardinal neighbor indices (e.g. `y + 1`) without checking they stay
+    /// within the flat `map` array before indexing, which panicked with
+    /// "index out of bounds" whenever a character sat on the map's outer
+    /// edge (x/y == SERVER_MAPX/Y - 1, which `add_node` itself accepts).
+    #[test]
+    fn find_path_at_map_edge_does_not_panic() {
+        let map = vec![core::types::Map::default(); (SERVER_MAPX * SERVER_MAPY) as usize];
+        let items = vec![core::types::Item::default(); core::constants::MAXITEM];
+
+        let edge_x = (SERVER_MAPX - 1) as i16;
+        let edge_y = (SERVER_MAPY - 1) as i16;
+        let character = core::types::Character {
+            x: edge_x,
+            y: edge_y,
+            ..Default::default()
+        };
+
+        let mut pf = PathFinder::new();
+        // flag=1 ("adjacent to target") so the search expands neighbors from
+        // the character's own edge-of-map position without requiring the
+        // exact target tile to be independently validated/passable.
+        let _ = pf.find_path(&character, &map, &items, 0, edge_x, edge_y, 1, 0, 0);
     }
 }

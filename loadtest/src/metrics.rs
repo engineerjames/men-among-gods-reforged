@@ -29,6 +29,15 @@ pub struct Metrics {
     /// Accumulated at disconnect time so the final report can compute ticks/s
     /// relative to actual connection time rather than wall-clock run duration.
     pub total_client_connected_ms: AtomicU64,
+    /// Clients that completed the one-shot login dispersion sequence (said
+    /// the god password and sent `/goto`) successfully.
+    pub dispersion_sent: AtomicU64,
+    /// Clients whose login dispersion sequence failed to send.
+    pub dispersion_errors: AtomicU64,
+    /// Total periodic slash-commands (from `[[commands]]`) sent successfully.
+    pub commands_sent: AtomicU64,
+    /// Total periodic slash-commands that failed to send.
+    pub commands_errors: AtomicU64,
     /// Collected RTT samples in milliseconds, from CL_PING / SV_PONG exchanges.
     pub rtt_samples: Mutex<Vec<u32>>,
 }
@@ -50,6 +59,10 @@ impl Metrics {
             tick_gap_late: AtomicU64::new(0),
             pkts_out: AtomicU64::new(0),
             total_client_connected_ms: AtomicU64::new(0),
+            dispersion_sent: AtomicU64::new(0),
+            dispersion_errors: AtomicU64::new(0),
+            commands_sent: AtomicU64::new(0),
+            commands_errors: AtomicU64::new(0),
             rtt_samples: Mutex::new(Vec::new()),
         }
     }
@@ -89,10 +102,18 @@ impl Metrics {
             0.0
         };
 
+        let dispersion_sent = self.dispersion_sent.load(Ordering::Relaxed);
+        let dispersion_errors = self.dispersion_errors.load(Ordering::Relaxed);
+        let dispersion_suffix = if dispersion_sent > 0 || dispersion_errors > 0 {
+            format!(" dispersion={dispersion_sent}/{dispersion_errors}")
+        } else {
+            String::new()
+        };
+
         println!(
             "[{:>6.1}s] clients={active}/{connected} errors={errors} | \
              ticks={ticks} (~{tps:.1}/s/client*) late_gaps={late} | \
-             in={} out={} pkts_out={pkts_out}",
+             in={} out={} pkts_out={pkts_out}{dispersion_suffix}",
             elapsed.as_secs_f64(),
             human_bytes(bytes_in),
             human_bytes(bytes_out),
@@ -150,6 +171,22 @@ impl Metrics {
         println!("  Bytes in:      {}", human_bytes(bytes_in));
         println!("  Bytes out:     {}", human_bytes(bytes_out));
         println!("  Pkts out:      {pkts_out}");
+
+        let dispersion_sent = self.dispersion_sent.load(Ordering::Relaxed);
+        let dispersion_errors = self.dispersion_errors.load(Ordering::Relaxed);
+        if dispersion_sent > 0 || dispersion_errors > 0 {
+            println!("--- Dispersion ---");
+            println!("  Sent:          {dispersion_sent}");
+            println!("  Errors:        {dispersion_errors}");
+        }
+
+        let commands_sent = self.commands_sent.load(Ordering::Relaxed);
+        let commands_errors = self.commands_errors.load(Ordering::Relaxed);
+        if commands_sent > 0 || commands_errors > 0 {
+            println!("--- Periodic Commands ---");
+            println!("  Sent:          {commands_sent}");
+            println!("  Errors:        {commands_errors}");
+        }
 
         // RTT stats
         if let Ok(samples) = self.rtt_samples.lock() {

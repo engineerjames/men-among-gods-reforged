@@ -2,6 +2,9 @@
 //!
 //! Every bot client calls [`bootstrap_client`] to ensure its account and character exist,
 //! then calls [`mint_ticket`] just before connecting to get a fresh 30-second one-time ticket.
+//! Both take a shared `reqwest::Client` (built once via [`build_http_client`] and reused by
+//! every bot task) rather than building their own — a fresh `Client` per call creates its own
+//! connection pool/TLS context and can exhaust file descriptors under heavy concurrency.
 //!
 //! Rate limiting is handled by a shared [`RateLimiter`] that caps API requests at ~25/s
 //! to stay safely under the server's per-IP 30 req/s limit.
@@ -20,6 +23,21 @@ use reqwest::StatusCode;
 use tokio::sync::Mutex;
 
 use crate::config::LoadTestConfig;
+
+/// Maximum number of distinct candidate names to try when the server rejects
+/// a generated character name (HTTP 400 — e.g. it contains a banned
+/// substring loaded from `game:badnames`). Generated names are built by
+/// concatenating a prefix and a base-26 suffix (see [`bot_char_name`]), and
+/// the resulting text spanning that boundary can accidentally spell a banned
+/// word (e.g. prefix `"...test"` + suffix `"he"` → `"...testhe"`, which
+/// contains "the"), even though neither piece is banned on its own.
+const MAX_CHARACTER_NAME_ATTEMPTS: u32 = 8;
+
+/// Large odd offset used to derive a very different candidate name per retry
+/// attempt (see [`character_name_candidate`]), so a rejected name's
+/// prefix/suffix boundary doesn't just shift by one letter and hit the same
+/// (or another) banned substring again.
+const BOT_NAME_RETRY_STRIDE: usize = 104_729;
 
 // ---------------------------------------------------------------------------
 // Rate limiter
@@ -213,6 +231,7 @@ pub fn hash_password(username: &str, password: &str) -> anyhow::Result<String> {
 ///
 /// * `index` - Bot index, used to derive a unique username.
 /// * `config` - Shared load-test configuration.
+/// * `http` - Shared HTTP client (one per process, reused across all bots).
 /// * `rate_limiter` - Shared API rate limiter.
 ///
 /// # Returns
@@ -222,6 +241,7 @@ pub fn hash_password(username: &str, password: &str) -> anyhow::Result<String> {
 pub async fn bootstrap_client(
     index: usize,
     config: &LoadTestConfig,
+    http: &reqwest::Client,
     rate_limiter: &RateLimiter,
 ) -> anyhow::Result<(String, u64)> {
     let base = config.api.base_url.trim_end_matches('/').to_owned();
@@ -236,8 +256,6 @@ pub async fn bootstrap_client(
             .await
             .context("spawn_blocking hash_password")?
             .context("hash_password")?;
-
-    let http = build_http_client()?;
 
     // 1. Ensure account exists (create or tolerate 409 Conflict)
     let resp = api_send(
@@ -304,11 +322,37 @@ pub async fn bootstrap_client(
     let character_id = if let Some(ch) = chars.characters.first() {
         ch.id
     } else {
-        // No characters yet — create one.
-        let char_name = bot_char_name(&config.accounts.prefix, index);
-        let created = create_character(&http, &base, &jwt, &char_name, config, rate_limiter)
-            .await
-            .with_context(|| format!("create character '{char_name}' (account: {username})"))?;
+        // No characters yet — create one. The server's name filter (banned
+        // substrings, reserved words, etc.) isn't known to this tool and can
+        // reject an otherwise well-formed generated name — e.g. the prefix and
+        // suffix can spell a banned word only where they join. Retry with a
+        // different deterministic candidate on a name-rejection (HTTP 400)
+        // before giving up; any other failure is still treated as fatal.
+        let mut created = None;
+        let mut last_candidate = String::new();
+        for attempt in 0..MAX_CHARACTER_NAME_ATTEMPTS {
+            let candidate = character_name_candidate(&config.accounts.prefix, index, attempt);
+            last_candidate.clone_from(&candidate);
+            let outcome = create_character(http, &base, &jwt, &candidate, config, rate_limiter)
+                .await
+                .with_context(|| format!("create character '{candidate}' (account: {username})"))?;
+            match outcome {
+                CreateCharacterOutcome::Created(summary) => {
+                    created = Some(summary);
+                    break;
+                }
+                CreateCharacterOutcome::NameRejected => {
+                    log::debug!(
+                        "Client {index}: candidate character name '{candidate}' rejected by server name filter, trying another"
+                    );
+                }
+            }
+        }
+        let created = created.ok_or_else(|| {
+            anyhow!(
+                "no acceptable character name found for {username} after {MAX_CHARACTER_NAME_ATTEMPTS} attempts (last tried: '{last_candidate}')"
+            )
+        })?;
         created.id
     };
 
@@ -324,6 +368,7 @@ pub async fn bootstrap_client(
 /// * `jwt` - Bearer token from a successful API login.
 /// * `character_id` - Character to mint the ticket for.
 /// * `config` - Shared load-test configuration.
+/// * `http` - Shared HTTP client (one per process, reused across all bots).
 /// * `rate_limiter` - Shared API rate limiter.
 ///
 /// # Returns
@@ -334,10 +379,10 @@ pub async fn mint_ticket(
     jwt: &str,
     character_id: u64,
     config: &LoadTestConfig,
+    http: &reqwest::Client,
     rate_limiter: &RateLimiter,
 ) -> anyhow::Result<u64> {
     let base = config.api.base_url.trim_end_matches('/').to_owned();
-    let http = build_http_client()?;
 
     let resp = api_send(
         rate_limiter,
@@ -366,7 +411,24 @@ pub async fn mint_ticket(
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Outcome of a single character-creation attempt against the API.
+enum CreateCharacterOutcome {
+    /// The character was created successfully.
+    Created(CharacterSummary),
+    /// The server rejected the requested name (`HTTP 400` from name
+    /// validation — e.g. a banned substring, reserved word, or bad
+    /// length/charset). Retryable with a different candidate name.
+    NameRejected,
+}
+
 /// Creates a character via the API, honouring the rate limiter.
+///
+/// # Returns
+///
+/// * `Ok(CreateCharacterOutcome::Created(_))` on success.
+/// * `Ok(CreateCharacterOutcome::NameRejected)` when the server rejects `name`
+///   specifically (`HTTP 400`) — retryable with a different name.
+/// * `Err` for any other failure (network, auth, server error, etc.).
 async fn create_character(
     http: &reqwest::Client,
     base: &str,
@@ -374,7 +436,7 @@ async fn create_character(
     name: &str,
     config: &LoadTestConfig,
     rate_limiter: &RateLimiter,
-) -> anyhow::Result<CharacterSummary> {
+) -> anyhow::Result<CreateCharacterOutcome> {
     let resp = api_send(
         rate_limiter,
         http.post(format!("{base}/characters"))
@@ -389,15 +451,42 @@ async fn create_character(
     .await
     .context("create character request")?;
 
+    if resp.status() == StatusCode::BAD_REQUEST {
+        return Ok(CreateCharacterOutcome::NameRejected);
+    }
+
     if !resp.status().is_success() {
         let s = resp.status();
         let body = resp.text().await.unwrap_or_default();
         return Err(anyhow!("create character failed: HTTP {s} — {body}"));
     }
 
-    resp.json::<CharacterSummary>()
+    let summary = resp
+        .json::<CharacterSummary>()
         .await
-        .context("parse create character response")
+        .context("parse create character response")?;
+    Ok(CreateCharacterOutcome::Created(summary))
+}
+
+/// Generates the `attempt`-th API-valid character name candidate for bot `index`.
+///
+/// `attempt == 0` is identical to [`bot_char_name`]. Later attempts derive a
+/// very different suffix by offsetting `index` by `attempt * BOT_NAME_RETRY_STRIDE`
+/// before encoding, so a name rejected for spelling a banned substring at the
+/// prefix/suffix boundary is unlikely to do so again on retry.
+///
+/// # Arguments
+///
+/// * `prefix` - Account prefix from config (non-alpha chars are stripped).
+/// * `index` - Bot index used to derive a unique name suffix.
+/// * `attempt` - Retry attempt number (`0` for the first try).
+///
+/// # Returns
+///
+/// * A unique, API-valid character name candidate string.
+fn character_name_candidate(prefix: &str, index: usize, attempt: u32) -> String {
+    let offset_index = index.saturating_add(attempt as usize * BOT_NAME_RETRY_STRIDE);
+    bot_char_name(prefix, offset_index)
 }
 
 /// Generates an API-valid character name for bot `index`.
@@ -457,12 +546,18 @@ fn index_to_alpha(mut n: usize) -> String {
 
 /// Builds an async `reqwest::Client` that accepts self-signed certificates.
 ///
-/// Self-signed certs are expected on local / staging API servers.
+/// Self-signed certs are expected on local / staging API servers. Intended to
+/// be called **once** per process — the returned client should be shared
+/// (cloned, which is cheap: `reqwest::Client` is internally `Arc`-backed)
+/// across every bot task rather than rebuilt per request. Each `Client`
+/// carries its own connection pool and TLS context, so building one per bot
+/// (or per API call) multiplies file-descriptor usage and can exhaust the
+/// process's open-file limit under heavy concurrency.
 ///
 /// # Returns
 ///
 /// * `Ok(client)` on success, `Err` if the builder fails.
-fn build_http_client() -> anyhow::Result<reqwest::Client> {
+pub fn build_http_client() -> anyhow::Result<reqwest::Client> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .danger_accept_invalid_certs(true)
@@ -521,6 +616,52 @@ mod tests {
         let name = bot_char_name("", 0); // suffix = "a", pad to 4 → "aaaa"
         assert!(name.len() >= 4);
         assert!(name.chars().all(|c| c.is_ascii_alphabetic()));
+    }
+
+    #[test]
+    fn character_name_candidate_attempt_zero_matches_bot_char_name() {
+        for i in 0..20 {
+            assert_eq!(
+                character_name_candidate("loadtest", i, 0),
+                bot_char_name("loadtest", i)
+            );
+        }
+    }
+
+    #[test]
+    fn character_name_candidate_varies_by_attempt() {
+        // Reproduces the reported collision: index 212 with prefix "loadtest"
+        // generates "loadtesthe", which contains the banned substring "the"
+        // at the prefix/suffix boundary. Retrying with a different attempt
+        // must produce a different candidate name.
+        let base = bot_char_name("loadtest", 212);
+        assert_eq!(base, "loadtesthe");
+        let candidates: Vec<String> = (0..MAX_CHARACTER_NAME_ATTEMPTS)
+            .map(|attempt| character_name_candidate("loadtest", 212, attempt))
+            .collect();
+        assert_eq!(candidates[0], base);
+        let unique: std::collections::HashSet<_> = candidates.iter().collect();
+        assert_eq!(
+            unique.len(),
+            candidates.len(),
+            "retry attempts must produce distinct candidates: {candidates:?}"
+        );
+    }
+
+    #[test]
+    fn character_name_candidate_stays_valid() {
+        for attempt in 0..MAX_CHARACTER_NAME_ATTEMPTS {
+            let name = character_name_candidate("loadtest", 42, attempt);
+            assert!(
+                name.chars().all(|c| c.is_ascii_alphabetic()),
+                "candidate '{name}' at attempt {attempt} contains non-alpha chars"
+            );
+            assert!(
+                name.len() >= 4 && name.len() <= 15,
+                "candidate '{name}' at attempt {attempt} has invalid length {}",
+                name.len()
+            );
+        }
     }
 
     #[test]
