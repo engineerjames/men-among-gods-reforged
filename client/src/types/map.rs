@@ -33,3 +33,16 @@ pub struct CMapTile {
 
     pub idle_ani: i32,
 }
+
+/// Render-only offsets for a single tile, stored as `f32` to support
+/// sub-pixel interpolation between server ticks.
+///
+/// Only `obj_xoff`, `obj_yoff`, `ovl_xoff`, and `ovl_yoff` are interpolated;
+/// sprite IDs and flags are read directly from [`CMapTile`] on tick boundaries.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TileRenderOffset {
+    pub obj_xoff: f32,
+    pub obj_yoff: f32,
+    pub ovl_xoff: f32,
+    pub ovl_yoff: f32,
+}

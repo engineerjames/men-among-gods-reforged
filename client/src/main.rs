@@ -1,5 +1,5 @@
 use std::process;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
@@ -41,6 +41,7 @@ fn main() -> Result<(), String> {
     log::info!("Initializing SDL2 contexts...");
     let mut fps_manager = FPSManager::new();
     fps_manager.set_framerate(60)?;
+
     let sdl_context = sdl2::init()?;
     let _image_context = sdl2::image::init(InitFlag::PNG)?;
     let _audio_subsystem = sdl_context
@@ -176,6 +177,13 @@ fn main() -> Result<(), String> {
     // --- Apply persisted display settings ---------------------------------
     app_state.settings = preferences::load_global_settings();
 
+    // Track whether VSync is currently enabled so the frame loop can skip
+    // the software FPS cap when the display swap already paces frames.
+    let mut vsync_enabled = app_state.settings.vsync_enabled;
+    // Target frame time used for the software cap when VSync is off. Updated
+    // from the primary display refresh rate when available.
+    let mut target_frame_time = Duration::from_nanos(1_000_000_000 / 60);
+
     // On the very first run apply platform-specific defaults, then persist
     // them immediately so subsequent runs treat them as the user's baseline.
     if is_first_run {
@@ -199,6 +207,7 @@ fn main() -> Result<(), String> {
 
     let mut scene_manager = scenes::scene::SceneManager::new();
     let mut last_frame = Instant::now();
+    let mut frame_pacer = FramePacer::new(target_frame_time);
 
     // Log info about the monitor, graphics card, etc.
     if let Ok(video_subsystem) = sdl_context.video() {
@@ -210,6 +219,22 @@ fn main() -> Result<(), String> {
                     display_mode.h,
                     display_mode.refresh_rate
                 );
+
+                // Use the primary display refresh rate as the software cap
+                // target when VSync is off. A refresh rate of 0 or 1 falls
+                // back to the initial 60 Hz default.
+                if i == 0 {
+                    let refresh = display_mode.refresh_rate.max(1);
+                    if refresh > 1 {
+                        target_frame_time = Duration::from_nanos(1_000_000_000 / refresh as u64);
+                        frame_pacer.set_target(target_frame_time);
+                        log::info!(
+                            "Frame pacer target set to {} Hz ({:?})",
+                            refresh,
+                            target_frame_time
+                        );
+                    }
+                }
 
                 let dpi = video_subsystem.display_dpi(i).unwrap_or((0.0, 0.0, 0.0));
                 log::info!(
@@ -345,6 +370,7 @@ fn main() -> Result<(), String> {
                 DisplayCommand::SetVSync(enabled) => {
                     apply_vsync(&canvas, enabled);
                     app_state.settings.vsync_enabled = enabled;
+                    vsync_enabled = enabled;
                     save_global_display_settings(&app_state);
                 }
             }
@@ -364,10 +390,64 @@ fn main() -> Result<(), String> {
 
         canvas.present();
 
-        fps_manager.delay();
+        if vsync_enabled {
+            // When VSync is active the display swap paces the loop; the
+            // software FPS cap only adds latency and jitter.
+        } else {
+            frame_pacer.delay();
+            // Keep FPSManager as a fallback safety net so a runaway loop
+            // cannot consume an entire core.
+            fps_manager.delay();
+        }
     }
 
     Ok(())
+}
+
+/// Simple `Instant`-based frame limiter for the VSync-off path.
+///
+/// Tracks the desired frame time and sleeps the remainder of the slot. It
+/// is intentionally separate from `FPSManager` so the target can be changed
+/// at runtime and so VSync-on frames are not double-throttled.
+struct FramePacer {
+    target: Duration,
+    last_frame: Instant,
+}
+
+impl FramePacer {
+    /// Creates a new pacer targeting `target` frame time.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - Desired wall-clock duration between frames.
+    fn new(target: Duration) -> Self {
+        Self {
+            target,
+            last_frame: Instant::now(),
+        }
+    }
+
+    /// Updates the target frame time.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - New desired wall-clock duration between frames.
+    fn set_target(&mut self, target: Duration) {
+        self.target = target;
+    }
+
+    /// Sleeps until the target frame time has elapsed since the last call.
+    ///
+    /// If the current frame has already overrun the target, returns
+    /// immediately without sleeping.
+    fn delay(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.saturating_duration_since(self.last_frame);
+        if let Some(remaining) = self.target.checked_sub(elapsed) {
+            std::thread::sleep(remaining);
+        }
+        self.last_frame = Instant::now();
+    }
 }
 
 /// Maps [`DisplayMode`] to the SDL2 fullscreen type and applies it.

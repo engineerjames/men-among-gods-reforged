@@ -127,9 +127,9 @@ impl WeatherState {
     }
 
     /// Returns the current shake offset; renderers may add this to their
-    /// camera transform. `(0, 0)` whenever earthquake is inactive.
-    pub fn shake_offset(&self) -> (i32, i32) {
-        self.shake_offset
+    /// camera transform. `(0.0, 0.0)` whenever earthquake is inactive.
+    pub fn shake_offset(&self) -> (f32, f32) {
+        (self.shake_offset.0 as f32, self.shake_offset.1 as f32)
     }
 
     /// Hard-reset all visual state (used on scene exit).
@@ -691,7 +691,7 @@ mod tests {
     fn default_state_is_none() {
         let w = WeatherState::new();
         assert_eq!(w.kind, WeatherKind::None);
-        assert_eq!(w.shake_offset(), (0, 0));
+        assert_eq!(w.shake_offset(), (0.0, 0.0));
     }
 
     #[test]
@@ -751,7 +751,7 @@ mod tests {
         let mut nonzero = false;
         for _ in 0..20 {
             w.update(0.016, 800, 600);
-            if w.shake_offset() != (0, 0) {
+            if w.shake_offset() != (0.0, 0.0) {
                 nonzero = true;
                 break;
             }
@@ -769,7 +769,7 @@ mod tests {
         w.reset();
         assert_eq!(w.kind, WeatherKind::None);
         assert!(w.particles.iter().all(|p| p.life <= 0.0));
-        assert_eq!(w.shake_offset(), (0, 0));
+        assert_eq!(w.shake_offset(), (0.0, 0.0));
     }
 
     #[test]

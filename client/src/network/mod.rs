@@ -23,7 +23,11 @@ pub enum NetworkEvent {
         received_at: Instant,
     },
     /// One complete framed server tick packet was processed.
-    Tick,
+    Tick {
+        /// Wall-clock instant when the tick packet was fully read by the
+        /// background network thread.
+        received_at: Instant,
+    },
     Error(String),
     LoggedIn,
 }

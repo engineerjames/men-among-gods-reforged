@@ -1105,7 +1105,8 @@ impl GameScene {
         if self.is_mouse_over_ui() {
             return Ok(());
         }
-        let Some(text) = self.resolve_helper_text(ps) else {
+        let now = Instant::now();
+        let Some(text) = self.resolve_helper_text(ps, now) else {
             return Ok(());
         };
         self.draw_cursor_helper_text(canvas, gfx, text)
@@ -1800,7 +1801,8 @@ impl Scene for GameScene {
             if pressed_at.elapsed() >= L3_HOLD_THRESHOLD {
                 self.l3_pressed_at = None; // consumed
                 if let Some(ps) = app_state.player_state.as_ref() {
-                    let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+                    let now = Instant::now();
+                    let (cam_xoff, cam_yoff) = Self::camera_offsets(ps, now);
                     if let Some((mx, my)) =
                         Self::screen_to_map_tile(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff)
                     {
@@ -1908,10 +1910,11 @@ impl Scene for GameScene {
         let camera_shake = if settings.weather_enabled {
             self.weather.shake_offset()
         } else {
-            (0, 0)
+            (0.0, 0.0)
         };
 
         self.perf_profiler.begin_sample(PerfLabel::DrawWorld);
+        let now = Instant::now();
         self.draw_world(
             canvas,
             gfx_cache,
@@ -1922,6 +1925,7 @@ impl Scene for GameScene {
             settings.show_proz,
             settings.hide,
             camera_shake,
+            now,
         )?;
         self.perf_profiler.end_sample(PerfLabel::DrawWorld);
 

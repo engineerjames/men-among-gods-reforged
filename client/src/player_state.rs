@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use mag_core::{
     circular_buffer::CircularBuffer,
     constants::{MAX_SPEEDTAB_INDEX, TICKS},
@@ -8,6 +10,7 @@ use mag_core::{
 
 use crate::{
     game_map::GameMap,
+    render_interpolator::RenderInterpolator,
     types::{log_message::LogMessage, look::Look},
 };
 
@@ -19,6 +22,9 @@ use crate::{
 /// dropped when they disconnect.
 pub struct PlayerState {
     map: GameMap,
+    /// Interpolates sub-tile sprite offsets between server ticks for smooth
+    /// rendering at frame rates higher than the server tick rate.
+    pub render_interpolator: RenderInterpolator,
     /// Staging buffer for the Look1–6 sequence currently being received.
     /// Committed to `look_target` at Look5 termination only when the sequence
     /// is user-initiated (autoflag == 0).
@@ -83,6 +89,7 @@ impl Default for PlayerState {
     fn default() -> Self {
         Self {
             map: GameMap::default(),
+            render_interpolator: RenderInterpolator::default(),
             incoming_look: Look::default(),
             look_target: Look::default(),
             shop_target: Look::default(),
@@ -379,13 +386,17 @@ impl PlayerState {
     }
 
     /// Advances per-tick timers, syncs the animation ctick with the server,
-    /// and runs the legacy engine tick.
+    /// runs the legacy engine tick, and captures a render-offset snapshot.
     ///
     /// # Arguments
     ///
-    /// * `client_ticker` - Value passed to `on_tick_packet`.
-    pub fn on_tick_packet(&mut self, client_ticker: u32) {
+    /// * `client_ticker` - Monotonic tick counter from the network runtime.
+    /// * `received_at` - Instant the tick packet was fully read; used to pace
+    ///   frame-time interpolation.
+    pub fn on_tick_packet(&mut self, client_ticker: u32, received_at: Instant) {
         let _ = client_ticker;
+
+        let map_shifted = self.map.take_scrolled_since_last_tick();
 
         if self.should_show_look {
             if self.look_timer > 0.0 {
@@ -404,6 +415,8 @@ impl PlayerState {
         }
 
         crate::legacy_engine::engine_tick(self, client_ticker, self.local_ctick as usize);
+        self.render_interpolator
+            .advance_with_invalidation(&self.map, received_at, map_shifted);
     }
 
     /// Maps a network font index to a [`LogMessageColor`](crate::types::log_message::LogMessageColor).

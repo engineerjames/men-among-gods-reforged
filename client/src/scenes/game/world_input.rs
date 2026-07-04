@@ -77,12 +77,15 @@ impl GameScene {
         x: i32,
         y: i32,
     ) -> Option<SceneType> {
+        use std::time::Instant;
+
         let Some(ps) = app_state.player_state.as_ref() else {
             log::warn!("Mouse click with no player state");
             return None;
         };
 
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let now = Instant::now();
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps, now);
 
         let Some((mx, my)) = Self::screen_to_map_tile(x, y, cam_xoff, cam_yoff) else {
             log::warn!("Click outside of map area: screen=({}, {})", x, y);

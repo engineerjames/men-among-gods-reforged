@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use mag_core::constants::{INVIS, TILEX, TILEY};
 
 use crate::player_state::PlayerState;
@@ -24,29 +26,40 @@ impl GameScene {
     /// accounting for the camera offset.
     ///
     /// # Returns
-    /// `(cx, cy)` in logical screen coordinates.
+    /// `(cx, cy)` in logical screen coordinates as `f32`. Callers round to
+    /// integer pixels only when building SDL `Rect`s.
     pub(super) fn tile_ground_diamond_origin(
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-    ) -> (i32, i32) {
+        cam_xoff: f32,
+        cam_yoff: f32,
+    ) -> (f32, f32) {
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
-        let cx = xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X + cam_xoff;
-        let cy = xpos / 4 - ypos / 4 + MAP_ORIGIN_Y + cam_yoff;
+        let cx = xpos as f32 / 2.0
+            + ypos as f32 / 2.0
+            + FLOOR_TILE_WIDTH as f32
+            + MAP_ORIGIN_X as f32
+            + cam_xoff;
+        let cy = xpos as f32 / 4.0 - ypos as f32 / 4.0 + MAP_ORIGIN_Y as f32 + cam_yoff;
         (cx, cy)
     }
 
-    /// Returns the camera pixel offsets derived from the center tile's
-    /// `obj_xoff` / `obj_yoff` (smooth scrolling between tiles).
-    pub(super) fn camera_offsets(ps: &PlayerState) -> (i32, i32) {
-        let map = ps.map();
-        if let Some(center) = map.tile_at_xy(TILEX / 2, TILEY / 2) {
-            (-center.obj_xoff, -center.obj_yoff)
-        } else {
-            (0, 0)
-        }
+    /// Returns the camera pixel offsets derived from the interpolated center
+    /// tile offsets (smooth scrolling between tiles).
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - Current player state (owns the render interpolator).
+    /// * `now` - Frame time used to sample the interpolated offset.
+    ///
+    /// # Returns
+    /// `(cam_xoff, cam_yoff)` as `f32` so the render pipeline can stay in
+    /// floating point until draw-time rounding.
+    pub(super) fn camera_offsets(ps: &PlayerState, now: Instant) -> (f32, f32) {
+        let center_idx = crate::game_map::GameMap::tile_index(TILEX / 2, TILEY / 2).unwrap_or(0);
+        let offset = ps.render_interpolator.interpolated_offset(center_idx, now);
+        (-offset.obj_xoff, -offset.obj_yoff)
     }
 
     /// Converts a screen pixel coordinate to the map tile `(x, y)` it lies on,
@@ -57,21 +70,23 @@ impl GameScene {
     pub(super) fn screen_to_map_tile(
         screen_x: i32,
         screen_y: i32,
-        cam_xoff: i32,
-        cam_yoff: i32,
+        cam_xoff: f32,
+        cam_yoff: f32,
     ) -> Option<(usize, usize)> {
-        let mut best: Option<(usize, usize, i32)> = None;
+        let mut best: Option<(usize, usize, f32)> = None;
 
         for my in 0..TILEY {
             for mx in 0..TILEX {
                 let (cx, cy_top) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
-                let dx = (screen_x - cx).abs();
-                let dy = (screen_y - (cy_top + FLOOR_TILE_HEIGHT / 2)).abs();
+                let dx = (screen_x as f32 - cx).abs();
+                let dy = (screen_y as f32 - (cy_top + FLOOR_TILE_HEIGHT as f32 / 2.0)).abs();
 
                 // Inside 32x16 isometric floor diamond:
                 // |dx|/16 + |dy|/8 <= 1  =>  dx*8 + dy*16 <= 128
-                let metric = dx * (FLOOR_TILE_HEIGHT / 2) + dy * (FLOOR_TILE_WIDTH / 2);
-                if metric <= (FLOOR_TILE_WIDTH / 2) * (FLOOR_TILE_HEIGHT / 2) {
+                let metric =
+                    dx * (FLOOR_TILE_HEIGHT as f32 / 2.0) + dy * (FLOOR_TILE_WIDTH as f32 / 2.0);
+                let threshold = (FLOOR_TILE_WIDTH as f32 / 2.0) * (FLOOR_TILE_HEIGHT as f32 / 2.0);
+                if metric <= threshold {
                     match best {
                         Some((_, _, cur_metric)) if metric >= cur_metric => {}
                         _ => best = Some((mx, my, metric)),
@@ -88,8 +103,8 @@ impl GameScene {
     pub(super) fn cursor_in_map_interaction_area(
         screen_x: i32,
         screen_y: i32,
-        cam_xoff: i32,
-        cam_yoff: i32,
+        cam_xoff: f32,
+        cam_yoff: f32,
     ) -> bool {
         Self::screen_to_map_tile(screen_x, screen_y, cam_xoff, cam_yoff).is_some()
     }
@@ -223,41 +238,44 @@ mod tests {
 
     #[test]
     fn diamond_origin_at_zero() {
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
-        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
-        assert_eq!(cy, MAP_ORIGIN_Y);
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 0.0, 0.0);
+        assert_eq!(cx, (FLOOR_TILE_WIDTH + MAP_ORIGIN_X) as f32);
+        assert_eq!(cy, MAP_ORIGIN_Y as f32);
     }
 
     #[test]
     fn diamond_origin_with_camera_offset() {
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 10, -5);
-        assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X + 10);
-        assert_eq!(cy, MAP_ORIGIN_Y - 5);
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 10.0, -5.0);
+        assert_eq!(cx, (FLOOR_TILE_WIDTH + MAP_ORIGIN_X + 10) as f32);
+        assert_eq!(cy, (MAP_ORIGIN_Y - 5) as f32);
     }
 
     #[test]
     fn diamond_origin_matches_linear_tile_projection() {
         let tile_x = TILEX / 2;
         let tile_y = TILEY / 2;
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0, 0);
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(tile_x, tile_y, 0.0, 0.0);
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
-        assert_eq!(cx, xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X);
-        assert_eq!(cy, xpos / 4 - ypos / 4 + MAP_ORIGIN_Y);
+        assert_eq!(
+            cx,
+            (xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X) as f32
+        );
+        assert_eq!(cy, (xpos / 4 - ypos / 4 + MAP_ORIGIN_Y) as f32);
     }
 
     #[test]
     fn center_tile_is_at_screen_center() {
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0.0, 0.0);
         assert_eq!(
             cx,
-            crate::constants::TARGET_WIDTH_INT as i32 / 2,
+            crate::constants::TARGET_WIDTH_INT as f32 / 2.0,
             "center tile X should equal half the logical viewport width"
         );
         // cy is the diamond top; the visual center is cy + FLOOR_TILE_HEIGHT / 2.
         assert_eq!(
-            cy + FLOOR_TILE_HEIGHT / 2,
-            crate::constants::TARGET_HEIGHT_INT as i32 / 2,
+            cy + FLOOR_TILE_HEIGHT as f32 / 2.0,
+            crate::constants::TARGET_HEIGHT_INT as f32 / 2.0,
             "center tile visual midpoint Y should equal half the logical viewport height"
         );
     }
@@ -267,14 +285,19 @@ mod tests {
     #[test]
     fn cursor_at_origin_outside() {
         assert!(!GameScene::cursor_in_map_interaction_area(
-            -10_000, -10_000, 0, 0
+            -10_000, -10_000, 0.0, 0.0
         ));
     }
 
     #[test]
     fn cursor_center_inside() {
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0, 0);
-        assert!(GameScene::cursor_in_map_interaction_area(cx, cy + 8, 0, 0));
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(TILEX / 2, TILEY / 2, 0.0, 0.0);
+        assert!(GameScene::cursor_in_map_interaction_area(
+            cx.round() as i32,
+            (cy + 8.0).round() as i32,
+            0.0,
+            0.0
+        ));
     }
 
     // -- screen_to_map_tile --
@@ -283,14 +306,22 @@ mod tests {
     fn screen_to_map_tile_known_origin() {
         let center_x = TILEX / 2;
         let center_y = TILEY / 2;
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(center_x, center_y, 0, 0);
-        let result = GameScene::screen_to_map_tile(cx, cy + FLOOR_TILE_HEIGHT / 2, 0, 0);
+        let (cx, cy) = GameScene::tile_ground_diamond_origin(center_x, center_y, 0.0, 0.0);
+        let result = GameScene::screen_to_map_tile(
+            cx.round() as i32,
+            (cy + FLOOR_TILE_HEIGHT as f32 / 2.0).round() as i32,
+            0.0,
+            0.0,
+        );
         assert_eq!(result, Some((center_x, center_y)));
     }
 
     #[test]
     fn screen_to_map_tile_far_offscreen() {
         // Way off screen: should return None
-        assert_eq!(GameScene::screen_to_map_tile(-10000, -10000, 0, 0), None);
+        assert_eq!(
+            GameScene::screen_to_map_tile(-10000, -10000, 0.0, 0.0),
+            None
+        );
     }
 }

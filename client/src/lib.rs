@@ -16,6 +16,7 @@ pub mod network;
 pub mod platform;
 pub mod player_state;
 pub mod preferences;
+pub mod render_interpolator;
 pub mod scenes;
 pub mod sfx_cache;
 pub mod state;

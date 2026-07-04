@@ -1,4 +1,5 @@
 use sdl2::{pixels::Color, render::Canvas, video::Window};
+use std::time::Instant;
 
 use mag_core::constants::{
     CMAGIC, DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, EMAGIC, GMAGIC, INJURED, INJURED1,
@@ -47,10 +48,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff: f32,
+        cam_yoff: f32,
+        xoff: f32,
+        yoff: f32,
         light: u8,
     ) -> Result<(), String> {
         if sprite_id <= 0 {
@@ -63,8 +64,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = (ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32).round() as i32;
+        let ry = (ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32).round() as i32;
 
         // Apply darkness modulation from tile light value.
         // C formula: channel = channel * LEFFECT / (darkness² + LEFFECT)
@@ -98,10 +99,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff: f32,
+        cam_yoff: f32,
+        xoff: f32,
+        yoff: f32,
         alpha: u8,
     ) -> Result<(), String> {
         if sprite_id <= 0 || sprite_id as u16 == SPR_EMPTY {
@@ -114,8 +115,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = (ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32).round() as i32;
+        let ry = (ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32).round() as i32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
@@ -137,10 +138,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff: f32,
+        cam_yoff: f32,
+        xoff: f32,
+        yoff: f32,
         alpha: u8,
         tint: Color,
     ) -> Result<(), String> {
@@ -154,8 +155,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = (ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32).round() as i32;
+        let ry = (ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32).round() as i32;
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
@@ -180,10 +181,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff: f32,
+        cam_yoff: f32,
+        xoff: f32,
+        yoff: f32,
     ) -> Result<(), String> {
         if sprite_id <= 0 {
             return Ok(());
@@ -201,8 +202,8 @@ impl GameScene {
         let ys = q.height as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
-        let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
+        let rx = (ground_x - (xs * (FLOOR_TILE_WIDTH / 2)) as f32).round() as i32;
+        let ry = (ground_y + (FLOOR_TILE_HEIGHT - ys * 32) as f32).round() as i32;
 
         // Shadow is placed at character's feet, flattened to 1/4 height.
         // disp=14 matches the original C code.
@@ -243,16 +244,16 @@ impl GameScene {
         strength: u32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff: f32,
+        cam_yoff: f32,
+        xoff: f32,
+        yoff: f32,
     ) -> Result<(), String> {
         // Isometric projection for a 2×2 tile area (64×64 pixels), matching dd_alphaeffect_magic.
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
-        let rx = ground_x - FLOOR_TILE_WIDTH;
-        let ry = ground_y - (FLOOR_TILE_WIDTH + FLOOR_TILE_HEIGHT);
+        let rx = (ground_x - FLOOR_TILE_WIDTH as f32).round() as i32;
+        let ry = (ground_y - (FLOOR_TILE_WIDTH + FLOOR_TILE_HEIGHT) as f32).round() as i32;
 
         let str_div = strength.max(1) as i32;
         let strength_clamped = strength.clamp(1, 7) as i32;
@@ -322,12 +323,12 @@ impl GameScene {
         Ok(())
     }
 
-    fn resolve_hover_highlight(&self, ps: &PlayerState) -> Option<HoverHighlight> {
+    fn resolve_hover_highlight(&self, ps: &PlayerState, now: Instant) -> Option<HoverHighlight> {
         if ps.should_show_shop() {
             return None;
         }
 
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps, now);
         if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {
             return None;
         }
@@ -417,11 +418,16 @@ impl GameScene {
     /// # Arguments
     ///
     /// * `ps` - Current player state (map, character info).
+    /// * `now` - Frame time used to sample interpolated camera offsets.
     ///
     /// # Returns
     ///
     /// An action label string such as `"WALK"`, `"ATTACK"`, etc., or `None`.
-    pub(super) fn resolve_helper_text(&self, ps: &PlayerState) -> Option<&'static str> {
+    pub(super) fn resolve_helper_text(
+        &self,
+        ps: &PlayerState,
+        now: Instant,
+    ) -> Option<&'static str> {
         if ps.should_show_shop() {
             // Show BUY / TAKE when the cursor hovers over a filled item slot.
             return self.shop_panel.hovered_item_label(ps.shop_is_grave());
@@ -432,7 +438,7 @@ impl GameScene {
                 .hovered_label(self.effective_shift_held());
         }
 
-        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps);
+        let (cam_xoff, cam_yoff) = Self::camera_offsets(ps, now);
         if !Self::cursor_in_map_interaction_area(self.mouse_x, self.mouse_y, cam_xoff, cam_yoff) {
             return None;
         }
@@ -489,14 +495,15 @@ impl GameScene {
         show_names: bool,
         show_proz: bool,
         hide: bool,
-        camera_shake: (i32, i32),
+        camera_shake: (f32, f32),
+        now: Instant,
     ) -> Result<(), String> {
         let map = ps.map();
         let ci = ps.character_info();
-        let (cam_xoff_base, cam_yoff_base) = Self::camera_offsets(ps);
+        let (cam_xoff_base, cam_yoff_base) = Self::camera_offsets(ps, now);
         let cam_xoff = cam_xoff_base + camera_shake.0;
         let cam_yoff = cam_yoff_base + camera_shake.1;
-        let hover_highlight = self.resolve_hover_highlight(ps);
+        let hover_highlight = self.resolve_hover_highlight(ps, now);
 
         // Pass 1: Background / terrain sprites (legacy eng_display order: y descending).
         for y in (0..TILEY).rev() {
@@ -529,8 +536,8 @@ impl GameScene {
                     y,
                     cam_xoff,
                     cam_yoff,
-                    0,
-                    0,
+                    0.0,
+                    0.0,
                     tile.light,
                 )?;
 
@@ -544,13 +551,13 @@ impl GameScene {
                     && hy == y
                 {
                     Self::draw_world_sprite_highlight(
-                        canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
+                        canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0.0, 0.0, alpha,
                     )?;
                 }
 
                 if ci.goto_x == i32::from(tile.x) && ci.goto_y == i32::from(tile.y) {
                     Self::draw_world_sprite(
-                        canvas, gfx, 31, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 31, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
             }
@@ -567,10 +574,14 @@ impl GameScene {
                     continue;
                 }
 
+                let tile_idx = crate::game_map::GameMap::tile_index(x, y).unwrap_or(0);
+                let offset = ps
+                    .render_interpolator
+                    .interpolated_character_offset(tile_idx, now);
                 let (ground_x, ground_y) =
                     Self::tile_ground_diamond_origin(x, y, cam_xoff, cam_yoff);
-                let ch_xoff = tile.obj_xoff;
-                let ch_yoff = tile.obj_yoff;
+                let ch_xoff = offset.obj_xoff;
+                let ch_yoff = offset.obj_yoff;
 
                 let mut obj = tile.obj1;
                 if obj > 0 {
@@ -618,7 +629,7 @@ impl GameScene {
                     }
 
                     Self::draw_world_sprite(
-                        canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, obj, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
 
                     if let Some(HoverHighlight::Item {
@@ -631,7 +642,7 @@ impl GameScene {
                         && hy == y
                     {
                         Self::draw_world_sprite_highlight(
-                            canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0, 0, alpha,
+                            canvas, gfx, sprite_id, x, y, cam_xoff, cam_yoff, 0.0, 0.0, alpha,
                         )?;
                     }
                 }
@@ -647,7 +658,7 @@ impl GameScene {
                         cam_xoff,
                         cam_yoff,
                         ch_xoff,
-                        ch_yoff + 4,
+                        ch_yoff + 4.0,
                     )?;
                 }
 
@@ -742,8 +753,9 @@ impl GameScene {
                         // dd_gputtext formula (ported from engine.c + nameplates.rs):
                         // horizontally centered, shifted 64px up relative to sprite origin.
                         let text_len = text.len() as i32;
-                        let np_rx = ground_x - (text_len * 5 / 2) + ch_xoff;
-                        let np_ry = ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y + ch_yoff;
+                        let np_rx = (ground_x - (text_len * 5 / 2) as f32 + ch_xoff).round() as i32;
+                        let np_ry = (ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y as f32 + ch_yoff)
+                            .round() as i32;
                         font_cache::draw_text(
                             canvas,
                             gfx,
@@ -761,7 +773,7 @@ impl GameScene {
                     && ci.misc_target2 == i32::from(tile.y)
                 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 32, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if ci.misc_action == DR_PICKUP as i32
@@ -769,7 +781,7 @@ impl GameScene {
                     && ci.misc_target2 == i32::from(tile.y)
                 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 33, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if ci.misc_action == DR_USE as i32
@@ -777,73 +789,73 @@ impl GameScene {
                     && ci.misc_target2 == i32::from(tile.y)
                 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
 
                 if (tile.flags2 & MF_MOVEBLOCK) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 55, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 55, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_SIGHTBLOCK) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 84, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 84, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_INDOORS) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 56, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 56, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_UWATER) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 75, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 75, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_NOMONST) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 59, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 59, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_BANK) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 60, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 60, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_TAVERN) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 61, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 61, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_NOMAGIC) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 62, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 62, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_DEATHTRAP) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 73, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 73, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_NOLAG) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 57, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 57, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_ARENA) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 76, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 76, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & MF_NOEXPIRE) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 82, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 82, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
                 if (tile.flags2 & 0x8000_0000) != 0 {
                     Self::draw_world_sprite(
-                        canvas, gfx, 72, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                        canvas, gfx, 72, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                     )?;
                 }
 
@@ -880,7 +892,7 @@ impl GameScene {
                             )?;
                         } else {
                             Self::draw_world_sprite(
-                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                                canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                             )?;
                         }
                     }
@@ -891,7 +903,7 @@ impl GameScene {
                     if tomb_variant > 0 {
                         let sprite = 240 + tomb_variant - 1;
                         Self::draw_world_sprite(
-                            canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
+                            canvas, gfx, sprite, x, y, cam_xoff, cam_yoff, 0.0, 0.0, tile.light,
                         )?;
                     }
                 }

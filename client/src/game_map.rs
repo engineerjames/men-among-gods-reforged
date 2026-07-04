@@ -13,6 +13,7 @@ use crate::types::map::CMapTile;
 pub struct GameMap {
     tiles: Vec<CMapTile>,
     last_setmap_index: Option<u16>,
+    scrolled_since_last_tick: bool,
 }
 
 impl Default for GameMap {
@@ -42,6 +43,7 @@ impl GameMap {
         Self {
             tiles,
             last_setmap_index: None,
+            scrolled_since_last_tick: false,
         }
     }
 
@@ -66,6 +68,23 @@ impl GameMap {
     #[inline]
     pub fn reset_last_setmap_index(&mut self) {
         self.last_setmap_index = None;
+    }
+
+    /// Returns whether the visible tile grid has been shifted (scroll/origin)
+    /// since the previous tick, and clears that flag.
+    ///
+    /// Interpolation snapshots are indexed by tile slot, so any grid shift
+    /// means a slot now points at a different world cell. The renderer uses
+    /// this signal to skip one blend window and avoid large camera/object
+    /// jumps while moving.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the grid shifted since the last call, `false` otherwise.
+    pub fn take_scrolled_since_last_tick(&mut self) -> bool {
+        let shifted = self.scrolled_since_last_tick;
+        self.scrolled_since_last_tick = false;
+        shifted
     }
 
     /// Converts (x, y) grid coordinates to a flat index.
@@ -272,10 +291,12 @@ impl GameMap {
                 }
                 n += 1;
                 if n >= self.tiles.len() {
+                    self.scrolled_since_last_tick = true;
                     return;
                 }
             }
         }
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls all tiles one position to the right (drops the leftmost column).
@@ -285,6 +306,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(1..len, 0);
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls all tiles one position to the left (drops the rightmost column).
@@ -294,6 +316,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(0..len - 1, 1);
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls all tiles one row downward (drops the top row).
@@ -303,6 +326,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(TILEX..len, 0);
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls all tiles one row upward (drops the bottom row).
@@ -312,6 +336,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(0..len - TILEX, TILEX);
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls tiles diagonally: one position left and one row up.
@@ -322,6 +347,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(0..len - shift, shift);
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls tiles diagonally: one position left and one row down.
@@ -335,6 +361,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(shift..len, 0);
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls tiles diagonally: one position right and one row up.
@@ -349,6 +376,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(0..count, shift);
+        self.scrolled_since_last_tick = true;
     }
 
     /// Scrolls tiles diagonally: one position right and one row down.
@@ -359,6 +387,7 @@ impl GameMap {
             return;
         }
         self.tiles.copy_within(shift..len, 0);
+        self.scrolled_since_last_tick = true;
     }
 }
 

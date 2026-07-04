@@ -134,12 +134,12 @@ impl GameScene {
                         }
                     }
                 }
-                NetworkEvent::Tick => {
+                NetworkEvent::Tick { received_at } => {
                     if let Some(net) = app_state.network.as_mut() {
                         net.client_ticker = net.client_ticker.wrapping_add(1);
                         let ticker = net.client_ticker;
                         if let Some(ps) = app_state.player_state.as_mut() {
-                            ps.on_tick_packet(ticker);
+                            ps.on_tick_packet(ticker, received_at);
                             ps.map_mut().reset_last_setmap_index();
                         }
                         net.maybe_send_ctick();

@@ -291,7 +291,9 @@ fn run_network_loop(
             did_work = true;
 
             if payload.is_empty() {
-                let _ = event_tx.send(NetworkEvent::Tick);
+                let _ = event_tx.send(NetworkEvent::Tick {
+                    received_at: Instant::now(),
+                });
                 continue;
             }
 
@@ -301,7 +303,9 @@ fn run_network_loop(
                     e
                 })?;
                 if inflated.is_empty() {
-                    let _ = event_tx.send(NetworkEvent::Tick);
+                    let _ = event_tx.send(NetworkEvent::Tick {
+                        received_at: Instant::now(),
+                    });
                     continue;
                 }
 
@@ -315,7 +319,9 @@ fn run_network_loop(
                         received_at: Instant::now(),
                     });
                 }
-                let _ = event_tx.send(NetworkEvent::Tick);
+                let _ = event_tx.send(NetworkEvent::Tick {
+                    received_at: Instant::now(),
+                });
             } else {
                 let cmds = split_tick_payload(&payload).map_err(|e| {
                     log::error!("Tick parse failed (uncompressed): {e}");
@@ -327,7 +333,9 @@ fn run_network_loop(
                         received_at: Instant::now(),
                     });
                 }
-                let _ = event_tx.send(NetworkEvent::Tick);
+                let _ = event_tx.send(NetworkEvent::Tick {
+                    received_at: Instant::now(),
+                });
             }
         }
 
