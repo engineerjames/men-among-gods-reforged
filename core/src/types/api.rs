@@ -66,6 +66,26 @@ pub struct CreateGameLoginTicketResponse {
     pub error: Option<String>,
 }
 
+/// Upload payload for client diagnostics logs.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UploadClientLogRequest {
+    /// Character ID associated with the log-producing game session.
+    pub character_id: u64,
+    /// Gzip-compressed client log data encoded as base64.
+    pub compressed_log_b64: String,
+}
+
+/// Response returned after the API stores a diagnostics log upload.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct UploadClientLogResponse {
+    /// Relative output file name that was written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saved_file: Option<String>,
+    /// Optional error text when the upload fails.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// Metadata stored behind a short-lived game login ticket.
 ///
 /// The API writes this payload into KeyDB after authenticating account

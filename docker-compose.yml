@@ -88,6 +88,7 @@ services:
       MAG_ADMIN_API_TOKEN: ${MAG_ADMIN_API_TOKEN:-}
     volumes:
       - tls-certs:/certs:ro
+      - ./api/diag-uploads:/var/mag/diag-uploads
     ports:
       - "5554:5554"
     restart: unless-stopped

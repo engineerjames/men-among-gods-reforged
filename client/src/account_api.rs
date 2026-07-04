@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use mag_core::traits::{Class, Sex};
 use reqwest::StatusCode;
 
@@ -12,7 +14,8 @@ use mag_core::types::api::{
     CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
     LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,
-    ResetPasswordRequest, ResetPasswordRequestResponse,
+    ResetPasswordRequest, ResetPasswordRequestResponse, UploadClientLogRequest,
+    UploadClientLogResponse,
 };
 
 /// Hashes a password into Argon2 PHC format using a deterministic salt.
@@ -375,6 +378,90 @@ pub fn create_game_login_ticket(
         .ok()
         .and_then(|b| b.error);
     Err(api_error.unwrap_or_else(|| format!("{} ({})", fallback, status.as_u16())))
+}
+
+/// Uploads a gzip-compressed client log to the diagnostics API endpoint.
+///
+/// # Arguments
+///
+/// * `base_url` - API base URL used by this function.
+/// * `character_id` - Character id associated with the uploaded log.
+/// * `compressed_log` - Gzip-compressed log bytes.
+///
+/// # Returns
+///
+/// * `Ok(saved_file_name)` when upload succeeds.
+/// * `Err(String)` when the request fails.
+pub fn upload_client_log(
+    base_url: &str,
+    character_id: u64,
+    compressed_log: &[u8],
+) -> Result<String, String> {
+    if compressed_log.is_empty() {
+        return Err("Diagnostics upload failed: compressed payload is empty".to_owned());
+    }
+
+    let client = cert_trust::build_reqwest_client()?;
+    let url = format!("{}/diag/client-log", base_url.trim_end_matches('/'));
+    let compressed_log_b64 = STANDARD.encode(compressed_log);
+
+    let mut last_status = None;
+    let mut last_error: Option<String> = None;
+    for attempt in 0..=2u32 {
+        let resp = client
+            .post(&url)
+            .json(&UploadClientLogRequest {
+                character_id,
+                compressed_log_b64: compressed_log_b64.clone(),
+            })
+            .send()
+            .map_err(|err| format!("Diagnostics upload request failed: {err}"))?;
+
+        let status = resp.status();
+        last_status = Some(status);
+
+        let body = resp.json::<UploadClientLogResponse>().ok();
+        if status.is_success() {
+            if let Some(saved_file) = body
+                .as_ref()
+                .and_then(|value| value.saved_file.as_deref())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                return Ok(saved_file.to_owned());
+            }
+            return Err("Diagnostics upload failed: missing saved_file in response".to_owned());
+        }
+
+        last_error = body
+            .as_ref()
+            .and_then(|value| value.error.as_deref())
+            .map(ToOwned::to_owned);
+
+        if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
+            std::thread::sleep(Duration::from_millis(1100));
+            continue;
+        }
+
+        break;
+    }
+
+    let status = last_status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    if let Some(error) = last_error
+        .map(|e| e.trim().to_owned())
+        .filter(|e| !e.is_empty())
+    {
+        return Err(error);
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Diagnostics upload rejected",
+        StatusCode::NOT_FOUND => "Character not found",
+        StatusCode::TOO_MANY_REQUESTS => "Diagnostics upload rate limited",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Diagnostics upload failed",
+    };
+    Err(format!("{message} ({})", status.as_u16()))
 }
 
 /// Requests a password reset code to be sent to the account's email.

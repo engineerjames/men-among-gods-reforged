@@ -23,8 +23,11 @@ use mag_core::traits::class_from_kindred;
 use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::collections::HashSet;
+use std::io::Write;
 use std::time::{Duration, Instant};
 
+use flate2::Compression;
+use flate2::write::GzEncoder;
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video::Window};
 
 use mag_core::{
@@ -35,7 +38,7 @@ use mag_core::{
 };
 
 use crate::{
-    cert_trust,
+    account_api, cert_trust,
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
     network::NetworkRuntime,
@@ -860,6 +863,12 @@ impl GameScene {
                 WidgetAction::StartProfiler => {
                     self.perf_profiler.start();
                 }
+                WidgetAction::SendClientLogs => {
+                    if self.settings_panel.is_visible() {
+                        self.settings_panel.toggle();
+                    }
+                    self.send_latest_client_log(app_state);
+                }
                 WidgetAction::UpdateKeyBinding { action, binding } => {
                     app_state
                         .settings
@@ -898,6 +907,76 @@ impl GameScene {
         }
 
         scene_change
+    }
+
+    /// Compresses and uploads the latest client log file to the diagnostics API.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state carrying API/session data.
+    fn send_latest_client_log(&self, app_state: &mut AppState<'_>) {
+        let Some(login_target) = app_state.api.login_target.as_ref() else {
+            log::warn!("Diagnostics upload skipped: no active login target");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(
+                    1,
+                    "Failed to send logs: no active character session.".to_owned(),
+                );
+            }
+            return;
+        };
+        let character_id = login_target.character_id;
+
+        let log_path = preferences::log_file_path();
+        let log_bytes = match std::fs::read(&log_path) {
+            Ok(value) => value,
+            Err(err) => {
+                log::warn!(
+                    "Diagnostics upload failed reading log {}: {err}",
+                    log_path.display()
+                );
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.tlog(
+                        1,
+                        format!("Failed to read log file: {}", log_path.display()),
+                    );
+                }
+                return;
+            }
+        };
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        if let Err(err) = encoder.write_all(&log_bytes) {
+            log::warn!("Diagnostics upload failed compressing log: {err}");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(1, "Failed to send logs: compression error.".to_owned());
+            }
+            return;
+        }
+        let compressed = match encoder.finish() {
+            Ok(value) => value,
+            Err(err) => {
+                log::warn!("Diagnostics upload failed finalizing compression: {err}");
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.tlog(1, "Failed to send logs: compression error.".to_owned());
+                }
+                return;
+            }
+        };
+
+        match account_api::upload_client_log(&app_state.api.base_url, character_id, &compressed) {
+            Ok(saved_file) => {
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.tlog(1, format!("Diagnostics uploaded: {saved_file}"));
+                }
+            }
+            Err(err) => {
+                log::warn!("Diagnostics upload request failed: {err}");
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.tlog(1, format!("Failed to send logs: {err}"));
+                }
+            }
+        }
     }
 
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.

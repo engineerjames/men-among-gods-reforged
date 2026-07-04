@@ -323,6 +323,8 @@ pub enum WidgetAction {
     OpenLogDir,
     /// Start the wall-clock performance profiler.
     StartProfiler,
+    /// Upload the latest client log to the diagnostics API endpoint.
+    SendClientLogs,
     /// Toggle shadow rendering.
     SetShadows(bool),
     /// Toggle spell/visual effects.

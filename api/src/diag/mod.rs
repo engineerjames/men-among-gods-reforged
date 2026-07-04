@@ -1,0 +1,19 @@
+//! Diagnostics route group.
+//!
+//! Endpoints under this module are intended for client diagnostics and support
+//! tooling uploads. Routes are mounted at `/diag/*` by `main.rs`.
+
+pub mod routes;
+
+use crate::ApiState;
+use axum::Router;
+use axum::routing::post;
+
+/// Builds the diagnostics sub-router mounted under `/diag`.
+///
+/// # Returns
+///
+/// * A router containing diagnostics endpoints.
+pub fn router() -> Router<ApiState> {
+    Router::new().route("/client-log", post(routes::upload_client_log))
+}
