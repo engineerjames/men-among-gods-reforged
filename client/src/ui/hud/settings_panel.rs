@@ -81,7 +81,8 @@ const DG_Y_PING: i32 = DG_Y_SHOW_POS + ROW_H + 4;
 const DG_Y_PROFILER_BTN: i32 = DG_Y_PING + ROW_H + 6;
 const DG_Y_LOGDIR_BTN: i32 = DG_Y_PROFILER_BTN + BTN_H as i32 + 6;
 const DG_Y_SEND_LOGS_BTN: i32 = DG_Y_LOGDIR_BTN + BTN_H as i32 + 6;
-const DG_PANEL_H: u32 = (DG_Y_SEND_LOGS_BTN + BTN_H as i32 + 10 + BTN_H as i32 + 8) as u32;
+const DG_Y_NETWORK_TEST_BTN: i32 = DG_Y_SEND_LOGS_BTN + BTN_H as i32 + 6;
+const DG_PANEL_H: u32 = (DG_Y_NETWORK_TEST_BTN + BTN_H as i32 + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Controls sub-panel
@@ -673,10 +674,11 @@ struct DiagnosticsSubPanel {
     btn_profiler: RectButton,
     btn_log_dir: RectButton,
     btn_send_logs: RectButton,
+    btn_network_test: RectButton,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
     /// Controller focus index. 0=ShowPositions, 1=Profiler, 2=LogDir,
-    /// 3=SendLogs, 4=Close.
+    /// 3=SendLogs, 4=NetworkTest, 5=Close.
     controller_focused: Option<usize>,
 }
 
@@ -724,6 +726,12 @@ impl DiagnosticsSubPanel {
             )
             .with_label("Send Logs", 0)
             .with_border(btn_border()),
+            btn_network_test: RectButton::new(
+                Bounds::new(x, origin_y + DG_Y_NETWORK_TEST_BTN, w, BTN_H),
+                btn_bg(),
+            )
+            .with_label("Network Test", 0)
+            .with_border(btn_border()),
             btn_close: RectButton::new(Bounds::new(x, close_y, w, BTN_H), btn_bg())
                 .with_label("Close", 0)
                 .with_border(btn_border()),
@@ -733,7 +741,7 @@ impl DiagnosticsSubPanel {
     }
 
     /// Number of focusable elements.
-    const FOCUSABLE_COUNT: usize = 5;
+    const FOCUSABLE_COUNT: usize = 6;
 
     /// Applies controller focus highlighting.
     fn apply_controller_focus(&mut self) {
@@ -742,7 +750,8 @@ impl DiagnosticsSubPanel {
         self.btn_profiler.set_hovered(f == Some(1));
         self.btn_log_dir.set_hovered(f == Some(2));
         self.btn_send_logs.set_hovered(f == Some(3));
-        self.btn_close.set_hovered(f == Some(4));
+        self.btn_network_test.set_hovered(f == Some(4));
+        self.btn_close.set_hovered(f == Some(5));
     }
 
     /// Loads widget values from the data snapshot.
@@ -779,6 +788,7 @@ impl DiagnosticsSubPanel {
         shift(&mut self.btn_profiler, dx, dy);
         shift(&mut self.btn_log_dir, dx, dy);
         shift(&mut self.btn_send_logs, dx, dy);
+        shift(&mut self.btn_network_test, dx, dy);
         shift(&mut self.btn_close, dx, dy);
     }
 
@@ -841,6 +851,11 @@ impl DiagnosticsSubPanel {
                         self.controller_focused = None;
                     }
                     Some(4) => {
+                        self.pending_actions.push(WidgetAction::RunNetworkTest);
+                        self.visible = false;
+                        self.controller_focused = None;
+                    }
+                    Some(5) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
@@ -888,6 +903,12 @@ impl DiagnosticsSubPanel {
             self.controller_focused = None;
             return EventResponse::Consumed;
         }
+        if self.btn_network_test.handle_event(event) == EventResponse::Consumed {
+            self.pending_actions.push(WidgetAction::RunNetworkTest);
+            self.visible = false;
+            self.controller_focused = None;
+            return EventResponse::Consumed;
+        }
 
         consume_mouse_events_in_bounds(&self.bounds, event)
     }
@@ -905,6 +926,7 @@ impl DiagnosticsSubPanel {
         self.btn_profiler.render(ctx)?;
         self.btn_log_dir.render(ctx)?;
         self.btn_send_logs.render(ctx)?;
+        self.btn_network_test.render(ctx)?;
         self.btn_close.render(ctx)?;
 
         Ok(())
@@ -2212,6 +2234,14 @@ impl SettingsPanel {
         }
     }
 
+    /// Closes the panel and any active sub-panel.
+    pub fn close(&mut self) {
+        self.visible = false;
+        self.volume_adjusting = false;
+        self.close_active_sub_panel();
+        self.controller_focused = None;
+    }
+
     /// Returns whether the panel is currently visible.
     ///
     /// # Returns
@@ -2888,6 +2918,31 @@ mod tests {
                 .iter()
                 .any(|action| matches!(action, WidgetAction::SendClientLogs)),
             "Expected SendClientLogs action, got {:?}",
+            actions
+        );
+        assert!(!panel.sub_diagnostics.visible);
+        assert_eq!(panel.active_sub_panel, None);
+    }
+
+    #[test]
+    fn diagnostics_network_test_emits_action_and_closes_sub_panel() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.sync_state(&make_data());
+
+        panel.handle_event(&left_click(15, Y_DIAG_BTN + 5));
+        assert_eq!(panel.active_sub_panel, Some(SettingsSubPanel::Diagnostics));
+
+        let btn_bounds = *panel.sub_diagnostics.btn_network_test.bounds();
+        let resp = panel.handle_event(&left_click(btn_bounds.x + 5, btn_bounds.y + 2));
+        assert_eq!(resp, EventResponse::Consumed);
+
+        let actions = panel.take_actions();
+        assert!(
+            actions
+                .iter()
+                .any(|action| matches!(action, WidgetAction::RunNetworkTest)),
+            "Expected RunNetworkTest action, got {:?}",
             actions
         );
         assert!(!panel.sub_diagnostics.visible);

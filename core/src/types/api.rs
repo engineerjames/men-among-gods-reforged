@@ -86,6 +86,74 @@ pub struct UploadClientLogResponse {
     pub error: Option<String>,
 }
 
+/// Probe request payload for diagnostics network testing.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NetworkTestProbeRequest {
+    /// Character ID associated with the active game session.
+    pub character_id: u64,
+    /// Client-generated run identifier used to correlate all probe samples.
+    pub run_id: String,
+    /// Zero-based sample index within this run.
+    pub sample_index: u32,
+}
+
+/// Probe response payload returned by diagnostics network-test endpoint.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NetworkTestProbeResponse {
+    /// Server timestamp in unix milliseconds when the probe was handled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_unix_ms: Option<u64>,
+    /// Optional error text when request validation fails.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Aggregated diagnostics network-test metrics produced by the client.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NetworkTestSummary {
+    /// Total wall-clock test duration in milliseconds.
+    pub duration_ms: u32,
+    /// Number of probe requests attempted.
+    pub total_samples: u32,
+    /// Number of failed probe requests.
+    pub failed_samples: u32,
+    /// Minimum round-trip latency in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_rtt_ms: Option<u32>,
+    /// Mean round-trip latency in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avg_rtt_ms: Option<u32>,
+    /// Maximum round-trip latency in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_rtt_ms: Option<u32>,
+    /// Jitter estimate in milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jitter_ms: Option<u32>,
+    /// Human-friendly quality classification (Good/Fair/Poor).
+    pub quality_rating: String,
+}
+
+/// Summary payload sent by the client after a diagnostics network-test run.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NetworkTestSummaryRequest {
+    /// Character ID associated with the active game session.
+    pub character_id: u64,
+    /// Client-generated run identifier used to correlate this summary to probes.
+    pub run_id: String,
+    /// Aggregate metrics for the completed run.
+    pub summary: NetworkTestSummary,
+}
+
+/// Response payload returned after storing/logging network-test summary.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct NetworkTestSummaryResponse {
+    /// Whether the server accepted and logged the submitted summary.
+    pub accepted: bool,
+    /// Optional error text when submission failed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// Metadata stored behind a short-lived game login ticket.
 ///
 /// The API writes this payload into KeyDB after authenticating account

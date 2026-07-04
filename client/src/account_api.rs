@@ -13,9 +13,10 @@ pub use mag_core::types::api::CharacterSummary;
 use mag_core::types::api::{
     CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
-    LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,
-    ResetPasswordRequest, ResetPasswordRequestResponse, UploadClientLogRequest,
-    UploadClientLogResponse,
+    LoginRequest, LoginResponse, NetworkTestProbeRequest, NetworkTestProbeResponse,
+    NetworkTestSummary, NetworkTestSummaryRequest, NetworkTestSummaryResponse,
+    ResetPasswordConfirm, ResetPasswordConfirmResponse, ResetPasswordRequest,
+    ResetPasswordRequestResponse, UploadClientLogRequest, UploadClientLogResponse,
 };
 
 /// Hashes a password into Argon2 PHC format using a deterministic salt.
@@ -460,6 +461,162 @@ pub fn upload_client_log(
         StatusCode::TOO_MANY_REQUESTS => "Diagnostics upload rate limited",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Diagnostics upload failed",
+    };
+    Err(format!("{message} ({})", status.as_u16()))
+}
+
+/// Sends one diagnostics network-test probe request and returns round-trip timing.
+///
+/// # Arguments
+///
+/// * `base_url` - API base URL used by this function.
+/// * `character_id` - Character id associated with the test run.
+/// * `run_id` - Client-generated run correlation id.
+/// * `sample_index` - Zero-based sample index in the current run.
+///
+/// # Returns
+///
+/// * `Ok(server_unix_ms)` when probe succeeds.
+/// * `Err(String)` when request or server validation fails.
+pub fn run_network_test_probe(
+    base_url: &str,
+    character_id: u64,
+    run_id: &str,
+    sample_index: u32,
+) -> Result<u64, String> {
+    let client = cert_trust::build_reqwest_client()?;
+    let url = format!("{}/diag/network-test/probe", base_url.trim_end_matches('/'));
+
+    let mut last_status = None;
+    let mut last_error: Option<String> = None;
+    for attempt in 0..=2u32 {
+        let resp = client
+            .post(&url)
+            .json(&NetworkTestProbeRequest {
+                character_id,
+                run_id: run_id.to_owned(),
+                sample_index,
+            })
+            .send()
+            .map_err(|err| format!("Network test probe request failed: {err}"))?;
+
+        let status = resp.status();
+        last_status = Some(status);
+        let body = resp.json::<NetworkTestProbeResponse>().ok();
+
+        if status.is_success() {
+            if let Some(server_unix_ms) = body.as_ref().and_then(|value| value.server_unix_ms) {
+                return Ok(server_unix_ms);
+            }
+            return Err("Network test probe failed: missing server_unix_ms in response".to_owned());
+        }
+
+        last_error = body
+            .as_ref()
+            .and_then(|value| value.error.as_deref())
+            .map(ToOwned::to_owned);
+
+        if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
+            std::thread::sleep(Duration::from_millis(1100));
+            continue;
+        }
+
+        break;
+    }
+
+    let status = last_status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    if let Some(error) = last_error
+        .map(|e| e.trim().to_owned())
+        .filter(|e| !e.is_empty())
+    {
+        return Err(error);
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Network test probe rejected",
+        StatusCode::TOO_MANY_REQUESTS => "Network test probe rate limited",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Network test probe failed",
+    };
+    Err(format!("{message} ({})", status.as_u16()))
+}
+
+/// Sends final diagnostics network-test summary metrics to the API.
+///
+/// # Arguments
+///
+/// * `base_url` - API base URL used by this function.
+/// * `character_id` - Character id associated with the test run.
+/// * `run_id` - Client-generated run correlation id.
+/// * `summary` - Aggregated network-test metrics.
+///
+/// # Returns
+///
+/// * `Ok(())` when submission succeeds.
+/// * `Err(String)` when request or server validation fails.
+pub fn submit_network_test_summary(
+    base_url: &str,
+    character_id: u64,
+    run_id: &str,
+    summary: NetworkTestSummary,
+) -> Result<(), String> {
+    let client = cert_trust::build_reqwest_client()?;
+    let url = format!(
+        "{}/diag/network-test/summary",
+        base_url.trim_end_matches('/')
+    );
+
+    let mut last_status = None;
+    let mut last_error: Option<String> = None;
+    for attempt in 0..=2u32 {
+        let resp = client
+            .post(&url)
+            .json(&NetworkTestSummaryRequest {
+                character_id,
+                run_id: run_id.to_owned(),
+                summary: summary.clone(),
+            })
+            .send()
+            .map_err(|err| format!("Network test summary request failed: {err}"))?;
+
+        let status = resp.status();
+        last_status = Some(status);
+        let body = resp.json::<NetworkTestSummaryResponse>().ok();
+
+        if status.is_success() {
+            if body.as_ref().map(|value| value.accepted).unwrap_or(false) {
+                return Ok(());
+            }
+            return Err("Network test summary failed: API did not accept payload".to_owned());
+        }
+
+        last_error = body
+            .as_ref()
+            .and_then(|value| value.error.as_deref())
+            .map(ToOwned::to_owned);
+
+        if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
+            std::thread::sleep(Duration::from_millis(1100));
+            continue;
+        }
+
+        break;
+    }
+
+    let status = last_status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    if let Some(error) = last_error
+        .map(|e| e.trim().to_owned())
+        .filter(|e| !e.is_empty())
+    {
+        return Err(error);
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Network test summary rejected",
+        StatusCode::NOT_FOUND => "Character not found",
+        StatusCode::TOO_MANY_REQUESTS => "Network test summary rate limited",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Network test summary failed",
     };
     Err(format!("{message} ({})", status.as_u16()))
 }

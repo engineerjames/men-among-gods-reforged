@@ -15,5 +15,8 @@ use axum::routing::post;
 ///
 /// * A router containing diagnostics endpoints.
 pub fn router() -> Router<ApiState> {
-    Router::new().route("/client-log", post(routes::upload_client_log))
+    Router::new()
+        .route("/client-log", post(routes::upload_client_log))
+        .route("/network-test/probe", post(routes::network_test_probe))
+        .route("/network-test/summary", post(routes::network_test_summary))
 }
