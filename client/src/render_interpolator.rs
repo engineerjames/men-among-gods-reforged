@@ -274,7 +274,7 @@ fn character_key(ch_nr: u16, ch_id: u16) -> u32 {
     if ch_nr == 0 {
         return 0;
     }
-    ((ch_id as u32) << 16) | (ch_nr as u32)
+    ((u32::from(ch_id)) << 16) | (u32::from(ch_nr))
 }
 
 #[cfg(test)]
