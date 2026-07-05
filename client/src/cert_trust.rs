@@ -309,16 +309,31 @@ pub fn build_rustls_client_config() -> ClientConfig {
 
 /// Build a `reqwest::blocking::Client` that uses TOFU for HTTPS.
 ///
+/// # Arguments
+///
+/// * `timeout` - Per-request timeout applied to the constructed client.
+///
+/// # Returns
+///
+/// * `Ok` when `build_reqwest_client_with_timeout` succeeds, or `Err` with failure details.
+pub fn build_reqwest_client_with_timeout(
+    timeout: std::time::Duration,
+) -> Result<reqwest::blocking::Client, String> {
+    let tls_config = build_rustls_client_config();
+    reqwest::blocking::Client::builder()
+        .timeout(timeout)
+        .use_preconfigured_tls(tls_config)
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))
+}
+
+/// Build a `reqwest::blocking::Client` that uses TOFU for HTTPS.
+///
 /// # Returns
 ///
 /// * `Ok` when `build_reqwest_client` succeeds, or `Err` with failure details.
 pub fn build_reqwest_client() -> Result<reqwest::blocking::Client, String> {
-    let tls_config = build_rustls_client_config();
-    reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .use_preconfigured_tls(tls_config)
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {e}"))
+    build_reqwest_client_with_timeout(std::time::Duration::from_secs(10))
 }
 
 /// Build a `rustls::ClientConnection` for wrapping a game-server TCP stream.

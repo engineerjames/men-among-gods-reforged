@@ -18,6 +18,7 @@ use super::{NetworkCommand, NetworkEvent};
 /// A game connection backed by a TLS session over TCP.
 struct GameConnection {
     stream: rustls::StreamOwned<rustls::ClientConnection, TcpStream>,
+    is_shutdown: bool,
 }
 
 impl GameConnection {
@@ -26,6 +27,11 @@ impl GameConnection {
     }
 
     fn shutdown(&mut self) {
+        if self.is_shutdown {
+            return;
+        }
+        self.is_shutdown = true;
+
         let stream = &mut self.stream;
         let _ = stream.sock.set_nonblocking(false);
 
@@ -45,6 +51,12 @@ impl GameConnection {
         }
 
         let _ = sock.shutdown(Shutdown::Both);
+    }
+}
+
+impl Drop for GameConnection {
+    fn drop(&mut self) {
+        self.shutdown();
     }
 }
 
@@ -95,7 +107,10 @@ pub(crate) fn run_network_task(
     let mut conn = match crate::cert_trust::build_game_tls_connector(&host) {
         Ok(tls_conn) => {
             let tls_stream = rustls::StreamOwned::new(tls_conn, tcp_stream);
-            GameConnection { stream: tls_stream }
+            GameConnection {
+                stream: tls_stream,
+                is_shutdown: false,
+            }
         }
         Err(e) => {
             let _ = event_tx.send(NetworkEvent::Error(format!("TLS setup failed: {e}")));

@@ -9,13 +9,64 @@ use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::Arc;
 
+/// TLS-encrypted game stream with idempotent shutdown tracking.
+pub struct TlsGameStream {
+    stream: rustls::StreamOwned<ServerConnection, TcpStream>,
+    is_shutdown: bool,
+}
+
+impl TlsGameStream {
+    fn new(stream: rustls::StreamOwned<ServerConnection, TcpStream>) -> Self {
+        Self {
+            stream,
+            is_shutdown: false,
+        }
+    }
+
+    fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
+        self.stream.sock.set_nonblocking(nonblocking)
+    }
+
+    fn shutdown(&mut self, how: Shutdown) -> io::Result<()> {
+        if self.is_shutdown {
+            return Ok(());
+        }
+        self.is_shutdown = true;
+
+        let stream = &mut self.stream;
+        let _ = stream.sock.set_nonblocking(false);
+
+        stream.conn.send_close_notify();
+
+        while stream.conn.wants_write() {
+            match stream.conn.write_tls(&mut stream.sock) {
+                Ok(0) => break,
+                Ok(_) => {}
+                Err(err) if err.kind() == io::ErrorKind::WouldBlock => continue,
+                Err(err) => {
+                    log::debug!("Failed to write TLS close_notify: {err}");
+                    break;
+                }
+            }
+        }
+
+        stream.sock.shutdown(how)
+    }
+}
+
+impl Drop for TlsGameStream {
+    fn drop(&mut self) {
+        let _ = self.shutdown(Shutdown::Both);
+    }
+}
+
 /// A game-server connection that may or may not be TLS-encrypted.
 #[allow(clippy::large_enum_variant)]
 pub enum GameStream {
     /// Unencrypted TCP connection.
     Plain(TcpStream),
     /// TLS-encrypted connection wrapping a TCP stream.
-    Tls(rustls::StreamOwned<ServerConnection, TcpStream>),
+    Tls(TlsGameStream),
 }
 
 impl GameStream {
@@ -27,19 +78,19 @@ impl GameStream {
     pub fn set_nonblocking(&self, nonblocking: bool) -> io::Result<()> {
         match self {
             GameStream::Plain(s) => s.set_nonblocking(nonblocking),
-            GameStream::Tls(s) => s.sock.set_nonblocking(nonblocking),
+            GameStream::Tls(s) => s.set_nonblocking(nonblocking),
         }
     }
 
-    /// Shuts down the underlying TCP connection.
+    /// Shuts down the underlying game connection.
     ///
     /// # Arguments
     ///
     /// * `how` - Value passed to `shutdown`.
-    pub fn shutdown(&self, how: Shutdown) -> io::Result<()> {
+    pub fn shutdown(&mut self, how: Shutdown) -> io::Result<()> {
         match self {
             GameStream::Plain(s) => s.shutdown(how),
-            GameStream::Tls(s) => s.sock.shutdown(how),
+            GameStream::Tls(s) => s.shutdown(how),
         }
     }
 }
@@ -48,7 +99,7 @@ impl Read for GameStream {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         match self {
             GameStream::Plain(s) => s.read(buf),
-            GameStream::Tls(s) => s.read(buf),
+            GameStream::Tls(s) => s.stream.read(buf),
         }
     }
 }
@@ -57,14 +108,14 @@ impl Write for GameStream {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         match self {
             GameStream::Plain(s) => s.write(buf),
-            GameStream::Tls(s) => s.write(buf),
+            GameStream::Tls(s) => s.stream.write(buf),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
         match self {
             GameStream::Plain(s) => s.flush(),
-            GameStream::Tls(s) => s.flush(),
+            GameStream::Tls(s) => s.stream.flush(),
         }
     }
 }
@@ -163,5 +214,5 @@ pub fn accept_tls(
         .set_read_timeout(None)
         .map_err(|e| format!("clear read_timeout: {e}"))?;
 
-    Ok(GameStream::Tls(tls_stream))
+    Ok(GameStream::Tls(TlsGameStream::new(tls_stream)))
 }

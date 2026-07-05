@@ -23,8 +23,14 @@ use mag_core::traits::class_from_kindred;
 use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::collections::HashSet;
-use std::time::{Duration, Instant};
+use std::io::Write;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use flate2::Compression;
+use flate2::write::GzEncoder;
 use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video::Window};
 
 use mag_core::{
@@ -32,10 +38,11 @@ use mag_core::{
     constants::{TILEX, TILEY},
     ranks,
     skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex},
+    types::api::NetworkTestSummary,
 };
 
 use crate::{
-    cert_trust,
+    account_api, cert_trust,
     constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
     gfx_cache::GraphicsCache,
     network::NetworkRuntime,
@@ -92,6 +99,227 @@ const HUD_FADE_THRESHOLD_X: i32 = 810;
 /// tick boundaries so map state is never rendered from a partially applied group.
 pub(super) const MAX_TICK_GROUPS_PER_FRAME: usize = 32;
 pub(super) const QSIZE: u32 = 8;
+/// Duration of a diagnostics network-test run.
+const NETWORK_TEST_DURATION_SECS: u64 = 10;
+/// Tick cadence used by the diagnostics network-test profile.
+const NETWORK_TEST_SAMPLE_INTERVAL_MS: u64 = 50;
+/// Per-request timeout for diagnostics network-test probes and summary upload.
+const NETWORK_TEST_REQUEST_TIMEOUT_MS: u64 = 750;
+/// Fixed client command packet size on the gameplay TCP protocol.
+const NETWORK_TEST_CLIENT_PAYLOAD_BYTES: usize = 16;
+/// Representative server tick payload sizes cycled during the test.
+const NETWORK_TEST_SERVER_PAYLOAD_BYTES: [u16; 4] = [2, 18, 31, 50];
+/// Maximum raw client-log bytes retained for one diagnostics upload.
+const MAX_CLIENT_LOG_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
+/// Maximum base64-encoded compressed payload accepted by the diagnostics API.
+const MAX_CLIENT_LOG_UPLOAD_B64_BYTES: usize = 12 * 1024 * 1024;
+/// Amount removed from the oldest side of the log when shrinking an upload.
+const CLIENT_LOG_UPLOAD_SHRINK_STEP_BYTES: usize = 256 * 1024;
+
+/// Final computed diagnostics network-test metrics.
+#[derive(Clone, Debug)]
+struct NetworkTestMetrics {
+    duration_ms: u32,
+    total_samples: u32,
+    failed_samples: u32,
+    min_rtt_ms: Option<u32>,
+    avg_rtt_ms: Option<u32>,
+    max_rtt_ms: Option<u32>,
+    jitter_ms: Option<u32>,
+    quality_rating: String,
+}
+
+/// Completion message sent from network-test worker thread to `GameScene`.
+#[derive(Debug)]
+struct NetworkTestRunResult {
+    run_id: String,
+    metrics: NetworkTestMetrics,
+    summary_submit_error: Option<String>,
+    cancelled: bool,
+}
+
+/// Computes a jitter estimate from sequential RTT samples.
+///
+/// # Arguments
+///
+/// * `samples` - Successful probe RTT values in milliseconds.
+///
+/// # Returns
+///
+/// * `Some(jitter_ms)` when at least 2 samples are present.
+/// * `None` when jitter cannot be computed.
+fn estimate_jitter_ms(samples: &[u32]) -> Option<u32> {
+    if samples.len() < 2 {
+        return None;
+    }
+
+    let mut sum_abs_delta: u64 = 0;
+    for pair in samples.windows(2) {
+        let a = i64::from(pair[0]);
+        let b = i64::from(pair[1]);
+        sum_abs_delta += (b - a).unsigned_abs();
+    }
+    let steps = (samples.len() - 1) as u64;
+    Some((sum_abs_delta / steps).min(u64::from(u32::MAX)) as u32)
+}
+
+/// Classifies network quality from latency and failure-rate metrics.
+///
+/// # Arguments
+///
+/// * `avg_rtt_ms` - Mean successful RTT value.
+/// * `failed_samples` - Number of failed probes.
+/// * `total_samples` - Number of attempted probes.
+///
+/// # Returns
+///
+/// * String quality rating (`Good`, `Fair`, `Poor`).
+fn classify_network_quality(
+    avg_rtt_ms: Option<u32>,
+    failed_samples: u32,
+    total_samples: u32,
+) -> String {
+    if total_samples == 0 {
+        return "Poor".to_owned();
+    }
+
+    let failure_ratio = failed_samples as f32 / total_samples as f32;
+    if failure_ratio > 0.20 {
+        return "Poor".to_owned();
+    }
+
+    match avg_rtt_ms.unwrap_or(u32::MAX) {
+        0..=120 => {
+            if failure_ratio > 0.05 {
+                "Fair".to_owned()
+            } else {
+                "Good".to_owned()
+            }
+        }
+        121..=250 => "Fair".to_owned(),
+        _ => "Poor".to_owned(),
+    }
+}
+
+/// Formats an optional millisecond value for player-facing logs.
+///
+/// # Arguments
+///
+/// * `value` - Optional millisecond value.
+///
+/// # Returns
+///
+/// * Value formatted as `<n>ms` or `N/A`.
+fn format_optional_ms(value: Option<u32>) -> String {
+    value
+        .map(|v| format!("{}ms", v))
+        .unwrap_or_else(|| "N/A".to_owned())
+}
+
+/// Returns the base64 output length for `byte_len` input bytes.
+fn base64_encoded_len(byte_len: usize) -> usize {
+    byte_len.div_ceil(3) * 4
+}
+
+/// Returns a newest-log slice aligned to a line boundary when truncation occurs.
+///
+/// # Arguments
+///
+/// * `log_bytes` - Full log-file contents read from disk.
+/// * `retained_bytes` - Target number of newest bytes to retain.
+///
+/// # Returns
+///
+/// * `(slice, slice_len)` where `slice` starts on a log-line boundary when possible.
+fn newest_log_slice_for_upload(log_bytes: &[u8], retained_bytes: usize) -> (&[u8], usize) {
+    let start = log_bytes.len().saturating_sub(retained_bytes);
+    if start == 0 || log_bytes[start - 1] == b'\n' {
+        return (&log_bytes[start..], log_bytes.len() - start);
+    }
+
+    let tail = &log_bytes[start..];
+    if let Some(offset) = tail.iter().position(|byte| *byte == b'\n') {
+        let aligned_start = (start + offset + 1).min(log_bytes.len());
+        (&log_bytes[aligned_start..], log_bytes.len() - aligned_start)
+    } else {
+        (&log_bytes[start..], log_bytes.len() - start)
+    }
+}
+
+/// Compresses the newest slice of the client log so it fits the diagnostics API.
+///
+/// # Arguments
+///
+/// * `log_bytes` - Full log-file contents read from disk.
+///
+/// # Returns
+///
+/// * `Ok((compressed_bytes, retained_plaintext_bytes))` when the upload payload fits.
+/// * `Err(String)` when compression fails or no fitting slice can be produced.
+fn compress_log_for_upload(log_bytes: &[u8]) -> Result<(Vec<u8>, usize), String> {
+    if log_bytes.is_empty() {
+        return Err("log file is empty".to_owned());
+    }
+
+    let mut retained_bytes = log_bytes.len().min(MAX_CLIENT_LOG_UPLOAD_BYTES);
+    while retained_bytes > 0 {
+        let (slice, actual_retained_bytes) = newest_log_slice_for_upload(log_bytes, retained_bytes);
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(slice)
+            .map_err(|err| format!("compression error: {err}"))?;
+        let compressed = encoder
+            .finish()
+            .map_err(|err| format!("compression error: {err}"))?;
+
+        if base64_encoded_len(compressed.len()) <= MAX_CLIENT_LOG_UPLOAD_B64_BYTES {
+            return Ok((compressed, actual_retained_bytes));
+        }
+
+        if retained_bytes <= CLIENT_LOG_UPLOAD_SHRINK_STEP_BYTES {
+            break;
+        }
+        retained_bytes -= CLIENT_LOG_UPLOAD_SHRINK_STEP_BYTES;
+    }
+
+    Err("log file is too large to upload after compression".to_owned())
+}
+
+/// Builds the fixed-width probe payload used to approximate one gameplay client command.
+///
+/// # Arguments
+///
+/// * `sample_index` - Zero-based diagnostics sample index.
+///
+/// # Returns
+///
+/// * A deterministic 16-byte payload.
+fn build_network_test_client_payload(sample_index: u32) -> [u8; NETWORK_TEST_CLIENT_PAYLOAD_BYTES] {
+    let mut payload = [0_u8; NETWORK_TEST_CLIENT_PAYLOAD_BYTES];
+    payload[0] = mag_core::client_commands::ClientCommandType::Ping as u8;
+    payload[1..5].copy_from_slice(&sample_index.to_le_bytes());
+    payload[5..9].copy_from_slice(&sample_index.wrapping_mul(50).to_le_bytes());
+    payload[9..13].copy_from_slice(&(sample_index ^ 0x5a5a_1234).to_le_bytes());
+    payload[13] = 0x11;
+    payload[14] = 0x22;
+    payload[15] = 0x33;
+    payload
+}
+
+/// Returns the representative server payload size for one diagnostics sample.
+///
+/// # Arguments
+///
+/// * `sample_index` - Zero-based diagnostics sample index.
+///
+/// # Returns
+///
+/// * One of the configured representative tick payload sizes.
+fn network_test_server_payload_bytes(sample_index: u32) -> u16 {
+    NETWORK_TEST_SERVER_PAYLOAD_BYTES
+        [sample_index as usize % NETWORK_TEST_SERVER_PAYLOAD_BYTES.len()]
+}
 
 // ---- Layout constants (ported from engine.c / layout.rs) ---- //
 
@@ -469,6 +697,12 @@ pub struct GameScene {
     hud_btn_idle_elapsed: f32,
     /// Current fade factor for right-side HUD buttons (0.0 = invisible, 1.0 = opaque).
     hud_btn_fade_t: f32,
+    /// Result receiver for an active background diagnostics network-test run.
+    network_test_result_rx: Option<Receiver<NetworkTestRunResult>>,
+    /// `true` while a diagnostics network-test worker is active.
+    network_test_running: bool,
+    /// Cancellation flag for the active diagnostics network-test worker.
+    network_test_cancel: Option<Arc<AtomicBool>>,
 }
 
 impl GameScene {
@@ -633,6 +867,9 @@ impl GameScene {
             keyboard,
             hud_btn_idle_elapsed: 0.0,
             hud_btn_fade_t: 1.0,
+            network_test_result_rx: None,
+            network_test_running: false,
+            network_test_cancel: None,
         }
     }
 
@@ -860,6 +1097,16 @@ impl GameScene {
                 WidgetAction::StartProfiler => {
                     self.perf_profiler.start();
                 }
+                WidgetAction::SendClientLogs => {
+                    if self.settings_panel.is_visible() {
+                        self.settings_panel.toggle();
+                    }
+                    self.send_latest_client_log(app_state);
+                }
+                WidgetAction::RunNetworkTest => {
+                    self.settings_panel.close();
+                    self.start_network_test(app_state);
+                }
                 WidgetAction::UpdateKeyBinding { action, binding } => {
                     app_state
                         .settings
@@ -898,6 +1145,369 @@ impl GameScene {
         }
 
         scene_change
+    }
+
+    /// Compresses and uploads the latest client log file to the diagnostics API.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state carrying API/session data.
+    fn send_latest_client_log(&self, app_state: &mut AppState<'_>) {
+        let Some(login_target) = app_state.api.login_target.as_ref() else {
+            log::warn!("Diagnostics upload skipped: no active login target");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(1, "Failed to send logs: no active character session.");
+            }
+            return;
+        };
+        let Some(token) = app_state.api.token.as_deref() else {
+            log::warn!("Diagnostics upload skipped: no auth token");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(1, "Failed to send logs: not authenticated.");
+            }
+            return;
+        };
+        let character_id = login_target.character_id;
+
+        let log_path = preferences::log_file_path();
+        let log_bytes = match std::fs::read(&log_path) {
+            Ok(value) => value,
+            Err(err) => {
+                log::warn!(
+                    "Diagnostics upload failed reading log {}: {err}",
+                    log_path.display()
+                );
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.tlog(
+                        1,
+                        format!("Failed to read log file: {}", log_path.display()),
+                    );
+                }
+                return;
+            }
+        };
+        let (compressed, retained_log_bytes) = match compress_log_for_upload(&log_bytes) {
+            Ok(value) => value,
+            Err(err) => {
+                log::warn!("Diagnostics upload failed preparing log payload: {err}");
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.tlog(1, format!("Failed to send logs: {err}"));
+                }
+                return;
+            }
+        };
+
+        if retained_log_bytes < log_bytes.len() {
+            log::info!(
+                "Diagnostics upload trimming client log from {} to {} bytes",
+                log_bytes.len(),
+                retained_log_bytes
+            );
+        }
+
+        match account_api::upload_client_log(
+            &app_state.api.base_url,
+            token,
+            character_id,
+            &compressed,
+        ) {
+            Ok(saved_file) => {
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    if retained_log_bytes < log_bytes.len() {
+                        ps.tlog(
+                            1,
+                            format!(
+                                "Diagnostics uploaded: {saved_file} (latest {} bytes)",
+                                retained_log_bytes
+                            ),
+                        );
+                    } else {
+                        ps.tlog(1, format!("Diagnostics uploaded: {saved_file}"));
+                    }
+                }
+            }
+            Err(err) => {
+                log::warn!("Diagnostics upload request failed: {err}");
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.tlog(1, format!("Failed to send logs: {err}"));
+                }
+            }
+        }
+    }
+
+    /// Starts a timed asynchronous diagnostics network-test run.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state carrying API/session data.
+    fn start_network_test(&mut self, app_state: &mut AppState<'_>) {
+        if self.network_test_running {
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(1, "Network test already running...");
+            }
+            return;
+        }
+
+        let Some(login_target) = app_state.api.login_target.as_ref() else {
+            log::warn!("Network test skipped: no active login target");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(
+                    1,
+                    "Failed to start network test: no active character session.",
+                );
+            }
+            return;
+        };
+        let Some(token) = app_state.api.token.clone() else {
+            log::warn!("Network test skipped: no auth token");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(1, "Failed to start network test: not authenticated.");
+            }
+            return;
+        };
+
+        let character_id = login_target.character_id;
+        let base_url = app_state.api.base_url.clone();
+        let run_suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let run_id = format!("nettest-{}-{}", character_id, run_suffix);
+
+        if let Some(ps) = app_state.player_state.as_mut() {
+            ps.tlog(
+                1,
+                format!("Network test started ({}s)...", NETWORK_TEST_DURATION_SECS),
+            );
+        }
+
+        let (tx, rx) = mpsc::channel::<NetworkTestRunResult>();
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.network_test_result_rx = Some(rx);
+        self.network_test_running = true;
+        self.network_test_cancel = Some(cancel.clone());
+
+        std::thread::spawn(move || {
+            let test_started = Instant::now();
+            let client = match cert_trust::build_reqwest_client_with_timeout(Duration::from_millis(
+                NETWORK_TEST_REQUEST_TIMEOUT_MS,
+            )) {
+                Ok(value) => value,
+                Err(err) => {
+                    let _ = tx.send(NetworkTestRunResult {
+                        run_id,
+                        metrics: NetworkTestMetrics {
+                            duration_ms: 0,
+                            total_samples: 0,
+                            failed_samples: 0,
+                            min_rtt_ms: None,
+                            avg_rtt_ms: None,
+                            max_rtt_ms: None,
+                            jitter_ms: None,
+                            quality_rating: "Poor".to_owned(),
+                        },
+                        summary_submit_error: Some(err),
+                        cancelled: false,
+                    });
+                    return;
+                }
+            };
+            let mut successful_rtts: Vec<u32> = Vec::new();
+            let mut failed_samples: u32 = 0;
+            let mut sample_index: u32 = 0;
+            let mut next_sample_deadline = test_started;
+
+            while test_started.elapsed() < Duration::from_secs(NETWORK_TEST_DURATION_SECS)
+                && !cancel.load(Ordering::Relaxed)
+            {
+                let sample_started = Instant::now();
+                let client_payload = build_network_test_client_payload(sample_index);
+                let expected_server_payload_bytes = network_test_server_payload_bytes(sample_index);
+                match account_api::run_network_test_probe(
+                    &client,
+                    &base_url,
+                    &token,
+                    character_id,
+                    &run_id,
+                    sample_index,
+                    &client_payload,
+                    expected_server_payload_bytes,
+                ) {
+                    Ok(_) => {
+                        let rtt_ms = sample_started
+                            .elapsed()
+                            .as_millis()
+                            .min(u128::from(u32::MAX)) as u32;
+                        successful_rtts.push(rtt_ms);
+                    }
+                    Err(err) => {
+                        failed_samples = failed_samples.saturating_add(1);
+                        log::warn!(
+                            "Network test probe failed (run_id={}, sample={}): {}",
+                            run_id,
+                            sample_index,
+                            err
+                        );
+                    }
+                }
+                sample_index = sample_index.saturating_add(1);
+
+                next_sample_deadline += Duration::from_millis(NETWORK_TEST_SAMPLE_INTERVAL_MS);
+                let now = Instant::now();
+                if next_sample_deadline > now {
+                    std::thread::sleep(next_sample_deadline - now);
+                }
+            }
+
+            let duration_ms = test_started.elapsed().as_millis().min(u128::from(u32::MAX)) as u32;
+            let total_samples = sample_index;
+            let min_rtt_ms = successful_rtts.iter().copied().min();
+            let max_rtt_ms = successful_rtts.iter().copied().max();
+            let avg_rtt_ms = if successful_rtts.is_empty() {
+                None
+            } else {
+                let sum: u64 = successful_rtts.iter().map(|value| u64::from(*value)).sum();
+                Some((sum / successful_rtts.len() as u64).min(u64::from(u32::MAX)) as u32)
+            };
+            let jitter_ms = estimate_jitter_ms(&successful_rtts);
+            let quality_rating =
+                classify_network_quality(avg_rtt_ms, failed_samples, total_samples);
+
+            let metrics = NetworkTestMetrics {
+                duration_ms,
+                total_samples,
+                failed_samples,
+                min_rtt_ms,
+                avg_rtt_ms,
+                max_rtt_ms,
+                jitter_ms,
+                quality_rating,
+            };
+
+            let cancelled = cancel.load(Ordering::Relaxed);
+            let summary_submit_error = if cancelled || metrics.total_samples == 0 {
+                None
+            } else {
+                account_api::submit_network_test_summary(
+                    &client,
+                    &base_url,
+                    &token,
+                    character_id,
+                    &run_id,
+                    NetworkTestSummary {
+                        duration_ms: metrics.duration_ms,
+                        total_samples: metrics.total_samples,
+                        failed_samples: metrics.failed_samples,
+                        min_rtt_ms: metrics.min_rtt_ms,
+                        avg_rtt_ms: metrics.avg_rtt_ms,
+                        max_rtt_ms: metrics.max_rtt_ms,
+                        jitter_ms: metrics.jitter_ms,
+                        quality_rating: metrics.quality_rating.clone(),
+                    },
+                )
+                .err()
+            };
+
+            let _ = tx.send(NetworkTestRunResult {
+                run_id,
+                metrics,
+                summary_submit_error,
+                cancelled,
+            });
+        });
+    }
+
+    /// Requests cancellation of any active diagnostics network-test worker.
+    fn cancel_network_test(&mut self) {
+        if let Some(cancel) = self.network_test_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.network_test_result_rx = None;
+        self.network_test_running = false;
+    }
+
+    /// Polls for completion of an active diagnostics network-test run.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state carrying player log state.
+    fn poll_network_test_result(&mut self, app_state: &mut AppState<'_>) {
+        if !self.network_test_running {
+            return;
+        }
+
+        let recv_result = match self.network_test_result_rx.as_ref() {
+            Some(rx) => rx.try_recv(),
+            None => {
+                self.network_test_running = false;
+                return;
+            }
+        };
+
+        let result = match recv_result {
+            Ok(value) => value,
+            Err(TryRecvError::Empty) => return,
+            Err(TryRecvError::Disconnected) => {
+                self.network_test_running = false;
+                self.network_test_result_rx = None;
+                self.network_test_cancel = None;
+                log::warn!("Network test worker disconnected before publishing a result");
+                return;
+            }
+        };
+
+        self.network_test_running = false;
+        self.network_test_result_rx = None;
+        self.network_test_cancel = None;
+
+        if result.cancelled {
+            log::info!("Network test cancelled: run_id={}", result.run_id);
+            return;
+        }
+
+        let metrics = result.metrics;
+        log::info!(
+            "Network test completed: run_id={} duration_ms={} total_samples={} failed_samples={} min_rtt_ms={:?} avg_rtt_ms={:?} max_rtt_ms={:?} jitter_ms={:?} quality={}",
+            result.run_id,
+            metrics.duration_ms,
+            metrics.total_samples,
+            metrics.failed_samples,
+            metrics.min_rtt_ms,
+            metrics.avg_rtt_ms,
+            metrics.max_rtt_ms,
+            metrics.jitter_ms,
+            metrics.quality_rating
+        );
+
+        if let Some(ps) = app_state.player_state.as_mut() {
+            ps.tlog(
+                1,
+                format!(
+                    "Network Test: {} | samples={} failed={} duration={}ms",
+                    metrics.quality_rating,
+                    metrics.total_samples,
+                    metrics.failed_samples,
+                    metrics.duration_ms
+                ),
+            );
+            ps.tlog(
+                1,
+                format!(
+                    "Latency: min={} avg={} max={} jitter={}",
+                    format_optional_ms(metrics.min_rtt_ms),
+                    format_optional_ms(metrics.avg_rtt_ms),
+                    format_optional_ms(metrics.max_rtt_ms),
+                    format_optional_ms(metrics.jitter_ms)
+                ),
+            );
+        }
+
+        if let Some(err) = result.summary_submit_error {
+            log::warn!("Network test summary submission failed: {}", err);
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(1, format!("Network test summary upload failed: {err}"));
+            }
+        }
     }
 
     /// Forward any new log messages from `PlayerState` into the `ChatBox`.
@@ -1380,6 +1990,7 @@ impl Scene for GameScene {
         self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
         self.left_stick_x = 0;
         self.left_stick_y = 0;
+        self.cancel_network_test();
 
         app_state.settings.spell_effects_enabled = true;
         app_state.settings.character.key_bindings = KeyBindings::default();
@@ -1421,10 +2032,12 @@ impl Scene for GameScene {
     /// Clean up: persist the active profile and shut down the network connection.
     fn on_exit(&mut self, app_state: &mut AppState<'_>) {
         self.save_active_profile(app_state);
+        self.cancel_network_test();
 
         if let Some(mut net) = app_state.network.take() {
             net.shutdown();
         }
+        app_state.api.login_target = None;
         app_state.player_state = None;
         self.weather.reset();
     }
@@ -1668,6 +2281,7 @@ impl Scene for GameScene {
         self.mode_button.update(dt);
         self.shop_panel.update(dt);
         self.perf_profiler.check_expired();
+        self.poll_network_test_result(app_state);
 
         // --- Right-side HUD button fade ---
         {
@@ -2249,10 +2863,15 @@ impl Scene for GameScene {
 mod tests {
     use super::{
         GameScene, HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X,
-        HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, helper_text_origin,
+        HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, MAX_CLIENT_LOG_UPLOAD_BYTES,
+        NETWORK_TEST_CLIENT_PAYLOAD_BYTES, base64_encoded_len, build_network_test_client_payload,
+        classify_network_quality, compress_log_for_upload, estimate_jitter_ms, helper_text_origin,
+        network_test_server_payload_bytes, newest_log_slice_for_upload,
         normalize_lava_blast_keybind_arrays,
     };
+    use flate2::read::GzDecoder;
     use mag_core::skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex};
+    use std::io::Read;
 
     const SCREEN_W: i32 = 800;
     const SCREEN_H: i32 = 600;
@@ -2342,5 +2961,79 @@ mod tests {
         assert!(changed);
         assert_eq!(primary[0], Some(SK_BLAST));
         assert_eq!(secondary[1], Some(SK_BLAST));
+    }
+
+    #[test]
+    fn jitter_estimate_uses_average_delta() {
+        assert_eq!(estimate_jitter_ms(&[100, 110, 90, 120]), Some(20));
+        assert_eq!(estimate_jitter_ms(&[100]), None);
+    }
+
+    #[test]
+    fn quality_classification_respects_latency_and_failures() {
+        assert_eq!(classify_network_quality(Some(90), 0, 20), "Good");
+        assert_eq!(classify_network_quality(Some(90), 2, 20), "Fair");
+        assert_eq!(classify_network_quality(Some(260), 0, 20), "Poor");
+        assert_eq!(classify_network_quality(Some(90), 5, 20), "Poor");
+    }
+
+    #[test]
+    fn network_test_payload_profile_matches_protocol_shape() {
+        let payload = build_network_test_client_payload(12);
+        assert_eq!(payload.len(), NETWORK_TEST_CLIENT_PAYLOAD_BYTES);
+        assert_eq!(
+            payload[0],
+            mag_core::client_commands::ClientCommandType::Ping as u8
+        );
+        assert_eq!(network_test_server_payload_bytes(0), 2);
+        assert_eq!(network_test_server_payload_bytes(1), 18);
+        assert_eq!(network_test_server_payload_bytes(2), 31);
+        assert_eq!(network_test_server_payload_bytes(3), 50);
+        assert_eq!(network_test_server_payload_bytes(4), 2);
+    }
+
+    #[test]
+    fn compress_log_for_upload_keeps_small_logs_intact() {
+        let log = b"hello\nworld\n".repeat(128);
+
+        let (compressed, retained_bytes) = compress_log_for_upload(&log).unwrap();
+
+        assert_eq!(retained_bytes, log.len());
+        assert!(!compressed.is_empty());
+        assert!(base64_encoded_len(compressed.len()) > 0);
+    }
+
+    #[test]
+    fn compress_log_for_upload_trims_to_upload_window() {
+        let log = vec![b'x'; MAX_CLIENT_LOG_UPLOAD_BYTES + 4096];
+
+        let (_compressed, retained_bytes) = compress_log_for_upload(&log).unwrap();
+
+        assert_eq!(retained_bytes, MAX_CLIENT_LOG_UPLOAD_BYTES);
+    }
+
+    #[test]
+    fn newest_log_slice_for_upload_skips_partial_first_line() {
+        let log = b"first line\nsecond line\nthird line\n";
+
+        let (slice, retained_bytes) = newest_log_slice_for_upload(log, log.len() - 3);
+
+        assert_eq!(slice, b"second line\nthird line\n");
+        assert_eq!(retained_bytes, slice.len());
+    }
+
+    #[test]
+    fn compress_log_for_upload_outputs_complete_first_line_after_trim() {
+        let mut log = b"pan=0\n2026-05-02 full line\n2026-05-02 another line\n".to_vec();
+        log.extend(vec![b'x'; MAX_CLIENT_LOG_UPLOAD_BYTES + 3 - log.len()]);
+
+        let (compressed, _retained_bytes) = compress_log_for_upload(&log).unwrap();
+        let mut decoded = String::new();
+        GzDecoder::new(compressed.as_slice())
+            .read_to_string(&mut decoded)
+            .unwrap();
+
+        assert!(decoded.starts_with("2026-05-02"));
+        assert!(!decoded.starts_with("=0"));
     }
 }
