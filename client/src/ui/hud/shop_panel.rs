@@ -46,6 +46,12 @@ pub const SHOP_PANEL_H: u32 = (PAD_TOP + GRID_ROWS as i32 * CELL + PRICE_AREA_H 
 /// Border color matching the other HUD panels.
 const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
 
+/// Color for slot grid outlines, aligned with inventory/equipment panels.
+const CELL_GRID_COLOR: Color = Color::RGBA(80, 80, 100, 180);
+
+/// Subtle fill for non-interactive tail cells (indices 62 and 63).
+const DISABLED_CELL_FILL: Color = Color::RGBA(20, 20, 30, 120);
+
 /// Golden highlight color for controller-selected item slot.
 const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
 
@@ -562,6 +568,28 @@ impl Widget for ShopPanel {
         let grid_y = self.bounds.y + PAD_TOP;
         let hovered = self.hovered_slot();
 
+        // Draw full 8x8 slot grid to match inventory/equipment readability.
+        // Slots 62 and 63 are visual-only and rendered as disabled cells.
+        ctx.canvas.set_blend_mode(BlendMode::Blend);
+        for i in 0..(GRID_ROWS * GRID_COLS) {
+            let col = (i % GRID_COLS) as i32;
+            let row = (i / GRID_COLS) as i32;
+            let cell_rect = sdl2::rect::Rect::new(
+                grid_x + col * CELL,
+                grid_y + row * CELL,
+                CELL as u32,
+                CELL as u32,
+            );
+
+            if i >= SHOP_SLOTS {
+                ctx.canvas.set_draw_color(DISABLED_CELL_FILL);
+                ctx.canvas.fill_rect(cell_rect)?;
+            }
+
+            ctx.canvas.set_draw_color(CELL_GRID_COLOR);
+            ctx.canvas.draw_rect(cell_rect)?;
+        }
+
         // Draw item grid.
         for i in 0..SHOP_SLOTS {
             let item = data.items[i];
@@ -822,8 +850,13 @@ mod tests {
     #[test]
     fn hovered_slot_clamps_to_max() {
         let mut panel = make_panel();
-        // Place mouse at the very last cell row (row 7, col 7 = index 63 > 61).
-        // This slot should be None since index 63 >= SHOP_SLOTS.
+        // Place mouse on the disabled tail cells in the last row.
+        // Row 7, col 6 = index 62 and row 7, col 7 = index 63. Both are
+        // non-interactive because valid indices stop at 61.
+        panel.mouse_x = 100 + PAD_X + 6 * CELL + 5;
+        panel.mouse_y = 100 + PAD_TOP + 7 * CELL + 5;
+        assert_eq!(panel.hovered_slot(), None);
+
         panel.mouse_x = 100 + PAD_X + 7 * CELL + 5;
         panel.mouse_y = 100 + PAD_TOP + 7 * CELL + 5;
         assert_eq!(panel.hovered_slot(), None);
