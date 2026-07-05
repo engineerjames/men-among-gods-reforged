@@ -346,6 +346,26 @@ impl MapViewerApp {
         Some(entry)
     }
 
+    /// Return whether a sprite id can be added to the map palette.
+    fn can_add_palette_sprite(&mut self, ctx: &egui::Context, sprite: u16) -> Result<(), String> {
+        if !sprite_is_in_allowed_palette_ranges(sprite) {
+            return Err(format!(
+                "Sprite {} is outside allowed map palette ranges",
+                sprite
+            ));
+        }
+
+        let Some(cache) = self.graphics_zip.as_mut() else {
+            return Err("No graphics zip loaded".to_owned());
+        };
+
+        match cache.texture_for(ctx, sprite as usize) {
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => Err(format!("Sprite {} is not present in graphics zip", sprite)),
+            Err(e) => Err(format!("Sprite {} could not be loaded: {}", sprite, e)),
+        }
+    }
+
     /// Apply a palette entry to one map tile and mark it dirty when changed.
     fn apply_palette_to_tile(&mut self, x: usize, y: usize, entry: PaletteEntry) -> bool {
         match entry.kind {
@@ -852,9 +872,16 @@ impl MapViewerApp {
                                 }
 
                                 if ui.small_button("Add").clicked() && self.draft_sprite != 0 {
-                                    self.palette.push(PaletteEntry {
-                                        kind: PaletteEntryKind::Sprite(self.draft_sprite),
-                                    });
+                                    match self.can_add_palette_sprite(ctx, self.draft_sprite) {
+                                        Ok(()) => {
+                                            self.palette.push(PaletteEntry {
+                                                kind: PaletteEntryKind::Sprite(self.draft_sprite),
+                                            });
+                                        }
+                                        Err(e) => {
+                                            self.save_status = Some(e);
+                                        }
+                                    }
                                 }
                             });
 
@@ -1022,6 +1049,22 @@ fn tile_index(x: usize, y: usize) -> usize {
 const MIN_ZOOM: f32 = 0.25;
 const MAX_ZOOM: f32 = 4.0;
 const ZOOM_STEP: f32 = 1.15;
+
+/// Allowed sprite-id ranges for map painting palette entries.
+///
+/// Keep this list curated so operators do not have to sift through unrelated
+/// sprite ids from the full graphics archive.
+const PALETTE_ALLOWED_SPRITE_RANGES: &[(u16, u16)] = &[(1, u16::MAX)];
+
+#[inline]
+fn sprite_is_in_allowed_palette_ranges(sprite: u16) -> bool {
+    if sprite == 0 {
+        return false;
+    }
+    PALETTE_ALLOWED_SPRITE_RANGES
+        .iter()
+        .any(|(start, end)| sprite >= *start && sprite <= *end)
+}
 
 #[inline]
 /// Convert map-space pixels into screen-space coordinates.
