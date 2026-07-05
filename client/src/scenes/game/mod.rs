@@ -2043,6 +2043,7 @@ impl Scene for GameScene {
         if let Some(mut net) = app_state.network.take() {
             net.shutdown();
         }
+        app_state.api.login_target = None;
         app_state.player_state = None;
         self.weather.reset();
     }
