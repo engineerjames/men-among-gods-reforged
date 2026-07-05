@@ -613,6 +613,12 @@ impl GameScene {
                     if let Some(net) = app_state.network.as_ref() {
                         self.play_click_sound(app_state);
                         net.send(ClientCommand::new_shop(shop_nr, action));
+
+                        // Depot actions do not always push an immediate full refresh,
+                        // so request one explicitly to keep the open panel in sync.
+                        if ((shop_nr as u16) & 0x8000) != 0 {
+                            net.send(ClientCommand::new_look(u32::from(shop_nr as u16)));
+                        }
                     }
                 }
                 WidgetAction::CloseShop => {

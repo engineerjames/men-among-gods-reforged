@@ -206,29 +206,51 @@ impl ShopPanel {
     // ── Hit-testing helpers ─────────────────────────────────────────────
 
     /// Returns the context-sensitive helper text label for the item slot
-    /// currently under the cursor, or `None` if no filled slot is hovered.
+    /// currently under the cursor.
     ///
-    /// Returns `"TAKE"` for grave/corpse overlays and `"BUY"` for merchant
-    /// shops. Used by the game scene's helper-text renderer so that the
-    /// cursor label updates correctly while the panel is open.
+    /// For depot overlays, returns `"PLACE"` while carrying an item, or
+    /// `"REMOVE"` when hovering a filled depot slot while empty-handed.
+    /// For grave overlays, returns `"TAKE"` on filled slots. For merchant
+    /// overlays, returns `"BUY"` on filled slots.
     ///
     /// # Arguments
     ///
+    /// * `shop_nr` - Shop/depot identifier used by the panel actions.
     /// * `is_grave` - `true` when this overlay represents a corpse/grave.
+    /// * `citem` - Carried item id (`> 0` means the player is carrying an item).
     ///
     /// # Returns
     ///
-    /// * `Some("TAKE")` or `Some("BUY")` when a non-empty slot is hovered.
-    /// * `None` when the cursor is over an empty slot or outside the grid.
-    pub fn hovered_item_label(&self, is_grave: bool) -> Option<&'static str> {
+    /// * `Some("PLACE")`, `Some("REMOVE")`, `Some("TAKE")`, or `Some("BUY")`
+    ///   when the corresponding action is available under the cursor.
+    /// * `None` when no context action applies.
+    pub fn hovered_item_label(
+        &self,
+        shop_nr: u16,
+        is_grave: bool,
+        citem: i32,
+    ) -> Option<&'static str> {
         if !self.is_visible() {
             return None;
         }
         let data = self.data.as_ref()?;
         let idx = self.hovered_slot()?;
+
+        let is_depot = (shop_nr & SHOP_NR_DEPOT_FLAG) != 0;
+        if is_depot {
+            if citem > 0 {
+                return Some("PLACE");
+            }
+            if data.items[idx] != 0 {
+                return Some("REMOVE");
+            }
+            return None;
+        }
+
         if data.items[idx] == 0 {
             return None;
         }
+
         Some(if is_grave { "TAKE" } else { "BUY" })
     }
 
@@ -594,12 +616,15 @@ impl Widget for ShopPanel {
             }
         }
 
-        // Sell price label (shown when hovering a slot that has a price).
+        let is_depot = (data.shop_nr & SHOP_NR_DEPOT_FLAG) != 0;
+
+        // Slot price label (shown when hovering a slot that has a price).
         let price_y = grid_y + GRID_ROWS as i32 * CELL + 2;
         if let Some(idx) = hovered {
             let price = data.prices[idx];
             if price != 0 {
-                let sell_text = format!("Sell: {}G {}S", price / 100, price % 100);
+                let slot_action_text = if is_depot { "Remove" } else { "Sell" };
+                let sell_text = format!("{slot_action_text}: {}G {}S", price / 100, price % 100);
                 font_cache::draw_text(
                     ctx.canvas,
                     ctx.gfx,
@@ -612,9 +637,14 @@ impl Widget for ShopPanel {
             }
         }
 
-        // Buy price label (shown when carrying an item the shop will accept).
+        // Carried-item price label (shown when carrying an item the shop/depot will accept).
         if data.citem > 0 && data.pl_price > 0 {
-            let buy_text = format!("Buy:  {}G {}S", data.pl_price / 100, data.pl_price % 100);
+            let carry_action_text = if is_depot { "Place" } else { "Buy" };
+            let buy_text = format!(
+                "{carry_action_text}:  {}G {}S",
+                data.pl_price / 100,
+                data.pl_price % 100
+            );
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,

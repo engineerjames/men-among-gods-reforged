@@ -423,8 +423,12 @@ impl GameScene {
     /// An action label string such as `"WALK"`, `"ATTACK"`, etc., or `None`.
     pub(super) fn resolve_helper_text(&self, ps: &PlayerState) -> Option<&'static str> {
         if ps.should_show_shop() {
-            // Show BUY / TAKE when the cursor hovers over a filled item slot.
-            return self.shop_panel.hovered_item_label(ps.shop_is_grave());
+            // Show context action text while the shared shop/depot/grave panel is open.
+            return self.shop_panel.hovered_item_label(
+                ps.shop_target().nr(),
+                ps.shop_is_grave(),
+                ps.character_info().citem,
+            );
         }
         if self.inventory_panel.is_visible() && self.inventory_panel.is_cursor_over_panel() {
             return self
