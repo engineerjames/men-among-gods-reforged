@@ -79,32 +79,37 @@ impl God {
         backup_x: usize,
         backup_y: usize,
     ) -> bool {
+        let x_m1 = x.saturating_sub(1);
+        let x_m2 = x.saturating_sub(2);
+        let y_m1 = y.saturating_sub(1);
+        let y_m2 = y.saturating_sub(2);
+
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
-            (x - 1, y),
+            (x_m1, y),
             (x, y + 1),
-            (x, y - 1),
+            (x, y_m1),
             (x + 1, y + 1),
-            (x + 1, y - 1),
-            (x - 1, y + 1),
-            (x - 1, y - 1),
-            (x + 2, y - 2),
-            (x + 2, y - 1),
+            (x + 1, y_m1),
+            (x_m1, y + 1),
+            (x_m1, y_m1),
+            (x + 2, y_m2),
+            (x + 2, y_m1),
             (x + 2, y),
             (x + 2, y + 1),
             (x + 2, y + 2),
-            (x - 2, y - 2),
-            (x - 2, y - 1),
-            (x - 2, y),
-            (x - 2, y + 1),
-            (x - 2, y + 2),
-            (x - 1, y + 2),
+            (x_m2, y_m2),
+            (x_m2, y_m1),
+            (x_m2, y),
+            (x_m2, y + 1),
+            (x_m2, y + 2),
+            (x_m1, y + 2),
             (x, y + 2),
             (x + 1, y + 2),
-            (x - 1, y - 2),
-            (x, y - 2),
-            (x + 1, y - 2),
+            (x_m1, y_m2),
+            (x, y_m2),
+            (x + 1, y_m2),
         ];
 
         for (try_x, try_y) in positions_to_try.iter() {
@@ -329,8 +334,13 @@ impl God {
         character.goto_x = x as u16;
         character.goto_y = y as u16; // TODO: This was missing before... should this be here?
 
-        let positions_to_try: [(usize, usize); 5] =
-            [(x, y), (x + 3, y), (x, y + 3), (x - 3, y), (x, y - 3)];
+        let positions_to_try: [(usize, usize); 5] = [
+            (x, y),
+            (x + 3, y),
+            (x, y + 3),
+            (x.saturating_sub(3), y),
+            (x, y.saturating_sub(3)),
+        ];
 
         for (try_x, try_y) in positions_to_try.iter() {
             if Self::drop_char_fuzzy_large(gs, character_id, *try_x, *try_y, x, y) {
@@ -354,32 +364,37 @@ impl God {
     ///
     /// * `true` when `drop_char_fuzzy` succeeds or the condition is met, otherwise `false`.
     pub fn drop_char_fuzzy(gs: &mut GameState, character_id: usize, x: usize, y: usize) -> bool {
+        let x_m1 = x.saturating_sub(1);
+        let x_m2 = x.saturating_sub(2);
+        let y_m1 = y.saturating_sub(1);
+        let y_m2 = y.saturating_sub(2);
+
         let positions_to_try: [(usize, usize); 25] = [
             (x, y),
             (x + 1, y),
-            (x - 1, y),
+            (x_m1, y),
             (x, y + 1),
-            (x, y - 1),
+            (x, y_m1),
             (x + 1, y + 1),
-            (x + 1, y - 1),
-            (x - 1, y + 1),
-            (x - 1, y - 1),
-            (x + 2, y - 2),
-            (x + 2, y - 1),
+            (x + 1, y_m1),
+            (x_m1, y + 1),
+            (x_m1, y_m1),
+            (x + 2, y_m2),
+            (x + 2, y_m1),
             (x + 2, y),
             (x + 2, y + 1),
             (x + 2, y + 2),
-            (x - 2, y - 2),
-            (x - 2, y - 1),
-            (x - 2, y),
-            (x - 2, y + 1),
-            (x - 2, y + 2),
-            (x - 1, y + 2),
+            (x_m2, y_m2),
+            (x_m2, y_m1),
+            (x_m2, y),
+            (x_m2, y + 1),
+            (x_m2, y + 2),
+            (x_m1, y + 2),
             (x, y + 2),
             (x + 1, y + 2),
-            (x - 1, y - 2),
-            (x, y - 2),
-            (x + 1, y - 2),
+            (x_m1, y_m2),
+            (x, y_m2),
+            (x + 1, y_m2),
         ];
 
         for (try_x, try_y) in positions_to_try.iter() {
@@ -1069,6 +1084,20 @@ impl God {
 
         let character = &gs.characters[cn];
         let (current_x, current_y) = (character.x as usize, character.y as usize);
+        let max_x = i64::from(core::constants::SERVER_MAPX - 2);
+        let max_y = i64::from(core::constants::SERVER_MAPY - 2);
+
+        let parse_len = |axis: &str| -> Option<i64> {
+            cy.parse::<i64>().map(Some).unwrap_or_else(|_| {
+                log::error!(
+                    "Failed to parse {} coordinate '{}' in goto command for character {}",
+                    axis,
+                    cy,
+                    cn
+                );
+                None
+            })
+        };
 
         // North - decrease x
         // South - increase x
@@ -1076,58 +1105,24 @@ impl God {
         // West  - decrease y
         let (target_x, target_y) = match cx.to_lowercase().as_str() {
             "n" => {
-                if let Ok(val) = cy.parse::<i32>() {
-                    let new_x = (current_x as i32 - val).max(1) as usize;
-                    (new_x, current_y)
-                } else {
-                    log::error!(
-                        "Failed to parse X coordinate '{}' in goto command for character {}",
-                        cy,
-                        cn
-                    );
-                    return None;
-                }
+                let val = parse_len("X")?;
+                let new_x = ((current_x as i64) - val).clamp(1, max_x) as usize;
+                (new_x, current_y)
             }
             "s" => {
-                if let Ok(val) = cy.parse::<i32>() {
-                    let new_x =
-                        (current_x as i32 + val).min(core::constants::SERVER_MAPX - 2) as usize;
-                    (new_x, current_y)
-                } else {
-                    log::error!(
-                        "Failed to parse X coordinate '{}' in goto command for character {}",
-                        cy,
-                        cn
-                    );
-                    return None;
-                }
+                let val = parse_len("X")?;
+                let new_x = ((current_x as i64) + val).clamp(1, max_x) as usize;
+                (new_x, current_y)
             }
             "e" => {
-                if let Ok(val) = cy.parse::<i32>() {
-                    let new_y =
-                        (current_y as i32 + val).min(core::constants::SERVER_MAPY - 2) as usize;
-                    (current_x, new_y)
-                } else {
-                    log::error!(
-                        "Failed to parse Y coordinate '{}' in goto command for character {}",
-                        cy,
-                        cn
-                    );
-                    return None;
-                }
+                let val = parse_len("Y")?;
+                let new_y = ((current_y as i64) + val).clamp(1, max_y) as usize;
+                (current_x, new_y)
             }
             "w" => {
-                if let Ok(val) = cy.parse::<i32>() {
-                    let new_y = (current_y as i32 - val).max(1) as usize;
-                    (current_x, new_y)
-                } else {
-                    log::error!(
-                        "Failed to parse Y coordinate '{}' in goto command for character {}",
-                        cy,
-                        cn
-                    );
-                    return None;
-                }
+                let val = parse_len("Y")?;
+                let new_y = ((current_y as i64) - val).clamp(1, max_y) as usize;
+                (current_x, new_y)
             }
             _ => {
                 log::error!(
@@ -5111,5 +5106,76 @@ impl God {
                 targets.len()
             ),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::God;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+
+    #[test]
+    fn goto_cardinal_north_clamps_to_one() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 90;
+            gs.characters[cn].y = 110;
+
+            let target = God::goto_cardinal_length(gs, cn, "n", "100");
+            assert_eq!(target, Some((1, 110)));
+        });
+    }
+
+    #[test]
+    fn goto_cardinal_south_clamps_to_map_max() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 90;
+            gs.characters[cn].y = 110;
+
+            let target = God::goto_cardinal_length(gs, cn, "s", "2147483647");
+            assert_eq!(
+                target,
+                Some(((core::constants::SERVER_MAPX - 2) as usize, 110))
+            );
+        });
+    }
+
+    #[test]
+    fn goto_cardinal_east_clamps_to_map_max() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 90;
+            gs.characters[cn].y = 110;
+
+            let target = God::goto_cardinal_length(gs, cn, "e", "2147483647");
+            assert_eq!(
+                target,
+                Some((90, (core::constants::SERVER_MAPY - 2) as usize))
+            );
+        });
+    }
+
+    #[test]
+    fn goto_cardinal_west_clamps_to_one() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 90;
+            gs.characters[cn].y = 110;
+
+            let target = God::goto_cardinal_length(gs, cn, "w", "2147483647");
+            assert_eq!(target, Some((90, 1)));
+        });
+    }
+
+    #[test]
+    fn transfer_char_does_not_panic_near_map_edge() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 2;
+            gs.characters[cn].y = 100;
+
+            let _ = God::transfer_char(gs, cn, 1, 100);
+        });
     }
 }
