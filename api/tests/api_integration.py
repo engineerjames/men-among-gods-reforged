@@ -8,6 +8,8 @@ Run:
 from __future__ import annotations
 
 import argparse
+import base64
+import gzip
 import json
 import ssl
 import sys
@@ -884,6 +886,16 @@ def create_character_for_ticket(
     return character_id
 
 
+def encode_gzip_base64(text: str) -> str:
+    """Return gzip-compressed UTF-8 bytes encoded in base64.
+
+    :param text: Raw string content to encode.
+    :returns: Base64 string for a gzip payload.
+    """
+    compressed = gzip.compress(text.encode("utf-8"))
+    return base64.b64encode(compressed).decode("ascii")
+
+
 def test_create_game_login_ticket_ok(base_url: str) -> None:
     """Test minting a one-time game login ticket for an owned character.
 
@@ -960,6 +972,47 @@ def test_create_game_login_ticket_rejects_unsupported_version(base_url: str) -> 
             headers={"Authorization": f"Bearer {token}"},
         )
         assert_status(400, status, f"create game login ticket {label} status")
+
+
+def test_diag_upload_client_log_ok(base_url: str) -> None:
+    """Test that ``POST /diag/client-log`` accepts a valid compressed payload.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If diagnostics upload fails.
+    :returns: None.
+    """
+    token, _ = create_account_and_token(base_url, f"diagok{unique_suffix()}")
+    character_id = create_character_for_ticket(base_url, token)
+
+    status, body = request_json(
+        "POST",
+        f"{base_url}/diag/client-log",
+        payload={
+            "character_id": character_id,
+            "compressed_log_b64": encode_gzip_base64("diag line one\ndiag line two\n"),
+        },
+    )
+    assert_status(200, status, "diag upload status")
+
+    data = json.loads(body or "{}")
+    saved_file = data.get("saved_file")
+    if not isinstance(saved_file, str) or not saved_file.endswith(".log"):
+        raise AssertionError("diag upload response missing saved_file")
+
+
+def test_diag_upload_client_log_rejects_bad_base64(base_url: str) -> None:
+    """Test that ``POST /diag/client-log`` rejects malformed base64 input.
+
+    :param base_url: Base URL for the API.
+    :raises AssertionError: If malformed payload is accepted.
+    :returns: None.
+    """
+    status, _ = request_json(
+        "POST",
+        f"{base_url}/diag/client-log",
+        payload={"character_id": 1, "compressed_log_b64": "not-valid-base64!!!"},
+    )
+    assert_status(400, status, "diag upload malformed base64 status")
 
 
 def test_malformed_json(base_url: str) -> None:
@@ -1070,6 +1123,8 @@ def main() -> None:
         test_create_game_login_ticket_ok,
         test_create_game_login_ticket_wrong_owner,
         test_create_game_login_ticket_rejects_unsupported_version,
+        test_diag_upload_client_log_ok,
+        test_diag_upload_client_log_rejects_bad_base64,
     ]
 
     failed = 0

@@ -2,6 +2,8 @@ use std::time::Duration;
 
 use argon2::password_hash::SaltString;
 use argon2::{Argon2, PasswordHasher};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use mag_core::traits::{Class, Sex};
 use reqwest::StatusCode;
 
@@ -11,8 +13,10 @@ pub use mag_core::types::api::CharacterSummary;
 use mag_core::types::api::{
     CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
-    LoginRequest, LoginResponse, ResetPasswordConfirm, ResetPasswordConfirmResponse,
-    ResetPasswordRequest, ResetPasswordRequestResponse,
+    LoginRequest, LoginResponse, NetworkTestProbeRequest, NetworkTestProbeResponse,
+    NetworkTestSummary, NetworkTestSummaryRequest, NetworkTestSummaryResponse,
+    ResetPasswordConfirm, ResetPasswordConfirmResponse, ResetPasswordRequest,
+    ResetPasswordRequestResponse, UploadClientLogRequest, UploadClientLogResponse,
 };
 
 /// Hashes a password into Argon2 PHC format using a deterministic salt.
@@ -375,6 +379,282 @@ pub fn create_game_login_ticket(
         .ok()
         .and_then(|b| b.error);
     Err(api_error.unwrap_or_else(|| format!("{} ({})", fallback, status.as_u16())))
+}
+
+/// Uploads a gzip-compressed client log to the diagnostics API endpoint.
+///
+/// # Arguments
+///
+/// * `base_url` - API base URL used by this function.
+/// * `character_id` - Character id associated with the uploaded log.
+/// * `compressed_log` - Gzip-compressed log bytes.
+///
+/// # Returns
+///
+/// * `Ok(saved_file_name)` when upload succeeds.
+/// * `Err(String)` when the request fails.
+pub fn upload_client_log(
+    base_url: &str,
+    token: &str,
+    character_id: u64,
+    compressed_log: &[u8],
+) -> Result<String, String> {
+    if compressed_log.is_empty() {
+        return Err("Diagnostics upload failed: compressed payload is empty".to_owned());
+    }
+
+    let client = cert_trust::build_reqwest_client()?;
+    let url = format!("{}/diag/client-log", base_url.trim_end_matches('/'));
+    let compressed_log_b64 = STANDARD.encode(compressed_log);
+
+    let mut last_status = None;
+    let mut last_error: Option<String> = None;
+    for attempt in 0..=2u32 {
+        let resp = client
+            .post(&url)
+            .bearer_auth(token)
+            .json(&UploadClientLogRequest {
+                character_id,
+                compressed_log_b64: compressed_log_b64.clone(),
+            })
+            .send()
+            .map_err(|err| format!("Diagnostics upload request failed: {err}"))?;
+
+        let status = resp.status();
+        last_status = Some(status);
+
+        let body = resp.json::<UploadClientLogResponse>().ok();
+        if status.is_success() {
+            if let Some(saved_file) = body
+                .as_ref()
+                .and_then(|value| value.saved_file.as_deref())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+            {
+                return Ok(saved_file.to_owned());
+            }
+            return Err("Diagnostics upload failed: missing saved_file in response".to_owned());
+        }
+
+        last_error = body
+            .as_ref()
+            .and_then(|value| value.error.as_deref())
+            .map(ToOwned::to_owned);
+
+        if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
+            std::thread::sleep(Duration::from_millis(1100));
+            continue;
+        }
+
+        break;
+    }
+
+    let status = last_status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    if let Some(error) = last_error
+        .map(|e| e.trim().to_owned())
+        .filter(|e| !e.is_empty())
+    {
+        return Err(error);
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Diagnostics upload rejected",
+        StatusCode::PAYLOAD_TOO_LARGE => "Diagnostics upload payload too large",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
+        StatusCode::TOO_MANY_REQUESTS => "Diagnostics upload rate limited",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Diagnostics upload failed",
+    };
+    Err(format!("{message} ({})", status.as_u16()))
+}
+
+/// Sends one diagnostics network-test probe request and returns round-trip timing.
+///
+/// # Arguments
+///
+/// * `client` - Pre-built HTTP client reused across the entire test run.
+/// * `base_url` - API base URL used by this function.
+/// * `token` - JWT bearer token for the authenticated session.
+/// * `character_id` - Character id associated with the test run.
+/// * `run_id` - Client-generated run correlation id.
+/// * `sample_index` - Zero-based sample index in the current run.
+/// * `client_payload` - Probe payload bytes approximating one client command packet.
+/// * `requested_server_payload_bytes` - Response payload size requested from the server.
+///
+/// # Returns
+///
+/// * `Ok((server_unix_ms, response_payload_bytes))` when probe succeeds.
+/// * `Err(String)` when request or server validation fails.
+#[allow(clippy::too_many_arguments)]
+pub fn run_network_test_probe(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    token: &str,
+    character_id: u64,
+    run_id: &str,
+    sample_index: u32,
+    client_payload: &[u8],
+    requested_server_payload_bytes: u16,
+) -> Result<(u64, Vec<u8>), String> {
+    let url = format!("{}/diag/network-test/probe", base_url.trim_end_matches('/'));
+
+    let mut last_status = None;
+    let mut last_error: Option<String> = None;
+    for attempt in 0..=2u32 {
+        let resp = client
+            .post(&url)
+            .bearer_auth(token)
+            .json(&NetworkTestProbeRequest {
+                character_id,
+                run_id: run_id.to_owned(),
+                sample_index,
+                client_payload_b64: STANDARD.encode(client_payload),
+                requested_server_payload_bytes,
+            })
+            .send()
+            .map_err(|err| format!("Network test probe request failed: {err}"))?;
+
+        let status = resp.status();
+        last_status = Some(status);
+        let body = resp.json::<NetworkTestProbeResponse>().ok();
+
+        if status.is_success() {
+            if let Some(server_unix_ms) = body.as_ref().and_then(|value| value.server_unix_ms) {
+                let payload_b64 = body
+                    .as_ref()
+                    .and_then(|value| value.server_payload_b64.as_deref())
+                    .ok_or_else(|| {
+                        "Network test probe failed: missing server_payload_b64 in response"
+                            .to_owned()
+                    })?;
+                let response_payload = STANDARD.decode(payload_b64.as_bytes()).map_err(|err| {
+                    format!("Network test probe failed decoding server payload: {err}")
+                })?;
+                if response_payload.len() != usize::from(requested_server_payload_bytes) {
+                    return Err(format!(
+                        "Network test probe failed: expected {} response bytes, got {}",
+                        requested_server_payload_bytes,
+                        response_payload.len()
+                    ));
+                }
+                return Ok((server_unix_ms, response_payload));
+            }
+            return Err("Network test probe failed: missing server_unix_ms in response".to_owned());
+        }
+
+        last_error = body
+            .as_ref()
+            .and_then(|value| value.error.as_deref())
+            .map(ToOwned::to_owned);
+
+        if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
+            std::thread::sleep(Duration::from_millis(1100));
+            continue;
+        }
+
+        break;
+    }
+
+    let status = last_status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    if let Some(error) = last_error
+        .map(|e| e.trim().to_owned())
+        .filter(|e| !e.is_empty())
+    {
+        return Err(error);
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Network test probe rejected",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
+        StatusCode::TOO_MANY_REQUESTS => "Network test probe rate limited",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Network test probe failed",
+    };
+    Err(format!("{message} ({})", status.as_u16()))
+}
+
+/// Sends final diagnostics network-test summary metrics to the API.
+///
+/// # Arguments
+///
+/// * `client` - Pre-built HTTP client reused across the entire test run.
+/// * `base_url` - API base URL used by this function.
+/// * `token` - JWT bearer token for the authenticated session.
+/// * `character_id` - Character id associated with the test run.
+/// * `run_id` - Client-generated run correlation id.
+/// * `summary` - Aggregated network-test metrics.
+///
+/// # Returns
+///
+/// * `Ok(())` when submission succeeds.
+/// * `Err(String)` when request or server validation fails.
+pub fn submit_network_test_summary(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    token: &str,
+    character_id: u64,
+    run_id: &str,
+    summary: NetworkTestSummary,
+) -> Result<(), String> {
+    let url = format!(
+        "{}/diag/network-test/summary",
+        base_url.trim_end_matches('/')
+    );
+
+    let mut last_status = None;
+    let mut last_error: Option<String> = None;
+    for attempt in 0..=2u32 {
+        let resp = client
+            .post(&url)
+            .bearer_auth(token)
+            .json(&NetworkTestSummaryRequest {
+                character_id,
+                run_id: run_id.to_owned(),
+                summary: summary.clone(),
+            })
+            .send()
+            .map_err(|err| format!("Network test summary request failed: {err}"))?;
+
+        let status = resp.status();
+        last_status = Some(status);
+        let body = resp.json::<NetworkTestSummaryResponse>().ok();
+
+        if status.is_success() {
+            if body.as_ref().map(|value| value.accepted).unwrap_or(false) {
+                return Ok(());
+            }
+            return Err("Network test summary failed: API did not accept payload".to_owned());
+        }
+
+        last_error = body
+            .as_ref()
+            .and_then(|value| value.error.as_deref())
+            .map(ToOwned::to_owned);
+
+        if status == StatusCode::TOO_MANY_REQUESTS && attempt < 2 {
+            std::thread::sleep(Duration::from_millis(1100));
+            continue;
+        }
+
+        break;
+    }
+
+    let status = last_status.unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    if let Some(error) = last_error
+        .map(|e| e.trim().to_owned())
+        .filter(|e| !e.is_empty())
+    {
+        return Err(error);
+    }
+
+    let message = match status {
+        StatusCode::BAD_REQUEST => "Network test summary rejected",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
+        StatusCode::TOO_MANY_REQUESTS => "Network test summary rate limited",
+        StatusCode::INTERNAL_SERVER_ERROR => "Server error",
+        _ => "Network test summary failed",
+    };
+    Err(format!("{message} ({})", status.as_u16()))
 }
 
 /// Requests a password reset code to be sent to the account's email.

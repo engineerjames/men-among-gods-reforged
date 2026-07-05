@@ -252,8 +252,10 @@ dependencies = [
  "argon2",
  "axum",
  "axum-server",
+ "base64",
  "bincode",
  "core",
+ "flate2",
  "jsonwebtoken",
  "lazy_static",
  "lettre",
@@ -1051,6 +1053,7 @@ name = "client"
 version = "1.4.0"
 dependencies = [
  "argon2",
+ "base64",
  "core",
  "embed-resource",
  "flate2",

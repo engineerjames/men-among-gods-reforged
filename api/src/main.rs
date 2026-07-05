@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod auth_extractor;
+pub mod diag;
 pub mod email;
 pub mod helpers;
 pub mod password;
@@ -213,6 +214,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // build our application with a route
     let public_router = Router::new()
+        // Diagnostics routes
+        .nest("/diag", diag::router())
         // Public routes
         .route("/login", post(routes::login))
         .route("/accounts", post(routes::create_account))

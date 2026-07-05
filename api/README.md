@@ -223,6 +223,25 @@ character name exactly, and must not contain double quotes. Updating a linked
 character's description is rejected when the live game character has the
 `NoDesc` flag set.
 
+## Diagnostics network test endpoints
+
+The diagnostics route group includes endpoints used by the in-game Settings ->
+Diagnostics "Network Test" action:
+
+- `POST /diag/network-test/probe`
+    - Request body: `NetworkTestProbeRequest`
+    - Response body: `NetworkTestProbeResponse`
+    - Purpose: lightweight probe target for client RTT sampling over a timed run.
+
+- `POST /diag/network-test/summary`
+    - Request body: `NetworkTestSummaryRequest`
+    - Response body: `NetworkTestSummaryResponse`
+    - Purpose: submit and log aggregate run metrics (duration, sample counts,
+        latency min/avg/max, jitter estimate, quality rating).
+
+Both endpoints are mounted under the existing `/diag` route group and are
+subject to the public per-IP rate limit middleware.
+
 # Integration with the game server and client applications
 The authentication service is designed to be integrated with both the game server and client applications. Over time this is hoped to be a tighter integration.
 

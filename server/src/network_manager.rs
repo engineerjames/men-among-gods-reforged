@@ -65,7 +65,7 @@ pub fn xsend(gs: &mut GameState, player_id: usize, data: &[u8], length: usize) {
         );
         let cn = gs.players[player_id].usnr;
         player::connection::plr_logout(gs, cn, player_id, LogoutReason::Unknown);
-        if let Some(s) = gs.players[player_id].sock.take() {
+        if let Some(mut s) = gs.players[player_id].sock.take() {
             let _ = s.shutdown(Shutdown::Both);
         }
         gs.players[player_id].ltick = 0;
@@ -146,7 +146,7 @@ pub fn csend(gs: &mut GameState, player_id: usize, data: &[u8], length: u8) {
             log::warn!("Connection too slow for player {}, terminating", player_id);
             let cn = gs.players[player_id].usnr;
             player::connection::plr_logout(gs, cn, player_id, LogoutReason::ClientTooSlow);
-            if let Some(s) = gs.players[player_id].sock.take() {
+            if let Some(mut s) = gs.players[player_id].sock.take() {
                 let _ = s.shutdown(Shutdown::Both);
             }
             gs.players[player_id].ltick = 0;

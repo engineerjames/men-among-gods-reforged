@@ -7,7 +7,7 @@ use core::stat_buffer::StatisticsBuffer;
 use core::types::Map;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::net::{Shutdown, TcpListener};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -2124,6 +2124,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
+                    let _ = sock.shutdown(Shutdown::Both);
                     player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
                 Ok(len) => {
@@ -2140,6 +2141,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
+                    let _ = sock.shutdown(Shutdown::Both);
                     player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
             }
@@ -2191,6 +2193,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
+                    let _ = sock.shutdown(Shutdown::Both);
                     player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
                 Ok(ret) => {
@@ -2210,6 +2213,7 @@ impl Server {
                     gs.players[player_idx].ltick = 0;
                     gs.players[player_idx].rtick = 0;
                     gs.players[player_idx].zs = None;
+                    let _ = sock.shutdown(Shutdown::Both);
                     player::connection::plr_logout(gs, cn, player_idx, LogoutReason::Unknown);
                 }
             }
