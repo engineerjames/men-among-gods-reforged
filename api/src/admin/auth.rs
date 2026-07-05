@@ -4,7 +4,6 @@
 //! 1. Rejects requests from IPs currently in the failed-auth lockout window.
 //! 2. Validates the `Authorization: Bearer <token>` header against the
 //!    operator-supplied token using a constant-time compare.
-//! 3. Throttles authenticated requests at a fixed per-IP rate.
 //!
 //! All state lives in process memory and resets on restart.
 
@@ -24,9 +23,6 @@ pub const ADMIN_TOKEN_ENV: &str = "MAG_ADMIN_API_TOKEN";
 
 /// Minimum acceptable token length, in bytes.
 const MIN_TOKEN_LEN: usize = 32;
-
-/// Authenticated requests permitted per-IP per second.
-const ADMIN_RATE_PER_SECOND: u32 = 8;
 
 /// Failed-auth attempts allowed inside [`FAILURE_WINDOW`] before lockout.
 const FAILURE_THRESHOLD: u32 = 5;
@@ -54,8 +50,6 @@ struct IpTracker {
     failures: Vec<Instant>,
     /// When the IP becomes eligible to retry after lockout.
     locked_until: Option<Instant>,
-    /// Authenticated request timestamps inside the trailing 1s window.
-    request_times: Vec<Instant>,
 }
 
 impl AdminState {
@@ -112,7 +106,6 @@ impl AdminState {
 enum GuardOutcome {
     Allow,
     LockedOut { retry_after: Duration },
-    RateLimited,
     Unauthorized,
 }
 
@@ -174,15 +167,6 @@ fn evaluate_guard(
     // Successful auth resets failure counter.
     entry.failures.clear();
 
-    // 3. Per-IP rate limit (last 1s).
-    entry
-        .request_times
-        .retain(|ts| now.saturating_duration_since(*ts) < Duration::from_secs(1));
-    if entry.request_times.len() as u32 >= ADMIN_RATE_PER_SECOND {
-        return GuardOutcome::RateLimited;
-    }
-    entry.request_times.push(now);
-
     GuardOutcome::Allow
 }
 
@@ -228,15 +212,6 @@ pub async fn admin_guard(
             let mut resp = Response::new(axum::body::Body::empty());
             *resp.status_mut() = StatusCode::TOO_MANY_REQUESTS;
             if let Ok(value) = retry_after.as_secs().to_string().parse() {
-                resp.headers_mut().insert(header::RETRY_AFTER, value);
-            }
-            resp
-        }
-        GuardOutcome::RateLimited => {
-            log::warn!("admin rate limit exceeded for {}", ip);
-            let mut resp = Response::new(axum::body::Body::empty());
-            *resp.status_mut() = StatusCode::TOO_MANY_REQUESTS;
-            if let Ok(value) = "1".parse() {
                 resp.headers_mut().insert(header::RETRY_AFTER, value);
             }
             resp
@@ -308,29 +283,6 @@ mod tests {
         let later = now + FAILURE_LOCKOUT + Duration::from_secs(1);
         let outcome = evaluate_guard(&s, ip(), Some(&"a".repeat(MIN_TOKEN_LEN)), later);
         assert_eq!(outcome, GuardOutcome::Allow);
-    }
-
-    #[test]
-    fn rate_limit_kicks_in_after_burst() {
-        let s = state();
-        let now = Instant::now();
-        let token = "a".repeat(MIN_TOKEN_LEN);
-        for _ in 0..ADMIN_RATE_PER_SECOND {
-            assert_eq!(
-                evaluate_guard(&s, ip(), Some(&token), now),
-                GuardOutcome::Allow
-            );
-        }
-        assert_eq!(
-            evaluate_guard(&s, ip(), Some(&token), now),
-            GuardOutcome::RateLimited
-        );
-        // Window slides.
-        let later = now + Duration::from_millis(1100);
-        assert_eq!(
-            evaluate_guard(&s, ip(), Some(&token), later),
-            GuardOutcome::Allow
-        );
     }
 
     #[test]

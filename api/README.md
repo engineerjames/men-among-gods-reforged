@@ -442,8 +442,9 @@ that returns `401` for every request from that IP, even with a valid token.
 ## Rate limiting
 
 Admin routes are mounted on a sub-router that bypasses the public 1 req/s
-governor. Authenticated admin requests are limited to 8 req/s/IP with a
-small burst. Excess requests return `429`.
+governor. There is no additional throughput limiter on authenticated admin
+requests. Failed-auth lockout protection still applies (`401` for auth
+failures and `429` while an IP is locked out after repeated failures).
 
 ## Endpoints
 

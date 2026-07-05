@@ -837,190 +837,202 @@ impl MapViewerApp {
     }
 
     fn render_palette_overlay(&mut self, ctx: &egui::Context, anchor: Pos2) -> Rect {
-        let response = egui::Area::new("map_palette_overlay".into())
-            .order(egui::Order::Foreground)
-            .fixed_pos(anchor)
+        let response = egui::Window::new("Palette")
+            .id(egui::Id::new("map_palette_overlay_window"))
+            .default_pos(anchor)
+            .default_size(Vec2::new(360.0, 420.0))
+            .resizable(true)
+            .movable(true)
+            .collapsible(false)
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(260.0);
-                    ui.vertical(|ui| {
-                        ui.strong("Palette");
-                        ui.separator();
+                ui.set_min_width(260.0);
+                ui.vertical(|ui| {
+                    ui.separator();
 
-                        ui.add_enabled_ui(true, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("sprite:");
-                                ui.add(egui::DragValue::new(&mut self.draft_sprite));
+                    ui.add_enabled_ui(true, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("sprite:");
+                            ui.add(egui::DragValue::new(&mut self.draft_sprite));
 
-                                let preview_size = Vec2::new(96.0, 96.0);
-                                let mut preview_drawn = false;
+                            let preview_size = Vec2::new(96.0, 96.0);
+                            let mut preview_drawn = false;
 
-                                if let Some(cache) = self.graphics_zip.as_mut()
-                                    && let Ok(Some(texture)) =
-                                        cache.texture_for(ctx, self.draft_sprite as usize)
-                                {
-                                    ui.add(
-                                        egui::Image::new(texture)
-                                            .fit_to_exact_size(preview_size)
-                                            .maintain_aspect_ratio(true),
-                                    );
-                                    preview_drawn = true;
-                                }
+                            if let Some(cache) = self.graphics_zip.as_mut()
+                                && let Ok(Some(texture)) =
+                                    cache.texture_for(ctx, self.draft_sprite as usize)
+                            {
+                                ui.add(
+                                    egui::Image::new(texture)
+                                        .fit_to_exact_size(preview_size)
+                                        .maintain_aspect_ratio(true),
+                                );
+                                preview_drawn = true;
+                            }
 
-                                if !preview_drawn {
-                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                }
+                            if !preview_drawn {
+                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                            }
 
-                                if ui.small_button("Add").clicked() && self.draft_sprite != 0 {
-                                    match self.can_add_palette_sprite(ctx, self.draft_sprite) {
-                                        Ok(()) => {
-                                            self.palette.push(PaletteEntry {
-                                                kind: PaletteEntryKind::Sprite(self.draft_sprite),
-                                            });
-                                        }
-                                        Err(e) => {
-                                            self.save_status = Some(e);
-                                        }
+                            if ui.small_button("Add").clicked() && self.draft_sprite != 0 {
+                                match self.can_add_palette_sprite(ctx, self.draft_sprite) {
+                                    Ok(()) => {
+                                        self.palette.push(PaletteEntry {
+                                            kind: PaletteEntryKind::Sprite(self.draft_sprite),
+                                        });
+                                    }
+                                    Err(e) => {
+                                        self.save_status = Some(e);
                                     }
                                 }
-                            });
+                            }
+                        });
 
-                            ui.horizontal(|ui| {
-                                ui.label("template:");
-                                ui.add(egui::DragValue::new(&mut self.draft_item_template_id));
+                        ui.horizontal(|ui| {
+                            ui.label("template:");
+                            ui.add(egui::DragValue::new(&mut self.draft_item_template_id));
 
-                                let preview_size = Vec2::new(96.0, 96.0);
-                                let mut preview_drawn = false;
-                                let it_idx = self.draft_item_template_id as usize;
+                            let preview_size = Vec2::new(96.0, 96.0);
+                            let mut preview_drawn = false;
+                            let it_idx = self.draft_item_template_id as usize;
 
-                                if it_idx < self.item_templates.len()
-                                    && self.item_templates[it_idx].used != USE_EMPTY
-                                    && let Some(sprite) =
-                                        item_map_sprite(self.item_templates[it_idx])
-                                    && let Some(cache) = self.graphics_zip.as_mut()
-                                    && let Ok(Some(texture)) =
-                                        cache.texture_for(ctx, sprite as usize)
-                                {
-                                    ui.add(
-                                        egui::Image::new(texture)
-                                            .fit_to_exact_size(preview_size)
-                                            .maintain_aspect_ratio(true),
+                            if it_idx < self.item_templates.len()
+                                && self.item_templates[it_idx].used != USE_EMPTY
+                                && let Some(sprite) =
+                                    template_preview_sprite(self.item_templates[it_idx])
+                                && let Some(cache) = self.graphics_zip.as_mut()
+                                && let Ok(Some(texture)) = cache.texture_for(ctx, sprite)
+                            {
+                                ui.add(
+                                    egui::Image::new(texture)
+                                        .fit_to_exact_size(preview_size)
+                                        .maintain_aspect_ratio(true),
+                                );
+                                preview_drawn = true;
+                            }
+
+                            if !preview_drawn {
+                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                            }
+
+                            if ui.small_button("Add").clicked() && self.draft_item_template_id != 0
+                            {
+                                self.palette.push(PaletteEntry {
+                                    kind: PaletteEntryKind::ItemTemplate(
+                                        self.draft_item_template_id,
+                                    ),
+                                });
+                            }
+
+                            if self.draft_item_template_id != 0 {
+                                if it_idx >= self.item_templates.len() {
+                                    ui.colored_label(
+                                        egui::Color32::LIGHT_RED,
+                                        "Template id is out of range",
                                     );
-                                    preview_drawn = true;
+                                } else if self.item_templates[it_idx].used == USE_EMPTY {
+                                    ui.colored_label(
+                                        egui::Color32::LIGHT_RED,
+                                        "Template slot is unused",
+                                    );
                                 }
+                            }
+                        });
 
-                                if !preview_drawn {
-                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                }
+                        ui.separator();
 
-                                if ui.small_button("Add").clicked()
-                                    && self.draft_item_template_id != 0
-                                {
-                                    self.palette.push(PaletteEntry {
-                                        kind: PaletteEntryKind::ItemTemplate(
-                                            self.draft_item_template_id,
-                                        ),
-                                    });
-                                }
-                            });
-
-                            ui.separator();
-
-                            egui::ScrollArea::vertical()
-                                .max_height(260.0)
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let icon_size = Vec2::new(48.0, 48.0);
+                            egui::Grid::new("palette_image_grid")
+                                .num_columns(4)
+                                .spacing([6.0, 6.0])
                                 .show(ui, |ui| {
-                                    let icon_size = Vec2::new(48.0, 48.0);
-                                    egui::Grid::new("palette_image_grid")
-                                        .num_columns(4)
-                                        .spacing([6.0, 6.0])
-                                        .show(ui, |ui| {
-                                            let mut col = 0;
-                                            for (idx, entry) in self.palette.iter().enumerate() {
-                                                let sprite_id: Option<usize> = match entry.kind {
-                                                    PaletteEntryKind::Sprite(sprite) => {
-                                                        if sprite == 0 {
-                                                            None
-                                                        } else {
-                                                            Some(sprite as usize)
-                                                        }
-                                                    }
-                                                    PaletteEntryKind::ItemTemplate(template_id) => {
-                                                        if template_id == 0 {
-                                                            None
-                                                        } else {
-                                                            let it_idx = template_id as usize;
-                                                            if it_idx < self.item_templates.len()
-                                                                && self.item_templates[it_idx].used
-                                                                    != USE_EMPTY
-                                                            {
-                                                                let item =
-                                                                    self.item_templates[it_idx];
-                                                                item_map_sprite(item)
-                                                                    .map(|s| s as usize)
-                                                            } else {
-                                                                None
-                                                            }
-                                                        }
-                                                    }
-                                                };
-
-                                                let Some(sprite_id) = sprite_id else {
-                                                    continue;
-                                                };
-
-                                                let Some(cache) = self.graphics_zip.as_mut() else {
-                                                    break;
-                                                };
-
-                                                let Ok(Some(texture)) =
-                                                    cache.texture_for(ctx, sprite_id)
-                                                else {
-                                                    continue;
-                                                };
-
-                                                let selected =
-                                                    self.selected_palette_index == Some(idx);
-                                                let tint = if selected {
-                                                    egui::Color32::from_rgb(180, 255, 180)
+                                    let mut col = 0;
+                                    for (idx, entry) in self.palette.iter().enumerate() {
+                                        let sprite_id: Option<usize> = match entry.kind {
+                                            PaletteEntryKind::Sprite(sprite) => {
+                                                if sprite == 0 {
+                                                    None
                                                 } else {
-                                                    egui::Color32::WHITE
-                                                };
-
-                                                let clicked = ui
-                                                    .add(
-                                                        egui::Image::new(texture)
-                                                            .fit_to_exact_size(icon_size)
-                                                            .maintain_aspect_ratio(true)
-                                                            .tint(tint)
-                                                            .sense(egui::Sense::click()),
-                                                    )
-                                                    .clicked();
-
-                                                if clicked {
-                                                    if selected {
-                                                        self.selected_palette_index = None;
+                                                    Some(sprite as usize)
+                                                }
+                                            }
+                                            PaletteEntryKind::ItemTemplate(template_id) => {
+                                                if template_id == 0 {
+                                                    None
+                                                } else {
+                                                    let it_idx = template_id as usize;
+                                                    if it_idx < self.item_templates.len()
+                                                        && self.item_templates[it_idx].used
+                                                            != USE_EMPTY
+                                                    {
+                                                        let item = self.item_templates[it_idx];
+                                                        template_preview_sprite(item)
                                                     } else {
-                                                        self.selected_palette_index = Some(idx);
+                                                        None
                                                     }
                                                 }
+                                            }
+                                        };
 
-                                                col += 1;
-                                                if col == 4 {
-                                                    ui.end_row();
-                                                    col = 0;
-                                                }
+                                        let Some(sprite_id) = sprite_id else {
+                                            continue;
+                                        };
+
+                                        let Some(cache) = self.graphics_zip.as_mut() else {
+                                            break;
+                                        };
+
+                                        let Ok(Some(texture)) = cache.texture_for(ctx, sprite_id)
+                                        else {
+                                            continue;
+                                        };
+
+                                        let selected = self.selected_palette_index == Some(idx);
+                                        let tint = if selected {
+                                            egui::Color32::from_rgb(180, 255, 180)
+                                        } else {
+                                            egui::Color32::WHITE
+                                        };
+
+                                        let clicked = ui
+                                            .add(
+                                                egui::Image::new(texture)
+                                                    .fit_to_exact_size(icon_size)
+                                                    .maintain_aspect_ratio(true)
+                                                    .tint(tint)
+                                                    .sense(egui::Sense::click()),
+                                            )
+                                            .clicked();
+
+                                        if clicked {
+                                            if selected {
+                                                self.selected_palette_index = None;
+                                            } else {
+                                                self.selected_palette_index = Some(idx);
                                             }
-                                            if col != 0 {
-                                                ui.end_row();
-                                            }
-                                        });
+                                        }
+
+                                        col += 1;
+                                        if col == 4 {
+                                            ui.end_row();
+                                            col = 0;
+                                        }
+                                    }
+                                    if col != 0 {
+                                        ui.end_row();
+                                    }
                                 });
                         });
                     });
                 });
             });
 
-        response.response.rect
+        response
+            .map(|inner| inner.response.rect)
+            .unwrap_or_else(|| {
+                self.palette_rect
+                    .unwrap_or(Rect::from_min_size(anchor, Vec2::new(260.0, 260.0)))
+            })
     }
 }
 
@@ -1039,6 +1051,22 @@ fn item_map_sprite(item: Item) -> Option<i16> {
     };
 
     if sprite > 0 { Some(sprite) } else { None }
+}
+
+#[inline]
+fn template_preview_sprite(item: Item) -> Option<usize> {
+    // Template preview should not hide sprites based on runtime hidden flag.
+    for sprite in [item.sprite[0], item.sprite[1]] {
+        if sprite > 0 {
+            return Some(sprite as usize);
+        }
+    }
+    for sprite in [item.sprite[0], item.sprite[1]] {
+        if sprite < 0 {
+            return Some(sprite.unsigned_abs() as usize);
+        }
+    }
+    None
 }
 
 #[inline]
