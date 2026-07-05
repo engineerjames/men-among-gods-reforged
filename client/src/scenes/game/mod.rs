@@ -1156,17 +1156,14 @@ impl GameScene {
         let Some(login_target) = app_state.api.login_target.as_ref() else {
             log::warn!("Diagnostics upload skipped: no active login target");
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.tlog(
-                    1,
-                    "Failed to send logs: no active character session.".to_owned(),
-                );
+                ps.tlog(1, "Failed to send logs: no active character session.");
             }
             return;
         };
         let Some(token) = app_state.api.token.as_deref() else {
             log::warn!("Diagnostics upload skipped: no auth token");
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.tlog(1, "Failed to send logs: not authenticated.".to_owned());
+                ps.tlog(1, "Failed to send logs: not authenticated.");
             }
             return;
         };
@@ -1246,7 +1243,7 @@ impl GameScene {
     fn start_network_test(&mut self, app_state: &mut AppState<'_>) {
         if self.network_test_running {
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.tlog(1, "Network test already running...".to_owned());
+                ps.tlog(1, "Network test already running...");
             }
             return;
         }
@@ -1256,7 +1253,7 @@ impl GameScene {
             if let Some(ps) = app_state.player_state.as_mut() {
                 ps.tlog(
                     1,
-                    "Failed to start network test: no active character session.".to_owned(),
+                    "Failed to start network test: no active character session.",
                 );
             }
             return;
@@ -1264,10 +1261,7 @@ impl GameScene {
         let Some(token) = app_state.api.token.clone() else {
             log::warn!("Network test skipped: no auth token");
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.tlog(
-                    1,
-                    "Failed to start network test: not authenticated.".to_owned(),
-                );
+                ps.tlog(1, "Failed to start network test: not authenticated.");
             }
             return;
         };

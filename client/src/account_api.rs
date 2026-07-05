@@ -485,6 +485,7 @@ pub fn upload_client_log(
 ///
 /// * `Ok((server_unix_ms, response_payload_bytes))` when probe succeeds.
 /// * `Err(String)` when request or server validation fails.
+#[allow(clippy::too_many_arguments)]
 pub fn run_network_test_probe(
     client: &reqwest::blocking::Client,
     base_url: &str,
