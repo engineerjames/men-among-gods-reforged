@@ -67,6 +67,9 @@ const CLOSE_X_COLOR: Color = Color::RGBA(200, 220, 255, 240);
 /// Additive hover highlight alpha for icon buttons.
 const ICON_HOVER_ALPHA: u8 = 64;
 
+/// High-bit flag in `shop_nr` indicating the panel is showing a depot view.
+const SHOP_NR_DEPOT_FLAG: u16 = 0x8000;
+
 // ---------------------------------------------------------------------------
 // Data snapshot
 // ---------------------------------------------------------------------------
@@ -483,7 +486,9 @@ impl Widget for ShopPanel {
         ctx.canvas.draw_rect(rect)?;
 
         // Title.
-        let title = if data.is_grave {
+        let title = if (data.shop_nr & SHOP_NR_DEPOT_FLAG) != 0 {
+            "Depot".to_owned()
+        } else if data.is_grave {
             "Grave".to_owned()
         } else {
             "Shop".to_owned()
