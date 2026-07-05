@@ -1567,11 +1567,14 @@ impl eframe::App for MapViewerApp {
                                 let item = self.items[it_idx];
                                 let sprite = item_map_sprite(item).unwrap_or(0);
                                 ui.label(format!("item sprite: {}", sprite));
+                                ui.label(format!("item template: {}", item.temp));
                             } else {
                                 ui.label("item sprite: (item data not loaded)");
+                                ui.label("item template: (item data not loaded)");
                             }
                         } else {
                             ui.label("item sprite: N/A");
+                            ui.label("item template: N/A");
                         }
                     } else {
                         ui.label("sprite: N/A");
@@ -1581,6 +1584,7 @@ impl eframe::App for MapViewerApp {
                         ui.label("ch: N/A to_ch: N/A it: N/A");
                         self.ui_tile_preview_row(ui, ctx, 0, 0, 0, preview_size);
                         ui.label("item sprite: N/A");
+                        ui.label("item template: N/A");
                     }
                 }
 
@@ -1626,11 +1630,14 @@ impl eframe::App for MapViewerApp {
                                     let item = self.items[it_idx];
                                     let sprite = item_map_sprite(item).unwrap_or(0);
                                     ui.label(format!("item sprite: {}", sprite));
+                                    ui.label(format!("item template: {}", item.temp));
                                 } else {
                                     ui.label("item sprite: (item data not loaded)");
+                                    ui.label("item template: (item data not loaded)");
                                 }
                             } else {
                                 ui.label("item sprite: N/A");
+                                ui.label("item template: N/A");
                             }
 
                             ui.separator();
