@@ -46,6 +46,12 @@ pub const SHOP_PANEL_H: u32 = (PAD_TOP + GRID_ROWS as i32 * CELL + PRICE_AREA_H 
 /// Border color matching the other HUD panels.
 const BORDER_COLOR: Color = Color::RGBA(120, 120, 140, 200);
 
+/// Color for slot grid outlines, aligned with inventory/equipment panels.
+const CELL_GRID_COLOR: Color = Color::RGBA(80, 80, 100, 180);
+
+/// Subtle fill for non-interactive tail cells (indices 62 and 63).
+const DISABLED_CELL_FILL: Color = Color::RGBA(20, 20, 30, 120);
+
 /// Golden highlight color for controller-selected item slot.
 const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
 
@@ -66,6 +72,9 @@ const CLOSE_X_COLOR: Color = Color::RGBA(200, 220, 255, 240);
 
 /// Additive hover highlight alpha for icon buttons.
 const ICON_HOVER_ALPHA: u8 = 64;
+
+/// High-bit flag in `shop_nr` indicating the panel is showing a depot view.
+const SHOP_NR_DEPOT_FLAG: u16 = 0x8000;
 
 // ---------------------------------------------------------------------------
 // Data snapshot
@@ -203,29 +212,51 @@ impl ShopPanel {
     // ── Hit-testing helpers ─────────────────────────────────────────────
 
     /// Returns the context-sensitive helper text label for the item slot
-    /// currently under the cursor, or `None` if no filled slot is hovered.
+    /// currently under the cursor.
     ///
-    /// Returns `"TAKE"` for grave/corpse overlays and `"BUY"` for merchant
-    /// shops. Used by the game scene's helper-text renderer so that the
-    /// cursor label updates correctly while the panel is open.
+    /// For depot overlays, returns `"PLACE"` while carrying an item, or
+    /// `"REMOVE"` when hovering a filled depot slot while empty-handed.
+    /// For grave overlays, returns `"TAKE"` on filled slots. For merchant
+    /// overlays, returns `"BUY"` on filled slots.
     ///
     /// # Arguments
     ///
+    /// * `shop_nr` - Shop/depot identifier used by the panel actions.
     /// * `is_grave` - `true` when this overlay represents a corpse/grave.
+    /// * `citem` - Carried item id (`> 0` means the player is carrying an item).
     ///
     /// # Returns
     ///
-    /// * `Some("TAKE")` or `Some("BUY")` when a non-empty slot is hovered.
-    /// * `None` when the cursor is over an empty slot or outside the grid.
-    pub fn hovered_item_label(&self, is_grave: bool) -> Option<&'static str> {
+    /// * `Some("PLACE")`, `Some("REMOVE")`, `Some("TAKE")`, or `Some("BUY")`
+    ///   when the corresponding action is available under the cursor.
+    /// * `None` when no context action applies.
+    pub fn hovered_item_label(
+        &self,
+        shop_nr: u16,
+        is_grave: bool,
+        citem: i32,
+    ) -> Option<&'static str> {
         if !self.is_visible() {
             return None;
         }
         let data = self.data.as_ref()?;
         let idx = self.hovered_slot()?;
+
+        let is_depot = (shop_nr & SHOP_NR_DEPOT_FLAG) != 0;
+        if is_depot {
+            if citem > 0 {
+                return Some("PLACE");
+            }
+            if data.items[idx] != 0 {
+                return Some("REMOVE");
+            }
+            return None;
+        }
+
         if data.items[idx] == 0 {
             return None;
         }
+
         Some(if is_grave { "TAKE" } else { "BUY" })
     }
 
@@ -483,7 +514,9 @@ impl Widget for ShopPanel {
         ctx.canvas.draw_rect(rect)?;
 
         // Title.
-        let title = if data.is_grave {
+        let title = if (data.shop_nr & SHOP_NR_DEPOT_FLAG) != 0 {
+            "Depot".to_owned()
+        } else if data.is_grave {
             "Grave".to_owned()
         } else {
             "Shop".to_owned()
@@ -534,6 +567,28 @@ impl Widget for ShopPanel {
         let grid_x = self.bounds.x + PAD_X;
         let grid_y = self.bounds.y + PAD_TOP;
         let hovered = self.hovered_slot();
+
+        // Draw full 8x8 slot grid to match inventory/equipment readability.
+        // Slots 62 and 63 are visual-only and rendered as disabled cells.
+        ctx.canvas.set_blend_mode(BlendMode::Blend);
+        for i in 0..(GRID_ROWS * GRID_COLS) {
+            let col = (i % GRID_COLS) as i32;
+            let row = (i / GRID_COLS) as i32;
+            let cell_rect = sdl2::rect::Rect::new(
+                grid_x + col * CELL,
+                grid_y + row * CELL,
+                CELL as u32,
+                CELL as u32,
+            );
+
+            if i >= SHOP_SLOTS {
+                ctx.canvas.set_draw_color(DISABLED_CELL_FILL);
+                ctx.canvas.fill_rect(cell_rect)?;
+            }
+
+            ctx.canvas.set_draw_color(CELL_GRID_COLOR);
+            ctx.canvas.draw_rect(cell_rect)?;
+        }
 
         // Draw item grid.
         for i in 0..SHOP_SLOTS {
@@ -589,12 +644,15 @@ impl Widget for ShopPanel {
             }
         }
 
-        // Sell price label (shown when hovering a slot that has a price).
+        let is_depot = (data.shop_nr & SHOP_NR_DEPOT_FLAG) != 0;
+
+        // Slot price label (shown when hovering a slot that has a price).
         let price_y = grid_y + GRID_ROWS as i32 * CELL + 2;
         if let Some(idx) = hovered {
             let price = data.prices[idx];
             if price != 0 {
-                let sell_text = format!("Sell: {}G {}S", price / 100, price % 100);
+                let slot_action_text = if is_depot { "Remove" } else { "Sell" };
+                let sell_text = format!("{slot_action_text}: {}G {}S", price / 100, price % 100);
                 font_cache::draw_text(
                     ctx.canvas,
                     ctx.gfx,
@@ -607,9 +665,14 @@ impl Widget for ShopPanel {
             }
         }
 
-        // Buy price label (shown when carrying an item the shop will accept).
+        // Carried-item price label (shown when carrying an item the shop/depot will accept).
         if data.citem > 0 && data.pl_price > 0 {
-            let buy_text = format!("Buy:  {}G {}S", data.pl_price / 100, data.pl_price % 100);
+            let carry_action_text = if is_depot { "Place" } else { "Buy" };
+            let buy_text = format!(
+                "{carry_action_text}:  {}G {}S",
+                data.pl_price / 100,
+                data.pl_price % 100
+            );
             font_cache::draw_text(
                 ctx.canvas,
                 ctx.gfx,
@@ -787,8 +850,13 @@ mod tests {
     #[test]
     fn hovered_slot_clamps_to_max() {
         let mut panel = make_panel();
-        // Place mouse at the very last cell row (row 7, col 7 = index 63 > 61).
-        // This slot should be None since index 63 >= SHOP_SLOTS.
+        // Place mouse on the disabled tail cells in the last row.
+        // Row 7, col 6 = index 62 and row 7, col 7 = index 63. Both are
+        // non-interactive because valid indices stop at 61.
+        panel.mouse_x = 100 + PAD_X + 6 * CELL + 5;
+        panel.mouse_y = 100 + PAD_TOP + 7 * CELL + 5;
+        assert_eq!(panel.hovered_slot(), None);
+
         panel.mouse_x = 100 + PAD_X + 7 * CELL + 5;
         panel.mouse_y = 100 + PAD_TOP + 7 * CELL + 5;
         assert_eq!(panel.hovered_slot(), None);

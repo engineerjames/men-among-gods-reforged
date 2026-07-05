@@ -1,10 +1,10 @@
 services:
   certgen:
-    image: bash:5.2
+    build:
+      context: .
+      dockerfile: certs/Dockerfile.certgen
     command:
-      - /bin/sh
-      - -lc
-      - apk add --no-cache openssl >/dev/null && ./scripts/generate_certs.sh --out /certs $${TLS_EXTRA_SAN:+--san "$${TLS_EXTRA_SAN}"}
+      - ./scripts/generate_certs.sh --out /certs $${TLS_EXTRA_SAN:+--san "$${TLS_EXTRA_SAN}"}
     environment:
       TLS_EXTRA_SAN: ${TLS_EXTRA_SAN:-}
     volumes:
