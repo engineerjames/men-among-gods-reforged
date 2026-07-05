@@ -14,7 +14,7 @@ use mag_core::types::api::{
     NetworkTestSummaryResponse, UploadClientLogRequest, UploadClientLogResponse,
 };
 
-use crate::{ApiState, pipelines};
+use crate::{ApiState, auth_extractor::AuthUser, pipelines};
 
 /// Hard-coded diagnostics upload directory inside the API container.
 const DIAG_UPLOAD_DIR: &str = "/var/mag/diag-uploads";
@@ -24,6 +24,18 @@ const MAX_COMPRESSED_LOG_B64_LEN: usize = 2 * 1024 * 1024;
 const MAX_DECOMPRESSED_LOG_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum supported diagnostics run ID length.
 const MAX_RUN_ID_LEN: usize = 64;
+/// Maximum accepted decoded network-test payload size in bytes.
+const MAX_NETWORK_TEST_PAYLOAD_BYTES: usize = 256;
+
+/// Character ownership lookup outcome for diagnostics endpoints.
+enum CharacterAccess {
+    /// Character exists and belongs to the authenticated account.
+    Owned(String),
+    /// Character is missing or belongs to a different account.
+    Unauthorized,
+    /// The ownership check failed unexpectedly.
+    Internal,
+}
 
 /// Handles one diagnostics network-test probe request.
 ///
@@ -36,6 +48,8 @@ const MAX_RUN_ID_LEN: usize = 64;
 /// * `(200, server_unix_ms)` on success.
 /// * `(400, error)` on invalid request data.
 pub(crate) async fn network_test_probe(
+    State(state): State<ApiState>,
+    auth_user: AuthUser,
     Json(payload): Json<NetworkTestProbeRequest>,
 ) -> (StatusCode, Json<NetworkTestProbeResponse>) {
     if !is_valid_run_id(&payload.run_id) {
@@ -43,20 +57,90 @@ pub(crate) async fn network_test_probe(
             StatusCode::BAD_REQUEST,
             Json(NetworkTestProbeResponse {
                 server_unix_ms: None,
+                server_payload_b64: None,
                 error: Some("run_id is required and must be <= 64 [A-Za-z0-9_-] chars".to_owned()),
             }),
         );
     }
 
+    let client_payload = match decode_probe_payload(&payload.client_payload_b64) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(NetworkTestProbeResponse {
+                    server_unix_ms: None,
+                    server_payload_b64: None,
+                    error: Some(err),
+                }),
+            );
+        }
+    };
+
+    if payload.requested_server_payload_bytes == 0
+        || usize::from(payload.requested_server_payload_bytes) > MAX_NETWORK_TEST_PAYLOAD_BYTES
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(NetworkTestProbeResponse {
+                server_unix_ms: None,
+                server_payload_b64: None,
+                error: Some("requested_server_payload_bytes must be 1..=256".to_owned()),
+            }),
+        );
+    }
+
+    let character_name = match resolve_owned_character_name(
+        &state,
+        auth_user.account_id,
+        payload.character_id,
+    )
+    .await
+    {
+        CharacterAccess::Owned(name) => name,
+        CharacterAccess::Unauthorized => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                Json(NetworkTestProbeResponse {
+                    server_unix_ms: None,
+                    server_payload_b64: None,
+                    error: Some("Unauthorized".to_owned()),
+                }),
+            );
+        }
+        CharacterAccess::Internal => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(NetworkTestProbeResponse {
+                    server_unix_ms: None,
+                    server_payload_b64: None,
+                    error: Some("server error".to_owned()),
+                }),
+            );
+        }
+    };
+
+    let server_payload = build_probe_payload(
+        payload.sample_index,
+        usize::from(payload.requested_server_payload_bytes),
+    );
+
     info!(
-        "diag network test probe: character_id={} run_id={} sample_index={}",
-        payload.character_id, payload.run_id, payload.sample_index
+        "diag network test probe: account_id={} character_id={} character_name={} run_id={} sample_index={} client_payload_bytes={} server_payload_bytes={}",
+        auth_user.account_id,
+        payload.character_id,
+        character_name,
+        payload.run_id,
+        payload.sample_index,
+        client_payload.len(),
+        server_payload.len()
     );
 
     (
         StatusCode::OK,
         Json(NetworkTestProbeResponse {
             server_unix_ms: Some(current_unix_ms()),
+            server_payload_b64: Some(STANDARD.encode(server_payload)),
             error: None,
         }),
     )
@@ -76,6 +160,7 @@ pub(crate) async fn network_test_probe(
 /// * `(404, error)` when the character id does not exist.
 /// * `(500, error)` on unexpected internal failures.
 pub(crate) async fn network_test_summary(
+    auth_user: AuthUser,
     State(state): State<ApiState>,
     Json(payload): Json<NetworkTestSummaryRequest>,
 ) -> (StatusCode, Json<NetworkTestSummaryResponse>) {
@@ -109,20 +194,24 @@ pub(crate) async fn network_test_summary(
         );
     }
 
-    let mut con = state.con.clone();
-    let character_name = match pipelines::get_character_name(&mut con, payload.character_id).await {
-        Ok(Some(name)) if !name.trim().is_empty() => name,
-        Ok(_) => {
+    let character_name = match resolve_owned_character_name(
+        &state,
+        auth_user.account_id,
+        payload.character_id,
+    )
+    .await
+    {
+        CharacterAccess::Owned(name) => name,
+        CharacterAccess::Unauthorized => {
             return (
-                StatusCode::NOT_FOUND,
+                StatusCode::UNAUTHORIZED,
                 Json(NetworkTestSummaryResponse {
                     accepted: false,
-                    error: Some("character not found".to_owned()),
+                    error: Some("Unauthorized".to_owned()),
                 }),
             );
         }
-        Err(err) => {
-            error!("Network test summary failed during character lookup: {err}");
+        CharacterAccess::Internal => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(NetworkTestSummaryResponse {
@@ -134,7 +223,8 @@ pub(crate) async fn network_test_summary(
     };
 
     info!(
-        "diag network test summary: character_id={} character_name={} run_id={} duration_ms={} total_samples={} failed_samples={} min_rtt_ms={:?} avg_rtt_ms={:?} max_rtt_ms={:?} jitter_ms={:?} quality={}",
+        "diag network test summary: account_id={} character_id={} character_name={} run_id={} duration_ms={} total_samples={} failed_samples={} min_rtt_ms={:?} avg_rtt_ms={:?} max_rtt_ms={:?} jitter_ms={:?} quality={}",
+        auth_user.account_id,
         payload.character_id,
         character_name,
         payload.run_id,
@@ -171,6 +261,7 @@ pub(crate) async fn network_test_summary(
 /// * `(404, error)` when the character id does not exist.
 /// * `(500, error)` on unexpected internal failures.
 pub(crate) async fn upload_client_log(
+    auth_user: AuthUser,
     State(state): State<ApiState>,
     Json(payload): Json<UploadClientLogRequest>,
 ) -> (StatusCode, Json<UploadClientLogResponse>) {
@@ -241,20 +332,24 @@ pub(crate) async fn upload_client_log(
         );
     }
 
-    let mut con = state.con.clone();
-    let character_name = match pipelines::get_character_name(&mut con, payload.character_id).await {
-        Ok(Some(name)) if !name.trim().is_empty() => name,
-        Ok(_) => {
+    let character_name = match resolve_owned_character_name(
+        &state,
+        auth_user.account_id,
+        payload.character_id,
+    )
+    .await
+    {
+        CharacterAccess::Owned(name) => name,
+        CharacterAccess::Unauthorized => {
             return (
-                StatusCode::NOT_FOUND,
+                StatusCode::UNAUTHORIZED,
                 Json(UploadClientLogResponse {
                     saved_file: None,
-                    error: Some("character not found".to_owned()),
+                    error: Some("Unauthorized".to_owned()),
                 }),
             );
         }
-        Err(err) => {
-            error!("Diagnostics upload failed during character lookup: {err}");
+        CharacterAccess::Internal => {
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(UploadClientLogResponse {
@@ -307,6 +402,73 @@ pub(crate) async fn upload_client_log(
     )
 }
 
+/// Resolves a character name only when the character belongs to the authenticated account.
+async fn resolve_owned_character_name(
+    state: &ApiState,
+    account_id: u64,
+    character_id: u64,
+) -> CharacterAccess {
+    let mut con = state.con.clone();
+    let owner_id = match pipelines::get_character_account_id(&mut con, character_id).await {
+        Ok(value) => value,
+        Err(err) => {
+            error!("Diagnostics ownership check failed during owner lookup: {err}");
+            return CharacterAccess::Internal;
+        }
+    };
+
+    if owner_id != Some(account_id) {
+        warn!(
+            "Diagnostics request rejected: account {} does not own character {}",
+            account_id, character_id
+        );
+        return CharacterAccess::Unauthorized;
+    }
+
+    match pipelines::get_character_name(&mut con, character_id).await {
+        Ok(Some(name)) if !name.trim().is_empty() => CharacterAccess::Owned(name),
+        Ok(_) => {
+            warn!(
+                "Diagnostics request rejected: owned character {} had no stored name",
+                character_id
+            );
+            CharacterAccess::Unauthorized
+        }
+        Err(err) => {
+            error!("Diagnostics ownership check failed during character lookup: {err}");
+            CharacterAccess::Internal
+        }
+    }
+}
+
+/// Decodes and validates a base64-encoded probe payload.
+fn decode_probe_payload(value: &str) -> Result<Vec<u8>, String> {
+    if value.trim().is_empty() {
+        return Err("client_payload_b64 is required".to_owned());
+    }
+
+    let bytes = STANDARD
+        .decode(value.as_bytes())
+        .map_err(|_| "client_payload_b64 must be valid base64".to_owned())?;
+    if bytes.is_empty() {
+        return Err("decoded client payload must not be empty".to_owned());
+    }
+    if bytes.len() > MAX_NETWORK_TEST_PAYLOAD_BYTES {
+        return Err("decoded client payload is too large".to_owned());
+    }
+    Ok(bytes)
+}
+
+/// Builds a deterministic response payload for a network-test probe.
+fn build_probe_payload(sample_index: u32, size: usize) -> Vec<u8> {
+    let mut out = Vec::with_capacity(size);
+    for offset in 0..size {
+        let value = sample_index.wrapping_mul(31).wrapping_add(offset as u32) as u8;
+        out.push(value ^ 0x5a);
+    }
+    out
+}
+
 /// Sanitizes a string for safe use in generated file names.
 ///
 /// # Arguments
@@ -355,7 +517,11 @@ fn is_valid_run_id(value: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_valid_run_id, sanitize_filename_component};
+    use super::{
+        build_probe_payload, decode_probe_payload, is_valid_run_id, sanitize_filename_component,
+    };
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
 
     #[test]
     fn sanitize_filename_component_replaces_unsafe_chars() {
@@ -382,5 +548,28 @@ mod tests {
         assert!(!is_valid_run_id(""));
         assert!(!is_valid_run_id("contains space"));
         assert!(!is_valid_run_id("symbols!"));
+    }
+
+    #[test]
+    fn decode_probe_payload_rejects_invalid_values() {
+        assert!(decode_probe_payload("").is_err());
+        assert!(decode_probe_payload("***").is_err());
+    }
+
+    #[test]
+    fn build_probe_payload_is_deterministic() {
+        let a = build_probe_payload(7, 16);
+        let b = build_probe_payload(7, 16);
+        let c = build_probe_payload(8, 16);
+
+        assert_eq!(a, b);
+        assert_ne!(a, c);
+        assert_eq!(a.len(), 16);
+    }
+
+    #[test]
+    fn decode_probe_payload_accepts_valid_base64() {
+        let encoded = STANDARD.encode([1_u8, 2, 3, 4]);
+        assert_eq!(decode_probe_payload(&encoded).unwrap(), vec![1, 2, 3, 4]);
     }
 }

@@ -95,6 +95,10 @@ pub struct NetworkTestProbeRequest {
     pub run_id: String,
     /// Zero-based sample index within this run.
     pub sample_index: u32,
+    /// Base64-encoded probe payload used to approximate a gameplay client packet.
+    pub client_payload_b64: String,
+    /// Requested size in bytes for the response payload.
+    pub requested_server_payload_bytes: u16,
 }
 
 /// Probe response payload returned by diagnostics network-test endpoint.
@@ -103,6 +107,9 @@ pub struct NetworkTestProbeResponse {
     /// Server timestamp in unix milliseconds when the probe was handled.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_unix_ms: Option<u64>,
+    /// Base64-encoded response payload used to approximate a gameplay tick payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_payload_b64: Option<String>,
     /// Optional error text when request validation fails.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,

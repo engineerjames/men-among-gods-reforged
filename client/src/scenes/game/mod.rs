@@ -24,6 +24,8 @@ use perf_profiler::{PerfLabel, PerfProfiler};
 
 use std::collections::HashSet;
 use std::io::Write;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -99,8 +101,14 @@ pub(super) const MAX_TICK_GROUPS_PER_FRAME: usize = 32;
 pub(super) const QSIZE: u32 = 8;
 /// Duration of a diagnostics network-test run.
 const NETWORK_TEST_DURATION_SECS: u64 = 10;
-/// Delay between diagnostics network-test probe samples.
-const NETWORK_TEST_SAMPLE_INTERVAL_MS: u64 = 500;
+/// Tick cadence used by the diagnostics network-test profile.
+const NETWORK_TEST_SAMPLE_INTERVAL_MS: u64 = 50;
+/// Per-request timeout for diagnostics network-test probes and summary upload.
+const NETWORK_TEST_REQUEST_TIMEOUT_MS: u64 = 750;
+/// Fixed client command packet size on the gameplay TCP protocol.
+const NETWORK_TEST_CLIENT_PAYLOAD_BYTES: usize = 16;
+/// Representative server tick payload sizes cycled during the test.
+const NETWORK_TEST_SERVER_PAYLOAD_BYTES: [u16; 4] = [2, 18, 31, 50];
 
 /// Final computed diagnostics network-test metrics.
 #[derive(Clone, Debug)]
@@ -121,6 +129,7 @@ struct NetworkTestRunResult {
     run_id: String,
     metrics: NetworkTestMetrics,
     summary_submit_error: Option<String>,
+    cancelled: bool,
 }
 
 /// Computes a jitter estimate from sequential RTT samples.
@@ -199,6 +208,41 @@ fn format_optional_ms(value: Option<u32>) -> String {
     value
         .map(|v| format!("{}ms", v))
         .unwrap_or_else(|| "N/A".to_owned())
+}
+
+/// Builds the fixed-width probe payload used to approximate one gameplay client command.
+///
+/// # Arguments
+///
+/// * `sample_index` - Zero-based diagnostics sample index.
+///
+/// # Returns
+///
+/// * A deterministic 16-byte payload.
+fn build_network_test_client_payload(sample_index: u32) -> [u8; NETWORK_TEST_CLIENT_PAYLOAD_BYTES] {
+    let mut payload = [0_u8; NETWORK_TEST_CLIENT_PAYLOAD_BYTES];
+    payload[0] = mag_core::client_commands::ClientCommandType::Ping as u8;
+    payload[1..5].copy_from_slice(&sample_index.to_le_bytes());
+    payload[5..9].copy_from_slice(&sample_index.wrapping_mul(50).to_le_bytes());
+    payload[9..13].copy_from_slice(&(sample_index ^ 0x5a5a_1234).to_le_bytes());
+    payload[13] = 0x11;
+    payload[14] = 0x22;
+    payload[15] = 0x33;
+    payload
+}
+
+/// Returns the representative server payload size for one diagnostics sample.
+///
+/// # Arguments
+///
+/// * `sample_index` - Zero-based diagnostics sample index.
+///
+/// # Returns
+///
+/// * One of the configured representative tick payload sizes.
+fn network_test_server_payload_bytes(sample_index: u32) -> u16 {
+    NETWORK_TEST_SERVER_PAYLOAD_BYTES
+        [sample_index as usize % NETWORK_TEST_SERVER_PAYLOAD_BYTES.len()]
 }
 
 // ---- Layout constants (ported from engine.c / layout.rs) ---- //
@@ -581,6 +625,8 @@ pub struct GameScene {
     network_test_result_rx: Option<Receiver<NetworkTestRunResult>>,
     /// `true` while a diagnostics network-test worker is active.
     network_test_running: bool,
+    /// Cancellation flag for the active diagnostics network-test worker.
+    network_test_cancel: Option<Arc<AtomicBool>>,
 }
 
 impl GameScene {
@@ -747,6 +793,7 @@ impl GameScene {
             hud_btn_fade_t: 1.0,
             network_test_result_rx: None,
             network_test_running: false,
+            network_test_cancel: None,
         }
     }
 
@@ -1040,6 +1087,13 @@ impl GameScene {
             }
             return;
         };
+        let Some(token) = app_state.api.token.as_deref() else {
+            log::warn!("Diagnostics upload skipped: no auth token");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(1, "Failed to send logs: not authenticated.".to_owned());
+            }
+            return;
+        };
         let character_id = login_target.character_id;
 
         let log_path = preferences::log_file_path();
@@ -1079,7 +1133,12 @@ impl GameScene {
             }
         };
 
-        match account_api::upload_client_log(&app_state.api.base_url, character_id, &compressed) {
+        match account_api::upload_client_log(
+            &app_state.api.base_url,
+            token,
+            character_id,
+            &compressed,
+        ) {
             Ok(saved_file) => {
                 if let Some(ps) = app_state.player_state.as_mut() {
                     ps.tlog(1, format!("Diagnostics uploaded: {saved_file}"));
@@ -1117,6 +1176,16 @@ impl GameScene {
             }
             return;
         };
+        let Some(token) = app_state.api.token.clone() else {
+            log::warn!("Network test skipped: no auth token");
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.tlog(
+                    1,
+                    "Failed to start network test: not authenticated.".to_owned(),
+                );
+            }
+            return;
+        };
 
         let character_id = login_target.character_id;
         let base_url = app_state.api.base_url.clone();
@@ -1134,22 +1203,56 @@ impl GameScene {
         }
 
         let (tx, rx) = mpsc::channel::<NetworkTestRunResult>();
+        let cancel = Arc::new(AtomicBool::new(false));
         self.network_test_result_rx = Some(rx);
         self.network_test_running = true;
+        self.network_test_cancel = Some(cancel.clone());
 
         std::thread::spawn(move || {
             let test_started = Instant::now();
+            let client = match cert_trust::build_reqwest_client_with_timeout(Duration::from_millis(
+                NETWORK_TEST_REQUEST_TIMEOUT_MS,
+            )) {
+                Ok(value) => value,
+                Err(err) => {
+                    let _ = tx.send(NetworkTestRunResult {
+                        run_id,
+                        metrics: NetworkTestMetrics {
+                            duration_ms: 0,
+                            total_samples: 0,
+                            failed_samples: 0,
+                            min_rtt_ms: None,
+                            avg_rtt_ms: None,
+                            max_rtt_ms: None,
+                            jitter_ms: None,
+                            quality_rating: "Poor".to_owned(),
+                        },
+                        summary_submit_error: Some(err),
+                        cancelled: false,
+                    });
+                    return;
+                }
+            };
             let mut successful_rtts: Vec<u32> = Vec::new();
             let mut failed_samples: u32 = 0;
             let mut sample_index: u32 = 0;
+            let mut next_sample_deadline = test_started;
 
-            while test_started.elapsed() < Duration::from_secs(NETWORK_TEST_DURATION_SECS) {
+            while test_started.elapsed() < Duration::from_secs(NETWORK_TEST_DURATION_SECS)
+                && !cancel.load(Ordering::Relaxed)
+            {
                 let sample_started = Instant::now();
+                let client_payload = build_network_test_client_payload(sample_index);
+                let expected_server_payload_bytes = network_test_server_payload_bytes(sample_index);
                 match account_api::run_network_test_probe(
+                    &client,
                     &base_url,
+                    &token,
                     character_id,
                     &run_id,
                     sample_index,
+                    &client_payload,
+                    expected_server_payload_bytes,
                 ) {
                     Ok(_) => {
                         let rtt_ms = sample_started
@@ -1170,10 +1273,10 @@ impl GameScene {
                 }
                 sample_index = sample_index.saturating_add(1);
 
-                let sample_elapsed = sample_started.elapsed();
-                let interval = Duration::from_millis(NETWORK_TEST_SAMPLE_INTERVAL_MS);
-                if sample_elapsed < interval {
-                    std::thread::sleep(interval - sample_elapsed);
+                next_sample_deadline += Duration::from_millis(NETWORK_TEST_SAMPLE_INTERVAL_MS);
+                let now = Instant::now();
+                if next_sample_deadline > now {
+                    std::thread::sleep(next_sample_deadline - now);
                 }
             }
 
@@ -1202,29 +1305,46 @@ impl GameScene {
                 quality_rating,
             };
 
-            let summary_submit_error = account_api::submit_network_test_summary(
-                &base_url,
-                character_id,
-                &run_id,
-                NetworkTestSummary {
-                    duration_ms: metrics.duration_ms,
-                    total_samples: metrics.total_samples,
-                    failed_samples: metrics.failed_samples,
-                    min_rtt_ms: metrics.min_rtt_ms,
-                    avg_rtt_ms: metrics.avg_rtt_ms,
-                    max_rtt_ms: metrics.max_rtt_ms,
-                    jitter_ms: metrics.jitter_ms,
-                    quality_rating: metrics.quality_rating.clone(),
-                },
-            )
-            .err();
+            let cancelled = cancel.load(Ordering::Relaxed);
+            let summary_submit_error = if cancelled || metrics.total_samples == 0 {
+                None
+            } else {
+                account_api::submit_network_test_summary(
+                    &client,
+                    &base_url,
+                    &token,
+                    character_id,
+                    &run_id,
+                    NetworkTestSummary {
+                        duration_ms: metrics.duration_ms,
+                        total_samples: metrics.total_samples,
+                        failed_samples: metrics.failed_samples,
+                        min_rtt_ms: metrics.min_rtt_ms,
+                        avg_rtt_ms: metrics.avg_rtt_ms,
+                        max_rtt_ms: metrics.max_rtt_ms,
+                        jitter_ms: metrics.jitter_ms,
+                        quality_rating: metrics.quality_rating.clone(),
+                    },
+                )
+                .err()
+            };
 
             let _ = tx.send(NetworkTestRunResult {
                 run_id,
                 metrics,
                 summary_submit_error,
+                cancelled,
             });
         });
+    }
+
+    /// Requests cancellation of any active diagnostics network-test worker.
+    fn cancel_network_test(&mut self) {
+        if let Some(cancel) = self.network_test_cancel.take() {
+            cancel.store(true, Ordering::Relaxed);
+        }
+        self.network_test_result_rx = None;
+        self.network_test_running = false;
     }
 
     /// Polls for completion of an active diagnostics network-test run.
@@ -1251,6 +1371,7 @@ impl GameScene {
             Err(TryRecvError::Disconnected) => {
                 self.network_test_running = false;
                 self.network_test_result_rx = None;
+                self.network_test_cancel = None;
                 log::warn!("Network test worker disconnected before publishing a result");
                 return;
             }
@@ -1258,6 +1379,12 @@ impl GameScene {
 
         self.network_test_running = false;
         self.network_test_result_rx = None;
+        self.network_test_cancel = None;
+
+        if result.cancelled {
+            log::info!("Network test cancelled: run_id={}", result.run_id);
+            return;
+        }
 
         let metrics = result.metrics;
         log::info!(
@@ -1784,8 +1911,7 @@ impl Scene for GameScene {
         self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
         self.left_stick_x = 0;
         self.left_stick_y = 0;
-        self.network_test_result_rx = None;
-        self.network_test_running = false;
+        self.cancel_network_test();
 
         app_state.settings.spell_effects_enabled = true;
         app_state.settings.character.key_bindings = KeyBindings::default();
@@ -1827,8 +1953,7 @@ impl Scene for GameScene {
     /// Clean up: persist the active profile and shut down the network connection.
     fn on_exit(&mut self, app_state: &mut AppState<'_>) {
         self.save_active_profile(app_state);
-        self.network_test_result_rx = None;
-        self.network_test_running = false;
+        self.cancel_network_test();
 
         if let Some(mut net) = app_state.network.take() {
             net.shutdown();
@@ -2658,8 +2783,9 @@ impl Scene for GameScene {
 mod tests {
     use super::{
         GameScene, HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X,
-        HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, helper_text_origin,
-        normalize_lava_blast_keybind_arrays,
+        HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, NETWORK_TEST_CLIENT_PAYLOAD_BYTES,
+        build_network_test_client_payload, classify_network_quality, estimate_jitter_ms,
+        helper_text_origin, network_test_server_payload_bytes, normalize_lava_blast_keybind_arrays,
     };
     use mag_core::skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex};
 
@@ -2751,5 +2877,34 @@ mod tests {
         assert!(changed);
         assert_eq!(primary[0], Some(SK_BLAST));
         assert_eq!(secondary[1], Some(SK_BLAST));
+    }
+
+    #[test]
+    fn jitter_estimate_uses_average_delta() {
+        assert_eq!(estimate_jitter_ms(&[100, 110, 90, 120]), Some(20));
+        assert_eq!(estimate_jitter_ms(&[100]), None);
+    }
+
+    #[test]
+    fn quality_classification_respects_latency_and_failures() {
+        assert_eq!(classify_network_quality(Some(90), 0, 20), "Good");
+        assert_eq!(classify_network_quality(Some(90), 2, 20), "Fair");
+        assert_eq!(classify_network_quality(Some(260), 0, 20), "Poor");
+        assert_eq!(classify_network_quality(Some(90), 5, 20), "Poor");
+    }
+
+    #[test]
+    fn network_test_payload_profile_matches_protocol_shape() {
+        let payload = build_network_test_client_payload(12);
+        assert_eq!(payload.len(), NETWORK_TEST_CLIENT_PAYLOAD_BYTES);
+        assert_eq!(
+            payload[0],
+            mag_core::client_commands::ClientCommandType::Ping as u8
+        );
+        assert_eq!(network_test_server_payload_bytes(0), 2);
+        assert_eq!(network_test_server_payload_bytes(1), 18);
+        assert_eq!(network_test_server_payload_bytes(2), 31);
+        assert_eq!(network_test_server_payload_bytes(3), 50);
+        assert_eq!(network_test_server_payload_bytes(4), 2);
     }
 }

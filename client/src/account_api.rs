@@ -395,6 +395,7 @@ pub fn create_game_login_ticket(
 /// * `Err(String)` when the request fails.
 pub fn upload_client_log(
     base_url: &str,
+    token: &str,
     character_id: u64,
     compressed_log: &[u8],
 ) -> Result<String, String> {
@@ -411,6 +412,7 @@ pub fn upload_client_log(
     for attempt in 0..=2u32 {
         let resp = client
             .post(&url)
+            .bearer_auth(token)
             .json(&UploadClientLogRequest {
                 character_id,
                 compressed_log_b64: compressed_log_b64.clone(),
@@ -457,7 +459,7 @@ pub fn upload_client_log(
 
     let message = match status {
         StatusCode::BAD_REQUEST => "Diagnostics upload rejected",
-        StatusCode::NOT_FOUND => "Character not found",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
         StatusCode::TOO_MANY_REQUESTS => "Diagnostics upload rate limited",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Diagnostics upload failed",
@@ -469,22 +471,29 @@ pub fn upload_client_log(
 ///
 /// # Arguments
 ///
+/// * `client` - Pre-built HTTP client reused across the entire test run.
 /// * `base_url` - API base URL used by this function.
+/// * `token` - JWT bearer token for the authenticated session.
 /// * `character_id` - Character id associated with the test run.
 /// * `run_id` - Client-generated run correlation id.
 /// * `sample_index` - Zero-based sample index in the current run.
+/// * `client_payload` - Probe payload bytes approximating one client command packet.
+/// * `requested_server_payload_bytes` - Response payload size requested from the server.
 ///
 /// # Returns
 ///
-/// * `Ok(server_unix_ms)` when probe succeeds.
+/// * `Ok((server_unix_ms, response_payload_bytes))` when probe succeeds.
 /// * `Err(String)` when request or server validation fails.
 pub fn run_network_test_probe(
+    client: &reqwest::blocking::Client,
     base_url: &str,
+    token: &str,
     character_id: u64,
     run_id: &str,
     sample_index: u32,
-) -> Result<u64, String> {
-    let client = cert_trust::build_reqwest_client()?;
+    client_payload: &[u8],
+    requested_server_payload_bytes: u16,
+) -> Result<(u64, Vec<u8>), String> {
     let url = format!("{}/diag/network-test/probe", base_url.trim_end_matches('/'));
 
     let mut last_status = None;
@@ -492,10 +501,13 @@ pub fn run_network_test_probe(
     for attempt in 0..=2u32 {
         let resp = client
             .post(&url)
+            .bearer_auth(token)
             .json(&NetworkTestProbeRequest {
                 character_id,
                 run_id: run_id.to_owned(),
                 sample_index,
+                client_payload_b64: STANDARD.encode(client_payload),
+                requested_server_payload_bytes,
             })
             .send()
             .map_err(|err| format!("Network test probe request failed: {err}"))?;
@@ -506,7 +518,24 @@ pub fn run_network_test_probe(
 
         if status.is_success() {
             if let Some(server_unix_ms) = body.as_ref().and_then(|value| value.server_unix_ms) {
-                return Ok(server_unix_ms);
+                let payload_b64 = body
+                    .as_ref()
+                    .and_then(|value| value.server_payload_b64.as_deref())
+                    .ok_or_else(|| {
+                        "Network test probe failed: missing server_payload_b64 in response"
+                            .to_owned()
+                    })?;
+                let response_payload = STANDARD.decode(payload_b64.as_bytes()).map_err(|err| {
+                    format!("Network test probe failed decoding server payload: {err}")
+                })?;
+                if response_payload.len() != usize::from(requested_server_payload_bytes) {
+                    return Err(format!(
+                        "Network test probe failed: expected {} response bytes, got {}",
+                        requested_server_payload_bytes,
+                        response_payload.len()
+                    ));
+                }
+                return Ok((server_unix_ms, response_payload));
             }
             return Err("Network test probe failed: missing server_unix_ms in response".to_owned());
         }
@@ -534,6 +563,7 @@ pub fn run_network_test_probe(
 
     let message = match status {
         StatusCode::BAD_REQUEST => "Network test probe rejected",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
         StatusCode::TOO_MANY_REQUESTS => "Network test probe rate limited",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Network test probe failed",
@@ -545,7 +575,9 @@ pub fn run_network_test_probe(
 ///
 /// # Arguments
 ///
+/// * `client` - Pre-built HTTP client reused across the entire test run.
 /// * `base_url` - API base URL used by this function.
+/// * `token` - JWT bearer token for the authenticated session.
 /// * `character_id` - Character id associated with the test run.
 /// * `run_id` - Client-generated run correlation id.
 /// * `summary` - Aggregated network-test metrics.
@@ -555,12 +587,13 @@ pub fn run_network_test_probe(
 /// * `Ok(())` when submission succeeds.
 /// * `Err(String)` when request or server validation fails.
 pub fn submit_network_test_summary(
+    client: &reqwest::blocking::Client,
     base_url: &str,
+    token: &str,
     character_id: u64,
     run_id: &str,
     summary: NetworkTestSummary,
 ) -> Result<(), String> {
-    let client = cert_trust::build_reqwest_client()?;
     let url = format!(
         "{}/diag/network-test/summary",
         base_url.trim_end_matches('/')
@@ -571,6 +604,7 @@ pub fn submit_network_test_summary(
     for attempt in 0..=2u32 {
         let resp = client
             .post(&url)
+            .bearer_auth(token)
             .json(&NetworkTestSummaryRequest {
                 character_id,
                 run_id: run_id.to_owned(),
@@ -613,7 +647,7 @@ pub fn submit_network_test_summary(
 
     let message = match status {
         StatusCode::BAD_REQUEST => "Network test summary rejected",
-        StatusCode::NOT_FOUND => "Character not found",
+        StatusCode::UNAUTHORIZED => "Unauthorized",
         StatusCode::TOO_MANY_REQUESTS => "Network test summary rate limited",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
         _ => "Network test summary failed",
