@@ -41,7 +41,7 @@ pub const fn scale_legacy_ticks_u32(legacy_ticks: u32) -> u32 {
         return 0;
     }
 
-    ((legacy_ticks as u64 * TICKS as u64 + LEGACY_TICKS as u64 - 1) / LEGACY_TICKS as u64) as u32
+    (legacy_ticks as u64 * TICKS as u64).div_ceil(LEGACY_TICKS as u64) as u32
 }
 
 /// Server map dimensions
