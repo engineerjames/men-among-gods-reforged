@@ -18,10 +18,13 @@ use crate::{ApiState, auth_extractor::AuthUser, pipelines};
 
 /// Hard-coded diagnostics upload directory inside the API container.
 const DIAG_UPLOAD_DIR: &str = "/var/mag/diag-uploads";
-/// Maximum accepted size for the base64 field to avoid oversized payload abuse.
-const MAX_COMPRESSED_LOG_B64_LEN: usize = 2 * 1024 * 1024;
+/// Maximum accepted size for the base64 field.
+///
+/// This is sized to safely carry the worst-case gzip+base64 expansion of an
+/// 8 MiB plain-text log file plus a small JSON wrapper.
+pub(crate) const MAX_COMPRESSED_LOG_B64_LEN: usize = 12 * 1024 * 1024;
 /// Maximum accepted decompressed log size in bytes.
-const MAX_DECOMPRESSED_LOG_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const MAX_DECOMPRESSED_LOG_BYTES: usize = 8 * 1024 * 1024;
 /// Maximum supported diagnostics run ID length.
 const MAX_RUN_ID_LEN: usize = 64;
 /// Maximum accepted decoded network-test payload size in bytes.

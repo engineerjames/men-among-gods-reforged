@@ -109,6 +109,12 @@ const NETWORK_TEST_REQUEST_TIMEOUT_MS: u64 = 750;
 const NETWORK_TEST_CLIENT_PAYLOAD_BYTES: usize = 16;
 /// Representative server tick payload sizes cycled during the test.
 const NETWORK_TEST_SERVER_PAYLOAD_BYTES: [u16; 4] = [2, 18, 31, 50];
+/// Maximum raw client-log bytes retained for one diagnostics upload.
+const MAX_CLIENT_LOG_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
+/// Maximum base64-encoded compressed payload accepted by the diagnostics API.
+const MAX_CLIENT_LOG_UPLOAD_B64_BYTES: usize = 12 * 1024 * 1024;
+/// Amount removed from the oldest side of the log when shrinking an upload.
+const CLIENT_LOG_UPLOAD_SHRINK_STEP_BYTES: usize = 256 * 1024;
 
 /// Final computed diagnostics network-test metrics.
 #[derive(Clone, Debug)]
@@ -208,6 +214,52 @@ fn format_optional_ms(value: Option<u32>) -> String {
     value
         .map(|v| format!("{}ms", v))
         .unwrap_or_else(|| "N/A".to_owned())
+}
+
+/// Returns the base64 output length for `byte_len` input bytes.
+fn base64_encoded_len(byte_len: usize) -> usize {
+    byte_len.div_ceil(3) * 4
+}
+
+/// Compresses the newest slice of the client log so it fits the diagnostics API.
+///
+/// # Arguments
+///
+/// * `log_bytes` - Full log-file contents read from disk.
+///
+/// # Returns
+///
+/// * `Ok((compressed_bytes, retained_plaintext_bytes))` when the upload payload fits.
+/// * `Err(String)` when compression fails or no fitting slice can be produced.
+fn compress_log_for_upload(log_bytes: &[u8]) -> Result<(Vec<u8>, usize), String> {
+    if log_bytes.is_empty() {
+        return Err("log file is empty".to_owned());
+    }
+
+    let mut retained_bytes = log_bytes.len().min(MAX_CLIENT_LOG_UPLOAD_BYTES);
+    while retained_bytes > 0 {
+        let start = log_bytes.len() - retained_bytes;
+        let slice = &log_bytes[start..];
+
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder
+            .write_all(slice)
+            .map_err(|err| format!("compression error: {err}"))?;
+        let compressed = encoder
+            .finish()
+            .map_err(|err| format!("compression error: {err}"))?;
+
+        if base64_encoded_len(compressed.len()) <= MAX_CLIENT_LOG_UPLOAD_B64_BYTES {
+            return Ok((compressed, retained_bytes));
+        }
+
+        if retained_bytes <= CLIENT_LOG_UPLOAD_SHRINK_STEP_BYTES {
+            break;
+        }
+        retained_bytes -= CLIENT_LOG_UPLOAD_SHRINK_STEP_BYTES;
+    }
+
+    Err("log file is too large to upload after compression".to_owned())
 }
 
 /// Builds the fixed-width probe payload used to approximate one gameplay client command.
@@ -1113,25 +1165,24 @@ impl GameScene {
                 return;
             }
         };
-
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        if let Err(err) = encoder.write_all(&log_bytes) {
-            log::warn!("Diagnostics upload failed compressing log: {err}");
-            if let Some(ps) = app_state.player_state.as_mut() {
-                ps.tlog(1, "Failed to send logs: compression error.".to_owned());
-            }
-            return;
-        }
-        let compressed = match encoder.finish() {
+        let (compressed, retained_log_bytes) = match compress_log_for_upload(&log_bytes) {
             Ok(value) => value,
             Err(err) => {
-                log::warn!("Diagnostics upload failed finalizing compression: {err}");
+                log::warn!("Diagnostics upload failed preparing log payload: {err}");
                 if let Some(ps) = app_state.player_state.as_mut() {
-                    ps.tlog(1, "Failed to send logs: compression error.".to_owned());
+                    ps.tlog(1, format!("Failed to send logs: {err}"));
                 }
                 return;
             }
         };
+
+        if retained_log_bytes < log_bytes.len() {
+            log::info!(
+                "Diagnostics upload trimming client log from {} to {} bytes",
+                log_bytes.len(),
+                retained_log_bytes
+            );
+        }
 
         match account_api::upload_client_log(
             &app_state.api.base_url,
@@ -1141,7 +1192,17 @@ impl GameScene {
         ) {
             Ok(saved_file) => {
                 if let Some(ps) = app_state.player_state.as_mut() {
-                    ps.tlog(1, format!("Diagnostics uploaded: {saved_file}"));
+                    if retained_log_bytes < log_bytes.len() {
+                        ps.tlog(
+                            1,
+                            format!(
+                                "Diagnostics uploaded: {saved_file} (latest {} bytes)",
+                                retained_log_bytes
+                            ),
+                        );
+                    } else {
+                        ps.tlog(1, format!("Diagnostics uploaded: {saved_file}"));
+                    }
                 }
             }
             Err(err) => {
@@ -2783,9 +2844,10 @@ impl Scene for GameScene {
 mod tests {
     use super::{
         GameScene, HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X,
-        HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, NETWORK_TEST_CLIENT_PAYLOAD_BYTES,
-        build_network_test_client_payload, classify_network_quality, estimate_jitter_ms,
-        helper_text_origin, network_test_server_payload_bytes, normalize_lava_blast_keybind_arrays,
+        HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, MAX_CLIENT_LOG_UPLOAD_BYTES,
+        NETWORK_TEST_CLIENT_PAYLOAD_BYTES, base64_encoded_len, build_network_test_client_payload,
+        classify_network_quality, compress_log_for_upload, estimate_jitter_ms, helper_text_origin,
+        network_test_server_payload_bytes, normalize_lava_blast_keybind_arrays,
     };
     use mag_core::skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex};
 
@@ -2906,5 +2968,25 @@ mod tests {
         assert_eq!(network_test_server_payload_bytes(2), 31);
         assert_eq!(network_test_server_payload_bytes(3), 50);
         assert_eq!(network_test_server_payload_bytes(4), 2);
+    }
+
+    #[test]
+    fn compress_log_for_upload_keeps_small_logs_intact() {
+        let log = b"hello\nworld\n".repeat(128);
+
+        let (compressed, retained_bytes) = compress_log_for_upload(&log).unwrap();
+
+        assert_eq!(retained_bytes, log.len());
+        assert!(!compressed.is_empty());
+        assert!(base64_encoded_len(compressed.len()) > 0);
+    }
+
+    #[test]
+    fn compress_log_for_upload_trims_to_upload_window() {
+        let log = vec![b'x'; MAX_CLIENT_LOG_UPLOAD_BYTES + 4096];
+
+        let (_compressed, retained_bytes) = compress_log_for_upload(&log).unwrap();
+
+        assert_eq!(retained_bytes, MAX_CLIENT_LOG_UPLOAD_BYTES);
     }
 }

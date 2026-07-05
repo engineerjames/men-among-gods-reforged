@@ -459,6 +459,7 @@ pub fn upload_client_log(
 
     let message = match status {
         StatusCode::BAD_REQUEST => "Diagnostics upload rejected",
+        StatusCode::PAYLOAD_TOO_LARGE => "Diagnostics upload payload too large",
         StatusCode::UNAUTHORIZED => "Unauthorized",
         StatusCode::TOO_MANY_REQUESTS => "Diagnostics upload rate limited",
         StatusCode::INTERNAL_SERVER_ERROR => "Server error",
