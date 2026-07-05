@@ -348,6 +348,7 @@ impl GameState {
             return Ok(());
         }
 
+        // TODO: We will eventually want to take this migration out once we are updating the templates
         let runtime_count = Self::normalize_legacy_runtime_item_timers(&mut data.items);
         let template_count = Self::normalize_legacy_spell_template_timers(&mut data.item_templates);
 
