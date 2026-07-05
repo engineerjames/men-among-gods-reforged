@@ -221,6 +221,31 @@ fn base64_encoded_len(byte_len: usize) -> usize {
     byte_len.div_ceil(3) * 4
 }
 
+/// Returns a newest-log slice aligned to a line boundary when truncation occurs.
+///
+/// # Arguments
+///
+/// * `log_bytes` - Full log-file contents read from disk.
+/// * `retained_bytes` - Target number of newest bytes to retain.
+///
+/// # Returns
+///
+/// * `(slice, slice_len)` where `slice` starts on a log-line boundary when possible.
+fn newest_log_slice_for_upload(log_bytes: &[u8], retained_bytes: usize) -> (&[u8], usize) {
+    let start = log_bytes.len().saturating_sub(retained_bytes);
+    if start == 0 || log_bytes[start - 1] == b'\n' {
+        return (&log_bytes[start..], log_bytes.len() - start);
+    }
+
+    let tail = &log_bytes[start..];
+    if let Some(offset) = tail.iter().position(|byte| *byte == b'\n') {
+        let aligned_start = (start + offset + 1).min(log_bytes.len());
+        (&log_bytes[aligned_start..], log_bytes.len() - aligned_start)
+    } else {
+        (&log_bytes[start..], log_bytes.len() - start)
+    }
+}
+
 /// Compresses the newest slice of the client log so it fits the diagnostics API.
 ///
 /// # Arguments
@@ -238,8 +263,7 @@ fn compress_log_for_upload(log_bytes: &[u8]) -> Result<(Vec<u8>, usize), String>
 
     let mut retained_bytes = log_bytes.len().min(MAX_CLIENT_LOG_UPLOAD_BYTES);
     while retained_bytes > 0 {
-        let start = log_bytes.len() - retained_bytes;
-        let slice = &log_bytes[start..];
+        let (slice, actual_retained_bytes) = newest_log_slice_for_upload(log_bytes, retained_bytes);
 
         let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
         encoder
@@ -250,7 +274,7 @@ fn compress_log_for_upload(log_bytes: &[u8]) -> Result<(Vec<u8>, usize), String>
             .map_err(|err| format!("compression error: {err}"))?;
 
         if base64_encoded_len(compressed.len()) <= MAX_CLIENT_LOG_UPLOAD_B64_BYTES {
-            return Ok((compressed, retained_bytes));
+            return Ok((compressed, actual_retained_bytes));
         }
 
         if retained_bytes <= CLIENT_LOG_UPLOAD_SHRINK_STEP_BYTES {
@@ -2847,9 +2871,12 @@ mod tests {
         HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, MAX_CLIENT_LOG_UPLOAD_BYTES,
         NETWORK_TEST_CLIENT_PAYLOAD_BYTES, base64_encoded_len, build_network_test_client_payload,
         classify_network_quality, compress_log_for_upload, estimate_jitter_ms, helper_text_origin,
-        network_test_server_payload_bytes, normalize_lava_blast_keybind_arrays,
+        network_test_server_payload_bytes, newest_log_slice_for_upload,
+        normalize_lava_blast_keybind_arrays,
     };
+    use flate2::read::GzDecoder;
     use mag_core::skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex};
+    use std::io::Read;
 
     const SCREEN_W: i32 = 800;
     const SCREEN_H: i32 = 600;
@@ -2988,5 +3015,30 @@ mod tests {
         let (_compressed, retained_bytes) = compress_log_for_upload(&log).unwrap();
 
         assert_eq!(retained_bytes, MAX_CLIENT_LOG_UPLOAD_BYTES);
+    }
+
+    #[test]
+    fn newest_log_slice_for_upload_skips_partial_first_line() {
+        let log = b"first line\nsecond line\nthird line\n";
+
+        let (slice, retained_bytes) = newest_log_slice_for_upload(log, log.len() - 3);
+
+        assert_eq!(slice, b"second line\nthird line\n");
+        assert_eq!(retained_bytes, slice.len());
+    }
+
+    #[test]
+    fn compress_log_for_upload_outputs_complete_first_line_after_trim() {
+        let mut log = b"pan=0\n2026-05-02 full line\n2026-05-02 another line\n".to_vec();
+        log.extend(vec![b'x'; MAX_CLIENT_LOG_UPLOAD_BYTES + 3 - log.len()]);
+
+        let (compressed, _retained_bytes) = compress_log_for_upload(&log).unwrap();
+        let mut decoded = String::new();
+        GzDecoder::new(compressed.as_slice())
+            .read_to_string(&mut decoded)
+            .unwrap();
+
+        assert!(decoded.starts_with("2026-05-02"));
+        assert!(!decoded.starts_with("=0"));
     }
 }
