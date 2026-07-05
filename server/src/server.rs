@@ -1191,11 +1191,13 @@ impl Server {
 
         if req.reload_items {
             match server::keydb::store::load_item_templates(&mut con) {
-                Ok(items) => {
+                Ok(mut items) => {
+                    let migrated = GameState::normalize_legacy_spell_template_timers(&mut items);
                     log::info!(
-                        "template reload {}: swapped {} item templates",
+                        "template reload {}: swapped {} item templates (normalized {} spell timers)",
                         req.request_id,
-                        items.len()
+                        items.len(),
+                        migrated,
                     );
                     gs.item_templates = items;
                 }

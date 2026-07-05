@@ -1,7 +1,8 @@
 use crate::path_finding::PathFinder;
 use crate::types::server_player::ServerPlayer;
-use core::constants::{CharacterFlags, USE_EMPTY};
+use core::constants::{CharacterFlags, ItemFlags, USE_EMPTY};
 use core::talent_trees::total_points_spent;
+use redis::Commands;
 use std::collections::HashMap;
 
 /// Runtime state for the Harakim Element Switching passive.
@@ -87,6 +88,12 @@ pub struct GameState {
     pub item_tick_gc_count: u32,
     /// Item tick expiration counter.
     pub item_tick_expire_counter: u32,
+    /// Carry-over budget for legacy item-expire passes.
+    ///
+    /// Legacy item expiration was authored around 18 TPS with 4 expire passes
+    /// per game tick. This accumulator allows us to preserve that same
+    /// wall-clock pacing at any current `TICKS` value.
+    pub item_tick_expire_budget: i32,
 
     // -- Visibility state (formerly State) --
     /// Scratch visibility buffer (underscore prefix preserved from original).
@@ -139,6 +146,8 @@ pub struct GameState {
 }
 
 impl GameState {
+    const TIMER_MIGRATION_KEY: &'static str = "game:meta:timers_migrated_v1";
+
     /// Normalize MOTD text for safe client display.
     ///
     /// Applies the historical maximum length constraint to avoid client
@@ -199,6 +208,7 @@ impl GameState {
             item_tick_gc_off: 0,
             item_tick_gc_count: 0,
             item_tick_expire_counter: 0,
+            item_tick_expire_budget: 0,
             // Visibility state
             _visi: [0; core::constants::VISI_BUFFER_LEN],
             visi: [0; core::constants::VISI_BUFFER_LEN],
@@ -282,7 +292,9 @@ impl GameState {
     /// * `Err(String)` if the KeyDB connection or load fails.
     fn load_from_keydb(&mut self) -> Result<(), String> {
         let mut con = keydb::connect()?;
-        let data = store::load_all(&mut con)?;
+        let mut data = store::load_all(&mut con)?;
+
+        self.migrate_legacy_timer_data_once(&mut con, &mut data)?;
 
         self.map = data.map;
         self.items = data.items;
@@ -309,6 +321,118 @@ impl GameState {
         );
 
         Ok(())
+    }
+
+    /// Performs a one-time migration that rescales persisted legacy spell/item
+    /// countdown timers from 18 TPS units to current TPS units.
+    ///
+    /// # Arguments
+    ///
+    /// * `con` - Open KeyDB connection used to read/write migration marker.
+    /// * `data` - Loaded snapshot data that may need timer normalization.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if migration is complete or already applied.
+    /// * `Err(String)` if marker read/write fails.
+    fn migrate_legacy_timer_data_once(
+        &self,
+        con: &mut redis::Connection,
+        data: &mut store::GameData,
+    ) -> Result<(), String> {
+        let already_migrated: bool = con
+            .exists(Self::TIMER_MIGRATION_KEY)
+            .map_err(|e| format!("KeyDB EXISTS {}: {e}", Self::TIMER_MIGRATION_KEY))?;
+
+        if already_migrated {
+            return Ok(());
+        }
+
+        let runtime_count = Self::normalize_legacy_runtime_item_timers(&mut data.items);
+        let template_count = Self::normalize_legacy_spell_template_timers(&mut data.item_templates);
+
+        con.set::<_, _, ()>(Self::TIMER_MIGRATION_KEY, 1)
+            .map_err(|e| format!("KeyDB SET {}: {e}", Self::TIMER_MIGRATION_KEY))?;
+
+        log::info!(
+            "Applied timer migration v1: normalized {} runtime items and {} item templates",
+            runtime_count,
+            template_count
+        );
+
+        Ok(())
+    }
+
+    /// Normalizes runtime item timers that represent active countdown-based spell effects.
+    ///
+    /// # Arguments
+    ///
+    /// * `items` - Runtime item slots to normalize in-place.
+    ///
+    /// # Returns
+    ///
+    /// * Number of items modified.
+    pub(crate) fn normalize_legacy_runtime_item_timers(items: &mut [core::types::Item]) -> usize {
+        let mut changed = 0usize;
+
+        for item in items.iter_mut() {
+            if item.used == USE_EMPTY {
+                continue;
+            }
+            if (item.flags & ItemFlags::IF_SPELL.bits()) == 0 {
+                continue;
+            }
+
+            let mut item_changed = false;
+
+            if item.duration > 0 {
+                item.duration = core::constants::scale_legacy_ticks_u32(item.duration);
+                item_changed = true;
+            }
+
+            if item.active > 0 && item.active != u32::MAX {
+                item.active = core::constants::scale_legacy_ticks_u32(item.active);
+                item_changed = true;
+            }
+
+            if item_changed {
+                changed += 1;
+            }
+        }
+
+        changed
+    }
+
+    /// Normalizes spell-related item-template timers from legacy 18 TPS units.
+    ///
+    /// # Arguments
+    ///
+    /// * `item_templates` - Item templates to normalize in-place.
+    ///
+    /// # Returns
+    ///
+    /// * Number of templates modified.
+    pub(crate) fn normalize_legacy_spell_template_timers(
+        item_templates: &mut [core::types::Item],
+    ) -> usize {
+        let mut changed = 0usize;
+
+        for template in item_templates.iter_mut() {
+            if template.used == USE_EMPTY {
+                continue;
+            }
+            if (template.flags & ItemFlags::IF_SPELL.bits()) == 0 {
+                continue;
+            }
+            if template.duration == 0 {
+                continue;
+            }
+
+            template.duration = core::constants::scale_legacy_ticks_u32(template.duration);
+            changed += 1;
+        }
+
+        changed
     }
 
     /// Mark loaded characters with learned talents for one stat recompute.
@@ -426,5 +550,50 @@ mod tests {
     fn normalize_motd_empty() {
         let result = GameState::normalize_message_of_the_day(String::new());
         assert_eq!(result, "");
+    }
+
+    #[test]
+    fn normalize_legacy_runtime_item_timers_scales_spell_items_only() {
+        let mut items = vec![core::types::Item::default(); 4];
+
+        items[1].used = core::constants::USE_ACTIVE;
+        items[1].flags = core::constants::ItemFlags::IF_SPELL.bits();
+        items[1].duration = 180;
+        items[1].active = 90;
+
+        items[2].used = core::constants::USE_ACTIVE;
+        items[2].duration = 180;
+        items[2].active = 90;
+
+        items[3].used = core::constants::USE_ACTIVE;
+        items[3].flags = core::constants::ItemFlags::IF_SPELL.bits();
+        items[3].duration = 0;
+        items[3].active = u32::MAX;
+
+        let changed = GameState::normalize_legacy_runtime_item_timers(&mut items);
+        assert_eq!(changed, 1);
+        assert_eq!(items[1].duration, 360);
+        assert_eq!(items[1].active, 180);
+        assert_eq!(items[2].duration, 180);
+        assert_eq!(items[2].active, 90);
+        assert_eq!(items[3].duration, 0);
+        assert_eq!(items[3].active, u32::MAX);
+    }
+
+    #[test]
+    fn normalize_legacy_spell_template_timers_scales_spell_templates_only() {
+        let mut templates = vec![core::types::Item::default(); 3];
+
+        templates[1].used = core::constants::USE_ACTIVE;
+        templates[1].flags = core::constants::ItemFlags::IF_SPELL.bits();
+        templates[1].duration = 180;
+
+        templates[2].used = core::constants::USE_ACTIVE;
+        templates[2].duration = 180;
+
+        let changed = GameState::normalize_legacy_spell_template_timers(&mut templates);
+        assert_eq!(changed, 1);
+        assert_eq!(templates[1].duration, 360);
+        assert_eq!(templates[2].duration, 180);
     }
 }

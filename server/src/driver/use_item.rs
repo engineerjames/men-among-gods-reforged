@@ -1155,11 +1155,12 @@ pub fn teleport2(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     {
         let spell = &mut gs.items[spell_item];
         let name = b"Teleport";
+        let recall_duration = core::constants::scale_legacy_ticks_u32(180);
         spell.name[..name.len()].copy_from_slice(name);
         spell.flags |= ItemFlags::IF_SPELL.bits();
         spell.sprite[1] = 90;
-        spell.duration = 180;
-        spell.active = 180;
+        spell.duration = recall_duration;
+        spell.active = recall_duration;
         spell.temp = skills::SK_RECALL as u16;
         spell.power = power;
         spell.data[0] = dest_x;
@@ -8045,10 +8046,16 @@ pub fn item_tick_gc(gs: &mut GameState) {
 ///
 /// * Panics if any legacy id or index parameter used by `item_tick` is outside the corresponding game-state collection.
 pub fn item_tick(gs: &mut GameState) {
-    item_tick_expire(gs);
-    item_tick_expire(gs);
-    item_tick_expire(gs);
-    item_tick_expire(gs);
+    // Preserve legacy wall-clock expire pacing (4 passes at 18 TPS) while
+    // allowing arbitrary server tick rates.
+    const LEGACY_EXPIRE_PASSES_PER_TICK: i32 = 4;
+    gs.item_tick_expire_budget += LEGACY_EXPIRE_PASSES_PER_TICK * core::constants::LEGACY_TICKS;
+
+    while gs.item_tick_expire_budget >= core::constants::TICKS {
+        item_tick_expire(gs);
+        gs.item_tick_expire_budget -= core::constants::TICKS;
+    }
+
     item_tick_gc(gs);
 }
 

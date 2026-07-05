@@ -23,6 +23,27 @@ pub const LEGACY_TICKS: i32 = 18;
 /// Microseconds per tick
 pub const TICK: i64 = 1_000_000 / TICKS as i64;
 
+/// Convert a legacy 18 TPS tick count into the current tick rate.
+///
+/// Uses ceiling division so short-lived timers do not collapse to zero when
+/// scaled to higher TPS values.
+pub const fn scale_legacy_ticks(legacy_ticks: i32) -> i32 {
+    if legacy_ticks <= 0 {
+        return 0;
+    }
+
+    ((legacy_ticks as i64 * TICKS as i64 + LEGACY_TICKS as i64 - 1) / LEGACY_TICKS as i64) as i32
+}
+
+/// `u32` helper variant of [`scale_legacy_ticks`].
+pub const fn scale_legacy_ticks_u32(legacy_ticks: u32) -> u32 {
+    if legacy_ticks == 0 {
+        return 0;
+    }
+
+    ((legacy_ticks as u64 * TICKS as u64 + LEGACY_TICKS as u64 - 1) / LEGACY_TICKS as u64) as u32
+}
+
 /// Server map dimensions
 pub const SERVER_MAPX: i32 = 1024;
 pub const SERVER_MAPY: i32 = 1024;
@@ -933,6 +954,20 @@ mod tests {
 
         // Test empty flags
         assert_eq!(character_flags_name(CharacterFlags::empty()), "UnknownFlag");
+    }
+
+    #[test]
+    fn scale_legacy_ticks_preserves_wall_time_at_36_tps() {
+        assert_eq!(scale_legacy_ticks(180), 360);
+        assert_eq!(scale_legacy_ticks(1), 2);
+        assert_eq!(scale_legacy_ticks(0), 0);
+    }
+
+    #[test]
+    fn scale_legacy_ticks_u32_preserves_wall_time_at_36_tps() {
+        assert_eq!(scale_legacy_ticks_u32(180), 360);
+        assert_eq!(scale_legacy_ticks_u32(1), 2);
+        assert_eq!(scale_legacy_ticks_u32(0), 0);
     }
 
     #[test]
