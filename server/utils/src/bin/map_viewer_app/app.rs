@@ -4,6 +4,7 @@ use egui::{Pos2, Rect, Vec2};
 use mag_core::constants::{ItemFlags, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS};
 use mag_core::map_store::MapPatch;
 use mag_core::types::{Item, Map};
+use mag_core::world_action_store::WorldActionKind;
 use server::keydb::snapshot::WorldSnapshot;
 use server_utils::admin_client::AdminClient;
 use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
@@ -14,7 +15,7 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaletteEntryKind {
     Sprite(u16),
-    Item(u32),
+    ItemTemplate(u16),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,7 +68,7 @@ pub(crate) struct MapViewerApp {
     palette: Vec<PaletteEntry>,
     selected_palette_index: Option<usize>,
     draft_sprite: u16,
-    draft_item_instance_id: u32,
+    draft_item_template_id: u16,
     palette_rect: Option<Rect>,
     line_anchor: Option<(usize, usize)>,
 
@@ -347,25 +348,27 @@ impl MapViewerApp {
 
     /// Apply a palette entry to one map tile and mark it dirty when changed.
     fn apply_palette_to_tile(&mut self, x: usize, y: usize, entry: PaletteEntry) -> bool {
+        match entry.kind {
+            PaletteEntryKind::Sprite(sprite) => self.apply_sprite_to_tile(x, y, sprite),
+            PaletteEntryKind::ItemTemplate(template_id) => {
+                self.apply_item_template_to_tile(x, y, template_id)
+            }
+        }
+    }
+
+    /// Apply a foreground sprite to one map tile and mark it dirty when changed.
+    fn apply_sprite_to_tile(&mut self, x: usize, y: usize, sprite: u16) -> bool {
+        if sprite == 0 {
+            return false;
+        }
+
         let idx = tile_index(x, y);
         let Some(current) = self.map_tiles.get(idx).copied() else {
             return false;
         };
 
         let mut tile = current;
-        match entry.kind {
-            PaletteEntryKind::Sprite(sprite) => {
-                if sprite != 0 {
-                    tile.fsprite = sprite;
-                }
-            }
-            PaletteEntryKind::Item(it) => {
-                if it != 0 {
-                    tile.it = it;
-                    tile.fsprite = 0;
-                }
-            }
-        }
+        tile.fsprite = sprite;
 
         if tile == current {
             return false;
@@ -374,6 +377,121 @@ impl MapViewerApp {
         self.map_tiles[idx] = tile;
         self.mark_tile_dirty(x, y);
         true
+    }
+
+    /// Apply an item template to one tile.
+    ///
+    /// LiveApi mode queues a world action for server-managed allocation.
+    /// Snapshot mode allocates a free item slot locally and patches map/items.
+    fn apply_item_template_to_tile(&mut self, x: usize, y: usize, template_id: u16) -> bool {
+        if template_id == 0 {
+            return false;
+        }
+
+        if self.data_source.is_live_api() {
+            return self.apply_item_template_to_tile_live(x, y, template_id);
+        }
+
+        self.apply_item_template_to_tile_snapshot(x, y, template_id)
+    }
+
+    /// Queue a server world action to place one map item from template.
+    fn apply_item_template_to_tile_live(&mut self, x: usize, y: usize, template_id: u16) -> bool {
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            self.save_status = Some("Admin client not initialized".to_owned());
+            return false;
+        };
+
+        let action = WorldActionKind::PlaceMapItemFromTemplate {
+            x,
+            y,
+            template_id: template_id as usize,
+        };
+
+        match client.request_world_action(&action) {
+            Ok(resp) => {
+                self.save_status = Some(format!(
+                    "Queued item placement ({}, {}, template {}) [{}]",
+                    x, y, template_id, resp.request_id
+                ));
+                true
+            }
+            Err(e) => {
+                self.save_status = Some(format!(
+                    "Item placement failed at ({}, {}), template {}: {}",
+                    x, y, template_id, e
+                ));
+                false
+            }
+        }
+    }
+
+    /// Allocate a free runtime item slot locally and place it on one tile.
+    fn apply_item_template_to_tile_snapshot(
+        &mut self,
+        x: usize,
+        y: usize,
+        template_id: u16,
+    ) -> bool {
+        let template_idx = template_id as usize;
+        if template_idx >= self.item_templates.len() {
+            self.save_status = Some(format!("Item template {} is out of range", template_id));
+            return false;
+        }
+        if self.item_templates[template_idx].used == USE_EMPTY {
+            self.save_status = Some(format!("Item template {} is unused", template_id));
+            return false;
+        }
+
+        let map_idx = tile_index(x, y);
+        let Some(current_tile) = self.map_tiles.get(map_idx).copied() else {
+            return false;
+        };
+        if current_tile.it != 0 {
+            self.save_status = Some(format!(
+                "Tile ({}, {}) already has item {}",
+                x, y, current_tile.it
+            ));
+            return false;
+        }
+
+        let Some(item_id) = self.find_free_snapshot_item_slot() else {
+            self.save_status = Some("No free runtime item slots available".to_owned());
+            return false;
+        };
+
+        let mut item = self.item_templates[template_idx];
+        item.temp = template_id;
+        item.x = x as u16;
+        item.y = y as u16;
+        item.carried = 0;
+
+        self.items[item_id] = item;
+
+        let mut updated_tile = current_tile;
+        updated_tile.it = item_id as u32;
+        updated_tile.fsprite = 0;
+        self.map_tiles[map_idx] = updated_tile;
+        self.mark_tile_dirty(x, y);
+        true
+    }
+
+    /// Return a free snapshot-mode runtime item slot.
+    fn find_free_snapshot_item_slot(&self) -> Option<usize> {
+        for item_id in 1..self.items.len() {
+            let item = self.items[item_id];
+            if item.used != USE_EMPTY {
+                continue;
+            }
+            if item.carried != 0 {
+                continue;
+            }
+            if self.map_tiles.iter().any(|tile| tile.it == item_id as u32) {
+                continue;
+            }
+            return Some(item_id);
+        }
+        None
     }
 
     /// Push every dirty map tile to the admin API and clear the dirty set.
@@ -741,12 +859,12 @@ impl MapViewerApp {
                             });
 
                             ui.horizontal(|ui| {
-                                ui.label("it:");
-                                ui.add(egui::DragValue::new(&mut self.draft_item_instance_id));
+                                ui.label("template:");
+                                ui.add(egui::DragValue::new(&mut self.draft_item_template_id));
 
                                 let preview_size = Vec2::new(96.0, 96.0);
                                 let mut preview_drawn = false;
-                                let it_idx = self.draft_item_instance_id as usize;
+                                let it_idx = self.draft_item_template_id as usize;
 
                                 if it_idx < self.item_templates.len()
                                     && self.item_templates[it_idx].used != USE_EMPTY
@@ -769,10 +887,12 @@ impl MapViewerApp {
                                 }
 
                                 if ui.small_button("Add").clicked()
-                                    && self.draft_item_instance_id != 0
+                                    && self.draft_item_template_id != 0
                                 {
                                     self.palette.push(PaletteEntry {
-                                        kind: PaletteEntryKind::Item(self.draft_item_instance_id),
+                                        kind: PaletteEntryKind::ItemTemplate(
+                                            self.draft_item_template_id,
+                                        ),
                                     });
                                 }
                             });
@@ -797,11 +917,11 @@ impl MapViewerApp {
                                                             Some(sprite as usize)
                                                         }
                                                     }
-                                                    PaletteEntryKind::Item(it) => {
-                                                        if it == 0 {
+                                                    PaletteEntryKind::ItemTemplate(template_id) => {
+                                                        if template_id == 0 {
                                                             None
                                                         } else {
-                                                            let it_idx = it as usize;
+                                                            let it_idx = template_id as usize;
                                                             if it_idx < self.item_templates.len()
                                                                 && self.item_templates[it_idx].used
                                                                     != USE_EMPTY

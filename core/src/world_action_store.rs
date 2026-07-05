@@ -54,6 +54,15 @@ pub enum WorldActionKind {
     RebuildLights,
     /// Synchronize player skill metadata from character templates.
     SyncPlayerSkills,
+    /// Place one map item by cloning a template into a free runtime slot.
+    PlaceMapItemFromTemplate {
+        /// Tile X coordinate.
+        x: usize,
+        /// Tile Y coordinate.
+        y: usize,
+        /// Item template id to instantiate.
+        template_id: usize,
+    },
     /// Reset one character template and its live instances.
     ResetChar {
         /// Character template id to reset.
@@ -80,6 +89,7 @@ impl WorldActionKind {
             Self::WipeRuntime => "wipe_runtime",
             Self::RebuildLights => "rebuild_lights",
             Self::SyncPlayerSkills => "sync_player_skills",
+            Self::PlaceMapItemFromTemplate { .. } => "place_map_item_from_template",
             Self::ResetChar { .. } => "reset_char",
             Self::ResetItem { .. } => "reset_item",
             Self::ResetAll => "reset_all",
@@ -203,6 +213,15 @@ mod tests {
         assert_eq!(
             WorldActionKind::SyncPlayerSkills.name(),
             "sync_player_skills"
+        );
+        assert_eq!(
+            WorldActionKind::PlaceMapItemFromTemplate {
+                x: 12,
+                y: 34,
+                template_id: 56,
+            }
+            .name(),
+            "place_map_item_from_template"
         );
         assert_eq!(
             WorldActionKind::ResetChar { template_id: 42 }.name(),
