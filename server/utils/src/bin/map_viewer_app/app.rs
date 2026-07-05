@@ -36,6 +36,7 @@ pub(crate) struct MapViewerApp {
     items_error: Option<String>,
     item_templates: Vec<Item>,
     item_templates_error: Option<String>,
+    fully_loaded_item_template_slots: BTreeSet<usize>,
 
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
@@ -122,6 +123,7 @@ impl MapViewerApp {
         self.map_tiles.clear();
         self.items.clear();
         self.item_templates.clear();
+        self.fully_loaded_item_template_slots.clear();
         self.hovered_tile = None;
         self.selected_tile = None;
         self.selected_palette_index = None;
@@ -134,6 +136,7 @@ impl MapViewerApp {
         self.map_tiles = world.map.clone();
         self.items = world.items.clone();
         self.item_templates = world.item_templates.clone();
+        self.fully_loaded_item_template_slots.clear();
         self.loaded_world = Some(world);
         self.save_status = Some(status);
         self.pan_initialized = false;
@@ -344,6 +347,30 @@ impl MapViewerApp {
             return None;
         };
         Some(entry)
+    }
+
+    /// Ensure a live-API item template slot contains the full template payload.
+    fn ensure_item_template_loaded(&mut self, template_id: u16) -> Result<(), String> {
+        if !self.data_source.is_live_api() {
+            return Ok(());
+        }
+
+        let idx = template_id as usize;
+        if self.fully_loaded_item_template_slots.contains(&idx) {
+            return Ok(());
+        }
+        if idx >= self.item_templates.len() {
+            return Err(format!("Template id {} is out of range", template_id));
+        }
+
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            return Err("Admin client not initialized".to_owned());
+        };
+
+        let item = client.fetch_single_item_template(idx)?;
+        self.item_templates[idx] = item;
+        self.fully_loaded_item_template_slots.insert(idx);
+        Ok(())
     }
 
     /// Return whether a sprite id can be added to the map palette.
@@ -895,10 +922,24 @@ impl MapViewerApp {
                             let mut preview_drawn = false;
                             let it_idx = self.draft_item_template_id as usize;
 
-                            if it_idx < self.item_templates.len()
+                            if self.draft_item_template_id != 0
+                                && it_idx < self.item_templates.len()
                                 && self.item_templates[it_idx].used != USE_EMPTY
-                                && let Some(sprite) =
-                                    template_preview_sprite(self.item_templates[it_idx])
+                                && let Err(e) =
+                                    self.ensure_item_template_loaded(self.draft_item_template_id)
+                            {
+                                self.item_templates_error = Some(e);
+                            }
+
+                            let preview_sprite_id = if it_idx < self.item_templates.len()
+                                && self.item_templates[it_idx].used != USE_EMPTY
+                            {
+                                template_preview_sprite(self.item_templates[it_idx])
+                            } else {
+                                None
+                            };
+
+                            if let Some(sprite) = preview_sprite_id
                                 && let Some(cache) = self.graphics_zip.as_mut()
                                 && let Ok(Some(texture)) = cache.texture_for(ctx, sprite)
                             {
@@ -914,13 +955,33 @@ impl MapViewerApp {
                                 ui.allocate_exact_size(preview_size, egui::Sense::hover());
                             }
 
+                            if let Some(sprite) = preview_sprite_id {
+                                ui.label(format!("sprite: {}", sprite));
+                            }
+
                             if ui.small_button("Add").clicked() && self.draft_item_template_id != 0
                             {
-                                self.palette.push(PaletteEntry {
-                                    kind: PaletteEntryKind::ItemTemplate(
-                                        self.draft_item_template_id,
-                                    ),
-                                });
+                                if it_idx >= self.item_templates.len() {
+                                    self.save_status =
+                                        Some("Template id is out of range".to_owned());
+                                } else if let Err(e) =
+                                    self.ensure_item_template_loaded(self.draft_item_template_id)
+                                {
+                                    self.save_status = Some(e);
+                                } else if self.item_templates[it_idx].used == USE_EMPTY {
+                                    self.save_status = Some("Template slot is unused".to_owned());
+                                } else {
+                                    self.palette.push(PaletteEntry {
+                                        kind: PaletteEntryKind::ItemTemplate(
+                                            self.draft_item_template_id,
+                                        ),
+                                    });
+                                    self.selected_palette_index = Some(self.palette.len() - 1);
+                                    self.save_status = Some(format!(
+                                        "Added template {} to palette",
+                                        self.draft_item_template_id
+                                    ));
+                                }
                             }
 
                             if self.draft_item_template_id != 0 {
@@ -947,7 +1008,8 @@ impl MapViewerApp {
                                 .spacing([6.0, 6.0])
                                 .show(ui, |ui| {
                                     let mut col = 0;
-                                    for (idx, entry) in self.palette.iter().enumerate() {
+                                    for idx in 0..self.palette.len() {
+                                        let entry = self.palette[idx];
                                         let sprite_id: Option<usize> = match entry.kind {
                                             PaletteEntryKind::Sprite(sprite) => {
                                                 if sprite == 0 {
@@ -965,6 +1027,13 @@ impl MapViewerApp {
                                                         && self.item_templates[it_idx].used
                                                             != USE_EMPTY
                                                     {
+                                                        if let Err(e) = self
+                                                            .ensure_item_template_loaded(
+                                                                template_id,
+                                                            )
+                                                        {
+                                                            self.item_templates_error = Some(e);
+                                                        }
                                                         let item = self.item_templates[it_idx];
                                                         template_preview_sprite(item)
                                                     } else {
@@ -974,19 +1043,6 @@ impl MapViewerApp {
                                             }
                                         };
 
-                                        let Some(sprite_id) = sprite_id else {
-                                            continue;
-                                        };
-
-                                        let Some(cache) = self.graphics_zip.as_mut() else {
-                                            break;
-                                        };
-
-                                        let Ok(Some(texture)) = cache.texture_for(ctx, sprite_id)
-                                        else {
-                                            continue;
-                                        };
-
                                         let selected = self.selected_palette_index == Some(idx);
                                         let tint = if selected {
                                             egui::Color32::from_rgb(180, 255, 180)
@@ -994,15 +1050,67 @@ impl MapViewerApp {
                                             egui::Color32::WHITE
                                         };
 
-                                        let clicked = ui
-                                            .add(
-                                                egui::Image::new(texture)
-                                                    .fit_to_exact_size(icon_size)
-                                                    .maintain_aspect_ratio(true)
-                                                    .tint(tint)
-                                                    .sense(egui::Sense::click()),
+                                        let clicked = if let Some(sprite_id) = sprite_id {
+                                            if let Some(cache) = self.graphics_zip.as_mut() {
+                                                if let Ok(Some(texture)) =
+                                                    cache.texture_for(ctx, sprite_id)
+                                                {
+                                                    ui.add(
+                                                        egui::Image::new(texture)
+                                                            .fit_to_exact_size(icon_size)
+                                                            .maintain_aspect_ratio(true)
+                                                            .tint(tint)
+                                                            .sense(egui::Sense::click()),
+                                                    )
+                                                    .clicked()
+                                                } else {
+                                                    let label = match entry.kind {
+                                                        PaletteEntryKind::Sprite(sprite) => {
+                                                            format!("S{}", sprite)
+                                                        }
+                                                        PaletteEntryKind::ItemTemplate(
+                                                            template_id,
+                                                        ) => {
+                                                            format!(
+                                                                "T{}\nS{}",
+                                                                template_id, sprite_id
+                                                            )
+                                                        }
+                                                    };
+                                                    ui.add_sized(
+                                                        icon_size,
+                                                        egui::Button::new(label).fill(
+                                                            if selected {
+                                                                egui::Color32::from_rgb(70, 110, 70)
+                                                            } else {
+                                                                egui::Color32::from_rgb(55, 55, 55)
+                                                            },
+                                                        ),
+                                                    )
+                                                    .clicked()
+                                                }
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            let label = match entry.kind {
+                                                PaletteEntryKind::Sprite(sprite) => {
+                                                    format!("S{}", sprite)
+                                                }
+                                                PaletteEntryKind::ItemTemplate(template_id) => {
+                                                    format!("T{}", template_id)
+                                                }
+                                            };
+                                            ui.add_sized(
+                                                icon_size,
+                                                egui::Button::new(label).fill(if selected {
+                                                    egui::Color32::from_rgb(70, 110, 70)
+                                                } else {
+                                                    egui::Color32::from_rgb(55, 55, 55)
+                                                }),
                                             )
-                                            .clicked();
+                                            .clicked()
+                                        };
 
                                         if clicked {
                                             if selected {
