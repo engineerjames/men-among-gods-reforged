@@ -23,6 +23,19 @@ struct PaletteEntry {
     kind: PaletteEntryKind,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PendingItemAction {
+    Place {
+        x: usize,
+        y: usize,
+        template_id: u16,
+    },
+    Clear {
+        x: usize,
+        y: usize,
+    },
+}
+
 #[derive(Default)]
 pub(crate) struct MapViewerApp {
     loaded_world: Option<WorldSnapshot>,
@@ -78,6 +91,8 @@ pub(crate) struct MapViewerApp {
 
     /// Tiles with unsaved edits (LiveApi mode). Keyed by `(x, y)`.
     dirty_tiles: BTreeSet<(usize, usize)>,
+    /// Item placement/removal actions queued locally for the next LiveApi save.
+    pending_item_actions: Vec<PendingItemAction>,
     /// Cached admin API client for LiveApi mode.
     admin_client: Option<AdminClient>,
     /// Pending map-reload request id awaiting a status update.
@@ -130,6 +145,7 @@ impl MapViewerApp {
         self.line_anchor = None;
         self.dirty = false;
         self.dirty_tiles.clear();
+        self.pending_item_actions.clear();
     }
 
     fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
@@ -146,6 +162,7 @@ impl MapViewerApp {
         self.line_anchor = None;
         self.dirty = false;
         self.dirty_tiles.clear();
+        self.pending_item_actions.clear();
     }
 
     fn load_current_source(&mut self) {
@@ -310,6 +327,7 @@ impl MapViewerApp {
         match self.save_snapshot_as(&path) {
             Ok(()) => {
                 self.dirty = false;
+                self.pending_item_actions.clear();
                 self.save_status = Some(format!("Saved snapshot: {}", path.display()));
             }
             Err(e) => {
@@ -322,6 +340,7 @@ impl MapViewerApp {
         self.load_current_source();
         self.dirty = false;
         self.dirty_tiles.clear();
+        self.pending_item_actions.clear();
         self.save_status = Some("Reverted (discarded unsaved changes)".to_owned());
     }
 
@@ -337,6 +356,15 @@ impl MapViewerApp {
     fn mark_tile_dirty(&mut self, x: usize, y: usize) {
         self.dirty = true;
         self.dirty_tiles.insert((x, y));
+    }
+
+    fn mark_item_action_pending(&mut self, action: PendingItemAction) {
+        self.dirty = true;
+        self.pending_item_actions.push(action);
+    }
+
+    fn mark_clean_if_no_pending_changes(&mut self) {
+        self.dirty = !self.dirty_tiles.is_empty() || !self.pending_item_actions.is_empty();
     }
 
     /// Return the currently selected palette entry, clearing stale selection.
@@ -444,32 +472,45 @@ impl MapViewerApp {
 
     /// Queue a server world action to place one map item from template.
     fn apply_item_template_to_tile_live(&mut self, x: usize, y: usize, template_id: u16) -> bool {
-        let Some(client) = self.admin_client.as_ref().cloned() else {
+        if self.admin_client.is_none() {
             self.save_status = Some("Admin client not initialized".to_owned());
             return false;
-        };
+        }
+        if let Err(e) = self.ensure_item_template_loaded(template_id) {
+            self.save_status = Some(e);
+            return false;
+        }
 
-        let action = WorldActionKind::PlaceMapItemFromTemplate {
-            x,
-            y,
-            template_id: template_id as usize,
+        let idx = tile_index(x, y);
+        let Some(tile) = self.map_tiles.get(idx).copied() else {
+            self.save_status = Some(format!("Tile ({}, {}) is out of range", x, y));
+            return false;
         };
+        if tile.ch != 0 || tile.to_ch != 0 {
+            self.save_status = Some(format!("Tile ({}, {}) is occupied by a character", x, y));
+            return false;
+        }
+        if (tile.flags
+            & u64::from(mag_core::constants::MF_MOVEBLOCK | mag_core::constants::MF_DEATHTRAP))
+            != 0
+        {
+            self.save_status = Some(format!("Tile ({}, {}) blocks item placement", x, y));
+            return false;
+        }
+        if tile.fsprite != 0 {
+            self.save_status = Some(format!("Tile ({}, {}) has a foreground sprite", x, y));
+            return false;
+        }
 
-        match client.request_world_action(&action) {
-            Ok(resp) => {
-                self.save_status = Some(format!(
-                    "Queued item placement ({}, {}, template {}) [{}]",
-                    x, y, template_id, resp.request_id
-                ));
-                true
-            }
-            Err(e) => {
-                self.save_status = Some(format!(
-                    "Item placement failed at ({}, {}), template {}: {}",
-                    x, y, template_id, e
-                ));
-                false
-            }
+        if self.place_item_template_locally(x, y, template_id) {
+            self.mark_item_action_pending(PendingItemAction::Place { x, y, template_id });
+            self.save_status = Some(format!(
+                "Queued item placement ({}, {}, template {}). Save to API to apply.",
+                x, y, template_id
+            ));
+            true
+        } else {
+            false
         }
     }
 
@@ -480,6 +521,15 @@ impl MapViewerApp {
         y: usize,
         template_id: u16,
     ) -> bool {
+        if self.place_item_template_locally(x, y, template_id) {
+            self.mark_tile_dirty(x, y);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn place_item_template_locally(&mut self, x: usize, y: usize, template_id: u16) -> bool {
         let template_idx = template_id as usize;
         if template_idx >= self.item_templates.len() {
             self.save_status = Some(format!("Item template {} is out of range", template_id));
@@ -519,7 +569,67 @@ impl MapViewerApp {
         updated_tile.it = item_id as u32;
         updated_tile.fsprite = 0;
         self.map_tiles[map_idx] = updated_tile;
-        self.mark_tile_dirty(x, y);
+        true
+    }
+
+    fn clear_item_from_tile(&mut self, x: usize, y: usize) -> bool {
+        if self.data_source.is_live_api() {
+            return self.clear_item_from_tile_live(x, y);
+        }
+
+        if self.clear_item_from_tile_locally(x, y) {
+            self.mark_tile_dirty(x, y);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn clear_item_from_tile_live(&mut self, x: usize, y: usize) -> bool {
+        if self.admin_client.is_none() {
+            self.save_status = Some("Admin client not initialized".to_owned());
+            return false;
+        }
+
+        let had_pending_place = self.pending_item_actions.iter().rposition(|action| {
+            matches!(action, PendingItemAction::Place { x: px, y: py, .. } if *px == x && *py == y)
+        });
+
+        if !self.clear_item_from_tile_locally(x, y) {
+            return false;
+        }
+
+        if let Some(action_idx) = had_pending_place {
+            self.pending_item_actions.remove(action_idx);
+            self.save_status = Some(format!("Canceled queued item placement at ({}, {})", x, y));
+        } else {
+            self.mark_item_action_pending(PendingItemAction::Clear { x, y });
+            self.save_status = Some(format!(
+                "Queued item clear ({}, {}). Save to API to apply.",
+                x, y
+            ));
+        }
+        self.mark_clean_if_no_pending_changes();
+        true
+    }
+
+    fn clear_item_from_tile_locally(&mut self, x: usize, y: usize) -> bool {
+        let map_idx = tile_index(x, y);
+        let Some(current_tile) = self.map_tiles.get(map_idx).copied() else {
+            return false;
+        };
+        let item_id = current_tile.it as usize;
+        if item_id == 0 {
+            self.save_status = Some(format!("Tile ({}, {}) has no item", x, y));
+            return false;
+        }
+        if item_id < self.items.len() {
+            self.items[item_id] = Item::default();
+        }
+
+        let mut updated_tile = current_tile;
+        updated_tile.it = 0;
+        self.map_tiles[map_idx] = updated_tile;
         true
     }
 
@@ -541,11 +651,11 @@ impl MapViewerApp {
         None
     }
 
-    /// Push every dirty map tile to the admin API and clear the dirty set.
+    /// Push every dirty map tile and queued item action to the admin API.
     ///
-    /// Called instead of snapshot save in LiveApi mode. Each tile produces
-    /// one PUT request; successes are removed from the dirty set so retries
-    /// only resend failed tiles.
+    /// Called instead of snapshot save in LiveApi mode. Each static tile edit
+    /// produces one PUT request; item placements/removals enqueue server world
+    /// actions so the running game owns runtime item slot allocation.
     fn save_to_api(&mut self) {
         self.save_status = None;
         if let Err(e) = self.sync_loaded_world_from_views() {
@@ -558,8 +668,16 @@ impl MapViewerApp {
         };
 
         let targets: Vec<(usize, usize)> = self.dirty_tiles.iter().copied().collect();
+        let item_actions = self.pending_item_actions.clone();
         let mut pushed = 0usize;
+        let mut queued_item_actions = 0usize;
         let mut errors: Vec<String> = Vec::new();
+
+        if targets.is_empty() && item_actions.is_empty() {
+            self.save_status = Some("No changes to save".to_owned());
+            self.mark_clean_if_no_pending_changes();
+            return;
+        }
 
         for (x, y) in &targets {
             let idx = tile_index(*x, *y);
@@ -583,14 +701,46 @@ impl MapViewerApp {
             }
         }
 
+        let mut successful_item_action_indices = BTreeSet::new();
+        for (idx, action) in item_actions.iter().enumerate() {
+            let world_action = match *action {
+                PendingItemAction::Place { x, y, template_id } => {
+                    WorldActionKind::PlaceMapItemFromTemplate {
+                        x,
+                        y,
+                        template_id: template_id as usize,
+                    }
+                }
+                PendingItemAction::Clear { x, y } => WorldActionKind::ClearMapItem { x, y },
+            };
+
+            match client.request_world_action(&world_action) {
+                Ok(_) => {
+                    queued_item_actions += 1;
+                    successful_item_action_indices.insert(idx);
+                }
+                Err(e) => errors.push(format!("{}: {e}", world_action.name())),
+            }
+        }
+
+        if !successful_item_action_indices.is_empty() {
+            let mut action_idx = 0usize;
+            self.pending_item_actions.retain(|_| {
+                let keep = !successful_item_action_indices.contains(&action_idx);
+                action_idx += 1;
+                keep
+            });
+        }
+
         if errors.is_empty() {
-            self.dirty = !self.dirty_tiles.is_empty();
+            self.mark_clean_if_no_pending_changes();
             self.save_status = Some(format!(
-                "Saved to API: {pushed} tile(s). Use 'Reload server map' to apply."
+                "Saved to API: {pushed} tile(s), queued {queued_item_actions} item action(s). Use 'Reload server map' to apply."
             ));
         } else {
+            self.mark_clean_if_no_pending_changes();
             self.save_status = Some(format!(
-                "Save partial: {pushed} tile(s); {} error(s): {}",
+                "Save partial: {pushed} tile(s), queued {queued_item_actions} item action(s); {} error(s): {}",
                 errors.len(),
                 errors.join("; ")
             ));
@@ -809,7 +959,7 @@ impl MapViewerApp {
         let mut still_open = true;
         let mut confirm_clicked = false;
         let mut cancel_clicked = false;
-        let has_unsaved = !self.dirty_tiles.is_empty();
+        let has_unsaved = !self.dirty_tiles.is_empty() || !self.pending_item_actions.is_empty();
 
         egui::Window::new("Reload Server Map?")
             .collapsible(false)
@@ -1529,7 +1679,11 @@ impl eframe::App for MapViewerApp {
                     ui.separator();
                     ui.colored_label(
                         egui::Color32::YELLOW,
-                        format!("Unsaved: {} tile(s)", self.dirty_tiles.len()),
+                        format!(
+                            "Unsaved: {} tile(s), {} item action(s)",
+                            self.dirty_tiles.len(),
+                            self.pending_item_actions.len()
+                        ),
                     );
                 }
 
@@ -1742,6 +1896,11 @@ impl eframe::App for MapViewerApp {
                                 } else {
                                     ui.label("item sprite: (item data not loaded)");
                                     ui.label("item template: (item data not loaded)");
+                                }
+                                if ui.button("Clear item").clicked()
+                                    && self.clear_item_from_tile(x, y)
+                                {
+                                    ctx.request_repaint();
                                 }
                             } else {
                                 ui.label("item sprite: N/A");

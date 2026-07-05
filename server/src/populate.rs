@@ -56,6 +56,7 @@ pub fn execute_world_action(
         WorldActionKind::PlaceMapItemFromTemplate { x, y, template_id } => {
             place_map_item_from_template(gs, *x, *y, *template_id)?
         }
+        WorldActionKind::ClearMapItem { x, y } => clear_map_item(gs, *x, *y)?,
         WorldActionKind::ResetChar { template_id } => {
             if !(1..MAXTCHARS).contains(template_id) {
                 return Err(format!("character template {} out of range", template_id));
@@ -143,6 +144,42 @@ fn place_map_item_from_template(
         "placed template {} at ({}, {}) as item {}",
         template_id, x, y, item_id
     ))
+}
+
+/// Clear one map item and free its runtime item slot.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `x` - Tile X coordinate.
+/// * `y` - Tile Y coordinate.
+///
+/// # Returns
+///
+/// * `Ok(message)` when the map item is cleared successfully.
+/// * `Err(message)` when coordinates are invalid or no item is present.
+fn clear_map_item(gs: &mut GameState, x: usize, y: usize) -> Result<String, String> {
+    if x >= SERVER_MAPX as usize || y >= SERVER_MAPY as usize {
+        return Err(format!("map coordinates ({x},{y}) out of range"));
+    }
+
+    let map_index = x + y * SERVER_MAPX as usize;
+    let item_id = gs.map[map_index].it as usize;
+    if item_id == 0 {
+        return Err(format!("tile ({x},{y}) has no item"));
+    }
+    if item_id >= gs.items.len() {
+        return Err(format!(
+            "tile ({x},{y}) references out-of-range item {}",
+            item_id
+        ));
+    }
+
+    gs.remove_lights(x as i32, y as i32);
+    gs.map[map_index].it = 0;
+    gs.items[item_id] = core::types::Item::default();
+
+    Ok(format!("cleared item {} from ({}, {})", item_id, x, y))
 }
 
 /// Port of `init_lights` from `populate.cpp`
