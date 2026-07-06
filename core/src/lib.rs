@@ -142,24 +142,23 @@ pub fn initialize_logger(
     }
 
     // Perf logging
-    if let Some(path) = perf_file_path {
-        if let Ok(perf_file) = FileAppender::builder()
+    if let Some(path) = perf_file_path
+        && let Ok(perf_file) = FileAppender::builder()
             .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
             .build(path)
-        {
-            config_builder = config_builder
-                .appender(Appender::builder().build("perf_file", Box::new(perf_file)));
+    {
+        config_builder =
+            config_builder.appender(Appender::builder().build("perf_file", Box::new(perf_file)));
 
-            // Route target "perf" to perf_file.
-            // additive(false): only perf_file
-            // additive(true): perf_file + root (stderr/logfile)
-            config_builder = config_builder.logger(
-                Logger::builder()
-                    .appender("perf_file")
-                    .additive(false)
-                    .build("perf", LevelFilter::Info),
-            );
-        }
+        // Route target "perf" to perf_file.
+        // additive(false): only perf_file
+        // additive(true): perf_file + root (stderr/logfile)
+        config_builder = config_builder.logger(
+            Logger::builder()
+                .appender("perf_file")
+                .additive(false)
+                .build("perf", LevelFilter::Info),
+        );
     }
 
     if file_appender_added {
