@@ -458,7 +458,7 @@ impl Server {
         core::measure!(self.maybe_enqueue_background_save(gs));
 
         // Send tick to players and count online
-        let online = core::measure!({
+        let online = core::measure!("player.tick_and_online_count", {
             let mut online = 0;
             for n in 1..gs.players.len() {
                 if gs.players[n].sock.is_none() {
@@ -494,7 +494,7 @@ impl Server {
         }
 
         // Check for player commands and translate to character commands
-        core::measure!({
+        core::measure!("player.process_commands_and_idle", {
             for n in 1..gs.players.len() {
                 if gs.players[n].sock.is_none() {
                     continue;
@@ -517,7 +517,7 @@ impl Server {
         });
 
         // Do login stuff for players not in normal state
-        core::measure!({
+        core::measure!("player.tick_login_state", {
             for n in 1..gs.players.len() {
                 if gs.players[n].sock.is_none() {
                     continue;
@@ -531,7 +531,7 @@ impl Server {
         });
 
         // Send changes to players in normal state
-        core::measure!({
+        core::measure!("player.send_normal_state_updates", {
             for n in 1..gs.players.len() {
                 if gs.players[n].sock.is_none() {
                     continue;
@@ -556,7 +556,7 @@ impl Server {
             self.wakeup_character(gs);
         }
 
-        core::measure!({
+        core::measure!("character.main_tick", {
             for n in 1..core::constants::MAXCHARS {
                 let char_state = {
                     if gs.characters[n].used == core::constants::USE_EMPTY {

@@ -1,12 +1,34 @@
-/// Wraps a function transparently unless the measure-time feature
-/// flag is utilized -- then it logs the execution time of each function
-/// wrapped. This is meant to be used in cases where you either want to collect
-/// a lot of performance related data or not based on a compilation feature, not
-/// as a runtime-checked methodology like the client has.
+/// Wraps an expression transparently unless the `measure-time` feature is enabled,
+/// in which case it logs execution duration to the `perf` target.
 ///
-/// Returns whatever the function that is wrapped does
+/// Use `measure!(expr)` for quick instrumentation (label derived from
+/// `stringify!(expr)`), or `measure!("label", expr)` to provide a stable,
+/// concise log label for large blocks/closures.
+///
+/// Returns the wrapped expression result.
 #[macro_export]
 macro_rules! measure {
+    // Labeled form for block/closure-heavy call sites where stringify! would be noisy.
+    ($label:expr, $call:expr $(,)?) => {{
+        #[cfg(feature = "measure-time")]
+        {
+            let start = std::time::Instant::now();
+            let result = $call; // evaluated exactly once
+            log::info!(
+                target: "perf",
+                "[measure-time] {} took {:?}",
+                $label,
+                start.elapsed()
+            );
+            result
+        }
+
+        #[cfg(not(feature = "measure-time"))]
+        {
+            $call
+        }
+    }};
+
     // Wrap any call expression: function call, method call, closure call, etc.
     ($call:expr $(,)?) => {{
         #[cfg(feature = "measure-time")]
@@ -41,5 +63,15 @@ mod tests {
     #[test]
     fn can_measure_function_timing() {
         measure!(test_function());
+    }
+
+    #[test]
+    fn can_measure_with_custom_label() {
+        let value = measure!("custom-label", {
+            sleep(time::Duration::from_millis(1));
+            42
+        });
+
+        assert_eq!(value, 42);
     }
 }
