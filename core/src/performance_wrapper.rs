@@ -6,7 +6,7 @@
 ///
 /// Returns whatever the function that is wrapped does
 #[macro_export]
-macro_rules! measure_time {
+macro_rules! measure {
     // Wrap any call expression: function call, method call, closure call, etc.
     ($call:expr $(,)?) => {{
         #[cfg(feature = "measure-time")]
@@ -40,6 +40,6 @@ mod tests {
 
     #[test]
     fn can_measure_function_timing() {
-        measure_time!(test_function());
+        measure!(test_function());
     }
 }
