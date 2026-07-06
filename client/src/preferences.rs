@@ -107,6 +107,7 @@ impl DisplayMode {
 }
 
 const LOG_FILE_NAME: &str = "mag_client.log";
+const PERF_LOG_FILE_NAME: &str = "mag_client_perf.log";
 const PROFILE_FILE_NAME: &str = "mag_profile.json";
 const KNOWN_HOSTS_FILE: &str = "mag_known_hosts.json";
 
@@ -340,12 +341,13 @@ pub fn profile_exists() -> bool {
 }
 
 /// Returns the path to the log file (`mag_client.log`).
-///
-/// # Returns
-///
-/// * Value returned by `log_file_path`.
 pub fn log_file_path() -> PathBuf {
     data_directory().join(LOG_FILE_NAME)
+}
+
+/// Returns the path to the perf log file (`mag_client_perf.log`).
+pub fn perf_log_file_path() -> PathBuf {
+    data_directory().join(PERF_LOG_FILE_NAME)
 }
 
 /// Returns the path to the trusted hosts file (`known_hosts.json`).

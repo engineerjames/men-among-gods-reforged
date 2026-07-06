@@ -28,12 +28,17 @@ fn main() -> Result<(), String> {
     // resolves correctly inside a macOS .app bundle (where the OS sets CWD to
     // "/" rather than the MacOS/ directory).
     let log_path = preferences::log_file_path();
+    let perf_log_path = preferences::perf_log_file_path();
     let log_path_str = log_path.to_string_lossy();
-    mag_core::initialize_logger(log::LevelFilter::Info, Some(log_path_str.as_ref()))
-        .unwrap_or_else(|e| {
-            eprintln!("Failed to initialize logger: {}. Exiting.", e);
-            process::exit(1);
-        });
+    mag_core::initialize_logger(
+        log::LevelFilter::Info,
+        Some(log_path_str.as_ref()),
+        Some(perf_log_path.as_ref()),
+    )
+    .unwrap_or_else(|e| {
+        eprintln!("Failed to initialize logger: {}. Exiting.", e);
+        process::exit(1);
+    });
 
     let platform = PlatformProfile::detect();
     let is_first_run = !preferences::profile_exists();

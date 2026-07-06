@@ -73,6 +73,20 @@ fn resolve_log_file() -> Option<String> {
     }
 }
 
+fn resolve_perf_log_file() -> Option<String> {
+    match env::var("API_PERF_LOG_FILE") {
+        Ok(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
+                None
+            } else {
+                Some(trimmed.to_owned())
+            }
+        }
+        Err(_) => Some("api_perf.log".to_owned()),
+    }
+}
+
 fn resolve_keydb_url() -> String {
     env::var("MAG_KEYDB_URL").unwrap_or_else(|_| "redis://127.0.0.1:5556/".to_owned())
 }
@@ -145,7 +159,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let log_level = resolve_log_level();
     let log_file = resolve_log_file();
-    mag_core::initialize_logger(log_level, log_file.as_deref())?;
+    let perf_log_file = resolve_perf_log_file();
+    mag_core::initialize_logger(log_level, log_file.as_deref(), perf_log_file.as_deref())?;
 
     info!(
         "API v{} starting (level={}, logfile={})",

@@ -4,7 +4,7 @@ use log4rs::{
         console::{ConsoleAppender, Target},
         file::FileAppender,
     },
-    config::{Appender, Config, Root},
+    config::{Appender, Config, Logger, Root},
     encode::{Encode, pattern::PatternEncoder},
     filter::threshold::ThresholdFilter,
 };
@@ -25,6 +25,7 @@ pub mod item_store;
 pub mod logout_reasons;
 pub mod map_store;
 pub mod names;
+pub mod performance_wrapper;
 pub mod quest_defs;
 pub mod ranks;
 pub mod server_commands;
@@ -102,6 +103,7 @@ impl Encode for BacktracePatternEncoder {
 pub fn initialize_logger(
     log_level: LevelFilter,
     file_path: Option<&str>,
+    perf_file_path: Option<&str>,
 ) -> Result<(), SetLoggerError> {
     const LOGGING_PATTERN: &str = "{d} {l} {f}:{L} - {m}\n";
 
@@ -112,6 +114,7 @@ pub fn initialize_logger(
         .build();
 
     let mut config_builder = Config::builder();
+    let mut root_builder = Root::builder().appender("stderr");
     let mut file_appender_added = false;
 
     if let Some(path) = file_path {
@@ -123,6 +126,7 @@ pub fn initialize_logger(
             Ok(logfile) => {
                 config_builder = config_builder
                     .appender(Appender::builder().build("logfile", Box::new(logfile)));
+                root_builder = root_builder.appender("logfile");
                 file_appender_added = true;
             }
             Err(e) => {
@@ -137,9 +141,27 @@ pub fn initialize_logger(
         }
     }
 
-    // Log Trace level output to file where trace is the default level
-    // and the programmatically specified level to stderr.
-    let mut root_builder = Root::builder();
+    // Perf logging
+    if let Some(path) = perf_file_path {
+        if let Ok(perf_file) = FileAppender::builder()
+            .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
+            .build(path)
+        {
+            config_builder = config_builder
+                .appender(Appender::builder().build("perf_file", Box::new(perf_file)));
+
+            // Route target "perf" to perf_file.
+            // additive(false): only perf_file
+            // additive(true): perf_file + root (stderr/logfile)
+            config_builder = config_builder.logger(
+                Logger::builder()
+                    .appender("perf_file")
+                    .additive(false)
+                    .build("perf", LevelFilter::Info),
+            );
+        }
+    }
+
     if file_appender_added {
         root_builder = root_builder.appender("logfile");
     }
@@ -149,7 +171,7 @@ pub fn initialize_logger(
                 .filter(Box::new(ThresholdFilter::new(log_level)))
                 .build("stderr", Box::new(stderr)),
         )
-        .build(root_builder.appender("stderr").build(log_level))
+        .build(root_builder.build(log_level))
         .unwrap();
 
     // Use this to change log levels at runtime.
