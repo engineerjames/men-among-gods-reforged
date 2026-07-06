@@ -30,8 +30,8 @@ macro_rules! measure {
 }
 
 mod tests {
-    use core::time;
     use std::thread::sleep;
+    use std::time;
 
     #[allow(dead_code)]
     fn test_function() {

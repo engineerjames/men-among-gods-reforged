@@ -386,7 +386,8 @@ impl Server {
                 // TODO: Update this to be a proper moving average of the load
                 // gs.globals.load_avg = self.tick_perf_stats.stats().mean as i32;
 
-                log::debug!(
+                log::info!(
+                    target: "perf",
                     "Tick time: {:.2} ms (max: {:.2} ms), Load: {:.2}%",
                     tick_duration,
                     self.tick_perf_stats.stats().max,
@@ -410,7 +411,8 @@ impl Server {
             let io_duration = Instant::now().duration_since(pre_io_time).as_secs_f32() * 1000.0;
             self.net_io_perf_stats.push(io_duration);
 
-            log::debug!(
+            log::info!(
+                target: "perf",
                 "Network I/O time: {:.2} ms (max: {:.2} ms)",
                 io_duration,
                 self.net_io_perf_stats.stats().max,
