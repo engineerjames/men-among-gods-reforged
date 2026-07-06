@@ -32,7 +32,12 @@ use crate::game_state::GameState;
 fn main() -> Result<(), String> {
     let _: Vec<String> = env::args().collect();
 
-    core::initialize_logger(log::LevelFilter::Info, Some("server.log")).unwrap_or_else(|e| {
+    core::initialize_logger(
+        log::LevelFilter::Info,
+        Some("server.log"),
+        Some("server_perf.log"),
+    )
+    .unwrap_or_else(|e| {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);
         process::exit(1);
     });
@@ -109,7 +114,7 @@ fn main() -> Result<(), String> {
         server.drain_character_patches(&mut gs);
         server.drain_ban_actions(&mut gs);
         server.drain_world_actions(&mut gs);
-        server.tick(&mut gs);
+        core::measure!(server.tick(&mut gs));
     }
 
     log::info!("Shutdown signal received, exiting main loop...");
