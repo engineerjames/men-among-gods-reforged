@@ -56,6 +56,9 @@ cargo build --package server-utils
 
 An egui tool for viewing and editing the world map using the client sprite archive.
 
+For production rollout and rollback procedure, see
+`docs/server/MAP_EDITOR_OPERATIONS.md`.
+
 Like the template viewer, it supports two world-data sources:
 
 - Live KeyDB at `127.0.0.1:5556`: read-only view of the latest persisted world state.

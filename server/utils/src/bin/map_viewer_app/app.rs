@@ -4,6 +4,7 @@ use egui::{Pos2, Rect, Vec2};
 use mag_core::constants::{ItemFlags, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY, XPOS, YPOS};
 use mag_core::map_store::MapPatch;
 use mag_core::types::{Item, Map};
+use mag_core::world_action_store::WorldActionKind;
 use server::keydb::snapshot::WorldSnapshot;
 use server_utils::admin_client::AdminClient;
 use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
@@ -14,12 +15,25 @@ use std::path::PathBuf;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum PaletteEntryKind {
     Sprite(u16),
-    Item(u32),
+    ItemTemplate(u16),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct PaletteEntry {
     kind: PaletteEntryKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PendingItemAction {
+    Place {
+        x: usize,
+        y: usize,
+        template_id: u16,
+    },
+    Clear {
+        x: usize,
+        y: usize,
+    },
 }
 
 #[derive(Default)]
@@ -35,6 +49,7 @@ pub(crate) struct MapViewerApp {
     items_error: Option<String>,
     item_templates: Vec<Item>,
     item_templates_error: Option<String>,
+    fully_loaded_item_template_slots: BTreeSet<usize>,
 
     graphics_zip: Option<GraphicsZipCache>,
     graphics_zip_error: Option<String>,
@@ -67,7 +82,7 @@ pub(crate) struct MapViewerApp {
     palette: Vec<PaletteEntry>,
     selected_palette_index: Option<usize>,
     draft_sprite: u16,
-    draft_item_instance_id: u32,
+    draft_item_template_id: u16,
     palette_rect: Option<Rect>,
     line_anchor: Option<(usize, usize)>,
 
@@ -76,6 +91,8 @@ pub(crate) struct MapViewerApp {
 
     /// Tiles with unsaved edits (LiveApi mode). Keyed by `(x, y)`.
     dirty_tiles: BTreeSet<(usize, usize)>,
+    /// Item placement/removal actions queued locally for the next LiveApi save.
+    pending_item_actions: Vec<PendingItemAction>,
     /// Cached admin API client for LiveApi mode.
     admin_client: Option<AdminClient>,
     /// Pending map-reload request id awaiting a status update.
@@ -121,18 +138,21 @@ impl MapViewerApp {
         self.map_tiles.clear();
         self.items.clear();
         self.item_templates.clear();
+        self.fully_loaded_item_template_slots.clear();
         self.hovered_tile = None;
         self.selected_tile = None;
         self.selected_palette_index = None;
         self.line_anchor = None;
         self.dirty = false;
         self.dirty_tiles.clear();
+        self.pending_item_actions.clear();
     }
 
     fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
         self.map_tiles = world.map.clone();
         self.items = world.items.clone();
         self.item_templates = world.item_templates.clone();
+        self.fully_loaded_item_template_slots.clear();
         self.loaded_world = Some(world);
         self.save_status = Some(status);
         self.pan_initialized = false;
@@ -142,6 +162,7 @@ impl MapViewerApp {
         self.line_anchor = None;
         self.dirty = false;
         self.dirty_tiles.clear();
+        self.pending_item_actions.clear();
     }
 
     fn load_current_source(&mut self) {
@@ -306,6 +327,7 @@ impl MapViewerApp {
         match self.save_snapshot_as(&path) {
             Ok(()) => {
                 self.dirty = false;
+                self.pending_item_actions.clear();
                 self.save_status = Some(format!("Saved snapshot: {}", path.display()));
             }
             Err(e) => {
@@ -318,6 +340,7 @@ impl MapViewerApp {
         self.load_current_source();
         self.dirty = false;
         self.dirty_tiles.clear();
+        self.pending_item_actions.clear();
         self.save_status = Some("Reverted (discarded unsaved changes)".to_owned());
     }
 
@@ -335,6 +358,15 @@ impl MapViewerApp {
         self.dirty_tiles.insert((x, y));
     }
 
+    fn mark_item_action_pending(&mut self, action: PendingItemAction) {
+        self.dirty = true;
+        self.pending_item_actions.push(action);
+    }
+
+    fn mark_clean_if_no_pending_changes(&mut self) {
+        self.dirty = !self.dirty_tiles.is_empty() || !self.pending_item_actions.is_empty();
+    }
+
     /// Return the currently selected palette entry, clearing stale selection.
     fn selected_palette_entry(&mut self) -> Option<PaletteEntry> {
         let index = self.selected_palette_index?;
@@ -345,27 +377,73 @@ impl MapViewerApp {
         Some(entry)
     }
 
+    /// Ensure a live-API item template slot contains the full template payload.
+    fn ensure_item_template_loaded(&mut self, template_id: u16) -> Result<(), String> {
+        if !self.data_source.is_live_api() {
+            return Ok(());
+        }
+
+        let idx = template_id as usize;
+        if self.fully_loaded_item_template_slots.contains(&idx) {
+            return Ok(());
+        }
+        if idx >= self.item_templates.len() {
+            return Err(format!("Template id {} is out of range", template_id));
+        }
+
+        let Some(client) = self.admin_client.as_ref().cloned() else {
+            return Err("Admin client not initialized".to_owned());
+        };
+
+        let item = client.fetch_single_item_template(idx)?;
+        self.item_templates[idx] = item;
+        self.fully_loaded_item_template_slots.insert(idx);
+        Ok(())
+    }
+
+    /// Return whether a sprite id can be added to the map palette.
+    fn can_add_palette_sprite(&mut self, ctx: &egui::Context, sprite: u16) -> Result<(), String> {
+        if !sprite_is_in_allowed_palette_ranges(sprite) {
+            return Err(format!(
+                "Sprite {} is outside allowed map palette ranges",
+                sprite
+            ));
+        }
+
+        let Some(cache) = self.graphics_zip.as_mut() else {
+            return Err("No graphics zip loaded".to_owned());
+        };
+
+        match cache.texture_for(ctx, sprite as usize) {
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => Err(format!("Sprite {} is not present in graphics zip", sprite)),
+            Err(e) => Err(format!("Sprite {} could not be loaded: {}", sprite, e)),
+        }
+    }
+
     /// Apply a palette entry to one map tile and mark it dirty when changed.
     fn apply_palette_to_tile(&mut self, x: usize, y: usize, entry: PaletteEntry) -> bool {
+        match entry.kind {
+            PaletteEntryKind::Sprite(sprite) => self.apply_sprite_to_tile(x, y, sprite),
+            PaletteEntryKind::ItemTemplate(template_id) => {
+                self.apply_item_template_to_tile(x, y, template_id)
+            }
+        }
+    }
+
+    /// Apply a foreground sprite to one map tile and mark it dirty when changed.
+    fn apply_sprite_to_tile(&mut self, x: usize, y: usize, sprite: u16) -> bool {
+        if sprite == 0 {
+            return false;
+        }
+
         let idx = tile_index(x, y);
         let Some(current) = self.map_tiles.get(idx).copied() else {
             return false;
         };
 
         let mut tile = current;
-        match entry.kind {
-            PaletteEntryKind::Sprite(sprite) => {
-                if sprite != 0 {
-                    tile.fsprite = sprite;
-                }
-            }
-            PaletteEntryKind::Item(it) => {
-                if it != 0 {
-                    tile.it = it;
-                    tile.fsprite = 0;
-                }
-            }
-        }
+        tile.fsprite = sprite;
 
         if tile == current {
             return false;
@@ -376,11 +454,208 @@ impl MapViewerApp {
         true
     }
 
-    /// Push every dirty map tile to the admin API and clear the dirty set.
+    /// Apply an item template to one tile.
     ///
-    /// Called instead of snapshot save in LiveApi mode. Each tile produces
-    /// one PUT request; successes are removed from the dirty set so retries
-    /// only resend failed tiles.
+    /// LiveApi mode queues a world action for server-managed allocation.
+    /// Snapshot mode allocates a free item slot locally and patches map/items.
+    fn apply_item_template_to_tile(&mut self, x: usize, y: usize, template_id: u16) -> bool {
+        if template_id == 0 {
+            return false;
+        }
+
+        if self.data_source.is_live_api() {
+            return self.apply_item_template_to_tile_live(x, y, template_id);
+        }
+
+        self.apply_item_template_to_tile_snapshot(x, y, template_id)
+    }
+
+    /// Queue a server world action to place one map item from template.
+    fn apply_item_template_to_tile_live(&mut self, x: usize, y: usize, template_id: u16) -> bool {
+        if self.admin_client.is_none() {
+            self.save_status = Some("Admin client not initialized".to_owned());
+            return false;
+        }
+        if let Err(e) = self.ensure_item_template_loaded(template_id) {
+            self.save_status = Some(e);
+            return false;
+        }
+
+        let idx = tile_index(x, y);
+        let Some(tile) = self.map_tiles.get(idx).copied() else {
+            self.save_status = Some(format!("Tile ({}, {}) is out of range", x, y));
+            return false;
+        };
+        if tile.ch != 0 || tile.to_ch != 0 {
+            self.save_status = Some(format!("Tile ({}, {}) is occupied by a character", x, y));
+            return false;
+        }
+        if (tile.flags
+            & u64::from(mag_core::constants::MF_MOVEBLOCK | mag_core::constants::MF_DEATHTRAP))
+            != 0
+        {
+            self.save_status = Some(format!("Tile ({}, {}) blocks item placement", x, y));
+            return false;
+        }
+        if tile.fsprite != 0 {
+            self.save_status = Some(format!("Tile ({}, {}) has a foreground sprite", x, y));
+            return false;
+        }
+
+        if self.place_item_template_locally(x, y, template_id) {
+            self.mark_item_action_pending(PendingItemAction::Place { x, y, template_id });
+            self.save_status = Some(format!(
+                "Queued item placement ({}, {}, template {}). Save to API to apply.",
+                x, y, template_id
+            ));
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Allocate a free runtime item slot locally and place it on one tile.
+    fn apply_item_template_to_tile_snapshot(
+        &mut self,
+        x: usize,
+        y: usize,
+        template_id: u16,
+    ) -> bool {
+        if self.place_item_template_locally(x, y, template_id) {
+            self.mark_tile_dirty(x, y);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn place_item_template_locally(&mut self, x: usize, y: usize, template_id: u16) -> bool {
+        let template_idx = template_id as usize;
+        if template_idx >= self.item_templates.len() {
+            self.save_status = Some(format!("Item template {} is out of range", template_id));
+            return false;
+        }
+        if self.item_templates[template_idx].used == USE_EMPTY {
+            self.save_status = Some(format!("Item template {} is unused", template_id));
+            return false;
+        }
+
+        let map_idx = tile_index(x, y);
+        let Some(current_tile) = self.map_tiles.get(map_idx).copied() else {
+            return false;
+        };
+        if current_tile.it != 0 {
+            self.save_status = Some(format!(
+                "Tile ({}, {}) already has item {}",
+                x, y, current_tile.it
+            ));
+            return false;
+        }
+
+        let Some(item_id) = self.find_free_snapshot_item_slot() else {
+            self.save_status = Some("No free runtime item slots available".to_owned());
+            return false;
+        };
+
+        let mut item = self.item_templates[template_idx];
+        item.temp = template_id;
+        item.x = x as u16;
+        item.y = y as u16;
+        item.carried = 0;
+
+        self.items[item_id] = item;
+
+        let mut updated_tile = current_tile;
+        updated_tile.it = item_id as u32;
+        updated_tile.fsprite = 0;
+        self.map_tiles[map_idx] = updated_tile;
+        true
+    }
+
+    fn clear_item_from_tile(&mut self, x: usize, y: usize) -> bool {
+        if self.data_source.is_live_api() {
+            return self.clear_item_from_tile_live(x, y);
+        }
+
+        if self.clear_item_from_tile_locally(x, y) {
+            self.mark_tile_dirty(x, y);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn clear_item_from_tile_live(&mut self, x: usize, y: usize) -> bool {
+        if self.admin_client.is_none() {
+            self.save_status = Some("Admin client not initialized".to_owned());
+            return false;
+        }
+
+        let had_pending_place = self.pending_item_actions.iter().rposition(|action| {
+            matches!(action, PendingItemAction::Place { x: px, y: py, .. } if *px == x && *py == y)
+        });
+
+        if !self.clear_item_from_tile_locally(x, y) {
+            return false;
+        }
+
+        if let Some(action_idx) = had_pending_place {
+            self.pending_item_actions.remove(action_idx);
+            self.save_status = Some(format!("Canceled queued item placement at ({}, {})", x, y));
+        } else {
+            self.mark_item_action_pending(PendingItemAction::Clear { x, y });
+            self.save_status = Some(format!(
+                "Queued item clear ({}, {}). Save to API to apply.",
+                x, y
+            ));
+        }
+        self.mark_clean_if_no_pending_changes();
+        true
+    }
+
+    fn clear_item_from_tile_locally(&mut self, x: usize, y: usize) -> bool {
+        let map_idx = tile_index(x, y);
+        let Some(current_tile) = self.map_tiles.get(map_idx).copied() else {
+            return false;
+        };
+        let item_id = current_tile.it as usize;
+        if item_id == 0 {
+            self.save_status = Some(format!("Tile ({}, {}) has no item", x, y));
+            return false;
+        }
+        if item_id < self.items.len() {
+            self.items[item_id] = Item::default();
+        }
+
+        let mut updated_tile = current_tile;
+        updated_tile.it = 0;
+        self.map_tiles[map_idx] = updated_tile;
+        true
+    }
+
+    /// Return a free snapshot-mode runtime item slot.
+    fn find_free_snapshot_item_slot(&self) -> Option<usize> {
+        for item_id in 1..self.items.len() {
+            let item = self.items[item_id];
+            if item.used != USE_EMPTY {
+                continue;
+            }
+            if item.carried != 0 {
+                continue;
+            }
+            if self.map_tiles.iter().any(|tile| tile.it == item_id as u32) {
+                continue;
+            }
+            return Some(item_id);
+        }
+        None
+    }
+
+    /// Push every dirty map tile and queued item action to the admin API.
+    ///
+    /// Called instead of snapshot save in LiveApi mode. Each static tile edit
+    /// produces one PUT request; item placements/removals enqueue server world
+    /// actions so the running game owns runtime item slot allocation.
     fn save_to_api(&mut self) {
         self.save_status = None;
         if let Err(e) = self.sync_loaded_world_from_views() {
@@ -393,8 +668,16 @@ impl MapViewerApp {
         };
 
         let targets: Vec<(usize, usize)> = self.dirty_tiles.iter().copied().collect();
+        let item_actions = self.pending_item_actions.clone();
         let mut pushed = 0usize;
+        let mut queued_item_actions = 0usize;
         let mut errors: Vec<String> = Vec::new();
+
+        if targets.is_empty() && item_actions.is_empty() {
+            self.save_status = Some("No changes to save".to_owned());
+            self.mark_clean_if_no_pending_changes();
+            return;
+        }
 
         for (x, y) in &targets {
             let idx = tile_index(*x, *y);
@@ -418,14 +701,46 @@ impl MapViewerApp {
             }
         }
 
+        let mut successful_item_action_indices = BTreeSet::new();
+        for (idx, action) in item_actions.iter().enumerate() {
+            let world_action = match *action {
+                PendingItemAction::Place { x, y, template_id } => {
+                    WorldActionKind::PlaceMapItemFromTemplate {
+                        x,
+                        y,
+                        template_id: template_id as usize,
+                    }
+                }
+                PendingItemAction::Clear { x, y } => WorldActionKind::ClearMapItem { x, y },
+            };
+
+            match client.request_world_action(&world_action) {
+                Ok(_) => {
+                    queued_item_actions += 1;
+                    successful_item_action_indices.insert(idx);
+                }
+                Err(e) => errors.push(format!("{}: {e}", world_action.name())),
+            }
+        }
+
+        if !successful_item_action_indices.is_empty() {
+            let mut action_idx = 0usize;
+            self.pending_item_actions.retain(|_| {
+                let keep = !successful_item_action_indices.contains(&action_idx);
+                action_idx += 1;
+                keep
+            });
+        }
+
         if errors.is_empty() {
-            self.dirty = !self.dirty_tiles.is_empty();
+            self.mark_clean_if_no_pending_changes();
             self.save_status = Some(format!(
-                "Saved to API: {pushed} tile(s). Use 'Reload server map' to apply."
+                "Saved to API: {pushed} tile(s), queued {queued_item_actions} item action(s). Use 'Reload server map' to apply."
             ));
         } else {
+            self.mark_clean_if_no_pending_changes();
             self.save_status = Some(format!(
-                "Save partial: {pushed} tile(s); {} error(s): {}",
+                "Save partial: {pushed} tile(s), queued {queued_item_actions} item action(s); {} error(s): {}",
                 errors.len(),
                 errors.join("; ")
             ));
@@ -644,7 +959,7 @@ impl MapViewerApp {
         let mut still_open = true;
         let mut confirm_clicked = false;
         let mut cancel_clicked = false;
-        let has_unsaved = !self.dirty_tiles.is_empty();
+        let has_unsaved = !self.dirty_tiles.is_empty() || !self.pending_item_actions.is_empty();
 
         egui::Window::new("Reload Server Map?")
             .collapsible(false)
@@ -699,181 +1014,283 @@ impl MapViewerApp {
     }
 
     fn render_palette_overlay(&mut self, ctx: &egui::Context, anchor: Pos2) -> Rect {
-        let response = egui::Area::new("map_palette_overlay".into())
-            .order(egui::Order::Foreground)
-            .fixed_pos(anchor)
+        let response = egui::Window::new("Palette")
+            .id(egui::Id::new("map_palette_overlay_window"))
+            .default_pos(anchor)
+            .default_size(Vec2::new(360.0, 420.0))
+            .resizable(true)
+            .movable(true)
+            .collapsible(false)
             .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(260.0);
-                    ui.vertical(|ui| {
-                        ui.strong("Palette");
+                ui.set_min_width(260.0);
+                ui.vertical(|ui| {
+                    ui.separator();
+
+                    ui.add_enabled_ui(true, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("sprite:");
+                            ui.add(egui::DragValue::new(&mut self.draft_sprite));
+
+                            let preview_size = Vec2::new(96.0, 96.0);
+                            let mut preview_drawn = false;
+
+                            if let Some(cache) = self.graphics_zip.as_mut()
+                                && let Ok(Some(texture)) =
+                                    cache.texture_for(ctx, self.draft_sprite as usize)
+                            {
+                                ui.add(
+                                    egui::Image::new(texture)
+                                        .fit_to_exact_size(preview_size)
+                                        .maintain_aspect_ratio(true),
+                                );
+                                preview_drawn = true;
+                            }
+
+                            if !preview_drawn {
+                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                            }
+
+                            if ui.small_button("Add").clicked() && self.draft_sprite != 0 {
+                                match self.can_add_palette_sprite(ctx, self.draft_sprite) {
+                                    Ok(()) => {
+                                        self.palette.push(PaletteEntry {
+                                            kind: PaletteEntryKind::Sprite(self.draft_sprite),
+                                        });
+                                    }
+                                    Err(e) => {
+                                        self.save_status = Some(e);
+                                    }
+                                }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label("template:");
+                            ui.add(egui::DragValue::new(&mut self.draft_item_template_id));
+
+                            let preview_size = Vec2::new(96.0, 96.0);
+                            let mut preview_drawn = false;
+                            let it_idx = self.draft_item_template_id as usize;
+
+                            if self.draft_item_template_id != 0
+                                && it_idx < self.item_templates.len()
+                                && self.item_templates[it_idx].used != USE_EMPTY
+                                && let Err(e) =
+                                    self.ensure_item_template_loaded(self.draft_item_template_id)
+                            {
+                                self.item_templates_error = Some(e);
+                            }
+
+                            let preview_sprite_id = if it_idx < self.item_templates.len()
+                                && self.item_templates[it_idx].used != USE_EMPTY
+                            {
+                                template_preview_sprite(self.item_templates[it_idx])
+                            } else {
+                                None
+                            };
+
+                            if let Some(sprite) = preview_sprite_id
+                                && let Some(cache) = self.graphics_zip.as_mut()
+                                && let Ok(Some(texture)) = cache.texture_for(ctx, sprite)
+                            {
+                                ui.add(
+                                    egui::Image::new(texture)
+                                        .fit_to_exact_size(preview_size)
+                                        .maintain_aspect_ratio(true),
+                                );
+                                preview_drawn = true;
+                            }
+
+                            if !preview_drawn {
+                                ui.allocate_exact_size(preview_size, egui::Sense::hover());
+                            }
+
+                            if let Some(sprite) = preview_sprite_id {
+                                ui.label(format!("sprite: {}", sprite));
+                            }
+
+                            if ui.small_button("Add").clicked() && self.draft_item_template_id != 0
+                            {
+                                if it_idx >= self.item_templates.len() {
+                                    self.save_status =
+                                        Some("Template id is out of range".to_owned());
+                                } else if let Err(e) =
+                                    self.ensure_item_template_loaded(self.draft_item_template_id)
+                                {
+                                    self.save_status = Some(e);
+                                } else if self.item_templates[it_idx].used == USE_EMPTY {
+                                    self.save_status = Some("Template slot is unused".to_owned());
+                                } else {
+                                    self.palette.push(PaletteEntry {
+                                        kind: PaletteEntryKind::ItemTemplate(
+                                            self.draft_item_template_id,
+                                        ),
+                                    });
+                                    self.selected_palette_index = Some(self.palette.len() - 1);
+                                    self.save_status = Some(format!(
+                                        "Added template {} to palette",
+                                        self.draft_item_template_id
+                                    ));
+                                }
+                            }
+
+                            if self.draft_item_template_id != 0 {
+                                if it_idx >= self.item_templates.len() {
+                                    ui.colored_label(
+                                        egui::Color32::LIGHT_RED,
+                                        "Template id is out of range",
+                                    );
+                                } else if self.item_templates[it_idx].used == USE_EMPTY {
+                                    ui.colored_label(
+                                        egui::Color32::LIGHT_RED,
+                                        "Template slot is unused",
+                                    );
+                                }
+                            }
+                        });
+
                         ui.separator();
 
-                        ui.add_enabled_ui(true, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.label("sprite:");
-                                ui.add(egui::DragValue::new(&mut self.draft_sprite));
-
-                                let preview_size = Vec2::new(96.0, 96.0);
-                                let mut preview_drawn = false;
-
-                                if let Some(cache) = self.graphics_zip.as_mut()
-                                    && let Ok(Some(texture)) =
-                                        cache.texture_for(ctx, self.draft_sprite as usize)
-                                {
-                                    ui.add(
-                                        egui::Image::new(texture)
-                                            .fit_to_exact_size(preview_size)
-                                            .maintain_aspect_ratio(true),
-                                    );
-                                    preview_drawn = true;
-                                }
-
-                                if !preview_drawn {
-                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                }
-
-                                if ui.small_button("Add").clicked() && self.draft_sprite != 0 {
-                                    self.palette.push(PaletteEntry {
-                                        kind: PaletteEntryKind::Sprite(self.draft_sprite),
-                                    });
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                ui.label("it:");
-                                ui.add(egui::DragValue::new(&mut self.draft_item_instance_id));
-
-                                let preview_size = Vec2::new(96.0, 96.0);
-                                let mut preview_drawn = false;
-                                let it_idx = self.draft_item_instance_id as usize;
-
-                                if it_idx < self.item_templates.len()
-                                    && self.item_templates[it_idx].used != USE_EMPTY
-                                    && let Some(sprite) =
-                                        item_map_sprite(self.item_templates[it_idx])
-                                    && let Some(cache) = self.graphics_zip.as_mut()
-                                    && let Ok(Some(texture)) =
-                                        cache.texture_for(ctx, sprite as usize)
-                                {
-                                    ui.add(
-                                        egui::Image::new(texture)
-                                            .fit_to_exact_size(preview_size)
-                                            .maintain_aspect_ratio(true),
-                                    );
-                                    preview_drawn = true;
-                                }
-
-                                if !preview_drawn {
-                                    ui.allocate_exact_size(preview_size, egui::Sense::hover());
-                                }
-
-                                if ui.small_button("Add").clicked()
-                                    && self.draft_item_instance_id != 0
-                                {
-                                    self.palette.push(PaletteEntry {
-                                        kind: PaletteEntryKind::Item(self.draft_item_instance_id),
-                                    });
-                                }
-                            });
-
-                            ui.separator();
-
-                            egui::ScrollArea::vertical()
-                                .max_height(260.0)
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let icon_size = Vec2::new(48.0, 48.0);
+                            egui::Grid::new("palette_image_grid")
+                                .num_columns(4)
+                                .spacing([6.0, 6.0])
                                 .show(ui, |ui| {
-                                    let icon_size = Vec2::new(48.0, 48.0);
-                                    egui::Grid::new("palette_image_grid")
-                                        .num_columns(4)
-                                        .spacing([6.0, 6.0])
-                                        .show(ui, |ui| {
-                                            let mut col = 0;
-                                            for (idx, entry) in self.palette.iter().enumerate() {
-                                                let sprite_id: Option<usize> = match entry.kind {
-                                                    PaletteEntryKind::Sprite(sprite) => {
-                                                        if sprite == 0 {
-                                                            None
-                                                        } else {
-                                                            Some(sprite as usize)
-                                                        }
-                                                    }
-                                                    PaletteEntryKind::Item(it) => {
-                                                        if it == 0 {
-                                                            None
-                                                        } else {
-                                                            let it_idx = it as usize;
-                                                            if it_idx < self.item_templates.len()
-                                                                && self.item_templates[it_idx].used
-                                                                    != USE_EMPTY
-                                                            {
-                                                                let item =
-                                                                    self.item_templates[it_idx];
-                                                                item_map_sprite(item)
-                                                                    .map(|s| s as usize)
-                                                            } else {
-                                                                None
-                                                            }
-                                                        }
-                                                    }
-                                                };
-
-                                                let Some(sprite_id) = sprite_id else {
-                                                    continue;
-                                                };
-
-                                                let Some(cache) = self.graphics_zip.as_mut() else {
-                                                    break;
-                                                };
-
-                                                let Ok(Some(texture)) =
-                                                    cache.texture_for(ctx, sprite_id)
-                                                else {
-                                                    continue;
-                                                };
-
-                                                let selected =
-                                                    self.selected_palette_index == Some(idx);
-                                                let tint = if selected {
-                                                    egui::Color32::from_rgb(180, 255, 180)
+                                    let mut col = 0;
+                                    for idx in 0..self.palette.len() {
+                                        let entry = self.palette[idx];
+                                        let sprite_id: Option<usize> = match entry.kind {
+                                            PaletteEntryKind::Sprite(sprite) => {
+                                                if sprite == 0 {
+                                                    None
                                                 } else {
-                                                    egui::Color32::WHITE
-                                                };
+                                                    Some(sprite as usize)
+                                                }
+                                            }
+                                            PaletteEntryKind::ItemTemplate(template_id) => {
+                                                if template_id == 0 {
+                                                    None
+                                                } else {
+                                                    let it_idx = template_id as usize;
+                                                    if it_idx < self.item_templates.len()
+                                                        && self.item_templates[it_idx].used
+                                                            != USE_EMPTY
+                                                    {
+                                                        if let Err(e) = self
+                                                            .ensure_item_template_loaded(
+                                                                template_id,
+                                                            )
+                                                        {
+                                                            self.item_templates_error = Some(e);
+                                                        }
+                                                        let item = self.item_templates[it_idx];
+                                                        template_preview_sprite(item)
+                                                    } else {
+                                                        None
+                                                    }
+                                                }
+                                            }
+                                        };
 
-                                                let clicked = ui
-                                                    .add(
+                                        let selected = self.selected_palette_index == Some(idx);
+                                        let tint = if selected {
+                                            egui::Color32::from_rgb(180, 255, 180)
+                                        } else {
+                                            egui::Color32::WHITE
+                                        };
+
+                                        let clicked = if let Some(sprite_id) = sprite_id {
+                                            if let Some(cache) = self.graphics_zip.as_mut() {
+                                                if let Ok(Some(texture)) =
+                                                    cache.texture_for(ctx, sprite_id)
+                                                {
+                                                    ui.add(
                                                         egui::Image::new(texture)
                                                             .fit_to_exact_size(icon_size)
                                                             .maintain_aspect_ratio(true)
                                                             .tint(tint)
                                                             .sense(egui::Sense::click()),
                                                     )
-                                                    .clicked();
-
-                                                if clicked {
-                                                    if selected {
-                                                        self.selected_palette_index = None;
-                                                    } else {
-                                                        self.selected_palette_index = Some(idx);
-                                                    }
+                                                    .clicked()
+                                                } else {
+                                                    let label = match entry.kind {
+                                                        PaletteEntryKind::Sprite(sprite) => {
+                                                            format!("S{}", sprite)
+                                                        }
+                                                        PaletteEntryKind::ItemTemplate(
+                                                            template_id,
+                                                        ) => {
+                                                            format!(
+                                                                "T{}\nS{}",
+                                                                template_id, sprite_id
+                                                            )
+                                                        }
+                                                    };
+                                                    ui.add_sized(
+                                                        icon_size,
+                                                        egui::Button::new(label).fill(
+                                                            if selected {
+                                                                egui::Color32::from_rgb(70, 110, 70)
+                                                            } else {
+                                                                egui::Color32::from_rgb(55, 55, 55)
+                                                            },
+                                                        ),
+                                                    )
+                                                    .clicked()
                                                 }
-
-                                                col += 1;
-                                                if col == 4 {
-                                                    ui.end_row();
-                                                    col = 0;
+                                            } else {
+                                                false
+                                            }
+                                        } else {
+                                            let label = match entry.kind {
+                                                PaletteEntryKind::Sprite(sprite) => {
+                                                    format!("S{}", sprite)
                                                 }
+                                                PaletteEntryKind::ItemTemplate(template_id) => {
+                                                    format!("T{}", template_id)
+                                                }
+                                            };
+                                            ui.add_sized(
+                                                icon_size,
+                                                egui::Button::new(label).fill(if selected {
+                                                    egui::Color32::from_rgb(70, 110, 70)
+                                                } else {
+                                                    egui::Color32::from_rgb(55, 55, 55)
+                                                }),
+                                            )
+                                            .clicked()
+                                        };
+
+                                        if clicked {
+                                            if selected {
+                                                self.selected_palette_index = None;
+                                            } else {
+                                                self.selected_palette_index = Some(idx);
                                             }
-                                            if col != 0 {
-                                                ui.end_row();
-                                            }
-                                        });
+                                        }
+
+                                        col += 1;
+                                        if col == 4 {
+                                            ui.end_row();
+                                            col = 0;
+                                        }
+                                    }
+                                    if col != 0 {
+                                        ui.end_row();
+                                    }
                                 });
                         });
                     });
                 });
             });
 
-        response.response.rect
+        response
+            .map(|inner| inner.response.rect)
+            .unwrap_or_else(|| {
+                self.palette_rect
+                    .unwrap_or(Rect::from_min_size(anchor, Vec2::new(260.0, 260.0)))
+            })
     }
 }
 
@@ -895,6 +1312,22 @@ fn item_map_sprite(item: Item) -> Option<i16> {
 }
 
 #[inline]
+fn template_preview_sprite(item: Item) -> Option<usize> {
+    // Template preview should not hide sprites based on runtime hidden flag.
+    for sprite in [item.sprite[0], item.sprite[1]] {
+        if sprite > 0 {
+            return Some(sprite as usize);
+        }
+    }
+    for sprite in [item.sprite[0], item.sprite[1]] {
+        if sprite < 0 {
+            return Some(sprite.unsigned_abs() as usize);
+        }
+    }
+    None
+}
+
+#[inline]
 fn tile_index(x: usize, y: usize) -> usize {
     y * (SERVER_MAPX as usize) + x
 }
@@ -902,6 +1335,22 @@ fn tile_index(x: usize, y: usize) -> usize {
 const MIN_ZOOM: f32 = 0.25;
 const MAX_ZOOM: f32 = 4.0;
 const ZOOM_STEP: f32 = 1.15;
+
+/// Allowed sprite-id ranges for map painting palette entries.
+///
+/// Keep this list curated so operators do not have to sift through unrelated
+/// sprite ids from the full graphics archive.
+const PALETTE_ALLOWED_SPRITE_RANGES: &[(u16, u16)] = &[(1, u16::MAX)];
+
+#[inline]
+fn sprite_is_in_allowed_palette_ranges(sprite: u16) -> bool {
+    if sprite == 0 {
+        return false;
+    }
+    PALETTE_ALLOWED_SPRITE_RANGES
+        .iter()
+        .any(|(start, end)| sprite >= *start && sprite <= *end)
+}
 
 #[inline]
 /// Convert map-space pixels into screen-space coordinates.
@@ -1230,7 +1679,11 @@ impl eframe::App for MapViewerApp {
                     ui.separator();
                     ui.colored_label(
                         egui::Color32::YELLOW,
-                        format!("Unsaved: {} tile(s)", self.dirty_tiles.len()),
+                        format!(
+                            "Unsaved: {} tile(s), {} item action(s)",
+                            self.dirty_tiles.len(),
+                            self.pending_item_actions.len()
+                        ),
                     );
                 }
 
@@ -1376,11 +1829,14 @@ impl eframe::App for MapViewerApp {
                                 let item = self.items[it_idx];
                                 let sprite = item_map_sprite(item).unwrap_or(0);
                                 ui.label(format!("item sprite: {}", sprite));
+                                ui.label(format!("item template: {}", item.temp));
                             } else {
                                 ui.label("item sprite: (item data not loaded)");
+                                ui.label("item template: (item data not loaded)");
                             }
                         } else {
                             ui.label("item sprite: N/A");
+                            ui.label("item template: N/A");
                         }
                     } else {
                         ui.label("sprite: N/A");
@@ -1390,6 +1846,7 @@ impl eframe::App for MapViewerApp {
                         ui.label("ch: N/A to_ch: N/A it: N/A");
                         self.ui_tile_preview_row(ui, ctx, 0, 0, 0, preview_size);
                         ui.label("item sprite: N/A");
+                        ui.label("item template: N/A");
                     }
                 }
 
@@ -1435,11 +1892,19 @@ impl eframe::App for MapViewerApp {
                                     let item = self.items[it_idx];
                                     let sprite = item_map_sprite(item).unwrap_or(0);
                                     ui.label(format!("item sprite: {}", sprite));
+                                    ui.label(format!("item template: {}", item.temp));
                                 } else {
                                     ui.label("item sprite: (item data not loaded)");
+                                    ui.label("item template: (item data not loaded)");
+                                }
+                                if ui.button("Clear item").clicked()
+                                    && self.clear_item_from_tile(x, y)
+                                {
+                                    ctx.request_repaint();
                                 }
                             } else {
                                 ui.label("item sprite: N/A");
+                                ui.label("item template: N/A");
                             }
 
                             ui.separator();

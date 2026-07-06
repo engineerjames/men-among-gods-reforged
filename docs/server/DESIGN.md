@@ -4,6 +4,9 @@ This document describes the server at a **high level**: how the main loop runs, 
 
 The details here are based on the current Rust implementation in the `server` crate, which should mirror the C based implementation for now.
 
+For map editing rollout and rollback procedures, see
+`docs/server/MAP_EDITOR_OPERATIONS.md`.
+
 ## High-Level Architecture
 
 At runtime the server is a single main loop that:
