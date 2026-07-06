@@ -124,6 +124,12 @@ cargo run -p server --bin world-snapshot -- import --input <map_release_candidat
 - Live patch apply preserves dynamic tile fields (`ch`, `to_ch`, `it`, `light`, `dlight`).
 - Full world import/export remains the `world-snapshot` workflow.
 
+### Item Safety Notes
+
+- Item placement from `map_viewer` is queued as a server world action, so the server allocates a fresh runtime item slot instead of reusing or overwriting an existing one.
+- The map viewer shows the placed item immediately, but `Save to API` only submits the queued action; the server still owns the authoritative item slot assignment.
+- Clearing an item from a tile queues the inverse server action, which removes the map reference and returns the runtime item slot to `unused`.
+
 ## Decision Guide
 
 - Choose live apply when patch size is small and immediate release is needed.
