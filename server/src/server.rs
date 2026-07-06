@@ -452,35 +452,38 @@ impl Server {
         gs.globals.uptime_per_hour[hour] = gs.globals.uptime_per_hour[hour].wrapping_add(1);
 
         let ticker = gs.globals.ticker;
-        gs.tick_element_switch_states(ticker);
+        core::measure!(gs.tick_element_switch_states(ticker));
 
         // Background save scheduling (KeyDB only)
-        self.maybe_enqueue_background_save(gs);
+        core::measure!(self.maybe_enqueue_background_save(gs));
 
         // Send tick to players and count online
-        let mut online = 0;
-        for n in 1..gs.players.len() {
-            if gs.players[n].sock.is_none() {
-                continue;
-            }
-            let state = gs.players[n].state;
-            let is_normal_or_exit =
-                state == core::constants::ST_NORMAL || state == core::constants::ST_EXIT;
-            let is_normal = state == core::constants::ST_NORMAL;
+        let online = core::measure!({
+            let mut online = 0;
+            for n in 1..gs.players.len() {
+                if gs.players[n].sock.is_none() {
+                    continue;
+                }
+                let state = gs.players[n].state;
+                let is_normal_or_exit =
+                    state == core::constants::ST_NORMAL || state == core::constants::ST_EXIT;
+                let is_normal = state == core::constants::ST_NORMAL;
 
-            if !is_normal_or_exit {
-                continue;
-            }
+                if !is_normal_or_exit {
+                    continue;
+                }
 
-            core::measure!(player::tick::plr_tick(gs, n));
-            // Weather (especially area-driven effects) is temporarily disabled
-            // while we tune things — re-enable once areas are configured.
-            // crate::state::weather::weather_tick(gs, n);
+                player::tick::plr_tick(gs, n);
+                // Weather (especially area-driven effects) is temporarily disabled
+                // while we tune things — re-enable once areas are configured.
+                // crate::state::weather::weather_tick(gs, n);
 
-            if is_normal {
-                online += 1;
+                if is_normal {
+                    online += 1;
+                }
             }
-        }
+            online
+        });
 
         // Update max online statistics
         if online > gs.globals.max_online {
@@ -491,50 +494,56 @@ impl Server {
         }
 
         // Check for player commands and translate to character commands
-        for n in 1..gs.players.len() {
-            if gs.players[n].sock.is_none() {
-                continue;
-            }
-
-            // Process all pending commands (16 bytes each)
-            loop {
-                if gs.players[n].in_len < 16 {
-                    break;
+        core::measure!({
+            for n in 1..gs.players.len() {
+                if gs.players[n].sock.is_none() {
+                    continue;
                 }
 
-                core::measure!(player::plr_cmd(gs, n));
+                // Process all pending commands (16 bytes each)
+                loop {
+                    if gs.players[n].in_len < 16 {
+                        break;
+                    }
 
-                gs.players[n].in_len -= 16;
-                gs.players[n].inbuf.copy_within(16..256, 0);
+                    player::plr_cmd(gs, n);
+
+                    gs.players[n].in_len -= 16;
+                    gs.players[n].inbuf.copy_within(16..256, 0);
+                }
+
+                player::tick::plr_idle(gs, n);
             }
-
-            core::measure!(player::tick::plr_idle(gs, n));
-        }
+        });
 
         // Do login stuff for players not in normal state
-        for n in 1..gs.players.len() {
-            if gs.players[n].sock.is_none() {
-                continue;
-            }
-            if gs.players[n].state == core::constants::ST_NORMAL {
-                continue;
-            }
+        core::measure!({
+            for n in 1..gs.players.len() {
+                if gs.players[n].sock.is_none() {
+                    continue;
+                }
+                if gs.players[n].state == core::constants::ST_NORMAL {
+                    continue;
+                }
 
-            core::measure!(player::tick::plr_state(gs, n));
-        }
+                player::tick::plr_state(gs, n);
+            }
+        });
 
         // Send changes to players in normal state
-        for n in 1..gs.players.len() {
-            if gs.players[n].sock.is_none() {
-                continue;
-            }
-            if gs.players[n].state != core::constants::ST_NORMAL {
-                continue;
-            }
+        core::measure!({
+            for n in 1..gs.players.len() {
+                if gs.players[n].sock.is_none() {
+                    continue;
+                }
+                if gs.players[n].state != core::constants::ST_NORMAL {
+                    continue;
+                }
 
-            player::map::plr_getmap(gs, n);
-            core::measure!(player::tick::plr_change(gs, n));
-        }
+                player::map::plr_getmap(gs, n);
+                player::tick::plr_change(gs, n);
+            }
+        });
 
         // Let characters act
         let mut cnt = 0;
@@ -547,104 +556,106 @@ impl Server {
             self.wakeup_character(gs);
         }
 
-        for n in 1..core::constants::MAXCHARS {
-            let char_state = {
-                if gs.characters[n].used == core::constants::USE_EMPTY {
-                    CharacterTickState::Empty
-                } else if gs.characters[n].flags & CharacterFlags::Update.bits() != 0 {
-                    CharacterTickState::NeedsUpdate
-                } else if gs.characters[n].used == core::constants::USE_NONACTIVE
-                    && (n & 1023) == (ticker as usize & 1023)
-                {
-                    CharacterTickState::CheckExpire
-                } else if gs.characters[n].flags & CharacterFlags::Body.bits() != 0 {
-                    CharacterTickState::Body
-                } else {
-                    CharacterTickState::Active
-                }
-            };
-
-            match char_state {
-                CharacterTickState::Empty => continue,
-                CharacterTickState::NeedsUpdate => {
-                    cnt += 1;
-                    gs.really_update_char(n);
-
-                    gs.characters[n].flags &= !CharacterFlags::Update.bits();
-                }
-                CharacterTickState::CheckExpire => {
-                    cnt += 1;
-                    self.check_expire(gs, n);
-                }
-                CharacterTickState::Body => {
-                    cnt += 1;
-                    if gs.characters[n].flags & CharacterFlags::Player.bits() == 0 {
-                        gs.characters[n].data[98] += 1;
-                        if gs.characters[n].data[98] > (core::constants::TICKS * 60 * 30) {
-                            log::info!("Removing lost body for character {}", n);
-                            God::destroy_items(gs, n);
-                            gs.characters[n].used = core::constants::USE_EMPTY;
-                            continue;
-                        }
+        core::measure!({
+            for n in 1..core::constants::MAXCHARS {
+                let char_state = {
+                    if gs.characters[n].used == core::constants::USE_EMPTY {
+                        CharacterTickState::Empty
+                    } else if gs.characters[n].flags & CharacterFlags::Update.bits() != 0 {
+                        CharacterTickState::NeedsUpdate
+                    } else if gs.characters[n].used == core::constants::USE_NONACTIVE
+                        && (n & 1023) == (ticker as usize & 1023)
+                    {
+                        CharacterTickState::CheckExpire
+                    } else if gs.characters[n].flags & CharacterFlags::Body.bits() != 0 {
+                        CharacterTickState::Body
+                    } else {
+                        CharacterTickState::Active
                     }
-                    body += 1;
-                    continue;
-                }
-                CharacterTickState::Active => {
-                    cnt += 1;
-                }
-            }
+                };
 
-            // Reduce single awake timer
-            if gs.characters[n].data[92] > 0 {
-                gs.characters[n].data[92] -= 1;
-            }
+                match char_state {
+                    CharacterTickState::Empty => continue,
+                    CharacterTickState::NeedsUpdate => {
+                        cnt += 1;
+                        gs.really_update_char(n);
 
-            // Check if character should be active
-            if gs.characters[n].status < 8 && !self.group_active(gs, n) {
-                continue;
-            }
-
-            awake += 1;
-
-            if gs.characters[n].used == core::constants::USE_ACTIVE {
-                // Periodic validation
-                if (n & 1023) == (ticker as usize & 1023) && !self.check_valid(gs, n) {
-                    continue;
-                }
-
-                gs.characters[n].current_online_time += 1;
-                gs.characters[n].total_online_time += 1;
-
-                let is_player_or_usurp = (gs.characters[n].flags & CharacterFlags::Player.bits()
-                    != 0)
-                    || (gs.characters[n].flags & CharacterFlags::Usurp.bits() != 0);
-                let is_player = gs.characters[n].flags & CharacterFlags::Player.bits() != 0;
-                let is_visible = gs.characters[n].flags & CharacterFlags::Invisible.bits() == 0;
-
-                if is_player_or_usurp {
-                    gs.globals.total_online_time += 1;
-                    gs.globals.online_per_hour[hour] += 1;
-
-                    if is_player {
-                        if gs.characters[n].data[71] > 0 {
-                            gs.characters[n].data[71] -= 1;
+                        gs.characters[n].flags &= !CharacterFlags::Update.bits();
+                    }
+                    CharacterTickState::CheckExpire => {
+                        cnt += 1;
+                        self.check_expire(gs, n);
+                    }
+                    CharacterTickState::Body => {
+                        cnt += 1;
+                        if gs.characters[n].flags & CharacterFlags::Player.bits() == 0 {
+                            gs.characters[n].data[98] += 1;
+                            if gs.characters[n].data[98] > (core::constants::TICKS * 60 * 30) {
+                                log::info!("Removing lost body for character {}", n);
+                                God::destroy_items(gs, n);
+                                gs.characters[n].used = core::constants::USE_EMPTY;
+                                continue;
+                            }
                         }
-                        if gs.characters[n].data[72] > 0 {
-                            gs.characters[n].data[72] -= 1;
-                        }
-
-                        if is_visible {
-                            plon += 1;
-                        }
+                        body += 1;
+                        continue;
+                    }
+                    CharacterTickState::Active => {
+                        cnt += 1;
                     }
                 }
 
-                core::measure!(player::tick::plr_act(gs, n));
-            }
+                // Reduce single awake timer
+                if gs.characters[n].data[92] > 0 {
+                    gs.characters[n].data[92] -= 1;
+                }
 
-            gs.do_regenerate(n);
-        }
+                // Check if character should be active
+                if gs.characters[n].status < 8 && !self.group_active(gs, n) {
+                    continue;
+                }
+
+                awake += 1;
+
+                if gs.characters[n].used == core::constants::USE_ACTIVE {
+                    // Periodic validation
+                    if (n & 1023) == (ticker as usize & 1023) && !self.check_valid(gs, n) {
+                        continue;
+                    }
+
+                    gs.characters[n].current_online_time += 1;
+                    gs.characters[n].total_online_time += 1;
+
+                    let is_player_or_usurp =
+                        (gs.characters[n].flags & CharacterFlags::Player.bits() != 0)
+                            || (gs.characters[n].flags & CharacterFlags::Usurp.bits() != 0);
+                    let is_player = gs.characters[n].flags & CharacterFlags::Player.bits() != 0;
+                    let is_visible = gs.characters[n].flags & CharacterFlags::Invisible.bits() == 0;
+
+                    if is_player_or_usurp {
+                        gs.globals.total_online_time += 1;
+                        gs.globals.online_per_hour[hour] += 1;
+
+                        if is_player {
+                            if gs.characters[n].data[71] > 0 {
+                                gs.characters[n].data[71] -= 1;
+                            }
+                            if gs.characters[n].data[72] > 0 {
+                                gs.characters[n].data[72] -= 1;
+                            }
+
+                            if is_visible {
+                                plon += 1;
+                            }
+                        }
+                    }
+
+                    player::tick::plr_act(gs, n);
+                }
+
+                gs.do_regenerate(n);
+            }
+        });
 
         // Update global stats
         gs.globals.character_cnt = cnt;
@@ -653,9 +664,9 @@ impl Server {
         gs.globals.players_online = plon;
 
         // Run subsystem ticks
-        populate::pop_tick(gs);
-        EffectManager::effect_tick(gs);
-        driver::item_tick(gs);
+        core::measure!(populate::pop_tick(gs));
+        core::measure!(EffectManager::effect_tick(gs));
+        core::measure!(driver::item_tick(gs));
 
         core::measure!(self.global_tick(gs));
     }
