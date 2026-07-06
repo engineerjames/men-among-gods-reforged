@@ -53,6 +53,10 @@ pub fn execute_world_action(
             pop_skill(gs);
             "player skills synchronized".to_owned()
         }
+        WorldActionKind::PlaceMapItemFromTemplate { x, y, template_id } => {
+            place_map_item_from_template(gs, *x, *y, *template_id)?
+        }
+        WorldActionKind::ClearMapItem { x, y } => clear_map_item(gs, *x, *y)?,
         WorldActionKind::ResetChar { template_id } => {
             if !(1..MAXTCHARS).contains(template_id) {
                 return Err(format!("character template {} out of range", template_id));
@@ -74,6 +78,108 @@ pub fn execute_world_action(
     };
 
     Ok(WorldActionOutcome { message })
+}
+
+/// Place one map item by cloning a template into a free runtime item slot.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `x` - Tile X coordinate.
+/// * `y` - Tile Y coordinate.
+/// * `template_id` - Item template id to instantiate.
+///
+/// # Returns
+///
+/// * `Ok(message)` when the item is created and placed successfully.
+/// * `Err(message)` when validation, allocation, or placement fails.
+fn place_map_item_from_template(
+    gs: &mut GameState,
+    x: usize,
+    y: usize,
+    template_id: usize,
+) -> Result<String, String> {
+    if x >= SERVER_MAPX as usize || y >= SERVER_MAPY as usize {
+        return Err(format!("map coordinates ({x},{y}) out of range"));
+    }
+
+    if !(1..MAXTITEM).contains(&template_id) {
+        return Err(format!("item template {} out of range", template_id));
+    }
+    if gs.item_templates[template_id].used == USE_EMPTY {
+        return Err(format!("item template {} is unused", template_id));
+    }
+
+    let map_index = x + y * SERVER_MAPX as usize;
+    let tile = gs.map[map_index];
+    if tile.it != 0 {
+        return Err(format!(
+            "tile ({x},{y}) already has item instance {}",
+            tile.it
+        ));
+    }
+    if tile.ch != 0 || tile.to_ch != 0 {
+        return Err(format!("tile ({x},{y}) is occupied by a character"));
+    }
+    if (tile.flags & u64::from(MF_MOVEBLOCK | core::constants::MF_DEATHTRAP)) != 0 {
+        return Err(format!("tile ({x},{y}) blocks item placement"));
+    }
+    if tile.fsprite != 0 {
+        return Err(format!("tile ({x},{y}) has a foreground sprite"));
+    }
+
+    let Some(item_id) = God::create_item(gs, template_id) else {
+        return Err("no free runtime item slots available".to_owned());
+    };
+
+    if !God::drop_item(gs, item_id, x, y) {
+        gs.items[item_id] = core::types::Item::default();
+        return Err(format!(
+            "failed to place allocated item {} at ({x},{y})",
+            item_id
+        ));
+    }
+
+    Ok(format!(
+        "placed template {} at ({}, {}) as item {}",
+        template_id, x, y, item_id
+    ))
+}
+
+/// Clear one map item and free its runtime item slot.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `x` - Tile X coordinate.
+/// * `y` - Tile Y coordinate.
+///
+/// # Returns
+///
+/// * `Ok(message)` when the map item is cleared successfully.
+/// * `Err(message)` when coordinates are invalid or no item is present.
+fn clear_map_item(gs: &mut GameState, x: usize, y: usize) -> Result<String, String> {
+    if x >= SERVER_MAPX as usize || y >= SERVER_MAPY as usize {
+        return Err(format!("map coordinates ({x},{y}) out of range"));
+    }
+
+    let map_index = x + y * SERVER_MAPX as usize;
+    let item_id = gs.map[map_index].it as usize;
+    if item_id == 0 {
+        return Err(format!("tile ({x},{y}) has no item"));
+    }
+    if item_id >= gs.items.len() {
+        return Err(format!(
+            "tile ({x},{y}) references out-of-range item {}",
+            item_id
+        ));
+    }
+
+    gs.remove_lights(x as i32, y as i32);
+    gs.map[map_index].it = 0;
+    gs.items[item_id] = core::types::Item::default();
+
+    Ok(format!("cleared item {} from ({}, {})", item_id, x, y))
 }
 
 /// Port of `init_lights` from `populate.cpp`
