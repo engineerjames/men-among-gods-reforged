@@ -114,7 +114,7 @@ fn main() -> Result<(), String> {
         server.drain_character_patches(&mut gs);
         server.drain_ban_actions(&mut gs);
         server.drain_world_actions(&mut gs);
-        server.tick(&mut gs);
+        core::measure!(server.tick(&mut gs));
     }
 
     log::info!("Shutdown signal received, exiting main loop...");

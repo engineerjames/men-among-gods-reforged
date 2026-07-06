@@ -352,10 +352,10 @@ impl Server {
                 Some(last_time + Duration::from_micros(core::constants::TICK as u64));
 
             // Call main game tick (equivalent to: tick() in C++)
-            self.game_tick(gs);
+            core::measure!(self.game_tick(gs));
 
             // Compress and send tick data to clients
-            self.compress_ticks(gs);
+            core::measure!(self.compress_ticks(gs));
 
             let new_now = Instant::now();
             let new_last = self.last_tick_time.unwrap();
@@ -400,7 +400,7 @@ impl Server {
         // Limiting this to every Nth game tick introduces noticeable input lag
         // and delayed map/tick packet delivery.
         let pre_io_time = Instant::now();
-        self.handle_network_io(gs);
+        core::measure!(self.handle_network_io(gs));
 
         if gs
             .globals
@@ -472,7 +472,7 @@ impl Server {
                 continue;
             }
 
-            player::tick::plr_tick(gs, n);
+            core::measure!(player::tick::plr_tick(gs, n));
             // Weather (especially area-driven effects) is temporarily disabled
             // while we tune things — re-enable once areas are configured.
             // crate::state::weather::weather_tick(gs, n);
@@ -502,13 +502,13 @@ impl Server {
                     break;
                 }
 
-                player::plr_cmd(gs, n);
+                core::measure!(player::plr_cmd(gs, n));
 
                 gs.players[n].in_len -= 16;
                 gs.players[n].inbuf.copy_within(16..256, 0);
             }
 
-            player::tick::plr_idle(gs, n);
+            core::measure!(player::tick::plr_idle(gs, n));
         }
 
         // Do login stuff for players not in normal state
@@ -520,7 +520,7 @@ impl Server {
                 continue;
             }
 
-            player::tick::plr_state(gs, n);
+            core::measure!(player::tick::plr_state(gs, n));
         }
 
         // Send changes to players in normal state
@@ -533,7 +533,7 @@ impl Server {
             }
 
             player::map::plr_getmap(gs, n);
-            player::tick::plr_change(gs, n);
+            core::measure!(player::tick::plr_change(gs, n));
         }
 
         // Let characters act
@@ -640,7 +640,7 @@ impl Server {
                     }
                 }
 
-                player::tick::plr_act(gs, n);
+                core::measure!(player::tick::plr_act(gs, n));
             }
 
             gs.do_regenerate(n);
@@ -657,7 +657,7 @@ impl Server {
         EffectManager::effect_tick(gs);
         driver::item_tick(gs);
 
-        self.global_tick(gs);
+        core::measure!(self.global_tick(gs));
     }
 
     // Helper enum for character tick state
