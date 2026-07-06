@@ -671,7 +671,6 @@ impl Server {
         core::measure!(self.global_tick(gs));
     }
 
-    // Helper enum for character tick state
     /// Wake up one character in a round-robin fashion.
     ///
     /// This sets the single-character awake timer (`data[92]`) for one template
