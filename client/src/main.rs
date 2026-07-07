@@ -364,7 +364,9 @@ fn main() -> Result<(), String> {
 
         canvas.present();
 
-        fps_manager.delay();
+        if !app_state.settings.vsync_enabled {
+            fps_manager.delay();
+        }
     }
 
     Ok(())

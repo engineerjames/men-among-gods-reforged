@@ -137,9 +137,8 @@ impl GameScene {
                 NetworkEvent::Tick => {
                     if let Some(net) = app_state.network.as_mut() {
                         net.client_ticker = net.client_ticker.wrapping_add(1);
-                        let ticker = net.client_ticker;
+                        self.pending_server_ticks = self.pending_server_ticks.saturating_add(1);
                         if let Some(ps) = app_state.player_state.as_mut() {
-                            ps.on_tick_packet(ticker);
                             ps.map_mut().reset_last_setmap_index();
                         }
                         net.maybe_send_ctick();
@@ -148,6 +147,18 @@ impl GameScene {
                     tick_groups_processed += 1;
                 }
             }
+        }
+
+        if tick_groups_processed >= MAX_TICK_GROUPS_PER_FRAME {
+            self.tick_drain_saturation_count = self.tick_drain_saturation_count.saturating_add(1);
+            if self.tick_drain_saturation_count == 1 {
+                log::warn!(
+                    "Tick drain saturated at cap={} (backlog likely).",
+                    MAX_TICK_GROUPS_PER_FRAME
+                );
+            }
+        } else {
+            self.tick_drain_saturation_count = 0;
         }
 
         if let Some(ps) = app_state.player_state.as_mut()

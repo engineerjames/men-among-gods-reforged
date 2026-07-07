@@ -97,8 +97,12 @@ const HUD_FADE_THRESHOLD_X: i32 = 810;
 /// A tick group is all `NetworkEvent::Bytes` emitted for one server tick packet,
 /// followed by its terminating `NetworkEvent::Tick`. We only stop processing at
 /// tick boundaries so map state is never rendered from a partially applied group.
-pub(super) const MAX_TICK_GROUPS_PER_FRAME: usize = 32;
+pub(super) const MAX_TICK_GROUPS_PER_FRAME: usize = 4;
 pub(super) const QSIZE: u32 = 8;
+/// Maximum fixed simulation steps consumed in one rendered frame.
+const MAX_SIM_STEPS_PER_FRAME: u32 = 2;
+/// Fixed simulation cadence matching server tick-rate expectations.
+const SIM_STEPS_PER_SECOND: f32 = mag_core::constants::TICKS as f32;
 /// Duration of a diagnostics network-test run.
 const NETWORK_TEST_DURATION_SECS: u64 = 10;
 /// Tick cadence used by the diagnostics network-test profile.
@@ -703,6 +707,16 @@ pub struct GameScene {
     network_test_running: bool,
     /// Cancellation flag for the active diagnostics network-test worker.
     network_test_cancel: Option<Arc<AtomicBool>>,
+    /// Number of consecutive frames that hit the tick-drain cap.
+    tick_drain_saturation_count: u32,
+    /// Number of complete server tick groups waiting to be simulated.
+    pending_server_ticks: u32,
+    /// Local simulation ticker used by legacy animation stepping.
+    sim_ticker: u32,
+    /// Time carried forward for fixed-step simulation.
+    sim_step_accumulator_secs: f32,
+    /// Consecutive frames where fixed-step simulation hits cap and backlog remains.
+    sim_backlog_pressure_frames: u32,
 }
 
 impl GameScene {
@@ -870,6 +884,60 @@ impl GameScene {
             network_test_result_rx: None,
             network_test_running: false,
             network_test_cancel: None,
+            tick_drain_saturation_count: 0,
+            pending_server_ticks: 0,
+            sim_ticker: 0,
+            sim_step_accumulator_secs: 0.0,
+            sim_backlog_pressure_frames: 0,
+        }
+    }
+
+    /// Advances local simulation with a fixed-step clock while consuming
+    /// queued authoritative server ticks.
+    fn run_fixed_simulation_steps(&mut self, app_state: &mut AppState<'_>, dt: Duration) {
+        self.sim_step_accumulator_secs += dt.as_secs_f32();
+        let step_secs = 1.0 / SIM_STEPS_PER_SECOND;
+        let mut steps = 0u32;
+
+        while self.sim_step_accumulator_secs >= step_secs
+            && self.pending_server_ticks > 0
+            && steps < MAX_SIM_STEPS_PER_FRAME
+        {
+            self.sim_step_accumulator_secs -= step_secs;
+            self.pending_server_ticks -= 1;
+            self.sim_ticker = self.sim_ticker.wrapping_add(1);
+
+            if let Some(ps) = app_state.player_state.as_mut() {
+                ps.on_tick_packet(self.sim_ticker);
+            }
+
+            steps += 1;
+        }
+
+        if self.pending_server_ticks > 0 && steps >= MAX_SIM_STEPS_PER_FRAME {
+            self.sim_backlog_pressure_frames = self.sim_backlog_pressure_frames.saturating_add(1);
+            if self.sim_backlog_pressure_frames == 1 {
+                log::warn!(
+                    "Simulation backlog detected (pending_ticks={}, cap_per_frame={}).",
+                    self.pending_server_ticks,
+                    MAX_SIM_STEPS_PER_FRAME
+                );
+            } else if self.sim_backlog_pressure_frames >= 120 {
+                log::warn!(
+                    "Simulation backlog persists (pending_ticks={}, cap_per_frame={}).",
+                    self.pending_server_ticks,
+                    MAX_SIM_STEPS_PER_FRAME
+                );
+                self.sim_backlog_pressure_frames = 1;
+            }
+        } else {
+            self.sim_backlog_pressure_frames = 0;
+        }
+
+        // Avoid unbounded growth in the accumulator when paused/stalled.
+        let max_carry_secs = step_secs * MAX_SIM_STEPS_PER_FRAME as f32;
+        if self.sim_step_accumulator_secs > max_carry_secs {
+            self.sim_step_accumulator_secs = max_carry_secs;
         }
     }
 
@@ -1986,6 +2054,11 @@ impl Scene for GameScene {
         self.autoloot_visited.clear();
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
+        self.tick_drain_saturation_count = 0;
+        self.pending_server_ticks = 0;
+        self.sim_ticker = 0;
+        self.sim_step_accumulator_secs = 0.0;
+        self.sim_backlog_pressure_frames = 0;
         self.vcursor_x = TARGET_WIDTH_INT as f32 / 2.0;
         self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
         self.left_stick_x = 0;
@@ -2446,6 +2519,7 @@ impl Scene for GameScene {
         }
 
         let scene = self.process_network_events(app_state);
+        self.run_fixed_simulation_steps(app_state, dt);
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
                 && !Self::is_selected_visible(ps)
