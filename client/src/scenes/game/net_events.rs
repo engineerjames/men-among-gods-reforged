@@ -141,7 +141,8 @@ impl GameScene {
                         if let Some(ps) = app_state.player_state.as_mut() {
                             ps.map_mut().reset_last_setmap_index();
                         }
-                        net.maybe_send_ctick();
+                        // CL_CMD_CTICK is now sent from run_fixed_simulation_steps
+                        // using sim_ticker (actual steps processed), not client_ticker.
                         net.maybe_send_ping();
                     }
                     tick_groups_processed += 1;

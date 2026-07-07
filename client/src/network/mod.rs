@@ -193,24 +193,29 @@ impl NetworkRuntime {
         self.send(cmd);
     }
 
-    /// Sends `CL_CMD_CTICK` every 16 processed server ticks if we're logged in.
-    pub fn maybe_send_ctick(&mut self) {
+    /// Sends `CL_CMD_CTICK` when `sim_ticker` falls on a 16-tick boundary.
+    ///
+    /// `sim_ticker` must be the count of **locally simulated** ticks, not the
+    /// network packet-receipt counter — matching the C client:
+    /// `if (do_ticker && (ticker&15)==0) cmd1s(CL_CMD_CTICK, ticker)`.
+    /// Call this after each simulation step so the server sees how many ticks
+    /// have actually been processed, not just received off the wire.
+    pub fn maybe_send_ctick(&mut self, sim_ticker: u32) {
         if !self.logged_in {
             return;
         }
-        let t = self.client_ticker;
-        if t == 0 {
+        if sim_ticker == 0 {
             return;
         }
-        if (t & 15) != 0 {
+        if (sim_ticker & 15) != 0 {
             return;
         }
-        if self.last_ctick_sent == t {
+        if self.last_ctick_sent == sim_ticker {
             return;
         }
-        let tick_cmd = ClientCommand::new_tick(t);
+        let tick_cmd = ClientCommand::new_tick(sim_ticker);
         self.send(tick_cmd);
-        self.last_ctick_sent = t;
+        self.last_ctick_sent = sim_ticker;
     }
 }
 

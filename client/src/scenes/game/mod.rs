@@ -984,9 +984,18 @@ impl GameScene {
         while self.pending_server_ticks > 0 && steps < step_cap {
             self.pending_server_ticks -= 1;
             self.sim_ticker = self.sim_ticker.wrapping_add(1);
+            let tick_now = self.sim_ticker;
 
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.advance_local_simulation_tick(self.sim_ticker);
+                ps.advance_local_simulation_tick(tick_now);
+            }
+            // Send CL_CMD_CTICK every 16 simulated ticks — matches the C client:
+            // `if (do_ticker && (ticker&15)==0) cmd1s(CL_CMD_CTICK, ticker)`.
+            // The ps borrow above is released before this separate net borrow.
+            if (tick_now & 15) == 0 {
+                if let Some(net) = app_state.network.as_mut() {
+                    net.maybe_send_ctick(tick_now);
+                }
             }
 
             steps += 1;
