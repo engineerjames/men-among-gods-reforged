@@ -53,6 +53,8 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        CARGO_FEATURES: ${SERVER_CARGO_FEATURES:-}
     depends_on:
       keydb:
         condition: service_healthy
@@ -97,6 +99,8 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        CARGO_FEATURES: ${SERVER_CARGO_FEATURES:-}
     depends_on:
       certgen:
         condition: service_completed_successfully

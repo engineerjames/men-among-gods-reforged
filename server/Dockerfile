@@ -12,6 +12,8 @@ WORKDIR /workspace
 
 COPY . .
 
+ARG CARGO_FEATURES=
+
 # BuildKit cache mounts make cargo's registry, git db, and target dir
 # persist across builds, so we get true incremental compilation even when
 # source files change. Binaries are copied out of the cached target dir
@@ -19,7 +21,11 @@ COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
     --mount=type=cache,target=/workspace/target,sharing=locked \
-    cargo build --release -p server --bins \
+        set -- cargo build --release -p server --bins; \
+        if [ -n "$CARGO_FEATURES" ]; then \
+            set -- "$@" --features "$CARGO_FEATURES"; \
+        fi; \
+        "$@" \
     && mkdir -p /out \
     && cp target/release/server target/release/world-snapshot /out/
 
