@@ -100,15 +100,16 @@ const HUD_FADE_THRESHOLD_X: i32 = 810;
 pub(super) const MAX_TICK_GROUPS_PER_FRAME: usize = 4;
 pub(super) const QSIZE: u32 = 8;
 /// Normal maximum fixed simulation steps consumed in one rendered frame.
+/// At ~18 server ticks/sec and 60 FPS this is more than enough for steady state
+/// (expect 0–1 pending ticks per frame in normal operation).
 const BASE_SIM_STEPS_PER_FRAME: u32 = 2;
-/// Temporary catch-up step cap used when queued ticks exceed the soft threshold.
-const CATCH_UP_SIM_STEPS_PER_FRAME: u32 = 3;
-/// Fixed simulation cadence matching server tick-rate expectations.
-const SIM_STEPS_PER_SECOND: f32 = mag_core::constants::TICKS as f32;
+/// Catch-up step cap when the pending queue exceeds `SIM_CATCH_UP_THRESHOLD_TICKS`.
+/// At 60 FPS this drains a 36-tick backlog in ~10 frames (≈167 ms).
+const CATCH_UP_SIM_STEPS_PER_FRAME: u32 = 6;
 /// Maximum queued visual simulation ticks retained before old backlog is coalesced.
 const MAX_PENDING_SIM_TICKS: u32 = mag_core::constants::TICKS as u32;
-/// Pending tick threshold that enables the higher catch-up cap.
-const SIM_CATCH_UP_THRESHOLD_TICKS: u32 = mag_core::constants::TICKS as u32 / 4;
+/// Pending tick threshold above which the higher catch-up cap is used.
+const SIM_CATCH_UP_THRESHOLD_TICKS: u32 = 3;
 /// Rendered frames between fixed-step telemetry log summaries.
 const SIM_TELEMETRY_LOG_INTERVAL_FRAMES: u32 = 600;
 /// Duration of a diagnostics network-test run.
@@ -721,8 +722,6 @@ pub struct GameScene {
     pending_server_ticks: u32,
     /// Local simulation ticker used by legacy animation stepping.
     sim_ticker: u32,
-    /// Time carried forward for fixed-step simulation.
-    sim_step_accumulator_secs: f32,
     /// Consecutive frames where fixed-step simulation hits cap and backlog remains.
     sim_backlog_pressure_frames: u32,
     /// Frames accumulated for the current simulation telemetry window.
@@ -905,7 +904,6 @@ impl GameScene {
             tick_drain_saturation_count: 0,
             pending_server_ticks: 0,
             sim_ticker: 0,
-            sim_step_accumulator_secs: 0.0,
             sim_backlog_pressure_frames: 0,
             sim_telemetry_frames: 0,
             sim_telemetry_queued_ticks: 0,
@@ -926,7 +924,8 @@ impl GameScene {
             self.sim_telemetry_dropped_ticks = self
                 .sim_telemetry_dropped_ticks
                 .saturating_add(u64::from(dropped));
-            self.sim_ticker = self.sim_ticker.wrapping_add(dropped);
+            // Do NOT advance sim_ticker: skip the beat, not the position. Advancing
+            // sim_ticker without stepping animation causes instant position jumps.
             log::warn!(
                 "Coalesced {} queued simulation tick(s) to cap pending_ticks at {}.",
                 dropped,
@@ -972,19 +971,17 @@ impl GameScene {
         self.sim_telemetry_max_pending_ticks = self.pending_server_ticks;
     }
 
-    /// Advances local simulation with a fixed-step clock while consuming
-    /// queued authoritative server ticks.
-    fn run_fixed_simulation_steps(&mut self, app_state: &mut AppState<'_>, dt: Duration) {
-        self.sim_step_accumulator_secs += dt.as_secs_f32();
-        let step_secs = 1.0 / SIM_STEPS_PER_SECOND;
+    /// Drains queued authoritative server ticks through the local simulation.
+    ///
+    /// No time accumulator is used: the server tick queue is already the rate
+    /// governor (matching the C client where `engine_tick` fires once per received
+    /// tick packet). The C client also drains all pending packets per loop
+    /// iteration; we apply a modest per-frame cap to bound render-frame stall.
+    fn run_fixed_simulation_steps(&mut self, app_state: &mut AppState<'_>) {
         let step_cap = self.simulation_step_cap();
         let mut steps = 0u32;
 
-        while self.sim_step_accumulator_secs >= step_secs
-            && self.pending_server_ticks > 0
-            && steps < step_cap
-        {
-            self.sim_step_accumulator_secs -= step_secs;
+        while self.pending_server_ticks > 0 && steps < step_cap {
             self.pending_server_ticks -= 1;
             self.sim_ticker = self.sim_ticker.wrapping_add(1);
 
@@ -1015,12 +1012,6 @@ impl GameScene {
             }
         } else {
             self.sim_backlog_pressure_frames = 0;
-        }
-
-        // Avoid unbounded growth in the accumulator when paused/stalled.
-        let max_carry_secs = step_secs * CATCH_UP_SIM_STEPS_PER_FRAME as f32;
-        if self.sim_step_accumulator_secs > max_carry_secs {
-            self.sim_step_accumulator_secs = max_carry_secs;
         }
 
         self.sim_telemetry_max_pending_ticks = self
@@ -2145,7 +2136,6 @@ impl Scene for GameScene {
         self.tick_drain_saturation_count = 0;
         self.pending_server_ticks = 0;
         self.sim_ticker = 0;
-        self.sim_step_accumulator_secs = 0.0;
         self.sim_backlog_pressure_frames = 0;
         self.sim_telemetry_frames = 0;
         self.sim_telemetry_queued_ticks = 0;
@@ -2612,7 +2602,7 @@ impl Scene for GameScene {
         }
 
         let scene = self.process_network_events(app_state);
-        self.run_fixed_simulation_steps(app_state, dt);
+        self.run_fixed_simulation_steps(app_state);
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
                 && !Self::is_selected_visible(ps)
