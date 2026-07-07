@@ -99,10 +99,18 @@ const HUD_FADE_THRESHOLD_X: i32 = 810;
 /// tick boundaries so map state is never rendered from a partially applied group.
 pub(super) const MAX_TICK_GROUPS_PER_FRAME: usize = 4;
 pub(super) const QSIZE: u32 = 8;
-/// Maximum fixed simulation steps consumed in one rendered frame.
-const MAX_SIM_STEPS_PER_FRAME: u32 = 2;
+/// Normal maximum fixed simulation steps consumed in one rendered frame.
+const BASE_SIM_STEPS_PER_FRAME: u32 = 2;
+/// Temporary catch-up step cap used when queued ticks exceed the soft threshold.
+const CATCH_UP_SIM_STEPS_PER_FRAME: u32 = 3;
 /// Fixed simulation cadence matching server tick-rate expectations.
 const SIM_STEPS_PER_SECOND: f32 = mag_core::constants::TICKS as f32;
+/// Maximum queued visual simulation ticks retained before old backlog is coalesced.
+const MAX_PENDING_SIM_TICKS: u32 = mag_core::constants::TICKS as u32;
+/// Pending tick threshold that enables the higher catch-up cap.
+const SIM_CATCH_UP_THRESHOLD_TICKS: u32 = mag_core::constants::TICKS as u32 / 4;
+/// Rendered frames between fixed-step telemetry log summaries.
+const SIM_TELEMETRY_LOG_INTERVAL_FRAMES: u32 = 600;
 /// Duration of a diagnostics network-test run.
 const NETWORK_TEST_DURATION_SECS: u64 = 10;
 /// Tick cadence used by the diagnostics network-test profile.
@@ -717,6 +725,16 @@ pub struct GameScene {
     sim_step_accumulator_secs: f32,
     /// Consecutive frames where fixed-step simulation hits cap and backlog remains.
     sim_backlog_pressure_frames: u32,
+    /// Frames accumulated for the current simulation telemetry window.
+    sim_telemetry_frames: u32,
+    /// Server ticks queued during the current simulation telemetry window.
+    sim_telemetry_queued_ticks: u64,
+    /// Local simulation steps consumed during the current telemetry window.
+    sim_telemetry_steps: u64,
+    /// Queued ticks coalesced during the current telemetry window.
+    sim_telemetry_dropped_ticks: u64,
+    /// Maximum pending tick queue depth observed during the current telemetry window.
+    sim_telemetry_max_pending_ticks: u32,
 }
 
 impl GameScene {
@@ -889,7 +907,69 @@ impl GameScene {
             sim_ticker: 0,
             sim_step_accumulator_secs: 0.0,
             sim_backlog_pressure_frames: 0,
+            sim_telemetry_frames: 0,
+            sim_telemetry_queued_ticks: 0,
+            sim_telemetry_steps: 0,
+            sim_telemetry_dropped_ticks: 0,
+            sim_telemetry_max_pending_ticks: 0,
         }
+    }
+
+    /// Queues one authoritative server tick for local fixed-step simulation.
+    fn queue_server_tick_for_simulation(&mut self) {
+        self.pending_server_ticks = self.pending_server_ticks.saturating_add(1);
+        self.sim_telemetry_queued_ticks = self.sim_telemetry_queued_ticks.saturating_add(1);
+
+        if self.pending_server_ticks > MAX_PENDING_SIM_TICKS {
+            let dropped = self.pending_server_ticks - MAX_PENDING_SIM_TICKS;
+            self.pending_server_ticks = MAX_PENDING_SIM_TICKS;
+            self.sim_telemetry_dropped_ticks = self
+                .sim_telemetry_dropped_ticks
+                .saturating_add(u64::from(dropped));
+            self.sim_ticker = self.sim_ticker.wrapping_add(dropped);
+            log::warn!(
+                "Coalesced {} queued simulation tick(s) to cap pending_ticks at {}.",
+                dropped,
+                MAX_PENDING_SIM_TICKS
+            );
+        }
+
+        self.sim_telemetry_max_pending_ticks = self
+            .sim_telemetry_max_pending_ticks
+            .max(self.pending_server_ticks);
+    }
+
+    /// Returns the fixed-step cap for the current backlog pressure.
+    fn simulation_step_cap(&self) -> u32 {
+        if self.pending_server_ticks > SIM_CATCH_UP_THRESHOLD_TICKS {
+            CATCH_UP_SIM_STEPS_PER_FRAME
+        } else {
+            BASE_SIM_STEPS_PER_FRAME
+        }
+    }
+
+    /// Emits and resets fixed-step simulation telemetry at a throttled cadence.
+    fn maybe_log_simulation_telemetry(&mut self) {
+        self.sim_telemetry_frames = self.sim_telemetry_frames.saturating_add(1);
+        if self.sim_telemetry_frames < SIM_TELEMETRY_LOG_INTERVAL_FRAMES {
+            return;
+        }
+
+        log::info!(
+            "Simulation telemetry: frames={} queued_ticks={} sim_steps={} dropped_ticks={} pending_ticks={} max_pending_ticks={}.",
+            self.sim_telemetry_frames,
+            self.sim_telemetry_queued_ticks,
+            self.sim_telemetry_steps,
+            self.sim_telemetry_dropped_ticks,
+            self.pending_server_ticks,
+            self.sim_telemetry_max_pending_ticks
+        );
+
+        self.sim_telemetry_frames = 0;
+        self.sim_telemetry_queued_ticks = 0;
+        self.sim_telemetry_steps = 0;
+        self.sim_telemetry_dropped_ticks = 0;
+        self.sim_telemetry_max_pending_ticks = self.pending_server_ticks;
     }
 
     /// Advances local simulation with a fixed-step clock while consuming
@@ -897,36 +977,39 @@ impl GameScene {
     fn run_fixed_simulation_steps(&mut self, app_state: &mut AppState<'_>, dt: Duration) {
         self.sim_step_accumulator_secs += dt.as_secs_f32();
         let step_secs = 1.0 / SIM_STEPS_PER_SECOND;
+        let step_cap = self.simulation_step_cap();
         let mut steps = 0u32;
 
         while self.sim_step_accumulator_secs >= step_secs
             && self.pending_server_ticks > 0
-            && steps < MAX_SIM_STEPS_PER_FRAME
+            && steps < step_cap
         {
             self.sim_step_accumulator_secs -= step_secs;
             self.pending_server_ticks -= 1;
             self.sim_ticker = self.sim_ticker.wrapping_add(1);
 
             if let Some(ps) = app_state.player_state.as_mut() {
-                ps.on_tick_packet(self.sim_ticker);
+                ps.advance_local_simulation_tick(self.sim_ticker);
             }
 
             steps += 1;
         }
 
-        if self.pending_server_ticks > 0 && steps >= MAX_SIM_STEPS_PER_FRAME {
+        self.sim_telemetry_steps = self.sim_telemetry_steps.saturating_add(u64::from(steps));
+
+        if self.pending_server_ticks > 0 && steps >= step_cap {
             self.sim_backlog_pressure_frames = self.sim_backlog_pressure_frames.saturating_add(1);
             if self.sim_backlog_pressure_frames == 1 {
                 log::warn!(
                     "Simulation backlog detected (pending_ticks={}, cap_per_frame={}).",
                     self.pending_server_ticks,
-                    MAX_SIM_STEPS_PER_FRAME
+                    step_cap
                 );
             } else if self.sim_backlog_pressure_frames >= 120 {
                 log::warn!(
                     "Simulation backlog persists (pending_ticks={}, cap_per_frame={}).",
                     self.pending_server_ticks,
-                    MAX_SIM_STEPS_PER_FRAME
+                    step_cap
                 );
                 self.sim_backlog_pressure_frames = 1;
             }
@@ -935,10 +1018,15 @@ impl GameScene {
         }
 
         // Avoid unbounded growth in the accumulator when paused/stalled.
-        let max_carry_secs = step_secs * MAX_SIM_STEPS_PER_FRAME as f32;
+        let max_carry_secs = step_secs * CATCH_UP_SIM_STEPS_PER_FRAME as f32;
         if self.sim_step_accumulator_secs > max_carry_secs {
             self.sim_step_accumulator_secs = max_carry_secs;
         }
+
+        self.sim_telemetry_max_pending_ticks = self
+            .sim_telemetry_max_pending_ticks
+            .max(self.pending_server_ticks);
+        self.maybe_log_simulation_telemetry();
     }
 
     /// Returns the player's own `ch_nr` from the canonical center map tile.
@@ -2059,6 +2147,11 @@ impl Scene for GameScene {
         self.sim_ticker = 0;
         self.sim_step_accumulator_secs = 0.0;
         self.sim_backlog_pressure_frames = 0;
+        self.sim_telemetry_frames = 0;
+        self.sim_telemetry_queued_ticks = 0;
+        self.sim_telemetry_steps = 0;
+        self.sim_telemetry_dropped_ticks = 0;
+        self.sim_telemetry_max_pending_ticks = 0;
         self.vcursor_x = TARGET_WIDTH_INT as f32 / 2.0;
         self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
         self.left_stick_x = 0;

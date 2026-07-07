@@ -137,7 +137,7 @@ impl GameScene {
                 NetworkEvent::Tick => {
                     if let Some(net) = app_state.network.as_mut() {
                         net.client_ticker = net.client_ticker.wrapping_add(1);
-                        self.pending_server_ticks = self.pending_server_ticks.saturating_add(1);
+                        self.queue_server_tick_for_simulation();
                         if let Some(ps) = app_state.player_state.as_mut() {
                             ps.map_mut().reset_last_setmap_index();
                         }

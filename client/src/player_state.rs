@@ -378,15 +378,8 @@ impl PlayerState {
         });
     }
 
-    /// Advances per-tick timers, syncs the animation ctick with the server,
-    /// and runs the legacy engine tick.
-    ///
-    /// # Arguments
-    ///
-    /// * `client_ticker` - Value passed to `on_tick_packet`.
-    pub fn on_tick_packet(&mut self, client_ticker: u32) {
-        let _ = client_ticker;
-
+    /// Advances per-tick UI timers that are tied to local simulation cadence.
+    fn advance_simulation_timers(&mut self) {
         if self.should_show_look {
             if self.look_timer > 0.0 {
                 self.look_timer -= 1.0;
@@ -395,15 +388,51 @@ impl PlayerState {
                 self.close_look();
             }
         }
+    }
 
+    /// Advances the local animation ctick, using the next server ctick as a
+    /// correction anchor when one has arrived.
+    fn advance_local_ctick(&mut self) {
         if self.server_ctick_pending {
             self.local_ctick = self.server_ctick.min(MAX_SPEEDTAB_INDEX as u8);
             self.server_ctick_pending = false;
         } else {
             self.local_ctick = (self.local_ctick + 1) % (MAX_SPEEDTAB_INDEX as u8 + 1);
         }
+    }
 
-        crate::legacy_engine::engine_tick(self, client_ticker, self.local_ctick as usize);
+    /// Runs the legacy map/item/character animation step for the current local ctick.
+    ///
+    /// # Arguments
+    ///
+    /// * `simulation_ticker` - Local simulation ticker used for frame-based animations.
+    fn run_legacy_engine_tick(&mut self, simulation_ticker: u32) {
+        crate::legacy_engine::engine_tick(self, simulation_ticker, self.local_ctick as usize);
+    }
+
+    /// Advances one local simulation tick.
+    ///
+    /// This is intentionally separate from network tick receipt: server packets
+    /// update authoritative state as they arrive, while this method advances
+    /// cadence-sensitive timers and visual animation at the client simulation rate.
+    ///
+    /// # Arguments
+    ///
+    /// * `simulation_ticker` - Local simulation ticker used for frame-based animations.
+    pub fn advance_local_simulation_tick(&mut self, simulation_ticker: u32) {
+        self.advance_simulation_timers();
+        self.advance_local_ctick();
+        self.run_legacy_engine_tick(simulation_ticker);
+    }
+
+    /// Compatibility wrapper for older call sites that still treat processed
+    /// server ticks as the simulation driver.
+    ///
+    /// # Arguments
+    ///
+    /// * `client_ticker` - Tick value used as the local simulation ticker.
+    pub fn on_tick_packet(&mut self, client_ticker: u32) {
+        self.advance_local_simulation_tick(client_ticker);
     }
 
     /// Maps a network font index to a [`LogMessageColor`](crate::types::log_message::LogMessageColor).
