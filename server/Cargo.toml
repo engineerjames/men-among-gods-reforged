@@ -32,3 +32,4 @@ redis.workspace = true
 dotenvy = "0.15"
 rustls = { workspace = true, default-features = true }
 rustls-pemfile.workspace = true
+socket2.workspace = true

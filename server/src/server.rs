@@ -7,7 +7,7 @@ use core::stat_buffer::StatisticsBuffer;
 use core::types::Map;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener};
+use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -21,6 +21,42 @@ use crate::{driver, player, populate};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use server::keydb::background_saver::{self, BackgroundSaver, SaveJob};
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+
+const GAME_SERVER_PORT: u16 = 5555;
+const GAME_LISTEN_BACKLOG: i32 = 5;
+
+/// Creates the game listener with socket options matching the legacy server.
+///
+/// # Arguments
+///
+/// * `addr` - IPv4 address and port to bind.
+///
+/// # Returns
+///
+/// * `Ok` with a non-blocking listener.
+/// * `Err` with details when socket creation, binding, or listening fails.
+fn bind_game_listener_at(addr: SocketAddrV4) -> Result<TcpListener, String> {
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
+        .map_err(|e| format!("Failed to create listener socket: {e}"))?;
+
+    socket
+        .set_reuse_address(true)
+        .map_err(|e| format!("Failed to set SO_REUSEADDR: {e}"))?;
+    socket
+        .set_nonblocking(true)
+        .map_err(|e| format!("Failed to set listener non-blocking mode: {e}"))?;
+
+    let addr = SockAddr::from(addr);
+    socket
+        .bind(&addr)
+        .map_err(|e| format!("Failed to bind socket: {e}"))?;
+    socket
+        .listen(GAME_LISTEN_BACKLOG)
+        .map_err(|e| format!("Failed to listen on socket: {e}"))?;
+
+    Ok(socket.into())
+}
 
 /// Per-character scheduling hints used by `game_tick`.
 ///
@@ -205,15 +241,11 @@ impl Server {
     /// * `Err(String)` if socket bind or subsystem initialization fails.
     pub fn initialize(&mut self, gs: &mut GameState) -> Result<(), String> {
         // Create and configure TCP socket (matching server.cpp socket setup)
-        let listener = TcpListener::bind("0.0.0.0:5555")
-            .map_err(|e| format!("Failed to bind socket: {}", e))?;
-
-        listener
-            .set_nonblocking(true)
-            .map_err(|e| format!("Failed to set non-blocking mode: {}", e))?;
+        let listener =
+            bind_game_listener_at(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, GAME_SERVER_PORT))?;
 
         self.sock = Some(listener);
-        log::info!("Socket bound to port 5555");
+        log::info!("Socket bound to port {}", GAME_SERVER_PORT);
 
         // Load TLS configuration (mandatory).
         let tls_config =
@@ -2005,6 +2037,7 @@ impl Server {
             match listener.accept() {
                 Ok((stream, addr)) => {
                     log::info!("New connection from {}", addr);
+                    tls::configure_accepted_tcp_stream(&stream);
                     let config = self
                         .tls_config
                         .as_ref()
@@ -2250,6 +2283,7 @@ impl Drop for Server {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::TcpStream;
 
     /// Test the Server::new() constructor
     #[test]
@@ -2285,6 +2319,40 @@ mod tests {
         let server2 = Server::new();
         // Each server should have its own statistics buffers
         let _ = (&server.tick_perf_stats, &server2.tick_perf_stats);
+    }
+
+    /// The game listener helper should create a non-blocking listener with the
+    /// same pre-bind socket setup used by the runtime path.
+    #[test]
+    fn bind_game_listener_at_creates_nonblocking_listener() {
+        let listener = bind_game_listener_at(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .expect("bind ephemeral game listener");
+
+        let err = listener
+            .accept()
+            .expect_err("empty non-blocking listener should not accept");
+        assert_eq!(err.kind(), ErrorKind::WouldBlock);
+    }
+
+    /// Accepted game sockets should disable Nagle before TLS wrapping so small
+    /// tick frames are sent without kernel-side coalescing delays.
+    #[test]
+    fn configure_accepted_tcp_stream_sets_nodelay() {
+        let listener = bind_game_listener_at(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0))
+            .expect("bind ephemeral game listener");
+        let addr = listener.local_addr().expect("listener address");
+        let _client = TcpStream::connect(addr).expect("connect test client");
+
+        let (server_stream, _) = loop {
+            match listener.accept() {
+                Ok(accepted) => break accepted,
+                Err(err) if err.kind() == ErrorKind::WouldBlock => std::thread::yield_now(),
+                Err(err) => panic!("accept test client: {err}"),
+            }
+        };
+
+        tls::configure_accepted_tcp_stream(&server_stream);
+        assert!(server_stream.nodelay().expect("read TCP_NODELAY"));
     }
 
     /// `apply_map_patch` overwrites only the static tile fields and leaves

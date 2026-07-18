@@ -5,9 +5,37 @@
 //! `Read` + `Write` without caring about the transport.
 
 use rustls::ServerConnection;
+use socket2::SockRef;
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::Arc;
+
+const GAME_SOCKET_BUFFER_BYTES: usize = 65_536;
+
+/// Applies game TCP options to an accepted client stream.
+///
+/// These options mirror the meaningful legacy server socket flags while keeping
+/// failures non-fatal, matching the old unchecked `setsockopt` behavior.
+///
+/// # Arguments
+///
+/// * `stream` - Accepted TCP stream before TLS wrapping.
+pub(crate) fn configure_accepted_tcp_stream(stream: &TcpStream) {
+    if let Err(err) = stream.set_nodelay(true) {
+        log::warn!("Failed to set TCP_NODELAY on game socket: {err}");
+    }
+
+    let socket = SockRef::from(stream);
+    if let Err(err) = socket.set_send_buffer_size(GAME_SOCKET_BUFFER_BYTES) {
+        log::warn!("Failed to set SO_SNDBUF on game socket: {err}");
+    }
+    if let Err(err) = socket.set_recv_buffer_size(GAME_SOCKET_BUFFER_BYTES) {
+        log::warn!("Failed to set SO_RCVBUF on game socket: {err}");
+    }
+    if let Err(err) = socket.set_keepalive(true) {
+        log::warn!("Failed to set SO_KEEPALIVE on game socket: {err}");
+    }
+}
 
 /// TLS-encrypted game stream with idempotent shutdown tracking.
 pub struct TlsGameStream {

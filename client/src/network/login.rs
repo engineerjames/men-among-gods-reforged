@@ -99,6 +99,10 @@ pub(crate) fn run_network_task(
         }
     };
 
+    if let Err(e) = tcp_stream.set_nodelay(true) {
+        log::warn!("Failed to set TCP_NODELAY: {e}");
+    }
+
     if let Err(e) = tcp_stream.set_read_timeout(Some(Duration::from_millis(5000))) {
         log::warn!("Failed to set read timeout: {e}");
     }
