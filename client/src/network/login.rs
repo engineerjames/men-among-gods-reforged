@@ -312,11 +312,10 @@ fn run_network_loop(
             let batch_payload = if payload.is_empty() {
                 Vec::new()
             } else if is_compressed {
-                let inflated = inflate_chunk(&mut zlib, &payload).map_err(|e| {
+                inflate_chunk(&mut zlib, &payload).map_err(|e| {
                     log::error!("Tick inflate failed: {e}");
                     e
-                })?;
-                inflated
+                })?
             } else {
                 payload
             };

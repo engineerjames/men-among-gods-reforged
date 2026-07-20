@@ -125,10 +125,7 @@ impl GameScene {
         &mut self,
         app_state: &mut AppState<'_>,
     ) -> Option<SceneType> {
-        loop {
-            let Some(net) = app_state.network.as_mut() else {
-                break;
-            };
+        while let Some(net) = app_state.network.as_mut() {
             let Some(evt) = net.try_recv() else {
                 break;
             };

@@ -1154,8 +1154,10 @@ mod tests {
 
     #[test]
     fn simulation_without_server_anchor_advances_local_ctick() {
-        let mut ps = PlayerState::default();
-        ps.local_ctick = 11;
+        let mut ps = PlayerState {
+            local_ctick: 11,
+            ..Default::default()
+        };
 
         ps.advance_local_simulation_tick(1);
 
