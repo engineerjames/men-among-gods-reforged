@@ -1,5 +1,5 @@
 use std::process;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
@@ -10,7 +10,7 @@ use client::font_cache::TextEngine;
 use client::gfx_cache::GraphicsCache;
 use client::platform::PlatformProfile;
 use client::preferences::DisplayMode;
-use client::scenes::scene::SceneType;
+use client::scenes::scene::{FramePresentation, SceneType};
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
 use client::ui::visuals::panning_background::PanningBackground;
@@ -201,7 +201,7 @@ fn main() -> Result<(), String> {
     }
 
     // VSync (runtime toggle via raw SDL2 FFI)
-    apply_vsync(&canvas, app_state.settings.vsync_enabled);
+    let mut effective_vsync_enabled = apply_vsync(&canvas, app_state.settings.vsync_enabled, false);
     // ----------------------------------------------------------------------
 
     let mut scene_manager = scenes::scene::SceneManager::new();
@@ -350,13 +350,19 @@ fn main() -> Result<(), String> {
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetVSync(enabled) => {
-                    apply_vsync(&canvas, enabled);
+                    effective_vsync_enabled =
+                        apply_vsync(&canvas, enabled, effective_vsync_enabled);
                     app_state.settings.vsync_enabled = enabled;
                     save_global_display_settings(&app_state);
                 }
             }
         }
         // ------------------------------------------------------------------
+        let frame_presentation = scene_manager.take_frame_presentation();
+        if frame_presentation == FramePresentation::Skip {
+            continue;
+        }
+
         let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
         // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
         let _ = canvas.set_integer_scale(app_state.settings.pixel_perfect_scaling);
@@ -369,9 +375,12 @@ fn main() -> Result<(), String> {
             break 'running;
         }
 
+        if let FramePresentation::PresentAt(deadline) = frame_presentation {
+            wait_until(deadline, &mut event_pump);
+        }
         canvas.present();
 
-        if !app_state.settings.vsync_enabled {
+        if frame_presentation == FramePresentation::Immediate && !effective_vsync_enabled {
             fps_manager.delay();
         }
     }
@@ -420,13 +429,58 @@ fn apply_display_mode(
     applied_mode
 }
 
+/// Waits until an absolute presentation deadline without accumulating drift.
+///
+/// # Arguments
+///
+/// * `deadline` - Absolute time at which the completed frame should be presented.
+/// * `event_pump` - SDL event pump used to keep the operating-system window responsive.
+fn wait_until(deadline: Instant, event_pump: &mut sdl2::EventPump) {
+    const COARSE_MARGIN: Duration = Duration::from_millis(1);
+
+    loop {
+        event_pump.pump_events();
+        let now = Instant::now();
+        let Some(remaining) = deadline.checked_duration_since(now) else {
+            return;
+        };
+        if remaining > COARSE_MARGIN {
+            std::thread::sleep(remaining - COARSE_MARGIN);
+        } else {
+            std::thread::yield_now();
+        }
+    }
+}
+
 /// Toggles VSync on the renderer at runtime via raw SDL2 FFI.
-fn apply_vsync(canvas: &sdl2::render::Canvas<sdl2::video::Window>, enabled: bool) {
+///
+/// # Arguments
+///
+/// * `canvas` - SDL renderer whose swap interval should change.
+/// * `enabled` - Requested VSync state.
+/// * `previous_effective` - Last VSync state successfully applied to SDL.
+///
+/// # Returns
+///
+/// * The effective VSync state after the request.
+fn apply_vsync(
+    canvas: &sdl2::render::Canvas<sdl2::video::Window>,
+    enabled: bool,
+    previous_effective: bool,
+) -> bool {
     let raw = canvas.raw();
     let flag: std::os::raw::c_int = if enabled { 1 } else { 0 };
     let result = unsafe { sdl2::sys::SDL_RenderSetVSync(raw, flag) };
     if result != 0 {
-        log::error!("SDL_RenderSetVSync failed: {}", sdl2::get_error());
+        log::error!(
+            "SDL_RenderSetVSync requested={} failed; retaining effective={}: {}",
+            enabled,
+            previous_effective,
+            sdl2::get_error()
+        );
+        previous_effective
+    } else {
+        enabled
     }
 }
 

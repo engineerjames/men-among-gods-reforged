@@ -1127,6 +1127,42 @@ mod tests {
     }
 
     #[test]
+    fn server_ctick_anchor_is_consumed_by_the_matching_simulation_step() {
+        let mut ps = PlayerState::default();
+        let command = ServerCommand::from_bytes(&[ServerCommandType::Tick as u8, 17])
+            .expect("valid tick command");
+
+        ps.update_from_server_command(&command);
+        ps.advance_local_simulation_tick(1);
+
+        assert_eq!(ps.local_ctick, 17);
+        assert!(!ps.server_ctick_pending);
+    }
+
+    #[test]
+    fn consecutive_server_cticks_anchor_distinct_simulation_steps() {
+        let mut ps = PlayerState::default();
+
+        for (simulation_ticker, ctick) in [(1, 9), (2, 23)] {
+            let command = ServerCommand::from_bytes(&[ServerCommandType::Tick as u8, ctick])
+                .expect("valid tick command");
+            ps.update_from_server_command(&command);
+            ps.advance_local_simulation_tick(simulation_ticker);
+            assert_eq!(ps.local_ctick, ctick);
+        }
+    }
+
+    #[test]
+    fn simulation_without_server_anchor_advances_local_ctick() {
+        let mut ps = PlayerState::default();
+        ps.local_ctick = 11;
+
+        ps.advance_local_simulation_tick(1);
+
+        assert_eq!(ps.local_ctick, 12);
+    }
+
+    #[test]
     fn auto_loot_shop_sequence_does_not_open_closed_shop_panel() {
         let mut ps = PlayerState::default();
         let commands = shop_sequence(

@@ -15,14 +15,16 @@ mod game_math;
 mod net_events;
 mod perf_profiler;
 mod profile;
+mod tick_scheduler;
 mod weather;
 mod world_input;
 mod world_render;
 
 use mag_core::traits::class_from_kindred;
 use perf_profiler::{PerfLabel, PerfProfiler};
+use tick_scheduler::LegacyTickScheduler;
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -92,26 +94,7 @@ const HUD_FADE_OUT_SECS: f32 = 1.0;
 /// Minimum mouse X position to keep the right-side HUD buttons visible.
 const HUD_FADE_THRESHOLD_X: i32 = 810;
 
-/// Maximum complete network tick groups processed per frame.
-///
-/// A tick group is all `NetworkEvent::Bytes` emitted for one server tick packet,
-/// followed by its terminating `NetworkEvent::Tick`. We only stop processing at
-/// tick boundaries so map state is never rendered from a partially applied group.
-pub(super) const MAX_TICK_GROUPS_PER_FRAME: usize = 4;
 pub(super) const QSIZE: u32 = 8;
-/// Normal maximum fixed simulation steps consumed in one rendered frame.
-/// At ~18 server ticks/sec and 60 FPS this is more than enough for steady state
-/// (expect 0–1 pending ticks per frame in normal operation).
-const BASE_SIM_STEPS_PER_FRAME: u32 = 2;
-/// Catch-up step cap when the pending queue exceeds `SIM_CATCH_UP_THRESHOLD_TICKS`.
-/// At 60 FPS this drains a 36-tick backlog in ~10 frames (≈167 ms).
-const CATCH_UP_SIM_STEPS_PER_FRAME: u32 = 6;
-/// Maximum queued visual simulation ticks retained before old backlog is coalesced.
-const MAX_PENDING_SIM_TICKS: u32 = mag_core::constants::TICKS as u32;
-/// Pending tick threshold above which the higher catch-up cap is used.
-const SIM_CATCH_UP_THRESHOLD_TICKS: u32 = 3;
-/// Rendered frames between fixed-step telemetry log summaries.
-const SIM_TELEMETRY_LOG_INTERVAL_FRAMES: u32 = 600;
 /// Duration of a diagnostics network-test run.
 const NETWORK_TEST_DURATION_SECS: u64 = 10;
 /// Tick cadence used by the diagnostics network-test profile.
@@ -716,24 +699,14 @@ pub struct GameScene {
     network_test_running: bool,
     /// Cancellation flag for the active diagnostics network-test worker.
     network_test_cancel: Option<Arc<AtomicBool>>,
-    /// Number of consecutive frames that hit the tick-drain cap.
-    tick_drain_saturation_count: u32,
-    /// Number of complete server tick groups waiting to be simulated.
-    pending_server_ticks: u32,
+    /// Complete server packets waiting for their matching animation step.
+    pending_tick_batches: VecDeque<crate::network::ServerTickBatch>,
     /// Local simulation ticker used by legacy animation stepping.
     sim_ticker: u32,
-    /// Consecutive frames where fixed-step simulation hits cap and backlog remains.
-    sim_backlog_pressure_frames: u32,
-    /// Frames accumulated for the current simulation telemetry window.
-    sim_telemetry_frames: u32,
-    /// Server ticks queued during the current simulation telemetry window.
-    sim_telemetry_queued_ticks: u64,
-    /// Local simulation steps consumed during the current telemetry window.
-    sim_telemetry_steps: u64,
-    /// Queued ticks coalesced during the current telemetry window.
-    sim_telemetry_dropped_ticks: u64,
-    /// Maximum pending tick queue depth observed during the current telemetry window.
-    sim_telemetry_max_pending_ticks: u32,
+    /// Queue-depth scheduler controlling gameplay presentation cadence.
+    tick_scheduler: LegacyTickScheduler,
+    /// One-shot presentation decision for the current gameplay iteration.
+    frame_presentation: crate::scenes::scene::FramePresentation,
 }
 
 impl GameScene {
@@ -901,132 +874,11 @@ impl GameScene {
             network_test_result_rx: None,
             network_test_running: false,
             network_test_cancel: None,
-            tick_drain_saturation_count: 0,
-            pending_server_ticks: 0,
+            pending_tick_batches: VecDeque::new(),
             sim_ticker: 0,
-            sim_backlog_pressure_frames: 0,
-            sim_telemetry_frames: 0,
-            sim_telemetry_queued_ticks: 0,
-            sim_telemetry_steps: 0,
-            sim_telemetry_dropped_ticks: 0,
-            sim_telemetry_max_pending_ticks: 0,
+            tick_scheduler: LegacyTickScheduler::new(Instant::now()),
+            frame_presentation: crate::scenes::scene::FramePresentation::Immediate,
         }
-    }
-
-    /// Queues one authoritative server tick for local fixed-step simulation.
-    fn queue_server_tick_for_simulation(&mut self) {
-        self.pending_server_ticks = self.pending_server_ticks.saturating_add(1);
-        self.sim_telemetry_queued_ticks = self.sim_telemetry_queued_ticks.saturating_add(1);
-
-        if self.pending_server_ticks > MAX_PENDING_SIM_TICKS {
-            let dropped = self.pending_server_ticks - MAX_PENDING_SIM_TICKS;
-            self.pending_server_ticks = MAX_PENDING_SIM_TICKS;
-            self.sim_telemetry_dropped_ticks = self
-                .sim_telemetry_dropped_ticks
-                .saturating_add(u64::from(dropped));
-            // Do NOT advance sim_ticker: skip the beat, not the position. Advancing
-            // sim_ticker without stepping animation causes instant position jumps.
-            log::warn!(
-                "Coalesced {} queued simulation tick(s) to cap pending_ticks at {}.",
-                dropped,
-                MAX_PENDING_SIM_TICKS
-            );
-        }
-
-        self.sim_telemetry_max_pending_ticks = self
-            .sim_telemetry_max_pending_ticks
-            .max(self.pending_server_ticks);
-    }
-
-    /// Returns the fixed-step cap for the current backlog pressure.
-    fn simulation_step_cap(&self) -> u32 {
-        if self.pending_server_ticks > SIM_CATCH_UP_THRESHOLD_TICKS {
-            CATCH_UP_SIM_STEPS_PER_FRAME
-        } else {
-            BASE_SIM_STEPS_PER_FRAME
-        }
-    }
-
-    /// Emits and resets fixed-step simulation telemetry at a throttled cadence.
-    fn maybe_log_simulation_telemetry(&mut self) {
-        self.sim_telemetry_frames = self.sim_telemetry_frames.saturating_add(1);
-        if self.sim_telemetry_frames < SIM_TELEMETRY_LOG_INTERVAL_FRAMES {
-            return;
-        }
-
-        log::info!(
-            "Simulation telemetry: frames={} queued_ticks={} sim_steps={} dropped_ticks={} pending_ticks={} max_pending_ticks={}.",
-            self.sim_telemetry_frames,
-            self.sim_telemetry_queued_ticks,
-            self.sim_telemetry_steps,
-            self.sim_telemetry_dropped_ticks,
-            self.pending_server_ticks,
-            self.sim_telemetry_max_pending_ticks
-        );
-
-        self.sim_telemetry_frames = 0;
-        self.sim_telemetry_queued_ticks = 0;
-        self.sim_telemetry_steps = 0;
-        self.sim_telemetry_dropped_ticks = 0;
-        self.sim_telemetry_max_pending_ticks = self.pending_server_ticks;
-    }
-
-    /// Drains queued authoritative server ticks through the local simulation.
-    ///
-    /// No time accumulator is used: the server tick queue is already the rate
-    /// governor (matching the C client where `engine_tick` fires once per received
-    /// tick packet). The C client also drains all pending packets per loop
-    /// iteration; we apply a modest per-frame cap to bound render-frame stall.
-    fn run_fixed_simulation_steps(&mut self, app_state: &mut AppState<'_>) {
-        let step_cap = self.simulation_step_cap();
-        let mut steps = 0u32;
-
-        while self.pending_server_ticks > 0 && steps < step_cap {
-            self.pending_server_ticks -= 1;
-            self.sim_ticker = self.sim_ticker.wrapping_add(1);
-            let tick_now = self.sim_ticker;
-
-            if let Some(ps) = app_state.player_state.as_mut() {
-                ps.advance_local_simulation_tick(tick_now);
-            }
-            // Send CL_CMD_CTICK every 16 simulated ticks — matches the C client:
-            // `if (do_ticker && (ticker&15)==0) cmd1s(CL_CMD_CTICK, ticker)`.
-            // The ps borrow above is released before this separate net borrow.
-            if (tick_now & 15) == 0 {
-                if let Some(net) = app_state.network.as_mut() {
-                    net.maybe_send_ctick(tick_now);
-                }
-            }
-
-            steps += 1;
-        }
-
-        self.sim_telemetry_steps = self.sim_telemetry_steps.saturating_add(u64::from(steps));
-
-        if self.pending_server_ticks > 0 && steps >= step_cap {
-            self.sim_backlog_pressure_frames = self.sim_backlog_pressure_frames.saturating_add(1);
-            if self.sim_backlog_pressure_frames == 1 {
-                log::warn!(
-                    "Simulation backlog detected (pending_ticks={}, cap_per_frame={}).",
-                    self.pending_server_ticks,
-                    step_cap
-                );
-            } else if self.sim_backlog_pressure_frames >= 120 {
-                log::warn!(
-                    "Simulation backlog persists (pending_ticks={}, cap_per_frame={}).",
-                    self.pending_server_ticks,
-                    step_cap
-                );
-                self.sim_backlog_pressure_frames = 1;
-            }
-        } else {
-            self.sim_backlog_pressure_frames = 0;
-        }
-
-        self.sim_telemetry_max_pending_ticks = self
-            .sim_telemetry_max_pending_ticks
-            .max(self.pending_server_ticks);
-        self.maybe_log_simulation_telemetry();
     }
 
     /// Returns the player's own `ch_nr` from the canonical center map tile.
@@ -2142,15 +1994,10 @@ impl Scene for GameScene {
         self.autoloot_visited.clear();
         self.pending_skill_assignment = None;
         self.active_profile_character = None;
-        self.tick_drain_saturation_count = 0;
-        self.pending_server_ticks = 0;
+        self.pending_tick_batches.clear();
         self.sim_ticker = 0;
-        self.sim_backlog_pressure_frames = 0;
-        self.sim_telemetry_frames = 0;
-        self.sim_telemetry_queued_ticks = 0;
-        self.sim_telemetry_steps = 0;
-        self.sim_telemetry_dropped_ticks = 0;
-        self.sim_telemetry_max_pending_ticks = 0;
+        self.tick_scheduler.reset(Instant::now());
+        self.frame_presentation = crate::scenes::scene::FramePresentation::Immediate;
         self.vcursor_x = TARGET_WIDTH_INT as f32 / 2.0;
         self.vcursor_y = TARGET_HEIGHT_INT as f32 / 2.0;
         self.left_stick_x = 0;
@@ -2198,6 +2045,9 @@ impl Scene for GameScene {
     fn on_exit(&mut self, app_state: &mut AppState<'_>) {
         self.save_active_profile(app_state);
         self.cancel_network_test();
+        self.pending_tick_batches.clear();
+        self.sim_ticker = 0;
+        self.frame_presentation = crate::scenes::scene::FramePresentation::Immediate;
 
         if let Some(mut net) = app_state.network.take() {
             net.shutdown();
@@ -2610,8 +2460,20 @@ impl Scene for GameScene {
             ));
         }
 
-        let scene = self.process_network_events(app_state);
-        self.run_fixed_simulation_steps(app_state);
+        let mut scene = self.process_network_events(app_state);
+        if scene.is_none() {
+            if let Some(batch) = self.pending_tick_batches.pop_front() {
+                self.apply_server_tick_batch(app_state, batch);
+            }
+            if let Some(ps) = app_state.player_state.as_mut()
+                && ps.take_exit_requested_reason().is_some()
+            {
+                scene = Some(SceneType::CharacterSelection);
+            }
+        }
+        self.frame_presentation = self
+            .tick_scheduler
+            .complete_iteration(Instant::now(), self.pending_tick_batches.len());
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
                 && !Self::is_selected_visible(ps)
@@ -2631,6 +2493,13 @@ impl Scene for GameScene {
             }
         }
         scene
+    }
+
+    fn take_frame_presentation(&mut self) -> crate::scenes::scene::FramePresentation {
+        std::mem::replace(
+            &mut self.frame_presentation,
+            crate::scenes::scene::FramePresentation::Immediate,
+        )
     }
 
     /// Render the isometric world, all HUD panels, and overlay effects.
@@ -3027,6 +2896,8 @@ impl Scene for GameScene {
 
 #[cfg(test)]
 mod tests {
+    use crate::scenes::scene::{FramePresentation, Scene};
+
     use super::{
         GameScene, HELPER_TEXT_CURSOR_FLIP_GAP_Y, HELPER_TEXT_CURSOR_GAP_X,
         HELPER_TEXT_CURSOR_GAP_Y, HELPER_TEXT_SCREEN_MARGIN, MAX_CLIENT_LOG_UPLOAD_BYTES,
@@ -3095,6 +2966,21 @@ mod tests {
         scene.mouse_ctrl_held = false;
         scene.ctrl_held = true;
         assert!(scene.effective_ctrl_held());
+    }
+
+    #[test]
+    fn frame_presentation_directive_is_consumed_once() {
+        let mut scene = GameScene::new();
+        scene.frame_presentation = FramePresentation::Skip;
+
+        assert_eq!(
+            Scene::take_frame_presentation(&mut scene),
+            FramePresentation::Skip
+        );
+        assert_eq!(
+            Scene::take_frame_presentation(&mut scene),
+            FramePresentation::Immediate
+        );
     }
 
     #[test]

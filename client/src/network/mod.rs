@@ -14,16 +14,23 @@ pub enum NetworkCommand {
     Shutdown,
 }
 
+/// One complete framed server tick packet.
+///
+/// Commands remain in wire order so the main thread can apply the packet and
+/// advance animation as one transaction, matching the legacy client.
+pub struct ServerTickBatch {
+    /// Raw server commands contained in this framed packet.
+    pub commands: Vec<Vec<u8>>,
+    /// Time at which the complete packet was decoded by the network thread.
+    pub received_at: Instant,
+}
+
 /// Events produced by the background network thread for consumption by the
 /// main loop.
 pub enum NetworkEvent {
     Status(String),
-    Bytes {
-        bytes: Vec<u8>,
-        received_at: Instant,
-    },
-    /// One complete framed server tick packet was processed.
-    Tick,
+    /// One complete framed server tick packet, including empty ticks.
+    TickBatch(ServerTickBatch),
     Error(String),
     LoggedIn,
 }
