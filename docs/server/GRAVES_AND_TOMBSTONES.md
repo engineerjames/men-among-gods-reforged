@@ -1,13 +1,28 @@
-# Graves & Tombstones (Death --> Corpse --> Tombstone)
+# Player Deaths and NPC Graves
 
-This document captures the current technical understanding of how the server represents “graves” after a character dies based on the original C code.
+Player and NPC deaths now follow different persistence paths. Players retain
+their items and never leave a grave. NPCs continue to use the original
+corpse-to-tombstone system described below.
 
-> Terminology note: in the code you’ll see “grave”, “corpse”, “body”, and “tombstone”. Practically, the game uses a **corpse/body character** (a `Character` with `Body` flag) to hold loot/ownership metadata, and a **tombstone item** (template `170`) as the visible map object that players interact with. That is, an active tombstone on the ground consists of both a tombstone item (graphic on the ground), and a character with the body flag that represents the corpse.
+> Terminology note: in the NPC code you’ll see “grave”, “corpse”, “body”, and
+> “tombstone”. The server uses a **corpse/body character** (a `Character` with
+> the `Body` flag) to hold loot and ownership metadata, and a **tombstone item**
+> (template `170`) as the visible map object players interact with.
 
 ## High-level model
 
+- **Player death has no corpse or tombstone**:
+  - Backpack, worn, and ordinary cursor items remain on the live character.
+  - Eligible deaths remove `PLAYER_DEATH_MONEY_LOSS_PERCENT` of carried money,
+    rounded down to the nearest silver.
+  - Carried money includes `Character.gold` and cursor-held money encoded in
+    `Character.citem`. It excludes the bank balance in `Character.data[13]`.
+  - Arena, Guardian Angel, God, and forced-save/deathtrap deaths are exempt.
+  - The type `3` death mist still runs at the death location, but receives
+    corpse id `0` and performs no midpoint corpse processing.
 - **Corpse/body is a character id**:
-  - On death, the server produces a “body” entity represented as a **character slot** with `CharacterFlags::Body`.
+  - On NPC death, the server converts the NPC into a body entity represented
+    by a character slot with `CharacterFlags::Body`.
   - That corpse character id is used for ownership, permissions (`#ALLOW`), and as the container for dropped items/gold.
 - **Tombstone is an item**:
   - After a short effect/animation, the server creates a tombstone **item instance** (template `170`).
@@ -17,10 +32,28 @@ This document captures the current technical understanding of how the server rep
 ## Rust flow: where it lives
 
 - **Death handling**: `server/src/state/death.rs`
-  - NPC death converts the NPC into a corpse/body (or clones a player into a body slot) and marks it with `CharacterFlags::Body`.
+  - Player death applies the eligible carried-money penalty, destroys temporary
+    spell items, and transfers the same character to its temple.
+  - NPC death converts the NPC into a corpse/body and marks it with
+    `CharacterFlags::Body`.
 - **Effect processing**: `server/src/effect.rs`
-  - Effect type `3` (“death mist”) drives the death/grave animation.
+  - Effect type `3` (“death mist”) is visual-only when its corpse id is `0`;
+    otherwise it drives NPC corpse/grave processing.
   - Effect type `4` (“tombstone”) finalizes the grave by dropping item template `170`.
+
+## Player death flow
+
+1. `do_character_killed` records death statistics and metadata.
+2. `handle_player_death` checks arena, Guardian Angel, God, and forced-save
+   exemptions.
+3. An eligible player loses the configured percentage of purse plus
+   cursor-held money. Purse money is deducted first; banked money and all items
+   remain unchanged.
+4. Temporary spell items are destroyed and transient combat state is reset.
+5. The player is transferred to their temple and restored with 10 HP. Permanent
+   HP and mana are not reduced.
+6. A type `3` effect with corpse id `0` displays death mist at the original
+   location and expires without creating a body or tombstone.
 
 ## Step-by-step: NPC death --> tombstone on the ground
 

@@ -1,4 +1,4 @@
-use core::constants::{CHD_CORPSEOWNER, CharacterFlags, MAXCHARS, USE_EMPTY};
+use core::constants::{CHD_CORPSEOWNER, CharacterFlags, USE_EMPTY};
 use core::types::{Character, FontColor};
 use core::{skills, traits};
 
@@ -8,7 +8,62 @@ use crate::{helpers, player};
 
 use crate::game_state::GameState;
 
+/// Percentage of carried money lost on an eligible player death.
+const PLAYER_DEATH_MONEY_LOSS_PERCENT: i64 = 10;
+const _: () =
+    assert!(PLAYER_DEATH_MONEY_LOSS_PERCENT >= 0 && PLAYER_DEATH_MONEY_LOSS_PERCENT <= 100);
+
+/// Bit marking a cursor-held value as money rather than an item index.
+const CURSOR_MONEY_FLAG: u32 = 0x8000_0000;
+
+/// Mask containing the value of cursor-held money in silver.
+const CURSOR_MONEY_VALUE_MASK: u32 = 0x7fff_ffff;
+
 impl GameState {
+    /// Removes the configured percentage of a player's carried money.
+    ///
+    /// Carried money includes purse gold and cursor-held money, but excludes
+    /// the bank balance. The loss is rounded down to the nearest silver and
+    /// is taken from the purse before cursor-held money.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character id whose carried money is penalized.
+    ///
+    /// # Returns
+    ///
+    /// * Amount removed in silver.
+    fn apply_player_death_money_loss(&mut self, cn: usize) -> i64 {
+        let purse = i64::from(self.characters[cn].gold.max(0));
+        let citem = self.characters[cn].citem;
+        let cursor = if citem & CURSOR_MONEY_FLAG != 0 {
+            i64::from(citem & CURSOR_MONEY_VALUE_MASK)
+        } else {
+            0
+        };
+        let loss = (purse + cursor) * PLAYER_DEATH_MONEY_LOSS_PERCENT / 100;
+
+        if loss == 0 {
+            return 0;
+        }
+
+        let purse_loss = loss.min(purse);
+        self.characters[cn].gold -= purse_loss as i32;
+
+        let cursor_loss = loss - purse_loss;
+        if cursor_loss != 0 {
+            let remaining = cursor - cursor_loss;
+            self.characters[cn].citem = if remaining == 0 {
+                0
+            } else {
+                CURSOR_MONEY_FLAG | remaining as u32
+            };
+        }
+
+        self.characters[cn].set_do_update_flags();
+        loss
+    }
+
     /// Port of `do_character_killed(character_id, killer_id)` from the original
     /// server sources.
     ///
@@ -18,7 +73,7 @@ impl GameState {
     /// - Log the kill and update killer/player statistics
     /// - Apply alignment, luck and penalty changes for killers
     /// - Handle special-case followers and companion cleanup
-    /// - Create a grave/body clone and schedule respawn effects
+    /// - Apply the player death-money penalty and schedule death effects
     /// - Route player vs NPC death handling (resurrection, respawn)
     ///
     /// # Arguments
@@ -339,10 +394,11 @@ impl GameState {
             self.characters[character_id].data[17] =
                 i32::from(co_x) + i32::from(co_y) * core::constants::SERVER_MAPX;
 
-            corpse_id = self.handle_player_death(character_id, killer_id, map_flags, force_save);
+            self.handle_player_death(character_id, map_flags, force_save);
             if force_save {
                 return;
             }
+            corpse_id = 0;
         } else {
             // Handle NPC death
             let is_labkeeper =
@@ -370,98 +426,65 @@ impl GameState {
             corpse_id as i32,
         );
         // Set data[3] = killer_id for the effect, if possible
-        if fn_idx.unwrap() < self.effects.len() {
-            self.effects[fn_idx.unwrap()].data[3] = killer_id as u32;
+        if let Some(fn_idx) = fn_idx {
+            self.effects[fn_idx].data[3] = killer_id as u32;
         }
     }
 
-    /// Port of `handle_player_death(co, cn, map_flags)` from the original server
-    /// sources.
+    /// Handles player-specific death processing.
     ///
-    /// Handles player-specific death processing:
-    /// - Check for Guardian Angel / wimpy skill and compute `wimp` chance
-    /// - Allocate a free character slot and clone the dead character into a grave/body
-    /// - Drop items and money into the grave according to `wimp` chance
-    /// - Transfer the player to their temple and resurrect with minimal HP
-    /// - Reset status and apply permanent stat penalties when applicable
+    /// Players retain their items and do not leave a grave. Eligible deaths
+    /// remove a percentage of carried money before the player is returned to
+    /// their temple. Arena, Guardian Angel, God, and forced-save deaths are
+    /// exempt from the money loss.
+    ///
+    /// This also destroys active spell items, restores minimal health, and
+    /// resets transient combat state.
     ///
     /// # Arguments
-    /// * `co` - Character id of the dead player
-    /// * `cn` - Killer id
-    /// * `map_flags` - Map flags at the death location (used for arena/wimp checks)
-    /// * `force_save` - Whether to force the character to be saved from his death (used for deathtraps)
-    pub(crate) fn handle_player_death(
-        &mut self,
-        co: usize,
-        cn: usize,
-        map_flags: u64,
-        force_save: bool,
-    ) -> usize {
-        // Remember template if we're to respawn this character
-        // TODO: Re-evaluate if we need to do anything here.
+    ///
+    /// * `co` - Character id of the dead player.
+    /// * `map_flags` - Map flags at the death location.
+    /// * `force_save` - Whether a deathtrap or similar effect saves the player.
+    pub(crate) fn handle_player_death(&mut self, co: usize, map_flags: u64, force_save: bool) {
+        let has_guardian_angel = self.characters[co].spell.iter().any(|&item_idx| {
+            let item_idx = item_idx as usize;
+            item_idx != 0
+                && item_idx < self.items.len()
+                && self.items[item_idx].temp == skills::SK_WIMPY as u16
+        });
+        let is_arena = map_flags & u64::from(core::constants::MF_ARENA) != 0;
+        let is_god = self.characters[co].flags & CharacterFlags::God.bits() != 0;
 
-        // Check for Guardian Angel (Wimpy skill)
-        let wimp = {
-            let mut wimp_power = 0;
-            for n in 0..20 {
-                let item_idx = self.characters[co].spell[n] as usize;
-                if item_idx != 0 {
-                    let power_to_print = self.items[item_idx].power;
-                    if item_idx < self.items.len() {
-                        log::info!(
-                            "spell active: {}, power of {}",
-                            self.items[item_idx].get_name(),
-                            power_to_print
-                        );
-                        if self.items[item_idx].temp == skills::SK_WIMPY as u16 {
-                            wimp_power = self.items[item_idx].power / 2;
-                        }
-                    }
-                }
+        if !force_save && !is_arena && !has_guardian_angel && !is_god {
+            let loss = self.apply_player_death_money_loss(co);
+            if loss != 0 {
+                self.do_character_log(
+                    co,
+                    FontColor::Red,
+                    &format!(
+                        "You lost {}G {}S from the money you were carrying.\n",
+                        loss / 100,
+                        loss % 100
+                    ),
+                );
+                log::info!(
+                    "Character {} lost {}G {}S on death.",
+                    co,
+                    loss / 100,
+                    loss % 100
+                );
             }
-            wimp_power
-        };
-
-        let wimp = if map_flags & u64::from(core::constants::MF_ARENA) != 0 {
-            205
-        } else {
-            wimp
-        };
-
-        // Find free character slot for body/grave
-        let cc = (1..MAXCHARS).find(|&cc| self.characters[cc].used == core::constants::USE_EMPTY);
-
-        let Some(cc) = cc else {
-            log::error!(
-                "Could not clone character {} for grave, all char slots full!",
-                co
+        } else if has_guardian_angel && !is_arena {
+            self.do_character_log(
+                co,
+                FontColor::Yellow,
+                "Sometimes a Guardian Angel is really helpful...\n",
             );
-            return co;
-        };
-
-        // Clone character to create grave
-        self.characters[cc] = self.characters[co];
-
-        // Drop items and money based on wimp chance
-        self.handle_item_drops(co, cc, wimp as i32, cn, force_save);
-
-        if force_save {
-            let (cc_x, cc_y) = (self.characters[cc].x, self.characters[cc].y);
-            let idx = cc_x as usize + cc_y as usize * core::constants::SERVER_MAPX as usize;
-            if idx < self.map.len() {
-                if self.map[idx].ch == cc as u32 {
-                    self.map[idx].ch = 0;
-                }
-                if self.map[idx].to_ch == cc as u32 {
-                    self.map[idx].to_ch = 0;
-                }
-            }
-            self.characters[cc].used = USE_EMPTY;
-            self.characters[cc].player = 0;
-            self.characters[cc].flags = 0;
         }
 
-        // Move player to temple
+        self.destroy_player_death_spells(co);
+
         let (temple_x, temple_y, cur_x, cur_y) = (
             self.characters[co].temple_x,
             self.characters[co].temple_y,
@@ -475,8 +498,7 @@ impl GameState {
             God::transfer_char(self, co, temple_x as usize, temple_y as usize);
         }
 
-        // Resurrect player with 10 HP
-        self.characters[co].a_hp = 10000; // 10 HP (stored as 10000)
+        self.characters[co].a_hp = 10000;
         self.characters[co].status = 0;
         self.characters[co].attack_cn = 0;
         self.characters[co].skill_nr = 0;
@@ -486,90 +508,47 @@ impl GameState {
         self.characters[co].stunned = 0;
         self.characters[co].retry = 0;
         self.characters[co].current_enemy = 0;
-        for m in 0..4 {
-            self.characters[co].enemy[m] = 0;
-        }
+        self.characters[co].enemy.fill(0);
 
         player::commands::plr_reset_status(self, co);
-
-        // Apply permanent stat loss if not a god and no guardian angel
-        let is_god = self.characters[co].flags & CharacterFlags::God.bits() != 0;
-
-        if !is_god && wimp == 0 && !force_save {
-            self.apply_death_penalties(co);
-        } else if wimp != 0 && map_flags & u64::from(core::constants::MF_ARENA) == 0 {
-            self.do_character_log(
-                co,
-                core::types::FontColor::Yellow,
-                "Sometimes a Guardian Angel is really helpful...\n",
-            );
-        }
 
         if force_save {
             self.do_character_log(
                 co,
-                core::types::FontColor::Red,
+                FontColor::Red,
                 "You feel a sudden force saving you from death! You have been spared, but something feels different...\n",
             );
         }
 
-        // Update player character
         self.characters[co].set_do_update_flags();
+    }
 
-        // Setup the grave (body) - but only if we didn't force the save
-        if !force_save {
-            player::commands::plr_reset_status(self, cc);
-
-            self.characters[cc].player = 0;
-            self.characters[cc].flags = CharacterFlags::Body.bits();
-            self.characters[cc].a_hp = 0;
-            self.characters[cc].data[core::constants::CHD_CORPSEOWNER] = co as i32;
-            self.characters[cc].data[99] = 1;
-            self.characters[cc].data[98] = 0;
-
-            self.characters[cc].attack_cn = 0;
-            self.characters[cc].skill_nr = 0;
-            self.characters[cc].goto_x = 0;
-            self.characters[cc].use_nr = 0;
-            self.characters[cc].misc_action = 0;
-            self.characters[cc].stunned = 0;
-            self.characters[cc].retry = 0;
-            self.characters[cc].current_enemy = 0;
-            for m in 0..4 {
-                self.characters[cc].enemy[m] = 0;
+    /// Destroys temporary spell items attached to a player at death.
+    ///
+    /// # Arguments
+    ///
+    /// * `co` - Character id whose active spells are cleared.
+    fn destroy_player_death_spells(&mut self, co: usize) {
+        for spell in &mut self.characters[co].spell {
+            let item_idx = *spell as usize;
+            *spell = 0;
+            if item_idx != 0 && item_idx < self.items.len() {
+                self.items[item_idx].used = USE_EMPTY;
             }
-
-            // Update grave character
-            self.characters[cc].set_do_update_flags();
-
-            player::map::plr_map_set(self, cc);
-
-            // After player death, `co` is reassigned to `cc` for corpse effects.
-            cc
-        } else {
-            co
         }
     }
 
-    /// Port of `handle_npc_death(co, cn)` from the original server sources.
-    ///
-    /// Handles non-player character (NPC) death processing:
-    /// - Increment NPC death counters
-    /// - Reset NPC status and active actions
-    /// - Handle `USURP` (player controlling an NPC) transfer if present
-    /// - Convert the NPC into a corpse/body and set respawn flags where appropriate
-    /// - Destroy active spells and allow player ransack when killer is a player
+    /// Handles non-player character death processing.
     ///
     /// # Arguments
-    /// * `co` - NPC character id who died
-    /// * `cn` - Killer id
+    ///
+    /// * `co` - NPC character id that died.
+    /// * `cn` - Character id credited with the kill, or zero.
     pub(crate) fn handle_npc_death(&mut self, co: usize, cn: usize) {
-        // Update NPC death statistics
         self.globals.npcs_died += 1;
 
         player::commands::plr_reset_status(self, co);
 
-        // Check for USURP flag (player controlling NPC)
         let usurp_info = if self.characters[co].flags & CharacterFlags::Usurp.bits() != 0 {
             Some((
                 self.characters[co].player as usize,
@@ -591,7 +570,6 @@ impl GameState {
 
         log::info!("new npc body");
 
-        // Convert to body
         let should_respawn = self.characters[co].flags & CharacterFlags::Respawn.bits() != 0;
 
         if should_respawn {
@@ -701,217 +679,6 @@ impl GameState {
         self.characters[co].used = core::constants::USE_EMPTY;
 
         self.use_labtransfer2(cn, co);
-    }
-
-    /// Port of `handle_item_drops(co, cc, wimp, cn)` from the original server sources.
-    ///
-    /// Determines and performs which items/money are dropped into the grave when a
-    /// character dies. Behavior:
-    /// - Gold may be dropped based on `wimp` chance
-    /// - Inventory, carried, and worn items are considered for dropping or keeping
-    /// - Respects `do_maygive` to determine whether an item can be transferred to killer
-    /// - Active spells are always destroyed on death
-    ///
-    /// # Arguments
-    /// * `co` - Original (dead) character id
-    /// * `cc` - Clone/grave character id (where dropped items are carried)
-    /// * `wimp` - Guardian angel / wimpy chance (0-255). Higher means less dropping
-    /// * `cn` - Killer id
-    /// * `force_save` - Whether to force the character to be saved from his death (used for deathtraps)
-    pub(crate) fn handle_item_drops(
-        &mut self,
-        co: usize,
-        cc: usize,
-        wimp: i32,
-        cn: usize,
-        force_save: bool,
-    ) {
-        if force_save {
-            // If we're forcing a save (e.g. deathtrap), don't drop anything but still destroy spells
-            // Handle active spells - always destroy
-            for n in 0..20 {
-                let spell_idx = self.characters[co].spell[n];
-                if spell_idx != 0 {
-                    self.characters[co].spell[n] = 0;
-                    self.characters[cc].spell[n] = 0;
-                    if (spell_idx as usize) < self.items.len() {
-                        self.items[spell_idx as usize].used = USE_EMPTY;
-                    }
-                }
-            }
-            return;
-        }
-
-        // Handle gold
-        if self.characters[co].gold != 0 {
-            if wimp < helpers::random_mod_i32(100) {
-                self.characters[co].gold = 0;
-            } else {
-                self.characters[cc].gold = 0;
-            }
-        }
-
-        // Handle inventory items
-        for n in 0..40 {
-            let item_idx = self.characters[co].item[n];
-            if item_idx == 0 {
-                continue;
-            }
-
-            // Check if item may be given
-            if !self.do_maygive(cn, 0, item_idx as usize) {
-                if (item_idx as usize) < self.items.len() {
-                    self.items[item_idx as usize].used = USE_EMPTY;
-                }
-                self.characters[co].item[n] = 0;
-                self.characters[cc].item[n] = 0;
-                continue;
-            }
-
-            if wimp <= helpers::random_mod_i32(100) {
-                // Drop in grave
-                self.characters[co].item[n] = 0;
-                if (item_idx as usize) < self.items.len() {
-                    self.items[item_idx as usize].carried = cc as u16;
-
-                    let item_template_to_print = self.items[item_idx as usize].temp;
-                    log::info!(
-                        "Dropped {} (t={}) in Grave",
-                        self.items[item_idx as usize].get_name(),
-                        item_template_to_print,
-                    );
-                }
-            } else {
-                // Player keeps it
-                self.characters[cc].item[n] = 0;
-            }
-        }
-
-        // Handle carried item (citem)
-        let citem = self.characters[co].citem;
-        if citem != 0 {
-            if !self.do_maygive(cn, 0, citem as usize) {
-                if (citem as usize) < self.items.len() {
-                    self.items[citem as usize].used = USE_EMPTY;
-                }
-                self.characters[co].citem = 0;
-                self.characters[cc].citem = 0;
-            } else {
-                if wimp <= helpers::random_mod_i32(100) {
-                    self.characters[co].citem = 0;
-                    if (citem as usize) < self.items.len() {
-                        self.items[citem as usize].carried = cc as u16;
-                        let item_template_to_print = self.items[citem as usize].temp;
-                        log::info!(
-                            "Dropped {} (t={}) in Grave",
-                            self.items[citem as usize].get_name(),
-                            item_template_to_print,
-                        );
-                    }
-                } else {
-                    self.characters[cc].citem = 0;
-                }
-            }
-        }
-
-        // Handle worn items
-        for n in 0..20 {
-            let item_idx = self.characters[co].worn[n];
-            if item_idx == 0 {
-                continue;
-            }
-
-            if !self.do_maygive(cn, 0, item_idx as usize) {
-                if (item_idx as usize) < self.items.len() {
-                    self.items[item_idx as usize].used = USE_EMPTY;
-                }
-                self.characters[co].worn[n] = 0;
-                self.characters[cc].worn[n] = 0;
-                continue;
-            }
-
-            if wimp <= helpers::random_mod_i32(100) {
-                self.characters[co].worn[n] = 0;
-                if (item_idx as usize) < self.items.len() {
-                    self.items[item_idx as usize].carried = cc as u16;
-                    let item_template = self.items[item_idx as usize].temp;
-                    log::info!(
-                        "Dropped {} (t={}) in Grave",
-                        self.items[item_idx as usize].get_name(),
-                        item_template,
-                    );
-                }
-            } else {
-                self.characters[cc].worn[n] = 0;
-            }
-        }
-    }
-
-    /// Port of `apply_death_penalties(co)` from the original server sources.
-    ///
-    /// Applies permanent penalties to a character after death:
-    /// - Decreases permanent hitpoints according to configured rules
-    /// - Decreases permanent mana according to configured rules
-    /// - Notifies the player and invokes internal lowering helpers
-    ///
-    /// # Arguments
-    /// * `co` - Character id to apply permanent penalties to
-    pub(crate) fn apply_death_penalties(&mut self, co: usize) {
-        if !Character::is_sane_character(co) {
-            log::warn!("apply_death_penalties: invalid character {}", co);
-            return;
-        }
-
-        let perm_hp = i32::from(self.characters[co].hp[0]);
-        let perm_mana = i32::from(self.characters[co].mana[0]);
-
-        // HP penalty
-        let mut hp_tmp = perm_hp / 10;
-        if perm_hp - hp_tmp < 50 {
-            hp_tmp = perm_hp - 50;
-        }
-        if hp_tmp > 0 {
-            self.do_character_log(
-                co,
-                FontColor::Red,
-                &format!("You lost {} hitpoints permanently.\n", hp_tmp),
-            );
-            log::info!("Character {} lost {} permanent hitpoints.", co, hp_tmp);
-            for _ in 0..hp_tmp {
-                self.do_lower_hp(co);
-            }
-        } else {
-            self.do_character_log(
-                co,
-                FontColor::Red,
-                "You would have lost permanent hitpoints, but you're already at the minimum.\n",
-            );
-        }
-
-        // TODO: Endurance penalty?
-
-        // Mana penalty
-        let mut mana_tmp = perm_mana / 10;
-        if perm_mana - mana_tmp < 50 {
-            mana_tmp = perm_mana - 50;
-        }
-        if mana_tmp > 0 {
-            self.do_character_log(
-                co,
-                FontColor::Red,
-                &format!("You lost {} mana permanently.\n", mana_tmp),
-            );
-            log::info!("Character {} lost {} permanent mana.", co, mana_tmp);
-            for _ in 0..mana_tmp {
-                self.do_lower_mana(co);
-            }
-        } else {
-            self.do_character_log(
-                co,
-                FontColor::Red,
-                "You would have lost permanent mana, but you're already at the minimum.\n",
-            );
-        }
     }
 
     /// On-death helper for the Contagion DoT. If the dying character carries
@@ -1098,5 +865,158 @@ impl GameState {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{MAXCHARS, MF_ARENA, USE_ACTIVE};
+
+    fn prepare_player_death(gs: &mut GameState) -> usize {
+        let (cn, _) = add_test_player(gs);
+        gs.characters[cn].temple_x = 20;
+        gs.characters[cn].temple_y = 20;
+        let map_index = 10 + 10 * core::constants::SERVER_MAPX as usize;
+        gs.map[map_index].ch = cn as u32;
+        cn
+    }
+
+    #[test]
+    fn death_money_loss_uses_combined_carried_money_and_rounds_down() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].gold = 901;
+            gs.characters[cn].citem = CURSOR_MONEY_FLAG | 99;
+
+            let loss = gs.apply_player_death_money_loss(cn);
+
+            assert_eq!(loss, 100);
+            assert_eq!(gs.characters[cn].gold, 801);
+            assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | 99);
+        });
+    }
+
+    #[test]
+    fn death_money_loss_uses_cursor_money_after_purse() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].gold = 5;
+            gs.characters[cn].citem = CURSOR_MONEY_FLAG | 995;
+
+            let loss = gs.apply_player_death_money_loss(cn);
+
+            assert_eq!(loss, 100);
+            assert_eq!(gs.characters[cn].gold, 0);
+            assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | 900);
+        });
+    }
+
+    #[test]
+    fn death_money_loss_preserves_small_balances_and_ordinary_cursor_items() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].gold = 9;
+            gs.characters[cn].citem = 42;
+
+            let loss = gs.apply_player_death_money_loss(cn);
+
+            assert_eq!(loss, 0);
+            assert_eq!(gs.characters[cn].gold, 9);
+            assert_eq!(gs.characters[cn].citem, 42);
+        });
+    }
+
+    #[test]
+    fn death_money_loss_handles_maximum_combined_value() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].gold = i32::MAX;
+            gs.characters[cn].citem = CURSOR_MONEY_FLAG | i32::MAX as u32;
+
+            let loss = gs.apply_player_death_money_loss(cn);
+
+            assert_eq!(loss, 429_496_729);
+            assert_eq!(gs.characters[cn].gold, 1_717_986_918);
+            assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | i32::MAX as u32);
+        });
+    }
+
+    #[test]
+    fn player_death_loses_money_but_retains_items_bank_and_permanent_stats() {
+        with_test_gs(|gs| {
+            let cn = prepare_player_death(gs);
+            gs.characters[cn].gold = 1_000;
+            gs.characters[cn].citem = CURSOR_MONEY_FLAG | 100;
+            gs.characters[cn].data[13] = 7_777;
+            gs.characters[cn].item[0] = 41;
+            gs.characters[cn].worn[0] = 42;
+            gs.characters[cn].hp[0] = 100;
+            gs.characters[cn].mana[0] = 80;
+
+            gs.handle_player_death(cn, 0, false);
+
+            assert_eq!(gs.characters[cn].gold, 890);
+            assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | 100);
+            assert_eq!(gs.characters[cn].data[13], 7_777);
+            assert_eq!(gs.characters[cn].item[0], 41);
+            assert_eq!(gs.characters[cn].worn[0], 42);
+            assert_eq!(gs.characters[cn].hp[0], 100);
+            assert_eq!(gs.characters[cn].mana[0], 80);
+            assert_eq!(gs.characters[cn].a_hp, 10_000);
+        });
+    }
+
+    #[test]
+    fn player_death_money_loss_honors_all_exemptions() {
+        with_test_gs(|gs| {
+            for case in 0..4 {
+                let cn = prepare_player_death(gs);
+                gs.characters[cn].gold = 1_000;
+                gs.characters[cn].flags = CharacterFlags::Player.bits();
+                gs.characters[cn].spell.fill(0);
+
+                let mut map_flags = 0;
+                let mut force_save = false;
+                match case {
+                    0 => map_flags = u64::from(MF_ARENA),
+                    1 => {
+                        gs.items[50].used = USE_ACTIVE;
+                        gs.items[50].temp = skills::SK_WIMPY as u16;
+                        gs.characters[cn].spell[0] = 50;
+                    }
+                    2 => gs.characters[cn].flags |= CharacterFlags::God.bits(),
+                    3 => force_save = true,
+                    _ => unreachable!(),
+                }
+
+                gs.handle_player_death(cn, map_flags, force_save);
+
+                assert_eq!(gs.characters[cn].gold, 1_000, "exemption case {case}");
+                if case == 1 {
+                    assert_eq!(gs.characters[cn].spell[0], 0);
+                    assert_eq!(gs.items[50].used, USE_EMPTY);
+                }
+            }
+        });
+    }
+
+    #[test]
+    fn player_death_does_not_require_a_free_character_slot() {
+        with_test_gs(|gs| {
+            let cn = prepare_player_death(gs);
+            for character in &mut gs.characters[1..MAXCHARS] {
+                character.used = USE_ACTIVE;
+            }
+            gs.characters[cn].gold = 1_000;
+            gs.characters[cn].item[0] = 41;
+
+            gs.handle_player_death(cn, 0, false);
+
+            assert_eq!(gs.characters[cn].gold, 900);
+            assert_eq!(gs.characters[cn].item[0], 41);
+            assert_eq!(gs.characters[cn].a_hp, 10_000);
+        });
     }
 }
