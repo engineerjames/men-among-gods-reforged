@@ -523,7 +523,7 @@ impl Widget for ChatBox {
                 EventResponse::Consumed
             }
 
-            UiEvent::MouseClick { x: _, y: _, .. } => {
+            UiEvent::MouseClick { .. } => {
                 // Do nothing intentionally
                 EventResponse::Ignored
             }
