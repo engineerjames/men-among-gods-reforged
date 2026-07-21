@@ -14,16 +14,23 @@ pub enum NetworkCommand {
     Shutdown,
 }
 
+/// One complete framed server tick packet.
+///
+/// Commands remain in wire order so the main thread can apply the packet and
+/// advance animation as one transaction, matching the legacy client.
+pub struct ServerTickBatch {
+    /// Raw server commands contained in this framed packet.
+    pub commands: Vec<Vec<u8>>,
+    /// Time at which the complete packet was decoded by the network thread.
+    pub received_at: Instant,
+}
+
 /// Events produced by the background network thread for consumption by the
 /// main loop.
 pub enum NetworkEvent {
     Status(String),
-    Bytes {
-        bytes: Vec<u8>,
-        received_at: Instant,
-    },
-    /// One complete framed server tick packet was processed.
-    Tick,
+    /// One complete framed server tick packet, including empty ticks.
+    TickBatch(ServerTickBatch),
     Error(String),
     LoggedIn,
 }
@@ -193,24 +200,29 @@ impl NetworkRuntime {
         self.send(cmd);
     }
 
-    /// Sends `CL_CMD_CTICK` every 16 processed server ticks if we're logged in.
-    pub fn maybe_send_ctick(&mut self) {
+    /// Sends `CL_CMD_CTICK` when `sim_ticker` falls on a 16-tick boundary.
+    ///
+    /// `sim_ticker` must be the count of **locally simulated** ticks, not the
+    /// network packet-receipt counter — matching the C client:
+    /// `if (do_ticker && (ticker&15)==0) cmd1s(CL_CMD_CTICK, ticker)`.
+    /// Call this after each simulation step so the server sees how many ticks
+    /// have actually been processed, not just received off the wire.
+    pub fn maybe_send_ctick(&mut self, sim_ticker: u32) {
         if !self.logged_in {
             return;
         }
-        let t = self.client_ticker;
-        if t == 0 {
+        if sim_ticker == 0 {
             return;
         }
-        if (t & 15) != 0 {
+        if (sim_ticker & 15) != 0 {
             return;
         }
-        if self.last_ctick_sent == t {
+        if self.last_ctick_sent == sim_ticker {
             return;
         }
-        let tick_cmd = ClientCommand::new_tick(t);
+        let tick_cmd = ClientCommand::new_tick(sim_ticker);
         self.send(tick_cmd);
-        self.last_ctick_sent = t;
+        self.last_ctick_sent = sim_ticker;
     }
 }
 

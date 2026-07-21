@@ -482,6 +482,47 @@ mod tests {
     }
 
     #[test]
+    fn reset_last_setmap_index_prevents_delta_from_crossing_packet_boundary() {
+        let mut map = GameMap::new();
+        map.apply_set_map(
+            0,
+            Some(10),
+            Some(1),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        map.reset_last_setmap_index();
+        map.apply_set_map(
+            5,
+            None,
+            Some(99),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(map.tile_at_index(4).unwrap().ba_sprite, 99);
+        assert_eq!(map.tile_at_index(15).unwrap().ba_sprite, 0);
+    }
+
+    #[test]
     fn apply_set_map3_lighting() {
         let mut map = GameMap::new();
         // base_light=7 at index 0, then packed [0xAB] --> hi=0xA at 1, lo=0xB at 2

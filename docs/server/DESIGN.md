@@ -26,12 +26,12 @@ Key modules:
 
 ## Tick Rate
 
-The server targets **20 ticks per second**:
+The server targets **36 ticks per second**:
 
-- `core::constants::TICKS = 20`
+- `core::constants::TICKS = 36`
 - `core::constants::TICK = 1_000_000 / TICKS` microseconds
 
-So a single tick is ~$50ms$.
+So a single tick is about $27.8ms$.
 
 ### Scheduler behavior
 
@@ -59,7 +59,7 @@ sequenceDiagram
 	participant N as Network
 	participant P as Players
 
-	Note over S: Runs ~every 50ms target
+	Note over S: Runs ~every 27.8ms target
 	alt now > last_tick_time
 		S->>G: advance simulation
 		G->>P: plr_tick(), command processing, world updates
@@ -79,6 +79,18 @@ sequenceDiagram
 Important implication of the ordering above:
 
 - **Inbound bytes read during `handle_network_io()` are generally processed on the next `game_tick()`**, because `game_tick()` runs before `rec_player()` within a single scheduling iteration.
+
+## Socket Options
+
+The Rust server mirrors the meaningful socket setup from the legacy C server:
+
+- Listener: IPv4 TCP socket with `SO_REUSEADDR`, non-blocking mode, and backlog `5`.
+- Accepted gameplay sockets: `TCP_NODELAY`, `SO_SNDBUF = 65_536`, `SO_RCVBUF = 65_536`, `SO_KEEPALIVE`, then TLS wrapping.
+- TLS handshake: accepted sockets temporarily switch to blocking mode during the rustls handshake, then return to non-blocking mode for the game loop.
+
+`SO_LINGER` is intentionally not copied from the C implementation. The legacy code passed an `int` zero where platforms expect a `struct linger`, ignored the return value, and did not provide a portable shutdown contract to preserve.
+
+The client and load-test gameplay TCP connections also enable `TCP_NODELAY` before TLS wrapping so small command and tick packets are not delayed by Nagle's algorithm.
 
 ## Networking: `csend` vs `xsend`
 

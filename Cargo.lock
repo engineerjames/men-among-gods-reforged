@@ -4397,6 +4397,7 @@ dependencies = [
  "redis",
  "rustls",
  "rustls-pemfile",
+ "socket2",
  "zstd 0.13.3",
 ]
 

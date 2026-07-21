@@ -13,7 +13,7 @@ use mag_core::{
     server_commands::ServerCommandType,
 };
 
-use super::{NetworkCommand, NetworkEvent};
+use super::{NetworkCommand, NetworkEvent, ServerTickBatch};
 
 /// A game connection backed by a TLS session over TCP.
 struct GameConnection {
@@ -98,6 +98,10 @@ pub(crate) fn run_network_task(
             return;
         }
     };
+
+    if let Err(e) = tcp_stream.set_nodelay(true) {
+        log::warn!("Failed to set TCP_NODELAY: {e}");
+    }
 
     if let Err(e) = tcp_stream.set_read_timeout(Some(Duration::from_millis(5000))) {
         log::warn!("Failed to set read timeout: {e}");
@@ -305,51 +309,49 @@ fn run_network_loop(
             recv_buf.drain(..total_len);
             did_work = true;
 
-            if payload.is_empty() {
-                let _ = event_tx.send(NetworkEvent::Tick);
-                continue;
-            }
-
-            if is_compressed {
-                let inflated = inflate_chunk(&mut zlib, &payload).map_err(|e| {
+            let batch_payload = if payload.is_empty() {
+                Vec::new()
+            } else if is_compressed {
+                inflate_chunk(&mut zlib, &payload).map_err(|e| {
                     log::error!("Tick inflate failed: {e}");
                     e
-                })?;
-                if inflated.is_empty() {
-                    let _ = event_tx.send(NetworkEvent::Tick);
-                    continue;
-                }
-
-                let cmds = split_tick_payload(&inflated).map_err(|e| {
-                    log::error!("Tick parse failed (compressed): {e}");
-                    format!("Tick parse failed (compressed): {e}")
-                })?;
-                for cmd in cmds {
-                    let _ = event_tx.send(NetworkEvent::Bytes {
-                        bytes: cmd,
-                        received_at: Instant::now(),
-                    });
-                }
-                let _ = event_tx.send(NetworkEvent::Tick);
+                })?
             } else {
-                let cmds = split_tick_payload(&payload).map_err(|e| {
-                    log::error!("Tick parse failed (uncompressed): {e}");
-                    format!("Tick parse failed (uncompressed): {e}")
-                })?;
-                for cmd in cmds {
-                    let _ = event_tx.send(NetworkEvent::Bytes {
-                        bytes: cmd,
-                        received_at: Instant::now(),
-                    });
-                }
-                let _ = event_tx.send(NetworkEvent::Tick);
-            }
+                payload
+            };
+
+            let batch = tick_batch_from_payload(&batch_payload, Instant::now()).map_err(|e| {
+                let encoding = if is_compressed {
+                    "compressed"
+                } else {
+                    "uncompressed"
+                };
+                log::error!("Tick parse failed ({encoding}): {e}");
+                format!("Tick parse failed ({encoding}): {e}")
+            })?;
+            let _ = event_tx.send(NetworkEvent::TickBatch(batch));
         }
 
         if !did_work {
             std::thread::sleep(Duration::from_millis(1));
         }
     }
+}
+
+/// Builds one atomic tick batch from an inflated server-frame payload.
+fn tick_batch_from_payload(
+    payload: &[u8],
+    received_at: Instant,
+) -> Result<ServerTickBatch, String> {
+    let commands = if payload.is_empty() {
+        Vec::new()
+    } else {
+        split_tick_payload(payload)?
+    };
+    Ok(ServerTickBatch {
+        commands,
+        received_at,
+    })
 }
 
 /// Decode one zlib-compressed chunk from a continuous zlib stream.
@@ -495,5 +497,31 @@ mod tests {
         let payload = vec![ServerCommandType::SetMap4 as u8, 0x01, 0x00]; // only 3 bytes — old format
         let result = split_tick_payload(&payload);
         assert!(result.is_err(), "3-byte SV_SETMAP4 should be rejected");
+    }
+
+    #[test]
+    fn tick_batch_preserves_command_order_and_timestamp() {
+        let received_at = Instant::now();
+        let payload = vec![
+            ServerCommandType::Tick as u8,
+            7,
+            ServerCommandType::ScrollRight as u8,
+        ];
+
+        let batch = tick_batch_from_payload(&payload, received_at).expect("valid batch");
+
+        assert_eq!(batch.received_at, received_at);
+        assert_eq!(batch.commands.len(), 2);
+        assert_eq!(batch.commands[0], vec![ServerCommandType::Tick as u8, 7]);
+        assert_eq!(
+            batch.commands[1],
+            vec![ServerCommandType::ScrollRight as u8]
+        );
+    }
+
+    #[test]
+    fn empty_payload_remains_an_atomic_tick_batch() {
+        let batch = tick_batch_from_payload(&[], Instant::now()).expect("empty tick is valid");
+        assert!(batch.commands.is_empty());
     }
 }

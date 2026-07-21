@@ -1,8 +1,22 @@
-use std::{collections::HashMap, time::Duration};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use sdl2::{event::Event, render::Canvas, video::Window};
 
 use crate::state::AppState;
+
+/// Directs how the current scene iteration should reach the display.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FramePresentation {
+    /// Render and present using the application's normal frame pacing.
+    Immediate,
+    /// Render now, then wait until the absolute deadline before presenting.
+    PresentAt(Instant),
+    /// Skip rendering and presentation so gameplay can catch up.
+    Skip,
+}
 
 /// Trait implemented by each game scene (login, character selection, gameplay, etc.).
 ///
@@ -21,6 +35,15 @@ pub trait Scene {
 
     /// Per-frame logic update. `dt` is the time elapsed since the last frame.
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType>;
+
+    /// Takes the one-shot presentation decision produced by the last update.
+    ///
+    /// # Returns
+    ///
+    /// * The presentation behavior for the current iteration.
+    fn take_frame_presentation(&mut self) -> FramePresentation {
+        FramePresentation::Immediate
+    }
 
     /// Renders non-UI world elements (tiles, sprites) onto the SDL canvas.
     fn render_world(
@@ -180,6 +203,22 @@ impl SceneManager {
             .unwrap()
             .render_world(app_state, canvas)
             .unwrap_or_else(|err| log::error!("Error rendering world: {}", err));
+    }
+
+    /// Takes the active scene's presentation decision.
+    ///
+    /// # Returns
+    ///
+    /// * The presentation behavior for the current iteration.
+    pub fn take_frame_presentation(&mut self) -> FramePresentation {
+        if self.active_scene == SceneType::Exit {
+            return FramePresentation::Immediate;
+        }
+
+        self.scenes
+            .get_mut(&self.active_scene)
+            .map(|scene| scene.take_frame_presentation())
+            .unwrap_or(FramePresentation::Immediate)
     }
 
     /// Externally requests a scene transition (e.g. from the main loop on quit).

@@ -118,6 +118,9 @@ impl GameStream {
             .await
             .with_context(|| format!("TCP connect to {addr}"))?;
 
+        tcp.set_nodelay(true)
+            .with_context(|| format!("set TCP_NODELAY for {addr}"))?;
+
         let config = Arc::new(build_accept_any_tls_config());
         let connector = TlsConnector::from(config);
         let server_name = ServerName::try_from(host.to_owned())

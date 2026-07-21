@@ -5,7 +5,7 @@ use mag_core::skills;
 
 use crate::{
     cert_trust,
-    network::NetworkEvent,
+    network::{NetworkEvent, ServerTickBatch},
     scenes::scene::SceneType,
     state::AppState,
     ui::{
@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-use super::{GameScene, MAX_TICK_GROUPS_PER_FRAME, QSIZE};
+use super::{GameScene, QSIZE};
 
 /// Result of routing a [`UiEvent`] through the widget stack.
 ///
@@ -31,11 +31,92 @@ pub(super) enum UiHandleResult {
 }
 
 impl GameScene {
-    /// Drains pending network events (bytes, ticks, status, errors) and applies
-    /// them to the game state.
-    ///
-    /// Processes up to `MAX_TICK_GROUPS_PER_FRAME` complete tick groups per call
-    /// to avoid starving the render loop.
+    /// Applies one decoded server command, preserving its position within the
+    /// enclosing tick batch.
+    fn apply_server_command(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        cmd: &ServerCommand,
+        received_at: std::time::Instant,
+    ) {
+        match &cmd.structured_data {
+            ServerCommandData::Pong { seq, .. } => {
+                if let Some(net) = app_state.network.as_mut() {
+                    net.handle_pong(*seq, received_at);
+                }
+            }
+            ServerCommandData::PlaySound { nr, vol, pan } => {
+                log::info!("PlaySound: nr={} vol={} pan={}", nr, vol, pan);
+                app_state.sfx_cache.play_sfx(
+                    *nr as usize,
+                    *vol,
+                    *pan,
+                    app_state.settings.master_volume,
+                );
+            }
+            ServerCommandData::SetWeather {
+                kind,
+                intensity,
+                duration_ticks,
+                tint,
+                flags,
+            } => {
+                log::info!(
+                    "SetWeather: kind={} intensity={} dur={} flags={:08b}",
+                    kind,
+                    intensity,
+                    duration_ticks,
+                    flags
+                );
+                self.weather
+                    .apply_packet(*kind, *intensity, *duration_ticks, *tint, *flags);
+            }
+            ServerCommandData::Exit { reason } => {
+                log::info!("Received exit command from server: {}", reason);
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.update_from_server_command(cmd);
+                }
+            }
+            _ => {
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    ps.update_from_server_command(cmd);
+                }
+            }
+        }
+    }
+
+    /// Applies and simulates one complete framed server tick packet.
+    pub(super) fn apply_server_tick_batch(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        batch: ServerTickBatch,
+    ) {
+        if let Some(ps) = app_state.player_state.as_mut() {
+            ps.map_mut().reset_last_setmap_index();
+        }
+
+        for bytes in batch.commands {
+            if let Some(cmd) = ServerCommand::from_bytes(&bytes) {
+                self.apply_server_command(app_state, &cmd, batch.received_at);
+            }
+        }
+
+        if let Some(net) = app_state.network.as_mut() {
+            net.client_ticker = net.client_ticker.wrapping_add(1);
+            net.maybe_send_ping();
+        }
+
+        self.sim_ticker = self.sim_ticker.wrapping_add(1);
+        if let Some(ps) = app_state.player_state.as_mut() {
+            ps.advance_local_simulation_tick(self.sim_ticker);
+        }
+        if let Some(net) = app_state.network.as_mut() {
+            net.maybe_send_ctick(self.sim_ticker);
+        }
+    }
+
+    /// Drains pending network events, queuing complete tick batches for the
+    /// gameplay scheduler and handling out-of-band status events immediately.
     ///
     /// # Returns
     /// `Some(SceneType)` if the scene should change (e.g. on disconnect),
@@ -44,16 +125,7 @@ impl GameScene {
         &mut self,
         app_state: &mut AppState<'_>,
     ) -> Option<SceneType> {
-        let mut tick_groups_processed = 0usize;
-
-        loop {
-            if tick_groups_processed >= MAX_TICK_GROUPS_PER_FRAME {
-                break;
-            }
-
-            let Some(net) = app_state.network.as_mut() else {
-                break;
-            };
+        while let Some(net) = app_state.network.as_mut() {
             let Some(evt) = net.try_recv() else {
                 break;
             };
@@ -77,75 +149,8 @@ impl GameScene {
                     }
                     log::info!("Logged in to game server");
                 }
-                NetworkEvent::Bytes { bytes, received_at } => {
-                    if bytes.is_empty() {
-                        continue;
-                    }
-
-                    if let Some(cmd) = ServerCommand::from_bytes(&bytes) {
-                        match &cmd.structured_data {
-                            ServerCommandData::Pong { seq, .. } => {
-                                if let Some(net) = app_state.network.as_mut() {
-                                    net.handle_pong(*seq, received_at);
-                                }
-                            }
-                            ServerCommandData::PlaySound { nr, vol, pan } => {
-                                log::info!("PlaySound: nr={} vol={} pan={}", nr, vol, pan);
-                                app_state.sfx_cache.play_sfx(
-                                    *nr as usize,
-                                    *vol,
-                                    *pan,
-                                    app_state.settings.master_volume,
-                                );
-                            }
-                            ServerCommandData::SetWeather {
-                                kind,
-                                intensity,
-                                duration_ticks,
-                                tint,
-                                flags,
-                            } => {
-                                log::info!(
-                                    "SetWeather: kind={} intensity={} dur={} flags={:08b}",
-                                    kind,
-                                    intensity,
-                                    duration_ticks,
-                                    flags
-                                );
-                                self.weather.apply_packet(
-                                    *kind,
-                                    *intensity,
-                                    *duration_ticks,
-                                    *tint,
-                                    *flags,
-                                );
-                            }
-                            ServerCommandData::Exit { reason } => {
-                                log::info!("Received exit command from server: {}", reason);
-                                if let Some(ps) = app_state.player_state.as_mut() {
-                                    ps.update_from_server_command(&cmd);
-                                }
-                            }
-                            _ => {
-                                if let Some(ps) = app_state.player_state.as_mut() {
-                                    ps.update_from_server_command(&cmd);
-                                }
-                            }
-                        }
-                    }
-                }
-                NetworkEvent::Tick => {
-                    if let Some(net) = app_state.network.as_mut() {
-                        net.client_ticker = net.client_ticker.wrapping_add(1);
-                        let ticker = net.client_ticker;
-                        if let Some(ps) = app_state.player_state.as_mut() {
-                            ps.on_tick_packet(ticker);
-                            ps.map_mut().reset_last_setmap_index();
-                        }
-                        net.maybe_send_ctick();
-                        net.maybe_send_ping();
-                    }
-                    tick_groups_processed += 1;
+                NetworkEvent::TickBatch(batch) => {
+                    self.pending_tick_batches.push_back(batch);
                 }
             }
         }
