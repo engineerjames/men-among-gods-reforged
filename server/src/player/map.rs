@@ -413,7 +413,10 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
             // no light, nothing visible
             if light == 0 {
-                gs.players[nr].smap[n] = empty_cmap;
+                gs.players[nr].smap[n] = CMap {
+                    flags: INVIS,
+                    ..empty_cmap
+                };
                 x += 1;
                 n += 1;
                 continue;
@@ -1251,6 +1254,28 @@ mod tests {
 
             assert_ne!(gs.players[nr].smap[sm_idx].light, night_light);
             assert_eq!(gs.players[nr].last_dlight, 65);
+        });
+    }
+
+    #[test]
+    fn plr_getmap_marks_dark_previously_visible_tiles_invisible() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.characters[cn].skill[core::skills::SK_PERCEPT][5] = 10;
+            let static_x = i32::from(gs.characters[cn].x) + 1;
+            let static_y = i32::from(gs.characters[cn].y);
+            let static_tile = map_index(static_x as i16, static_y as i16);
+            gs.map[static_tile].sprite = 321;
+
+            gs.globals.dlight = 65;
+            plr_getmap(gs, nr);
+            let sm_idx = small_map_index(gs, cn, static_x, static_y);
+            assert_eq!(gs.players[nr].smap[sm_idx].flags & INVIS, 0);
+
+            gs.globals.dlight = 0;
+            plr_getmap(gs, nr);
+
+            assert_ne!(gs.players[nr].smap[sm_idx].flags & INVIS, 0);
         });
     }
 
