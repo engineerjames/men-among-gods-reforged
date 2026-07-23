@@ -9,7 +9,7 @@ use crate::{helpers, player};
 use crate::game_state::GameState;
 
 /// Percentage of carried money lost on an eligible player death.
-const PLAYER_DEATH_MONEY_LOSS_PERCENT: i64 = 10;
+const PLAYER_DEATH_MONEY_LOSS_PERCENT: i64 = 25;
 const _: () =
     assert!(PLAYER_DEATH_MONEY_LOSS_PERCENT >= 0 && PLAYER_DEATH_MONEY_LOSS_PERCENT <= 100);
 
@@ -44,6 +44,7 @@ impl GameState {
         let loss = (purse + cursor) * PLAYER_DEATH_MONEY_LOSS_PERCENT / 100;
 
         if loss == 0 {
+            log::info!("Player {} has no money, therefore none will be taken.", cn);
             return 0;
         }
 

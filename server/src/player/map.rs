@@ -276,6 +276,7 @@ pub fn plr_clear_map(gs: &mut GameState) {
     for n in 1..gs.players.len() {
         gs.players[n].smap = std::array::from_fn(|_| CMap::default());
         gs.players[n].vx = 0; // force do_all in map generation
+        gs.players[n].last_dlight = -1;
     }
 }
 
@@ -304,6 +305,7 @@ pub fn plr_getmap(gs: &mut GameState, nr: usize) {
 /// * Panics if `nr`, the player's character index, or a calculated map index is invalid.
 pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
     let cn = gs.players[nr].usnr;
+    let daylight_changed = gs.players[nr].last_dlight != gs.globals.dlight;
 
     // We copy it out here so we HAVE to write it back.
     let mut smap = gs.players[nr].smap;
@@ -383,7 +385,11 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
             let mi = (x + y * core::constants::SERVER_MAPX) as usize;
 
             let map_m = gs.map[mi];
-            if do_all || map_m.it != 0 || map_m.ch as usize != 0 || gs.players[nr].xmap[n] != map_m
+            if daylight_changed
+                || do_all
+                || map_m.it != 0
+                || map_m.ch as usize != 0
+                || gs.players[nr].xmap[n] != map_m
             {
                 gs.players[nr].xmap[n] = map_m;
             } else {
@@ -640,6 +646,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
     gs.players[nr].vx = gs.see_map[cn].x;
     gs.players[nr].vy = gs.see_map[cn].y;
+    gs.players[nr].last_dlight = gs.globals.dlight;
 }
 
 /// Light update functions - calculate efficiency of batch updates
@@ -1221,6 +1228,29 @@ mod tests {
             assert_eq!(tile.it_sprite, 77);
             assert_eq!(gs.players[nr].vx, gs.see_map[cn].x);
             assert_eq!(gs.players[nr].vy, gs.see_map[cn].y);
+        });
+    }
+
+    #[test]
+    fn plr_getmap_refreshes_static_tile_light_when_daylight_changes() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            gs.characters[cn].skill[core::skills::SK_PERCEPT][5] = 10;
+            let static_x = i32::from(gs.characters[cn].x) + 1;
+            let static_y = i32::from(gs.characters[cn].y);
+            let static_tile = map_index(static_x as i16, static_y as i16);
+            gs.map[static_tile].sprite = 321;
+
+            gs.globals.dlight = 1;
+            plr_getmap(gs, nr);
+            let sm_idx = small_map_index(gs, cn, static_x, static_y);
+            let night_light = gs.players[nr].smap[sm_idx].light;
+
+            gs.globals.dlight = 65;
+            plr_getmap(gs, nr);
+
+            assert_ne!(gs.players[nr].smap[sm_idx].light, night_light);
+            assert_eq!(gs.players[nr].last_dlight, 65);
         });
     }
 
