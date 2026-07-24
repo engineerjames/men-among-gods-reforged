@@ -455,60 +455,6 @@ impl PlayerState {
         self.message_log.push(msg);
     }
 
-    /// Word-wraps `text` to fit within `max_cols` columns.
-    ///
-    /// Breaks on spaces when possible; hard-cuts words longer than the limit.
-    /// Embedded newlines are honoured.
-    ///
-    /// # Arguments
-    /// * `text` - The raw text to wrap.
-    /// * `max_cols` - Maximum characters per line.
-    ///
-    /// # Returns
-    /// * A new `String` with `\n` inserted at wrap points.
-    pub fn wrap_log_text(text: &str, max_cols: usize) -> String {
-        let max_cols = max_cols.max(2);
-        let wrap_at = max_cols.saturating_sub(1);
-
-        let mut out = String::with_capacity(text.len() + text.len() / wrap_at.max(1));
-
-        for raw in text.split('\n') {
-            let mut line = raw.trim_end_matches('\r');
-            if line.is_empty() {
-                continue;
-            }
-
-            while line.len() > wrap_at {
-                let mut cut = wrap_at;
-                if cut >= line.len() {
-                    break;
-                }
-
-                if let Some(space) = line[..cut].rfind(' ')
-                    && space > 0
-                {
-                    cut = space;
-                }
-
-                let head = line[..cut].trim_end();
-                if !head.is_empty() {
-                    out.push_str(head);
-                    out.push('\n');
-                }
-
-                line = line[cut..].trim_start();
-            }
-
-            if !line.is_empty() {
-                out.push_str(line);
-                out.push('\n');
-            }
-        }
-
-        out.pop();
-        out
-    }
-
     /// Returns the log message at `index` in insertion order (0 = oldest).
     ///
     /// The underlying `CircularBuffer` stores newest-first (`get(0)` = newest).
@@ -530,20 +476,18 @@ impl PlayerState {
         self.message_log.get(len - 1 - index)
     }
 
-    /// Appends a message to the chat log, word-wrapping it first.
+    /// Appends one canonical message to the chat log.
+    ///
+    /// Visual line wrapping is intentionally deferred to the chat widget so
+    /// it can reflow messages when its width changes.
     ///
     /// # Arguments
     /// * `font` - Network font index (0=red, 1=yellow, 2=green, 3=blue).
     /// * `text` - The message text.
     pub fn tlog(&mut self, font: u8, text: impl AsRef<str>) {
-        const XS: usize = 49;
-
-        let wrapped = Self::wrap_log_text(text.as_ref(), XS);
-        for line in wrapped.split('\n') {
-            let line = line.trim_end_matches('\r');
-            if !line.is_empty() {
-                self.push_log_message(line.to_owned(), font);
-            }
+        let text = text.as_ref().trim_end_matches('\r');
+        if !text.is_empty() {
+            self.push_log_message(text.to_owned(), font);
         }
     }
 
@@ -1052,18 +996,6 @@ mod tests {
     }
 
     #[test]
-    fn wrap_log_text_breaks_on_space() {
-        let wrapped = PlayerState::wrap_log_text("hello world", 10);
-        assert_eq!(wrapped, "hello\nworld");
-    }
-
-    #[test]
-    fn wrap_log_text_hard_cuts_long_words() {
-        let wrapped = PlayerState::wrap_log_text("abcdefghijk", 6);
-        assert_eq!(wrapped, "abcde\nfghij\nk");
-    }
-
-    #[test]
     fn log_color_from_font_matches_expected_mapping() {
         use crate::types::log_message::LogMessageColor;
         assert!(matches!(
@@ -1098,11 +1030,27 @@ mod tests {
     }
 
     #[test]
-    fn tlog_adds_message_lines() {
+    fn tlog_stores_one_unwrapped_message() {
         let mut ps = PlayerState::default();
-        ps.tlog(0, "hello world");
+        let text = "a message long enough that visual wrapping belongs to the chat widget";
+        ps.tlog(0, text);
         let msg = ps.log_message(0).expect("expected first log message");
-        assert_eq!(msg.message, "hello world");
+        assert_eq!(msg.message, text);
+        assert_eq!(ps.log_len(), 1);
+    }
+
+    #[test]
+    fn tlog_preserves_embedded_newlines_and_color() {
+        let mut ps = PlayerState::default();
+        ps.tlog(2, "first\nsecond");
+
+        let msg = ps.log_message(0).expect("expected log message");
+        assert_eq!(msg.message, "first\nsecond");
+        assert!(matches!(
+            msg.color,
+            crate::types::log_message::LogMessageColor::Green
+        ));
+        assert_eq!(ps.log_len(), 1);
     }
 
     #[test]

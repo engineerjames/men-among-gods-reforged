@@ -13,6 +13,19 @@ use crate::ui::widget::KeyBindings;
 /// Number of skill-bar binding slots.
 pub const NUMBER_OF_KEYBINDS: usize = 10;
 
+/// Persisted position and size of a movable UI window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WindowLayout {
+    /// Left edge in logical viewport pixels.
+    pub x: i32,
+    /// Top edge in logical viewport pixels.
+    pub y: i32,
+    /// Width in logical viewport pixels.
+    pub width: u32,
+    /// Height in logical viewport pixels.
+    pub height: u32,
+}
+
 // ---------------------------------------------------------------------------
 // Per-character settings
 // ---------------------------------------------------------------------------
@@ -41,6 +54,12 @@ pub struct CharacterSettings {
     /// Saved position of the settings panel, or `None` for default.
     #[serde(default)]
     pub settings_panel_pos: Option<(i32, i32)>,
+    /// Saved position and size of the chat window, or `None` for default.
+    #[serde(default)]
+    pub chat_window: Option<WindowLayout>,
+    /// Saved position of the expanded minimap window, or `None` for default.
+    #[serde(default)]
+    pub minimap_window_pos: Option<(i32, i32)>,
     /// Keyboard bindings mapping game actions to key combinations.
     #[serde(default)]
     pub key_bindings: KeyBindings,
@@ -70,6 +89,8 @@ impl Default for CharacterSettings {
             inventory_panel_pos: None,
             skills_panel_pos: None,
             settings_panel_pos: None,
+            chat_window: None,
+            minimap_window_pos: None,
             key_bindings: KeyBindings::default(),
             controller_bindings: ControllerBindings::default(),
             mouse_modifier_bindings: MouseModifierBindings::default(),
@@ -704,11 +725,41 @@ mod tests {
     }
 
     #[test]
+    fn character_window_layouts_serde_roundtrip_and_default() {
+        let legacy: CharacterSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(legacy.chat_window, None);
+        assert_eq!(legacy.minimap_window_pos, None);
+
+        let settings = CharacterSettings {
+            chat_window: Some(WindowLayout {
+                x: 11,
+                y: 22,
+                width: 333,
+                height: 144,
+            }),
+            minimap_window_pos: Some((55, 66)),
+            ..CharacterSettings::default()
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let decoded: CharacterSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded.chat_window, settings.chat_window);
+        assert_eq!(decoded.minimap_window_pos, settings.minimap_window_pos);
+    }
+
+    #[test]
     fn global_settings_only_clears_character_scoped_fields() {
         let mut settings = Settings::default();
         settings.character.skill_keybinds[0] = Some(42);
         settings.character.inventory_panel_pos = Some((99, 88));
         settings.character.settings_panel_pos = Some((77, 66));
+        settings.character.chat_window = Some(WindowLayout {
+            x: 1,
+            y: 2,
+            width: 300,
+            height: 200,
+        });
+        settings.character.minimap_window_pos = Some((33, 44));
 
         let global = global_settings_only(&settings);
 
@@ -723,5 +774,7 @@ mod tests {
         );
         assert_eq!(global.character.inventory_panel_pos, None);
         assert_eq!(global.character.settings_panel_pos, None);
+        assert_eq!(global.character.chat_window, None);
+        assert_eq!(global.character.minimap_window_pos, None);
     }
 }
