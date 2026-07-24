@@ -893,8 +893,8 @@ mod tests {
 
             let loss = gs.apply_player_death_money_loss(cn);
 
-            assert_eq!(loss, 100);
-            assert_eq!(gs.characters[cn].gold, 801);
+            assert_eq!(loss, 250);
+            assert_eq!(gs.characters[cn].gold, 651);
             assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | 99);
         });
     }
@@ -908,9 +908,9 @@ mod tests {
 
             let loss = gs.apply_player_death_money_loss(cn);
 
-            assert_eq!(loss, 100);
+            assert_eq!(loss, 250);
             assert_eq!(gs.characters[cn].gold, 0);
-            assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | 900);
+            assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | 750);
         });
     }
 
@@ -923,8 +923,8 @@ mod tests {
 
             let loss = gs.apply_player_death_money_loss(cn);
 
-            assert_eq!(loss, 0);
-            assert_eq!(gs.characters[cn].gold, 9);
+            assert_eq!(loss, 2);
+            assert_eq!(gs.characters[cn].gold, 7);
             assert_eq!(gs.characters[cn].citem, 42);
         });
     }
@@ -938,8 +938,8 @@ mod tests {
 
             let loss = gs.apply_player_death_money_loss(cn);
 
-            assert_eq!(loss, 429_496_729);
-            assert_eq!(gs.characters[cn].gold, 1_717_986_918);
+            assert_eq!(loss, 1_073_741_823);
+            assert_eq!(gs.characters[cn].gold, 1_073_741_824);
             assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | i32::MAX as u32);
         });
     }
@@ -958,7 +958,7 @@ mod tests {
 
             gs.handle_player_death(cn, 0, false);
 
-            assert_eq!(gs.characters[cn].gold, 890);
+            assert_eq!(gs.characters[cn].gold, 725);
             assert_eq!(gs.characters[cn].citem, CURSOR_MONEY_FLAG | 100);
             assert_eq!(gs.characters[cn].data[13], 7_777);
             assert_eq!(gs.characters[cn].item[0], 41);
@@ -1015,7 +1015,7 @@ mod tests {
 
             gs.handle_player_death(cn, 0, false);
 
-            assert_eq!(gs.characters[cn].gold, 900);
+            assert_eq!(gs.characters[cn].gold, 750);
             assert_eq!(gs.characters[cn].item[0], 41);
             assert_eq!(gs.characters[cn].a_hp, 10_000);
         });
