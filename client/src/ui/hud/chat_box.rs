@@ -685,6 +685,18 @@ impl Widget for ChatBox {
             }
         }
 
+        if self.alpha == 0
+            && matches!(
+                event,
+                UiEvent::MouseMove { .. }
+                    | UiEvent::MouseDown { .. }
+                    | UiEvent::MouseClick { .. }
+                    | UiEvent::MouseWheel { .. }
+            )
+        {
+            return EventResponse::Ignored;
+        }
+
         let (title_response, drag_position) = self.title_bar.handle_event(event);
         if let Some((x, y)) = drag_position {
             self.set_position(x, y);
@@ -1715,5 +1727,20 @@ mod tests {
         });
         cb.update(Duration::ZERO);
         assert_eq!(cb.alpha, 0);
+    }
+
+    #[test]
+    fn fully_faded_chat_allows_clicks_to_pass_through() {
+        let mut cb = test_chat_box();
+        cb.alpha = 0;
+
+        let response = cb.handle_event(&UiEvent::MouseClick {
+            x: cb.bounds.x + 10,
+            y: cb.bounds.y + 10,
+            button: crate::ui::widget::MouseButton::Left,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+
+        assert_eq!(response, EventResponse::Ignored);
     }
 }

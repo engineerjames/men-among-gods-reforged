@@ -48,6 +48,9 @@ const ZOOM_BUTTON_GAP: i32 = 4;
 /// Vertical gap between the zoom buttons and the minimap panel.
 const ZOOM_BUTTON_PANEL_GAP: i32 = 4;
 
+/// Vertical inset that centers the zoom controls between the title bar and map.
+const ZOOM_BUTTON_OFFSET_Y: i32 = ZOOM_BUTTON_PANEL_GAP / 2;
+
 /// Height reserved for the zoom-control row above the map panel.
 const ZOOM_ROW_H: i32 = ZOOM_BUTTON_H as i32 + ZOOM_BUTTON_PANEL_GAP;
 
@@ -112,7 +115,7 @@ pub struct MinimapWidget {
     window_x: i32,
     /// Stable top-left Y of the expanded minimap window.
     window_y: i32,
-    /// Bounds enclosing button + panel when expanded (for hit-testing).
+    /// Bounds enclosing the expanded window (for hit-testing).
     bounds_expanded: Bounds,
     /// Bounds enclosing only the button when collapsed.
     bounds_collapsed: Bounds,
@@ -293,12 +296,13 @@ impl MinimapWidget {
             .with_label_offset(ZOOM_LABEL_OFFSET_X, ZOOM_LABEL_OFFSET_Y)
         }
     }
-    /// Recomputes the minimap panel, zoom-button, and aggregate hit-test bounds.
+
+    /// Recomputes the minimap panel, zoom-button, and window hit-test bounds.
     fn recompute_layout(&mut self) {
         let button_bounds = *self.button.bounds();
         self.title_bar
             .set_bar_bounds(self.window_x, self.window_y, self.panel_w);
-        let zoom_y = self.window_y + TITLE_BAR_H;
+        let zoom_y = self.window_y + TITLE_BAR_H + ZOOM_BUTTON_OFFSET_Y;
         let zoom_in_x = self.window_x;
         let zoom_out_x = zoom_in_x + ZOOM_BUTTON_W as i32 + ZOOM_BUTTON_GAP;
 
@@ -309,29 +313,12 @@ impl MinimapWidget {
         self.panel_y = self.window_y + TITLE_BAR_H + ZOOM_ROW_H;
         self.bounds_collapsed = button_bounds;
 
-        let zoom_in_bounds = *self.zoom_in_button.bounds();
-        let zoom_out_bounds = *self.zoom_out_button.bounds();
-        let min_x = button_bounds
-            .x
-            .min(self.window_x)
-            .min(zoom_in_bounds.x)
-            .min(zoom_out_bounds.x);
-        let min_y = button_bounds
-            .y
-            .min(self.window_y)
-            .min(zoom_in_bounds.y)
-            .min(zoom_out_bounds.y);
-        let max_x = (button_bounds.x + button_bounds.width as i32)
-            .max(self.panel_x + self.panel_w as i32)
-            .max(zoom_in_bounds.x + zoom_in_bounds.width as i32)
-            .max(zoom_out_bounds.x + zoom_out_bounds.width as i32);
-        let max_y = (button_bounds.y + button_bounds.height as i32)
-            .max(self.panel_y + self.panel_h as i32)
-            .max(zoom_in_bounds.y + zoom_in_bounds.height as i32)
-            .max(zoom_out_bounds.y + zoom_out_bounds.height as i32);
-
-        self.bounds_expanded =
-            Bounds::new(min_x, min_y, (max_x - min_x) as u32, (max_y - min_y) as u32);
+        self.bounds_expanded = Bounds::new(
+            self.window_x,
+            self.window_y,
+            self.panel_w,
+            self.expanded_window_height(),
+        );
     }
 
     /// Advances to the next zoomed-in sampling window, clamped at the closest level.
@@ -697,6 +684,20 @@ mod tests {
         assert!(expanded.contains_point(
             zoom_out.x + zoom_out.width as i32 / 2,
             zoom_out.y + zoom_out.height as i32 / 2,
+        ));
+    }
+
+    #[test]
+    fn expanded_bounds_exclude_distant_toggle_button() {
+        let mut w = MinimapWidget::new(930, 266, 14);
+        w.set_expanded_position(0, 0);
+        w.toggle();
+
+        let button = *w.button.bounds();
+        let expanded = *w.bounds();
+        assert!(!expanded.contains_point(
+            button.x + button.width as i32 / 2,
+            button.y + button.height as i32 / 2,
         ));
     }
 
