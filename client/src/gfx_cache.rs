@@ -144,8 +144,14 @@ impl<'tc> GraphicsCache<'tc> {
     ///
     /// The factor must match the active internal render scale so that upscaled
     /// sprites still blit 1:1 into the frame buffer. Changing either value
-    /// invalidates every cached GPU texture, but the decoded RGBA pixels and
-    /// average colours are retained so nothing has to be re-read from the ZIP.
+    /// invalidates every cached archive texture, but the decoded RGBA pixels
+    /// and average colours are retained so nothing has to be re-read from the
+    /// ZIP.
+    ///
+    /// Textures loaded from the filesystem (IDs at or above
+    /// [`CUSTOM_ID_BASE`]) are **never** flushed: they are not upscaled, and
+    /// the cache keeps no path for them, so dropping one would permanently
+    /// replace it with the error sprite.
     ///
     /// # Arguments
     ///
@@ -166,8 +172,10 @@ impl<'tc> GraphicsCache<'tc> {
         log::info!("Sprite scaling changed to {scale}x using {upscaler}; flushing texture cache");
         self.sprite_scale = scale;
         self.upscaler = upscaler;
-        self.sprite_cache.clear();
-        self.last_used.clear();
+        self.sprite_cache.retain(|id, _| *id >= CUSTOM_ID_BASE);
+        self.last_used.retain(|id, _| *id >= CUSTOM_ID_BASE);
+        // Only archive sprites are accounted for in `cached_bytes`, and every
+        // one of them was just dropped.
         self.cached_bytes = 0;
     }
 

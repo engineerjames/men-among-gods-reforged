@@ -124,6 +124,74 @@ fn exact(a: Rgba, b: Rgba) -> bool {
     a == b
 }
 
+/// Returns whether two pixels sit on the same side of the alpha silhouette.
+///
+/// Every filter here may substitute or blend a neighbour into a sub-pixel of
+/// the centre pixel's block. Doing that across the sprite's silhouette changes
+/// its coverage: an opaque edge pixel loses part of its area to a transparent
+/// neighbour (erosion), or the transparent surround gains a semi-opaque fringe
+/// (dilation).
+///
+/// That is very visible on this game's isometric floor tiles. They are 32x32
+/// images containing a 32x16 diamond, and adjacent diamonds interlock exactly.
+/// Eroding each staircase step by a quarter-pixel opens a gap along every
+/// shared edge, which reads in-game as a dark outline around every tile.
+///
+/// Requiring equal alpha before substituting keeps the silhouette bit-exact
+/// while still letting the filters smooth colour steps inside the sprite and
+/// inside the transparent surround.
+///
+/// # Arguments
+///
+/// * `a` - First pixel.
+/// * `b` - Second pixel.
+///
+/// # Returns
+///
+/// * `true` when the two pixels have identical alpha.
+fn same_coverage(a: Rgba, b: Rgba) -> bool {
+    a[3] == b[3]
+}
+
+/// Fetches the eight neighbours of `(x, y)`, clamped to the alpha silhouette.
+///
+/// Any neighbour whose alpha differs from the centre's is replaced by the
+/// centre pixel itself. The HQx filters blend the values they are given, so
+/// this is what keeps them from softening a sprite's outline into a
+/// semi-transparent fringe — see [`same_coverage`] for why that matters here.
+///
+/// # Arguments
+///
+/// * `src` - Tightly packed RGBA8 source buffer.
+/// * `w` - Source width in pixels.
+/// * `h` - Source height in pixels.
+/// * `x` - Centre X coordinate.
+/// * `y` - Centre Y coordinate.
+/// * `e` - The centre pixel.
+///
+/// # Returns
+///
+/// * The neighbours in reading order, skipping the centre:
+///   `[a, b, c, d, f, g, h, i]`.
+fn neighbourhood(src: &[u8], w: usize, h: usize, x: isize, y: isize, e: Rgba) -> [Rgba; 8] {
+    let mut out = [
+        px(src, w, h, x - 1, y - 1),
+        px(src, w, h, x, y - 1),
+        px(src, w, h, x + 1, y - 1),
+        px(src, w, h, x - 1, y),
+        px(src, w, h, x + 1, y),
+        px(src, w, h, x - 1, y + 1),
+        px(src, w, h, x, y + 1),
+        px(src, w, h, x + 1, y + 1),
+    ];
+    for n in &mut out {
+        if !same_coverage(e, *n) {
+            *n = e;
+        }
+    }
+    out
+}
+
 /// Blends pixels in premultiplied alpha using integer weights.
 ///
 /// Straight-alpha averaging would pull the RGB of transparent neighbours into
@@ -223,16 +291,16 @@ pub fn scale2x(src: &[u8], w: usize, h: usize) -> Vec<u8> {
 
             let (mut e0, mut e1, mut e2, mut e3) = (e, e, e, e);
             if !exact(b, hh) && !exact(d, f) {
-                if exact(d, b) {
+                if exact(d, b) && same_coverage(e, d) {
                     e0 = d;
                 }
-                if exact(b, f) {
+                if exact(b, f) && same_coverage(e, f) {
                     e1 = f;
                 }
-                if exact(d, hh) {
+                if exact(d, hh) && same_coverage(e, d) {
                     e2 = d;
                 }
-                if exact(hh, f) {
+                if exact(hh, f) && same_coverage(e, f) {
                     e3 = f;
                 }
             }
@@ -278,28 +346,36 @@ pub fn scale3x(src: &[u8], w: usize, h: usize) -> Vec<u8> {
 
             let mut out = [e; 9];
             if !exact(b, hh) && !exact(d, f) {
-                if exact(d, b) {
+                if exact(d, b) && same_coverage(e, d) {
                     out[0] = d;
                 }
-                if (exact(d, b) && !exact(e, c)) || (exact(b, f) && !exact(e, a)) {
+                if ((exact(d, b) && !exact(e, c)) || (exact(b, f) && !exact(e, a)))
+                    && same_coverage(e, b)
+                {
                     out[1] = b;
                 }
-                if exact(b, f) {
+                if exact(b, f) && same_coverage(e, f) {
                     out[2] = f;
                 }
-                if (exact(d, b) && !exact(e, g)) || (exact(d, hh) && !exact(e, a)) {
+                if ((exact(d, b) && !exact(e, g)) || (exact(d, hh) && !exact(e, a)))
+                    && same_coverage(e, d)
+                {
                     out[3] = d;
                 }
-                if (exact(b, f) && !exact(e, i)) || (exact(hh, f) && !exact(e, c)) {
+                if ((exact(b, f) && !exact(e, i)) || (exact(hh, f) && !exact(e, c)))
+                    && same_coverage(e, f)
+                {
                     out[5] = f;
                 }
-                if exact(d, hh) {
+                if exact(d, hh) && same_coverage(e, d) {
                     out[6] = d;
                 }
-                if (exact(d, hh) && !exact(e, i)) || (exact(hh, f) && !exact(e, g)) {
+                if ((exact(d, hh) && !exact(e, i)) || (exact(hh, f) && !exact(e, g)))
+                    && same_coverage(e, hh)
+                {
                     out[7] = hh;
                 }
-                if exact(hh, f) {
+                if exact(hh, f) && same_coverage(e, f) {
                     out[8] = f;
                 }
             }
@@ -336,14 +412,8 @@ pub fn hq2x(src: &[u8], w: usize, h: usize) -> Vec<u8> {
     for y in 0..h as isize {
         for x in 0..w as isize {
             let e = px(src, w, h, x, y);
-            let a = px(src, w, h, x - 1, y - 1);
-            let b = px(src, w, h, x, y - 1);
-            let c = px(src, w, h, x + 1, y - 1);
-            let d = px(src, w, h, x - 1, y);
-            let f = px(src, w, h, x + 1, y);
-            let g = px(src, w, h, x - 1, y + 1);
-            let hh = px(src, w, h, x, y + 1);
-            let i = px(src, w, h, x + 1, y + 1);
+            let n = neighbourhood(src, w, h, x, y, e);
+            let [a, b, c, d, f, g, hh, i] = n;
 
             let (dx, dy) = (x as usize * 2, y as usize * 2);
             put(&mut dst, dw, dx, dy, hqx_corner(e, d, b, a));
@@ -376,14 +446,8 @@ pub fn hq3x(src: &[u8], w: usize, h: usize) -> Vec<u8> {
     for y in 0..h as isize {
         for x in 0..w as isize {
             let e = px(src, w, h, x, y);
-            let a = px(src, w, h, x - 1, y - 1);
-            let b = px(src, w, h, x, y - 1);
-            let c = px(src, w, h, x + 1, y - 1);
-            let d = px(src, w, h, x - 1, y);
-            let f = px(src, w, h, x + 1, y);
-            let g = px(src, w, h, x - 1, y + 1);
-            let hh = px(src, w, h, x, y + 1);
-            let i = px(src, w, h, x + 1, y + 1);
+            let n = neighbourhood(src, w, h, x, y, e);
+            let [a, b, c, d, f, g, hh, i] = n;
 
             let out = [
                 hqx_corner(e, d, b, a),

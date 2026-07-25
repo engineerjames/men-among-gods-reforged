@@ -75,7 +75,12 @@ const DS_DROPDOWN_PITCH: i32 = 20;
 const DS_Y_RENDER_SCALE: i32 = DS_Y_WEATHER + DS_ROW_H + 6;
 const DS_Y_OUTPUT_FILTER: i32 = DS_Y_RENDER_SCALE + DS_DROPDOWN_PITCH;
 const DS_Y_SPRITE_UPSCALER: i32 = DS_Y_OUTPUT_FILTER + DS_DROPDOWN_PITCH;
-const DS_PANEL_H: u32 = (DS_Y_SPRITE_UPSCALER + DS_DROPDOWN_PITCH + 10 + BTN_H as i32 + 8) as u32;
+/// Extra bottom room so the last dropdown's expanded option list stays inside
+/// the panel frame instead of spilling past the bottom edge.
+const DS_DROPDOWN_LIST_ROOM: i32 = 8;
+const DS_PANEL_H: u32 =
+    (DS_Y_SPRITE_UPSCALER + DS_DROPDOWN_PITCH + 10 + BTN_H as i32 + 8 + DS_DROPDOWN_LIST_ROOM)
+        as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Diagnostics sub-panel
@@ -665,13 +670,10 @@ impl DisplaySettingsSubPanel {
             _ => {}
         }
 
-        if self.btn_close.handle_event(event) == EventResponse::Consumed {
-            self.visible = false;
-            return EventResponse::Consumed;
-        }
-
         // Expanded dropdowns get priority so their option list is clickable
-        // even where it overlaps the widgets underneath.
+        // even where it overlaps the widgets underneath. This MUST run before
+        // `btn_close`: the last dropdown's option list is drawn on top of the
+        // close button, so otherwise picking an option closes the panel.
         for index in 0..4 {
             let expanded = match index {
                 0 => self.drp_display_mode.is_expanded(),
@@ -692,6 +694,11 @@ impl DisplaySettingsSubPanel {
             if resp == EventResponse::Consumed {
                 return EventResponse::Consumed;
             }
+        }
+
+        if self.btn_close.handle_event(event) == EventResponse::Consumed {
+            self.visible = false;
+            return EventResponse::Consumed;
         }
 
         let children_responses = [
@@ -762,11 +769,31 @@ impl DisplaySettingsSubPanel {
         self.chk_vsync.render(ctx)?;
         self.chk_weather.render(ctx)?;
         self.btn_close.render(ctx)?;
-        // Dropdowns last so an expanded list overlays everything else.
-        self.drp_display_mode.render(ctx)?;
-        self.drp_render_scale.render(ctx)?;
-        self.drp_output_filter.render(ctx)?;
-        self.drp_sprite_upscaler.render(ctx)?;
+
+        // Dropdowns last so an expanded list overlays everything else. Within
+        // the group, collapsed headers are drawn first and the expanded one
+        // last, otherwise an option list would be covered by the header of a
+        // dropdown that sits further down the panel.
+        let expanded = [
+            self.drp_display_mode.is_expanded(),
+            self.drp_render_scale.is_expanded(),
+            self.drp_output_filter.is_expanded(),
+            self.drp_sprite_upscaler.is_expanded(),
+        ];
+        for want_expanded in [false, true] {
+            if expanded[0] == want_expanded {
+                self.drp_display_mode.render(ctx)?;
+            }
+            if expanded[1] == want_expanded {
+                self.drp_render_scale.render(ctx)?;
+            }
+            if expanded[2] == want_expanded {
+                self.drp_output_filter.render(ctx)?;
+            }
+            if expanded[3] == want_expanded {
+                self.drp_sprite_upscaler.render(ctx)?;
+            }
+        }
 
         Ok(())
     }
@@ -3259,6 +3286,45 @@ mod tests {
                 .iter()
                 .any(|a| matches!(a, WidgetAction::SetShadows(true))),
             "Expected SetShadows action, got {:?}",
+            actions
+        );
+    }
+
+    #[test]
+    fn expanded_dropdown_option_click_beats_the_close_button() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.handle_event(&left_click(15, Y_DISPLAY_BTN + 5));
+        assert!(panel.sub_display.visible);
+        let _ = panel.take_actions();
+
+        // Open the last dropdown; its option list is drawn over the close button.
+        let drp_b = *panel.sub_display.drp_sprite_upscaler.bounds();
+        panel.handle_event(&left_click(drp_b.x + 5, drp_b.y + 5));
+        assert!(panel.sub_display.drp_sprite_upscaler.is_expanded());
+
+        // Pick the last option, which overlaps the close button's row.
+        let last = SpriteUpscaler::ALL.len() - 1;
+        let option_y = drp_b.y + drp_b.height as i32 + (last as i32 * 14) + 5;
+        let close_b = *panel.sub_display.btn_close.bounds();
+        assert!(
+            option_y >= close_b.y && option_y < close_b.y + close_b.height as i32,
+            "test is only meaningful while the option row overlaps the close button"
+        );
+
+        let resp = panel.handle_event(&left_click(drp_b.x + 5, option_y));
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(
+            panel.sub_display.visible,
+            "picking a dropdown option must not close the sub-panel"
+        );
+        let actions = panel.take_actions();
+        assert!(
+            actions.iter().any(|a| matches!(
+                a,
+                WidgetAction::SetSpriteUpscaler(u) if *u == SpriteUpscaler::ALL[last]
+            )),
+            "Expected SetSpriteUpscaler action, got {:?}",
             actions
         );
     }
