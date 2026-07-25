@@ -1195,67 +1195,6 @@ impl GameState {
         true
     }
 
-    /// Port of `do_lower_hp(cn)` from `svr_do.cpp`.
-    ///
-    /// Permanently reduces base HP for the character and adjusts point
-    /// distributions accordingly. Used when applying death penalties.
-    ///
-    /// # Arguments
-    /// * `cn` - Character id
-    ///
-    /// # Returns
-    /// * `true` when the operation succeeded
-    pub(crate) fn do_lower_hp(&mut self, cn: usize) -> bool {
-        let current_val = self.characters[cn].hp[0];
-
-        if current_val < 11 {
-            return false;
-        }
-
-        self.characters[cn].hp[0] -= 1;
-
-        let new_val = self.characters[cn].hp[0];
-        let diff = self.characters[cn].hp[3];
-
-        let points_lost = points::hp_needed(i32::from(new_val), i32::from(diff));
-
-        self.characters[cn].points_tot -= points_lost;
-
-        self.do_update_char(cn);
-
-        true
-    }
-
-    /// Port of `do_lower_mana(cn)` from `svr_do.cpp`.
-    ///
-    /// Permanently reduces base mana for the character and adjusts point
-    /// totals accordingly. Used when applying death penalties.
-    ///
-    /// # Arguments
-    /// * `cn` - Character id
-    ///
-    /// # Returns
-    /// * `true` when the operation succeeded
-    pub(crate) fn do_lower_mana(&mut self, cn: usize) -> bool {
-        let current_val = self.characters[cn].mana[0];
-
-        if current_val < 11 {
-            return false;
-        }
-
-        self.characters[cn].mana[0] -= 1;
-
-        let new_val = self.characters[cn].mana[0];
-        let diff = self.characters[cn].mana[3];
-
-        let points_lost = points::mana_needed(i32::from(new_val), i32::from(diff));
-
-        self.characters[cn].points_tot -= points_lost;
-        self.do_update_char(cn);
-
-        true
-    }
-
     /// Port of `do_check_new_level(cn)` from `svr_do.cpp`.
     ///
     /// Evaluates whether the character has reached the next rank threshold

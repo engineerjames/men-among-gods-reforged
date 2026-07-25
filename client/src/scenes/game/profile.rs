@@ -1,5 +1,5 @@
 use crate::{
-    preferences::{self, CharacterIdentity, CharacterSettings, Settings},
+    preferences::{self, CharacterIdentity, CharacterSettings, Settings, WindowLayout},
     state::AppState,
     ui::widget::Widget,
     ui::widgets::title_bar::clamp_to_viewport,
@@ -41,6 +41,26 @@ impl GameScene {
         (x, y)
     }
 
+    /// Returns the default complete chat-window bounds.
+    fn default_chat_window_layout() -> WindowLayout {
+        WindowLayout {
+            x: super::CHATBOX_X,
+            y: super::CHATBOX_Y,
+            width: super::CHATBOX_W,
+            height: super::CHATBOX_H,
+        }
+    }
+
+    /// Returns the default expanded minimap-window position.
+    fn default_minimap_window_position() -> (i32, i32) {
+        let widget = crate::ui::hud::minimap_widget::MinimapWidget::new(
+            super::MINIMAP_BTN_CX,
+            super::MINIMAP_BTN_CY,
+            super::MINIMAP_BTN_RADIUS,
+        );
+        widget.expanded_position()
+    }
+
     /// Restores all profile-scoped HUD panels to their default positions.
     fn reset_character_panel_positions(&mut self) {
         let (skills_x, skills_y) = Self::default_hud_panel_position();
@@ -50,6 +70,18 @@ impl GameScene {
 
         let (inventory_x, inventory_y) = Self::default_inventory_panel_position();
         self.inventory_panel.set_position(inventory_x, inventory_y);
+
+        let chat = Self::default_chat_window_layout();
+        self.chat_box
+            .set_window_bounds(crate::ui::widget::Bounds::new(
+                chat.x,
+                chat.y,
+                chat.width,
+                chat.height,
+            ));
+        let (minimap_x, minimap_y) = Self::default_minimap_window_position();
+        self.minimap_widget
+            .set_expanded_position(minimap_x, minimap_y);
     }
 
     /// Applies any saved per-character panel positions on top of the defaults.
@@ -74,6 +106,18 @@ impl GameScene {
             let b = self.settings_panel.bounds();
             let (cx, cy) = clamp_to_viewport(x, y, b.width, b.height);
             self.settings_panel.set_position(cx, cy);
+        }
+        if let Some(layout) = settings.chat_window {
+            self.chat_box
+                .set_window_bounds(crate::ui::widget::Bounds::new(
+                    layout.x,
+                    layout.y,
+                    layout.width,
+                    layout.height,
+                ));
+        }
+        if let Some((x, y)) = settings.minimap_window_pos {
+            self.minimap_widget.set_expanded_position(x, y);
         }
     }
 
@@ -122,6 +166,14 @@ impl GameScene {
             self.settings_panel.bounds().x,
             self.settings_panel.bounds().y,
         ));
+        let chat = self.chat_box.bounds();
+        snapshot.character.chat_window = Some(WindowLayout {
+            x: chat.x,
+            y: chat.y,
+            width: chat.width,
+            height: chat.height,
+        });
+        snapshot.character.minimap_window_pos = Some(self.minimap_widget.expanded_position());
 
         Some(snapshot)
     }
@@ -156,6 +208,10 @@ mod tests {
         scene.inventory_panel.set_position(900, 800);
         scene.skills_panel.set_position(700, 600);
         scene.settings_panel.set_position(500, 400);
+        scene
+            .chat_box
+            .set_window_bounds(crate::ui::widget::Bounds::new(40, 50, 500, 240));
+        scene.minimap_widget.set_expanded_position(20, 30);
 
         let settings = CharacterSettings {
             inventory_panel_pos: Some((12, 34)),
@@ -181,6 +237,15 @@ mod tests {
                 scene.settings_panel.bounds().y
             ),
             GameScene::default_settings_panel_position()
+        );
+        let chat = GameScene::default_chat_window_layout();
+        assert_eq!(
+            *scene.chat_box.bounds(),
+            crate::ui::widget::Bounds::new(chat.x, chat.y, chat.width, chat.height)
+        );
+        assert_eq!(
+            scene.minimap_widget.expanded_position(),
+            GameScene::default_minimap_window_position()
         );
     }
 
@@ -217,6 +282,40 @@ mod tests {
                 .skill_keybinds
                 .iter()
                 .all(|slot| slot.is_none())
+        );
+    }
+
+    #[test]
+    fn apply_character_panel_positions_clamps_saved_window_geometry() {
+        let mut scene = GameScene::new();
+        let settings = CharacterSettings {
+            chat_window: Some(WindowLayout {
+                x: i32::MAX,
+                y: i32::MAX,
+                width: 1,
+                height: 1,
+            }),
+            minimap_window_pos: Some((i32::MAX, i32::MAX)),
+            ..CharacterSettings::default()
+        };
+
+        scene.apply_character_panel_positions(&settings);
+
+        assert_eq!(
+            (
+                scene.chat_box.bounds().width,
+                scene.chat_box.bounds().height
+            ),
+            (
+                crate::ui::hud::chat_box::CHAT_MIN_W,
+                crate::ui::hud::chat_box::CHAT_MIN_H,
+            )
+        );
+        assert!(scene.chat_box.bounds().x >= 0);
+        assert!(scene.chat_box.bounds().y >= 0);
+        assert_ne!(
+            scene.minimap_widget.expanded_position(),
+            (i32::MAX, i32::MAX)
         );
     }
 }

@@ -58,6 +58,12 @@ pub struct ServerPlayer {
     pub vy: i32,
     pub visi: [i8; core::constants::VISI_BUFFER_LEN],
 
+    /// Global daylight value used for the most recent visible-map build.
+    ///
+    /// A value of `-1` forces the first map build for a session to evaluate
+    /// every visible tile.
+    pub last_dlight: i32,
+
     pub input: [u8; 128],
 
     // for compression - we'll use flate2 crate
@@ -132,6 +138,7 @@ impl ServerPlayer {
             vx: 0,
             vy: 0,
             visi: [0; core::constants::VISI_BUFFER_LEN],
+            last_dlight: -1,
             input: [0; 128],
             zs: None,
             ticker_started: 0,

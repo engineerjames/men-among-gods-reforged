@@ -16,7 +16,8 @@ use crate::types::log_message::{LogMessage, LogMessageColor};
 
 use crate::ui::RenderContext;
 use crate::ui::style::Padding;
-use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget, WidgetAction};
+use crate::ui::widget::{Bounds, EventResponse, MouseButton, UiEvent, Widget, WidgetAction};
+use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
 /// Maximum characters allowed in the chat input buffer.
 const MAX_INPUT_LEN: usize = 120;
@@ -45,6 +46,21 @@ const IDLE_FADE_DURATION_SECS: f32 = 1.0;
 /// Duration in seconds for one complete caret blink cycle.
 const CARET_BLINK_PERIOD_SECS: f32 = 1.0;
 
+/// Minimum chat-window width in logical pixels.
+pub const CHAT_MIN_W: u32 = 180;
+
+/// Minimum chat-window height in logical pixels.
+pub const CHAT_MIN_H: u32 = 80;
+
+/// Width and height of the bottom-right resize grip.
+const RESIZE_GRIP_SIZE: u32 = 10;
+
+#[derive(Clone, Debug)]
+struct WrappedLogRow {
+    text: String,
+    color: LogMessageColor,
+}
+
 /// A self-contained scrollable chat log with an input line.
 ///
 /// Draws a semi-transparent background, then the most recent messages
@@ -52,8 +68,10 @@ const CARET_BLINK_PERIOD_SECS: f32 = 1.0;
 /// thin separator.
 pub struct ChatBox {
     bounds: Bounds,
+    title_bar: TitleBar,
     bg_color: Color,
     padding: Padding,
+    resizing: bool,
 
     // -- Scroll state --
     scroll_offset: usize,
@@ -65,6 +83,8 @@ pub struct ChatBox {
 
     // -- Data owned by the widget --
     messages: Vec<LogMessage>,
+    wrapped_rows: Vec<WrappedLogRow>,
+    reflow_dirty: bool,
     input_buf: String,
     input_cursor: usize,
     sent_chat_history: Vec<String>,
@@ -104,13 +124,17 @@ impl ChatBox {
         let visible_lines = Self::compute_visible_lines(&bounds, &padding, line_height);
         Self {
             bounds,
+            title_bar: TitleBar::new_drag_only("Chat", bounds.x, bounds.y, bounds.width),
             bg_color,
             padding,
+            resizing: false,
             scroll_offset: 0,
             last_message_count: 0,
             visible_lines,
             line_height,
             messages: Vec::new(),
+            wrapped_rows: Vec::new(),
+            reflow_dirty: true,
             input_buf: String::new(),
             input_cursor: 0,
             sent_chat_history: Vec::new(),
@@ -133,6 +157,7 @@ impl ChatBox {
     pub fn push_message(&mut self, message: LogMessage) {
         self.idle_elapsed = 0.0;
         self.messages.push(message);
+        self.reflow_dirty = true;
     }
 
     /// Appends multiple messages to the log.
@@ -143,6 +168,18 @@ impl ChatBox {
     pub fn push_messages(&mut self, messages: impl Iterator<Item = LogMessage>) {
         self.idle_elapsed = 0.0;
         self.messages.extend(messages);
+        self.reflow_dirty = true;
+    }
+
+    /// Replaces the canonical message history with a bounded snapshot.
+    ///
+    /// # Arguments
+    ///
+    /// * `messages` - Messages in chronological order, oldest first.
+    pub fn replace_messages(&mut self, messages: Vec<LogMessage>) {
+        self.idle_elapsed = 0.0;
+        self.messages = messages;
+        self.reflow_dirty = true;
     }
 
     /// Returns the total number of stored messages.
@@ -231,7 +268,8 @@ impl ChatBox {
     /// Call this once per frame before rendering so that new messages push the
     /// viewport correctly.
     fn sync_scroll(&mut self) {
-        let total = self.messages.len();
+        self.ensure_reflow();
+        let total = self.wrapped_rows.len();
 
         // Follow-tail: if new messages arrived while manually scrolled up,
         // shift the offset so the viewport stays on the same messages.
@@ -258,9 +296,119 @@ impl ChatBox {
     ///
     /// Number of visible lines.
     fn compute_visible_lines(bounds: &Bounds, padding: &Padding, line_height: u32) -> usize {
-        let inner = bounds.inner(padding);
+        let body = Bounds::new(
+            bounds.x,
+            bounds.y + TITLE_BAR_H,
+            bounds.width,
+            bounds.height.saturating_sub(TITLE_BAR_H as u32),
+        );
+        let inner = body.inner(padding);
         let log_area_h = inner.height.saturating_sub(INPUT_AREA_H);
         (log_area_h / line_height) as usize
+    }
+
+    /// Returns the body bounds below the title bar.
+    fn body_bounds(&self) -> Bounds {
+        Bounds::new(
+            self.bounds.x,
+            self.bounds.y + TITLE_BAR_H,
+            self.bounds.width,
+            self.bounds.height.saturating_sub(TITLE_BAR_H as u32),
+        )
+    }
+
+    /// Returns the bottom-right resize-grip bounds.
+    fn resize_grip_bounds(&self) -> Bounds {
+        Bounds::new(
+            self.bounds.x + self.bounds.width as i32 - RESIZE_GRIP_SIZE as i32,
+            self.bounds.y + self.bounds.height as i32 - RESIZE_GRIP_SIZE as i32,
+            RESIZE_GRIP_SIZE,
+            RESIZE_GRIP_SIZE,
+        )
+    }
+
+    /// Updates all geometry derived from the complete window bounds.
+    fn recompute_layout(&mut self) {
+        self.title_bar
+            .set_bar_bounds(self.bounds.x, self.bounds.y, self.bounds.width);
+        self.visible_lines =
+            Self::compute_visible_lines(&self.bounds, &self.padding, self.line_height);
+        self.reflow_dirty = true;
+    }
+
+    /// Sets and validates the complete chat-window bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `bounds` - Requested complete window bounds.
+    pub fn set_window_bounds(&mut self, bounds: Bounds) {
+        let viewport_w = crate::constants::TARGET_WIDTH_INT;
+        let viewport_h = crate::constants::TARGET_HEIGHT_INT;
+        let width = bounds.width.clamp(CHAT_MIN_W, viewport_w);
+        let height = bounds.height.clamp(CHAT_MIN_H, viewport_h);
+        let (x, y) = clamp_to_viewport(bounds.x, bounds.y, width, height);
+        self.bounds = Bounds::new(x, y, width, height);
+        self.recompute_layout();
+    }
+
+    /// Rebuilds display rows for the current text width when necessary.
+    fn ensure_reflow(&mut self) {
+        if !self.reflow_dirty {
+            return;
+        }
+
+        let old_count = self.wrapped_rows.len();
+        let was_scrolled = self.scroll_offset > 0;
+        let inner_width = self.body_bounds().inner(&self.padding).width;
+        let max_chars = (inner_width / font_cache::BITMAP_GLYPH_ADVANCE).max(1) as usize;
+        let mut rows = Vec::new();
+        for message in &self.messages {
+            for text in Self::wrap_text(&message.message, max_chars) {
+                rows.push(WrappedLogRow {
+                    text,
+                    color: message.color,
+                });
+            }
+        }
+        self.wrapped_rows = rows;
+        if was_scrolled {
+            self.scroll_offset = self
+                .scroll_offset
+                .saturating_add(self.wrapped_rows.len().saturating_sub(old_count));
+        }
+        self.last_message_count = self.wrapped_rows.len();
+        self.reflow_dirty = false;
+    }
+
+    /// Wraps text into complete bitmap-font rows.
+    fn wrap_text(text: &str, max_chars: usize) -> Vec<String> {
+        let max_chars = max_chars.max(1);
+        let mut rows = Vec::new();
+        for paragraph in text.split('\n') {
+            if paragraph.is_empty() {
+                rows.push(String::new());
+                continue;
+            }
+
+            let mut remaining = paragraph.trim_end_matches('\r').trim_start();
+            while remaining.chars().count() > max_chars {
+                let char_end = remaining
+                    .char_indices()
+                    .nth(max_chars)
+                    .map_or(remaining.len(), |(index, _)| index);
+                let candidate = &remaining[..char_end];
+                let cut = candidate
+                    .char_indices()
+                    .rev()
+                    .find_map(|(index, ch)| ch.is_whitespace().then_some(index))
+                    .filter(|index| *index > 0)
+                    .unwrap_or(char_end);
+                rows.push(remaining[..cut].trim_end().to_owned());
+                remaining = remaining[cut..].trim_start();
+            }
+            rows.push(remaining.to_owned());
+        }
+        rows
     }
 
     /// Maps a [`LogMessageColor`] to a bitmap font index.
@@ -274,9 +422,9 @@ impl ChatBox {
     }
 
     /// Returns a message by index-from-most-recent (0 = newest).
-    fn message_from_end(&self, index: usize) -> Option<&LogMessage> {
-        if index < self.messages.len() {
-            Some(&self.messages[self.messages.len() - 1 - index])
+    fn row_from_end(&self, index: usize) -> Option<&WrappedLogRow> {
+        if index < self.wrapped_rows.len() {
+            Some(&self.wrapped_rows[self.wrapped_rows.len() - 1 - index])
         } else {
             None
         }
@@ -504,12 +652,73 @@ impl Widget for ChatBox {
     }
 
     fn set_position(&mut self, x: i32, y: i32) {
+        let (x, y) = clamp_to_viewport(x, y, self.bounds.width, self.bounds.height);
         self.bounds.x = x;
         self.bounds.y = y;
+        self.title_bar.set_bar_position(x, y);
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if self.resizing {
+            match event {
+                UiEvent::MouseMove { x, y } => {
+                    let viewport_w = crate::constants::TARGET_WIDTH_INT as i32;
+                    let viewport_h = crate::constants::TARGET_HEIGHT_INT as i32;
+                    self.bounds.width = (*x - self.bounds.x)
+                        .clamp(CHAT_MIN_W as i32, viewport_w - self.bounds.x)
+                        as u32;
+                    self.bounds.height = (*y - self.bounds.y)
+                        .clamp(CHAT_MIN_H as i32, viewport_h - self.bounds.y)
+                        as u32;
+                    self.recompute_layout();
+                    self.idle_elapsed = 0.0;
+                    return EventResponse::Consumed;
+                }
+                UiEvent::MouseClick {
+                    button: MouseButton::Left,
+                    ..
+                } => {
+                    self.resizing = false;
+                    return EventResponse::Consumed;
+                }
+                _ => return EventResponse::Consumed,
+            }
+        }
+
+        if self.alpha == 0
+            && matches!(
+                event,
+                UiEvent::MouseMove { .. }
+                    | UiEvent::MouseDown { .. }
+                    | UiEvent::MouseClick { .. }
+                    | UiEvent::MouseWheel { .. }
+            )
+        {
+            return EventResponse::Ignored;
+        }
+
+        let (title_response, drag_position) = self.title_bar.handle_event(event);
+        if let Some((x, y)) = drag_position {
+            self.set_position(x, y);
+            self.idle_elapsed = 0.0;
+            return EventResponse::Consumed;
+        }
+        if title_response == EventResponse::Consumed {
+            self.idle_elapsed = 0.0;
+            return EventResponse::Consumed;
+        }
+
         match event {
+            UiEvent::MouseDown {
+                x,
+                y,
+                button: MouseButton::Left,
+                ..
+            } if self.resize_grip_bounds().contains_point(*x, *y) => {
+                self.resizing = true;
+                self.idle_elapsed = 0.0;
+                EventResponse::Consumed
+            }
             UiEvent::MouseWheel { x, y, delta } => {
                 if !self.bounds.contains_point(*x, *y) {
                     return EventResponse::Ignored;
@@ -523,9 +732,12 @@ impl Widget for ChatBox {
                 EventResponse::Consumed
             }
 
-            UiEvent::MouseClick { .. } => {
-                // Do nothing intentionally
-                EventResponse::Ignored
+            UiEvent::MouseClick { x, y, .. } | UiEvent::MouseDown { x, y, .. } => {
+                if self.bounds.contains_point(*x, *y) {
+                    EventResponse::Consumed
+                } else {
+                    EventResponse::Ignored
+                }
             }
 
             UiEvent::TextInput { text } => {
@@ -623,7 +835,6 @@ impl Widget for ChatBox {
             }
 
             UiEvent::MouseMove { .. }
-            | UiEvent::MouseDown { .. }
             | UiEvent::NavNext
             | UiEvent::NavPrev
             | UiEvent::NavConfirm
@@ -678,7 +889,17 @@ impl Widget for ChatBox {
         ctx.canvas.set_draw_color(bg_color);
         ctx.canvas.fill_rect(bg_rect)?;
 
-        let inner = self.bounds.inner(&self.padding);
+        self.title_bar.render(ctx)?;
+
+        let inner = self.body_bounds().inner(&self.padding);
+        let previous_clip = ctx.canvas.clip_rect();
+        let log_clip = sdl2::rect::Rect::new(
+            inner.x,
+            inner.y,
+            inner.width,
+            (self.visible_lines as u32).saturating_mul(self.line_height),
+        );
+        ctx.canvas.set_clip_rect(log_clip);
 
         // 2. Render log lines (top-->bottom, newest at bottom)
         for line in 0..self.visible_lines {
@@ -686,20 +907,21 @@ impl Widget for ChatBox {
                 .scroll_offset
                 .saturating_add(self.visible_lines.saturating_sub(1).saturating_sub(line));
 
-            if let Some(msg) = self.message_from_end(idx_from_most_recent) {
-                let font = Self::font_for_color(msg.color);
+            if let Some(row) = self.row_from_end(idx_from_most_recent) {
+                let font = Self::font_for_color(row.color);
                 let y = inner.y + (line as i32) * self.line_height as i32;
                 font_cache::draw_text(
                     ctx.canvas,
                     ctx.gfx,
                     font,
-                    &msg.message,
+                    &row.text,
                     inner.x,
                     y,
                     font_cache::TextStyle::faded(self.alpha),
                 )?;
             }
         }
+        ctx.canvas.set_clip_rect(previous_clip);
 
         // 3. Separator line between log and input (alpha-scaled)
         let sep_a = (f32::from(SEPARATOR_COLOR.a) * (f32::from(self.alpha) / 255.0)) as u8;
@@ -719,10 +941,17 @@ impl Widget for ChatBox {
         // 4. Input line below separator
         // TODO: This is really inefficient to do this every frame;
         // just cache a "visible input substring" that gets updated on input events.
-        const MAX_INPUT_TO_SHOW: usize = 43;
         let input_y = sep_y + 3; // 3px below separator
+        let max_input_chars = (inner.width / font_cache::BITMAP_GLYPH_ADVANCE).max(1) as usize;
         let (input_text_to_render, visible_cursor_chars) =
-            self.visible_input_window(MAX_INPUT_TO_SHOW);
+            self.visible_input_window(max_input_chars);
+
+        ctx.canvas.set_clip_rect(sdl2::rect::Rect::new(
+            inner.x,
+            input_y,
+            inner.width,
+            font_cache::BITMAP_GLYPH_H,
+        ));
 
         font_cache::draw_text(
             ctx.canvas,
@@ -745,6 +974,24 @@ impl Widget for ChatBox {
                 caret_x,
                 input_y,
                 font_cache::TextStyle::faded(self.alpha),
+            )?;
+        }
+
+        ctx.canvas.set_clip_rect(previous_clip);
+
+        let grip = self.resize_grip_bounds();
+        ctx.canvas
+            .set_draw_color(Color::RGBA(160, 160, 180, self.alpha));
+        for offset in [2_i32, 5, 8] {
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(
+                    grip.x + grip.width as i32 - offset,
+                    grip.y + grip.height as i32 - 1,
+                ),
+                sdl2::rect::Point::new(
+                    grip.x + grip.width as i32 - 1,
+                    grip.y + grip.height as i32 - offset,
+                ),
             )?;
         }
 
@@ -785,10 +1032,10 @@ mod tests {
     #[test]
     fn visible_lines_computed_correctly() {
         let cb = test_chat_box();
-        // Inner height = 180 - 4 - 4 = 172
-        // Log area = 172 - INPUT_AREA_H(14) = 158
-        // Lines = 158 / 10 = 15
-        assert_eq!(cb.visible_lines, 15);
+        // Body height = 180 - title bar(18) = 162
+        // Inner height = 162 - 4 - 4 = 154
+        // Log area = 154 - INPUT_AREA_H(14) = 140
+        assert_eq!(cb.visible_lines, 14);
     }
 
     // -- sync_scroll --
@@ -866,7 +1113,7 @@ mod tests {
         for i in 0..30 {
             cb.push_message(make_msg(&format!("msg {}", i), LogMessageColor::Yellow));
         }
-        cb.last_message_count = 30;
+        cb.ensure_reflow();
         cb.scroll_offset = 5;
 
         // Two new messages arrive
@@ -891,18 +1138,20 @@ mod tests {
     // -- message_from_end --
 
     #[test]
-    fn message_from_end_zero_is_newest() {
+    fn row_from_end_zero_is_newest() {
         let mut cb = test_chat_box();
         cb.push_message(make_msg("first", LogMessageColor::Yellow));
         cb.push_message(make_msg("second", LogMessageColor::Green));
-        let msg = cb.message_from_end(0).unwrap();
-        assert_eq!(msg.message, "second");
+        cb.ensure_reflow();
+        let row = cb.row_from_end(0).unwrap();
+        assert_eq!(row.text, "second");
     }
 
     #[test]
-    fn message_from_end_out_of_range() {
-        let cb = test_chat_box();
-        assert!(cb.message_from_end(0).is_none());
+    fn row_from_end_out_of_range() {
+        let mut cb = test_chat_box();
+        cb.ensure_reflow();
+        assert!(cb.row_from_end(0).is_none());
     }
 
     // -- scroll_via_event --
@@ -941,7 +1190,7 @@ mod tests {
     // -- focus --
 
     #[test]
-    fn click_inside_is_ignored() {
+    fn click_inside_is_consumed_to_prevent_world_click_through() {
         let mut cb = test_chat_box();
         cb.focused = false;
         let event = UiEvent::MouseClick {
@@ -951,8 +1200,68 @@ mod tests {
             modifiers: crate::ui::widget::KeyModifiers::default(),
         };
         let resp = cb.handle_event(&event);
-        assert_eq!(resp, EventResponse::Ignored);
+        assert_eq!(resp, EventResponse::Consumed);
         assert!(!cb.focused);
+    }
+
+    #[test]
+    fn wrapping_reflows_when_width_changes() {
+        let mut cb = ChatBox::new(
+            Bounds::new(0, 0, 180, 120),
+            Color::RGBA(10, 10, 30, 180),
+            Padding::uniform(4),
+        );
+        cb.push_message(make_msg(
+            "one two three four five six seven eight nine ten",
+            LogMessageColor::Yellow,
+        ));
+        cb.ensure_reflow();
+        let narrow_rows = cb.wrapped_rows.len();
+
+        cb.set_window_bounds(Bounds::new(0, 0, 360, 120));
+        cb.ensure_reflow();
+
+        assert!(cb.wrapped_rows.len() < narrow_rows);
+        assert_eq!(
+            cb.wrapped_rows
+                .iter()
+                .map(|row| row.text.as_str())
+                .collect::<Vec<_>>(),
+            vec!["one two three four five six seven eight nine ten"]
+        );
+    }
+
+    #[test]
+    fn resize_drag_clamps_to_minimum_size() {
+        let mut cb = test_chat_box();
+        let grip = cb.resize_grip_bounds();
+        assert_eq!(
+            cb.handle_event(&UiEvent::MouseDown {
+                x: grip.x + 1,
+                y: grip.y + 1,
+                button: MouseButton::Left,
+                modifiers: crate::ui::widget::KeyModifiers::default(),
+            }),
+            EventResponse::Consumed
+        );
+        assert_eq!(
+            cb.handle_event(&UiEvent::MouseMove { x: 0, y: 0 }),
+            EventResponse::Consumed
+        );
+        assert_eq!(
+            (cb.bounds.width, cb.bounds.height),
+            (CHAT_MIN_W, CHAT_MIN_H)
+        );
+        assert_eq!(
+            cb.handle_event(&UiEvent::MouseClick {
+                x: 0,
+                y: 0,
+                button: MouseButton::Left,
+                modifiers: crate::ui::widget::KeyModifiers::default(),
+            }),
+            EventResponse::Consumed
+        );
+        assert!(!cb.resizing);
     }
 
     #[test]
@@ -1418,5 +1727,20 @@ mod tests {
         });
         cb.update(Duration::ZERO);
         assert_eq!(cb.alpha, 0);
+    }
+
+    #[test]
+    fn fully_faded_chat_allows_clicks_to_pass_through() {
+        let mut cb = test_chat_box();
+        cb.alpha = 0;
+
+        let response = cb.handle_event(&UiEvent::MouseClick {
+            x: cb.bounds.x + 10,
+            y: cb.bounds.y + 10,
+            button: crate::ui::widget::MouseButton::Left,
+            modifiers: crate::ui::widget::KeyModifiers::default(),
+        });
+
+        assert_eq!(response, EventResponse::Ignored);
     }
 }

@@ -716,6 +716,12 @@ impl GameScene {
         self.vitality_bars.handle_event(ui_event);
         self.spell_effect_icons.handle_event(ui_event);
 
+        // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
+        if self.shop_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_shop_panel_actions(app_state);
+            return UiHandleResult::Consumed;
+        }
+
         // --- StatusPanel (WV/AV display, right of skill bar) ---
         if self.weapon_armor_panel.handle_event(ui_event)
             == crate::ui::widget::EventResponse::Consumed
@@ -752,12 +758,6 @@ impl GameScene {
         if self.quest_log_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
         {
             self.process_quest_log_panel_actions(app_state);
-            return UiHandleResult::Consumed;
-        }
-
-        // --- Dispatch to shop/depot/grave overlay (modal — eats outside clicks) ---
-        if self.shop_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
-            self.process_shop_panel_actions(app_state);
             return UiHandleResult::Consumed;
         }
 

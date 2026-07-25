@@ -86,6 +86,10 @@ pub struct TitleBar {
     title: String,
     /// Whether drag and pin functionality is enabled.
     movable: bool,
+    /// Whether the pin control is shown and interactive.
+    show_pin: bool,
+    /// Whether the close control is shown and interactive.
+    show_close: bool,
     /// Whether the panel is pinned (drag-locked).
     pinned: bool,
     /// Whether a drag operation is in progress.
@@ -118,6 +122,8 @@ impl TitleBar {
             bounds: Bounds::new(x, y, bar_width, TITLE_BAR_H as u32),
             title: title.to_owned(),
             movable: true,
+            show_pin: true,
+            show_close: true,
             pinned: false,
             dragging: false,
             drag_offset: (0, 0),
@@ -144,7 +150,37 @@ impl TitleBar {
             bounds: Bounds::new(x, y, bar_width, TITLE_BAR_H as u32),
             title: title.to_owned(),
             movable: false,
+            show_pin: false,
+            show_close: true,
             pinned: true, // effectively locked in place
+            dragging: false,
+            drag_offset: (0, 0),
+            close_requested: false,
+            hovered_pin: false,
+            hovered_close: false,
+        }
+    }
+
+    /// Creates a movable title bar with no pin or close controls.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - Label text displayed in the bar.
+    /// * `x` - Left edge of the parent window.
+    /// * `y` - Top edge of the parent window.
+    /// * `bar_width` - Width of the bar.
+    ///
+    /// # Returns
+    ///
+    /// A drag-only title bar.
+    pub fn new_drag_only(title: &str, x: i32, y: i32, bar_width: u32) -> Self {
+        Self {
+            bounds: Bounds::new(x, y, bar_width, TITLE_BAR_H as u32),
+            title: title.to_owned(),
+            movable: true,
+            show_pin: false,
+            show_close: false,
+            pinned: false,
             dragging: false,
             drag_offset: (0, 0),
             close_requested: false,
@@ -162,6 +198,17 @@ impl TitleBar {
     pub fn set_bar_position(&mut self, x: i32, y: i32) {
         self.bounds.x = x;
         self.bounds.y = y;
+    }
+
+    /// Resizes and repositions the title bar to match its parent window.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - New left edge.
+    /// * `y` - New top edge.
+    /// * `width` - New bar width.
+    pub fn set_bar_bounds(&mut self, x: i32, y: i32, width: u32) {
+        self.bounds = Bounds::new(x, y, width, TITLE_BAR_H as u32);
     }
 
     /// Returns whether the panel is pinned (drag-locked).
@@ -239,8 +286,8 @@ impl TitleBar {
         match event {
             // -- Hover tracking for pin / close icons ----------------------
             UiEvent::MouseMove { x, y } => {
-                self.hovered_pin = self.pin_rect().contains_point(*x, *y);
-                self.hovered_close = self.close_rect().contains_point(*x, *y);
+                self.hovered_pin = self.show_pin && self.pin_rect().contains_point(*x, *y);
+                self.hovered_close = self.show_close && self.close_rect().contains_point(*x, *y);
 
                 if self.dragging {
                     let new_x = *x - self.drag_offset.0;
@@ -262,8 +309,8 @@ impl TitleBar {
                     return (EventResponse::Ignored, None);
                 }
                 // Don't start drag when clicking on pin or close icons.
-                if (self.movable && self.pin_rect().contains_point(*x, *y))
-                    || self.close_rect().contains_point(*x, *y)
+                if (self.show_pin && self.pin_rect().contains_point(*x, *y))
+                    || (self.show_close && self.close_rect().contains_point(*x, *y))
                 {
                     return (EventResponse::Consumed, None);
                 }
@@ -285,11 +332,11 @@ impl TitleBar {
                     self.dragging = false;
                     return (EventResponse::Consumed, None);
                 }
-                if self.movable && self.pin_rect().contains_point(*x, *y) {
+                if self.show_pin && self.pin_rect().contains_point(*x, *y) {
                     self.pinned = !self.pinned;
                     return (EventResponse::Consumed, None);
                 }
-                if self.close_rect().contains_point(*x, *y) {
+                if self.show_close && self.close_rect().contains_point(*x, *y) {
                     self.close_requested = true;
                     return (EventResponse::Consumed, None);
                 }
@@ -341,7 +388,7 @@ impl TitleBar {
         )?;
 
         // --- Pin icon (left) — only for movable title bars ---
-        if self.movable {
+        if self.show_pin {
             let pr = self.pin_rect();
             let pin_sdl = sdl2::rect::Rect::new(pr.x, pr.y, pr.width, pr.height);
             ctx.canvas.set_draw_color(ICON_OUTLINE);
@@ -379,44 +426,50 @@ impl TitleBar {
         }
 
         // --- Close icon (right) ---
-        let cr = self.close_rect();
-        let close_sdl = sdl2::rect::Rect::new(cr.x, cr.y, cr.width, cr.height);
-        ctx.canvas.set_draw_color(ICON_OUTLINE);
-        ctx.canvas.draw_rect(close_sdl)?;
+        if self.show_close {
+            let cr = self.close_rect();
+            let close_sdl = sdl2::rect::Rect::new(cr.x, cr.y, cr.width, cr.height);
+            ctx.canvas.set_draw_color(ICON_OUTLINE);
+            ctx.canvas.draw_rect(close_sdl)?;
 
-        // X diagonal lines inside the close box.
-        let inset = 3_i32;
-        let x0 = cr.x + inset;
-        let y0 = cr.y + inset;
-        let x1 = cr.x + ICON_SIZE - inset - 1;
-        let y1 = cr.y + ICON_SIZE - inset - 1;
-        ctx.canvas.set_draw_color(CLOSE_X_COLOR);
-        ctx.canvas.draw_line(
-            sdl2::rect::Point::new(x0, y0),
-            sdl2::rect::Point::new(x1, y1),
-        )?;
-        ctx.canvas.draw_line(
-            sdl2::rect::Point::new(x1, y0),
-            sdl2::rect::Point::new(x0, y1),
-        )?;
+            // X diagonal lines inside the close box.
+            let inset = 3_i32;
+            let x0 = cr.x + inset;
+            let y0 = cr.y + inset;
+            let x1 = cr.x + ICON_SIZE - inset - 1;
+            let y1 = cr.y + ICON_SIZE - inset - 1;
+            ctx.canvas.set_draw_color(CLOSE_X_COLOR);
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(x0, y0),
+                sdl2::rect::Point::new(x1, y1),
+            )?;
+            ctx.canvas.draw_line(
+                sdl2::rect::Point::new(x1, y0),
+                sdl2::rect::Point::new(x0, y1),
+            )?;
 
-        // Close hover highlight.
-        if self.hovered_close {
-            ctx.canvas.set_blend_mode(BlendMode::Add);
-            ctx.canvas
-                .set_draw_color(Color::RGBA(255, 255, 255, HOVER_ALPHA));
-            ctx.canvas.fill_rect(close_sdl)?;
-            ctx.canvas.set_blend_mode(BlendMode::Blend);
+            // Close hover highlight.
+            if self.hovered_close {
+                ctx.canvas.set_blend_mode(BlendMode::Add);
+                ctx.canvas
+                    .set_draw_color(Color::RGBA(255, 255, 255, HOVER_ALPHA));
+                ctx.canvas.fill_rect(close_sdl)?;
+                ctx.canvas.set_blend_mode(BlendMode::Blend);
+            }
         }
 
         // --- Title text (centered in the area between pin and close) ---
-        let text_area_left = if self.movable {
+        let text_area_left = if self.show_pin {
             let pr = self.pin_rect();
             pr.x + ICON_SIZE + 4
         } else {
             self.bounds.x + ICON_PAD_X
         };
-        let text_area_right = cr.x - 4;
+        let text_area_right = if self.show_close {
+            self.close_rect().x - 4
+        } else {
+            self.bounds.x + self.bounds.width as i32 - ICON_PAD_X
+        };
         let text_cx = (text_area_left + text_area_right) / 2;
         let text_cy = self.bounds.y + (TITLE_BAR_H - font_cache::BITMAP_GLYPH_H as i32) / 2;
         font_cache::draw_text(
@@ -460,6 +513,52 @@ mod tests {
         tb.set_bar_position(50, 60);
         assert_eq!(tb.bounds.x, 50);
         assert_eq!(tb.bounds.y, 60);
+    }
+
+    #[test]
+    fn drag_only_bar_moves_without_control_actions() {
+        let mut tb = TitleBar::new_drag_only("Chat", 10, 20, 200);
+
+        let (response, position) = tb.handle_event(&UiEvent::MouseDown {
+            x: 40,
+            y: 25,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(response, EventResponse::Consumed);
+        assert!(position.is_none());
+        assert!(tb.is_dragging());
+
+        let (response, position) = tb.handle_event(&UiEvent::MouseMove { x: 500, y: 400 });
+        assert_eq!(response, EventResponse::Consumed);
+        assert_eq!(position, Some((470, 395)));
+
+        let (response, position) = tb.handle_event(&UiEvent::MouseClick {
+            x: 500,
+            y: 400,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(response, EventResponse::Consumed);
+        assert!(position.is_none());
+        assert!(!tb.is_dragging());
+        assert!(!tb.is_pinned());
+        assert!(!tb.was_close_requested());
+    }
+
+    #[test]
+    fn set_bar_bounds_updates_drag_only_hit_area() {
+        let mut tb = TitleBar::new_drag_only("Chat", 0, 0, 100);
+        tb.set_bar_bounds(50, 60, 180);
+
+        let (response, _) = tb.handle_event(&UiEvent::MouseDown {
+            x: 220,
+            y: 65,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(response, EventResponse::Consumed);
+        assert!(tb.is_dragging());
     }
 
     #[test]

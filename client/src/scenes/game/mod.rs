@@ -349,7 +349,7 @@ pub(super) const MAP_ORIGIN_Y: i32 = (crate::constants::TARGET_HEIGHT_INT as i32
 const CHATBOX_X: i32 = crate::constants::TARGET_WIDTH_INT as i32 - CHATBOX_W as i32 - 4;
 const CHATBOX_Y: i32 = 4;
 const CHATBOX_W: u32 = 300;
-const CHATBOX_H: u32 = 192;
+const CHATBOX_H: u32 = 192 + crate::ui::widgets::title_bar::TITLE_BAR_H as u32;
 
 // ---- HUD button bar layout ---- //
 
@@ -1518,10 +1518,7 @@ impl GameScene {
         }
     }
 
-    /// Forward any new log messages from `PlayerState` into the `ChatBox`.
-    ///
-    /// Messages are fetched in insertion order (oldest-first) starting from
-    /// `last_synced_log_len` so the ChatBox receives them chronologically.
+    /// Synchronizes the bounded `PlayerState` log snapshot into the `ChatBox`.
     ///
     /// # Arguments
     ///
@@ -1531,14 +1528,11 @@ impl GameScene {
         if total_pushed <= self.last_synced_log_len {
             return;
         }
-        let new_count = total_pushed - self.last_synced_log_len;
         let available = ps.log_len();
-        // If more messages arrived than the buffer can hold, we can only
-        // retrieve what's still in the buffer.
-        let fetchable = new_count.min(available);
-        let start = available - fetchable;
-        let new_messages = (start..available).filter_map(|i| ps.log_message(i).cloned());
-        self.chat_box.push_messages(new_messages);
+        let messages = (0..available)
+            .filter_map(|index| ps.log_message(index).cloned())
+            .collect();
+        self.chat_box.replace_messages(messages);
         self.last_synced_log_len = total_pushed;
     }
 

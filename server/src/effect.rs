@@ -121,10 +121,10 @@ impl EffectManager {
     }
 
     /// Type 3: Death mist
-    /// Handle effect type 3: death mist (grave placement)
+    /// Handle effect type 3: death mist with optional grave placement.
     ///
-    /// Drives the death-mist animation and, at the appropriate tick, will
-    /// either create a grave/tomb or destroy items when space is unavailable.
+    /// A zero character id is visual-only for player deaths. A nonzero id
+    /// follows the corpse grave and NPC respawn flow at the midpoint.
     fn handle_effect_type_3(gs: &mut GameState, n: usize) {
         gs.effects[n].duration += 1;
         let duration = gs.effects[n].duration;
@@ -140,7 +140,7 @@ impl EffectManager {
             gs.map[map_index].flags &= !MF_GFX_DEATH;
             gs.map[map_index].flags |= u64::from(duration / 2) << 40;
 
-            if duration == Self::EFFECT_DEATH_MIST_MIDPOINT {
+            if duration == Self::EFFECT_DEATH_MIST_MIDPOINT && co != 0 {
                 player::map::plr_map_remove(gs, co);
 
                 let m = Self::find_drop_position(gs, map_index);
@@ -688,5 +688,68 @@ impl EffectManager {
             }
         }
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::with_test_gs;
+
+    #[test]
+    fn visual_only_death_mist_skips_grave_creation_and_clears_at_expiry() {
+        with_test_gs(|gs| {
+            let x = 10;
+            let y = 10;
+            let map_index = x + y * SERVER_MAPX as usize;
+            let effect_id = EffectManager::fx_add_effect(gs, 3, 0, x as i32, y as i32, 0)
+                .expect("death mist effect slot");
+
+            gs.effects[effect_id].duration = EffectManager::EFFECT_DEATH_MIST_MIDPOINT - 1;
+            EffectManager::handle_effect_type_3(gs, effect_id);
+
+            assert_eq!(gs.effects[effect_id].effect_type, 3);
+            assert_eq!(gs.effects[effect_id].used, USE_ACTIVE);
+            assert_eq!(gs.map[map_index].flags & u64::from(MF_MOVEBLOCK), 0);
+            assert!(
+                gs.effects
+                    .iter()
+                    .all(|effect| effect.used == USE_EMPTY || effect.effect_type != 4)
+            );
+
+            gs.effects[effect_id].duration = EffectManager::EFFECT_DEATH_MIST_DURATION - 1;
+            EffectManager::handle_effect_type_3(gs, effect_id);
+
+            assert_eq!(gs.effects[effect_id].used, USE_EMPTY);
+            assert_eq!(gs.map[map_index].flags & MF_GFX_DEATH, 0);
+        });
+    }
+
+    #[test]
+    fn corpse_death_mist_still_starts_tombstone_creation() {
+        with_test_gs(|gs| {
+            let co = 2;
+            let x = 10;
+            let y = 10;
+            let map_index = x + y * SERVER_MAPX as usize;
+            gs.characters[co].used = USE_ACTIVE;
+            gs.characters[co].flags = CharacterFlags::Body.bits();
+            gs.characters[co].x = x as i16;
+            gs.characters[co].y = y as i16;
+            gs.characters[co].gold = 100;
+            gs.map[map_index].ch = co as u32;
+
+            let effect_id = EffectManager::fx_add_effect(gs, 3, 0, x as i32, y as i32, co as i32)
+                .expect("death mist effect slot");
+            gs.effects[effect_id].duration = EffectManager::EFFECT_DEATH_MIST_MIDPOINT - 1;
+
+            EffectManager::handle_effect_type_3(gs, effect_id);
+
+            assert_eq!(gs.map[map_index].ch, 0);
+            assert_ne!(gs.map[map_index].flags & u64::from(MF_MOVEBLOCK), 0);
+            assert!(gs.effects.iter().any(|effect| {
+                effect.used == USE_ACTIVE && effect.effect_type == 4 && effect.data[2] == co as u32
+            }));
+        });
     }
 }

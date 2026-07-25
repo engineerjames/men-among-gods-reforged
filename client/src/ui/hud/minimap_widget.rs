@@ -11,6 +11,7 @@ use crate::ui::RenderContext;
 use crate::ui::style::{Background, Border};
 use crate::ui::widget::{Bounds, EventResponse, UiEvent, Widget};
 use crate::ui::widgets::button::{CircularImageButton, RectButton};
+use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
 // ---------------------------------------------------------------------------
 // Layout constants
@@ -46,6 +47,12 @@ const ZOOM_BUTTON_GAP: i32 = 4;
 
 /// Vertical gap between the zoom buttons and the minimap panel.
 const ZOOM_BUTTON_PANEL_GAP: i32 = 4;
+
+/// Vertical inset that centers the zoom controls between the title bar and map.
+const ZOOM_BUTTON_OFFSET_Y: i32 = ZOOM_BUTTON_PANEL_GAP / 2;
+
+/// Height reserved for the zoom-control row above the map panel.
+const ZOOM_ROW_H: i32 = ZOOM_BUTTON_H as i32 + ZOOM_BUTTON_PANEL_GAP;
 
 /// Horizontal pixel offset applied to the minimap zoom button labels.
 const ZOOM_LABEL_OFFSET_X: i32 = 1;
@@ -86,6 +93,8 @@ pub struct MinimapWidget {
     zoom_in_button: RectButton,
     /// Button that increases the sampled world area, zooming the minimap out.
     zoom_out_button: RectButton,
+    /// Drag-only title bar for the expanded minimap window.
+    title_bar: TitleBar,
     /// Whether the expanded map panel is currently shown.
     visible: bool,
     /// Index into [`ZOOM_SAMPLE_SIZES`] selecting the current zoom level.
@@ -102,7 +111,11 @@ pub struct MinimapWidget {
     panel_w: u32,
     /// Total panel height including padding + border.
     panel_h: u32,
-    /// Bounds enclosing button + panel when expanded (for hit-testing).
+    /// Stable top-left X of the expanded minimap window.
+    window_x: i32,
+    /// Stable top-left Y of the expanded minimap window.
+    window_y: i32,
+    /// Bounds enclosing the expanded window (for hit-testing).
     bounds_expanded: Bounds,
     /// Bounds enclosing only the button when collapsed.
     bounds_collapsed: Bounds,
@@ -150,11 +163,19 @@ impl MinimapWidget {
             button_radius * 2,
             button_radius * 2,
         );
+        let panel_x = (button_cx - button_radius as i32 - BUTTON_MAP_GAP - panel_w as i32).clamp(
+            0,
+            crate::constants::TARGET_WIDTH_INT as i32 - panel_w as i32,
+        );
+        let panel_y = button_cy - button_radius as i32;
+        let window_x = panel_x;
+        let window_y = panel_y - ZOOM_ROW_H - TITLE_BAR_H;
 
         let mut widget = Self {
             button,
             zoom_in_button: Self::make_zoom_button("+"),
             zoom_out_button: Self::make_zoom_button("-"),
+            title_bar: TitleBar::new_drag_only("Minimap", window_x, window_y, panel_w),
             visible: false,
             zoom_level: DEFAULT_ZOOM_LEVEL,
             viewport_pixels: vec![0u8; (view as usize) * (view as usize) * 4],
@@ -163,6 +184,8 @@ impl MinimapWidget {
             panel_y: 0,
             panel_w,
             panel_h,
+            window_x,
+            window_y,
             bounds_expanded: bounds_collapsed,
             bounds_collapsed,
             quest_giver_markers: Vec::new(),
@@ -214,6 +237,33 @@ impl MinimapWidget {
         self.button.set_draw_alpha(alpha);
     }
 
+    /// Returns the stable top-left position of the expanded minimap window.
+    ///
+    /// # Returns
+    ///
+    /// The expanded window position in logical viewport pixels.
+    pub fn expanded_position(&self) -> (i32, i32) {
+        (self.window_x, self.window_y)
+    }
+
+    /// Moves the expanded minimap window and clamps its complete footprint.
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Requested left edge.
+    /// * `y` - Requested top edge.
+    pub fn set_expanded_position(&mut self, x: i32, y: i32) {
+        let (x, y) = clamp_to_viewport(x, y, self.panel_w, self.expanded_window_height());
+        self.window_x = x;
+        self.window_y = y;
+        self.recompute_layout();
+    }
+
+    /// Returns the complete height of the movable expanded window.
+    fn expanded_window_height(&self) -> u32 {
+        TITLE_BAR_H as u32 + ZOOM_ROW_H as u32 + self.panel_h
+    }
+
     /// Returns the world-window size currently sampled into the viewport.
     fn current_sample_size(&self) -> usize {
         ZOOM_SAMPLE_SIZES[self.zoom_level] as usize
@@ -246,55 +296,29 @@ impl MinimapWidget {
             .with_label_offset(ZOOM_LABEL_OFFSET_X, ZOOM_LABEL_OFFSET_Y)
         }
     }
-    /// Recomputes the minimap panel, zoom-button, and aggregate hit-test bounds.
+
+    /// Recomputes the minimap panel, zoom-button, and window hit-test bounds.
     fn recompute_layout(&mut self) {
         let button_bounds = *self.button.bounds();
-        let button_radius = button_bounds.width / 2;
-        let button_cx = button_bounds.x + button_bounds.width as i32 / 2;
-        let button_cy = button_bounds.y + button_bounds.height as i32 / 2;
-
-        let screen_w = crate::constants::TARGET_WIDTH_INT as i32;
-        let max_panel_x = (screen_w - self.panel_w as i32).max(0);
-        // Open to the left: right edge of panel flush with left edge of button,
-        // with a small gap. Top of panel aligned with the button center.
-        let panel_x = (button_cx - button_radius as i32 - BUTTON_MAP_GAP - self.panel_w as i32)
-            .clamp(0, max_panel_x);
-        let panel_y = button_cy - button_radius as i32;
-
-        let zoom_y = panel_y - ZOOM_BUTTON_H as i32 - ZOOM_BUTTON_PANEL_GAP;
-        let zoom_in_x = panel_x;
+        self.title_bar
+            .set_bar_bounds(self.window_x, self.window_y, self.panel_w);
+        let zoom_y = self.window_y + TITLE_BAR_H + ZOOM_BUTTON_OFFSET_Y;
+        let zoom_in_x = self.window_x;
         let zoom_out_x = zoom_in_x + ZOOM_BUTTON_W as i32 + ZOOM_BUTTON_GAP;
 
         self.zoom_in_button.set_position(zoom_in_x, zoom_y);
         self.zoom_out_button.set_position(zoom_out_x, zoom_y);
 
-        self.panel_x = panel_x;
-        self.panel_y = panel_y;
+        self.panel_x = self.window_x;
+        self.panel_y = self.window_y + TITLE_BAR_H + ZOOM_ROW_H;
         self.bounds_collapsed = button_bounds;
 
-        let zoom_in_bounds = *self.zoom_in_button.bounds();
-        let zoom_out_bounds = *self.zoom_out_button.bounds();
-        let min_x = button_bounds
-            .x
-            .min(panel_x)
-            .min(zoom_in_bounds.x)
-            .min(zoom_out_bounds.x);
-        let min_y = button_bounds
-            .y
-            .min(panel_y)
-            .min(zoom_in_bounds.y)
-            .min(zoom_out_bounds.y);
-        let max_x = (button_bounds.x + button_bounds.width as i32)
-            .max(panel_x + self.panel_w as i32)
-            .max(zoom_in_bounds.x + zoom_in_bounds.width as i32)
-            .max(zoom_out_bounds.x + zoom_out_bounds.width as i32);
-        let max_y = (button_bounds.y + button_bounds.height as i32)
-            .max(panel_y + self.panel_h as i32)
-            .max(zoom_in_bounds.y + zoom_in_bounds.height as i32)
-            .max(zoom_out_bounds.y + zoom_out_bounds.height as i32);
-
-        self.bounds_expanded =
-            Bounds::new(min_x, min_y, (max_x - min_x) as u32, (max_y - min_y) as u32);
+        self.bounds_expanded = Bounds::new(
+            self.window_x,
+            self.window_y,
+            self.panel_w,
+            self.expanded_window_height(),
+        );
     }
 
     /// Advances to the next zoomed-in sampling window, clamped at the closest level.
@@ -462,6 +486,16 @@ impl Widget for MinimapWidget {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if self.visible && self.title_bar.is_dragging() {
+            let (response, drag_position) = self.title_bar.handle_event(event);
+            if let Some((x, y)) = drag_position {
+                self.set_expanded_position(x, y);
+            }
+            if response == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+        }
+
         // Always delegate mouse-move to the button for hover tracking.
         if let UiEvent::MouseMove { .. } = event {
             self.button.handle_event(event);
@@ -490,6 +524,30 @@ impl Widget for MinimapWidget {
             }
         }
 
+        if self.visible {
+            let (response, drag_position) = self.title_bar.handle_event(event);
+            if let Some((x, y)) = drag_position {
+                self.set_expanded_position(x, y);
+                return EventResponse::Consumed;
+            }
+            if response == EventResponse::Consumed {
+                return EventResponse::Consumed;
+            }
+
+            if matches!(
+                event,
+                UiEvent::MouseDown { .. } | UiEvent::MouseClick { .. }
+            ) {
+                let (x, y) = match event {
+                    UiEvent::MouseDown { x, y, .. } | UiEvent::MouseClick { x, y, .. } => (*x, *y),
+                    _ => unreachable!(),
+                };
+                if self.bounds_expanded.contains_point(x, y) {
+                    return EventResponse::Consumed;
+                }
+            }
+        }
+
         EventResponse::Ignored
     }
 
@@ -500,6 +558,8 @@ impl Widget for MinimapWidget {
         if !self.visible {
             return Ok(());
         }
+
+        self.title_bar.render(ctx)?;
 
         let view = MINIMAP_WIDGET_VIEW_SIZE;
         let inset = PANEL_PADDING + PANEL_BORDER;
@@ -628,6 +688,20 @@ mod tests {
     }
 
     #[test]
+    fn expanded_bounds_exclude_distant_toggle_button() {
+        let mut w = MinimapWidget::new(930, 266, 14);
+        w.set_expanded_position(0, 0);
+        w.toggle();
+
+        let button = *w.button.bounds();
+        let expanded = *w.bounds();
+        assert!(!expanded.contains_point(
+            button.x + button.width as i32 / 2,
+            button.y + button.height as i32 / 2,
+        ));
+    }
+
+    #[test]
     fn panel_hit_test() {
         let mut w = MinimapWidget::new(200, 30, 14);
         w.toggle();
@@ -744,7 +818,7 @@ mod tests {
     }
 
     #[test]
-    fn click_on_panel_ignored_when_visible() {
+    fn click_on_panel_is_consumed_when_visible() {
         let mut w = MinimapWidget::new(200, 30, 14);
         w.toggle();
         let click = UiEvent::MouseClick {
@@ -753,7 +827,58 @@ mod tests {
             button: MouseButton::Left,
             modifiers: Default::default(),
         };
-        assert_eq!(w.handle_event(&click), EventResponse::Ignored);
+        assert_eq!(w.handle_event(&click), EventResponse::Consumed);
+    }
+
+    #[test]
+    fn dragging_expanded_window_does_not_move_toggle_button() {
+        let mut w = MinimapWidget::new(930, 266, 14);
+        w.toggle();
+        let button_before = *w.button.bounds();
+        let (window_x, window_y) = w.expanded_position();
+
+        assert_eq!(
+            w.handle_event(&UiEvent::MouseDown {
+                x: window_x + 20,
+                y: window_y + 5,
+                button: MouseButton::Left,
+                modifiers: Default::default(),
+            }),
+            EventResponse::Consumed
+        );
+        assert_eq!(
+            w.handle_event(&UiEvent::MouseMove { x: 120, y: 90 }),
+            EventResponse::Consumed
+        );
+        assert_ne!(w.expanded_position(), (window_x, window_y));
+        assert_eq!(*w.button.bounds(), button_before);
+        assert_eq!(w.panel_x, w.window_x);
+        assert_eq!(w.panel_y, w.window_y + TITLE_BAR_H + ZOOM_ROW_H);
+
+        assert_eq!(
+            w.handle_event(&UiEvent::MouseClick {
+                x: 120,
+                y: 90,
+                button: MouseButton::Left,
+                modifiers: Default::default(),
+            }),
+            EventResponse::Consumed
+        );
+        assert!(!w.title_bar.is_dragging());
+    }
+
+    #[test]
+    fn expanded_position_clamps_complete_window_to_viewport() {
+        let mut w = MinimapWidget::new(930, 266, 14);
+        w.set_expanded_position(i32::MAX, i32::MAX);
+
+        assert_eq!(
+            w.expanded_position(),
+            (
+                crate::constants::TARGET_WIDTH_INT as i32 - w.panel_w as i32,
+                crate::constants::TARGET_HEIGHT_INT as i32 - w.expanded_window_height() as i32,
+            )
+        );
     }
 
     #[test]
