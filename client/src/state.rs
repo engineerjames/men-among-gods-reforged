@@ -4,18 +4,22 @@ use crate::{
     network::NetworkRuntime,
     platform::PlatformProfile,
     player_state::PlayerState,
-    preferences::{DisplayMode, Settings},
+    preferences::{DisplayMode, OutputFilter, RenderScale, Settings, SpriteUpscaler},
     sfx_cache::SoundCache,
     ui::visuals::panning_background::PanningBackground,
 };
+use std::collections::VecDeque;
 
 /// A display-related change requested by a scene, to be applied by the main
 /// loop which owns the SDL2 window and renderer.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DisplayCommand {
     SetDisplayMode(DisplayMode),
     SetPixelPerfectScaling(bool),
     SetVSync(bool),
+    SetRenderScale(RenderScale),
+    SetOutputFilter(OutputFilter),
+    SetSpriteUpscaler(SpriteUpscaler),
 }
 
 /// Holds the data needed to connect a character to the game server after
@@ -77,8 +81,12 @@ pub struct AppState<'tc> {
     /// HUD toggles, per-character keybinds, etc.).  Loaded from disk at
     /// startup and updated in-place by scene code; persisted on change.
     pub settings: Settings,
-    /// Pending display change to be applied by the main loop.
-    pub display_command: Option<DisplayCommand>,
+    /// Pending display changes to be applied by the main loop.
+    ///
+    /// This is a queue rather than a single slot because one interaction with
+    /// the settings UI can produce several commands in the same frame, and a
+    /// single slot would silently drop all but the last.
+    pub display_commands: VecDeque<DisplayCommand>,
     /// `true` when the most recent input came from a game controller rather
     /// than keyboard/mouse. Widgets read this flag to adapt their rendering
     /// (e.g. show controller button prompts instead of key hints).
@@ -123,7 +131,7 @@ impl<'tc> AppState<'tc> {
             network: None,
             player_state: None,
             settings: Settings::default(),
-            display_command: None,
+            display_commands: VecDeque::new(),
             controller_active: false,
             panning_background,
             reset_username: None,

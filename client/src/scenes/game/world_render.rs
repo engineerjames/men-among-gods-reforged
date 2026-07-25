@@ -7,7 +7,7 @@ use mag_core::constants::{
     MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
 };
 
-use crate::{font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
+use crate::{constants, font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
 
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
@@ -57,10 +57,12 @@ impl GameScene {
             return Ok(());
         }
 
+        // Destination rects are always in logical pixels; an upscaled texture
+        // is physically larger but must still occupy the same tile footprint.
+        let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let q = texture.query();
-        let xs = q.width as i32 / 32;
-        let ys = q.height as i32 / 32;
+        let xs = lw as i32 / 32;
+        let ys = lh as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
@@ -75,11 +77,7 @@ impl GameScene {
             texture.set_color_mod(factor, factor, factor);
         }
 
-        let result = canvas.copy(
-            texture,
-            None,
-            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
-        );
+        let result = canvas.copy(texture, None, Some(sdl2::rect::Rect::new(rx, ry, lw, lh)));
 
         // Reset color modulation so next draw of this sprite is unaffected.
         if darkness > 0 {
@@ -108,10 +106,10 @@ impl GameScene {
             return Ok(());
         }
 
+        let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let q = texture.query();
-        let xs = q.width as i32 / 32;
-        let ys = q.height as i32 / 32;
+        let xs = lw as i32 / 32;
+        let ys = lh as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
@@ -119,11 +117,7 @@ impl GameScene {
 
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
-        let result = canvas.copy(
-            texture,
-            None,
-            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
-        );
+        let result = canvas.copy(texture, None, Some(sdl2::rect::Rect::new(rx, ry, lw, lh)));
         texture.set_alpha_mod(255);
         texture.set_blend_mode(sdl2::render::BlendMode::Blend);
         result
@@ -148,10 +142,10 @@ impl GameScene {
             return Ok(());
         }
 
+        let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let q = texture.query();
-        let xs = q.width as i32 / 32;
-        let ys = q.height as i32 / 32;
+        let xs = lw as i32 / 32;
+        let ys = lh as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
@@ -160,11 +154,7 @@ impl GameScene {
         texture.set_blend_mode(sdl2::render::BlendMode::Add);
         texture.set_alpha_mod(alpha);
         texture.set_color_mod(tint.r, tint.g, tint.b);
-        let result = canvas.copy(
-            texture,
-            None,
-            Some(sdl2::rect::Rect::new(rx, ry, q.width, q.height)),
-        );
+        let result = canvas.copy(texture, None, Some(sdl2::rect::Rect::new(rx, ry, lw, lh)));
         texture.set_color_mod(255, 255, 255);
         texture.set_alpha_mod(255);
         texture.set_blend_mode(sdl2::render::BlendMode::Blend);
@@ -195,10 +185,10 @@ impl GameScene {
             return Ok(());
         }
 
+        let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let q = texture.query();
-        let xs = q.width as i32 / 32;
-        let ys = q.height as i32 / 32;
+        let xs = lw as i32 / 32;
+        let ys = lh as i32 / 32;
         let (ground_x, ground_y) =
             Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
@@ -207,7 +197,7 @@ impl GameScene {
         // Shadow is placed at character's feet, flattened to 1/4 height.
         // disp=14 matches the original C code.
         let shadow_ry = ry + ys * 32 - 14;
-        let shadow_h = (q.height / 4).max(1);
+        let shadow_h = (lh / 4).max(1);
 
         // Darken: black tint with partial alpha to simulate the v >>= 1 pixel halving.
         texture.set_color_mod(0, 0, 0);
@@ -217,7 +207,7 @@ impl GameScene {
         let result = canvas.copy_ex(
             texture,
             None,
-            Some(sdl2::rect::Rect::new(rx, shadow_ry, q.width, shadow_h)),
+            Some(sdl2::rect::Rect::new(rx, shadow_ry, lw, shadow_h)),
             0.0,
             None,
             false,
@@ -262,15 +252,19 @@ impl GameScene {
         // This avoids needing a streaming texture while closely matching the original effect.
         canvas.set_blend_mode(sdl2::render::BlendMode::Add);
 
+        // Clip against the logical render surface, not the legacy 800x600 screen.
+        let clip_w = constants::TARGET_WIDTH_INT as i32;
+        let clip_h = constants::TARGET_HEIGHT_INT as i32;
+
         for y in 0..64i32 {
             let py = ry + y;
-            if !(0..600).contains(&py) {
+            if !(0..clip_h).contains(&py) {
                 continue;
             }
 
             for x in 0..64i32 {
                 let px = rx + x;
-                if !(0..800).contains(&px) {
+                if !(0..clip_w).contains(&px) {
                     continue;
                 }
 

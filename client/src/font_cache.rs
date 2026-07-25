@@ -276,13 +276,18 @@ fn draw_text_impl(
         }
 
         // Re-fetch each iteration to avoid holding a reference across the `copy` call.
-        let texture = gfx_cache.get_texture(sprite_id);
-        let src = sdl2::rect::Rect::new(
-            glyph * BITMAP_GLYPH_W as i32,
-            BITMAP_GLYPH_Y_OFFSET,
-            BITMAP_GLYPH_W - 1,
-            BITMAP_GLYPH_H,
+        // Source rects address the texture directly, so they follow the sprite's
+        // upscale factor; the destination stays in logical pixels.
+        let src = gfx_cache.scale_src_rect(
+            sprite_id,
+            sdl2::rect::Rect::new(
+                glyph * BITMAP_GLYPH_W as i32,
+                BITMAP_GLYPH_Y_OFFSET,
+                BITMAP_GLYPH_W - 1,
+                BITMAP_GLYPH_H,
+            ),
         );
+        let texture = gfx_cache.get_texture(sprite_id);
         let dst = sdl2::rect::Rect::new(cx, y, BITMAP_GLYPH_W - 1, BITMAP_GLYPH_H);
         if let Err(err) = canvas.copy(texture, Some(src), Some(dst)) {
             first_error = Some(err);

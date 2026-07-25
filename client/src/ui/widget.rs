@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use super::RenderContext;
 use super::style::Padding;
-use crate::preferences::DisplayMode;
+use crate::preferences::{DisplayMode, OutputFilter, RenderScale, SpriteUpscaler};
 use crate::types::controller::ControllerButton;
 use crate::types::mouse::{ExtraMouseButton, MouseModifier};
 
@@ -347,6 +347,12 @@ pub enum WidgetAction {
     SetPixelPerfectScaling(bool),
     /// Toggle vertical sync.
     SetVSync(bool),
+    /// Change the internal (off-screen) render resolution multiplier.
+    SetRenderScale(RenderScale),
+    /// Change the filter used when the composed frame is scaled to the window.
+    SetOutputFilter(OutputFilter),
+    /// Change the pixel-art upscaling algorithm applied to sprites.
+    SetSpriteUpscaler(SpriteUpscaler),
     /// Toggle context-sensitive helper text near the cursor.
     SetShowHelperText(bool),
     /// Toggle rendering the cursor's logical screen coordinates as helper text.

@@ -262,16 +262,15 @@ impl Widget for RankSigil {
         let sigil_x = self.bounds.x + PANEL_PADDING;
         let sigil_y = self.bounds.y + PANEL_PADDING;
         let sprite_id = 10 + self.rank_index.min(20);
-        let tex = ctx.gfx.get_texture(sprite_id);
         let (trim_top, draw_height) = Self::draw_metrics(self.rank_index);
+        let src = ctx.gfx.scale_src_rect(
+            sprite_id,
+            sdl2::rect::Rect::new(0, trim_top as i32, SIGIL_WIDTH as u32, draw_height),
+        );
+        let tex = ctx.gfx.get_texture(sprite_id);
         ctx.canvas.copy(
             tex,
-            Some(sdl2::rect::Rect::new(
-                0,
-                trim_top as i32,
-                SIGIL_WIDTH as u32,
-                draw_height,
-            )),
+            Some(src),
             Some(sdl2::rect::Rect::new(
                 sigil_x,
                 sigil_y,

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::preferences::{DisplayMode, Settings};
+use crate::preferences::{DisplayMode, OutputFilter, RenderScale, Settings, SpriteUpscaler};
 
 // ---------------------------------------------------------------------------
 // Platform detection
@@ -115,6 +115,13 @@ impl PlatformProfile {
                 settings.display_mode = DisplayMode::Fullscreen;
                 settings.vsync_enabled = true;
                 settings.pixel_perfect_scaling = false;
+                // Keep the enhanced graphics pipeline off by default: the
+                // Deck's APU is bandwidth-limited, and a 2x internal buffer
+                // plus CPU sprite upscaling is a poor trade for a 1280x800
+                // panel. Users can still opt in from the settings menu.
+                settings.render_scale = RenderScale::X1;
+                settings.output_filter = OutputFilter::Nearest;
+                settings.sprite_upscaler = SpriteUpscaler::None;
                 // A sensible non-zero starting volume.
                 settings.master_volume = 0.5;
             }

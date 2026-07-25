@@ -604,23 +604,18 @@ impl Widget for ShopPanel {
             let is_hovered = hovered == Some(i);
 
             // Draw item sprite.
+            let (lw, lh) = ctx.gfx.logical_texture_size(item as usize);
             let texture = ctx.gfx.get_texture(item as usize);
-            let q = texture.query();
-            ctx.canvas.copy(
-                texture,
-                None,
-                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-            )?;
+            ctx.canvas
+                .copy(texture, None, Some(sdl2::rect::Rect::new(x, y, lw, lh)))?;
 
             // Additive hover highlight.
             if is_hovered {
                 texture.set_blend_mode(BlendMode::Add);
                 texture.set_alpha_mod(96);
-                let result = ctx.canvas.copy(
-                    texture,
-                    None,
-                    Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-                );
+                let result =
+                    ctx.canvas
+                        .copy(texture, None, Some(sdl2::rect::Rect::new(x, y, lw, lh)));
                 texture.set_alpha_mod(255);
                 texture.set_blend_mode(BlendMode::Blend);
                 result?;

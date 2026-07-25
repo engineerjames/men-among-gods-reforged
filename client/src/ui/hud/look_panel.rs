@@ -359,9 +359,8 @@ impl Widget for LookPanel {
 
         // Pre-compute content height so the background fits tightly.
         let sprite_h = if self.snap.sprite_id > 0 {
-            let tex = ctx.gfx.get_texture(self.snap.sprite_id as usize);
-            let q = tex.query();
-            (q.height * SPRITE_ZOOM) as i32 + GAP
+            let (_, lh) = ctx.gfx.logical_texture_size(self.snap.sprite_id as usize);
+            (lh * SPRITE_ZOOM) as i32 + GAP
         } else {
             0
         };
@@ -390,15 +389,16 @@ impl Widget for LookPanel {
 
         // Header: rank sigil (left column) + name and rank label (right column)
         let sigil_x = self.bounds.x + PAD;
+        // Source rects address the texture directly, so they must follow the
+        // sprite's upscale factor; the destination stays in logical pixels.
+        let sigil_src = ctx.gfx.scale_src_rect(
+            sigil_sprite,
+            sdl2::rect::Rect::new(0, sigil_trim_top as i32, SIGIL_W as u32, sigil_draw_h),
+        );
         let sigil_tex = ctx.gfx.get_texture(sigil_sprite);
         ctx.canvas.copy(
             sigil_tex,
-            Some(sdl2::rect::Rect::new(
-                0,
-                sigil_trim_top as i32,
-                SIGIL_W as u32,
-                sigil_draw_h,
-            )),
+            Some(sigil_src),
             Some(sdl2::rect::Rect::new(
                 sigil_x,
                 y,
@@ -432,10 +432,10 @@ impl Widget for LookPanel {
 
         // Sprite (native zoom, centered)
         if self.snap.sprite_id > 0 {
+            let (lw, lh) = ctx.gfx.logical_texture_size(self.snap.sprite_id as usize);
             let tex = ctx.gfx.get_texture(self.snap.sprite_id as usize);
-            let q = tex.query();
-            let draw_w = q.width * SPRITE_ZOOM;
-            let draw_h = q.height * SPRITE_ZOOM;
+            let draw_w = lw * SPRITE_ZOOM;
+            let draw_h = lh * SPRITE_ZOOM;
             let sx = cx - draw_w as i32 / 2;
             ctx.canvas.copy(
                 tex,
@@ -472,13 +472,10 @@ impl Widget for LookPanel {
             let ex = equip_x + col * (EQUIP_CELL + EQUIP_COL_GAP);
             let ey = y + row * EQUIP_CELL;
             if sprite != 0 {
+                let (lw, lh) = ctx.gfx.logical_texture_size(sprite as usize);
                 let tex = ctx.gfx.get_texture(sprite as usize);
-                let q = tex.query();
-                ctx.canvas.copy(
-                    tex,
-                    None,
-                    Some(sdl2::rect::Rect::new(ex, ey, q.width, q.height)),
-                )?;
+                ctx.canvas
+                    .copy(tex, None, Some(sdl2::rect::Rect::new(ex, ey, lw, lh)))?;
             } else {
                 let label_cx = ex + EQUIP_CELL / 2;
                 let label_cy = ey + EQUIP_CELL / 2 - 5;

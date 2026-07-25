@@ -939,6 +939,9 @@ impl GameScene {
             display_mode: app_state.settings.display_mode,
             pixel_perfect_scaling: app_state.settings.pixel_perfect_scaling,
             vsync_enabled: app_state.settings.vsync_enabled,
+            render_scale: app_state.settings.render_scale,
+            output_filter: app_state.settings.output_filter,
+            sprite_upscaler: app_state.settings.sprite_upscaler,
             last_rtt_ms: last_rtt,
             profiler_active: self.perf_profiler.is_active(),
             profiler_remaining_secs: if self.perf_profiler.is_active() {
@@ -1081,13 +1084,34 @@ impl GameScene {
                     profile_changed = true;
                 }
                 WidgetAction::SetDisplayMode(m) => {
-                    app_state.display_command = Some(DisplayCommand::SetDisplayMode(m));
+                    app_state
+                        .display_commands
+                        .push_back(DisplayCommand::SetDisplayMode(m));
                 }
                 WidgetAction::SetPixelPerfectScaling(v) => {
-                    app_state.display_command = Some(DisplayCommand::SetPixelPerfectScaling(v));
+                    app_state
+                        .display_commands
+                        .push_back(DisplayCommand::SetPixelPerfectScaling(v));
                 }
                 WidgetAction::SetVSync(v) => {
-                    app_state.display_command = Some(DisplayCommand::SetVSync(v));
+                    app_state
+                        .display_commands
+                        .push_back(DisplayCommand::SetVSync(v));
+                }
+                WidgetAction::SetRenderScale(v) => {
+                    app_state
+                        .display_commands
+                        .push_back(DisplayCommand::SetRenderScale(v));
+                }
+                WidgetAction::SetOutputFilter(v) => {
+                    app_state
+                        .display_commands
+                        .push_back(DisplayCommand::SetOutputFilter(v));
+                }
+                WidgetAction::SetSpriteUpscaler(v) => {
+                    app_state
+                        .display_commands
+                        .push_back(DisplayCommand::SetSpriteUpscaler(v));
                 }
                 WidgetAction::Disconnect => {
                     scene_change = Some(SceneType::CharacterSelection);
@@ -1579,16 +1603,16 @@ impl GameScene {
         if citem <= 0 {
             return Ok(());
         }
+        let (lw, lh) = gfx.logical_texture_size(citem as usize);
         let tex = gfx.get_texture(citem as usize);
-        let q = tex.query();
         canvas.copy(
             tex,
             None,
             Some(sdl2::rect::Rect::new(
                 self.mouse_x - 8,
                 self.mouse_y - 8,
-                q.width,
-                q.height,
+                lw,
+                lh,
             )),
         )
     }

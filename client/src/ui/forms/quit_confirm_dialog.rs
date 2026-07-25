@@ -288,11 +288,17 @@ impl Widget for QuitConfirmDialog {
             return Ok(());
         }
 
-        // Dim overlay covering the whole viewport.
-        let (w, h) = ctx.canvas.output_size()?;
+        // Dim overlay covering the whole logical frame. The render target is
+        // larger than the logical frame when an internal render scale is
+        // active, so the logical constants are used rather than `output_size`.
         ctx.canvas.set_blend_mode(BlendMode::Blend);
         ctx.canvas.set_draw_color(Color::RGBA(0, 0, 0, 160));
-        ctx.canvas.fill_rect(sdl2::rect::Rect::new(0, 0, w, h))?;
+        ctx.canvas.fill_rect(sdl2::rect::Rect::new(
+            0,
+            0,
+            crate::constants::TARGET_WIDTH_INT,
+            crate::constants::TARGET_HEIGHT_INT,
+        ))?;
 
         // Dialog background.
         let dialog_rect = sdl2::rect::Rect::new(

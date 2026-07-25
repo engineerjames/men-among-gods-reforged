@@ -588,22 +588,17 @@ impl InventoryPanel {
         if sprite_id <= 0 {
             return Ok(());
         }
+        let (lw, lh) = ctx.gfx.logical_texture_size(sprite_id as usize);
         let tex = ctx.gfx.get_texture(sprite_id as usize);
-        let q = tex.query();
-        ctx.canvas.copy(
-            tex,
-            None,
-            Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-        )?;
+        ctx.canvas
+            .copy(tex, None, Some(sdl2::rect::Rect::new(x, y, lw, lh)))?;
 
         if hovered {
             tex.set_blend_mode(sdl2::render::BlendMode::Add);
             tex.set_alpha_mod(96);
-            let result = ctx.canvas.copy(
-                tex,
-                None,
-                Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-            );
+            let result = ctx
+                .canvas
+                .copy(tex, None, Some(sdl2::rect::Rect::new(x, y, lw, lh)));
             tex.set_alpha_mod(255);
             tex.set_blend_mode(sdl2::render::BlendMode::Blend);
             result?;
@@ -890,13 +885,10 @@ impl Widget for InventoryPanel {
             if let Some(ref bl) = blocked
                 && bl[worn_index]
             {
+                let (lw, lh) = ctx.gfx.logical_texture_size(4);
                 let tex = ctx.gfx.get_texture(4);
-                let q = tex.query();
-                ctx.canvas.copy(
-                    tex,
-                    None,
-                    Some(sdl2::rect::Rect::new(x, y, q.width, q.height)),
-                )?;
+                ctx.canvas
+                    .copy(tex, None, Some(sdl2::rect::Rect::new(x, y, lw, lh)))?;
             }
         }
 

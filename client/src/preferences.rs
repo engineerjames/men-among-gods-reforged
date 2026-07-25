@@ -127,6 +127,169 @@ impl DisplayMode {
     ];
 }
 
+/// Internal rendering resolution, expressed as a multiplier of the logical
+/// 960x540 frame.
+///
+/// The whole scene is composed into an off-screen buffer of
+/// `scale * 960 x scale * 540` pixels and then blitted to the window. Higher
+/// scales sharpen TrueType text and vector primitives, and are a prerequisite
+/// for the sprite upscalers (see [`SpriteUpscaler`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RenderScale {
+    /// Native logical resolution (960x540). Lowest cost, classic look.
+    #[default]
+    X1,
+    /// 2x internal resolution (1920x1080).
+    X2,
+    /// 3x internal resolution (2880x1620).
+    X3,
+    /// Pick the largest scale that fits the current window, capped at 3x.
+    Auto,
+}
+
+impl fmt::Display for RenderScale {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::X1 => write!(f, "1x (Native)"),
+            Self::X2 => write!(f, "2x"),
+            Self::X3 => write!(f, "3x"),
+            Self::Auto => write!(f, "Auto"),
+        }
+    }
+}
+
+impl RenderScale {
+    /// All variants in UI display order.
+    pub const ALL: [RenderScale; 4] = [
+        RenderScale::X1,
+        RenderScale::X2,
+        RenderScale::X3,
+        RenderScale::Auto,
+    ];
+
+    /// Highest internal render multiplier the pipeline will ever use.
+    pub const MAX_FACTOR: u32 = 3;
+
+    /// Resolves this setting to a concrete integer multiplier.
+    ///
+    /// # Arguments
+    /// * `drawable_w` - Width of the window drawable area in physical pixels.
+    /// * `drawable_h` - Height of the window drawable area in physical pixels.
+    /// * `logical_w` - Logical frame width (e.g. 960).
+    /// * `logical_h` - Logical frame height (e.g. 540).
+    ///
+    /// # Returns
+    /// * A multiplier in `1..=MAX_FACTOR`.
+    pub fn factor(self, drawable_w: u32, drawable_h: u32, logical_w: u32, logical_h: u32) -> u32 {
+        match self {
+            Self::X1 => 1,
+            Self::X2 => 2,
+            Self::X3 => 3,
+            Self::Auto => {
+                if logical_w == 0 || logical_h == 0 {
+                    return 1;
+                }
+                let by_w = drawable_w / logical_w.max(1);
+                let by_h = drawable_h / logical_h.max(1);
+                by_w.min(by_h).clamp(1, Self::MAX_FACTOR)
+            }
+        }
+    }
+
+    /// Maps a concrete integer multiplier back onto an explicit variant.
+    ///
+    /// Used when the renderer could not allocate a target at the requested
+    /// scale and the downgraded value has to be written back to settings.
+    /// Never returns [`RenderScale::Auto`], since a resolved factor carries no
+    /// information about whether it was chosen automatically.
+    ///
+    /// # Arguments
+    /// * `factor` - Multiplier actually in effect; values outside
+    ///   `1..=MAX_FACTOR` are clamped.
+    ///
+    /// # Returns
+    /// * The matching explicit variant.
+    pub fn from_factor(factor: u32) -> Self {
+        match factor.clamp(1, Self::MAX_FACTOR) {
+            3 => Self::X3,
+            2 => Self::X2,
+            _ => Self::X1,
+        }
+    }
+}
+
+/// Filtering applied when the composed frame buffer is scaled onto the window.
+///
+/// Because the whole scene is composed into a single texture first, filtering
+/// here never bleeds neighbouring sprites into each other — unlike per-sprite
+/// filtering, which would produce seams between adjacent floor tiles.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum OutputFilter {
+    /// Nearest-neighbour. Crisp, classic, but uneven pixel sizes at
+    /// non-integer scale factors.
+    #[default]
+    Nearest,
+    /// Bilinear filtering across the whole screen. Smooth, slightly soft.
+    Linear,
+    /// Integer prescale followed by bilinear for the remainder. Keeps pixels
+    /// square while removing the uneven "pixel shimmer" of pure nearest.
+    SharpBilinear,
+}
+
+impl fmt::Display for OutputFilter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Nearest => write!(f, "Nearest (Sharp)"),
+            Self::Linear => write!(f, "Linear (Smooth)"),
+            Self::SharpBilinear => write!(f, "Sharp Bilinear"),
+        }
+    }
+}
+
+impl OutputFilter {
+    /// All variants in UI display order.
+    pub const ALL: [OutputFilter; 3] = [
+        OutputFilter::Nearest,
+        OutputFilter::Linear,
+        OutputFilter::SharpBilinear,
+    ];
+}
+
+/// Pixel-art upscaling algorithm applied to sprites when they are decoded.
+///
+/// The upscale factor is not chosen independently: it always matches the
+/// active [`RenderScale`] factor, so an upscaled sprite still blits 1:1 into
+/// the internal frame buffer. At `RenderScale::X1` this setting has no effect.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum SpriteUpscaler {
+    /// No filtering; sprites are point-replicated to the render scale.
+    #[default]
+    None,
+    /// Scale2x / Scale3x (EPX family). Preserves hard edges, minimal blurring.
+    Scale2x,
+    /// HQ2x / HQ3x. Smoother diagonals and anti-aliased curves.
+    Hqx,
+}
+
+impl fmt::Display for SpriteUpscaler {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::None => write!(f, "None (Blocky)"),
+            Self::Scale2x => write!(f, "Scale2x / EPX"),
+            Self::Hqx => write!(f, "HQx"),
+        }
+    }
+}
+
+impl SpriteUpscaler {
+    /// All variants in UI display order.
+    pub const ALL: [SpriteUpscaler; 3] = [
+        SpriteUpscaler::None,
+        SpriteUpscaler::Scale2x,
+        SpriteUpscaler::Hqx,
+    ];
+}
+
 const LOG_FILE_NAME: &str = "mag_client.log";
 const PERF_LOG_FILE_NAME: &str = "mag_client_perf.log";
 const PROFILE_FILE_NAME: &str = "mag_profile.json";
@@ -164,6 +327,15 @@ pub struct Settings {
     /// Whether VSync is enabled.
     #[serde(default = "default_true")]
     pub vsync_enabled: bool,
+    /// Internal rendering resolution multiplier.
+    #[serde(default)]
+    pub render_scale: RenderScale,
+    /// Filtering applied when the composed frame is scaled onto the window.
+    #[serde(default)]
+    pub output_filter: OutputFilter,
+    /// Pixel-art upscaling algorithm applied to sprites at decode time.
+    #[serde(default)]
+    pub sprite_upscaler: SpriteUpscaler,
     /// Whether shadow rendering is enabled.
     #[serde(default = "default_true")]
     pub shadows_enabled: bool,
@@ -203,6 +375,9 @@ impl Default for Settings {
             display_mode: DisplayMode::default(),
             pixel_perfect_scaling: false,
             vsync_enabled: true,
+            render_scale: RenderScale::default(),
+            output_filter: OutputFilter::default(),
+            sprite_upscaler: SpriteUpscaler::default(),
             shadows_enabled: true,
             spell_effects_enabled: true,
             weather_enabled: true,
@@ -266,6 +441,9 @@ fn global_settings_only(settings: &Settings) -> Settings {
         display_mode: settings.display_mode,
         pixel_perfect_scaling: settings.pixel_perfect_scaling,
         vsync_enabled: settings.vsync_enabled,
+        render_scale: settings.render_scale,
+        output_filter: settings.output_filter,
+        sprite_upscaler: settings.sprite_upscaler,
         shadows_enabled: settings.shadows_enabled,
         spell_effects_enabled: settings.spell_effects_enabled,
         weather_enabled: settings.weather_enabled,
@@ -776,5 +954,81 @@ mod tests {
         assert_eq!(global.character.settings_panel_pos, None);
         assert_eq!(global.character.chat_window, None);
         assert_eq!(global.character.minimap_window_pos, None);
+    }
+
+    #[test]
+    fn global_settings_only_preserves_graphics_pipeline_fields() {
+        // `global_settings_only` copies fields by hand, so a newly added global
+        // setting that is forgotten there would be silently wiped on save.
+        let settings = Settings {
+            render_scale: RenderScale::X3,
+            output_filter: OutputFilter::SharpBilinear,
+            sprite_upscaler: SpriteUpscaler::Hqx,
+            ..Settings::default()
+        };
+
+        let global = global_settings_only(&settings);
+
+        assert_eq!(global.render_scale, RenderScale::X3);
+        assert_eq!(global.output_filter, OutputFilter::SharpBilinear);
+        assert_eq!(global.sprite_upscaler, SpriteUpscaler::Hqx);
+    }
+
+    #[test]
+    fn graphics_pipeline_fields_survive_a_serde_roundtrip() {
+        let settings = Settings {
+            render_scale: RenderScale::Auto,
+            output_filter: OutputFilter::Linear,
+            sprite_upscaler: SpriteUpscaler::Scale2x,
+            ..Settings::default()
+        };
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let decoded: Settings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(decoded.render_scale, RenderScale::Auto);
+        assert_eq!(decoded.output_filter, OutputFilter::Linear);
+        assert_eq!(decoded.sprite_upscaler, SpriteUpscaler::Scale2x);
+    }
+
+    #[test]
+    fn graphics_pipeline_fields_default_when_absent_from_stored_json() {
+        // Profiles written by older builds have none of these keys.
+        let decoded: Settings = serde_json::from_str("{}").unwrap();
+
+        assert_eq!(decoded.render_scale, RenderScale::default());
+        assert_eq!(decoded.output_filter, OutputFilter::default());
+        assert_eq!(decoded.sprite_upscaler, SpriteUpscaler::default());
+    }
+
+    #[test]
+    fn auto_render_scale_never_overshoots_the_drawable_size() {
+        // 960x540 logical: a 1080p window fits 2x exactly, 4K fits 3x (capped).
+        assert_eq!(RenderScale::Auto.factor(1920, 1080, 960, 540), 2);
+        assert_eq!(RenderScale::Auto.factor(3840, 2160, 960, 540), 3);
+        assert_eq!(RenderScale::Auto.factor(1280, 800, 960, 540), 1);
+        // Degenerate sizes must still produce a usable factor.
+        assert_eq!(RenderScale::Auto.factor(0, 0, 960, 540), 1);
+    }
+
+    #[test]
+    fn explicit_render_scales_ignore_the_drawable_size() {
+        assert_eq!(RenderScale::X1.factor(3840, 2160, 960, 540), 1);
+        assert_eq!(RenderScale::X2.factor(640, 360, 960, 540), 2);
+        assert_eq!(RenderScale::X3.factor(640, 360, 960, 540), 3);
+    }
+
+    #[test]
+    fn from_factor_round_trips_explicit_render_scales() {
+        for scale in [RenderScale::X1, RenderScale::X2, RenderScale::X3] {
+            let factor = scale.factor(0, 0, 960, 540);
+            assert_eq!(RenderScale::from_factor(factor), scale);
+        }
+    }
+
+    #[test]
+    fn from_factor_clamps_out_of_range_values() {
+        assert_eq!(RenderScale::from_factor(0), RenderScale::X1);
+        assert_eq!(RenderScale::from_factor(99), RenderScale::X3);
     }
 }

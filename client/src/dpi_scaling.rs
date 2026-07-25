@@ -1,31 +1,37 @@
-use sdl2::{event::Event, video::Window};
+use sdl2::{event::Event, rect::Rect, video::Window};
 
-/// Computes the viewport rectangle used to map logical coordinates
-/// into the current drawable area.
+/// Computes the letterboxed viewport for a logical coordinate space inside a
+/// drawable area of the given size.
 ///
-/// When `pixel_perfect_scaling` is enabled, this emulates SDL integer scaling
-/// by using an integer zoom factor and centering the result. Otherwise it uses
-/// aspect-preserving continuous letterboxing.
+/// This is the single source of truth for how the logical 960x540 frame maps
+/// onto physical pixels. Both the frame presentation blit (`present_rect`) and
+/// the mouse-input mapping (`to_logical_coords` / `to_logical_rel`) are derived
+/// from it, so the two can never drift apart.
+///
+/// When `pixel_perfect_scaling` is enabled an integer zoom factor is used and
+/// the result is centered; otherwise aspect-preserving continuous letterboxing
+/// is applied.
 ///
 /// # Arguments
-/// * `window` - The SDL2 window to measure.
-/// * `logical_width` - The width of the logical coordinate space (e.g. 1920).
-/// * `logical_height` - The height of the logical coordinate space (e.g. 1080).
+/// * `drawable_w` - Width of the drawable area in physical pixels.
+/// * `drawable_h` - Height of the drawable area in physical pixels.
+/// * `logical_width` - The width of the logical coordinate space (e.g. 960).
+/// * `logical_height` - The height of the logical coordinate space (e.g. 540).
 /// * `pixel_perfect_scaling` - Whether integer scaling is active.
 ///
 /// # Returns
 /// * `(view_x, view_y, view_w, view_h)` in drawable pixels.
-fn logical_viewport(
-    window: &Window,
+pub fn present_viewport(
+    drawable_w: u32,
+    drawable_h: u32,
     logical_width: f32,
     logical_height: f32,
     pixel_perfect_scaling: bool,
 ) -> (f32, f32, f32, f32) {
-    let (drawable_w, drawable_h) = window.drawable_size();
     let ww = drawable_w as f32;
     let wh = drawable_h as f32;
 
-    if ww <= 0.0 || wh <= 0.0 {
+    if ww <= 0.0 || wh <= 0.0 || logical_width <= 0.0 || logical_height <= 0.0 {
         return (0.0, 0.0, logical_width, logical_height);
     }
 
@@ -55,6 +61,73 @@ fn logical_viewport(
         let view_y = (wh - view_h) * 0.5;
         (0.0, view_y, view_w, view_h)
     }
+}
+
+/// Returns the integer destination rectangle used to blit the composed frame
+/// buffer onto the window backbuffer.
+///
+/// Rounds the floating-point viewport from [`present_viewport`] to whole
+/// pixels, clamping the size to at least 1x1 so SDL never receives a degenerate
+/// rectangle.
+///
+/// # Arguments
+/// * `drawable_w` - Width of the drawable area in physical pixels.
+/// * `drawable_h` - Height of the drawable area in physical pixels.
+/// * `logical_width` - The width of the logical coordinate space (e.g. 960).
+/// * `logical_height` - The height of the logical coordinate space (e.g. 540).
+/// * `pixel_perfect_scaling` - Whether integer scaling is active.
+///
+/// # Returns
+/// * The destination [`Rect`] in drawable pixels.
+pub fn present_rect(
+    drawable_w: u32,
+    drawable_h: u32,
+    logical_width: f32,
+    logical_height: f32,
+    pixel_perfect_scaling: bool,
+) -> Rect {
+    let (x, y, w, h) = present_viewport(
+        drawable_w,
+        drawable_h,
+        logical_width,
+        logical_height,
+        pixel_perfect_scaling,
+    );
+    Rect::new(
+        x.round() as i32,
+        y.round() as i32,
+        (w.round() as u32).max(1),
+        (h.round() as u32).max(1),
+    )
+}
+
+/// Computes the viewport rectangle used to map logical coordinates
+/// into the current drawable area of `window`.
+///
+/// Thin wrapper over [`present_viewport`] that measures the window.
+///
+/// # Arguments
+/// * `window` - The SDL2 window to measure.
+/// * `logical_width` - The width of the logical coordinate space (e.g. 960).
+/// * `logical_height` - The height of the logical coordinate space (e.g. 540).
+/// * `pixel_perfect_scaling` - Whether integer scaling is active.
+///
+/// # Returns
+/// * `(view_x, view_y, view_w, view_h)` in drawable pixels.
+fn logical_viewport(
+    window: &Window,
+    logical_width: f32,
+    logical_height: f32,
+    pixel_perfect_scaling: bool,
+) -> (f32, f32, f32, f32) {
+    let (drawable_w, drawable_h) = window.drawable_size();
+    present_viewport(
+        drawable_w,
+        drawable_h,
+        logical_width,
+        logical_height,
+        pixel_perfect_scaling,
+    )
 }
 
 /// Converts a physical screen coordinate pair to logical (1920×1080) coordinates,

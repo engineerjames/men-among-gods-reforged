@@ -524,14 +524,14 @@ impl Widget for CircleButton {
 
         // Sprite icon (centered inside the circle)
         if let Some(id) = self.sprite_id {
+            let (lw, lh) = ctx.gfx.logical_texture_size(id);
             let texture = ctx.gfx.get_texture(id);
-            let q = texture.query();
-            let dst_x = self.center_x - q.width as i32 / 2;
-            let dst_y = self.center_y - q.height as i32 / 2;
+            let dst_x = self.center_x - lw as i32 / 2;
+            let dst_y = self.center_y - lh as i32 / 2;
             ctx.canvas.copy(
                 texture,
                 None,
-                Some(sdl2::rect::Rect::new(dst_x, dst_y, q.width, q.height)),
+                Some(sdl2::rect::Rect::new(dst_x, dst_y, lw, lh)),
             )?;
         }
 

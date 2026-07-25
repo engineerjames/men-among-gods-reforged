@@ -10,7 +10,7 @@ use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
 use crate::font_cache;
-use crate::preferences::DisplayMode;
+use crate::preferences::{DisplayMode, OutputFilter, RenderScale, SpriteUpscaler};
 use crate::types::controller::{CONTROLLER_BIND_SLOTS, ControllerBindings, ControllerButton};
 use crate::types::mouse::{ExtraMouseButton, MouseModifier, MouseModifierBindings};
 use crate::ui::RenderContext;
@@ -70,7 +70,12 @@ const DS_Y_DISPLAY_MODE: i32 = DS_Y_SEP + 8;
 const DS_Y_PIXEL_PERFECT: i32 = DS_Y_DISPLAY_MODE + 20;
 const DS_Y_VSYNC: i32 = DS_Y_PIXEL_PERFECT + DS_ROW_H;
 const DS_Y_WEATHER: i32 = DS_Y_VSYNC + DS_ROW_H;
-const DS_PANEL_H: u32 = (DS_Y_WEATHER + DS_ROW_H + 10 + BTN_H as i32 + 8) as u32;
+/// Vertical pitch for a dropdown row (16px control plus spacing).
+const DS_DROPDOWN_PITCH: i32 = 20;
+const DS_Y_RENDER_SCALE: i32 = DS_Y_WEATHER + DS_ROW_H + 6;
+const DS_Y_OUTPUT_FILTER: i32 = DS_Y_RENDER_SCALE + DS_DROPDOWN_PITCH;
+const DS_Y_SPRITE_UPSCALER: i32 = DS_Y_OUTPUT_FILTER + DS_DROPDOWN_PITCH;
+const DS_PANEL_H: u32 = (DS_Y_SPRITE_UPSCALER + DS_DROPDOWN_PITCH + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Diagnostics sub-panel
@@ -261,11 +266,15 @@ struct DisplaySettingsSubPanel {
     chk_pixel_perfect: Checkbox,
     chk_vsync: Checkbox,
     chk_weather: Checkbox,
+    drp_render_scale: Dropdown,
+    drp_output_filter: Dropdown,
+    drp_sprite_upscaler: Dropdown,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
     /// Controller focus index. 0=Shadows, 1=SpellEffects, 2=ShowNames,
     /// 3=ShowHealth, 4=HelperText, 5=HideWalls, 6=DisplayMode,
-    /// 7=PixelPerfect, 8=VSync, 9=Weather, 10=Close.
+    /// 7=PixelPerfect, 8=VSync, 9=Weather, 10=RenderScale, 11=OutputFilter,
+    /// 12=SpriteUpscaler, 13=Close.
     controller_focused: Option<usize>,
 }
 
@@ -340,6 +349,24 @@ impl DisplaySettingsSubPanel {
                 "Enable Particle Effects",
                 0,
             ),
+            drp_render_scale: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_RENDER_SCALE, w, 16),
+                RenderScale::ALL.iter().map(|s| s.to_string()).collect(),
+                0,
+                0,
+            ),
+            drp_output_filter: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_OUTPUT_FILTER, w, 16),
+                OutputFilter::ALL.iter().map(|f| f.to_string()).collect(),
+                0,
+                0,
+            ),
+            drp_sprite_upscaler: Dropdown::new(
+                Bounds::new(x, origin_y + DS_Y_SPRITE_UPSCALER, w, 16),
+                SpriteUpscaler::ALL.iter().map(|u| u.to_string()).collect(),
+                0,
+                0,
+            ),
             btn_close: RectButton::new(Bounds::new(x, close_y, w, BTN_H), btn_bg())
                 .with_label("Close", 0)
                 .with_border(btn_border()),
@@ -349,7 +376,7 @@ impl DisplaySettingsSubPanel {
     }
 
     /// Number of focusable elements in the display sub-panel.
-    const FOCUSABLE_COUNT: usize = 11;
+    const FOCUSABLE_COUNT: usize = 14;
 
     /// Applies controller focus highlighting.
     fn apply_controller_focus(&mut self) {
@@ -364,7 +391,10 @@ impl DisplaySettingsSubPanel {
         self.chk_pixel_perfect.set_hovered(f == Some(7));
         self.chk_vsync.set_hovered(f == Some(8));
         self.chk_weather.set_hovered(f == Some(9));
-        self.btn_close.set_hovered(f == Some(10));
+        self.drp_render_scale.set_hovered(f == Some(10));
+        self.drp_output_filter.set_hovered(f == Some(11));
+        self.drp_sprite_upscaler.set_hovered(f == Some(12));
+        self.btn_close.set_hovered(f == Some(13));
     }
 
     /// Loads widget values from the data snapshot.
@@ -390,6 +420,24 @@ impl DisplaySettingsSubPanel {
             .position(|m| *m == data.display_mode)
             .unwrap_or(0);
         self.drp_display_mode.set_selected(mode_idx);
+
+        let scale_idx = RenderScale::ALL
+            .iter()
+            .position(|s| *s == data.render_scale)
+            .unwrap_or(0);
+        self.drp_render_scale.set_selected(scale_idx);
+
+        let filter_idx = OutputFilter::ALL
+            .iter()
+            .position(|f| *f == data.output_filter)
+            .unwrap_or(0);
+        self.drp_output_filter.set_selected(filter_idx);
+
+        let upscaler_idx = SpriteUpscaler::ALL
+            .iter()
+            .position(|u| *u == data.sprite_upscaler)
+            .unwrap_or(0);
+        self.drp_sprite_upscaler.set_selected(upscaler_idx);
     }
 
     /// Collects `WidgetAction`s from toggled/changed children.
@@ -440,6 +488,21 @@ impl DisplaySettingsSubPanel {
             self.pending_actions
                 .push(WidgetAction::SetWeather(self.chk_weather.is_checked()));
         }
+        if self.drp_render_scale.was_changed() {
+            let scale = RenderScale::ALL[self.drp_render_scale.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetRenderScale(scale));
+        }
+        if self.drp_output_filter.was_changed() {
+            let filter = OutputFilter::ALL[self.drp_output_filter.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetOutputFilter(filter));
+        }
+        if self.drp_sprite_upscaler.was_changed() {
+            let upscaler = SpriteUpscaler::ALL[self.drp_sprite_upscaler.selected_index()];
+            self.pending_actions
+                .push(WidgetAction::SetSpriteUpscaler(upscaler));
+        }
     }
 
     /// Shifts all widgets by a pixel delta.
@@ -458,6 +521,9 @@ impl DisplaySettingsSubPanel {
         shift(&mut self.chk_pixel_perfect, dx, dy);
         shift(&mut self.chk_vsync, dx, dy);
         shift(&mut self.chk_weather, dx, dy);
+        shift(&mut self.drp_render_scale, dx, dy);
+        shift(&mut self.drp_output_filter, dx, dy);
+        shift(&mut self.drp_sprite_upscaler, dx, dy);
         shift(&mut self.btn_close, dx, dy);
     }
 
@@ -559,6 +625,27 @@ impl DisplaySettingsSubPanel {
                         self.pending_actions.push(WidgetAction::SetWeather(v));
                     }
                     Some(10) => {
+                        let next =
+                            (self.drp_render_scale.selected_index() + 1) % RenderScale::ALL.len();
+                        self.drp_render_scale.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetRenderScale(RenderScale::ALL[next]));
+                    }
+                    Some(11) => {
+                        let next =
+                            (self.drp_output_filter.selected_index() + 1) % OutputFilter::ALL.len();
+                        self.drp_output_filter.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetOutputFilter(OutputFilter::ALL[next]));
+                    }
+                    Some(12) => {
+                        let next = (self.drp_sprite_upscaler.selected_index() + 1)
+                            % SpriteUpscaler::ALL.len();
+                        self.drp_sprite_upscaler.set_selected(next);
+                        self.pending_actions
+                            .push(WidgetAction::SetSpriteUpscaler(SpriteUpscaler::ALL[next]));
+                    }
+                    Some(13) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
@@ -583,9 +670,24 @@ impl DisplaySettingsSubPanel {
             return EventResponse::Consumed;
         }
 
-        // Expanded dropdown gets priority.
-        if self.drp_display_mode.is_expanded() {
-            let resp = self.drp_display_mode.handle_event(event);
+        // Expanded dropdowns get priority so their option list is clickable
+        // even where it overlaps the widgets underneath.
+        for index in 0..4 {
+            let expanded = match index {
+                0 => self.drp_display_mode.is_expanded(),
+                1 => self.drp_render_scale.is_expanded(),
+                2 => self.drp_output_filter.is_expanded(),
+                _ => self.drp_sprite_upscaler.is_expanded(),
+            };
+            if !expanded {
+                continue;
+            }
+            let resp = match index {
+                0 => self.drp_display_mode.handle_event(event),
+                1 => self.drp_render_scale.handle_event(event),
+                2 => self.drp_output_filter.handle_event(event),
+                _ => self.drp_sprite_upscaler.handle_event(event),
+            };
             self.collect_child_actions();
             if resp == EventResponse::Consumed {
                 return EventResponse::Consumed;
@@ -607,6 +709,21 @@ impl DisplaySettingsSubPanel {
             self.chk_pixel_perfect.handle_event(event),
             self.chk_vsync.handle_event(event),
             self.chk_weather.handle_event(event),
+            if !self.drp_render_scale.is_expanded() {
+                self.drp_render_scale.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
+            if !self.drp_output_filter.is_expanded() {
+                self.drp_output_filter.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
+            if !self.drp_sprite_upscaler.is_expanded() {
+                self.drp_sprite_upscaler.handle_event(event)
+            } else {
+                EventResponse::Ignored
+            },
         ];
 
         self.collect_child_actions();
@@ -645,8 +762,11 @@ impl DisplaySettingsSubPanel {
         self.chk_vsync.render(ctx)?;
         self.chk_weather.render(ctx)?;
         self.btn_close.render(ctx)?;
-        // Dropdown last so expanded list overlays.
+        // Dropdowns last so an expanded list overlays everything else.
         self.drp_display_mode.render(ctx)?;
+        self.drp_render_scale.render(ctx)?;
+        self.drp_output_filter.render(ctx)?;
+        self.drp_sprite_upscaler.render(ctx)?;
 
         Ok(())
     }
@@ -2040,6 +2160,12 @@ pub struct SettingsPanelData {
     pub pixel_perfect_scaling: bool,
     /// Whether VSync is enabled.
     pub vsync_enabled: bool,
+    /// Internal (off-screen) render resolution multiplier.
+    pub render_scale: RenderScale,
+    /// Filter applied when the composed frame is scaled to the window.
+    pub output_filter: OutputFilter,
+    /// Pixel-art upscaling algorithm applied to sprites.
+    pub sprite_upscaler: SpriteUpscaler,
     /// Latest network round-trip time, if available.
     pub last_rtt_ms: Option<u32>,
     /// Whether the performance profiler is currently running.
@@ -2797,6 +2923,9 @@ mod tests {
             display_mode: DisplayMode::Fullscreen,
             pixel_perfect_scaling: true,
             vsync_enabled: false,
+            render_scale: RenderScale::X2,
+            output_filter: OutputFilter::SharpBilinear,
+            sprite_upscaler: SpriteUpscaler::Hqx,
             last_rtt_ms: Some(42),
             profiler_active: false,
             profiler_remaining_secs: None,

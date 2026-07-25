@@ -7,9 +7,10 @@ use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
 use sdl2::video::FullscreenType;
 
 use client::font_cache::TextEngine;
+use client::frame_buffer::FrameBuffer;
 use client::gfx_cache::GraphicsCache;
 use client::platform::PlatformProfile;
-use client::preferences::DisplayMode;
+use client::preferences::{DisplayMode, RenderScale, Settings};
 use client::scenes::scene::{FramePresentation, SceneType};
 use client::sfx_cache::SoundCache;
 use client::state::{ApiTokenState, AppState, DisplayCommand};
@@ -114,7 +115,15 @@ fn main() -> Result<(), String> {
 
     let _ = window.set_minimum_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
 
-    let mut canvas = window.into_canvas().build().map_err(|e| e.to_string())?;
+    // `target_texture()` is required for the off-screen frame buffer used by the
+    // enhanced graphics pipeline; `accelerated()` makes the GPU path explicit
+    // rather than relying on SDL's driver ordering.
+    let mut canvas = window
+        .into_canvas()
+        .accelerated()
+        .target_texture()
+        .build()
+        .map_err(|e| e.to_string())?;
 
     let mut event_pump = sdl_context.event_pump()?;
 
@@ -127,13 +136,15 @@ fn main() -> Result<(), String> {
     // for the entire run, so leaking is acceptable.
     let ttf_ctx_static: &'static sdl2::ttf::Sdl2TtfContext =
         Box::leak(Box::new(sdl2::ttf::init().map_err(|e| e.to_string())?));
-    let mut text_engine = TextEngine::new(
+    let text_engine = TextEngine::new(
         ttf_ctx_static,
         &texture_creator,
         filepaths::get_fonts_directory(),
         1.0,
     );
-    text_engine.sync_dpi_scale_from_canvas(&canvas)?;
+    // NOTE: the TTF DPI scale is driven by the internal render scale, not by the
+    // canvas logical size (which is zero at this point). It is applied below,
+    // once settings have been loaded, and again whenever the render scale changes.
 
     let sfx_cache = if audio_available {
         SoundCache::new(
@@ -192,6 +203,12 @@ fn main() -> Result<(), String> {
         }
     }
 
+    // Sprite textures grow quadratically with the upscale factor, so cap the
+    // cache more tightly on memory-constrained handhelds.
+    if platform.is_steam_deck() {
+        app_state.gfx_cache.set_cache_budget_bytes(96 * 1024 * 1024);
+    }
+
     // Display mode
     let requested_mode = app_state.settings.display_mode;
     let applied_startup_mode = apply_display_mode(&mut canvas, requested_mode);
@@ -202,6 +219,17 @@ fn main() -> Result<(), String> {
 
     // VSync (runtime toggle via raw SDL2 FFI)
     let mut effective_vsync_enabled = apply_vsync(&canvas, app_state.settings.vsync_enabled, false);
+
+    // --- Enhanced graphics pipeline ---------------------------------------
+    // The whole scene is composed into one off-screen texture at
+    // `factor x 960 x 540` and blitted to the window once, so scaling and
+    // filtering happen exactly once on a single contiguous image.
+    //
+    // `render_factor` starts at 0 so the first loop iteration always builds the
+    // buffer, keeping the setup and the resize/settings paths on one code path.
+    let mut frame_buffer: Option<FrameBuffer> = None;
+    let mut render_factor: u32 = 0;
+    // ----------------------------------------------------------------------
     // ----------------------------------------------------------------------
 
     let mut scene_manager = scenes::scene::SceneManager::new();
@@ -331,7 +359,7 @@ fn main() -> Result<(), String> {
         scene_manager.update(&mut app_state, dt);
 
         // --- Apply any pending display commands from the UI ---------------
-        if let Some(cmd) = app_state.display_command.take() {
+        while let Some(cmd) = app_state.display_commands.pop_front() {
             match cmd {
                 DisplayCommand::SetDisplayMode(mode) => {
                     let applied_mode = apply_display_mode(&mut canvas, mode);
@@ -355,6 +383,26 @@ fn main() -> Result<(), String> {
                     app_state.settings.vsync_enabled = enabled;
                     save_global_display_settings(&app_state);
                 }
+                DisplayCommand::SetRenderScale(scale) => {
+                    app_state.settings.render_scale = scale;
+                    // Force the render section below to rebuild the buffer.
+                    render_factor = 0;
+                    save_global_display_settings(&app_state);
+                }
+                DisplayCommand::SetOutputFilter(filter) => {
+                    app_state.settings.output_filter = filter;
+                    if let Some(fb) = frame_buffer.as_mut() {
+                        fb.set_filter(filter);
+                    }
+                    save_global_display_settings(&app_state);
+                }
+                DisplayCommand::SetSpriteUpscaler(upscaler) => {
+                    app_state.settings.sprite_upscaler = upscaler;
+                    app_state
+                        .gfx_cache
+                        .set_sprite_scaling(render_factor, upscaler);
+                    save_global_display_settings(&app_state);
+                }
             }
         }
         // ------------------------------------------------------------------
@@ -363,13 +411,75 @@ fn main() -> Result<(), String> {
             continue;
         }
 
-        let _ = canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
-        // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
-        let _ = canvas.set_integer_scale(app_state.settings.pixel_perfect_scaling);
-        scene_manager.render_world(&mut app_state, &mut canvas);
-        // Logical size off --> raw physical pixels.
-        let _ = canvas.set_integer_scale(false);
-        let _ = canvas.set_logical_size(0, 0);
+        // --- (Re)build the frame buffer when the effective scale changes ----
+        // The desired factor depends on both the settings and the current
+        // drawable size, so this has to be re-evaluated every frame; the
+        // expensive rebuild only runs when the factor actually changes.
+        let (drawable_w, drawable_h) = canvas.window().drawable_size();
+        let desired_factor = app_state.settings.render_scale.factor(
+            drawable_w,
+            drawable_h,
+            constants::TARGET_WIDTH_INT,
+            constants::TARGET_HEIGHT_INT,
+        );
+        if desired_factor != render_factor {
+            let (buffer, applied) =
+                build_frame_buffer(&texture_creator, desired_factor, &app_state.settings);
+            render_factor = applied;
+            frame_buffer = buffer;
+            apply_render_scale(&mut app_state, applied);
+
+            // If an explicitly requested scale could not be allocated, persist
+            // the downgraded value so the UI reflects reality and the next
+            // launch does not retry a scale this machine cannot support.
+            // `Auto` is left alone: it is resolution-dependent by definition.
+            if applied != desired_factor && app_state.settings.render_scale != RenderScale::Auto {
+                app_state.settings.render_scale = RenderScale::from_factor(applied);
+                save_global_display_settings(&app_state);
+            }
+        }
+        // -------------------------------------------------------------------
+
+        if let Some(fb) = frame_buffer.as_mut() {
+            let compose_result = fb.compose(&mut canvas, |target| {
+                scene_manager.render_world(&mut app_state, target);
+            });
+
+            if let Err(e) = compose_result {
+                log::error!("Frame composition failed, falling back to direct rendering: {e}");
+                frame_buffer = None;
+                render_factor = 0;
+                continue;
+            }
+
+            // The composed frame is letterboxed, so the margins must be cleared
+            // or they retain the previous frame's pixels.
+            canvas.set_draw_color(sdl2::pixels::Color::RGB(0, 0, 0));
+            canvas.clear();
+            let dst = dpi_scaling::present_rect(
+                drawable_w,
+                drawable_h,
+                constants::TARGET_WIDTH,
+                constants::TARGET_HEIGHT,
+                app_state.settings.pixel_perfect_scaling,
+            );
+            if let Some(fb) = frame_buffer.as_mut()
+                && let Err(e) = fb.present(&mut canvas, dst)
+            {
+                log::error!("Frame present failed: {e}");
+            }
+        } else {
+            // Fallback path used when no render target could be allocated:
+            // render straight into the backbuffer using SDL's logical scaling.
+            let _ =
+                canvas.set_logical_size(constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT);
+            // Integer scale --> pixel-perfect (nearest integer multiplier) when on.
+            let _ = canvas.set_integer_scale(app_state.settings.pixel_perfect_scaling);
+            scene_manager.render_world(&mut app_state, &mut canvas);
+            // Logical size off --> raw physical pixels.
+            let _ = canvas.set_integer_scale(false);
+            let _ = canvas.set_logical_size(0, 0);
+        }
 
         if scene_manager.get_scene() == SceneType::Exit {
             break 'running;
@@ -386,6 +496,69 @@ fn main() -> Result<(), String> {
     }
 
     Ok(())
+}
+
+/// Builds the off-screen frame buffer, downgrading the factor on failure.
+///
+/// Large render targets can fail to allocate on low-VRAM devices, so rather
+/// than giving up the requested factor is halved step by step until either a
+/// target is created or every factor has been tried.
+///
+/// # Arguments
+///
+/// * `creator` - Texture creator bound to the window renderer.
+/// * `desired_factor` - Internal resolution multiplier requested by settings.
+/// * `settings` - Current display settings, used for the output filter.
+///
+/// # Returns
+///
+/// * `(Some(buffer), applied_factor)` on success, or `(None, 1)` when no
+///   render target could be allocated at any factor.
+fn build_frame_buffer<'tc>(
+    creator: &'tc sdl2::render::TextureCreator<sdl2::video::WindowContext>,
+    desired_factor: u32,
+    settings: &Settings,
+) -> (Option<FrameBuffer<'tc>>, u32) {
+    for factor in (1..=desired_factor.max(1)).rev() {
+        match FrameBuffer::new(
+            creator,
+            constants::TARGET_WIDTH_INT,
+            constants::TARGET_HEIGHT_INT,
+            factor,
+            settings.output_filter,
+        ) {
+            Ok(buffer) => {
+                if factor != desired_factor {
+                    log::warn!(
+                        "Internal render scale downgraded from {desired_factor}x to {factor}x"
+                    );
+                } else {
+                    log::info!("Internal render scale set to {factor}x");
+                }
+                return (Some(buffer), factor);
+            }
+            Err(e) => log::warn!("Frame buffer at {factor}x unavailable: {e}"),
+        }
+    }
+    log::error!("No off-screen render target available; using direct rendering");
+    (None, 1)
+}
+
+/// Propagates a new internal render scale to the text and sprite caches.
+///
+/// TrueType glyphs are rasterised at the internal resolution so they stay crisp
+/// instead of being upscaled as bitmaps, and archive sprites are upscaled by
+/// the same factor so they blit 1:1 into the frame buffer.
+///
+/// # Arguments
+///
+/// * `app_state` - Application state owning the caches.
+/// * `factor` - The internal resolution multiplier now in effect.
+fn apply_render_scale(app_state: &mut AppState<'_>, factor: u32) {
+    app_state.text_engine.set_dpi_scale(factor as f32);
+    app_state
+        .gfx_cache
+        .set_sprite_scaling(factor, app_state.settings.sprite_upscaler);
 }
 
 /// Maps [`DisplayMode`] to the SDL2 fullscreen type and applies it.
