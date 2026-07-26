@@ -28,7 +28,7 @@ use crate::ui::widgets::text_input::TextInput;
 
 /// Panel dimensions.
 const PANEL_W: u32 = 360;
-const PANEL_H: u32 = 470;
+const PANEL_H: u32 = 500;
 
 /// Horizontal padding inside the panel.
 const PAD_X: i32 = 20;
@@ -803,13 +803,16 @@ impl Widget for CharacterCreationForm {
         }
 
         if let Some(ref err) = self.error_text {
-            font_cache::draw_text(
+            // Server-side validation messages can be long, so wrap them inside
+            // the panel instead of letting them run past the right edge.
+            font_cache::draw_wrapped_text(
                 ctx.canvas,
                 ctx.gfx,
                 FONT,
                 err,
                 self.bounds.x + PAD_X,
                 cursor_y,
+                INPUT_W,
                 font_cache::TextStyle::tinted(Color::RGB(255, 80, 80)),
             )?;
         }

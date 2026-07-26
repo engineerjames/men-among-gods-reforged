@@ -156,6 +156,34 @@ const RANK_NAMES: [&str; TOTAL_RANKS] = [
     "Warlord",
 ];
 
+/// Shortened rank names matching `WHO_RANK_NAME` indices.
+const RANK_NAMES_SHORTENED: [&str; TOTAL_RANKS] = [
+    "Private",
+    "PFC",
+    "Lance Corp.",
+    "Corporal",
+    "Sergeant",
+    "Staff Serg.",
+    "Master Serg.",
+    "First Serg.",
+    "Serg. Major",
+    "Second Lieut.",
+    "First Lieut.",
+    "Captain",
+    "Major",
+    "Lieut. Colonel",
+    "Colonel",
+    "Brig. General",
+    "Major General",
+    "Lieut. General",
+    "General",
+    "Field Marshal",
+    "Knight",
+    "Baron",
+    "Earl",
+    "Warlord",
+];
+
 /// Returns the human-readable rank name for the given total points.
 ///
 /// # Arguments
@@ -179,6 +207,39 @@ pub fn rank_name(points: u32) -> &'static str {
 /// * A static reference to all 24 rank names.
 pub fn ranks() -> &'static [&'static str; TOTAL_RANKS] {
     &RANK_NAMES
+}
+
+/// Returns the shortened rank display name for the given total points.
+///
+/// Unlike [`rank_name_shortened`], this returns the readable abbreviation
+/// (e.g. `"Lance Corp."`) rather than the compact `who` code.
+///
+/// # Arguments
+///
+/// * `points` - Total experience points.
+///
+/// # Returns
+///
+/// * The shortened rank display name.
+pub fn rank_short_name(points: u32) -> &'static str {
+    let idx = points2rank(points).clamp(0, TOTAL_RANKS as u32 - 1) as usize;
+    RANK_NAMES_SHORTENED[idx]
+}
+
+/// Returns the shortened rank display name for the given rank index.
+///
+/// Clamps out-of-range indices to the nearest valid rank.
+///
+/// # Arguments
+///
+/// * `rank_idx` - Rank index (0-based).
+///
+/// # Returns
+///
+/// * The shortened rank display name.
+pub fn rank_short_name_by_index(rank_idx: usize) -> &'static str {
+    let idx = rank_idx.clamp(0, TOTAL_RANKS - 1);
+    RANK_NAMES_SHORTENED[idx]
 }
 
 /// Returns the shortened rank abbreviation for the given total points.
@@ -323,7 +384,8 @@ pub fn rank_progress(points: u32) -> f64 {
 mod tests {
     use super::{
         RANK_NAMES, RANK_THRESHOLDS, Rank, TOTAL_RANKS, points2rank, rank_name, rank_name_by_index,
-        rank_name_shortened, rank_progress, ranks, talent_points_awarded_between,
+        rank_name_shortened, rank_progress, rank_short_name, rank_short_name_by_index, ranks,
+        talent_points_awarded_between,
     };
 
     #[test]
@@ -405,6 +467,21 @@ mod tests {
         assert_eq!(rank_name_by_index(0), "Private");
         assert_eq!(rank_name_by_index(23), "Warlord");
         assert_eq!(rank_name_by_index(999), "Warlord");
+    }
+
+    #[test]
+    fn rank_short_name_matches_known_values() {
+        assert_eq!(rank_short_name(0), "Private");
+        assert_eq!(rank_short_name(50), "PFC");
+        assert_eq!(rank_short_name(u32::MAX), "Warlord");
+    }
+
+    #[test]
+    fn rank_short_name_by_index_clamps_out_of_range() {
+        assert_eq!(rank_short_name_by_index(0), "Private");
+        assert_eq!(rank_short_name_by_index(2), "Lance Corp.");
+        assert_eq!(rank_short_name_by_index(23), "Warlord");
+        assert_eq!(rank_short_name_by_index(999), "Warlord");
     }
 
     #[test]
