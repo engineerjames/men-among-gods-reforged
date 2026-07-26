@@ -15,7 +15,7 @@ impl GameScene {
             - super::HUD_ARC_RADIUS as i32
             - super::HUD_BUTTON_RADIUS as i32
             - 20;
-        let y = panel_bottom - super::HUD_PANEL_H as i32;
+        let y = panel_bottom - super::SKILLS_PANEL_H as i32;
         (x, y)
     }
 

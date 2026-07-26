@@ -181,22 +181,29 @@ impl SkillsPanel {
         )
     }
 
+    /// Y offset of the column-header row.
+    fn header_row_y(&self) -> i32 {
+        self.content_bounds().y + 18
+    }
+
+    /// Y offset of the first data row (below the column headers).
+    fn rows_top(&self) -> i32 {
+        self.header_row_y() + ROW_H
+    }
+
     /// Y offset within the panel for attribute row `n` (0-4).
     fn attr_row_y(&self, n: usize) -> i32 {
-        let cb = self.content_bounds();
-        cb.y + 18 + (n as i32) * ROW_H
+        self.rows_top() + (n as i32) * ROW_H
     }
 
     /// Y offset for pool row (0=HP, 1=End, 2=Mana).
     fn pool_row_y(&self, n: usize) -> i32 {
-        let cb = self.content_bounds();
-        cb.y + 18 + 5 * ROW_H + 4 + (n as i32) * ROW_H
+        self.rows_top() + 5 * ROW_H + 4 + (n as i32) * ROW_H
     }
 
     /// Y offset for skill row `n` (0-based visible row).
     fn skill_row_y(&self, n: usize) -> i32 {
-        let cb = self.content_bounds();
-        cb.y + 18 + 5 * ROW_H + 4 + 3 * ROW_H + 6 + (n as i32) * ROW_H
+        self.rows_top() + 5 * ROW_H + 4 + 3 * ROW_H + 6 + (n as i32) * ROW_H
     }
 
     /// Y offset for the Update button row.
@@ -212,7 +219,7 @@ impl SkillsPanel {
         let value_x = cb.x + 120;
         let plus_x = cb.x + 200;
         let minus_x = cb.x + 215;
-        let cost_x = cb.x + 230;
+        let cost_x = cb.x + 240;
         (name_x, value_x, plus_x, minus_x, cost_x)
     }
 
@@ -972,8 +979,57 @@ impl Widget for SkillsPanel {
         };
 
         let available_points = (data.points - self.stat_points_used).max(0);
-        let (name_x, _value_x, plus_x, minus_x, cost_x) = self.col_x();
+        let (name_x, value_x, plus_x, minus_x, cost_x) = self.col_x();
         let base_x = self.base_value_x();
+
+        // --- Column headers ---
+        let header_y = self.header_row_y();
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            PANEL_FONT,
+            "Name",
+            name_x,
+            header_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            PANEL_FONT,
+            "Mod",
+            value_x,
+            header_y,
+            font_cache::TextStyle::PLAIN,
+        )?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            PANEL_FONT,
+            "Base",
+            base_x
+                + (Self::base_value_text(0).len() as i32 * font_cache::BITMAP_GLYPH_ADVANCE as i32)
+                    / 2,
+            header_y,
+            font_cache::TextStyle::centered().with_tint(BASE_VALUE_COLOR),
+        )?;
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            PANEL_FONT,
+            "Experience",
+            cost_x + (7 * font_cache::BITMAP_GLYPH_ADVANCE as i32) / 2,
+            header_y,
+            font_cache::TextStyle::centered(),
+        )?;
+
+        // Separator under the header row.
+        let header_sep_y = header_y + ROW_H - 3;
+        ctx.canvas.set_draw_color(self.border_color);
+        ctx.canvas.draw_line(
+            sdl2::rect::Point::new(cb.x, header_sep_y),
+            sdl2::rect::Point::new(cb.x + cb.width as i32 - 1, header_sep_y),
+        )?;
 
         // --- Attributes ---
         for (n, attr_name) in ATTR_NAMES.iter().enumerate() {
