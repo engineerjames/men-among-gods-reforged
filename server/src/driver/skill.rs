@@ -3544,15 +3544,7 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     }
 
     let power = i32::from(gs.characters[cn].skill[SK_STUN][5]);
-    let has_ice_stun = has_ice_stun_modifier(gs, cn);
-    let burst_power = if has_ice_stun {
-        apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, power)
-    } else {
-        power
-    };
-    if spell_stun(gs, cn, co, power) && has_ice_stun {
-        attach_ice_stun_marker(gs, cn, co, burst_power);
-    }
+    spell_stun(gs, cn, co, power);
 
     let co_orig = co;
     let m: usize = gs.characters[cn].x as usize
@@ -3572,15 +3564,13 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
             let o_rand = helpers::random_mod_i32(20);
             if i32::from(gs.characters[cn].skill[SK_STUN][5]) + s_rand
                 > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
-                && spell_stun(
+            {
+                spell_stun(
                     gs,
                     cn,
                     maybe_co,
                     i32::from(gs.characters[cn].skill[SK_STUN][5]),
-                )
-                && has_ice_stun
-            {
-                attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
+                );
             }
         }
     }
@@ -3596,23 +3586,108 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
-/// Returns whether a Stun cast should receive the Harakim Ice Stun modifier.
+/// Handles direct player/NPC use of the Ice Stun skill.
+///
+/// Ice Stun wholly replaces Stun for Harakim who learn the talent: it stuns the
+/// primary target and adjacent attackers exactly like Stun, but draws its power
+/// from `SK_ICE_STUN` (including the Harakim ice element bonus) and marks every
+/// frozen target so it bursts with ice when it dies.
 ///
 /// # Arguments
 ///
-/// * `gs` - Active game state containing caster talent state.
+/// * `gs` - Active game state used for target validation, combat checks, and spell application.
 /// * `cn` - Caster character index.
 ///
-/// # Returns
+/// # Panics
 ///
-/// * `true` when the caster is a Harakim player with the Ice Stun talent learned.
-fn has_ice_stun_modifier(gs: &GameState, cn: usize) -> bool {
-    (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
-        && matches!(
-            Class::from(gs.characters[cn].kindred),
-            Class::Harakim | Class::ArchHarakim
-        )
-        && harakim::has_ice_stun(&gs.characters[cn].future1)
+/// * Panics if `cn`, the selected target index, or an adjacent target index is invalid.
+pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot freeze yourself!\n") {
+        return;
+    }
+    if is_exhausted(gs, cn) {
+        return;
+    }
+    if spellcost(gs, cn, 20) != 0 {
+        return;
+    }
+
+    if chance_base(
+        gs,
+        cn,
+        i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]),
+        12,
+        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+    ) != 0
+    {
+        if gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_ICE_STUN][5] + 5 {
+            gs.do_character_log(
+                co,
+                FontColor::Green,
+                &format!(
+                    "{} tried to cast ice stun on you but failed.\n",
+                    c_string_to_str(&gs.characters[cn].reference)
+                ),
+            );
+            if gs.characters[co].flags & CharacterFlags::SpellIgnore.bits() == 0 {
+                gs.do_notify_character(
+                    co as u32,
+                    i32::from(core::constants::NT_GOTMISS),
+                    cn as i32,
+                    0,
+                    0,
+                    0,
+                );
+            }
+        }
+        return;
+    }
+
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]);
+    let burst_power = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, power);
+    if spell_stun(gs, cn, co, power) {
+        attach_ice_stun_marker(gs, cn, co, burst_power);
+    }
+
+    let co_orig = co;
+    let m: usize = gs.characters[cn].x as usize
+        + gs.characters[cn].y as usize * core::constants::SERVER_MAPX as usize;
+
+    let adj = [
+        1isize,
+        -1isize,
+        core::constants::SERVER_MAPX as isize,
+        -(core::constants::SERVER_MAPX as isize),
+    ];
+    for delta in adj.iter() {
+        let idx = (m as isize + *delta) as usize;
+        let maybe_co = gs.map.get(idx).map(|m| m.ch).unwrap_or(0) as usize;
+        if maybe_co != 0 && gs.characters[maybe_co].attack_cn == cn as u16 && maybe_co != co_orig {
+            let s_rand = helpers::random_mod_i32(20);
+            let o_rand = helpers::random_mod_i32(20);
+            if power + s_rand > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
+                && spell_stun(gs, cn, maybe_co, power)
+            {
+                attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
+            }
+        }
+    }
+
+    EffectManager::fx_add_effect(
+        gs,
+        7,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
+    add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
 /// Attaches Ice Stun's on-death burst marker to a stunned target.
@@ -3645,7 +3720,25 @@ fn attach_ice_stun_marker(gs: &mut GameState, caster: usize, co: usize, power: i
         item.power = power.max(1) as u32;
         item.data[0] = caster as u32;
     }
-    add_spell(gs, co, in_idx);
+    if add_spell(gs, co, in_idx) != 0 {
+        gs.do_character_log(co, FontColor::Green, "Ice encases your body!\n");
+        gs.do_character_log(
+            caster,
+            FontColor::Green,
+            &format!(
+                "{} was encased in ice.\n",
+                c_string_to_str(&gs.characters[co].reference)
+            ),
+        );
+        EffectManager::fx_add_effect(
+            gs,
+            5,
+            0,
+            i32::from(gs.characters[co].x),
+            i32::from(gs.characters[co].y),
+            0,
+        );
+    }
 }
 
 /// Removes all active spell items from a character.
@@ -6284,6 +6377,13 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 skill_lava_blast(gs, cn);
             }
         }
+        x if x == SK_ICE_STUN as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_ice_stun(gs, cn);
+            }
+        }
         x if x == SK_SPELLCASTER_KINDRED_SPIRIT as i32 => {
             skill_spellcaster_kindred_spirit(gs, cn);
         }
@@ -6433,18 +6533,23 @@ mod harakim_ability_tests {
     }
 
     #[test]
-    fn ice_stun_modifier_requires_harakim_player_talent() {
+    fn ice_stun_marker_records_caster_and_power() {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);
-            gs.characters[cn].kindred = KIN_HARAKIM as i32;
+            let (co, _nr2) = add_test_player(gs);
 
-            assert!(!has_ice_stun_modifier(gs, cn));
+            attach_ice_stun_marker(gs, cn, co, 40);
 
-            gs.characters[cn].future1[5] |= 0b0000_0001;
-            assert!(has_ice_stun_modifier(gs, cn));
+            let marker = gs.characters[co]
+                .spell
+                .iter()
+                .map(|&in_idx| in_idx as usize)
+                .find(|&in_idx| in_idx != 0 && gs.items[in_idx].temp == SK_ICE_STUN as u16)
+                .expect("expected an Ice Stun marker on the target");
 
-            gs.characters[cn].flags = 0;
-            assert!(!has_ice_stun_modifier(gs, cn));
+            assert_eq!(gs.items[marker].data[0] as usize, cn);
+            assert_eq!(gs.items[marker].power, 40);
+            assert!(gs.items[marker].active > 0);
         });
     }
 

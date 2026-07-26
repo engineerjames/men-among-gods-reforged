@@ -104,7 +104,8 @@ pub const SK_ANGUISH_EARTH: usize = 54;
 pub const SK_ANGUISH_ICE: usize = 55;
 /// Lava Blast: elemental blast variant that burns impacted enemies over time.
 pub const SK_LAVA_BLAST: usize = 56;
-/// Ice Stun spell-item marker temp used by the Harakim Stun modifier.
+/// Ice Stun: stun variant that freezes the target and marks it to burst with
+/// ice when it dies. Also used as the spell-item marker temp for that burst.
 pub const SK_ICE_STUN: usize = 57;
 /// Element Switching spell-item marker temp used by the Harakim elemental proc icon.
 pub const SK_ELEMENT_SWITCHING: usize = 58;
@@ -267,6 +268,7 @@ pub enum Skill {
     AnguishEarth = SK_ANGUISH_EARTH,
     AnguishIce = SK_ANGUISH_ICE,
     LavaBlast = SK_LAVA_BLAST,
+    IceStun = SK_ICE_STUN,
     SpellcasterKindredSpirit = SK_SPELLCASTER_KINDRED_SPIRIT,
 }
 
@@ -841,7 +843,15 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         1,
         4,
     ),
-    SkillTab::new(57, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(
+        57,
+        SkillCategory::Magic,
+        "Ice Stun",
+        "Spell: Freeze target; it bursts with ice when it dies (Cost: 20 Mana).",
+        0,
+        2,
+        1,
+    ),
     SkillTab::new(58, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(
         59,
@@ -1035,7 +1045,7 @@ const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "Anguish (Earth)",
     "Anguish (Ice)",
     "Lava Blast",
-    "",
+    "Ice Stun",
     "",
     "",
     "",

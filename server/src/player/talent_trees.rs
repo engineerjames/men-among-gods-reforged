@@ -946,7 +946,7 @@ mod tests {
     }
 
     #[test]
-    fn learn_harakim_ice_stun_modifies_stun_without_granting_new_skill() {
+    fn learn_harakim_ice_stun_replaces_stun_with_existing_investment() {
         with_test_gs(|gs| {
             let cn = 1;
             give_class_and_points(gs, cn, KIN_HARAKIM, 1);
@@ -954,18 +954,27 @@ mod tests {
                 gs.characters[cn].future1[layer] |= 0b0000_0001;
             }
             gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::BaseValue as usize] = 12;
+            gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::RaiseDifficulty as usize] = 5;
 
             learn_talent(gs, cn, harakim_slot("Ice Stun")).unwrap();
 
             assert_eq!(
                 gs.characters[cn].skill[Skill::Stun as usize][SkillIndex::BaseValue as usize],
-                12,
-                "existing Stun investment should remain the source of Ice Stun power"
+                0,
+                "Ice Stun should wholly replace Stun"
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_ICE_STUN][SkillIndex::BaseValue as usize],
-                0,
-                "Ice Stun should not become a separate castable skill"
+                12
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_ICE_STUN][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_ICE_STUN][SkillIndex::RaiseDifficulty as usize],
+                5
             );
             assert!(core::talent_trees::harakim::has_ice_stun(
                 &gs.characters[cn].future1

@@ -174,10 +174,13 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: ICE_STUN,
             name: "Ice Stun",
-            description: "Stun marks targets for a chance to burst with ice when they die.",
+            description: "Replaces Stun with Ice Stun, which marks targets to burst with ice when they die.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_WILLPOWER],
-            effect: TalentEffect::Passive,
+            effect: TalentEffect::ReplaceSkill {
+                from: Skill::Stun,
+                to: Skill::IceStun,
+            },
         },
         TalentNode {
             slot: KINDRED_SPIRIT,
