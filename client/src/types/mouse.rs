@@ -68,11 +68,13 @@ pub enum MouseModifier {
     Ctrl,
     /// Keyboard Shift modifier behavior.
     Shift,
+    /// Keyboard Alt modifier behavior.
+    Alt,
 }
 
 impl MouseModifier {
     /// All supported modifier targets in UI display order.
-    pub const ALL: [MouseModifier; 2] = [Self::Ctrl, Self::Shift];
+    pub const ALL: [MouseModifier; 3] = [Self::Ctrl, Self::Shift, Self::Alt];
 
     /// Returns a short display label for this modifier.
     ///
@@ -83,6 +85,7 @@ impl MouseModifier {
         match self {
             Self::Ctrl => "Ctrl",
             Self::Shift => "Shift",
+            Self::Alt => "Alt",
         }
     }
 }
@@ -105,6 +108,9 @@ pub struct MouseModifierBindings {
     /// Extra mouse button assigned to Shift behavior.
     #[serde(default)]
     shift: Option<ExtraMouseButton>,
+    /// Extra mouse button assigned to Alt behavior.
+    #[serde(default)]
+    alt: Option<ExtraMouseButton>,
 }
 
 impl MouseModifierBindings {
@@ -121,30 +127,45 @@ impl MouseModifierBindings {
         match modifier {
             MouseModifier::Ctrl => self.ctrl,
             MouseModifier::Shift => self.shift,
+            MouseModifier::Alt => self.alt,
         }
     }
 
     /// Sets or clears the button assigned to a modifier.
     ///
-    /// If `button` is already assigned to the other modifier, that other
-    /// assignment is cleared so one button cannot trigger both modifiers.
+    /// If `button` is already assigned to another modifier, that other
+    /// assignment is cleared so one button cannot trigger two modifiers.
     ///
     /// # Arguments
     ///
     /// * `modifier` - Modifier target to change.
     /// * `button` - Extra mouse button to bind, or `None` to clear.
     pub fn set(&mut self, modifier: MouseModifier, button: Option<ExtraMouseButton>) {
-        if let Some(button) = button {
-            match modifier {
-                MouseModifier::Ctrl if self.shift == Some(button) => self.shift = None,
-                MouseModifier::Shift if self.ctrl == Some(button) => self.ctrl = None,
-                _ => {}
+        if button.is_some() {
+            for other in MouseModifier::ALL {
+                if other != modifier && self.get(other) == button {
+                    self.clear(other);
+                }
             }
         }
 
         match modifier {
             MouseModifier::Ctrl => self.ctrl = button,
             MouseModifier::Shift => self.shift = button,
+            MouseModifier::Alt => self.alt = button,
+        }
+    }
+
+    /// Clears the button assigned to a modifier.
+    ///
+    /// # Arguments
+    ///
+    /// * `modifier` - Modifier target to clear.
+    fn clear(&mut self, modifier: MouseModifier) {
+        match modifier {
+            MouseModifier::Ctrl => self.ctrl = None,
+            MouseModifier::Shift => self.shift = None,
+            MouseModifier::Alt => self.alt = None,
         }
     }
 
@@ -158,13 +179,9 @@ impl MouseModifierBindings {
     ///
     /// * Bound modifier target, or `None` if the button is unbound.
     pub fn modifier_for_button(&self, button: ExtraMouseButton) -> Option<MouseModifier> {
-        if self.ctrl == Some(button) {
-            Some(MouseModifier::Ctrl)
-        } else if self.shift == Some(button) {
-            Some(MouseModifier::Shift)
-        } else {
-            None
-        }
+        MouseModifier::ALL
+            .into_iter()
+            .find(|&modifier| self.get(modifier) == Some(button))
     }
 
     /// Returns a display label for a modifier binding button.
@@ -192,6 +209,7 @@ mod tests {
         let bindings = MouseModifierBindings::default();
         assert_eq!(bindings.get(MouseModifier::Ctrl), None);
         assert_eq!(bindings.get(MouseModifier::Shift), None);
+        assert_eq!(bindings.get(MouseModifier::Alt), None);
     }
 
     #[test]
@@ -200,6 +218,7 @@ mod tests {
         assert_eq!(ExtraMouseButton::Mouse5.label(), "Mouse 5");
         assert_eq!(MouseModifier::Ctrl.label(), "Ctrl");
         assert_eq!(MouseModifier::Shift.label(), "Shift");
+        assert_eq!(MouseModifier::Alt.label(), "Alt");
     }
 
     #[test]
@@ -229,13 +248,20 @@ mod tests {
             bindings.modifier_for_button(ExtraMouseButton::Mouse4),
             Some(MouseModifier::Shift)
         );
+
+        bindings.set(MouseModifier::Alt, Some(ExtraMouseButton::Mouse4));
+        assert_eq!(bindings.get(MouseModifier::Shift), None);
+        assert_eq!(
+            bindings.modifier_for_button(ExtraMouseButton::Mouse4),
+            Some(MouseModifier::Alt)
+        );
     }
 
     #[test]
     fn serde_roundtrip() {
         let mut bindings = MouseModifierBindings::default();
         bindings.set(MouseModifier::Ctrl, Some(ExtraMouseButton::Mouse4));
-        bindings.set(MouseModifier::Shift, Some(ExtraMouseButton::Mouse5));
+        bindings.set(MouseModifier::Alt, Some(ExtraMouseButton::Mouse5));
 
         let json = serde_json::to_string(&bindings).unwrap();
         let deserialized: MouseModifierBindings = serde_json::from_str(&json).unwrap();

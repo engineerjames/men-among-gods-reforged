@@ -91,7 +91,7 @@ impl GameScene {
 
         let has_ctrl = self.effective_ctrl_held();
         let has_shift = self.effective_shift_held();
-        let has_alt = self.alt_held;
+        let has_alt = self.effective_alt_held();
 
         // Read citem early so we can suppress ISITEM snapping when the
         // player is carrying an item and wants to drop, not pick up.

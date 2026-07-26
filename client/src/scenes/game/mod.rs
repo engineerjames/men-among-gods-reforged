@@ -619,6 +619,8 @@ pub struct GameScene {
     pub(super) mouse_ctrl_held: bool,
     /// Whether a mouse side button currently contributes Shift behavior.
     pub(super) mouse_shift_held: bool,
+    /// Whether a mouse side button currently contributes Alt behavior.
+    pub(super) mouse_alt_held: bool,
     /// Whether the controller's left bumper (LB) is held.
     pub(super) lb_held: bool,
     /// Whether the controller's right bumper (RB) is held.
@@ -835,6 +837,7 @@ impl GameScene {
             alt_held: false,
             mouse_ctrl_held: false,
             mouse_shift_held: false,
+            mouse_alt_held: false,
             lb_held: false,
             rb_held: false,
             lt_held: false,
@@ -970,6 +973,15 @@ impl GameScene {
         self.shift_held || self.mouse_shift_held
     }
 
+    /// Returns whether Alt-like behavior is currently active.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when physical Alt state or a mouse binding is held.
+    pub(super) fn effective_alt_held(&self) -> bool {
+        self.alt_held || self.mouse_alt_held
+    }
+
     /// Builds the current effective modifier set for UI events.
     ///
     /// # Returns
@@ -979,7 +991,7 @@ impl GameScene {
         KeyModifiers {
             ctrl: self.effective_ctrl_held(),
             shift: self.effective_shift_held(),
-            alt: self.alt_held,
+            alt: self.effective_alt_held(),
         }
     }
 
@@ -1007,6 +1019,7 @@ impl GameScene {
             self.settings_panel.capture_mouse_modifier_button(button);
             self.mouse_ctrl_held = false;
             self.mouse_shift_held = false;
+            self.mouse_alt_held = false;
             let scene_change = self.process_settings_panel_actions(app_state);
             return (true, scene_change);
         }
@@ -1019,6 +1032,7 @@ impl GameScene {
         {
             Some(MouseModifier::Ctrl) => self.mouse_ctrl_held = pressed,
             Some(MouseModifier::Shift) => self.mouse_shift_held = pressed,
+            Some(MouseModifier::Alt) => self.mouse_alt_held = pressed,
             None => {}
         }
 
@@ -1139,6 +1153,7 @@ impl GameScene {
                         .set(modifier, button);
                     self.mouse_ctrl_held = false;
                     self.mouse_shift_held = false;
+                    self.mouse_alt_held = false;
                     profile_changed = true;
                 }
                 WidgetAction::TogglePanel(_) => {
@@ -1973,6 +1988,7 @@ impl Scene for GameScene {
         self.alt_held = false;
         self.mouse_ctrl_held = false;
         self.mouse_shift_held = false;
+        self.mouse_alt_held = false;
         self.lb_held = false;
         self.rb_held = false;
         self.skill_scroll = 0;

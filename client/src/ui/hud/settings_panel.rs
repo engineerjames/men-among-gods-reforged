@@ -1649,8 +1649,8 @@ struct MouseSettingsSubPanel {
     bindings: MouseModifierBindings,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
-    /// Controller focus index. 0..1 = modifier binding buttons,
-    /// 2..3 = clear buttons, 4 = Close.
+    /// Controller focus index. 0..2 = modifier binding buttons,
+    /// 3..5 = clear buttons, 6 = Close.
     controller_focused: Option<usize>,
     lbl_hint: Label,
     lbl_hint2: Label,
@@ -1717,7 +1717,7 @@ impl MouseSettingsSubPanel {
                 origin_y + MS_Y_HINT,
             ),
             lbl_hint2: Label::new(
-                "temporarily act like Ctrl/Shift",
+                "temporarily act like Ctrl/Shift/Alt",
                 0,
                 label_x,
                 origin_y + MS_Y_HINT2,

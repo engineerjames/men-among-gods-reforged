@@ -337,7 +337,7 @@ impl GameScene {
             return None;
         }
 
-        if self.effective_ctrl_held() || self.alt_held {
+        if self.effective_ctrl_held() || self.effective_alt_held() {
             let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)?;
             if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
                 return None;
@@ -445,7 +445,7 @@ impl GameScene {
         let citem = ps.character_info().citem;
         let has_item = citem > 0;
 
-        if self.alt_held && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
+        if self.effective_alt_held() && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
             return Some("LOOK");
         }
 
