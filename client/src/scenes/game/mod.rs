@@ -67,7 +67,7 @@ use crate::{
         hud::skill_bar::{SkillBar, TOP_CELL_POSITIONS},
         hud::skill_picker_popup::SkillPickerPopup,
         hud::skills_panel::SkillsPanel,
-        hud::talent_panel::TalentPanel,
+        hud::talent_panel::{TALENT_PANEL_H, TALENT_PANEL_W, TalentPanel},
         hud::weapon_armor_panel::WeaponArmorPanel,
         style::Padding,
         visuals::rank_progress_line::RankProgressLine,
@@ -820,7 +820,15 @@ impl GameScene {
                 HUD_PANEL_BG,
             ),
             talent_panel: TalentPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                {
+                    let (tx, ty) = crate::ui::widgets::title_bar::clamp_to_viewport(
+                        panel_x,
+                        panel_y,
+                        TALENT_PANEL_W,
+                        TALENT_PANEL_H,
+                    );
+                    Bounds::new(tx, ty, TALENT_PANEL_W, TALENT_PANEL_H)
+                },
                 HUD_PANEL_BG,
             ),
             quest_log_panel: crate::ui::hud::quest_log_panel::QuestLogPanel::new(
@@ -1660,6 +1668,9 @@ impl GameScene {
             return true;
         }
         if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
+        if self.talent_panel.is_visible() && self.talent_panel.bounds().contains_point(mx, my) {
             return true;
         }
 
@@ -2817,7 +2828,6 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
-            self.talent_panel.render(&mut ctx)?;
             self.quest_log_panel.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
@@ -2825,6 +2835,10 @@ impl Scene for GameScene {
             self.skill_bar.render(&mut ctx)?;
             self.weapon_armor_panel.render(&mut ctx)?;
             self.rank_progress_line.render(&mut ctx)?;
+            // The talent panel is taller than the other HUD panels and
+            // overlaps the skill bar, so it is drawn after the legacy HUD
+            // chrome to keep its description box visible.
+            self.talent_panel.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
