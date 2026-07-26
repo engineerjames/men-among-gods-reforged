@@ -78,6 +78,11 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             color: Color::RGB(200, 60, 60),
             icon_filename: "stun_icon.png",
         }),
+        skills::SK_ICE_STUN => Some(SpellIconMeta {
+            name: "Ice Stun",
+            color: Color::RGB(120, 200, 240),
+            icon_filename: "ice_stun_icon.png",
+        }),
         skills::SK_CURSE => Some(SpellIconMeta {
             name: "Curse",
             color: Color::RGB(180, 40, 200),
@@ -247,6 +252,7 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         | skills::SK_RECALL
         | skills::SK_CURSE
         | skills::SK_STUN
+        | skills::SK_ICE_STUN
         | skills::SK_WIMPY
         | skills::SK_RAINS_OF_RENEWAL
         | skills::SK_SEEING_RED

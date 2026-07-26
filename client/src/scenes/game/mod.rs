@@ -39,7 +39,7 @@ use mag_core::{
     client_commands::ClientCommand,
     constants::{TILEX, TILEY},
     ranks,
-    skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex},
+    skills::{SK_BLAST, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex},
     types::api::NetworkTestSummary,
 };
 
@@ -435,7 +435,11 @@ const HELPER_TEXT_CURSOR_GAP_Y: i32 = 16;
 /// Vertical gap used when the helper text is flipped to sit above the cursor.
 const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
 
-/// Rewrite saved Blast/Lava Blast bindings to match the currently learned skill.
+/// Skill pairs where a talent replaces a base skill with an upgraded version.
+const REPLACEMENT_SKILL_PAIRS: [(usize, usize); 2] =
+    [(SK_BLAST, SK_LAVA_BLAST), (SK_STUN, SK_ICE_STUN)];
+
+/// Rewrite saved keybinds for talent-replaced skills to match what is learned.
 ///
 /// # Arguments
 ///
@@ -446,30 +450,34 @@ const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
 /// # Returns
 ///
 /// * `true` if any saved keybind was changed.
-fn normalize_lava_blast_keybind_arrays(
+fn normalize_replacement_skill_keybind_arrays(
     primary: &mut [Option<usize>],
     secondary: &mut [Option<usize>],
     skills: &[[u8; SkillIndex::MaxIndex as usize]],
 ) -> bool {
-    let blast_learned = skills[SK_BLAST][SkillIndex::BaseValue as usize] > 0;
-    let lava_blast_learned = skills[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] > 0;
-    let replacement = match (blast_learned, lava_blast_learned) {
-        (false, true) => Some((SK_BLAST, SK_LAVA_BLAST)),
-        (true, false) => Some((SK_LAVA_BLAST, SK_BLAST)),
-        _ => None,
-    };
-
-    let Some((from, to)) = replacement else {
-        return false;
-    };
-
     let mut changed = false;
-    for slot in primary.iter_mut().chain(secondary.iter_mut()) {
-        if *slot == Some(from) {
-            *slot = Some(to);
-            changed = true;
+
+    for (base, replacement) in REPLACEMENT_SKILL_PAIRS {
+        let base_learned = skills[base][SkillIndex::BaseValue as usize] > 0;
+        let replacement_learned = skills[replacement][SkillIndex::BaseValue as usize] > 0;
+        let rewrite = match (base_learned, replacement_learned) {
+            (false, true) => Some((base, replacement)),
+            (true, false) => Some((replacement, base)),
+            _ => None,
+        };
+
+        let Some((from, to)) = rewrite else {
+            continue;
+        };
+
+        for slot in primary.iter_mut().chain(secondary.iter_mut()) {
+            if *slot == Some(from) {
+                *slot = Some(to);
+                changed = true;
+            }
         }
     }
+
     changed
 }
 
@@ -712,18 +720,18 @@ pub struct GameScene {
 }
 
 impl GameScene {
-    /// Rewrite saved Blast/Lava Blast bindings to the currently learned replacement.
+    /// Rewrite saved keybinds for talent-replaced skills to what is learned.
     ///
     /// # Arguments
     ///
     /// * `app_state` - Mutable application state containing active character settings.
     /// * `skills` - Latest skill rows received from the server.
-    fn normalize_lava_blast_keybinds(
+    fn normalize_replacement_skill_keybinds(
         &self,
         app_state: &mut AppState<'_>,
         skills: &[[u8; SkillIndex::MaxIndex as usize]],
     ) {
-        if normalize_lava_blast_keybind_arrays(
+        if normalize_replacement_skill_keybind_arrays(
             &mut app_state.settings.character.skill_keybinds,
             &mut app_state.settings.character.skill_keybinds_secondary,
             skills,
@@ -2530,7 +2538,7 @@ impl Scene for GameScene {
             .as_ref()
             .map(|ps| ps.character_info().skill)
         {
-            self.normalize_lava_blast_keybinds(app_state, &skills);
+            self.normalize_replacement_skill_keybinds(app_state, &skills);
         }
 
         self.perf_profiler.begin_frame();
@@ -2914,10 +2922,10 @@ mod tests {
         NETWORK_TEST_CLIENT_PAYLOAD_BYTES, base64_encoded_len, build_network_test_client_payload,
         classify_network_quality, compress_log_for_upload, estimate_jitter_ms, helper_text_origin,
         network_test_server_payload_bytes, newest_log_slice_for_upload,
-        normalize_lava_blast_keybind_arrays,
+        normalize_replacement_skill_keybind_arrays,
     };
     use flate2::read::GzDecoder;
-    use mag_core::skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex};
+    use mag_core::skills::{SK_BLAST, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex};
     use std::io::Read;
 
     const SCREEN_W: i32 = 800;
@@ -3002,7 +3010,8 @@ mod tests {
         let mut skills = empty_skill_rows();
         skills[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 4;
 
-        let changed = normalize_lava_blast_keybind_arrays(&mut primary, &mut secondary, &skills);
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
 
         assert!(changed);
         assert_eq!(primary[0], Some(SK_LAVA_BLAST));
@@ -3018,11 +3027,29 @@ mod tests {
         let mut skills = empty_skill_rows();
         skills[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
 
-        let changed = normalize_lava_blast_keybind_arrays(&mut primary, &mut secondary, &skills);
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
 
         assert!(changed);
         assert_eq!(primary[0], Some(SK_BLAST));
         assert_eq!(secondary[1], Some(SK_BLAST));
+    }
+
+    #[test]
+    fn ice_stun_keybind_normalization_rewrites_stun_when_replacement_is_learned() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[2] = Some(SK_STUN);
+        secondary[3] = Some(SK_STUN);
+        let mut skills = empty_skill_rows();
+        skills[SK_ICE_STUN][SkillIndex::BaseValue as usize] = 4;
+
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[2], Some(SK_ICE_STUN));
+        assert_eq!(secondary[3], Some(SK_ICE_STUN));
     }
 
     #[test]
