@@ -108,8 +108,9 @@ impl GameState {
             0,
         );
 
-        // Contagion: if the dying character was infected, the disease leaps
-        // to adjacent enemies sharing the caster's faction enmity.
+        // Contagion / Parasite: if the dying character was infected, the
+        // infestation leaps to adjacent enemies sharing the caster's faction
+        // enmity.
         self.spread_contagion_on_death(character_id);
 
         // Ice Stun: if the dying character was marked by empowered stun,
@@ -682,11 +683,11 @@ impl GameState {
         self.use_labtransfer2(cn, co);
     }
 
-    /// On-death helper for the Contagion DoT. If the dying character carries
-    /// an active Contagion spell-item, this spreads a fresh Contagion to up
-    /// to four adjacent enemies (8-neighborhood). Each spread carries the
-    /// original caster's identity so lifesteal continues to feed the source
-    /// of the infection.
+    /// On-death helper for the Parasite-family DoTs. If the dying character
+    /// carries an active Parasite or Contagion spell-item, this spreads a
+    /// fresh infection to up to four adjacent enemies (8-neighborhood). Each
+    /// spread carries the original caster's identity so lifesteal continues to
+    /// feed the source of the infection.
     ///
     /// # Arguments
     ///
@@ -695,29 +696,50 @@ impl GameState {
         if !Character::is_sane_character(dying) {
             return;
         }
-        // Find an active Contagion DoT on the dying character.
-        let mut contagion_caster: i32 = -1;
-        let mut contagion_power: i32 = 0;
+        // Find an active Parasite-family DoT on the dying character. Contagion
+        // wins over Parasite when the host carries both.
+        let mut dot_caster: i32 = -1;
+        let mut dot_power: i32 = 0;
+        let mut dot_temp: u16 = 0;
         for n in 0..20 {
             let in_idx = self.characters[dying].spell[n] as usize;
             if in_idx == 0 {
                 continue;
             }
-            if self.items[in_idx].temp == skills::SK_CONTAGION as u16
+            let temp = self.items[in_idx].temp;
+            if (temp == skills::SK_CONTAGION as u16 || temp == skills::SK_PARASITE as u16)
                 && self.items[in_idx].active > 0
             {
-                contagion_caster = self.items[in_idx].data[0] as i32;
-                contagion_power = self.items[in_idx].power as i32;
-                break;
+                dot_caster = self.items[in_idx].data[0] as i32;
+                dot_power = self.items[in_idx].power as i32;
+                dot_temp = temp;
+                if temp == skills::SK_CONTAGION as u16 {
+                    break;
+                }
             }
         }
-        if contagion_caster < 0 {
+        if dot_caster < 0 {
             return;
         }
-        let caster = contagion_caster as usize;
+        let caster = dot_caster as usize;
         if !Character::is_sane_character(caster) {
             return;
         }
+
+        let is_contagion = dot_temp == skills::SK_CONTAGION as u16;
+        let (duration, spell_name, spread_message) = if is_contagion {
+            (
+                core::constants::TICKS * 60 * 8,
+                &b"Contagion"[..],
+                "The contagion spreads to you!\n",
+            )
+        } else {
+            (
+                core::constants::TICKS * 8,
+                &b"Parasite"[..],
+                "The parasites burrow into you!\n",
+            )
+        };
 
         let dx0 = i32::from(self.characters[dying].x);
         let dy0 = i32::from(self.characters[dying].y);
@@ -748,20 +770,10 @@ impl GameState {
                     continue;
                 }
                 if crate::driver::skill::apply_parasitic_dot(
-                    self,
-                    caster,
-                    neighbor,
-                    contagion_power,
-                    skills::SK_CONTAGION as u16,
-                    core::constants::TICKS * 60 * 8,
-                    b"Contagion",
+                    self, caster, neighbor, dot_power, dot_temp, duration, spell_name,
                 ) {
                     spread += 1;
-                    self.do_character_log(
-                        neighbor,
-                        FontColor::Green,
-                        "The contagion spreads to you!\n",
-                    );
+                    self.do_character_log(neighbor, FontColor::Green, spread_message);
                 }
                 if spread >= 4 {
                     return;

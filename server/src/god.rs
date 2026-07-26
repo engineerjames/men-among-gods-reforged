@@ -2296,8 +2296,13 @@ impl God {
         let mut co: usize = 0;
 
         if spec2.is_empty() {
-            // single-arg: treat spec1 as character number
-            co = spec1.parse::<usize>().unwrap_or(0);
+            // single-arg: a character number, or a character/player name
+            // resolved with the same lookup `goto` uses.
+            co = if spec1.chars().all(|c| c.is_ascii_digit()) {
+                spec1.parse::<usize>().unwrap_or(0)
+            } else {
+                gs.do_lookup_char(spec1).max(0) as usize
+            };
 
             if co == 0 || !Character::is_sane_character(co) || Self::invis(gs, cn, co) {
                 gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");

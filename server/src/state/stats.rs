@@ -862,7 +862,13 @@ impl GameState {
                                 FontColor::Red,
                                 &format!("The {} killed you!\n", spell_name),
                             );
+                            // A lethal DoT tick still credits the caster with the
+                            // kill experience they would have earned in melee.
+                            let payout = self.kill_exp_payout(caster, cn);
                             self.do_character_killed(cn, caster, false);
+                            if let Some((exp, rank)) = payout {
+                                self.do_give_exp(caster, exp, 1, rank);
+                            }
                             return;
                         }
                     }
@@ -1346,6 +1352,84 @@ impl GameState {
         }
     }
 
+    /// Computes the experience payout owed to `killer` for slaying `victim`.
+    ///
+    /// Must be called *before* [`GameState::do_character_killed`] because the
+    /// payout depends on the victim's pre-death state. Used by melee/spell
+    /// kills and by damage-over-time effects that finish a target off.
+    ///
+    /// # Arguments
+    ///
+    /// * `killer` - Character credited with the kill (`0` when there is none).
+    /// * `victim` - Character that is about to die.
+    ///
+    /// # Returns
+    ///
+    /// * `Some((exp, rank))` to hand to [`GameState::do_give_exp`], or `None`
+    ///   when the kill pays nothing (self kills, players, companions, arena
+    ///   duels, or a follower killing its owner's target).
+    pub(crate) fn kill_exp_payout(&mut self, killer: usize, victim: usize) -> Option<(i32, i32)> {
+        if killer == 0
+            || killer == victim
+            || !core::types::Character::is_sane_character(killer)
+            || !core::types::Character::is_sane_character(victim)
+        {
+            return None;
+        }
+
+        // A follower gets nothing for finishing off its owner's target.
+        if (self.characters[killer].flags & CharacterFlags::Player.bits()) == 0
+            && self.characters[killer].data[63] == victim as i32
+        {
+            return None;
+        }
+        // Killing players or (non-thrall) companions never pays out.
+        if (self.characters[victim].flags & CharacterFlags::Player.bits()) != 0 {
+            return None;
+        }
+        if self.characters[victim].temp == core::constants::CT_COMPANION as u16
+            && (self.characters[victim].flags & CharacterFlags::Thrall.bits()) == 0
+        {
+            return None;
+        }
+
+        // Combined map flags for arena checks (C includes both co/cn positions).
+        let victim_idx = (i32::from(self.characters[victim].x)
+            + i32::from(self.characters[victim].y) * core::constants::SERVER_MAPX)
+            as usize;
+        let killer_idx = (i32::from(self.characters[killer].x)
+            + i32::from(self.characters[killer].y) * core::constants::SERVER_MAPX)
+            as usize;
+        let mf_flags = self.map[victim_idx].flags | self.map[killer_idx].flags;
+        if (mf_flags & u64::from(core::constants::MF_ARENA)) != 0 {
+            return None;
+        }
+
+        let mut exp = self.do_char_score(victim);
+        let rank = core::ranks::points2rank(self.characters[victim].points_tot as u32) as i32;
+
+        // Buffed victims are worth more, unless they meditate.
+        let has_medit = self.characters[victim].skill[skills::SK_MEDIT][0] != 0;
+        if !has_medit {
+            let spells = self.characters[victim].spell;
+            for &spell_ref in &spells[..20] {
+                let in_idx = spell_ref as usize;
+                if in_idx == 0 {
+                    continue;
+                }
+                let item_temp = self.items[in_idx].temp;
+                if item_temp == skills::SK_PROTECT as u16
+                    || item_temp == skills::SK_ENHANCE as u16
+                    || item_temp == skills::SK_BLESS as u16
+                {
+                    exp += exp / 5;
+                }
+            }
+        }
+
+        Some((exp, rank))
+    }
+
     /// Port of `do_hurt(cn, co, dam, type)` from `svr_do.cpp`.
     ///
     /// Applies damage to a target character (`co`) inflicted by `cn`.
@@ -1762,38 +1846,16 @@ impl GameState {
             );
 
             // Score and EXP handing (defer to helpers/stubs)
-            if type_hurt != 2
-                && cn != 0
-                && (mf_flags & u64::from(core::constants::MF_ARENA)) == 0
-                && noexp == 0
-            {
-                let tmp = self.do_char_score(co);
-                let rank = core::ranks::points2rank(self.characters[co].points_tot as u32) as i32;
-                let mut tmp = tmp;
-                let has_medit = self.characters[co].skill[skills::SK_MEDIT][0] != 0;
-                if !has_medit {
-                    let spells = self.characters[co].spell;
-                    for &spell_ref in &spells[..20] {
-                        let in_idx = spell_ref as usize;
-                        if in_idx == 0 {
-                            continue;
-                        }
-                        let item_temp = self.items[in_idx].temp;
-                        if item_temp == skills::SK_PROTECT as u16
-                            || item_temp == skills::SK_ENHANCE as u16
-                            || item_temp == skills::SK_BLESS as u16
-                        {
-                            tmp += tmp / 5;
-                        }
-                    }
-                }
-
-                self.do_character_killed(co, cn, false);
-                if type_hurt != 2 && cn != 0 && cn != co {
-                    self.do_give_exp(cn, tmp, 1, rank);
-                }
+            let payout = if type_hurt != 2 {
+                self.kill_exp_payout(cn, co)
             } else {
-                self.do_character_killed(co, cn, false);
+                None
+            };
+
+            self.do_character_killed(co, cn, false);
+
+            if let Some((exp, rank)) = payout {
+                self.do_give_exp(cn, exp, 1, rank);
             }
 
             self.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
