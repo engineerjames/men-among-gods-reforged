@@ -4588,7 +4588,8 @@ pub(crate) fn apply_parasitic_dot(
 }
 
 /// Active spell: infest the target with parasites that drain HP over time and
-/// heal the caster for a fraction of the damage dealt.
+/// heal the caster for a fraction of the damage dealt. The infestation also
+/// jumps to enemies standing in the four tiles adjacent to the caster.
 ///
 /// # Arguments
 ///
@@ -4642,41 +4643,84 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[co].y),
         0,
     );
+
+    // Secondary targets: the four tiles adjacent to the caster only. Parasite
+    // never grows past the legacy cross, so the AoE base is pinned to zero.
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, 0) {
+        if maybe_co == cn || maybe_co == co {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        if !apply_parasitic_dot(
+            gs,
+            cn,
+            maybe_co,
+            power,
+            SK_PARASITE as u16,
+            TICKS * 8,
+            b"Parasite",
+        ) {
+            continue;
+        }
+
+        gs.remember_pvp(cn, maybe_co);
+        let other_name = gs.characters[maybe_co].get_name().to_owned();
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{} was infested with parasites.\n", other_name),
+        );
+        gs.do_character_log(
+            maybe_co,
+            FontColor::Green,
+            "Parasites burrow into your flesh!\n",
+        );
+        gs.do_notify_character(maybe_co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+        gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), maybe_co as i32, 0, 0, 0);
+        EffectManager::fx_add_effect(
+            gs,
+            5,
+            0,
+            i32::from(gs.characters[maybe_co].x),
+            i32::from(gs.characters[maybe_co].y),
+            0,
+        );
+    }
 }
 
-/// Active spell: distract the target, reducing their Agility for a short time.
+/// Attaches the Distract spell-item to a single target.
+///
+/// Applies immunity and race modifiers to `power` before creating the spell
+/// item, so callers can pass the caster's raw skill value.
 ///
 /// # Arguments
 ///
 /// * `gs` - Game state.
 /// * `cn` - Caster character index.
-pub fn skill_distract(gs: &mut GameState, cn: usize) {
-    let co = resolve_offensive_target(gs, cn);
-    if !hostile_cast_preflight(gs, cn, co, "You cannot distract yourself.\n") {
-        return;
-    }
-    if spellcost(gs, cn, 15) != 0 {
-        return;
-    }
-    if chance(gs, cn, 18) != 0 {
-        return;
-    }
-
-    let power = i32::from(gs.characters[cn].skill[SK_DISTRACT][5]);
+/// * `co` - Target character index.
+/// * `power` - Caster's raw Distract skill value.
+///
+/// # Returns
+///
+/// * `true` if the target is now distracted.
+fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
     if power < 1 {
-        return;
+        return false;
     }
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
-        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
-        return;
+        return false;
     }
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_distract");
-        return;
+        return false;
     }
     let in_idx = in_opt.unwrap();
     let agility_penalty = -((power / 3).clamp(1, 30)) as i8;
@@ -4695,7 +4739,36 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
         item.power = power as u32;
         item.attrib[AT_AGIL as usize][1] = agility_penalty;
     }
-    if add_spell(gs, co, in_idx) == 0 {
+
+    add_spell(gs, co, in_idx) != 0
+}
+
+/// Active spell: distract the target, reducing their Agility for a short time.
+/// Enemies standing in the four tiles adjacent to the caster are distracted
+/// as well.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_distract(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot distract yourself.\n") {
+        return;
+    }
+    if spellcost(gs, cn, 15) != 0 {
+        return;
+    }
+    if chance(gs, cn, 18) != 0 {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_DISTRACT][5]);
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
+        return;
+    }
+    if !apply_distract(gs, cn, co, power) {
         gs.do_character_log(
             cn,
             FontColor::Green,
@@ -4722,6 +4795,41 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[co].y),
         0,
     );
+
+    // Secondary targets: the four tiles adjacent to the caster only. Distract
+    // never grows past the legacy cross, so the AoE base is pinned to zero.
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, 0) {
+        if maybe_co == cn || maybe_co == co {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        if !apply_distract(gs, cn, maybe_co, power) {
+            continue;
+        }
+
+        gs.remember_pvp(cn, maybe_co);
+        let other_name = gs.characters[maybe_co].get_name().to_owned();
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{} is now distracted.\n", other_name),
+        );
+        gs.do_character_log(maybe_co, FontColor::Green, "You feel distracted!\n");
+        gs.do_notify_character(maybe_co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+        gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), maybe_co as i32, 0, 0, 0);
+        EffectManager::fx_add_effect(
+            gs,
+            5,
+            0,
+            i32::from(gs.characters[maybe_co].x),
+            i32::from(gs.characters[maybe_co].y),
+            0,
+        );
+    }
 }
 
 /// Active melee finisher: a devastating blow against a low-health adjacent

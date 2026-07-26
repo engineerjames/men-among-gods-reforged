@@ -684,10 +684,10 @@ impl GameState {
     }
 
     /// On-death helper for the Parasite-family DoTs. If the dying character
-    /// carries an active Parasite or Contagion spell-item, this spreads a
-    /// fresh infection to up to four adjacent enemies (8-neighborhood). Each
-    /// spread carries the original caster's identity so lifesteal continues to
-    /// feed the source of the infection.
+    /// carries an active Parasite and/or Contagion spell-item, each of them
+    /// spreads a fresh infection to up to four adjacent enemies
+    /// (8-neighborhood). Each spread carries the original caster's identity so
+    /// lifesteal continues to feed the source of the infection.
     ///
     /// # Arguments
     ///
@@ -696,87 +696,88 @@ impl GameState {
         if !Character::is_sane_character(dying) {
             return;
         }
-        // Find an active Parasite-family DoT on the dying character. Contagion
-        // wins over Parasite when the host carries both.
-        let mut dot_caster: i32 = -1;
-        let mut dot_power: i32 = 0;
-        let mut dot_temp: u16 = 0;
+        // Collect the active Parasite-family DoTs on the dying character. A host
+        // carrying both spreads both, so at most one entry per spell type is
+        // gathered here.
+        let mut dots: Vec<(u16, usize, i32)> = Vec::with_capacity(2);
         for n in 0..20 {
             let in_idx = self.characters[dying].spell[n] as usize;
             if in_idx == 0 {
                 continue;
             }
             let temp = self.items[in_idx].temp;
-            if (temp == skills::SK_CONTAGION as u16 || temp == skills::SK_PARASITE as u16)
-                && self.items[in_idx].active > 0
+            if (temp != skills::SK_CONTAGION as u16 && temp != skills::SK_PARASITE as u16)
+                || self.items[in_idx].active == 0
             {
-                dot_caster = self.items[in_idx].data[0] as i32;
-                dot_power = self.items[in_idx].power as i32;
-                dot_temp = temp;
-                if temp == skills::SK_CONTAGION as u16 {
-                    break;
-                }
+                continue;
             }
+            if dots.iter().any(|&(seen, _, _)| seen == temp) {
+                continue;
+            }
+            let caster = self.items[in_idx].data[0] as usize;
+            if !Character::is_sane_character(caster) {
+                continue;
+            }
+            dots.push((temp, caster, self.items[in_idx].power as i32));
         }
-        if dot_caster < 0 {
+        if dots.is_empty() {
             return;
         }
-        let caster = dot_caster as usize;
-        if !Character::is_sane_character(caster) {
-            return;
-        }
-
-        let is_contagion = dot_temp == skills::SK_CONTAGION as u16;
-        let (duration, spell_name, spread_message) = if is_contagion {
-            (
-                core::constants::TICKS * 60 * 8,
-                &b"Contagion"[..],
-                "The contagion spreads to you!\n",
-            )
-        } else {
-            (
-                core::constants::TICKS * 8,
-                &b"Parasite"[..],
-                "The parasites burrow into you!\n",
-            )
-        };
 
         let dx0 = i32::from(self.characters[dying].x);
         let dy0 = i32::from(self.characters[dying].y);
-        let mut spread = 0;
-        for dy in -1..=1i32 {
-            for dx in -1..=1i32 {
-                if dx == 0 && dy == 0 {
-                    continue;
-                }
-                let nx = dx0 + dx;
-                let ny = dy0 + dy;
-                if nx < 0
-                    || ny < 0
-                    || nx >= core::constants::SERVER_MAPX
-                    || ny >= core::constants::SERVER_MAPY
-                {
-                    continue;
-                }
-                let m = (nx + ny * core::constants::SERVER_MAPX) as usize;
-                let neighbor = self.map[m].ch as usize;
-                if neighbor == 0 || neighbor == caster {
-                    continue;
-                }
-                if !Character::is_sane_character(neighbor) {
-                    continue;
-                }
-                if !self.may_attack_msg(caster, neighbor, false) {
-                    continue;
-                }
-                if crate::driver::skill::apply_parasitic_dot(
-                    self, caster, neighbor, dot_power, dot_temp, duration, spell_name,
-                ) {
-                    spread += 1;
-                    self.do_character_log(neighbor, FontColor::Green, spread_message);
-                }
-                if spread >= 4 {
-                    return;
+
+        for (dot_temp, caster, dot_power) in dots {
+            let is_contagion = dot_temp == skills::SK_CONTAGION as u16;
+            let (duration, spell_name, spread_message) = if is_contagion {
+                (
+                    core::constants::TICKS * 60 * 8,
+                    &b"Contagion"[..],
+                    "The contagion spreads to you!\n",
+                )
+            } else {
+                (
+                    core::constants::TICKS * 8,
+                    &b"Parasite"[..],
+                    "The parasites burrow into you!\n",
+                )
+            };
+
+            let mut spread = 0;
+            'spread: for dy in -1..=1i32 {
+                for dx in -1..=1i32 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = dx0 + dx;
+                    let ny = dy0 + dy;
+                    if nx < 0
+                        || ny < 0
+                        || nx >= core::constants::SERVER_MAPX
+                        || ny >= core::constants::SERVER_MAPY
+                    {
+                        continue;
+                    }
+                    let m = (nx + ny * core::constants::SERVER_MAPX) as usize;
+                    let neighbor = self.map[m].ch as usize;
+                    if neighbor == 0 || neighbor == caster {
+                        continue;
+                    }
+                    if !Character::is_sane_character(neighbor) {
+                        continue;
+                    }
+                    if !self.may_attack_msg(caster, neighbor, false) {
+                        continue;
+                    }
+                    if crate::driver::skill::apply_parasitic_dot(
+                        self, caster, neighbor, dot_power, dot_temp, duration, spell_name,
+                    ) {
+                        spread += 1;
+                        self.do_character_log(neighbor, FontColor::Green, spread_message);
+                    }
+                    if spread >= 4 {
+                        break 'spread;
+                    }
                 }
             }
         }
