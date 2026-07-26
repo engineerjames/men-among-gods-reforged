@@ -28,6 +28,9 @@ const PANEL_FONT: usize = 1;
 /// Golden highlight color for controller-focused +/- buttons.
 const CONTROLLER_SELECT_COLOR: Color = Color::RGBA(255, 200, 50, 220);
 
+/// Green tint used for the unmodified (base) value shown in parentheses.
+const BASE_VALUE_COLOR: Color = Color::RGB(120, 235, 120);
+
 /// Row height in pixels for attribute/skill rows.
 const ROW_H: i32 = 14;
 
@@ -207,10 +210,32 @@ impl SkillsPanel {
         let cb = self.content_bounds();
         let name_x = cb.x + 18;
         let value_x = cb.x + 120;
-        let plus_x = cb.x + 165;
-        let minus_x = cb.x + 180;
-        let cost_x = cb.x + 195;
+        let plus_x = cb.x + 200;
+        let minus_x = cb.x + 215;
+        let cost_x = cb.x + 230;
         (name_x, value_x, plus_x, minus_x, cost_x)
+    }
+
+    /// X position of the parenthesised base (unmodified) value column.
+    ///
+    /// # Returns
+    ///
+    /// * Left edge of the base-value text, in viewport coordinates.
+    fn base_value_x(&self) -> i32 {
+        self.content_bounds().x + 146
+    }
+
+    /// Formats the parenthesised base value shown next to the total.
+    ///
+    /// # Arguments
+    ///
+    /// * `base` - Unmodified value including any pending raises.
+    ///
+    /// # Returns
+    ///
+    /// * The rendered text, e.g. `"( 42)"`.
+    fn base_value_text(base: i32) -> String {
+        format!("({:>3})", base)
     }
 
     // ---- Controller navigation -------------------------------------------
@@ -948,6 +973,7 @@ impl Widget for SkillsPanel {
 
         let available_points = (data.points - self.stat_points_used).max(0);
         let (name_x, _value_x, plus_x, minus_x, cost_x) = self.col_x();
+        let base_x = self.base_value_x();
 
         // --- Attributes ---
         for (n, attr_name) in ATTR_NAMES.iter().enumerate() {
@@ -966,6 +992,15 @@ impl Widget for SkillsPanel {
                 name_x,
                 y,
                 font_cache::TextStyle::PLAIN,
+            )?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                &Self::base_value_text(value_bare),
+                base_x,
+                y,
+                font_cache::TextStyle::tinted(BASE_VALUE_COLOR),
             )?;
 
             let plus = if cost != i32::MAX && cost <= available_points {
@@ -1007,28 +1042,31 @@ impl Widget for SkillsPanel {
         }
 
         // --- Pools (HP, End, Mana) ---
-        let pool_info: [(&str, i32, i32, usize); 3] = [
+        let pool_info: [(&str, i32, i32, i32, usize); 3] = [
             (
                 "Hitpoints",
                 i32::from(data.hp[5]) + self.stat_raised[5],
+                i32::from(data.hp[0]) + self.stat_raised[5],
                 Self::hp_cost(data, i32::from(data.hp[0]) + self.stat_raised[5]),
                 5,
             ),
             (
                 "Endurance",
                 i32::from(data.end[5]) + self.stat_raised[6],
+                i32::from(data.end[0]) + self.stat_raised[6],
                 Self::end_cost(data, i32::from(data.end[0]) + self.stat_raised[6]),
                 6,
             ),
             (
                 "Mana",
                 i32::from(data.mana[5]) + self.stat_raised[7],
+                i32::from(data.mana[0]) + self.stat_raised[7],
                 Self::mana_cost(data, i32::from(data.mana[0]) + self.stat_raised[7]),
                 7,
             ),
         ];
 
-        for (p, (name, value, cost, stat_idx)) in pool_info.iter().enumerate() {
+        for (p, (name, value, base, cost, stat_idx)) in pool_info.iter().enumerate() {
             let y = self.pool_row_y(p);
             let raised = self.stat_raised[*stat_idx];
 
@@ -1041,6 +1079,15 @@ impl Widget for SkillsPanel {
                 name_x,
                 y,
                 font_cache::TextStyle::PLAIN,
+            )?;
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                PANEL_FONT,
+                &Self::base_value_text(*base),
+                base_x,
+                y,
+                font_cache::TextStyle::tinted(BASE_VALUE_COLOR),
             )?;
 
             let plus = if *cost != i32::MAX && *cost <= available_points {
@@ -1119,6 +1166,15 @@ impl Widget for SkillsPanel {
                     name_x,
                     y,
                     font_cache::TextStyle::PLAIN,
+                )?;
+                font_cache::draw_text(
+                    ctx.canvas,
+                    ctx.gfx,
+                    PANEL_FONT,
+                    &Self::base_value_text(value_bare),
+                    base_x,
+                    y,
+                    font_cache::TextStyle::tinted(BASE_VALUE_COLOR),
                 )?;
 
                 let plus = if cost != i32::MAX && cost <= available_points {
@@ -1293,6 +1349,21 @@ mod tests {
     fn starts_hidden() {
         let panel = SkillsPanel::new(Bounds::new(0, 0, 300, 250), Color::RGBA(0, 0, 0, 180));
         assert!(!panel.is_visible());
+    }
+
+    #[test]
+    fn base_value_text_is_right_aligned_in_parentheses() {
+        assert_eq!(SkillsPanel::base_value_text(7), "(  7)");
+        assert_eq!(SkillsPanel::base_value_text(142), "(142)");
+    }
+
+    #[test]
+    fn base_value_column_sits_between_total_and_plus() {
+        let panel = SkillsPanel::new(Bounds::new(0, 0, 340, 250), Color::RGBA(0, 0, 0, 180));
+        let (name_x, _, plus_x, _, _) = panel.col_x();
+        let base_x = panel.base_value_x();
+        assert!(base_x > name_x);
+        assert!(base_x + (SkillsPanel::base_value_text(999).len() as i32 * 6) <= plus_x);
     }
 
     #[test]

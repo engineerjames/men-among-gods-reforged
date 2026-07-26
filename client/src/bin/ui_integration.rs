@@ -93,6 +93,7 @@ const SPELL_ICONS_NEG_RIGHT_X: i32 = TARGET_WIDTH_INT as i32 - 294;
 const SPELL_ICONS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 
 const HUD_PANEL_W: u32 = 300;
+const SKILLS_PANEL_W: u32 = 340;
 const HUD_PANEL_H: u32 = 250;
 
 /// Application entry point for the UI integration test binary.
@@ -255,14 +256,18 @@ fn main() -> Result<(), String> {
 
     // Column 3 / overlays: Complex panels (toggled via keys 1-5).
     let panel_bottom = HUD_ARC_CENTER_Y - HUD_ARC_RADIUS as i32 - HUD_BUTTON_RADIUS as i32 - 20;
-    let panel_x = HUD_ARC_CENTER_X - HUD_PANEL_W as i32 / 2;
     let panel_y = panel_bottom - HUD_PANEL_H as i32;
 
     let mut status_panel =
         client::ui::hud::weapon_armor_panel::WeaponArmorPanel::new(COL2_X, 230, PANEL_BG);
 
     let mut skills_panel = SkillsPanel::new(
-        Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+        Bounds::new(
+            HUD_ARC_CENTER_X - SKILLS_PANEL_W as i32 / 2,
+            panel_y,
+            SKILLS_PANEL_W,
+            HUD_PANEL_H,
+        ),
         PANEL_BG,
     );
     skills_panel.update_data(SkillsPanelData {

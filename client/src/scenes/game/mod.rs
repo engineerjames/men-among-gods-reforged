@@ -371,6 +371,8 @@ const HUD_BTN_SPACING: u32 = 40;
 // ---- Skill bar ---- //
 /// Width of each togglable HUD panel.
 const HUD_PANEL_W: u32 = 300;
+/// Wider width for the skills panel (extra room for base values).
+const SKILLS_PANEL_W: u32 = 340;
 /// Height of each togglable HUD panel.
 const HUD_PANEL_H: u32 = 250;
 /// Wider width for the inventory panel (two grids + scrollbar + gap).
@@ -789,7 +791,12 @@ impl GameScene {
                 4,
             ),
             skills_panel: SkillsPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                Bounds::new(
+                    HUD_ARC_CENTER_X - SKILLS_PANEL_W as i32 / 2,
+                    panel_y,
+                    SKILLS_PANEL_W,
+                    HUD_PANEL_H,
+                ),
                 HUD_PANEL_BG,
             ),
             inventory_panel: InventoryPanel::new(
