@@ -624,6 +624,127 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
     }
 }
 
+/// Skill rows that a character's currently learned talents own.
+///
+/// Talent-granted skills live in reserved skill slots that no character
+/// template declares, so any code path that re-stamps a character's skill
+/// rows from its template must consult this to avoid destroying them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TalentSkillOwnership {
+    /// Skill rows a learned talent granted, or replaced *into*.
+    ///
+    /// Their base value, max value and raise difficulty are owned by the
+    /// talent system and must not be overwritten with template defaults.
+    pub granted: [bool; MAX_SKILLS],
+    /// Skill rows a learned [`TalentEffect::ReplaceSkill`] removed.
+    ///
+    /// These must stay empty while the talent is learned; re-adding them
+    /// from a template would leave the character holding both halves of a
+    /// replacement pair.
+    pub replaced: [bool; MAX_SKILLS],
+}
+
+impl Default for TalentSkillOwnership {
+    fn default() -> Self {
+        Self {
+            granted: [false; MAX_SKILLS],
+            replaced: [false; MAX_SKILLS],
+        }
+    }
+}
+
+impl TalentSkillOwnership {
+    /// Returns whether the talent system owns the given skill row.
+    ///
+    /// # Arguments
+    ///
+    /// * `skill` - Canonical skill index.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when a learned talent granted or replaced into `skill`.
+    pub fn is_granted(&self, skill: usize) -> bool {
+        self.granted.get(skill).copied().unwrap_or(false)
+    }
+
+    /// Returns whether a learned talent removed the given skill row.
+    ///
+    /// # Arguments
+    ///
+    /// * `skill` - Canonical skill index.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when a learned [`TalentEffect::ReplaceSkill`] cleared `skill`.
+    pub fn is_replaced(&self, skill: usize) -> bool {
+        self.replaced.get(skill).copied().unwrap_or(false)
+    }
+}
+
+/// Collect the skill rows owned by a character's learned talents.
+///
+/// # Arguments
+///
+/// * `class` - Character class, used to select the talent tree.
+/// * `talents` - Packed talent bytes (`Character::future1`).
+///
+/// # Returns
+///
+/// * Ownership flags for every canonical skill row. All-false when the
+///   class has no registered tree or no relevant talent is learned.
+pub fn talent_skill_ownership(class: Class, talents: &[u8; 25]) -> TalentSkillOwnership {
+    let mut ownership = TalentSkillOwnership::default();
+
+    let Some(tree) = tree_for(class) else {
+        return ownership;
+    };
+
+    for node in tree.nodes {
+        if !is_talent_slot_spent(talents, node.slot) {
+            continue;
+        }
+        accumulate_skill_ownership(node.effect, &mut ownership);
+    }
+
+    ownership
+}
+
+/// Record one effect's skill-row ownership, including nested composites.
+///
+/// # Arguments
+///
+/// * `effect` - Effect to inspect.
+/// * `ownership` - Accumulator to mutate.
+fn accumulate_skill_ownership(effect: TalentEffect, ownership: &mut TalentSkillOwnership) {
+    match effect {
+        TalentEffect::GrantSkill { skill } | TalentEffect::GrantSkillAtBase { skill, .. } => {
+            ownership.granted[skill as usize] = true;
+        }
+        TalentEffect::ReplaceSkill { from, to } => {
+            ownership.granted[to as usize] = true;
+            // A pair that replaces a skill with itself leaves the row intact.
+            if from as usize != to as usize {
+                ownership.replaced[from as usize] = true;
+            }
+        }
+        TalentEffect::Composite { effects } => {
+            for effect in effects {
+                accumulate_skill_ownership(*effect, ownership);
+            }
+        }
+        TalentEffect::Passive
+        | TalentEffect::SkillsFlat { .. }
+        | TalentEffect::SkillsPercent { .. }
+        | TalentEffect::AttributesFlat { .. }
+        | TalentEffect::AttributesPercent { .. }
+        | TalentEffect::DodgeChancePercent { .. }
+        | TalentEffect::ArmorPercent { .. }
+        | TalentEffect::WeaponPercent { .. }
+        | TalentEffect::HpManaEndFlat { .. }
+        | TalentEffect::PrimaryHitProc { .. } => {}
+    }
+}
+
 /// Add one effect's derived stat contribution into `bonuses`.
 ///
 /// # Arguments

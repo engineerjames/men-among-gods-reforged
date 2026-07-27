@@ -4267,15 +4267,10 @@ impl God {
                 character.attrib[n][3] = template.attrib[n][3];
             }
 
-            for n in 0..core::skills::MAX_SKILLS {
-                if character.skill[n][0] == 0 && template.skill[n][0] != 0 {
-                    character.skill[n][0] = template.skill[n][0];
-                    log::info!("added skill {} to {}", n, character.get_name());
-                }
-                character.skill[n][1] = template.skill[n][1];
-                character.skill[n][2] = template.skill[n][2];
-                character.skill[n][3] = template.skill[n][3];
-            }
+            // Must run after `kindred` is updated so the talent tree of the
+            // new class is consulted; talent-owned skill rows are preserved
+            // instead of being zeroed by the template.
+            player::talent_trees::apply_template_skills(character, &template.skill, false);
 
             character.data[45] = 0;
             character.set_do_update_flags();

@@ -1216,36 +1216,7 @@ pub fn pop_skill(gs: &mut GameState) {
 
         let template_skills = gs.character_templates[t].skill;
 
-        for (n, temp_skill) in template_skills.iter().enumerate() {
-            let ch = &mut gs.characters[cn];
-
-            if ch.skill[n][0] == 0 && temp_skill[0] != 0 {
-                ch.skill[n][0] = temp_skill[0];
-                log::info!("added {} to {}", skills::get_skill_name(n), ch.get_name());
-            }
-
-            if temp_skill[2] < ch.skill[n][0] {
-                let p = skillcost(
-                    i32::from(ch.skill[n][0]),
-                    i32::from(ch.skill[n][3]),
-                    i32::from(temp_skill[2]),
-                );
-                log::info!(
-                    "reduced {} on {} from {} to {}, added {} exp",
-                    skills::get_skill_name(n),
-                    ch.get_name(),
-                    ch.skill[n][0],
-                    temp_skill[2],
-                    p
-                );
-                ch.skill[n][0] = temp_skill[2];
-                ch.points += p;
-            }
-
-            ch.skill[n][1] = temp_skill[1];
-            ch.skill[n][2] = temp_skill[2];
-            ch.skill[n][3] = temp_skill[3];
-        }
+        player::talent_trees::apply_template_skills(&mut gs.characters[cn], &template_skills, true);
 
         helpers::sync_weapon_skill(&mut gs.characters[cn].skill);
     }

@@ -11,17 +11,31 @@
 //!   prerequisites and cost, and debits a point.
 
 use core::{
-    skills::{Skill, SkillIndex},
+    skills::{MAX_SKILLS, Skill, SkillIndex},
     string_operations::c_string_to_str,
     talent_trees::{
         TalentEffect, TalentNode, TalentRef, apply_talent_point, available_talent_points,
-        find_node, is_talent_spent, reset_talent_points, talent_prereqs_met, tree_for,
+        find_node, is_talent_spent, reset_talent_points, talent_prereqs_met,
+        talent_skill_ownership, tree_for,
     },
-    types::Class,
+    types::{Character, Class},
 };
 
 use crate::game_state::GameState;
 use crate::points;
+
+/// Max value seeded for talent-owned skill rows.
+///
+/// Talent-granted skills occupy reserved slots that no character template
+/// declares, so their `MaxValue` has to come from here. A `MaxValue` of `0`
+/// caps progression at the granted base value.
+const TALENT_SKILL_DEFAULT_MAX: u8 = 100;
+
+/// Raise difficulty seeded for talent-owned skill rows.
+///
+/// A `RaiseDifficulty` of `0` means "not raisable", so this must never be
+/// left at zero for a skill the player is expected to train.
+const TALENT_SKILL_DEFAULT_DIFFICULTY: u8 = 5;
 
 /// Top-level "spend a point on a talent" entry point.
 ///
@@ -162,10 +176,10 @@ fn grant_skill(cn: usize, game_state: &mut GameState, skill: Skill) -> Result<()
     // refuses to spend skill points on them (RaiseDifficulty == 0 means
     // "not raisable", MaxValue == 0 caps progression at the base value).
     if ch.skill[idx][SkillIndex::MaxValue as usize] == 0 {
-        ch.skill[idx][SkillIndex::MaxValue as usize] = 100;
+        ch.skill[idx][SkillIndex::MaxValue as usize] = TALENT_SKILL_DEFAULT_MAX;
     }
     if ch.skill[idx][SkillIndex::RaiseDifficulty as usize] == 0 {
-        ch.skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
+        ch.skill[idx][SkillIndex::RaiseDifficulty as usize] = TALENT_SKILL_DEFAULT_DIFFICULTY;
     }
 
     log::info!(
@@ -203,10 +217,10 @@ fn grant_skill_at_base(
         ch.skill[idx][base_idx] = base;
     }
     if ch.skill[idx][SkillIndex::MaxValue as usize] == 0 {
-        ch.skill[idx][SkillIndex::MaxValue as usize] = 100;
+        ch.skill[idx][SkillIndex::MaxValue as usize] = TALENT_SKILL_DEFAULT_MAX;
     }
     if ch.skill[idx][SkillIndex::RaiseDifficulty as usize] == 0 {
-        ch.skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
+        ch.skill[idx][SkillIndex::RaiseDifficulty as usize] = TALENT_SKILL_DEFAULT_DIFFICULTY;
     }
 
     log::info!(
@@ -217,6 +231,101 @@ fn grant_skill_at_base(
     );
 
     Ok(())
+}
+
+/// Re-stamp a character template's skill rows onto a character without
+/// destroying talent-owned skill rows.
+///
+/// Character templates only describe the skills a race natively knows.
+/// Talent-granted skills live in reserved slots that no template declares,
+/// so a naive template copy zeroes their `MaxValue` and `RaiseDifficulty`,
+/// leaving the player holding a skill they can never raise. Likewise, a
+/// learned [`TalentEffect::ReplaceSkill`] clears the replaced row, which a
+/// naive copy happily re-adds so the player ends up with both halves of the
+/// pair.
+///
+/// This helper applies the template row-by-row while honouring
+/// [`core::talent_trees::talent_skill_ownership`]:
+///
+/// * Rows a learned talent replaced away stay cleared.
+/// * Rows a learned talent granted keep their talent-seeded base, max value
+///   and raise difficulty; template values are only adopted when the
+///   template actually declares the skill.
+/// * Every other row is stamped from the template as before.
+///
+/// # Arguments
+///
+/// * `character` - Character whose skill rows are being re-stamped.
+/// * `template_skills` - Skill rows of the character template to apply.
+/// * `clamp_to_template_max` - When `true`, a base value above the
+///   template's max value is reduced to it and the spent experience is
+///   refunded into `points`. Talent-owned rows are never clamped.
+pub fn apply_template_skills(
+    character: &mut Character,
+    template_skills: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
+    clamp_to_template_max: bool,
+) {
+    let ownership = talent_skill_ownership(Class::from(character.kindred), &character.future1);
+    let name = character.get_name().to_owned();
+
+    let base_idx = SkillIndex::BaseValue as usize;
+    let preset_idx = SkillIndex::PresetModifier as usize;
+    let max_idx = SkillIndex::MaxValue as usize;
+    let diff_idx = SkillIndex::RaiseDifficulty as usize;
+
+    for (n, template_row) in template_skills.iter().enumerate() {
+        if ownership.is_replaced(n) {
+            character.skill[n] = [0; SkillIndex::MaxIndex as usize];
+            continue;
+        }
+
+        if ownership.is_granted(n) {
+            if character.skill[n][base_idx] == 0 {
+                character.skill[n][base_idx] = 1;
+            }
+            if template_row[preset_idx] != 0 {
+                character.skill[n][preset_idx] = template_row[preset_idx];
+            }
+            character.skill[n][max_idx] = character.skill[n][max_idx]
+                .max(template_row[max_idx])
+                .max(TALENT_SKILL_DEFAULT_MAX);
+            if character.skill[n][diff_idx] == 0 {
+                character.skill[n][diff_idx] = if template_row[diff_idx] != 0 {
+                    template_row[diff_idx]
+                } else {
+                    TALENT_SKILL_DEFAULT_DIFFICULTY
+                };
+            }
+            continue;
+        }
+
+        if character.skill[n][base_idx] == 0 && template_row[base_idx] != 0 {
+            character.skill[n][base_idx] = template_row[base_idx];
+            log::info!("added {} to {}", core::skills::get_skill_name(n), name);
+        }
+
+        if clamp_to_template_max && template_row[max_idx] < character.skill[n][base_idx] {
+            let refund = crate::populate::skillcost(
+                i32::from(character.skill[n][base_idx]),
+                i32::from(character.skill[n][diff_idx]),
+                i32::from(template_row[max_idx]),
+            );
+            log::info!(
+                "reduced {} on {} from {} to {}, added {} exp",
+                core::skills::get_skill_name(n),
+                name,
+                character.skill[n][base_idx],
+                template_row[max_idx],
+                refund
+            );
+            character.skill[n][base_idx] = template_row[max_idx];
+            character.points += refund;
+        }
+
+        character.skill[n][preset_idx] = template_row[preset_idx];
+        character.skill[n][max_idx] = template_row[max_idx];
+        character.skill[n][diff_idx] = template_row[diff_idx];
+    }
 }
 
 /// Reset every learned talent back to an unspent state.
@@ -354,8 +463,16 @@ fn replace_skill(
 
     ch.skill[to_idx][base_idx] = if from_base == 0 { 1 } else { from_base };
     ch.skill[to_idx][preset_idx] = from_preset;
-    ch.skill[to_idx][max_idx] = if from_max == 0 { 100 } else { from_max };
-    ch.skill[to_idx][diff_idx] = if from_diff == 0 { 5 } else { from_diff };
+    ch.skill[to_idx][max_idx] = if from_max == 0 {
+        TALENT_SKILL_DEFAULT_MAX
+    } else {
+        from_max
+    };
+    ch.skill[to_idx][diff_idx] = if from_diff == 0 {
+        TALENT_SKILL_DEFAULT_DIFFICULTY
+    } else {
+        from_diff
+    };
     ch.skill[to_idx][dynamic_idx] = 0;
     ch.skill[to_idx][total_idx] = 0;
 
@@ -429,14 +546,24 @@ fn ungrant_skill(cn: usize, game_state: &mut GameState, skill: Skill) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_helpers::with_test_gs;
-    use core::constants::CharacterFlags;
+    use crate::god::God;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::{CharacterFlags, USE_ACTIVE};
     use core::skills::{Attribute, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_LAVA_BLAST};
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
     };
-    use core::traits::{Class, KIN_HARAKIM, KIN_MERCENARY, KIN_TEMPLAR};
+    use core::traits::{
+        Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_TEMPLAR,
+    };
+
+    /// Character template id used for the base-templar template in tests.
+    const TEMPLAR_TEMPLATE: usize = 540;
+    /// Character template id used for the arch-templar template in tests.
+    const ARCH_TEMPLAR_TEMPLATE: usize = 544;
+    /// Character template id used for the arch-harakim template in tests.
+    const ARCH_HARAKIM_TEMPLATE: usize = 545;
 
     fn empty_talents() -> [u8; 25] {
         [0; 25]
@@ -1175,6 +1302,151 @@ mod tests {
             );
             // The talent point spent on the grant is also refunded.
             assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 1);
+        });
+    }
+
+    // ---- template re-stamping (racechange / pop_skill) -------------------
+
+    /// Install a minimal, in-use character template for template-copy tests.
+    fn install_template(gs: &mut GameState, temp: usize, kindred: u32) {
+        let template = &mut gs.character_templates[temp];
+        *template = Character::default();
+        template.used = USE_ACTIVE;
+        template.kindred = kindred as i32;
+        // A native skill the race knows, to prove normal rows still copy.
+        template.skill[Skill::Warcry as usize][SkillIndex::BaseValue as usize] = 1;
+        template.skill[Skill::Warcry as usize][SkillIndex::MaxValue as usize] = 100;
+        template.skill[Skill::Warcry as usize][SkillIndex::RaiseDifficulty as usize] = 3;
+    }
+
+    /// Learn Renewal + Sun's Blessing and train both to `base`.
+    fn templar_with_trained_talent_skills(gs: &mut GameState, cn: usize, base: u8) {
+        give_class_and_points(gs, cn, KIN_TEMPLAR, 2);
+        learn_talent(gs, cn, templar_slot("Renewal")).unwrap();
+        // Satisfy the prerequisite layers leading up to Sun's Blessing.
+        for layer in 2..=4 {
+            gs.characters[cn].future1[layer] |= 0b0000_0001;
+        }
+        learn_talent(gs, cn, templar_slot("Sun's Blessing")).unwrap();
+
+        for idx in [Skill::RainsOfRenewal as usize, Skill::SunsBlessing as usize] {
+            gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize] = base;
+        }
+    }
+
+    #[test]
+    fn arching_keeps_talent_granted_skills_raisable() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            templar_with_trained_talent_skills(gs, cn, 30);
+            install_template(gs, ARCH_TEMPLAR_TEMPLATE, KIN_ARCHTEMPLAR);
+
+            God::minor_racechange(gs, cn, ARCH_TEMPLAR_TEMPLATE as i32);
+
+            gs.characters[cn].points = 10_000_000;
+            for idx in [Skill::RainsOfRenewal as usize, Skill::SunsBlessing as usize] {
+                assert_eq!(
+                    gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                    30,
+                    "arching must not reduce talent-granted skill {idx}"
+                );
+                assert!(
+                    gs.characters[cn].skill[idx][SkillIndex::MaxValue as usize] > 30,
+                    "arching must not cap talent-granted skill {idx}"
+                );
+                assert_ne!(
+                    gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize],
+                    0,
+                    "arching must leave talent-granted skill {idx} raisable"
+                );
+                assert!(
+                    gs.do_raise_skill(cn, idx as i32),
+                    "talent-granted skill {idx} must still be raisable after arching"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn arching_does_not_restore_a_replaced_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 20;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize] = 5;
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+
+            install_template(gs, ARCH_HARAKIM_TEMPLATE, KIN_ARCHHARAKIM);
+            // The arch template natively knows Blast.
+            let template = &mut gs.character_templates[ARCH_HARAKIM_TEMPLATE];
+            template.skill[SK_BLAST][SkillIndex::BaseValue as usize] = 1;
+            template.skill[SK_BLAST][SkillIndex::MaxValue as usize] = 100;
+            template.skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize] = 5;
+
+            God::minor_racechange(gs, cn, ARCH_HARAKIM_TEMPLATE as i32);
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                0,
+                "a replaced skill must not be restored by the arch template"
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                20
+            );
+            gs.characters[cn].points = 10_000_000;
+            assert!(gs.do_raise_skill(cn, SK_LAVA_BLAST as i32));
+        });
+    }
+
+    #[test]
+    fn pop_skill_keeps_talent_granted_skills_raisable() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            templar_with_trained_talent_skills(gs, cn, 30);
+            install_template(gs, TEMPLAR_TEMPLATE, KIN_TEMPLAR);
+            gs.characters[cn].temp = TEMPLAR_TEMPLATE as u16;
+
+            crate::populate::pop_skill(gs);
+
+            gs.characters[cn].points = 10_000_000;
+            for idx in [Skill::RainsOfRenewal as usize, Skill::SunsBlessing as usize] {
+                assert_eq!(
+                    gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                    30,
+                    "pop_skill must not wipe talent-granted skill {idx}"
+                );
+                assert!(
+                    gs.do_raise_skill(cn, idx as i32),
+                    "talent-granted skill {idx} must still be raisable after pop_skill"
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn template_restamp_still_applies_to_non_talent_skills() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            templar_with_trained_talent_skills(gs, cn, 30);
+            install_template(gs, ARCH_TEMPLAR_TEMPLATE, KIN_ARCHTEMPLAR);
+
+            God::minor_racechange(gs, cn, ARCH_TEMPLAR_TEMPLATE as i32);
+
+            let idx = Skill::Warcry as usize;
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::BaseValue as usize],
+                1
+            );
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::MaxValue as usize],
+                100
+            );
+            assert_eq!(
+                gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize],
+                3
+            );
         });
     }
 
