@@ -6535,6 +6535,10 @@ mod harakim_ability_tests {
     #[test]
     fn ice_stun_marker_records_caster_and_power() {
         with_test_gs(|gs| {
+            // The marker is allocated from item template 1, which must be in
+            // use for `God::create_item` to succeed.
+            gs.item_templates[1].used = USE_ACTIVE;
+
             let (cn, _nr) = add_test_player(gs);
             let (co, _nr2) = add_test_player(gs);
 
