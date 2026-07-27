@@ -1,7 +1,8 @@
 //! Templar class talent tree metadata and effects.
 
 use super::{
-    TalentEffect, TalentNode, TalentPrimaryHitProc, TalentPrimaryHitProcKind, TalentRef, TalentTree,
+    TalentEffect, TalentNode, TalentPrimaryHitProc, TalentPrimaryHitProcKind, TalentRef,
+    TalentSkillProfile, TalentTree,
 };
 use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
@@ -95,6 +96,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::RainsOfRenewal,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -103,7 +105,10 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Learn Gash, a reckless melee strike that costs 5% of your current HP and deals amplified weapon damage.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::GrantSkill { skill: Skill::Gash },
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::Gash,
+                profile: TalentSkillProfile::DEFAULT,
+            },
         },
         TalentNode {
             slot: CORPORAL_STRENGTH,
@@ -133,9 +138,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Unlock Meditate at base level 5.",
             cost: 1,
             prereqs: &[STAFF_SERGEANT_STRENGTH],
-            effect: TalentEffect::GrantSkillAtBase {
+            effect: TalentEffect::GrantSkill {
                 skill: Skill::Meditate,
-                base: 5,
+                profile: TalentSkillProfile::DEFAULT.with_base(5),
             },
         },
         TalentNode {
@@ -146,6 +151,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SunsBlessing,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -156,6 +162,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SeeingRed,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -216,6 +223,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::ThunderousFury,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -226,6 +234,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::InnerStrength,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {

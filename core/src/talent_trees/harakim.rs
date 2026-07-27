@@ -1,6 +1,8 @@
 //! Harakim class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNode, TalentRef, TalentTree, is_talent_slot_spent};
+use super::{
+    TalentEffect, TalentNode, TalentRef, TalentSkillProfile, TalentTree, is_talent_slot_spent,
+};
 use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
 
@@ -126,6 +128,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             effect: TalentEffect::ReplaceSkill {
                 from: Skill::Blast,
                 to: Skill::LavaBlast,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -136,6 +139,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::RevenantConduit,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -180,6 +184,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             effect: TalentEffect::ReplaceSkill {
                 from: Skill::Stun,
                 to: Skill::IceStun,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -190,6 +195,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             prereqs: &[FIRST_SERGEANT_WILLPOWER],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::KindredSpirit,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -218,6 +224,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             prereqs: &[CAPTAIN_RESERVES],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SpellcasterKindredSpirit,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -239,6 +246,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             prereqs: &[BRIGADIER_GENERAL_INTUITION],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::AnguishEarth,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {
@@ -249,6 +257,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             prereqs: &[BRIGADIER_GENERAL_INTUITION],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SpectralPact,
+                profile: TalentSkillProfile::DEFAULT,
             },
         },
         TalentNode {

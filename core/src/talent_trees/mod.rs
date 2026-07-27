@@ -92,6 +92,105 @@ impl TalentRef {
     }
 }
 
+/// Per-talent tuning for a skill row that a talent grants or replaces into.
+///
+/// Talent-owned skills occupy reserved slots that no character template
+/// declares, so their `BaseValue`, `MaxValue` and `RaiseDifficulty` have to be
+/// authored alongside the talent node itself. Each grant/replace node carries
+/// one of these so individual abilities can be tuned independently instead of
+/// sharing a single hard-coded default.
+///
+/// Start from [`TalentSkillProfile::DEFAULT`] and refine it with the
+/// `const fn` builders so tree tables stay `static`:
+///
+/// ```
+/// use core::talent_trees::TalentSkillProfile;
+///
+/// const PROFILE: TalentSkillProfile =
+///     TalentSkillProfile::DEFAULT.with_max(60).with_difficulty(8);
+/// assert_eq!(PROFILE.max_value, 60);
+/// assert_eq!(PROFILE.raise_difficulty, 8);
+/// assert_eq!(PROFILE.base, TalentSkillProfile::DEFAULT.base);
+/// ```
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct TalentSkillProfile {
+    /// Minimum base value the skill row holds once the talent is learned.
+    ///
+    /// Existing higher investment is always preserved; this is a floor, not
+    /// an assignment.
+    pub base: u8,
+    /// `MaxValue` written to the skill row, capping how far it can be raised.
+    ///
+    /// A `MaxValue` of `0` caps progression at the granted base value.
+    pub max_value: u8,
+    /// `RaiseDifficulty` written to the skill row.
+    ///
+    /// `0` means "not raisable", `1` is easy and `10` is hard, matching
+    /// [`crate::skills::SkillIndex::RaiseDifficulty`]. This must never be left
+    /// at zero for a skill the player is expected to train.
+    pub raise_difficulty: u8,
+}
+
+impl TalentSkillProfile {
+    /// Baseline profile applied to a talent skill with no bespoke tuning.
+    ///
+    /// Matches the historical hard-coded server defaults: granted at base
+    /// `1`, raisable up to `100`, at mid-range difficulty `5`.
+    pub const DEFAULT: Self = Self {
+        base: 1,
+        max_value: 100,
+        raise_difficulty: 5,
+    };
+
+    /// Returns a copy of this profile with a different granted base value.
+    ///
+    /// # Arguments
+    ///
+    /// * `base` - Minimum base value after the talent is learned.
+    ///
+    /// # Returns
+    ///
+    /// * The same profile with [`Self::base`] replaced.
+    pub const fn with_base(self, base: u8) -> Self {
+        Self { base, ..self }
+    }
+
+    /// Returns a copy of this profile with a different max value.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_value` - Cap the skill can be raised to.
+    ///
+    /// # Returns
+    ///
+    /// * The same profile with [`Self::max_value`] replaced.
+    pub const fn with_max(self, max_value: u8) -> Self {
+        Self { max_value, ..self }
+    }
+
+    /// Returns a copy of this profile with a different raise difficulty.
+    ///
+    /// # Arguments
+    ///
+    /// * `raise_difficulty` - Per-level cost multiplier, `1` easy … `10` hard.
+    ///
+    /// # Returns
+    ///
+    /// * The same profile with [`Self::raise_difficulty`] replaced.
+    pub const fn with_difficulty(self, raise_difficulty: u8) -> Self {
+        Self {
+            raise_difficulty,
+            ..self
+        }
+    }
+}
+
+impl Default for TalentSkillProfile {
+    fn default() -> Self {
+        Self::DEFAULT
+    }
+}
+
 /// The set of mutations a learned talent can apply.
 ///
 /// List-form variants (`SkillsFlat`, `SkillsPercent`, `AttributesFlat`,
@@ -152,14 +251,12 @@ pub enum TalentEffect {
         /// Flat endurance bonus added to the character's max endurance pool.
         end: i32,
     },
-    /// Grant a previously-unknown skill (set base value to 1).
-    GrantSkill { skill: Skill },
-    /// Grant or raise a skill to at least a fixed base value.
-    GrantSkillAtBase {
+    /// Grant a previously-unknown skill, or raise it to the profile's base.
+    GrantSkill {
         /// Skill to grant or raise.
         skill: Skill,
-        /// Minimum base value after the talent is learned.
-        base: u8,
+        /// Base value floor, max value and raise difficulty for the row.
+        profile: TalentSkillProfile,
     },
     /// Replace one learned skill with another while preserving investment.
     ReplaceSkill {
@@ -167,6 +264,12 @@ pub enum TalentEffect {
         from: Skill,
         /// Skill made available while the talent is learned.
         to: Skill,
+        /// Base value floor, max value and raise difficulty applied to `to`.
+        ///
+        /// The max value and raise difficulty always come from here; they are
+        /// never inherited from `from`. Base value carried over from `from` is
+        /// preserved when it exceeds [`TalentSkillProfile::base`].
+        profile: TalentSkillProfile,
     },
     /// Apply several effects from one learned node.
     Composite {
@@ -619,7 +722,6 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
         | TalentEffect::GrantSkill { .. }
-        | TalentEffect::GrantSkillAtBase { .. }
         | TalentEffect::ReplaceSkill { .. } => None,
     }
 }
@@ -642,6 +744,11 @@ pub struct TalentSkillOwnership {
     /// from a template would leave the character holding both halves of a
     /// replacement pair.
     pub replaced: [bool; MAX_SKILLS],
+    /// Per-row [`TalentSkillProfile`] declared by the granting talent node.
+    ///
+    /// Populated for exactly the rows flagged in [`Self::granted`]. When two
+    /// learned nodes grant the same row, the last one wins.
+    pub granted_profiles: [Option<TalentSkillProfile>; MAX_SKILLS],
 }
 
 impl Default for TalentSkillOwnership {
@@ -649,6 +756,7 @@ impl Default for TalentSkillOwnership {
         Self {
             granted: [false; MAX_SKILLS],
             replaced: [false; MAX_SKILLS],
+            granted_profiles: [None; MAX_SKILLS],
         }
     }
 }
@@ -678,6 +786,21 @@ impl TalentSkillOwnership {
     /// * `true` when a learned [`TalentEffect::ReplaceSkill`] cleared `skill`.
     pub fn is_replaced(&self, skill: usize) -> bool {
         self.replaced.get(skill).copied().unwrap_or(false)
+    }
+
+    /// Returns the profile the granting talent declared for a skill row.
+    ///
+    /// # Arguments
+    ///
+    /// * `skill` - Canonical skill index.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(profile)` when a learned talent granted or replaced into
+    ///   `skill`.
+    /// * `None` when no learned talent owns the row.
+    pub fn profile_for(&self, skill: usize) -> Option<TalentSkillProfile> {
+        self.granted_profiles.get(skill).copied().flatten()
     }
 }
 
@@ -717,11 +840,13 @@ pub fn talent_skill_ownership(class: Class, talents: &[u8; 25]) -> TalentSkillOw
 /// * `ownership` - Accumulator to mutate.
 fn accumulate_skill_ownership(effect: TalentEffect, ownership: &mut TalentSkillOwnership) {
     match effect {
-        TalentEffect::GrantSkill { skill } | TalentEffect::GrantSkillAtBase { skill, .. } => {
+        TalentEffect::GrantSkill { skill, profile } => {
             ownership.granted[skill as usize] = true;
+            ownership.granted_profiles[skill as usize] = Some(profile);
         }
-        TalentEffect::ReplaceSkill { from, to } => {
+        TalentEffect::ReplaceSkill { from, to, profile } => {
             ownership.granted[to as usize] = true;
+            ownership.granted_profiles[to as usize] = Some(profile);
             // A pair that replaces a skill with itself leaves the row intact.
             if from as usize != to as usize {
                 ownership.replaced[from as usize] = true;
@@ -825,7 +950,6 @@ fn accumulate_stat_bonus(
         }
         TalentEffect::Passive
         | TalentEffect::GrantSkill { .. }
-        | TalentEffect::GrantSkillAtBase { .. }
         | TalentEffect::ReplaceSkill { .. }
         | TalentEffect::PrimaryHitProc { .. } => {}
     }
@@ -1316,7 +1440,6 @@ mod tests {
             | TalentEffect::WeaponPercent { .. }
             | TalentEffect::HpManaEndFlat { .. }
             | TalentEffect::GrantSkill { .. }
-            | TalentEffect::GrantSkillAtBase { .. }
             | TalentEffect::ReplaceSkill { .. }
             | TalentEffect::PrimaryHitProc { .. } => {}
         }
@@ -1595,7 +1718,10 @@ mod tests {
 
     fn assert_grants_skill(node: &TalentNode, expected: Skill) {
         match node.effect {
-            TalentEffect::GrantSkill { skill } => assert_eq!(skill, expected),
+            TalentEffect::GrantSkill { skill, profile } => {
+                assert_eq!(skill, expected);
+                assert_eq!(profile.base, TalentSkillProfile::DEFAULT.base);
+            }
             other => panic!("expected GrantSkill, got {other:?}"),
         }
     }
@@ -1609,17 +1735,17 @@ mod tests {
 
     fn assert_grants_skill_at_base(node: &TalentNode, expected: Skill, expected_base: u8) {
         match node.effect {
-            TalentEffect::GrantSkillAtBase { skill, base } => {
+            TalentEffect::GrantSkill { skill, profile } => {
                 assert_eq!(skill, expected);
-                assert_eq!(base, expected_base);
+                assert_eq!(profile.base, expected_base);
             }
-            other => panic!("expected GrantSkillAtBase, got {other:?}"),
+            other => panic!("expected GrantSkill, got {other:?}"),
         }
     }
 
     fn assert_replaces_skill(node: &TalentNode, expected_from: Skill, expected_to: Skill) {
         match node.effect {
-            TalentEffect::ReplaceSkill { from, to } => {
+            TalentEffect::ReplaceSkill { from, to, .. } => {
                 assert_eq!(from, expected_from);
                 assert_eq!(to, expected_to);
             }
