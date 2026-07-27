@@ -26,6 +26,7 @@ use tick_scheduler::LegacyTickScheduler;
 
 use std::collections::{HashSet, VecDeque};
 use std::io::Write;
+use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -52,7 +53,9 @@ use crate::{
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
-    types::mouse::{ExtraMouseButton, MouseModifier},
+    types::mouse::{
+        ExtraMouseButton, FIRST_HIGH_RAW_BUTTON_INDEX, LAST_HIGH_RAW_BUTTON_INDEX, MouseModifier,
+    },
     ui::{
         self, RenderContext,
         forms::cert_dialog::CertDialog,
@@ -633,6 +636,8 @@ pub struct GameScene {
     pub(super) mouse_shift_held: bool,
     /// Whether a mouse side button currently contributes Alt behavior.
     pub(super) mouse_alt_held: bool,
+    /// Last polled SDL button-state bitmask for raw button indices 6 and above.
+    pub(super) high_mouse_button_state: u32,
     /// Whether the controller's left bumper (LB) is held.
     pub(super) lb_held: bool,
     /// Whether the controller's right bumper (RB) is held.
@@ -863,6 +868,7 @@ impl GameScene {
             mouse_ctrl_held: false,
             mouse_shift_held: false,
             mouse_alt_held: false,
+            high_mouse_button_state: 0,
             lb_held: false,
             rb_held: false,
             lt_held: false,
@@ -1022,8 +1028,10 @@ impl GameScene {
 
     /// Applies a raw extra mouse-button event to mouse-derived modifier state.
     ///
-    /// Returns `true` when the event was Mouse 4/Mouse 5 and should be
-    /// consumed before normal widget/world click handling.
+    /// Returns `true` when the button is bound (or is being captured by the
+    /// mouse settings panel) and should be consumed before normal widget/world
+    /// click handling. Unbound buttons fall through so they keep their regular
+    /// UI behavior.
     ///
     /// # Arguments
     ///
@@ -1040,13 +1048,16 @@ impl GameScene {
         button: ExtraMouseButton,
         pressed: bool,
     ) -> (bool, Option<SceneType>) {
-        if pressed && self.settings_panel.is_mouse_modifier_listening() {
-            self.settings_panel.capture_mouse_modifier_button(button);
-            self.mouse_ctrl_held = false;
-            self.mouse_shift_held = false;
-            self.mouse_alt_held = false;
-            let scene_change = self.process_settings_panel_actions(app_state);
-            return (true, scene_change);
+        if self.settings_panel.is_mouse_modifier_listening() {
+            if pressed {
+                self.settings_panel.capture_mouse_modifier_button(button);
+                self.mouse_ctrl_held = false;
+                self.mouse_shift_held = false;
+                self.mouse_alt_held = false;
+                let scene_change = self.process_settings_panel_actions(app_state);
+                return (true, scene_change);
+            }
+            return (true, None);
         }
 
         match app_state
@@ -1058,10 +1069,60 @@ impl GameScene {
             Some(MouseModifier::Ctrl) => self.mouse_ctrl_held = pressed,
             Some(MouseModifier::Shift) => self.mouse_shift_held = pressed,
             Some(MouseModifier::Alt) => self.mouse_alt_held = pressed,
-            None => {}
+            None => return (false, None),
         }
 
         (true, None)
+    }
+
+    /// Polls SDL's raw mouse button state for buttons the SDL2 event wrapper
+    /// cannot identify (raw indices 6 and above) and turns state changes into
+    /// modifier updates.
+    ///
+    /// SDL reports those buttons as `MouseButton::Unknown` in events, so the
+    /// raw button bitmask is the only way to tell them apart. Buttons 1..=5 are
+    /// intentionally skipped here because they already arrive as events.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(SceneType)` if handling the press requested a scene change.
+    fn poll_high_index_mouse_buttons(&mut self, app_state: &mut AppState<'_>) -> Option<SceneType> {
+        const HIGH_BUTTON_MASK: u32 = {
+            let mut mask = 0u32;
+            let mut index = FIRST_HIGH_RAW_BUTTON_INDEX;
+            while index <= LAST_HIGH_RAW_BUTTON_INDEX {
+                mask |= 1u32 << (index - 1);
+                index += 1;
+            }
+            mask
+        };
+
+        let state = unsafe { sdl2::sys::SDL_GetMouseState(ptr::null_mut(), ptr::null_mut()) }
+            & HIGH_BUTTON_MASK;
+        let changed = state ^ self.high_mouse_button_state;
+        self.high_mouse_button_state = state;
+        if changed == 0 {
+            return None;
+        }
+
+        let mut scene_change = None;
+        for index in FIRST_HIGH_RAW_BUTTON_INDEX..=LAST_HIGH_RAW_BUTTON_INDEX {
+            let mask = 1u32 << (index - 1);
+            if changed & mask == 0 {
+                continue;
+            }
+            if let Some(button) = ExtraMouseButton::from_raw_index(index) {
+                let (_, sc) =
+                    self.handle_extra_mouse_button_event(app_state, button, state & mask != 0);
+                scene_change = scene_change.or(sc);
+            }
+        }
+
+        scene_change
     }
 
     /// Drain pending `WidgetAction`s from the settings panel and apply
@@ -2017,6 +2078,7 @@ impl Scene for GameScene {
         self.mouse_ctrl_held = false;
         self.mouse_shift_held = false;
         self.mouse_alt_held = false;
+        self.high_mouse_button_state = 0;
         self.lb_held = false;
         self.rb_held = false;
         self.skill_scroll = 0;
@@ -2313,6 +2375,9 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
+        if let Some(scene) = self.poll_high_index_mouse_buttons(app_state) {
+            return Some(scene);
+        }
         self.chat_box.update(dt);
         self.weapon_armor_panel.update(dt);
         self.skills_panel.update(dt);
