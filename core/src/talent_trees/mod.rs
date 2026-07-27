@@ -1426,7 +1426,7 @@ mod tests {
             Attribute::Willpower,
             5,
         );
-        assert_passive(named_node(tree, "Ice Stun"));
+        assert_replaces_skill(named_node(tree, "Ice Stun"), Skill::Stun, Skill::IceStun);
         assert_grants_skill(named_node(tree, "Kindred Spirit"), Skill::KindredSpirit);
         assert_hp_mana_end(named_node(tree, "Captain Reserves"), 25, 100, 25);
         assert_passive(named_node(tree, "Element Switching"));

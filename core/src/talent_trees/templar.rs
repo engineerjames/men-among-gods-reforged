@@ -90,7 +90,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: RENEWAL,
             name: "Renewal",
-            description: "Learn Rains of Renewal.",
+            description: "Learn Rains of Renewal, which spends endurance to heal you over time.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
@@ -100,7 +100,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: GASH,
             name: "Gash",
-            description: "Learn Gash.",
+            description: "Learn Gash, a reckless melee strike that costs 5% of your current HP and deals amplified weapon damage.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill { skill: Skill::Gash },
@@ -141,7 +141,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: DIVINE_BLESSING,
             name: "Sun's Blessing",
-            description: "Learn Sun's Blessing.",
+            description: "Learn Sun's Blessing, a long self-buff that raises every attribute plus your armor and weapon value.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
@@ -151,7 +151,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: SEEING_RED,
             name: "Seeing Red",
-            description: "Learn Seeing Red.",
+            description: "Learn Seeing Red, a self-buff that roughly doubles your damage and blocks new stun, curse and disarm effects.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
@@ -211,7 +211,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: HOLY_FURY,
             name: "Holy Fury",
-            description: "Learn Thunderous Fury.",
+            description: "Learn Thunderous Fury, an upgraded Warcry that stuns and damages every nearby enemy.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {
@@ -221,7 +221,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: INNER_STRENGTH,
             name: "Inner Strength",
-            description: "Learn Inner Strength.",
+            description: "Learn Inner Strength, an upgraded Warcry that stuns nearby enemies and raises your weapon skill for a while.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {

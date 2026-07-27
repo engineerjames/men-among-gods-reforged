@@ -104,7 +104,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: VETERANS_POISE,
             name: "Veteran's Poise",
-            description: "Root composure talent for the Seyan-Du path.",
+            description: "Increase Braveness by 10%.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::AttributesPercent {
@@ -115,7 +115,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: DRAGON_PULSE,
             name: "Dragon Pulse",
-            description: "Root inner-force talent for the Seyan-Du path.",
+            description: "Increase Intuition by 10%.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::AttributesPercent {
@@ -126,7 +126,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: EVASION_DRILL_1,
             name: "Evasion Drill I",
-            description: "Placeholder mobility drill.",
+            description: "Increase Agility by 10%.",
             cost: 1,
             prereqs: &[VETERANS_POISE],
             effect: TalentEffect::AttributesPercent {
@@ -137,7 +137,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: BATTLE_CHANNEL_1,
             name: "Battle Channel I",
-            description: "Placeholder combat focus drill.",
+            description: "Increase Willpower by 10%.",
             cost: 1,
             prereqs: &[DRAGON_PULSE],
             effect: TalentEffect::AttributesPercent {
@@ -148,7 +148,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: EVASION_DRILL_2,
             name: "Evasion Drill II",
-            description: "Further mobility drill.",
+            description: "Increase Agility by an additional 12%.",
             cost: 1,
             prereqs: &[EVASION_DRILL_1],
             effect: TalentEffect::AttributesPercent {
@@ -159,7 +159,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: BATTLE_CHANNEL_2,
             name: "Battle Channel II",
-            description: "Further combat focus drill.",
+            description: "Increase Willpower by an additional 12%.",
             cost: 1,
             prereqs: &[BATTLE_CHANNEL_1],
             effect: TalentEffect::AttributesPercent {
@@ -170,7 +170,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: FLOWING_STRIKE_1,
             name: "Flowing Strike I",
-            description: "Placeholder fast-strike technique.",
+            description: "Increase Agility by a further 12%.",
             cost: 1,
             prereqs: &[EVASION_DRILL_2],
             effect: TalentEffect::AttributesPercent {
@@ -181,7 +181,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: HEAVY_STRIKE_1,
             name: "Heavy Strike I",
-            description: "Placeholder heavy-strike technique.",
+            description: "Increase Strength by 12%.",
             cost: 1,
             prereqs: &[BATTLE_CHANNEL_2],
             effect: TalentEffect::AttributesPercent {
@@ -192,7 +192,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: COUNTER,
             name: "Counter",
-            description: "Placeholder counterattack talent.",
+            description: "Increase Intuition by 12%.",
             cost: 1,
             prereqs: &[FLOWING_STRIKE_1],
             effect: TalentEffect::AttributesPercent {
@@ -203,7 +203,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: FINAL_LESSON,
             name: "Final Lesson",
-            description: "Placeholder finishing technique.",
+            description: "Increase Strength by 14%.",
             cost: 1,
             prereqs: &[HEAVY_STRIKE_1],
             effect: TalentEffect::AttributesPercent {
@@ -214,7 +214,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: FLOWING_STRIKE_2,
             name: "Flowing Strike II",
-            description: "Advanced fast-strike technique.",
+            description: "Increase Agility by a further 14%.",
             cost: 1,
             prereqs: &[COUNTER],
             effect: TalentEffect::AttributesPercent {
@@ -225,7 +225,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: HEAVY_STRIKE_2,
             name: "Heavy Strike II",
-            description: "Advanced heavy-strike technique.",
+            description: "Increase Strength by a further 14%.",
             cost: 1,
             prereqs: &[FINAL_LESSON],
             effect: TalentEffect::AttributesPercent {
@@ -236,7 +236,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: GUARDED_FOCUS_1,
             name: "Guarded Focus I",
-            description: "Placeholder guarded stance improvement.",
+            description: "Increase Braveness by an additional 10%.",
             cost: 1,
             prereqs: &[FLOWING_STRIKE_2],
             effect: TalentEffect::AttributesPercent {
@@ -247,7 +247,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: IRON_BREATH_1,
             name: "Iron Breath I",
-            description: "Placeholder endurance discipline.",
+            description: "Increase Willpower by a further 10%.",
             cost: 1,
             prereqs: &[HEAVY_STRIKE_2],
             effect: TalentEffect::AttributesPercent {
@@ -258,7 +258,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: GUARDED_FOCUS_2,
             name: "Guarded Focus II",
-            description: "Further guarded stance improvement.",
+            description: "Increase Braveness by a further 14%.",
             cost: 1,
             prereqs: &[GUARDED_FOCUS_1],
             effect: TalentEffect::AttributesPercent {
@@ -269,7 +269,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: IRON_BREATH_2,
             name: "Iron Breath II",
-            description: "Further endurance discipline.",
+            description: "Increase Willpower by a further 14%.",
             cost: 1,
             prereqs: &[IRON_BREATH_1],
             effect: TalentEffect::AttributesPercent {
@@ -280,7 +280,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: STORM_FORM,
             name: "Storm Form",
-            description: "Placeholder form capstone branch.",
+            description: "Increase Agility by a further 18%.",
             cost: 1,
             prereqs: &[GUARDED_FOCUS_2],
             effect: TalentEffect::AttributesPercent {
@@ -291,7 +291,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: BLOOD_ECHO,
             name: "Blood Echo",
-            description: "Placeholder veteran pressure branch.",
+            description: "Increase Intuition by a further 18%.",
             cost: 1,
             prereqs: &[IRON_BREATH_2],
             effect: TalentEffect::AttributesPercent {
@@ -302,7 +302,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: STRENGTH_DISCIPLINE_1,
             name: "Strength Discipline I",
-            description: "Increase strength through form practice.",
+            description: "Increase Strength by a further 10%.",
             cost: 1,
             prereqs: &[STORM_FORM],
             effect: TalentEffect::AttributesPercent {
@@ -313,7 +313,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: MIND_DISCIPLINE_1,
             name: "Mind Discipline I",
-            description: "Increase intuition through form practice.",
+            description: "Increase Intuition by a further 10%.",
             cost: 1,
             prereqs: &[BLOOD_ECHO],
             effect: TalentEffect::AttributesPercent {
@@ -324,7 +324,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: STRENGTH_DISCIPLINE_2,
             name: "Strength Discipline II",
-            description: "Further increase strength through form practice.",
+            description: "Increase Strength by a further 12%.",
             cost: 1,
             prereqs: &[STRENGTH_DISCIPLINE_1],
             effect: TalentEffect::AttributesPercent {
@@ -335,7 +335,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: MIND_DISCIPLINE_2,
             name: "Mind Discipline II",
-            description: "Further increase intuition through form practice.",
+            description: "Increase Intuition by a further 12%.",
             cost: 1,
             prereqs: &[MIND_DISCIPLINE_1],
             effect: TalentEffect::AttributesPercent {
@@ -346,7 +346,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: MASTER_OF_FORMS,
             name: "Master of Forms",
-            description: "Capstone: unite Seyan-Du speed and force.",
+            description: "Increase Braveness by a further 22%.",
             cost: 1,
             prereqs: &[STRENGTH_DISCIPLINE_2, MIND_DISCIPLINE_2],
             effect: TalentEffect::AttributesPercent {

@@ -120,7 +120,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: LAVA_BLAST,
             name: "Lava Blast",
-            description: "Learn Lava Blast.",
+            description: "Replaces Blast with Lava Blast, which also burns the target over time.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::ReplaceSkill {
@@ -131,7 +131,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: REVENANT_CONDUIT,
             name: "Revenant Conduit",
-            description: "Learn Revenant Conduit.",
+            description: "Learn a toggled self-buff that raises your Ghost Companion skill, at the cost of mana and a steady endurance drain.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
@@ -185,7 +185,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: KINDRED_SPIRIT,
             name: "Kindred Spirit",
-            description: "Learn Kindred Spirit.",
+            description: "Lets you keep a second ghost companion summoned at the same time.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_WILLPOWER],
             effect: TalentEffect::GrantSkill {
@@ -213,7 +213,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: SPELLCASTER_KINDRED_SPIRIT,
             name: "Spellcaster Kindred Spirit",
-            description: "Learn Spellcaster Kindred Spirit.",
+            description: "Teaches your ghost companions to cast Blast at your enemies.",
             cost: 1,
             prereqs: &[CAPTAIN_RESERVES],
             effect: TalentEffect::GrantSkill {
@@ -234,7 +234,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: ELEMENTAL_ANGUISH,
             name: "Elemental Anguish",
-            description: "Learn Anguish (Earth).",
+            description: "Learn Anguish (Earth), an area curse that roots every nearby enemy in place for a few seconds.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_INTUITION],
             effect: TalentEffect::GrantSkill {
@@ -244,7 +244,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: SPECTRAL_PACT,
             name: "Spectral Pact",
-            description: "Learn Spectral Pact.",
+            description: "Learn a self-buff that redirects part of the damage you take to your ghost companions.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_INTUITION],
             effect: TalentEffect::GrantSkill {
