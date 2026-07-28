@@ -682,6 +682,13 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
                 }
             }
 
+            // Mirror the final gameplay state (rank sigil, sprite, class/sex)
+            // into the API-side character record before the character slot is
+            // reset. This must happen before `character.player` is cleared and
+            // before `player_exit` drops `api_character_id`, and it also covers
+            // the server-shutdown path, which logs every player out.
+            gs.sync_character_selection_metadata(character_id);
+
             // Reset character state
             {
                 let character = &mut gs.characters[character_id];

@@ -11,7 +11,7 @@ use core::{
     types::{Character, Map},
 };
 
-use server::keydb::{ban as keydb_ban, connection as keydb};
+use server::keydb::ban as keydb_ban;
 
 use crate::{
     area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,
@@ -19,44 +19,6 @@ use crate::{
 
 pub struct God {}
 impl God {
-    /// Sync selection metadata for an online player character back into KeyDB.
-    ///
-    /// # Arguments
-    ///
-    /// * `gs` - Active game state used to resolve the controlling player slot.
-    /// * `character_id` - Live gameplay character slot whose metadata should be mirrored.
-    fn sync_character_selection_metadata(gs: &GameState, character_id: usize) {
-        if !Character::is_sane_character(character_id) {
-            return;
-        }
-
-        let player_id = gs.characters[character_id].player;
-        if player_id <= 0 {
-            return;
-        }
-
-        let player_id = player_id as usize;
-        if player_id >= core::constants::MAXPLAYER {
-            return;
-        }
-
-        let api_character_id = gs.players[player_id].api_character_id;
-        if api_character_id == 0 {
-            return;
-        }
-
-        if let Err(err) =
-            keydb::sync_character_selection_metadata(api_character_id, &gs.characters[character_id])
-        {
-            log::warn!(
-                "Failed to sync selection metadata for live character {} (api id {}): {}",
-                character_id,
-                api_character_id,
-                err
-            );
-        }
-    }
-
     /// Drop a character near the target using an explicit game-state borrow.
     ///
     /// # Arguments
@@ -3594,6 +3556,12 @@ impl God {
         // First destroy all items
         Self::destroy_items(gs, co);
 
+        // A full race change rebuilds the character from scratch, so every
+        // talent effect, talent-granted skill and talent point is erased with
+        // no experience or point payback. Must run while `kindred` still
+        // names the *old* class so the right talent tree is consulted.
+        player::talent_trees::wipe_talents(gs, co);
+
         {
             let character = &mut gs.characters[co];
 
@@ -3717,7 +3685,16 @@ impl God {
         }
 
         gs.do_update_char(co);
-        Self::sync_character_selection_metadata(gs, co);
+
+        // The talent snapshot is otherwise only pushed on login and rank-up,
+        // so without this the client would keep rendering the talents the
+        // character had before the rebuild.
+        let player_id = gs.characters[co].player as usize;
+        if player_id > 0 && player_id < gs.players.len() && gs.players[player_id].usnr == co {
+            crate::player::commands::send_set_char_talents(gs, player_id);
+        }
+
+        gs.sync_character_selection_metadata(co);
     }
 
     /// Save character `co` to persistent storage.
@@ -4277,7 +4254,7 @@ impl God {
         }
 
         gs.do_check_new_level(cn);
-        Self::sync_character_selection_metadata(gs, cn);
+        gs.sync_character_selection_metadata(cn);
     }
 
     /// Force a target to say text as if they had typed it.

@@ -1344,6 +1344,11 @@ impl GameState {
 
             self.do_update_char(cn);
 
+            // Push the new rank to the API-side character record right away so
+            // the character-selection screen shows the correct rank sigil
+            // instead of whatever rank was current at the last login.
+            self.sync_character_selection_metadata(cn);
+
             let player_id = self.characters[cn].player as usize;
             if player_id > 0 && player_id < self.players.len() && self.players[player_id].usnr == cn
             {

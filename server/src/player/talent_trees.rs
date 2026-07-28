@@ -340,6 +340,49 @@ pub fn reset_talents(gs: &mut GameState, cn: usize) {
     gs.do_update_char(cn);
 }
 
+/// Erase every trace of talent progression from a character.
+///
+/// This is the "start your character over" counterpart to
+/// [`reset_talents`], used when a character is rebuilt from scratch on a
+/// new race template (see [`crate::god::God::racechange`]), most notably
+/// when a player becomes a Seyan'Du. Unlike [`reset_talents`], **nothing is
+/// paid back**:
+///
+/// * Talent-granted and talent-replaced skill rows are cleared outright and
+///   the experience spent raising them is *not* refunded into `points`.
+/// * Skills that a learned [`TalentEffect::ReplaceSkill`] superseded are
+///   *not* restored; the new template is the sole source of skill rows.
+/// * The packed talent bytes — learned bits *and* the unspent-point pool —
+///   are zeroed rather than refunded, so the character re-earns talent
+///   points from rank 0 like a brand new character.
+/// * Runtime proc bookkeeping (`talent_primary_hit_counts`) is cleared.
+///
+/// Must be called **before** the character's `kindred` is changed so the
+/// old class's talent tree is consulted when locating talent-owned skills.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `cn` - Character slot index whose talent progression is being erased.
+pub fn wipe_talents(gs: &mut GameState, cn: usize) {
+    let class = Class::from(gs.characters[cn].kindred);
+    let ownership = talent_skill_ownership(class, &gs.characters[cn].future1);
+
+    for idx in 0..MAX_SKILLS {
+        if ownership.is_granted(idx) || ownership.is_replaced(idx) {
+            gs.characters[cn].skill[idx] = [0; SkillIndex::MaxIndex as usize];
+        }
+    }
+
+    gs.characters[cn].future1 = [0; 25];
+
+    if let Some(count) = gs.talent_primary_hit_counts.get_mut(cn) {
+        *count = 0;
+    }
+
+    gs.characters[cn].set_do_update_flags();
+}
+
 /// Reverse the learning-time portion of a [`TalentEffect`].
 ///
 /// Mirror of [`dispatch_immediate_effect`]: only effects that permanently
@@ -596,7 +639,8 @@ mod tests {
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
     };
     use core::traits::{
-        Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_TEMPLAR,
+        Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_SEYAN_DU,
+        KIN_TEMPLAR,
     };
 
     /// Character template id used for the base-templar template in tests.
@@ -607,6 +651,8 @@ mod tests {
     const ARCH_HARAKIM_TEMPLATE: usize = 545;
     /// Character template id used for the base-harakim template in tests.
     const HARAKIM_TEMPLATE: usize = 541;
+    /// Character template id used for the male Seyan'Du template in tests.
+    const SEYAN_DU_TEMPLATE: usize = 13;
 
     fn empty_talents() -> [u8; 25] {
         [0; 25]
@@ -889,8 +935,14 @@ mod tests {
 
             let skill = &gs.characters[cn].skill[Skill::Meditate as usize];
             assert_eq!(skill[SkillIndex::BaseValue as usize], 5);
-            assert_eq!(skill[SkillIndex::MaxValue as usize], 100);
-            assert_eq!(skill[SkillIndex::RaiseDifficulty as usize], 5);
+            assert_eq!(
+                skill[SkillIndex::MaxValue as usize],
+                TalentSkillProfile::DEFAULT_NON_MERC.max_value
+            );
+            assert_eq!(
+                skill[SkillIndex::RaiseDifficulty as usize],
+                TalentSkillProfile::DEFAULT_NON_MERC.raise_difficulty
+            );
         });
     }
 
@@ -1074,11 +1126,11 @@ mod tests {
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::MaxValue as usize],
-                100
+                TalentSkillProfile::DEFAULT_NON_MERC.max_value
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::RaiseDifficulty as usize],
-                5
+                TalentSkillProfile::DEFAULT_NON_MERC.raise_difficulty
             );
         });
     }
@@ -1097,11 +1149,11 @@ mod tests {
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::MaxValue as usize],
-                100
+                TalentSkillProfile::DEFAULT_NON_MERC.max_value
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::RaiseDifficulty as usize],
-                5
+                TalentSkillProfile::DEFAULT_NON_MERC.raise_difficulty
             );
         });
     }
@@ -1225,11 +1277,12 @@ mod tests {
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize],
-                100
+                TalentSkillProfile::DEFAULT_NON_MERC.max_value,
+                "without a template row the replacement's own tuning is reused"
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize],
-                5
+                TalentSkillProfile::DEFAULT_NON_MERC.raise_difficulty
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
@@ -1263,11 +1316,11 @@ mod tests {
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_ICE_STUN][SkillIndex::MaxValue as usize],
-                100
+                TalentSkillProfile::DEFAULT_NON_MERC.max_value
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_ICE_STUN][SkillIndex::RaiseDifficulty as usize],
-                5
+                TalentSkillProfile::DEFAULT_NON_MERC.raise_difficulty
             );
             assert!(core::talent_trees::harakim::has_ice_stun(
                 &gs.characters[cn].future1
@@ -1736,6 +1789,61 @@ mod tests {
                 TalentSkillProfile::DEFAULT_NON_MERC,
             );
             assert_eq!(gs.characters[cn].points, 42);
+        });
+    }
+
+    #[test]
+    fn becoming_seyan_du_wipes_every_talent_trace() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            templar_with_trained_talent_skills(gs, cn, 30);
+            gs.characters[cn].points = 0;
+            gs.talent_primary_hit_counts[cn] = 4;
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+
+            God::racechange(gs, cn, SEYAN_DU_TEMPLATE as i32);
+
+            assert_eq!(
+                gs.characters[cn].future1, [0u8; 25],
+                "learned talents and the unspent-point pool must both be zeroed"
+            );
+            for idx in [Skill::RainsOfRenewal as usize, Skill::SunsBlessing as usize] {
+                assert_eq!(
+                    gs.characters[cn].skill[idx],
+                    [0; SkillIndex::MaxIndex as usize],
+                    "talent-granted skill {idx} must be wiped"
+                );
+            }
+            assert_eq!(
+                gs.characters[cn].points, 0,
+                "becoming Seyan'Du must not pay experience back"
+            );
+            assert_eq!(gs.talent_primary_hit_counts[cn], 0);
+        });
+    }
+
+    #[test]
+    fn seyan_du_wipe_does_not_restore_a_replaced_skill() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            give_class_and_points(gs, cn, KIN_HARAKIM, 1);
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize] = 20;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[SK_BLAST][SkillIndex::RaiseDifficulty as usize] = 5;
+            learn_talent(gs, cn, harakim_slot("Lava Blast")).unwrap();
+
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            God::racechange(gs, cn, SEYAN_DU_TEMPLATE as i32);
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
+                0,
+                "the superseded skill must not come back with its old investment"
+            );
         });
     }
 

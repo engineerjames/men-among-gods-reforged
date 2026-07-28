@@ -486,6 +486,52 @@ impl GameState {
         )
     }
 
+    /// Mirror an online character's selection metadata into its API-side record.
+    ///
+    /// The character-selection screen renders class, sex, portrait sprite, and
+    /// rank sigil from the `character:{id}` hash owned by the API service, but
+    /// gameplay holds the authoritative values. They therefore have to be pushed
+    /// back whenever they change (rank-up, class rebuild) and again on
+    /// logout/shutdown, otherwise the selection screen keeps showing a stale rank.
+    ///
+    /// Failures are logged and swallowed: selection metadata is cosmetic and must
+    /// never break the tick loop or a logout.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Live gameplay character slot whose metadata should be mirrored.
+    pub(crate) fn sync_character_selection_metadata(&self, cn: usize) {
+        if !core::types::Character::is_sane_character(cn) {
+            return;
+        }
+
+        let player_id = self.characters[cn].player;
+        if player_id <= 0 {
+            return;
+        }
+
+        let player_id = player_id as usize;
+        if player_id >= core::constants::MAXPLAYER || player_id >= self.players.len() {
+            return;
+        }
+
+        let api_character_id = self.players[player_id].api_character_id;
+        if api_character_id == 0 {
+            return;
+        }
+
+        if let Err(err) =
+            keydb::sync_character_selection_metadata(api_character_id, &self.characters[cn])
+        {
+            log::warn!(
+                "Failed to sync selection metadata for live character {} (api id {}): {}",
+                cn,
+                api_character_id,
+                err
+            );
+        }
+    }
+
     /// Perform a clean shutdown of the game state by clearing the dirty flag
     /// and saving all data to KeyDB.
     pub fn shutdown(&mut self) {
