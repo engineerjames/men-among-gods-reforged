@@ -3621,8 +3621,8 @@ impl God {
             character.flags = old_flags;
 
             // Preserve purple kindred if they had it
-            if (old_kindred & 0x00000001) != 0 {
-                character.kindred |= 0x00000001; // KIN_PURPLE
+            if (old_kindred & traits::KIN_PURPLE as i32) != 0 {
+                character.kindred |= traits::KIN_PURPLE as i32;
                 character.temple_x = 558;
                 character.temple_y = 542;
             }

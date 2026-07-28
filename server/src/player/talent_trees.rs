@@ -639,8 +639,8 @@ mod tests {
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
     };
     use core::traits::{
-        Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_SEYAN_DU,
-        KIN_TEMPLAR,
+        Class, KIN_ARCHHARAKIM, KIN_ARCHTEMPLAR, KIN_HARAKIM, KIN_MERCENARY, KIN_PURPLE,
+        KIN_SEYAN_DU, KIN_TEMPLAR,
     };
 
     /// Character template id used for the base-templar template in tests.
@@ -689,6 +689,16 @@ mod tests {
             .iter()
             .find(|node| node.name == name)
             .unwrap_or_else(|| panic!("missing harakim talent '{name}'"))
+            .slot
+    }
+
+    fn seyan_du_slot(name: &str) -> TalentRef {
+        tree_for(Class::SeyanDu)
+            .unwrap()
+            .nodes
+            .iter()
+            .find(|node| node.name == name)
+            .unwrap_or_else(|| panic!("missing seyan'du talent '{name}'"))
             .slot
     }
 
@@ -1819,6 +1829,74 @@ mod tests {
                 "becoming Seyan'Du must not pay experience back"
             );
             assert_eq!(gs.talent_primary_hit_counts[cn], 0);
+        });
+    }
+
+    #[test]
+    fn racechange_to_seyan_du_leaves_only_the_seyan_du_class_bit() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            give_class_and_points(gs, cn, KIN_MERCENARY, 0);
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+
+            God::racechange(gs, cn, SEYAN_DU_TEMPLATE as i32);
+
+            let kindred = gs.characters[cn].kindred as u32;
+            assert_eq!(
+                kindred & KIN_MERCENARY,
+                0,
+                "the old class bit must not survive a race change"
+            );
+            assert_ne!(kindred & KIN_SEYAN_DU, 0);
+            assert_eq!(
+                Class::from(gs.characters[cn].kindred),
+                Class::SeyanDu,
+                "the server must resolve the same tree the client renders"
+            );
+        });
+    }
+
+    #[test]
+    fn racechange_preserves_purple_kindred() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            give_class_and_points(gs, cn, KIN_MERCENARY, 0);
+            gs.characters[cn].kindred |= KIN_PURPLE as i32;
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+
+            God::racechange(gs, cn, SEYAN_DU_TEMPLATE as i32);
+
+            assert_ne!(gs.characters[cn].kindred as u32 & KIN_PURPLE, 0);
+            assert_eq!(gs.characters[cn].temple_x, 558);
+            assert_eq!(gs.characters[cn].temple_y, 542);
+        });
+    }
+
+    #[test]
+    fn seyan_du_talent_bonuses_apply_after_a_race_change() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            give_class_and_points(gs, cn, KIN_MERCENARY, 0);
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            God::racechange(gs, cn, SEYAN_DU_TEMPLATE as i32);
+
+            gs.characters[cn].attrib[Attribute::Braveness as usize]
+                [SkillIndex::BaseValue as usize] = 50;
+            gs.characters[cn].attrib[Attribute::Agility as usize][SkillIndex::BaseValue as usize] =
+                50;
+            grant_talent_points(&mut gs.characters[cn].future1, 2);
+
+            learn_talent(gs, cn, seyan_du_slot("Veteran's Poise")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Evasion Drill I")).unwrap();
+
+            let bonuses = talent_stat_bonuses(
+                gs.characters[cn].kindred,
+                &gs.characters[cn].future1,
+                &gs.characters[cn].attrib,
+                &gs.characters[cn].skill,
+            );
+
+            assert_eq!(bonuses.attrib[Attribute::Agility as usize], 5);
         });
     }
 

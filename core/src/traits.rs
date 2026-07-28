@@ -46,32 +46,35 @@ pub enum Class {
 }
 
 impl From<i32> for Class {
+    /// Resolves a kindred bitfield to a class, falling back to `Mercenary`.
+    ///
+    /// Player classes are resolved by [`class_from_kindred`] so that every
+    /// consumer — most importantly talent-tree lookups on both the client and
+    /// the server — agrees on which class a kindred bitfield names. A
+    /// character can legitimately carry more than one class bit (for example a
+    /// Mercenary who became a Seyan'Du), so the precedence order matters.
+    ///
+    /// # Arguments
+    ///
+    /// * `kindred` - Raw kindred bitmask from a character.
+    ///
+    /// # Returns
+    ///
+    /// * The resolved [`Class`]; `Monster` for monster kindred, and
+    ///   `Mercenary` for bitfields that name no class at all.
     fn from(kindred: i32) -> Self {
-        let k = kindred as u32;
-        if k & KIN_MERCENARY != 0 {
-            Class::Mercenary
-        } else if k & KIN_TEMPLAR != 0 {
-            Class::Templar
-        } else if k & KIN_HARAKIM != 0 {
-            Class::Harakim
-        } else if k & KIN_SEYAN_DU != 0 {
-            Class::SeyanDu
-        } else if k & KIN_ARCHTEMPLAR != 0 {
-            Class::ArchTemplar
-        } else if k & KIN_ARCHHARAKIM != 0 {
-            Class::ArchHarakim
-        } else if k & KIN_SORCERER != 0 {
-            Class::Sorcerer
-        } else if k & KIN_WARRIOR != 0 {
-            Class::Warrior
-        } else if k & KIN_MONSTER != 0 {
-            Class::Monster
-        } else {
-            log::error!("invalid kindred value: {kindred}");
-            // Add a stack trace to help diagnose how this happened, since it should be impossible with valid data.
-            log::error!("stack trace: {:?}", backtrace::Backtrace::force_capture());
-            Class::Mercenary
+        if let Some(class) = class_from_kindred(kindred) {
+            return class;
         }
+
+        if (kindred as u32) & KIN_MONSTER != 0 {
+            return Class::Monster;
+        }
+
+        log::error!("invalid kindred value: {kindred}");
+        // Add a stack trace to help diagnose how this happened, since it should be impossible with valid data.
+        log::error!("stack trace: {:?}", backtrace::Backtrace::force_capture());
+        Class::Mercenary
     }
 }
 
@@ -480,6 +483,41 @@ mod tests {
             Some(Class::ArchHarakim)
         );
         assert_eq!(class_from_kindred(0), None);
+    }
+
+    #[test]
+    fn class_from_i32_matches_class_from_kindred() {
+        // `Class::from` drives server-side talent-tree lookups while the client
+        // uses `class_from_kindred`; a disagreement makes the two ends resolve
+        // different trees for the same character.
+        for kindred in [
+            traits::KIN_MERCENARY,
+            traits::KIN_TEMPLAR,
+            traits::KIN_HARAKIM,
+            traits::KIN_SEYAN_DU,
+            traits::KIN_ARCHTEMPLAR,
+            traits::KIN_ARCHHARAKIM,
+            traits::KIN_SORCERER,
+            traits::KIN_WARRIOR,
+            // Legacy records can carry a leftover base-class bit alongside the
+            // Seyan'Du bit; both ends must still resolve Seyan'Du.
+            traits::KIN_SEYAN_DU | traits::KIN_MERCENARY,
+            traits::KIN_SEYAN_DU | traits::KIN_TEMPLAR | traits::KIN_MALE,
+            traits::KIN_SEYAN_DU | traits::KIN_HARAKIM | traits::KIN_PURPLE,
+        ] {
+            let kindred = kindred as i32;
+            assert_eq!(
+                Some(Class::from(kindred)),
+                class_from_kindred(kindred),
+                "kindred {kindred:#x}"
+            );
+        }
+    }
+
+    #[test]
+    fn class_from_i32_maps_monsters_and_unknown_kindred() {
+        assert_eq!(Class::from(traits::KIN_MONSTER as i32), Class::Monster);
+        assert_eq!(Class::from(0), Class::Mercenary);
     }
 
     #[test]

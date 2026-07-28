@@ -100,17 +100,18 @@ impl TalentRef {
 /// one of these so individual abilities can be tuned independently instead of
 /// sharing a single hard-coded default.
 ///
-/// Start from [`TalentSkillProfile::DEFAULT`] and refine it with the
+/// Start from [`TalentSkillProfile::DEFAULT_NON_MERC`] (or
+/// [`TalentSkillProfile::DEFAULT_MERC`]) and refine it with the
 /// `const fn` builders so tree tables stay `static`:
 ///
 /// ```
 /// use core::talent_trees::TalentSkillProfile;
 ///
 /// const PROFILE: TalentSkillProfile =
-///     TalentSkillProfile::DEFAULT.with_max(60).with_difficulty(8);
+///     TalentSkillProfile::DEFAULT_NON_MERC.with_max(60).with_difficulty(8);
 /// assert_eq!(PROFILE.max_value, 60);
 /// assert_eq!(PROFILE.raise_difficulty, 8);
-/// assert_eq!(PROFILE.base, TalentSkillProfile::DEFAULT.base);
+/// assert_eq!(PROFILE.base, TalentSkillProfile::DEFAULT_NON_MERC.base);
 /// ```
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct TalentSkillProfile {
