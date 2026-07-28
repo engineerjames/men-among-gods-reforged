@@ -365,14 +365,26 @@ impl GameState {
     ///
     /// Calculates the player's current rank and the experience required for
     /// the next rank, then sends a message to the player with the amount and
-    /// the name of the next rank.
+    /// the name of the next rank. Characters already at the maximum rank are
+    /// told so instead of being shown a nonsensical negative requirement.
     ///
     /// # Arguments
     /// * `cn` - Character id to view requirements for
     pub(crate) fn do_view_exp_to_rank(&mut self, cn: usize) {
         let current_rank = core::ranks::points2rank(self.characters[cn].points_tot as u32) as usize;
         let exp_to_next = self.rank2points(current_rank as i32);
-        let exp_needed = exp_to_next - self.characters[cn].points_tot;
+
+        if exp_to_next < 0 || current_rank + 1 >= ranks::TOTAL_RANKS {
+            let rank_name = ranks::rank_name_by_index(current_rank);
+            self.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("You already hold the highest rank, {}.\n", rank_name),
+            );
+            return;
+        }
+
+        let exp_needed = (exp_to_next - self.characters[cn].points_tot).max(0);
         let next_name = ranks::rank_name_by_index(current_rank + 1);
         self.do_character_log(
             cn,
