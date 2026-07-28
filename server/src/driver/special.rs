@@ -395,7 +395,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             {
                 let needs_help = !driver::npc_is_blessed(&gs.characters[seen[n].co], &gs.items)
                     || gs.characters[seen[n].co].a_hp
-                        < i32::from(gs.characters[seen[n].co].hp[5] * 400);
+                        < i32::from(gs.characters[seen[n].co].hp[5]) * 400;
                 if needs_help {
                     tmp = seen[n].help;
                     m = n;
@@ -404,7 +404,7 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
         }
         if tmp > 0 {
             let low_hp =
-                gs.characters[seen[m].co].a_hp < i32::from(gs.characters[seen[m].co].hp[5] * 400);
+                gs.characters[seen[m].co].a_hp < i32::from(gs.characters[seen[m].co].hp[5]) * 400;
             if low_hp {
                 done = driver::npc_try_spell(gs, cn, seen[m].co, skills::SK_HEAL);
             }
@@ -678,7 +678,7 @@ pub fn npc_stunrun_msg(
 ///
 /// * Panics if `cn` or its current attack target index is invalid.
 pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
-    let low_hp = gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 600);
+    let low_hp = gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 600;
     if low_hp && driver::npc_try_spell(gs, cn, cn, skills::SK_HEAL) {
         return true;
     }
@@ -725,7 +725,7 @@ pub fn npc_cityattack_high(gs: &mut GameState, cn: usize) -> bool {
 
     let co = gs.characters[cn].attack_cn;
     if co != 0 {
-        let losing = gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 600);
+        let losing = gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 600;
         if losing && driver::npc_try_spell(gs, cn, co as usize, skills::SK_BLAST) {
             return true;
         }
