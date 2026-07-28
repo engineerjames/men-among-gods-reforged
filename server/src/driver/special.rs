@@ -65,8 +65,8 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
                 seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
                 seen[maxseen].is_friend = false;
                 if !driver::npc_is_stunned(&gs.characters[co], &gs.items) {
-                    let can_stun = gs.characters[cn].skill[skills::SK_STUN][5] * 12
-                        > gs.characters[co].skill[skills::SK_RESIST][5] * 10;
+                    let can_stun = i32::from(gs.characters[cn].skill[skills::SK_STUN][5]) * 12
+                        > i32::from(gs.characters[co].skill[skills::SK_RESIST][5]) * 10;
                     seen[maxseen].stun = if can_stun { 1 } else { 0 };
                 } else {
                     seen[maxseen].stun = 0;
@@ -134,8 +134,8 @@ pub fn npc_stunrun_high(gs: &mut GameState, cn: usize) -> bool {
             seen[maxseen].co = co;
             seen[maxseen].dist = driver::npc_dist(&gs.characters[cn], &gs.characters[co]);
             seen[maxseen].is_friend = false;
-            let can_stun = gs.characters[cn].skill[skills::SK_STUN][5] * 12
-                > gs.characters[co].skill[skills::SK_RESIST][5] * 10;
+            let can_stun = i32::from(gs.characters[cn].skill[skills::SK_STUN][5]) * 12
+                > i32::from(gs.characters[co].skill[skills::SK_RESIST][5]) * 10;
             seen[maxseen].stun = if can_stun { 1 } else { 0 };
             if seen[maxseen].stun != 0 {
                 seen[maxseen].stun += 5;
