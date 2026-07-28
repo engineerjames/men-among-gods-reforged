@@ -96,7 +96,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::RainsOfRenewal,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -107,7 +107,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::Gash,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -140,7 +140,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[STAFF_SERGEANT_STRENGTH],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::Meditate,
-                profile: TalentSkillProfile::DEFAULT.with_base(5),
+                profile: TalentSkillProfile::DEFAULT_NON_MERC.with_base(5),
             },
         },
         TalentNode {
@@ -151,7 +151,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SunsBlessing,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -162,7 +162,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SeeingRed,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -223,7 +223,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::ThunderousFury,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -234,7 +234,7 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::InnerStrength,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {

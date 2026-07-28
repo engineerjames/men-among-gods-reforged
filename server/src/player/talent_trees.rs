@@ -1121,12 +1121,12 @@ mod tests {
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::MaxValue as usize],
-                TalentSkillProfile::DEFAULT.max_value,
+                TalentSkillProfile::DEFAULT_NON_MERC.max_value,
                 "replacement max value must come from the node profile, not the source skill"
             );
             assert_eq!(
                 gs.characters[cn].skill[SK_LAVA_BLAST][SkillIndex::RaiseDifficulty as usize],
-                TalentSkillProfile::DEFAULT.raise_difficulty,
+                TalentSkillProfile::DEFAULT_NON_MERC.raise_difficulty,
                 "replacement difficulty must come from the node profile, not the source skill"
             );
         });
@@ -1682,7 +1682,12 @@ mod tests {
             gs.characters[cn].skill[idx][SkillIndex::RaiseDifficulty as usize] = 5;
             gs.characters[cn].points = 0;
 
-            ungrant_skill(cn, gs, Skill::RainsOfRenewal, TalentSkillProfile::DEFAULT);
+            ungrant_skill(
+                cn,
+                gs,
+                Skill::RainsOfRenewal,
+                TalentSkillProfile::DEFAULT_NON_MERC,
+            );
 
             // skill_needed(value, 5) for value in 1..4 -> 1 + 2 + 3 = 6.
             assert_eq!(gs.characters[cn].points, 6);
@@ -1707,7 +1712,7 @@ mod tests {
                 cn,
                 gs,
                 Skill::Meditate,
-                TalentSkillProfile::DEFAULT.with_base(3),
+                TalentSkillProfile::DEFAULT_NON_MERC.with_base(3),
             );
 
             // Only value 3 was ever paid for; skill_needed(3, 5) == 3.
@@ -1720,7 +1725,12 @@ mod tests {
         with_test_gs(|gs| {
             let cn = 1;
             gs.characters[cn].points = 42;
-            ungrant_skill(cn, gs, Skill::RainsOfRenewal, TalentSkillProfile::DEFAULT);
+            ungrant_skill(
+                cn,
+                gs,
+                Skill::RainsOfRenewal,
+                TalentSkillProfile::DEFAULT_NON_MERC,
+            );
             assert_eq!(gs.characters[cn].points, 42);
         });
     }

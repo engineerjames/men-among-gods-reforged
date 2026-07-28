@@ -147,7 +147,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::Distract,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },
         TalentNode {
@@ -158,7 +158,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::Parasite,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },
         TalentNode {
@@ -229,7 +229,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             prereqs: &[ATTACK_SPEED_BOOST_1],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::Disarm,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },
         TalentNode {
@@ -240,7 +240,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             prereqs: &[DAMAGE_BOOST_1],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::DeliverDeath,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },
         TalentNode {
@@ -317,7 +317,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             prereqs: &[PROTECTIVE_SPELLS_BOOST_2],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::BladeDance,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },
         TalentNode {
@@ -328,7 +328,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             prereqs: &[IMMUN_RESIST_BOOST_2],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::Contagion,
-                profile: TalentSkillProfile::DEFAULT,
+                profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },
         TalentNode {

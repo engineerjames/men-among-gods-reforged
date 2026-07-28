@@ -132,14 +132,16 @@ pub struct TalentSkillProfile {
 }
 
 impl TalentSkillProfile {
-    /// Baseline profile applied to a talent skill with no bespoke tuning.
-    ///
-    /// Matches the historical hard-coded server defaults: granted at base
-    /// `1`, raisable up to `100`, at mid-range difficulty `5`.
-    pub const DEFAULT: Self = Self {
+    pub const DEFAULT_NON_MERC: Self = Self {
         base: 1,
-        max_value: 100,
+        max_value: 120,
         raise_difficulty: 5,
+    };
+
+    pub const DEFAULT_MERC: Self = Self {
+        base: 1,
+        max_value: 105,
+        raise_difficulty: 3,
     };
 
     /// Returns a copy of this profile with a different granted base value.
@@ -187,7 +189,7 @@ impl TalentSkillProfile {
 
 impl Default for TalentSkillProfile {
     fn default() -> Self {
-        Self::DEFAULT
+        Self::DEFAULT_NON_MERC
     }
 }
 
@@ -1720,7 +1722,7 @@ mod tests {
         match node.effect {
             TalentEffect::GrantSkill { skill, profile } => {
                 assert_eq!(skill, expected);
-                assert_eq!(profile.base, TalentSkillProfile::DEFAULT.base);
+                assert_eq!(profile.base, TalentSkillProfile::DEFAULT_NON_MERC.base);
             }
             other => panic!("expected GrantSkill, got {other:?}"),
         }
