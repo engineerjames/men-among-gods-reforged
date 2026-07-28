@@ -821,7 +821,7 @@ mod tests {
     fn grant_skill_sets_base_to_profile_base_when_unset() {
         with_test_gs(|gs| {
             let cn = 1;
-            grant_skill(cn, gs, Skill::Stealth, TalentSkillProfile::DEFAULT).unwrap();
+            grant_skill(cn, gs, Skill::Stealth, TalentSkillProfile::DEFAULT_NON_MERC).unwrap();
             assert_eq!(
                 gs.characters[cn].skill[Skill::Stealth as usize][SkillIndex::BaseValue as usize],
                 1
@@ -833,7 +833,9 @@ mod tests {
     fn grant_skill_writes_profile_max_and_difficulty() {
         with_test_gs(|gs| {
             let cn = 1;
-            let profile = TalentSkillProfile::DEFAULT.with_max(60).with_difficulty(9);
+            let profile = TalentSkillProfile::DEFAULT_NON_MERC
+                .with_max(60)
+                .with_difficulty(9);
 
             grant_skill(cn, gs, Skill::Stealth, profile).unwrap();
 
@@ -855,7 +857,9 @@ mod tests {
                 cn,
                 gs,
                 Skill::Stealth,
-                TalentSkillProfile::DEFAULT.with_max(60).with_difficulty(9),
+                TalentSkillProfile::DEFAULT_NON_MERC
+                    .with_max(60)
+                    .with_difficulty(9),
             )
             .unwrap();
 
@@ -879,7 +883,7 @@ mod tests {
                 cn,
                 gs,
                 Skill::Meditate,
-                TalentSkillProfile::DEFAULT.with_base(5),
+                TalentSkillProfile::DEFAULT_NON_MERC.with_base(5),
             )
             .unwrap();
 
@@ -900,7 +904,7 @@ mod tests {
                 cn,
                 gs,
                 Skill::Meditate,
-                TalentSkillProfile::DEFAULT.with_base(5),
+                TalentSkillProfile::DEFAULT_NON_MERC.with_base(5),
             )
             .unwrap();
 
