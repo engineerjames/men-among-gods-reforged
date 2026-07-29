@@ -6674,3 +6674,90 @@ mod harakim_ability_tests {
         });
     }
 }
+
+#[cfg(test)]
+mod offensive_target_tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+
+    /// Place `co` on the map next to `cn` and mark it as attacking `cn`.
+    fn place_attacker(gs: &mut GameState, cn: usize, co: usize, dx: i16, dy: i16) {
+        let (x, y) = (gs.characters[cn].x + dx, gs.characters[cn].y + dy);
+        gs.characters[co] = Character::default();
+        gs.characters[co].used = USE_ACTIVE;
+        gs.characters[co].x = x;
+        gs.characters[co].y = y;
+        gs.characters[co].attack_cn = cn as u16;
+        gs.map[x as usize + y as usize * SERVER_MAPX as usize].ch = co as u32;
+    }
+
+    #[test]
+    fn explicit_target_and_attack_cn_take_priority() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            place_attacker(gs, cn, 2, 1, 0);
+
+            gs.characters[cn].skill_target1 = 7;
+            gs.characters[cn].attack_cn = 9;
+            assert_eq!(resolve_offensive_target(gs, cn), 7);
+
+            gs.characters[cn].skill_target1 = 0;
+            assert_eq!(resolve_offensive_target(gs, cn), 9);
+        });
+    }
+
+    #[test]
+    fn falls_back_to_adjacent_attacker_preferring_the_facing_tile() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].attack_cn = 0;
+
+            let front = 2;
+            let behind = 3;
+            place_attacker(gs, cn, front, 1, 0);
+            place_attacker(gs, cn, behind, -1, 0);
+
+            gs.characters[cn].dir = DX_RIGHT;
+            assert_eq!(resolve_offensive_target(gs, cn), front);
+
+            gs.characters[cn].dir = DX_LEFT;
+            assert_eq!(resolve_offensive_target(gs, cn), behind);
+        });
+    }
+
+    #[test]
+    fn falls_back_to_attacker_behind_when_facing_tile_is_empty() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].attack_cn = 0;
+            gs.characters[cn].dir = DX_UP;
+
+            let behind = 2;
+            place_attacker(gs, cn, behind, 0, 1);
+
+            assert_eq!(resolve_offensive_target(gs, cn), behind);
+        });
+    }
+
+    #[test]
+    fn ignores_adjacent_characters_that_are_not_attacking_us() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].attack_cn = 0;
+            gs.characters[cn].dir = DX_RIGHT;
+
+            let bystander = 2;
+            place_attacker(gs, cn, bystander, 1, 0);
+            gs.characters[bystander].attack_cn = 0;
+
+            assert_eq!(resolve_offensive_target(gs, cn), cn);
+        });
+    }
+}
