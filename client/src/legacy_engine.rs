@@ -559,6 +559,27 @@ mod tests {
     }
 
     #[test]
+    fn smoothed_speed_rows_do_not_toggle_the_walker_gap() {
+        for speed in [1, 2, 7] {
+            let mut own = walking_tile(48, speed);
+            let mut other = walking_tile(49, speed);
+            let mut gaps = Vec::new();
+
+            for ctick in 0..SPEEDTAB[0].len() {
+                eng_char(&mut own, ctick);
+                eng_char(&mut other, ctick);
+                gaps.push((-own.obj_xoff_sub + other.obj_xoff_sub).div_euclid(SUBPIXEL_UNIT));
+            }
+
+            assert!(
+                gaps.windows(3)
+                    .all(|window| window[0] != window[2] || window[0] == window[1]),
+                "speed row {speed} toggled the screen gap between pixels: {gaps:?}"
+            );
+        }
+    }
+
+    #[test]
     fn walk_offset_stays_within_one_tile() {
         let mut tile = walking_tile(48, 0);
         for ctick in 0..24 {

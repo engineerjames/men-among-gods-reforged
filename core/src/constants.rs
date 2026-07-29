@@ -90,7 +90,12 @@ pub const CTICK_CYCLE_LEN: usize = SPEEDTAB[0].len();
 /// Backwards-compat alias: historically this meant the `ctick` max index.
 pub const MAX_SPEEDTAB_INDEX: usize = MAX_CTICK_INDEX;
 
-// Turn off cargo-fmt for the large SPEEDTAB array
+/// Character action advances distributed across one 40-tick cycle at 36 TPS.
+///
+/// Each row preserves the advance count of its legacy 18 TPS counterpart while
+/// distributing those advances as evenly as possible to avoid visible pauses
+/// in client-side movement interpolation.
+// Turn off cargo-fmt for the large SPEEDTAB array.
 #[rustfmt::skip]
 pub const SPEEDTAB: [[u8; 40]; 20] = [
     [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],
