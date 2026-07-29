@@ -47,7 +47,7 @@ impl GameScene {
                 self.play_click_sound(app_state);
                 net.send(ClientCommand::new_skill(
                     skill_nr as u32,
-                    Self::default_skill_target(ps),
+                    Self::default_skill_target(ps, skill_nr as u32),
                     u32::from(ps.character_info().attrib[0][0]),
                 ));
             }

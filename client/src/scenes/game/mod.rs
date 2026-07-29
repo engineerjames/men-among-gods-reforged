@@ -39,7 +39,7 @@ use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video
 use mag_core::{
     client_commands::ClientCommand,
     constants::{TILEX, TILEY},
-    ranks,
+    ranks, skills,
     skills::{SK_BLAST, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex},
     types::api::NetworkTestSummary,
 };
@@ -931,12 +931,26 @@ impl GameScene {
     ///
     /// Priority matches expected gameplay behavior:
     /// 1) Explicitly selected character (Alt+click), unless that character is ourselves
-    /// 2) Current attack target (`attack_cn`)
-    /// 3) No target (0)
-    pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
+    /// 2) For hostile skills only, the current attack target (`attack_cn`)
+    /// 3) No target (0), which the server resolves to the caster for friendly
+    ///    spells and to an engaged attacker for hostile ones
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - Current player state.
+    /// * `skill_nr` - Skill about to be cast.
+    ///
+    /// # Returns
+    ///
+    /// The character number to send as the skill target, or `0` for none.
+    pub(super) fn default_skill_target(ps: &PlayerState, skill_nr: u32) -> u32 {
         let selected = u32::from(ps.selected_char());
         if selected != 0 && selected != Self::own_ch_nr(ps) {
             return selected;
+        }
+
+        if !skills::is_hostile_skill(skill_nr as usize) {
+            return 0;
         }
 
         ps.character_info().attack_cn.max(0) as u32

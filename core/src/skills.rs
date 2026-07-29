@@ -158,6 +158,40 @@ pub const fn canonicalize_weapon_skill(skill: usize) -> usize {
     }
 }
 
+/// Returns whether `skill` is cast at an enemy rather than at the caster or an ally.
+///
+/// Used to pick a sensible default target when the player triggers a skill
+/// without explicitly selecting one: hostile skills fall back to the current
+/// attack target, while everything else defaults to the caster.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index to inspect.
+///
+/// # Returns
+///
+/// * `true` for offensive skills that require an enemy target.
+/// * `false` for self-, ally- and utility-targeted skills.
+pub const fn is_hostile_skill(skill: usize) -> bool {
+    matches!(
+        skill,
+        SK_BLAST
+            | SK_CURSE
+            | SK_STUN
+            | SK_PARASITE
+            | SK_DISTRACT
+            | SK_DELIVER_DEATH
+            | SK_DISARM
+            | SK_CONTAGION
+            | SK_GASH
+            | SK_LAVA_BLAST
+            | SK_ICE_STUN
+            | SK_ANGUISH_LAVA
+            | SK_ANGUISH_EARTH
+            | SK_ANGUISH_ICE
+    )
+}
+
 #[repr(usize)]
 pub enum SkillIndex {
     /// The base value of the skill, before any modifiers.
@@ -1131,6 +1165,38 @@ pub fn skill_lookup(name: &str) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_hostile_skill_separates_offensive_from_supportive_casts() {
+        for skill in [
+            SK_BLAST,
+            SK_CURSE,
+            SK_STUN,
+            SK_LAVA_BLAST,
+            SK_ICE_STUN,
+            SK_CONTAGION,
+            SK_ANGUISH_EARTH,
+        ] {
+            assert!(is_hostile_skill(skill), "expected {skill} to be hostile");
+        }
+
+        for skill in [
+            SK_PROTECT,
+            SK_ENHANCE,
+            SK_BLESS,
+            SK_HEAL,
+            SK_MSHIELD,
+            SK_LIGHT,
+            SK_DISPEL,
+            SK_WARCRY,
+            SK_SUNS_BLESSING,
+        ] {
+            assert!(
+                !is_hostile_skill(skill),
+                "expected {skill} to not be hostile"
+            );
+        }
+    }
 
     #[test]
     fn test_skilltab_new() {

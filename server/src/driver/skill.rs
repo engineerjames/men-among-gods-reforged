@@ -1,8 +1,9 @@
 use core::{
     constants::{
         AT_AGIL, AT_STREN, CHD_COMPANION, CHD_COMPANION2, CHD_TALKATIVE, CNTSAY, COMPANION_TIMEOUT,
-        CT_COMPANION, CharacterFlags, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, ItemFlags, MAXSAY,
-        NT_DIDHIT, NT_GOTHIT, NT_GOTMISS, TICKS, USE_EMPTY,
+        CT_COMPANION, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
+        DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, ItemFlags, MAXCHARS, MAXSAY, NT_DIDHIT, NT_GOTHIT,
+        NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     },
     skills::{
         SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AXE, SK_BLADE_DANCE, SK_BLAST,
@@ -2116,13 +2117,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
 ///
 /// * Panics if `cn`, the selected target index, or an area target index is invalid.
 pub fn skill_curse(gs: &mut GameState, cn: usize) {
-    let co = if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
-    };
+    let co = resolve_offensive_target(gs, cn);
 
     if cn == co {
         gs.do_character_log(
@@ -2828,13 +2823,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
 ///
 /// * Panics if `cn`, the selected target index, or an area target index is invalid.
 pub fn skill_blast(gs: &mut GameState, cn: usize) {
-    let co = if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
-    };
+    let co = resolve_offensive_target(gs, cn);
 
     if gs.do_char_can_see(cn, co) == 0 {
         gs.do_character_log(cn, FontColor::Green, "You cannot see your target.\n");
@@ -3461,13 +3450,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
 ///
 /// * Panics if `cn`, the selected target index, or an adjacent target index is invalid.
 pub fn skill_stun(gs: &mut GameState, cn: usize) {
-    let co = if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
-    };
+    let co = resolve_offensive_target(gs, cn);
 
     if cn == co {
         gs.do_character_log(
@@ -4567,16 +4550,136 @@ fn add_skill_cooldown(gs: &mut GameState, cn: usize, len: i32, skill_temp: u16, 
 /// Resolves the active offensive target for a skill cast.
 ///
 /// Mirrors the target-selection pattern shared by `skill_blast`, `skill_curse`
-/// and `skill_stun`: prefer `skill_target1`, fall back to `attack_cn`, then
-/// the caster themselves.
-fn resolve_offensive_target(gs: &GameState, cn: usize) -> usize {
+/// and `skill_stun`: prefer `skill_target1`, fall back to `attack_cn`, then to
+/// an adjacent character that is currently attacking the caster (which is the
+/// only signal available when auto-fightback is disabled), and finally to the
+/// caster themselves so the individual skills can emit their "you cannot X
+/// yourself" message.
+fn resolve_offensive_target(gs: &mut GameState, cn: usize) -> usize {
     if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
+        return gs.characters[cn].skill_target1 as usize;
     }
+    if gs.characters[cn].attack_cn != 0 {
+        return gs.characters[cn].attack_cn as usize;
+    }
+    resolve_engaged_attacker(gs, cn).unwrap_or(cn)
+}
+
+/// Tile deltas for the eight neighbours of a character, ordered clockwise from up.
+const ADJACENT_DELTAS: [(i32, i32); 8] = [
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
+    (-1, -1),
+];
+
+/// Inverse of [`helpers::drv_dcoor2dir`]: maps a facing direction to a tile delta.
+///
+/// # Arguments
+///
+/// * `dir` - One of the `DX_*` direction constants.
+///
+/// # Returns
+///
+/// * `Some((dx, dy))` for a known direction, `None` otherwise.
+fn dir_to_delta(dir: u8) -> Option<(i32, i32)> {
+    match dir {
+        DX_RIGHT => Some((1, 0)),
+        DX_LEFT => Some((-1, 0)),
+        DX_UP => Some((0, -1)),
+        DX_DOWN => Some((0, 1)),
+        DX_LEFTUP => Some((-1, -1)),
+        DX_LEFTDOWN => Some((-1, 1)),
+        DX_RIGHTUP => Some((1, -1)),
+        DX_RIGHTDOWN => Some((1, 1)),
+        _ => None,
+    }
+}
+
+/// Returns the character at `(x + dx, y + dy)` when it is actively attacking `cn`.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Caster character index.
+/// * `x` - Caster X coordinate.
+/// * `y` - Caster Y coordinate.
+/// * `delta` - Tile offset to inspect.
+///
+/// # Returns
+///
+/// * `Some(co)` when a visible, living attacker occupies that tile.
+fn attacker_at_delta(
+    gs: &mut GameState,
+    cn: usize,
+    x: i32,
+    y: i32,
+    delta: (i32, i32),
+) -> Option<usize> {
+    let (tx, ty) = (x + delta.0, y + delta.1);
+    if tx < 0 || ty < 0 || tx >= SERVER_MAPX || ty >= SERVER_MAPY {
+        return None;
+    }
+
+    let co = gs.map[(tx + ty * SERVER_MAPX) as usize].ch as usize;
+    if co == 0 || co == cn || co >= MAXCHARS {
+        return None;
+    }
+    if gs.characters[co].used != USE_ACTIVE {
+        return None;
+    }
+    if (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0 {
+        return None;
+    }
+    if gs.characters[co].attack_cn as usize != cn {
+        return None;
+    }
+    if gs.do_char_can_see(cn, co) == 0 {
+        return None;
+    }
+
+    Some(co)
+}
+
+/// Finds an adjacent character that is currently attacking `cn`.
+///
+/// Prefers the tile the caster is facing so offensive casts follow the
+/// player's aim, then scans the remaining neighbours so a caster who is only
+/// being attacked from behind still gets a target.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Caster character index.
+///
+/// # Returns
+///
+/// * `Some(co)` when an engaged attacker is adjacent, otherwise `None`.
+fn resolve_engaged_attacker(gs: &mut GameState, cn: usize) -> Option<usize> {
+    let x = i32::from(gs.characters[cn].x);
+    let y = i32::from(gs.characters[cn].y);
+    let facing = dir_to_delta(gs.characters[cn].dir);
+
+    if let Some(delta) = facing
+        && let Some(co) = attacker_at_delta(gs, cn, x, y, delta)
+    {
+        return Some(co);
+    }
+
+    for delta in ADJACENT_DELTAS {
+        if Some(delta) == facing {
+            continue;
+        }
+        if let Some(co) = attacker_at_delta(gs, cn, x, y, delta) {
+            return Some(co);
+        }
+    }
+
+    None
 }
 
 /// Common preflight checks for hostile single-target casts.

@@ -315,7 +315,7 @@ impl GameScene {
                     if let (Some(net), Some(ps)) =
                         (app_state.network.as_ref(), app_state.player_state.as_ref())
                     {
-                        let target = Self::default_skill_target(ps);
+                        let target = Self::default_skill_target(ps, skill_nr as u32);
                         let a0 = u32::from(ps.character_info().attrib[0][5]);
                         net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
@@ -383,7 +383,7 @@ impl GameScene {
                         (app_state.network.as_ref(), app_state.player_state.as_ref())
                     {
                         self.play_click_sound(app_state);
-                        let target = Self::default_skill_target(ps);
+                        let target = Self::default_skill_target(ps, skill_nr as u32);
                         let a0 = u32::from(ps.character_info().attrib[0][5]);
                         net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
