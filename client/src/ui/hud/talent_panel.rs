@@ -371,7 +371,7 @@ impl TalentPanel {
     /// Nodes are laid out on a [`TALENT_ROWS`]-row grid. Column 0 (`mask` bit
     /// 0) is centered on the left half of the artwork and column 1 (`mask` bit
     /// 1) on the right half, matching how the class artwork is split. No-op
-    /// when the class is `None` or has no tree defined.
+    ///    when the class is `None` or has no tree defined.
     fn rebuild_nodes(&mut self) {
         self.nodes.clear();
         self.nodes_for_class = self.class;
