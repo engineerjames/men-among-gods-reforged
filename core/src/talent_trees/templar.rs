@@ -1,7 +1,8 @@
 //! Templar class talent tree metadata and effects.
 
 use super::{
-    TalentEffect, TalentNode, TalentPrimaryHitProc, TalentPrimaryHitProcKind, TalentRef, TalentTree,
+    TalentEffect, TalentNode, TalentPrimaryHitProc, TalentPrimaryHitProcKind, TalentRef,
+    TalentSkillProfile, TalentTree,
 };
 use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
@@ -90,20 +91,24 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: RENEWAL,
             name: "Renewal",
-            description: "Learn Rains of Renewal.",
+            description: "Learn Rains of Renewal, which spends endurance to heal you over time.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::RainsOfRenewal,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
             slot: GASH,
             name: "Gash",
-            description: "Learn Gash.",
+            description: "Learn Gash, a reckless melee strike that costs 5% of your current HP and deals amplified weapon damage.",
             cost: 1,
             prereqs: &[],
-            effect: TalentEffect::GrantSkill { skill: Skill::Gash },
+            effect: TalentEffect::GrantSkill {
+                skill: Skill::Gash,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
+            },
         },
         TalentNode {
             slot: CORPORAL_STRENGTH,
@@ -133,29 +138,31 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             description: "Unlock Meditate at base level 5.",
             cost: 1,
             prereqs: &[STAFF_SERGEANT_STRENGTH],
-            effect: TalentEffect::GrantSkillAtBase {
+            effect: TalentEffect::GrantSkill {
                 skill: Skill::Meditate,
-                base: 5,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC.with_base(5),
             },
         },
         TalentNode {
             slot: DIVINE_BLESSING,
             name: "Sun's Blessing",
-            description: "Learn Sun's Blessing.",
+            description: "Learn Sun's Blessing, a long self-buff that raises every attribute plus your armor and weapon value.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SunsBlessing,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
             slot: SEEING_RED,
             name: "Seeing Red",
-            description: "Learn Seeing Red.",
+            description: "Learn Seeing Red, a self-buff that roughly doubles your damage and blocks new stun, curse and disarm effects.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_MEDITATE],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SeeingRed,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -211,21 +218,23 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: HOLY_FURY,
             name: "Holy Fury",
-            description: "Learn Thunderous Fury.",
+            description: "Learn Thunderous Fury, an upgraded Warcry that stuns and damages every nearby enemy.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::ThunderousFury,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
             slot: INNER_STRENGTH,
             name: "Inner Strength",
-            description: "Learn Inner Strength.",
+            description: "Learn Inner Strength, an upgraded Warcry that stuns nearby enemies and raises your weapon skill for a while.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::InnerStrength,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {

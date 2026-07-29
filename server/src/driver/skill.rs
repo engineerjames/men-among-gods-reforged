@@ -1,8 +1,9 @@
 use core::{
     constants::{
         AT_AGIL, AT_STREN, CHD_COMPANION, CHD_COMPANION2, CHD_TALKATIVE, CNTSAY, COMPANION_TIMEOUT,
-        CT_COMPANION, CharacterFlags, DX_DOWN, DX_LEFT, DX_RIGHT, DX_UP, ItemFlags, MAXSAY,
-        NT_DIDHIT, NT_GOTHIT, NT_GOTMISS, TICKS, USE_EMPTY,
+        CT_COMPANION, CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT,
+        DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, ItemFlags, MAXCHARS, MAXSAY, NT_DIDHIT, NT_GOTHIT,
+        NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     },
     skills::{
         SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AXE, SK_BLADE_DANCE, SK_BLAST,
@@ -2116,13 +2117,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
 ///
 /// * Panics if `cn`, the selected target index, or an area target index is invalid.
 pub fn skill_curse(gs: &mut GameState, cn: usize) {
-    let co = if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
-    };
+    let co = resolve_offensive_target(gs, cn);
 
     if cn == co {
         gs.do_character_log(
@@ -2828,13 +2823,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
 ///
 /// * Panics if `cn`, the selected target index, or an area target index is invalid.
 pub fn skill_blast(gs: &mut GameState, cn: usize) {
-    let co = if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
-    };
+    let co = resolve_offensive_target(gs, cn);
 
     if gs.do_char_can_see(cn, co) == 0 {
         gs.do_character_log(cn, FontColor::Green, "You cannot see your target.\n");
@@ -3461,13 +3450,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
 ///
 /// * Panics if `cn`, the selected target index, or an adjacent target index is invalid.
 pub fn skill_stun(gs: &mut GameState, cn: usize) {
-    let co = if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
-    };
+    let co = resolve_offensive_target(gs, cn);
 
     if cn == co {
         gs.do_character_log(
@@ -3544,15 +3527,7 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     }
 
     let power = i32::from(gs.characters[cn].skill[SK_STUN][5]);
-    let has_ice_stun = has_ice_stun_modifier(gs, cn);
-    let burst_power = if has_ice_stun {
-        apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, power)
-    } else {
-        power
-    };
-    if spell_stun(gs, cn, co, power) && has_ice_stun {
-        attach_ice_stun_marker(gs, cn, co, burst_power);
-    }
+    spell_stun(gs, cn, co, power);
 
     let co_orig = co;
     let m: usize = gs.characters[cn].x as usize
@@ -3572,15 +3547,13 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
             let o_rand = helpers::random_mod_i32(20);
             if i32::from(gs.characters[cn].skill[SK_STUN][5]) + s_rand
                 > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
-                && spell_stun(
+            {
+                spell_stun(
                     gs,
                     cn,
                     maybe_co,
                     i32::from(gs.characters[cn].skill[SK_STUN][5]),
-                )
-                && has_ice_stun
-            {
-                attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
+                );
             }
         }
     }
@@ -3596,23 +3569,108 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
     add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
-/// Returns whether a Stun cast should receive the Harakim Ice Stun modifier.
+/// Handles direct player/NPC use of the Ice Stun skill.
+///
+/// Ice Stun wholly replaces Stun for Harakim who learn the talent: it stuns the
+/// primary target and adjacent attackers exactly like Stun, but draws its power
+/// from `SK_ICE_STUN` (including the Harakim ice element bonus) and marks every
+/// frozen target so it bursts with ice when it dies.
 ///
 /// # Arguments
 ///
-/// * `gs` - Active game state containing caster talent state.
+/// * `gs` - Active game state used for target validation, combat checks, and spell application.
 /// * `cn` - Caster character index.
 ///
-/// # Returns
+/// # Panics
 ///
-/// * `true` when the caster is a Harakim player with the Ice Stun talent learned.
-fn has_ice_stun_modifier(gs: &GameState, cn: usize) -> bool {
-    (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
-        && matches!(
-            Class::from(gs.characters[cn].kindred),
-            Class::Harakim | Class::ArchHarakim
-        )
-        && harakim::has_ice_stun(&gs.characters[cn].future1)
+/// * Panics if `cn`, the selected target index, or an adjacent target index is invalid.
+pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot freeze yourself!\n") {
+        return;
+    }
+    if is_exhausted(gs, cn) {
+        return;
+    }
+    if spellcost(gs, cn, 20) != 0 {
+        return;
+    }
+
+    if chance_base(
+        gs,
+        cn,
+        i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]),
+        12,
+        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+    ) != 0
+    {
+        if gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_ICE_STUN][5] + 5 {
+            gs.do_character_log(
+                co,
+                FontColor::Green,
+                &format!(
+                    "{} tried to cast ice stun on you but failed.\n",
+                    c_string_to_str(&gs.characters[cn].reference)
+                ),
+            );
+            if gs.characters[co].flags & CharacterFlags::SpellIgnore.bits() == 0 {
+                gs.do_notify_character(
+                    co as u32,
+                    i32::from(core::constants::NT_GOTMISS),
+                    cn as i32,
+                    0,
+                    0,
+                    0,
+                );
+            }
+        }
+        return;
+    }
+
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]);
+    let burst_power = apply_harakim_element_damage_bonus(gs, cn, HARAKIM_ELEMENT_ICE, power);
+    if spell_stun(gs, cn, co, power) {
+        attach_ice_stun_marker(gs, cn, co, burst_power);
+    }
+
+    let co_orig = co;
+    let m: usize = gs.characters[cn].x as usize
+        + gs.characters[cn].y as usize * core::constants::SERVER_MAPX as usize;
+
+    let adj = [
+        1isize,
+        -1isize,
+        core::constants::SERVER_MAPX as isize,
+        -(core::constants::SERVER_MAPX as isize),
+    ];
+    for delta in adj.iter() {
+        let idx = (m as isize + *delta) as usize;
+        let maybe_co = gs.map.get(idx).map(|m| m.ch).unwrap_or(0) as usize;
+        if maybe_co != 0 && gs.characters[maybe_co].attack_cn == cn as u16 && maybe_co != co_orig {
+            let s_rand = helpers::random_mod_i32(20);
+            let o_rand = helpers::random_mod_i32(20);
+            if power + s_rand > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
+                && spell_stun(gs, cn, maybe_co, power)
+            {
+                attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
+            }
+        }
+    }
+
+    EffectManager::fx_add_effect(
+        gs,
+        7,
+        0,
+        i32::from(gs.characters[cn].x),
+        i32::from(gs.characters[cn].y),
+        0,
+    );
+    add_exhaust(gs, cn, core::constants::TICKS * 3);
 }
 
 /// Attaches Ice Stun's on-death burst marker to a stunned target.
@@ -3645,7 +3703,25 @@ fn attach_ice_stun_marker(gs: &mut GameState, caster: usize, co: usize, power: i
         item.power = power.max(1) as u32;
         item.data[0] = caster as u32;
     }
-    add_spell(gs, co, in_idx);
+    if add_spell(gs, co, in_idx) != 0 {
+        gs.do_character_log(co, FontColor::Green, "Ice encases your body!\n");
+        gs.do_character_log(
+            caster,
+            FontColor::Green,
+            &format!(
+                "{} was encased in ice.\n",
+                c_string_to_str(&gs.characters[co].reference)
+            ),
+        );
+        EffectManager::fx_add_effect(
+            gs,
+            5,
+            0,
+            i32::from(gs.characters[co].x),
+            i32::from(gs.characters[co].y),
+            0,
+        );
+    }
 }
 
 /// Removes all active spell items from a character.
@@ -4474,16 +4550,136 @@ fn add_skill_cooldown(gs: &mut GameState, cn: usize, len: i32, skill_temp: u16, 
 /// Resolves the active offensive target for a skill cast.
 ///
 /// Mirrors the target-selection pattern shared by `skill_blast`, `skill_curse`
-/// and `skill_stun`: prefer `skill_target1`, fall back to `attack_cn`, then
-/// the caster themselves.
-fn resolve_offensive_target(gs: &GameState, cn: usize) -> usize {
+/// and `skill_stun`: prefer `skill_target1`, fall back to `attack_cn`, then to
+/// an adjacent character that is currently attacking the caster (which is the
+/// only signal available when auto-fightback is disabled), and finally to the
+/// caster themselves so the individual skills can emit their "you cannot X
+/// yourself" message.
+fn resolve_offensive_target(gs: &mut GameState, cn: usize) -> usize {
     if gs.characters[cn].skill_target1 != 0 {
-        gs.characters[cn].skill_target1 as usize
-    } else if gs.characters[cn].attack_cn != 0 {
-        gs.characters[cn].attack_cn as usize
-    } else {
-        cn
+        return gs.characters[cn].skill_target1 as usize;
     }
+    if gs.characters[cn].attack_cn != 0 {
+        return gs.characters[cn].attack_cn as usize;
+    }
+    resolve_engaged_attacker(gs, cn).unwrap_or(cn)
+}
+
+/// Tile deltas for the eight neighbours of a character, ordered clockwise from up.
+const ADJACENT_DELTAS: [(i32, i32); 8] = [
+    (0, -1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+    (0, 1),
+    (-1, 1),
+    (-1, 0),
+    (-1, -1),
+];
+
+/// Inverse of [`helpers::drv_dcoor2dir`]: maps a facing direction to a tile delta.
+///
+/// # Arguments
+///
+/// * `dir` - One of the `DX_*` direction constants.
+///
+/// # Returns
+///
+/// * `Some((dx, dy))` for a known direction, `None` otherwise.
+fn dir_to_delta(dir: u8) -> Option<(i32, i32)> {
+    match dir {
+        DX_RIGHT => Some((1, 0)),
+        DX_LEFT => Some((-1, 0)),
+        DX_UP => Some((0, -1)),
+        DX_DOWN => Some((0, 1)),
+        DX_LEFTUP => Some((-1, -1)),
+        DX_LEFTDOWN => Some((-1, 1)),
+        DX_RIGHTUP => Some((1, -1)),
+        DX_RIGHTDOWN => Some((1, 1)),
+        _ => None,
+    }
+}
+
+/// Returns the character at `(x + dx, y + dy)` when it is actively attacking `cn`.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Caster character index.
+/// * `x` - Caster X coordinate.
+/// * `y` - Caster Y coordinate.
+/// * `delta` - Tile offset to inspect.
+///
+/// # Returns
+///
+/// * `Some(co)` when a visible, living attacker occupies that tile.
+fn attacker_at_delta(
+    gs: &mut GameState,
+    cn: usize,
+    x: i32,
+    y: i32,
+    delta: (i32, i32),
+) -> Option<usize> {
+    let (tx, ty) = (x + delta.0, y + delta.1);
+    if tx < 0 || ty < 0 || tx >= SERVER_MAPX || ty >= SERVER_MAPY {
+        return None;
+    }
+
+    let co = gs.map[(tx + ty * SERVER_MAPX) as usize].ch as usize;
+    if co == 0 || co == cn || co >= MAXCHARS {
+        return None;
+    }
+    if gs.characters[co].used != USE_ACTIVE {
+        return None;
+    }
+    if (gs.characters[co].flags & CharacterFlags::Body.bits()) != 0 {
+        return None;
+    }
+    if gs.characters[co].attack_cn as usize != cn {
+        return None;
+    }
+    if gs.do_char_can_see(cn, co) == 0 {
+        return None;
+    }
+
+    Some(co)
+}
+
+/// Finds an adjacent character that is currently attacking `cn`.
+///
+/// Prefers the tile the caster is facing so offensive casts follow the
+/// player's aim, then scans the remaining neighbours so a caster who is only
+/// being attacked from behind still gets a target.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Caster character index.
+///
+/// # Returns
+///
+/// * `Some(co)` when an engaged attacker is adjacent, otherwise `None`.
+fn resolve_engaged_attacker(gs: &mut GameState, cn: usize) -> Option<usize> {
+    let x = i32::from(gs.characters[cn].x);
+    let y = i32::from(gs.characters[cn].y);
+    let facing = dir_to_delta(gs.characters[cn].dir);
+
+    if let Some(delta) = facing
+        && let Some(co) = attacker_at_delta(gs, cn, x, y, delta)
+    {
+        return Some(co);
+    }
+
+    for delta in ADJACENT_DELTAS {
+        if Some(delta) == facing {
+            continue;
+        }
+        if let Some(co) = attacker_at_delta(gs, cn, x, y, delta) {
+            return Some(co);
+        }
+    }
+
+    None
 }
 
 /// Common preflight checks for hostile single-target casts.
@@ -4588,7 +4784,8 @@ pub(crate) fn apply_parasitic_dot(
 }
 
 /// Active spell: infest the target with parasites that drain HP over time and
-/// heal the caster for a fraction of the damage dealt.
+/// heal the caster for a fraction of the damage dealt. The infestation also
+/// jumps to enemies standing in the four tiles adjacent to the caster.
 ///
 /// # Arguments
 ///
@@ -4642,41 +4839,84 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[co].y),
         0,
     );
+
+    // Secondary targets: the four tiles adjacent to the caster only. Parasite
+    // never grows past the legacy cross, so the AoE base is pinned to zero.
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, 0) {
+        if maybe_co == cn || maybe_co == co {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        if !apply_parasitic_dot(
+            gs,
+            cn,
+            maybe_co,
+            power,
+            SK_PARASITE as u16,
+            TICKS * 8,
+            b"Parasite",
+        ) {
+            continue;
+        }
+
+        gs.remember_pvp(cn, maybe_co);
+        let other_name = gs.characters[maybe_co].get_name().to_owned();
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{} was infested with parasites.\n", other_name),
+        );
+        gs.do_character_log(
+            maybe_co,
+            FontColor::Green,
+            "Parasites burrow into your flesh!\n",
+        );
+        gs.do_notify_character(maybe_co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+        gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), maybe_co as i32, 0, 0, 0);
+        EffectManager::fx_add_effect(
+            gs,
+            5,
+            0,
+            i32::from(gs.characters[maybe_co].x),
+            i32::from(gs.characters[maybe_co].y),
+            0,
+        );
+    }
 }
 
-/// Active spell: distract the target, reducing their Agility for a short time.
+/// Attaches the Distract spell-item to a single target.
+///
+/// Applies immunity and race modifiers to `power` before creating the spell
+/// item, so callers can pass the caster's raw skill value.
 ///
 /// # Arguments
 ///
 /// * `gs` - Game state.
 /// * `cn` - Caster character index.
-pub fn skill_distract(gs: &mut GameState, cn: usize) {
-    let co = resolve_offensive_target(gs, cn);
-    if !hostile_cast_preflight(gs, cn, co, "You cannot distract yourself.\n") {
-        return;
-    }
-    if spellcost(gs, cn, 15) != 0 {
-        return;
-    }
-    if chance(gs, cn, 18) != 0 {
-        return;
-    }
-
-    let power = i32::from(gs.characters[cn].skill[SK_DISTRACT][5]);
+/// * `co` - Target character index.
+/// * `power` - Caster's raw Distract skill value.
+///
+/// # Returns
+///
+/// * `true` if the target is now distracted.
+fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     let power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     let power = spell_race_mod(gs, power, gs.characters[cn].kindred);
     if power < 1 {
-        return;
+        return false;
     }
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
-        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
-        return;
+        return false;
     }
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
         log::error!("god_create_item failed in skill_distract");
-        return;
+        return false;
     }
     let in_idx = in_opt.unwrap();
     let agility_penalty = -((power / 3).clamp(1, 30)) as i8;
@@ -4695,7 +4935,36 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
         item.power = power as u32;
         item.attrib[AT_AGIL as usize][1] = agility_penalty;
     }
-    if add_spell(gs, co, in_idx) == 0 {
+
+    add_spell(gs, co, in_idx) != 0
+}
+
+/// Active spell: distract the target, reducing their Agility for a short time.
+/// Enemies standing in the four tiles adjacent to the caster are distracted
+/// as well.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `cn` - Caster character index.
+pub fn skill_distract(gs: &mut GameState, cn: usize) {
+    let co = resolve_offensive_target(gs, cn);
+    if !hostile_cast_preflight(gs, cn, co, "You cannot distract yourself.\n") {
+        return;
+    }
+    if spellcost(gs, cn, 15) != 0 {
+        return;
+    }
+    if chance(gs, cn, 18) != 0 {
+        return;
+    }
+
+    let power = i32::from(gs.characters[cn].skill[SK_DISTRACT][5]);
+    if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+        gs.do_character_log(cn, FontColor::Red, "You lost your focus.\n");
+        return;
+    }
+    if !apply_distract(gs, cn, co, power) {
         gs.do_character_log(
             cn,
             FontColor::Green,
@@ -4722,6 +4991,41 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[co].y),
         0,
     );
+
+    // Secondary targets: the four tiles adjacent to the caster only. Distract
+    // never grows past the legacy cross, so the AoE base is pinned to zero.
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    for maybe_co in helpers::skill_aoe_targets(gs, Some(cn), caster_x, caster_y, 0) {
+        if maybe_co == cn || maybe_co == co {
+            continue;
+        }
+        if !gs.may_attack_msg(cn, maybe_co, false) {
+            continue;
+        }
+        if !apply_distract(gs, cn, maybe_co, power) {
+            continue;
+        }
+
+        gs.remember_pvp(cn, maybe_co);
+        let other_name = gs.characters[maybe_co].get_name().to_owned();
+        gs.do_character_log(
+            cn,
+            FontColor::Green,
+            &format!("{} is now distracted.\n", other_name),
+        );
+        gs.do_character_log(maybe_co, FontColor::Green, "You feel distracted!\n");
+        gs.do_notify_character(maybe_co as u32, i32::from(NT_GOTHIT), cn as i32, 0, 0, 0);
+        gs.do_notify_character(cn as u32, i32::from(NT_DIDHIT), maybe_co as i32, 0, 0, 0);
+        EffectManager::fx_add_effect(
+            gs,
+            5,
+            0,
+            i32::from(gs.characters[maybe_co].x),
+            i32::from(gs.characters[maybe_co].y),
+            0,
+        );
+    }
 }
 
 /// Active melee finisher: a devastating blow against a low-health adjacent
@@ -6176,6 +6480,13 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 skill_lava_blast(gs, cn);
             }
         }
+        x if x == SK_ICE_STUN as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_ice_stun(gs, cn);
+            }
+        }
         x if x == SK_SPELLCASTER_KINDRED_SPIRIT as i32 => {
             skill_spellcaster_kindred_spirit(gs, cn);
         }
@@ -6325,18 +6636,27 @@ mod harakim_ability_tests {
     }
 
     #[test]
-    fn ice_stun_modifier_requires_harakim_player_talent() {
+    fn ice_stun_marker_records_caster_and_power() {
         with_test_gs(|gs| {
+            // The marker is allocated from item template 1, which must be in
+            // use for `God::create_item` to succeed.
+            gs.item_templates[1].used = USE_ACTIVE;
+
             let (cn, _nr) = add_test_player(gs);
-            gs.characters[cn].kindred = KIN_HARAKIM as i32;
+            let (co, _nr2) = add_test_player(gs);
 
-            assert!(!has_ice_stun_modifier(gs, cn));
+            attach_ice_stun_marker(gs, cn, co, 40);
 
-            gs.characters[cn].future1[5] |= 0b0000_0001;
-            assert!(has_ice_stun_modifier(gs, cn));
+            let marker = gs.characters[co]
+                .spell
+                .iter()
+                .map(|&in_idx| in_idx as usize)
+                .find(|&in_idx| in_idx != 0 && gs.items[in_idx].temp == SK_ICE_STUN as u16)
+                .expect("expected an Ice Stun marker on the target");
 
-            gs.characters[cn].flags = 0;
-            assert!(!has_ice_stun_modifier(gs, cn));
+            assert_eq!(gs.items[marker].data[0] as usize, cn);
+            assert_eq!(gs.items[marker].power, 40);
+            assert!(gs.items[marker].active > 0);
         });
     }
 
@@ -6351,6 +6671,93 @@ mod harakim_ability_tests {
             assert_eq!(gs.characters[cn].x, start_x);
             assert_eq!(gs.characters[cn].y, start_y);
             assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+        });
+    }
+}
+
+#[cfg(test)]
+mod offensive_target_tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+
+    /// Place `co` on the map next to `cn` and mark it as attacking `cn`.
+    fn place_attacker(gs: &mut GameState, cn: usize, co: usize, dx: i16, dy: i16) {
+        let (x, y) = (gs.characters[cn].x + dx, gs.characters[cn].y + dy);
+        gs.characters[co] = Character::default();
+        gs.characters[co].used = USE_ACTIVE;
+        gs.characters[co].x = x;
+        gs.characters[co].y = y;
+        gs.characters[co].attack_cn = cn as u16;
+        gs.map[x as usize + y as usize * SERVER_MAPX as usize].ch = co as u32;
+    }
+
+    #[test]
+    fn explicit_target_and_attack_cn_take_priority() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            place_attacker(gs, cn, 2, 1, 0);
+
+            gs.characters[cn].skill_target1 = 7;
+            gs.characters[cn].attack_cn = 9;
+            assert_eq!(resolve_offensive_target(gs, cn), 7);
+
+            gs.characters[cn].skill_target1 = 0;
+            assert_eq!(resolve_offensive_target(gs, cn), 9);
+        });
+    }
+
+    #[test]
+    fn falls_back_to_adjacent_attacker_preferring_the_facing_tile() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].attack_cn = 0;
+
+            let front = 2;
+            let behind = 3;
+            place_attacker(gs, cn, front, 1, 0);
+            place_attacker(gs, cn, behind, -1, 0);
+
+            gs.characters[cn].dir = DX_RIGHT;
+            assert_eq!(resolve_offensive_target(gs, cn), front);
+
+            gs.characters[cn].dir = DX_LEFT;
+            assert_eq!(resolve_offensive_target(gs, cn), behind);
+        });
+    }
+
+    #[test]
+    fn falls_back_to_attacker_behind_when_facing_tile_is_empty() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].attack_cn = 0;
+            gs.characters[cn].dir = DX_UP;
+
+            let behind = 2;
+            place_attacker(gs, cn, behind, 0, 1);
+
+            assert_eq!(resolve_offensive_target(gs, cn), behind);
+        });
+    }
+
+    #[test]
+    fn ignores_adjacent_characters_that_are_not_attacking_us() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+            gs.characters[cn].skill_target1 = 0;
+            gs.characters[cn].attack_cn = 0;
+            gs.characters[cn].dir = DX_RIGHT;
+
+            let bystander = 2;
+            place_attacker(gs, cn, bystander, 1, 0);
+            gs.characters[bystander].attack_cn = 0;
+
+            assert_eq!(resolve_offensive_target(gs, cn), cn);
         });
     }
 }

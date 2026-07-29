@@ -104,7 +104,8 @@ pub const SK_ANGUISH_EARTH: usize = 54;
 pub const SK_ANGUISH_ICE: usize = 55;
 /// Lava Blast: elemental blast variant that burns impacted enemies over time.
 pub const SK_LAVA_BLAST: usize = 56;
-/// Ice Stun spell-item marker temp used by the Harakim Stun modifier.
+/// Ice Stun: stun variant that freezes the target and marks it to burst with
+/// ice when it dies. Also used as the spell-item marker temp for that burst.
 pub const SK_ICE_STUN: usize = 57;
 /// Element Switching spell-item marker temp used by the Harakim elemental proc icon.
 pub const SK_ELEMENT_SWITCHING: usize = 58;
@@ -155,6 +156,40 @@ pub const fn canonicalize_weapon_skill(skill: usize) -> usize {
     } else {
         skill
     }
+}
+
+/// Returns whether `skill` is cast at an enemy rather than at the caster or an ally.
+///
+/// Used to pick a sensible default target when the player triggers a skill
+/// without explicitly selecting one: hostile skills fall back to the current
+/// attack target, while everything else defaults to the caster.
+///
+/// # Arguments
+///
+/// * `skill` - Skill index to inspect.
+///
+/// # Returns
+///
+/// * `true` for offensive skills that require an enemy target.
+/// * `false` for self-, ally- and utility-targeted skills.
+pub const fn is_hostile_skill(skill: usize) -> bool {
+    matches!(
+        skill,
+        SK_BLAST
+            | SK_CURSE
+            | SK_STUN
+            | SK_PARASITE
+            | SK_DISTRACT
+            | SK_DELIVER_DEATH
+            | SK_DISARM
+            | SK_CONTAGION
+            | SK_GASH
+            | SK_LAVA_BLAST
+            | SK_ICE_STUN
+            | SK_ANGUISH_LAVA
+            | SK_ANGUISH_EARTH
+            | SK_ANGUISH_ICE
+    )
 }
 
 #[repr(usize)]
@@ -267,6 +302,7 @@ pub enum Skill {
     AnguishEarth = SK_ANGUISH_EARTH,
     AnguishIce = SK_ANGUISH_ICE,
     LavaBlast = SK_LAVA_BLAST,
+    IceStun = SK_ICE_STUN,
     SpellcasterKindredSpirit = SK_SPELLCASTER_KINDRED_SPIRIT,
 }
 
@@ -841,7 +877,15 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         1,
         4,
     ),
-    SkillTab::new(57, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(
+        57,
+        SkillCategory::Magic,
+        "Ice Stun",
+        "Spell: Freeze target; it bursts with ice when it dies (Cost: 20 Mana).",
+        0,
+        2,
+        1,
+    ),
     SkillTab::new(58, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(
         59,
@@ -1035,7 +1079,7 @@ const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "Anguish (Earth)",
     "Anguish (Ice)",
     "Lava Blast",
-    "",
+    "Ice Stun",
     "",
     "",
     "",
@@ -1121,6 +1165,38 @@ pub fn skill_lookup(name: &str) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn is_hostile_skill_separates_offensive_from_supportive_casts() {
+        for skill in [
+            SK_BLAST,
+            SK_CURSE,
+            SK_STUN,
+            SK_LAVA_BLAST,
+            SK_ICE_STUN,
+            SK_CONTAGION,
+            SK_ANGUISH_EARTH,
+        ] {
+            assert!(is_hostile_skill(skill), "expected {skill} to be hostile");
+        }
+
+        for skill in [
+            SK_PROTECT,
+            SK_ENHANCE,
+            SK_BLESS,
+            SK_HEAL,
+            SK_MSHIELD,
+            SK_LIGHT,
+            SK_DISPEL,
+            SK_WARCRY,
+            SK_SUNS_BLESSING,
+        ] {
+            assert!(
+                !is_hostile_skill(skill),
+                "expected {skill} to not be hostile"
+            );
+        }
+    }
 
     #[test]
     fn test_skilltab_new() {

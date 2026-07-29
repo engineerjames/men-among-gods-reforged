@@ -144,7 +144,7 @@ struct LookSnapshot {
     mana: u32,
     /// 0-based rank index derived from the look target's experience points.
     rank_index: usize,
-    /// Human-readable rank name for the look target.
+    /// Shortened rank name for the look target, kept compact so it fits the panel.
     rank_name: &'static str,
 }
 
@@ -162,7 +162,7 @@ impl Default for LookSnapshot {
             a_mana: 0,
             mana: 0,
             rank_index: 0,
-            rank_name: ranks::rank_name_by_index(0),
+            rank_name: ranks::rank_short_name_by_index(0),
         }
     }
 }
@@ -263,7 +263,7 @@ impl LookPanel {
             a_mana: look.a_mana(),
             mana: look.mana(),
             rank_index,
-            rank_name: ranks::rank_name(points),
+            rank_name: ranks::rank_short_name(points),
         };
     }
 

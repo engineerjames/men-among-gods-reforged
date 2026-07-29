@@ -1,6 +1,8 @@
 //! Harakim class talent tree metadata and effects.
 
-use super::{TalentEffect, TalentNode, TalentRef, TalentTree, is_talent_slot_spent};
+use super::{
+    TalentEffect, TalentNode, TalentRef, TalentSkillProfile, TalentTree, is_talent_slot_spent,
+};
 use crate::skills::{Attribute, Skill};
 use crate::traits::Class;
 
@@ -120,22 +122,24 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: LAVA_BLAST,
             name: "Lava Blast",
-            description: "Learn Lava Blast.",
+            description: "Replaces Blast with Lava Blast, which also burns the target over time.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::ReplaceSkill {
                 from: Skill::Blast,
                 to: Skill::LavaBlast,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
             slot: REVENANT_CONDUIT,
             name: "Revenant Conduit",
-            description: "Learn Revenant Conduit.",
+            description: "Learn a toggled self-buff that raises your Ghost Companion skill, at the cost of mana and a steady endurance drain.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::RevenantConduit,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -174,19 +178,24 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: ICE_STUN,
             name: "Ice Stun",
-            description: "Stun marks targets for a chance to burst with ice when they die.",
+            description: "Replaces Stun with Ice Stun, which marks targets to burst with ice when they die.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_WILLPOWER],
-            effect: TalentEffect::Passive,
+            effect: TalentEffect::ReplaceSkill {
+                from: Skill::Stun,
+                to: Skill::IceStun,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
+            },
         },
         TalentNode {
             slot: KINDRED_SPIRIT,
             name: "Kindred Spirit",
-            description: "Learn Kindred Spirit.",
+            description: "Lets you keep a second ghost companion summoned at the same time.",
             cost: 1,
             prereqs: &[FIRST_SERGEANT_WILLPOWER],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::KindredSpirit,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -210,11 +219,12 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: SPELLCASTER_KINDRED_SPIRIT,
             name: "Spellcaster Kindred Spirit",
-            description: "Learn Spellcaster Kindred Spirit.",
+            description: "Teaches your ghost companions to cast Blast at your enemies.",
             cost: 1,
             prereqs: &[CAPTAIN_RESERVES],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SpellcasterKindredSpirit,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -231,21 +241,23 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: ELEMENTAL_ANGUISH,
             name: "Elemental Anguish",
-            description: "Learn Anguish (Earth).",
+            description: "Learn Anguish (Earth), an area curse that roots every nearby enemy in place for a few seconds.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_INTUITION],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::AnguishEarth,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
             slot: SPECTRAL_PACT,
             name: "Spectral Pact",
-            description: "Learn Spectral Pact.",
+            description: "Learn a self-buff that redirects part of the damage you take to your ghost companions.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_INTUITION],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::SpectralPact,
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {

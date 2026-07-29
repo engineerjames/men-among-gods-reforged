@@ -315,7 +315,7 @@ impl GameScene {
                     if let (Some(net), Some(ps)) =
                         (app_state.network.as_ref(), app_state.player_state.as_ref())
                     {
-                        let target = Self::default_skill_target(ps);
+                        let target = Self::default_skill_target(ps, skill_nr as u32);
                         let a0 = u32::from(ps.character_info().attrib[0][5]);
                         net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
@@ -383,7 +383,7 @@ impl GameScene {
                         (app_state.network.as_ref(), app_state.player_state.as_ref())
                     {
                         self.play_click_sound(app_state);
-                        let target = Self::default_skill_target(ps);
+                        let target = Self::default_skill_target(ps, skill_nr as u32);
                         let a0 = u32::from(ps.character_info().attrib[0][5]);
                         net.send(ClientCommand::new_skill(skill_nr as u32, target, a0));
                     }
@@ -636,6 +636,56 @@ impl GameScene {
         }
     }
 
+    /// Dispatch a [`UiEvent`] through the movable HUD panels (skills,
+    /// inventory, settings, talents, quest log).
+    ///
+    /// These panels are rendered on top of the chat box, so pointer events are
+    /// offered to them before the chat box gets a chance to swallow clicks that
+    /// land inside its bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state (network + player state).
+    /// * `ui_event` - The already-converted [`UiEvent`] to dispatch.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(result)` if a panel consumed the event or triggered a scene
+    ///   change, otherwise `None`.
+    fn dispatch_hud_panel_events(
+        &mut self,
+        app_state: &mut AppState<'_>,
+        ui_event: &UiEvent,
+    ) -> Option<UiHandleResult> {
+        if self.skills_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_skills_panel_actions(app_state);
+            return Some(UiHandleResult::Consumed);
+        }
+        if self.inventory_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        {
+            self.process_inventory_panel_actions(app_state);
+            return Some(UiHandleResult::Consumed);
+        }
+        if self.settings_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        {
+            if let Some(sc) = self.process_settings_panel_actions(app_state) {
+                return Some(UiHandleResult::SceneChange(sc));
+            }
+            return Some(UiHandleResult::Consumed);
+        }
+        if self.talent_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_talent_panel_actions(app_state);
+            return Some(UiHandleResult::Consumed);
+        }
+        if self.quest_log_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        {
+            self.process_quest_log_panel_actions(app_state);
+            return Some(UiHandleResult::Consumed);
+        }
+
+        None
+    }
+
     /// Dispatch a pre-converted [`UiEvent`] through the full HUD widget stack.
     ///
     /// This method encapsulates _Block 3_ from `handle_event`: the priority-
@@ -729,36 +779,29 @@ impl GameScene {
             return UiHandleResult::Consumed;
         }
 
+        // Movable HUD panels render above the chat box, so pointer input has to
+        // reach them first; otherwise the chat box eats clicks (including a
+        // panel's close button) wherever the two overlap.
+        let pointer_event = matches!(
+            ui_event,
+            UiEvent::MouseDown { .. }
+                | UiEvent::MouseClick { .. }
+                | UiEvent::MouseWheel { .. }
+                | UiEvent::MouseMove { .. }
+        );
+        if pointer_event && let Some(result) = self.dispatch_hud_panel_events(app_state, ui_event) {
+            return result;
+        }
+
         if self.chat_box.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
             self.process_chat_box_actions(app_state);
             return UiHandleResult::Consumed;
         }
 
         // --- Dispatch to open HUD panels (eat clicks so they don't reach the world) ---
-        if self.skills_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
-            self.process_skills_panel_actions(app_state);
-            return UiHandleResult::Consumed;
-        }
-        if self.inventory_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
+        if !pointer_event && let Some(result) = self.dispatch_hud_panel_events(app_state, ui_event)
         {
-            self.process_inventory_panel_actions(app_state);
-            return UiHandleResult::Consumed;
-        }
-        if self.settings_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
-        {
-            if let Some(sc) = self.process_settings_panel_actions(app_state) {
-                return UiHandleResult::SceneChange(sc);
-            }
-            return UiHandleResult::Consumed;
-        }
-        if self.talent_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
-            self.process_talent_panel_actions(app_state);
-            return UiHandleResult::Consumed;
-        }
-        if self.quest_log_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
-        {
-            self.process_quest_log_panel_actions(app_state);
-            return UiHandleResult::Consumed;
+            return result;
         }
 
         // --- Dispatch to minimap toggle button / panel ---

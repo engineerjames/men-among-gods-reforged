@@ -268,6 +268,33 @@ pub struct GetCharactersResponse {
     pub characters: Vec<CharacterSummary>,
 }
 
+/// Error envelope returned by the character routes when a request is rejected.
+///
+/// This lets the client display the precise validation failure (for example
+/// which description rule was broken) instead of a generic status-code message.
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct CharacterErrorResponse {
+    /// Human-readable reason the request was rejected.
+    pub error: String,
+}
+
+impl CharacterErrorResponse {
+    /// Builds a character error envelope.
+    ///
+    /// # Arguments
+    ///
+    /// * `error` - Human-readable reason the request was rejected.
+    ///
+    /// # Returns
+    ///
+    /// * The constructed [`CharacterErrorResponse`].
+    pub fn new(error: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+        }
+    }
+}
+
 /// Request to create a new character.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct CreateCharacterRequest {
@@ -284,8 +311,9 @@ impl CreateCharacterRequest {
     ///
     /// # Returns
     ///
-    /// * `true` if the request passes validation.
-    pub fn validate(&self) -> bool {
+    /// * `Ok(())` if the request passes validation.
+    /// * `Err(String)` with a human-readable reason when the class cannot be chosen.
+    pub fn validate(&self) -> Result<(), String> {
         if [
             Class::SeyanDu,
             Class::Sorcerer,
@@ -299,10 +327,13 @@ impl CreateCharacterRequest {
                 "Invalid class selection: {:?}; Can only be achieved in-game.",
                 self.class
             );
-            return false;
+            return Err(format!(
+                "The {:?} class cannot be chosen at character creation; it can only be achieved in-game",
+                self.class
+            ));
         }
 
-        true
+        Ok(())
     }
 }
 

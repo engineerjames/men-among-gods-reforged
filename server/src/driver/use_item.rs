@@ -6896,7 +6896,13 @@ pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
         return;
     }
 
-    gs.items[worn_idx].current_damage += damage as u32;
+    // Callers derive `damage` from a combat roll that can go negative when a
+    // large to-hit penalty outweighs the weapon value. The C original let the
+    // unsigned accumulator wrap; clamp instead so a negative swing simply
+    // inflicts no wear, and saturate so repeated huge values cannot overflow.
+    gs.items[worn_idx].current_damage = gs.items[worn_idx]
+        .current_damage
+        .saturating_add(damage.max(0) as u32);
 
     if item_age(gs, worn_idx) {
         let (damage_state, reference) = {
@@ -6979,9 +6985,11 @@ pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
         return;
     }
 
-    {
-        gs.items[citem_idx].current_damage += damage as u32;
-    };
+    // See `item_damage_worn`: negative wear inflicts nothing and the
+    // accumulator saturates rather than overflowing.
+    gs.items[citem_idx].current_damage = gs.items[citem_idx]
+        .current_damage
+        .saturating_add(damage.max(0) as u32);
 
     if item_age(gs, citem_idx) {
         let (damage_state, reference) = {
@@ -8963,5 +8971,83 @@ pub fn step_driver_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
                 item_idx
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::USE_ACTIVE;
+
+    /// Puts a damageable item in a worn slot and returns its index.
+    fn wear_damageable_item(gs: &mut GameState, cn: usize, slot: usize) -> usize {
+        let item_idx = 1;
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].max_damage = 1_000;
+        gs.items[item_idx].current_damage = 10;
+        gs.items[item_idx].carried = cn as u16;
+        gs.characters[cn].worn[slot] = item_idx as u32;
+        item_idx
+    }
+
+    #[test]
+    fn item_damage_worn_ignores_negative_wear() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = wear_damageable_item(gs, cn, WN_RHAND);
+
+            // A combat roll can go negative when the to-hit penalty outweighs
+            // the weapon value; that must not wrap the unsigned accumulator.
+            item_damage_worn(gs, cn, WN_RHAND, -3);
+
+            assert_eq!(gs.items[item_idx].current_damage, 10);
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], item_idx as u32);
+        });
+    }
+
+    #[test]
+    fn item_damage_worn_saturates_instead_of_overflowing() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = wear_damageable_item(gs, cn, WN_RHAND);
+            gs.items[item_idx].current_damage = u32::MAX;
+            gs.items[item_idx].max_damage = u32::MAX;
+
+            item_damage_worn(gs, cn, WN_RHAND, i32::MAX);
+
+            assert_eq!(gs.items[item_idx].current_damage, u32::MAX);
+        });
+    }
+
+    #[test]
+    fn item_damage_weapon_with_negative_damage_does_not_panic() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = wear_damageable_item(gs, cn, WN_RHAND);
+
+            item_damage_weapon(gs, cn, -19);
+
+            assert!(gs.items[item_idx].current_damage <= 11);
+        });
+    }
+
+    #[test]
+    fn item_damage_citem_ignores_negative_wear() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.items[item_idx] = core::types::Item::default();
+            gs.items[item_idx].used = USE_ACTIVE;
+            gs.items[item_idx].max_damage = 1_000;
+            gs.items[item_idx].current_damage = 10;
+            gs.characters[cn].citem = item_idx as u32;
+
+            item_damage_citem(gs, cn, -100);
+
+            assert_eq!(gs.items[item_idx].current_damage, 10);
+            assert_eq!(gs.characters[cn].citem, item_idx as u32);
+        });
     }
 }

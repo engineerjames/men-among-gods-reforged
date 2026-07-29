@@ -47,7 +47,7 @@ impl GameScene {
                 self.play_click_sound(app_state);
                 net.send(ClientCommand::new_skill(
                     skill_nr as u32,
-                    Self::default_skill_target(ps),
+                    Self::default_skill_target(ps, skill_nr as u32),
                     u32::from(ps.character_info().attrib[0][0]),
                 ));
             }
@@ -91,7 +91,7 @@ impl GameScene {
 
         let has_ctrl = self.effective_ctrl_held();
         let has_shift = self.effective_shift_held();
-        let has_alt = self.alt_held;
+        let has_alt = self.effective_alt_held();
 
         // Read citem early so we can suppress ISITEM snapping when the
         // player is carrying an item and wants to drop, not pick up.

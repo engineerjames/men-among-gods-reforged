@@ -340,7 +340,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
         && (gs.characters[co].flags & CharacterFlags::Player.bits()) != 0
         && gs.characters[cn].alignment == 10000
         && (gs.characters[cn].get_name() != "Peacekeeper"
-            || gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 500))
+            || gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 500)
         && gs.characters[cn].data[70] < ticker
     {
         gs.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");

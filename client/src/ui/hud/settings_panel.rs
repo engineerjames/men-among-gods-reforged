@@ -1634,11 +1634,11 @@ impl ControllerBindingsSubPanel {
 // MouseSettingsSubPanel
 // ===========================================================================
 
-/// Sub-panel for mouse side-button modifier bindings.
+/// Sub-panel for mouse button modifier bindings.
 ///
 /// Displays one row for each supported modifier target. Clicking a binding
-/// button enters listening mode; the owning scene captures the next Mouse 4
-/// or Mouse 5 press from raw SDL events and forwards it here.
+/// button enters listening mode; the owning scene captures the next extra
+/// mouse-button press from raw SDL events and forwards it here.
 struct MouseSettingsSubPanel {
     bounds: Bounds,
     visible: bool,
@@ -1649,8 +1649,8 @@ struct MouseSettingsSubPanel {
     bindings: MouseModifierBindings,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
-    /// Controller focus index. 0..1 = modifier binding buttons,
-    /// 2..3 = clear buttons, 4 = Close.
+    /// Controller focus index. 0..2 = modifier binding buttons,
+    /// 3..5 = clear buttons, 6 = Close.
     controller_focused: Option<usize>,
     lbl_hint: Label,
     lbl_hint2: Label,
@@ -1711,13 +1711,13 @@ impl MouseSettingsSubPanel {
             pending_actions: Vec::new(),
             controller_focused: None,
             lbl_hint: Label::new(
-                "Bind Mouse 4 or Mouse 5 to",
+                "Bind any extra mouse button to",
                 0,
                 label_x,
                 origin_y + MS_Y_HINT,
             ),
             lbl_hint2: Label::new(
-                "temporarily act like Ctrl/Shift",
+                "act as Ctrl/Shift/Alt while held",
                 0,
                 label_x,
                 origin_y + MS_Y_HINT2,
@@ -1799,7 +1799,7 @@ impl MouseSettingsSubPanel {
         }
     }
 
-    /// Returns `true` if the panel is waiting for a Mouse 4/5 press.
+    /// Returns `true` if the panel is waiting for an extra mouse-button press.
     ///
     /// # Returns
     ///
@@ -2050,7 +2050,7 @@ pub struct SettingsPanelData {
     pub key_bindings: KeyBindings,
     /// Current controller button bindings for skill-bar slots.
     pub controller_bindings: ControllerBindings,
-    /// Current mouse side-button modifier bindings.
+    /// Current mouse button modifier bindings.
     pub mouse_modifier_bindings: MouseModifierBindings,
 }
 
@@ -2325,7 +2325,7 @@ impl SettingsPanel {
     }
 
     /// Returns `true` if the mouse settings sub-panel is currently waiting
-    /// for a Mouse 4/Mouse 5 press to complete a binding assignment.
+    /// for an extra mouse-button press to complete a binding assignment.
     ///
     /// # Returns
     ///

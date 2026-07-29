@@ -16,6 +16,7 @@ use axum::{Json, extract::ConnectInfo, extract::Path, extract::State, http::Stat
 use jsonwebtoken::EncodingKey;
 use jsonwebtoken::Header;
 use log::{error, info, warn};
+use mag_core::types::CharacterErrorResponse;
 use mag_core::types::CharacterSummary;
 use mag_core::types::CreateAccountRequest;
 use mag_core::types::CreateAccountResponse;
@@ -70,7 +71,7 @@ async fn normalize_and_validate_character_name(
     match duplicate_check {
         Ok(Some(existing_id)) if Some(existing_id) != exclude_character_id => {
             return Err(CharacterNameValidationError::Unprocessable(format!(
-                "name already taken: {}",
+                "The name \"{}\" is already taken",
                 normalized_name
             )));
         }
@@ -81,7 +82,7 @@ async fn normalize_and_validate_character_name(
     match pipelines::character_template_name_exists(con, &normalized_name).await {
         Ok(true) => {
             return Err(CharacterNameValidationError::Unprocessable(format!(
-                "name matches character template: {}",
+                "The name \"{}\" is reserved for a world character",
                 normalized_name
             )));
         }
@@ -98,27 +99,34 @@ async fn normalize_and_validate_character_name(
     Ok(normalized_name)
 }
 
-/// Converts a character-name validation failure into the route status code.
+/// Converts a character-name validation failure into the route status code and
+/// a user-facing message.
 ///
 /// # Arguments
 /// * `context` - Log context for the operation being rejected.
 /// * `err` - Name validation error.
 ///
 /// # Returns
-/// * `StatusCode` to return from the route.
-fn character_name_error_status(context: &str, err: CharacterNameValidationError) -> StatusCode {
+/// * `(StatusCode, String)` to return from the route.
+fn character_name_error_response(
+    context: &str,
+    err: CharacterNameValidationError,
+) -> (StatusCode, String) {
     match err {
         CharacterNameValidationError::BadRequest(reason) => {
             warn!("{context} rejected: invalid character name: {reason}");
-            StatusCode::BAD_REQUEST
+            (StatusCode::BAD_REQUEST, reason)
         }
         CharacterNameValidationError::Unprocessable(reason) => {
             warn!("{context} rejected: {reason}");
-            StatusCode::UNPROCESSABLE_ENTITY
+            (StatusCode::UNPROCESSABLE_ENTITY, reason)
         }
         CharacterNameValidationError::Internal(reason) => {
             error!("Redis read failed: {reason}");
-            StatusCode::INTERNAL_SERVER_ERROR
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Server error, please try again later".to_owned(),
+            )
         }
     }
 }
@@ -134,18 +142,24 @@ fn character_name_error_status(context: &str, err: CharacterNameValidationError)
 ///
 /// # Returns
 /// * `(StatusCode::OK, CharacterSummary)` on success.
-/// * `(StatusCode::UNAUTHORIZED, default)` when the token is missing/invalid or the account is not found.
-/// * `(StatusCode::BAD_REQUEST, default)` when the request payload is invalid.
-/// * `(StatusCode::INTERNAL_SERVER_ERROR, default)` on KeyDB or internal failures.
+/// * `(StatusCode::UNAUTHORIZED, CharacterErrorResponse)` when the token is missing/invalid or the account is not found.
+/// * `(StatusCode::BAD_REQUEST, CharacterErrorResponse)` when the request payload is invalid; the
+///   envelope explains exactly which name or description rule was violated.
+/// * `(StatusCode::INTERNAL_SERVER_ERROR, CharacterErrorResponse)` on KeyDB or internal failures.
 pub(crate) async fn create_new_character(
     State(state): State<ApiState>,
     auth: AuthUser,
     Json(payload): Json<CreateCharacterRequest>,
-) -> (StatusCode, Json<CharacterSummary>) {
+) -> axum::response::Response {
     let mut con = state.con.clone();
 
-    if !payload.validate() {
-        return (StatusCode::BAD_REQUEST, Json(CharacterSummary::default()));
+    if let Err(reason) = payload.validate() {
+        warn!("Create character rejected: {reason}");
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(CharacterErrorResponse::new(reason)),
+        )
+            .into_response();
     }
 
     let CreateCharacterRequest {
@@ -158,10 +172,8 @@ pub(crate) async fn create_new_character(
     let name = match normalize_and_validate_character_name(&mut con, &name, None).await {
         Ok(value) => value,
         Err(err) => {
-            return (
-                character_name_error_status("Create character", err),
-                Json(CharacterSummary::default()),
-            );
+            let (status, message) = character_name_error_response("Create character", err);
+            return (status, Json(CharacterErrorResponse::new(message))).into_response();
         }
     };
 
@@ -169,7 +181,11 @@ pub(crate) async fn create_new_character(
         Some(value) if !value.is_empty() => {
             if let Err(err) = helpers::validate_character_description(&name, value) {
                 warn!("Create character rejected: invalid description: {err}");
-                return (StatusCode::BAD_REQUEST, Json(CharacterSummary::default()));
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(CharacterErrorResponse::new(err)),
+                )
+                    .into_response();
             }
             value.to_owned()
         }
@@ -180,8 +196,11 @@ pub(crate) async fn create_new_character(
                 error!("Default description template invalid: {err}");
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(CharacterSummary::default()),
-                );
+                    Json(CharacterErrorResponse::new(
+                        "Server error, please try again later",
+                    )),
+                )
+                    .into_response();
             }
             fallback
         }
@@ -196,8 +215,11 @@ pub(crate) async fn create_new_character(
             error!("Redis read failed: {}", err);
             return (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CharacterSummary::default()),
-            );
+                Json(CharacterErrorResponse::new(
+                    "Server error, please try again later",
+                )),
+            )
+                .into_response();
         }
     };
     if character_count >= MAX_CHARACTERS_PER_ACCOUNT {
@@ -205,7 +227,14 @@ pub(crate) async fn create_new_character(
             "Create character rejected: account {} already has {} characters",
             user_id, character_count
         );
-        return (StatusCode::CONFLICT, Json(CharacterSummary::default()));
+        return (
+            StatusCode::CONFLICT,
+            Json(CharacterErrorResponse::new(format!(
+                "You already have the maximum of {} characters; delete one before creating another",
+                MAX_CHARACTERS_PER_ACCOUNT
+            ))),
+        )
+            .into_response();
     }
 
     let result =
@@ -233,14 +262,18 @@ pub(crate) async fn create_new_character(
                     rank_index: None,
                 }),
             )
+                .into_response()
         }
         Err(err) => {
             error!("Failed to create character: {}", err);
 
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(CharacterSummary::default()),
+                Json(CharacterErrorResponse::new(
+                    "Server error, please try again later",
+                )),
             )
+                .into_response()
         }
     }
 }
@@ -728,7 +761,7 @@ pub(crate) async fn update_character(
         Some(name) => {
             match normalize_and_validate_character_name(&mut con, name, Some(character_id)).await {
                 Ok(value) => Some(value),
-                Err(err) => return character_name_error_status("Update character", err),
+                Err(err) => return character_name_error_response("Update character", err).0,
             }
         }
         None => None,
