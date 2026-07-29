@@ -1,7 +1,7 @@
 use mag_core::constants::{MAX_SPEEDTAB_SPEED_INDEX, SPEEDTAB, STUNNED};
 
 use crate::player_state::PlayerState;
-use crate::types::map::CMapTile;
+use crate::types::map::{CMapTile, SUBPIXEL_UNIT};
 
 /// Look-up table mapping `ch_stat_off` to a sprite-row offset used by
 /// attack/emote animation frames (status range 160–191).
@@ -23,11 +23,18 @@ fn speedo(ch_speed: u8, ctick: usize) -> bool {
     SPEEDTAB[speed][tick] != 0
 }
 
-/// Computes the smooth sub-tile pixel offset for a moving character.
+/// Computes the smooth sub-tile offset for a moving character.
 ///
 /// Implements the C client's `speedstep()` which interpolates between discrete
 /// tile positions based on the speed table, producing smooth 32-pixel-range
 /// offsets for in-between frames.
+///
+/// The result is expressed in [`SUBPIXEL_UNIT`] units rather than whole pixels.
+/// The original C client rounded here, which made every character land on its
+/// own independently rounded pixel; two characters walking in the same
+/// direction a constant sub-pixel distance apart then alternated between two
+/// pixel positions every frame. Keeping the fractional part and rounding once
+/// at the final screen coordinate removes that shimmer.
 ///
 /// # Arguments
 /// * `ch_speed` - Speed table row.
@@ -38,7 +45,7 @@ fn speedo(ch_speed: u8, ctick: usize) -> bool {
 /// * `ctick` - Current animation tick.
 ///
 /// # Returns
-/// * A pixel offset in the range `[0, 32)` for smooth interpolation.
+/// * A sub-pixel offset in the range `[0, 32 * SUBPIXEL_UNIT)`.
 fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: usize) -> i32 {
     let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
     let max_tick = (SPEEDTAB[0].len() - 1) as i32;
@@ -46,7 +53,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
     let hard_step = i32::from(ch_status) - d;
 
     if !update {
-        return 32 * hard_step / s;
+        return 32 * SUBPIXEL_UNIT * hard_step / s;
     }
 
     let mut z = ctick as i32;
@@ -95,7 +102,7 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
         total_step += 1;
     }
 
-    32 * total_step_start / (total_step + 1)
+    32 * SUBPIXEL_UNIT * total_step_start / (total_step + 1)
 }
 
 /// Returns a small frame offset for the idle animation of specific sprites.
@@ -247,7 +254,7 @@ fn eng_item(it_sprite: u16, it_status: &mut u8, ctick: usize, ticker: u32) -> i3
 }
 
 /// Advances a character's animation state machine and returns the display
-/// sprite, also computing sub-tile offsets (`obj_xoff`, `obj_yoff`) for
+/// sprite, also computing sub-tile offsets (`obj_xoff_sub`, `obj_yoff_sub`) for
 /// smooth movement interpolation.
 ///
 /// # Arguments
@@ -264,8 +271,8 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
 
     match ch_status {
         0..=7 => {
-            tile.obj_xoff = 0;
-            tile.obj_yoff = 0;
+            tile.obj_xoff_sub = 0;
+            tile.obj_yoff_sub = 0;
             if ch_status == 0 || (speedo(tile.ch_speed, ctick) && update) {
                 tile.idle_ani += 1;
                 if tile.idle_ani > 7 {
@@ -276,8 +283,9 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
 
         16..=23 => {
-            tile.obj_xoff = -speedstep(tile.ch_speed, tile.ch_status, 16, 8, update, ctick) / 2;
-            tile.obj_yoff = speedstep(tile.ch_speed, tile.ch_status, 16, 8, update, ctick) / 4;
+            let step = speedstep(tile.ch_speed, tile.ch_status, 16, 8, update, ctick);
+            tile.obj_xoff_sub = -step / 2;
+            tile.obj_yoff_sub = step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 16) + 64;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 23 {
@@ -289,8 +297,9 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         24..=31 => {
-            tile.obj_xoff = speedstep(tile.ch_speed, tile.ch_status, 24, 8, update, ctick) / 2;
-            tile.obj_yoff = -speedstep(tile.ch_speed, tile.ch_status, 24, 8, update, ctick) / 4;
+            let step = speedstep(tile.ch_speed, tile.ch_status, 24, 8, update, ctick);
+            tile.obj_xoff_sub = step / 2;
+            tile.obj_yoff_sub = -step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 24) + 72;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 31 {
@@ -302,8 +311,9 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         32..=39 => {
-            tile.obj_xoff = -speedstep(tile.ch_speed, tile.ch_status, 32, 8, update, ctick) / 2;
-            tile.obj_yoff = -speedstep(tile.ch_speed, tile.ch_status, 32, 8, update, ctick) / 4;
+            let step = speedstep(tile.ch_speed, tile.ch_status, 32, 8, update, ctick);
+            tile.obj_xoff_sub = -step / 2;
+            tile.obj_yoff_sub = -step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 32) + 80;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 39 {
@@ -315,8 +325,9 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         40..=47 => {
-            tile.obj_xoff = speedstep(tile.ch_speed, tile.ch_status, 40, 8, update, ctick) / 2;
-            tile.obj_yoff = speedstep(tile.ch_speed, tile.ch_status, 40, 8, update, ctick) / 4;
+            let step = speedstep(tile.ch_speed, tile.ch_status, 40, 8, update, ctick);
+            tile.obj_xoff_sub = step / 2;
+            tile.obj_yoff_sub = step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 40) + 88;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 47 {
@@ -329,8 +340,8 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
 
         48..=59 => {
-            tile.obj_xoff = -speedstep(tile.ch_speed, tile.ch_status, 48, 12, update, ctick);
-            tile.obj_yoff = 0;
+            tile.obj_xoff_sub = -speedstep(tile.ch_speed, tile.ch_status, 48, 12, update, ctick);
+            tile.obj_yoff_sub = 0;
             let tmp = base + ((i32::from(tile.ch_status) - 48) * 8 / 12) + 96;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 59 {
@@ -342,8 +353,9 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         60..=71 => {
-            tile.obj_xoff = 0;
-            tile.obj_yoff = -speedstep(tile.ch_speed, tile.ch_status, 60, 12, update, ctick) / 2;
+            tile.obj_xoff_sub = 0;
+            tile.obj_yoff_sub =
+                -speedstep(tile.ch_speed, tile.ch_status, 60, 12, update, ctick) / 2;
             let tmp = base + ((i32::from(tile.ch_status) - 60) * 8 / 12) + 104;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 71 {
@@ -355,8 +367,8 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         72..=83 => {
-            tile.obj_xoff = 0;
-            tile.obj_yoff = speedstep(tile.ch_speed, tile.ch_status, 72, 12, update, ctick) / 2;
+            tile.obj_xoff_sub = 0;
+            tile.obj_yoff_sub = speedstep(tile.ch_speed, tile.ch_status, 72, 12, update, ctick) / 2;
             let tmp = base + ((i32::from(tile.ch_status) - 72) * 8 / 12) + 112;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 83 {
@@ -368,8 +380,8 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         84..=95 => {
-            tile.obj_xoff = speedstep(tile.ch_speed, tile.ch_status, 84, 12, update, ctick);
-            tile.obj_yoff = 0;
+            tile.obj_xoff_sub = speedstep(tile.ch_speed, tile.ch_status, 84, 12, update, ctick);
+            tile.obj_yoff_sub = 0;
             let tmp = base + ((i32::from(tile.ch_status) - 84) * 8 / 12) + 120;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 95 {
@@ -382,8 +394,8 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
 
         96..=191 => {
-            tile.obj_xoff = 0;
-            tile.obj_yoff = 0;
+            tile.obj_xoff_sub = 0;
+            tile.obj_yoff_sub = 0;
 
             let status = i32::from(tile.ch_status);
             let (start, base_add, wrap) = if (96..=99).contains(&tile.ch_status) {
@@ -455,8 +467,8 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
 
         _ => {
-            tile.obj_xoff = 0;
-            tile.obj_yoff = 0;
+            tile.obj_xoff_sub = 0;
+            tile.obj_yoff_sub = 0;
             base
         }
     }
@@ -481,6 +493,8 @@ pub fn engine_tick(player_state: &mut PlayerState, ticker: u32, ctick: usize) {
         tile.back = 0;
         tile.obj1 = 0;
         tile.obj2 = 0;
+        tile.obj_xoff_sub = 0;
+        tile.obj_yoff_sub = 0;
         tile.ovl_xoff = 0;
         tile.ovl_yoff = 0;
     }
@@ -499,5 +513,78 @@ pub fn engine_tick(player_state: &mut PlayerState, ticker: u32, ctick: usize) {
         if tile.ch_sprite != 0 {
             tile.obj2 = eng_char(tile, ctick);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::map::SUBPIXEL_UNIT;
+
+    /// Builds a tile holding a character mid-walk (status range 48..=59).
+    fn walking_tile(ch_status: u8, ch_speed: u8) -> CMapTile {
+        CMapTile {
+            ch_sprite: 1000,
+            ch_status,
+            ch_speed,
+            ..CMapTile::default()
+        }
+    }
+
+    #[test]
+    fn same_direction_walkers_hold_a_stable_pixel_gap() {
+        // Regression: rounding each character's movement offset to whole pixels
+        // on its own made the gap between the camera-anchored player and
+        // another walker alternate between two pixel positions every frame,
+        // which showed up as shimmering nameplates on nearby characters.
+        let mut own = walking_tile(48, 0);
+        let mut other = walking_tile(49, 0);
+
+        let mut gaps = Vec::new();
+        for ctick in 0..18 {
+            eng_char(&mut own, ctick);
+            eng_char(&mut other, ctick);
+            let cam_xoff_sub = -own.obj_xoff_sub;
+            gaps.push((cam_xoff_sub + other.obj_xoff_sub).div_euclid(SUBPIXEL_UNIT));
+        }
+
+        assert!(
+            gaps.windows(2).all(|w| w[0] == w[1]),
+            "screen gap jittered between frames: {gaps:?}"
+        );
+        assert_ne!(
+            gaps[0], 0,
+            "expected a non-zero gap between the two walkers"
+        );
+    }
+
+    #[test]
+    fn walk_offset_stays_within_one_tile() {
+        let mut tile = walking_tile(48, 0);
+        for ctick in 0..24 {
+            eng_char(&mut tile, ctick);
+            assert!(
+                tile.obj_xoff_sub <= 0 && tile.obj_xoff_sub > -32 * SUBPIXEL_UNIT,
+                "offset {} left the tile at ctick {ctick}",
+                tile.obj_xoff_sub
+            );
+            assert_eq!(tile.obj_yoff_sub, 0);
+        }
+    }
+
+    #[test]
+    fn stunned_character_uses_the_hard_step() {
+        assert_eq!(
+            speedstep(0, 54, 48, 12, false, 7),
+            32 * SUBPIXEL_UNIT * 6 / 12
+        );
+    }
+
+    #[test]
+    fn idle_character_has_no_movement_offset() {
+        let mut tile = walking_tile(0, 0);
+        eng_char(&mut tile, 0);
+        assert_eq!(tile.obj_xoff_sub, 0);
+        assert_eq!(tile.obj_yoff_sub, 0);
     }
 }
