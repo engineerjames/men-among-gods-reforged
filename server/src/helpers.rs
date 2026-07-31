@@ -1,8 +1,9 @@
 use core::{
     constants::{
-        AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, ATTACK_RANGE, CharacterFlags, DX_DOWN,
-        DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, GROUP_RANGE,
-        MAXCHARS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
+        AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, ATTACK_RANGE, CHD_MASTER, CT_COMPANION,
+        CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN,
+        DX_RIGHTUP, DX_UP, GROUP_RANGE, MAXCHARS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE,
+        USE_EMPTY,
     },
     skills::{self, SkillIndex},
     string_operations::c_string_to_str,
@@ -325,7 +326,8 @@ pub(crate) fn skill_aoe_tiles(center_x: i32, center_y: i32, base: i32) -> Vec<(i
 /// # Returns
 ///
 /// * Character ids occupying affected tiles, excluding bodies and unused slots.
-///   When `viewer` is `Some`, only currently visible targets are returned.
+///   When `viewer` is `Some`, only currently visible targets are returned, and
+///   `viewer`'s own ghost companion(s) are always excluded.
 pub(crate) fn skill_aoe_targets(
     gs: &mut GameState,
     viewer: Option<usize>,
@@ -347,10 +349,16 @@ pub(crate) fn skill_aoe_targets(
         if (gs.characters[target].flags & CharacterFlags::Body.bits()) != 0 {
             continue;
         }
-        if let Some(viewer) = viewer
-            && gs.do_char_can_see(viewer, target) == 0
-        {
-            continue;
+        if let Some(viewer) = viewer {
+            // Never let a caster's own ghost companion(s) get caught in their AoE splash.
+            if i32::from(gs.characters[target].temp) == CT_COMPANION
+                && gs.characters[target].data[CHD_MASTER] == viewer as i32
+            {
+                continue;
+            }
+            if gs.do_char_can_see(viewer, target) == 0 {
+                continue;
+            }
         }
         targets.push(target);
     }
@@ -1488,6 +1496,48 @@ mod tests {
             .expect("spawn visibility regression test")
             .join()
             .expect("run visibility regression test");
+    }
+
+    #[test]
+    fn skill_aoe_targets_excludes_viewers_own_companion() {
+        std::thread::Builder::new()
+            .name("skill_aoe_targets_companion".to_owned())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mut gs = GameState::new();
+                let caster = 1;
+                let own_companion = 2;
+                let stranger = 3;
+
+                gs.characters[caster].used = USE_ACTIVE;
+                gs.characters[caster].x = 10;
+                gs.characters[caster].y = 10;
+                gs.characters[caster].flags = CharacterFlags::Infrared.bits();
+
+                gs.characters[own_companion].used = USE_ACTIVE;
+                gs.characters[own_companion].x = 11;
+                gs.characters[own_companion].y = 10;
+                gs.characters[own_companion].temp = CT_COMPANION as u16;
+                gs.characters[own_companion].data[CHD_MASTER] = caster as i32;
+
+                gs.characters[stranger].used = USE_ACTIVE;
+                gs.characters[stranger].x = 12;
+                gs.characters[stranger].y = 10;
+                gs.characters[stranger].temp = CT_COMPANION as u16;
+                gs.characters[stranger].data[CHD_MASTER] = 99;
+
+                gs.map[11 + 10 * SERVER_MAPX as usize].ch = own_companion as u32;
+                gs.map[12 + 10 * SERVER_MAPX as usize].ch = stranger as u32;
+
+                assert_eq!(
+                    skill_aoe_targets(&mut gs, Some(caster), 10, 10, 7),
+                    vec![stranger],
+                    "the caster's own ghost companion must never be a splash target"
+                );
+            })
+            .expect("spawn companion-exclusion regression test")
+            .join()
+            .expect("run companion-exclusion regression test");
     }
 
     #[test]

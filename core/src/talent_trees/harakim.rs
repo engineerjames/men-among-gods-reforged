@@ -195,7 +195,10 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
             prereqs: &[FIRST_SERGEANT_WILLPOWER],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::KindredSpirit,
-                profile: TalentSkillProfile::DEFAULT_NON_MERC,
+                // Purely a gate checked by skill_ghost; not meant to be trained further.
+                profile: TalentSkillProfile::DEFAULT_NON_MERC
+                    .with_max(0)
+                    .with_difficulty(0),
             },
         },
         TalentNode {

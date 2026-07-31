@@ -1279,6 +1279,53 @@ mod tests {
         });
     }
 
+    /// Regression test for the "black map until first move" login bug.
+    ///
+    /// A freshly-created character has an all-zero `skill` array until
+    /// `GameState::really_update_char` populates the derived
+    /// `skill[SK_PERCEPT][5]` value. `do_character_calculate_light`
+    /// multiplies ambient light by that value, so without the recompute
+    /// every tile except the character's own reads as unlit and gets
+    /// flagged `INVIS`, even in broad daylight. `plr_login` must call
+    /// `really_update_char` synchronously (before the first `plr_getmap`
+    /// runs later in the same tick) to avoid this.
+    #[test]
+    fn plr_getmap_needs_stats_recomputed_before_first_view_is_correct() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let static_x = i32::from(gs.characters[cn].x) + 1;
+            let static_y = i32::from(gs.characters[cn].y);
+            let static_tile = map_index(static_x as i16, static_y as i16);
+            gs.map[static_tile].sprite = 321;
+            gs.globals.dlight = 65;
+
+            // Simulate a brand-new character: skill array is all zero, so
+            // `really_update_char` has never run for this character yet.
+            assert_eq!(gs.characters[cn].skill[core::skills::SK_PERCEPT][5], 0);
+
+            plr_getmap(gs, nr);
+            let sm_idx = small_map_index(gs, cn, static_x, static_y);
+            assert_ne!(
+                gs.players[nr].smap[sm_idx].flags & INVIS,
+                0,
+                "tile should (incorrectly) read as invisible before stats are recomputed"
+            );
+
+            // `plr_login` now calls this synchronously; simulate that fix
+            // and force a fresh view build (matching a new connection's
+            // sentinel `last_dlight = -1`).
+            gs.really_update_char(cn);
+            gs.players[nr].last_dlight = -1;
+            plr_getmap(gs, nr);
+
+            assert_eq!(
+                gs.players[nr].smap[sm_idx].flags & INVIS,
+                0,
+                "tile should be visible once derived stats are populated"
+            );
+        });
+    }
+
     #[test]
     fn light_packet_helpers_update_cmap_and_encode_expected_payloads() {
         with_test_gs(|gs| {

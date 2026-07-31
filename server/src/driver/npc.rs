@@ -1980,15 +1980,19 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     {
         let temp = gs.characters[cn].temp;
         let data64 = gs.characters[cn].data[64];
-        if temp == CT_COMPANION as u16 && data64 == 0 {
+        let is_body = gs.characters[cn].flags & CharacterFlags::Body.bits() != 0;
+        if temp == CT_COMPANION as u16 && data64 == 0 && !is_body {
             let co = gs.characters[cn].data[CHD_MASTER];
             let master_ok = {
                 let co_usize = co as usize;
                 if co_usize >= gs.characters.len() {
                     false
                 } else {
+                    // Kindred Spirit lets a master keep two companions at once,
+                    // tracked in separate slots; either one is a valid link.
                     gs.characters[co_usize].used != USE_EMPTY
-                        && gs.characters[co_usize].data[64] == cn as i32
+                        && (gs.characters[co_usize].data[CHD_COMPANION] == cn as i32
+                            || gs.characters[co_usize].data[CHD_COMPANION2] == cn as i32)
                 }
             };
             if !master_ok {

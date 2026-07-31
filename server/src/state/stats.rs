@@ -3,7 +3,8 @@ use core::constants::{
 };
 use core::ranks;
 use core::talent_trees::{
-    available_talent_points, grant_talent_points, talent_stat_bonuses, total_points_spent,
+    TalentStatBonuses, available_talent_points, grant_talent_points, talent_stat_bonuses,
+    total_points_spent,
 };
 use core::types::FontColor;
 use core::{skills, traits};
@@ -248,12 +249,23 @@ impl GameState {
             }
         }
 
-        let talent_bonuses = talent_stat_bonuses(
-            self.characters[cn].kindred,
-            &self.characters[cn].future1,
-            &self.characters[cn].attrib,
-            &self.characters[cn].skill,
-        );
+        // Only resolve talent bonuses for characters whose kindred actually names a
+        // class (or the monster catch-all); companions and other NPCs can carry a
+        // kindred with no class bits set, which would otherwise make `Class::from`
+        // log a spurious error + backtrace.
+        let kindred = self.characters[cn].kindred;
+        let has_known_kindred = core::traits::class_from_kindred(kindred).is_some()
+            || (kindred as u32) & core::traits::KIN_MONSTER != 0;
+        let talent_bonuses = if has_known_kindred {
+            talent_stat_bonuses(
+                kindred,
+                &self.characters[cn].future1,
+                &self.characters[cn].attrib,
+                &self.characters[cn].skill,
+            )
+        } else {
+            TalentStatBonuses::default()
+        };
         for (z, bonus) in attrib_bonus.iter_mut().enumerate() {
             *bonus += talent_bonuses.attrib[z];
         }

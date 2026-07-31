@@ -1674,7 +1674,7 @@ mod tests {
             5,
         );
         assert_replaces_skill(named_node(tree, "Ice Stun"), Skill::Stun, Skill::IceStun);
-        assert_grants_skill(named_node(tree, "Kindred Spirit"), Skill::KindredSpirit);
+        assert_grants_non_raisable_skill(named_node(tree, "Kindred Spirit"), Skill::KindredSpirit);
         assert_hp_mana_end(named_node(tree, "Captain Reserves"), 25, 100, 25);
         assert_passive(named_node(tree, "Element Switching"));
         assert_grants_skill(
@@ -1741,6 +1741,21 @@ mod tests {
             TalentEffect::GrantSkill { skill, profile } => {
                 assert_eq!(skill, expected);
                 assert_eq!(profile.base, expected_base);
+            }
+            other => panic!("expected GrantSkill, got {other:?}"),
+        }
+    }
+
+    /// Asserts a node grants a skill that is visible (icon/name/base) but
+    /// cannot be raised further with skill points — used for talents that are
+    /// conceptually passive gates but still surface as a skill-list entry.
+    fn assert_grants_non_raisable_skill(node: &TalentNode, expected: Skill) {
+        match node.effect {
+            TalentEffect::GrantSkill { skill, profile } => {
+                assert_eq!(skill, expected);
+                assert_eq!(profile.base, TalentSkillProfile::DEFAULT_NON_MERC.base);
+                assert_eq!(profile.max_value, 0, "should not be raisable beyond base");
+                assert_eq!(profile.raise_difficulty, 0, "should not be raisable");
             }
             other => panic!("expected GrantSkill, got {other:?}"),
         }
