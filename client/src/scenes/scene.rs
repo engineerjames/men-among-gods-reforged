@@ -3,9 +3,36 @@ use std::{
     time::{Duration, Instant},
 };
 
-use sdl2::{event::Event, render::Canvas, video::Window};
+use sdl2::{
+    event::Event,
+    pixels::Color,
+    rect::Rect,
+    render::{BlendMode, Canvas},
+    video::Window,
+};
 
-use crate::state::AppState;
+use crate::{
+    constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT},
+    state::AppState,
+};
+
+/// Duration of the fade-to-black before a new scene is swapped in.
+const SCENE_FADE_OUT: Duration = Duration::from_millis(120);
+/// Duration of the fade-from-black once the new scene becomes active.
+const SCENE_FADE_IN: Duration = Duration::from_millis(120);
+
+/// Tracks an in-progress fade transition between two scenes.
+enum SceneTransition {
+    /// No transition is in progress.
+    None,
+    /// Fading the outgoing scene to black before swapping to `target`.
+    FadingOut {
+        target: SceneType,
+        elapsed: Duration,
+    },
+    /// Fading the (already swapped-in) new scene back in from black.
+    FadingIn { elapsed: Duration },
+}
 
 /// Directs how the current scene iteration should reach the display.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -74,6 +101,7 @@ pub enum SceneType {
 pub struct SceneManager {
     active_scene: SceneType,
     scenes: HashMap<SceneType, Box<dyn Scene>>,
+    transition: SceneTransition,
 }
 
 impl Default for SceneManager {
@@ -135,6 +163,7 @@ impl SceneManager {
         SceneManager {
             active_scene: SceneType::Login,
             scenes: scene_map,
+            transition: SceneTransition::None,
         }
     }
 
@@ -158,6 +187,12 @@ impl SceneManager {
             return;
         }
 
+        // Ignore input while a fade transition is in progress so it can't
+        // trigger another scene change mid-fade.
+        if !matches!(self.transition, SceneTransition::None) {
+            return;
+        }
+
         let possible_next_scene = self
             .scenes
             .get_mut(&self.active_scene)
@@ -176,6 +211,30 @@ impl SceneManager {
     pub fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) {
         if self.active_scene == SceneType::Exit {
             return;
+        }
+
+        // Advance any in-progress fade transition. While fading out, the
+        // outgoing scene is still updated (frozen visuals aside) so timers
+        // and animations don't jump once the fade completes.
+        match &mut self.transition {
+            SceneTransition::None => {}
+            SceneTransition::FadingOut { target, elapsed } => {
+                *elapsed += dt;
+                if *elapsed >= SCENE_FADE_OUT {
+                    let target = *target;
+                    self.set_scene(target, app_state);
+                    self.transition = SceneTransition::FadingIn {
+                        elapsed: Duration::ZERO,
+                    };
+                }
+                return;
+            }
+            SceneTransition::FadingIn { elapsed } => {
+                *elapsed += dt;
+                if *elapsed >= SCENE_FADE_IN {
+                    self.transition = SceneTransition::None;
+                }
+            }
         }
 
         let possible_next_scene = self
@@ -203,6 +262,24 @@ impl SceneManager {
             .unwrap()
             .render_world(app_state, canvas)
             .unwrap_or_else(|err| log::error!("Error rendering world: {}", err));
+
+        let alpha = match &self.transition {
+            SceneTransition::None => 0.0,
+            SceneTransition::FadingOut { elapsed, .. } => {
+                (elapsed.as_secs_f32() / SCENE_FADE_OUT.as_secs_f32()).clamp(0.0, 1.0)
+            }
+            SceneTransition::FadingIn { elapsed } => {
+                1.0 - (elapsed.as_secs_f32() / SCENE_FADE_IN.as_secs_f32()).clamp(0.0, 1.0)
+            }
+        };
+
+        if alpha > 0.0 {
+            let prev_blend_mode = canvas.blend_mode();
+            canvas.set_blend_mode(BlendMode::Blend);
+            canvas.set_draw_color(Color::RGBA(0, 0, 0, (alpha * 255.0) as u8));
+            let _ = canvas.fill_rect(Rect::new(0, 0, TARGET_WIDTH_INT, TARGET_HEIGHT_INT));
+            canvas.set_blend_mode(prev_blend_mode);
+        }
     }
 
     /// Takes the active scene's presentation decision.
@@ -263,13 +340,29 @@ impl SceneManager {
         }
     }
 
-    /// If `next_scene` is `Some`, delegates to `set_scene` to perform the transition.
+    /// If `next_scene` is `Some`, starts a fade-out transition that will swap to the
+    /// requested scene once the fade completes (except for `SceneType::Exit`, which is
+    /// applied immediately so quitting isn't delayed).
     fn apply_scene_change(&mut self, next_scene: Option<SceneType>, app_state: &mut AppState<'_>) {
         let Some(scene) = next_scene else {
             return;
         };
 
+        if scene == self.active_scene {
+            return;
+        }
+
         log::info!("Scene change requested: {:?}", scene);
-        self.set_scene(scene, app_state);
+
+        if scene == SceneType::Exit {
+            self.transition = SceneTransition::None;
+            self.set_scene(scene, app_state);
+            return;
+        }
+
+        self.transition = SceneTransition::FadingOut {
+            target: scene,
+            elapsed: Duration::ZERO,
+        };
     }
 }

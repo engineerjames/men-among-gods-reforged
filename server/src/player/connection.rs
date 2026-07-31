@@ -236,6 +236,18 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     // update client about char
     gs.do_update_char(cn);
 
+    // Recompute derived stats (skills, attributes, light emission, etc.)
+    // synchronously so the very first `plr_getmap_complete` call later this
+    // same tick sees fully-populated values. Without this, effective
+    // perception (`skill[SK_PERCEPT][5]`) stays at its zeroed default until
+    // the deferred `CharacterFlags::Update` processing runs in the
+    // "character.main_tick" pass — which happens *after* map/visibility data
+    // is already sent for this tick. That made every tile except the
+    // character's own appear pitch black (`do_character_calculate_light`
+    // multiplies by the not-yet-computed perception skill) until the next
+    // recompute was triggered by movement.
+    gs.really_update_char(cn);
+
     log::info!("Login successful");
 
     // intro messages
