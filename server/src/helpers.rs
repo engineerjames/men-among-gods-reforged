@@ -1512,6 +1512,7 @@ mod tests {
                 gs.characters[caster].used = USE_ACTIVE;
                 gs.characters[caster].x = 10;
                 gs.characters[caster].y = 10;
+                gs.characters[caster].flags = CharacterFlags::Infrared.bits();
 
                 gs.characters[own_companion].used = USE_ACTIVE;
                 gs.characters[own_companion].x = 11;
