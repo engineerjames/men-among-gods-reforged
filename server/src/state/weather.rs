@@ -187,7 +187,7 @@ fn area_weather_system_tick_with_rng(gs: &mut GameState, mut rng: impl FnMut(u32
         });
         log::info!(
             "area weather triggered: {} -> {:?} for {} ticks",
-            profile.area_name,
+            profile.label,
             candidate.kind,
             duration
         );

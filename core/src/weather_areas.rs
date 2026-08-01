@@ -6,14 +6,61 @@
 //! currently active in a player's area (or clears it back to
 //! [`WeatherKind::None`] if nothing is active or the player left the area).
 //!
-//! The lookup is by area **name** so this table stays decoupled from the
-//! exact ordering of [`crate::area::AREAS`]. Names that don't match any
-//! defined area are silently ignored so the table can be edited freely.
+//! Weather profiles are keyed by their own [`WeatherArea`] rectangles rather
+//! than [`crate::area::Area`] names, so a profile can cover a custom region
+//! independent of the named areas (e.g. one larger rectangle spanning
+//! several of Aston's many small sub-areas), and can stitch together
+//! multiple disjoint rectangles via `regions`.
 //!
 //! Adding entries here is a one-line change; everything is `const`.
 
-use crate::area::AREAS;
 use crate::weather::WeatherKind;
+
+/// An axis-aligned rectangular region used to define where a weather
+/// pattern can trigger, independent of any named [`crate::area::Area`].
+pub struct WeatherArea {
+    /// Left edge (inclusive).
+    pub x1: i32,
+    /// Top edge (inclusive).
+    pub y1: i32,
+    /// Right edge (inclusive).
+    pub x2: i32,
+    /// Bottom edge (inclusive).
+    pub y2: i32,
+}
+
+impl WeatherArea {
+    /// Builds a new rectangle from its bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `x1` - Left edge (inclusive).
+    /// * `y1` - Top edge (inclusive).
+    /// * `x2` - Right edge (inclusive).
+    /// * `y2` - Bottom edge (inclusive).
+    ///
+    /// # Returns
+    ///
+    /// * The constructed [`WeatherArea`].
+    pub const fn new(x1: i32, y1: i32, x2: i32, y2: i32) -> Self {
+        Self { x1, y1, x2, y2 }
+    }
+
+    /// Returns `true` if the point (`x`, `y`) lies within this rectangle
+    /// (inclusive).
+    ///
+    /// # Arguments
+    ///
+    /// * `x` - Horizontal map coordinate.
+    /// * `y` - Vertical map coordinate.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the point is inside the bounding box.
+    pub fn contains(&self, x: i32, y: i32) -> bool {
+        x >= self.x1 && y >= self.y1 && x <= self.x2 && y <= self.y2
+    }
+}
 
 /// One possible weather outcome for an [`AreaWeatherProfile`], picked by
 /// weighted random when the profile's trigger check succeeds.
@@ -32,8 +79,11 @@ pub struct WeatherCandidate {
 
 /// Probabilistic weather profile for a named area.
 pub struct AreaWeatherProfile {
-    /// Matches [`crate::area::Area::name`].
-    pub area_name: &'static str,
+    /// Human-readable label used only for logging/debugging.
+    pub label: &'static str,
+    /// One or more rectangles that make up this profile's coverage; a point
+    /// matches the profile if it falls inside any of them.
+    pub regions: &'static [WeatherArea],
     /// Weighted list of possible weather kinds for this area.
     pub candidates: &'static [WeatherCandidate],
     /// Chance out of 1000 that a new weather effect starts each time the
@@ -59,7 +109,8 @@ const DEFAULT_MAX_DURATION_TICKS: u32 = 36 * 60 * 20;
 /// matching entry wins (mirrors `get_area_m` semantics).
 pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
     AreaWeatherProfile {
-        area_name: "Strange Forest",
+        label: "Strange Forest",
+        regions: &[WeatherArea::new(480, 234, 634, 405)],
         candidates: &[WeatherCandidate {
             kind: WeatherKind::Fireflies,
             weight: 1,
@@ -72,7 +123,8 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
         max_duration_ticks: DEFAULT_MAX_DURATION_TICKS,
     },
     AreaWeatherProfile {
-        area_name: "Pentagram Quest",
+        label: "Pentagram Quest",
+        regions: &[WeatherArea::new(210, 300, 410, 600)],
         candidates: &[WeatherCandidate {
             kind: WeatherKind::Fire,
             weight: 1,
@@ -86,7 +138,8 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
         max_duration_ticks: DEFAULT_MAX_DURATION_TICKS,
     },
     AreaWeatherProfile {
-        area_name: "Ice Pentagram Quest",
+        label: "Ice Pentagram Quest",
+        regions: &[WeatherArea::new(330, 246, 408, 299)],
         candidates: &[WeatherCandidate {
             kind: WeatherKind::Snow,
             weight: 1,
@@ -155,14 +208,9 @@ pub fn total_weight(profile: &AreaWeatherProfile) -> u32 {
 /// * `Some(&AreaWeatherProfile)` if the point lies in a configured area.
 /// * `None` otherwise.
 pub fn area_weather_profile_for(x: i32, y: i32) -> Option<&'static AreaWeatherProfile> {
-    for entry in AREA_WEATHER_PROFILES.iter() {
-        for area in AREAS.iter() {
-            if area.name == entry.area_name && area.contains(x, y) {
-                return Some(entry);
-            }
-        }
-    }
-    None
+    AREA_WEATHER_PROFILES
+        .iter()
+        .find(|entry| entry.regions.iter().any(|region| region.contains(x, y)))
 }
 
 /// Returns the index into [`AREA_WEATHER_PROFILES`] whose area contains
@@ -180,14 +228,9 @@ pub fn area_weather_profile_for(x: i32, y: i32) -> Option<&'static AreaWeatherPr
 /// * `Some(index)` if the point lies in a configured area.
 /// * `None` otherwise.
 pub fn area_weather_profile_index_for(x: i32, y: i32) -> Option<usize> {
-    for (idx, entry) in AREA_WEATHER_PROFILES.iter().enumerate() {
-        for area in AREAS.iter() {
-            if area.name == entry.area_name && area.contains(x, y) {
-                return Some(idx);
-            }
-        }
-    }
-    None
+    AREA_WEATHER_PROFILES
+        .iter()
+        .position(|entry| entry.regions.iter().any(|region| region.contains(x, y)))
 }
 
 #[cfg(test)]
@@ -195,14 +238,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn entries_reference_existing_areas() {
-        for entry in AREA_WEATHER_PROFILES.iter() {
-            assert!(
-                AREAS.iter().any(|a| a.name == entry.area_name),
-                "AREA_WEATHER_PROFILES entry '{}' has no matching Area in AREAS",
-                entry.area_name
-            );
-        }
+    fn weather_area_contains_respects_inclusive_bounds() {
+        let region = WeatherArea::new(10, 10, 20, 20);
+        assert!(region.contains(10, 10));
+        assert!(region.contains(20, 20));
+        assert!(!region.contains(9, 10));
+        assert!(!region.contains(10, 21));
     }
 
     #[test]
@@ -220,13 +261,39 @@ mod tests {
         assert_eq!(entry.candidates[0].intensity, 64);
 
         let idx = area_weather_profile_index_for(550, 320).expect("index lookup");
-        assert_eq!(AREA_WEATHER_PROFILES[idx].area_name, "Strange Forest");
+        assert_eq!(AREA_WEATHER_PROFILES[idx].label, "Strange Forest");
+    }
+
+    #[test]
+    fn multiple_regions_are_stitched_into_one_profile() {
+        const REGIONS: &[WeatherArea] = &[
+            WeatherArea::new(0, 0, 10, 10),
+            WeatherArea::new(100, 100, 110, 110),
+        ];
+        let profile = AreaWeatherProfile {
+            label: "test",
+            regions: REGIONS,
+            candidates: &[WeatherCandidate {
+                kind: WeatherKind::Rain,
+                weight: 1,
+                intensity: 0,
+                tint: None,
+                flags: 0,
+            }],
+            trigger_chance_per_eval: 0,
+            min_duration_ticks: 0,
+            max_duration_ticks: 0,
+        };
+        assert!(profile.regions.iter().any(|r| r.contains(5, 5)));
+        assert!(profile.regions.iter().any(|r| r.contains(105, 105)));
+        assert!(!profile.regions.iter().any(|r| r.contains(50, 50)));
     }
 
     #[test]
     fn pick_candidate_respects_weight_boundaries() {
         let profile = AreaWeatherProfile {
-            area_name: "test",
+            label: "test",
+            regions: &[],
             candidates: &[
                 WeatherCandidate {
                     kind: WeatherKind::Rain,
