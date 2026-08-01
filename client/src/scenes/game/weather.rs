@@ -92,6 +92,11 @@ pub struct WeatherState {
     /// across the screen so steady-state effects (snow, fog, leaves) don't
     /// appear as a single in-rushing wave.
     needs_initial_fill: bool,
+    /// Visibility multiplier (0.0 = fully hidden, 1.0 = fully visible) ramped
+    /// toward 0 while the player's tile is [`mag_core::constants::MF_INDOORS`]
+    /// and back toward 1 otherwise. Only affects rendered alpha; particle
+    /// simulation and earthquake shake are unaffected.
+    indoor_fade: f32,
 }
 
 impl Default for WeatherState {
@@ -123,6 +128,7 @@ impl WeatherState {
             rng_state: 0x9E37_79B9,
             last_update: None,
             needs_initial_fill: false,
+            indoor_fade: 1.0,
         }
     }
 
@@ -142,6 +148,7 @@ impl WeatherState {
         self.shake_offset = (0, 0);
         self.last_update = None;
         self.needs_initial_fill = false;
+        self.indoor_fade = 1.0;
         for p in self.particles.iter_mut() {
             *p = Particle::dead();
         }
@@ -388,14 +395,16 @@ impl WeatherState {
     ///
     /// * `view_w` - Logical viewport width (px).
     /// * `view_h` - Logical viewport height (px).
-    pub fn update_auto(&mut self, view_w: i32, view_h: i32) {
+    /// * `is_indoors` - Whether the player's current tile is
+    ///   [`mag_core::constants::MF_INDOORS`]; ramps the visual fade.
+    pub fn update_auto(&mut self, view_w: i32, view_h: i32, is_indoors: bool) {
         let now = Instant::now();
         let dt = match self.last_update {
             Some(prev) => (now - prev).as_secs_f32().min(0.1),
             None => 0.016,
         };
         self.last_update = Some(now);
-        self.update(dt, view_w, view_h);
+        self.update(dt, view_w, view_h, is_indoors);
     }
 
     /// Advance particles, lightning timing, and earthquake jitter by `dt`
@@ -406,7 +415,18 @@ impl WeatherState {
     /// * `dt` - Frame delta in seconds.
     /// * `view_w` - Logical viewport width (px).
     /// * `view_h` - Logical viewport height (px).
-    pub fn update(&mut self, dt: f32, view_w: i32, view_h: i32) {
+    /// * `is_indoors` - Whether the player's current tile is
+    ///   [`mag_core::constants::MF_INDOORS`]; ramps the visual fade toward 0
+    ///   over roughly one second when `true`, and back toward 1 when `false`.
+    pub fn update(&mut self, dt: f32, view_w: i32, view_h: i32, is_indoors: bool) {
+        let fade_target = if is_indoors { 0.0 } else { 1.0 };
+        let fade_rate_per_sec = 1.0; // ~1 second full fade in/out
+        if self.indoor_fade < fade_target {
+            self.indoor_fade = (self.indoor_fade + fade_rate_per_sec * dt).min(fade_target);
+        } else if self.indoor_fade > fade_target {
+            self.indoor_fade = (self.indoor_fade - fade_rate_per_sec * dt).max(fade_target);
+        }
+
         if self.kind == WeatherKind::None {
             self.shake_offset = (0, 0);
             self.lightning_flash = 0.0;
@@ -540,11 +560,17 @@ impl WeatherState {
             WeatherKind::HeatHaze => Color::RGBA(220, 170, 60, 28),
             _ => Color::RGBA(0, 0, 0, 0),
         };
-        if self.tint[3] > 0 {
+        let base = if self.tint[3] > 0 {
             Color::RGBA(self.tint[0], self.tint[1], self.tint[2], self.tint[3])
         } else {
             default
-        }
+        };
+        Color::RGBA(
+            base.r,
+            base.g,
+            base.b,
+            (f32::from(base.a) * self.indoor_fade) as u8,
+        )
     }
 
     /// Render the active weather effects. Call between the world pass and
@@ -611,7 +637,7 @@ impl WeatherState {
 
         // Lightning flash.
         if self.lightning_flash > 0.0 {
-            let a = (self.lightning_flash.clamp(0.0, 1.0) * 200.0) as u8;
+            let a = (self.lightning_flash.clamp(0.0, 1.0) * 200.0 * self.indoor_fade) as u8;
             canvas.set_draw_color(Color::RGBA(255, 255, 255, a));
             canvas.fill_rect(Rect::new(0, 0, view_w as u32, view_h as u32))?;
         }
@@ -622,7 +648,7 @@ impl WeatherState {
 
     /// Draw a single particle in its kind-specific style.
     fn draw_particle(&self, canvas: &mut Canvas<Window>, p: &Particle) -> Result<(), String> {
-        let alpha_t = (p.life / p.life_max).clamp(0.0, 1.0);
+        let alpha_t = (p.life / p.life_max).clamp(0.0, 1.0) * self.indoor_fade;
         let kind = WeatherKind::from(p.kind);
         match kind {
             WeatherKind::Rain => {
@@ -728,7 +754,7 @@ mod tests {
     #[test]
     fn update_none_does_nothing() {
         let mut w = WeatherState::new();
-        w.update(0.016, 800, 600);
+        w.update(0.016, 800, 600, false);
         assert!(w.particles.iter().all(|p| p.life <= 0.0));
     }
 
@@ -738,7 +764,7 @@ mod tests {
         w.apply_packet(WeatherKind::Rain as u8, 255, 0, [0; 4], 0);
         // Simulate 30 frames at 60 FPS.
         for _ in 0..30 {
-            w.update(0.016, 800, 600);
+            w.update(0.016, 800, 600, false);
         }
         let alive = w.particles.iter().filter(|p| p.life > 0.0).count();
         assert!(alive > 0, "rain should produce live particles");
@@ -750,7 +776,7 @@ mod tests {
         w.apply_packet(WeatherKind::Earthquake as u8, 255, 0, [0; 4], 0);
         let mut nonzero = false;
         for _ in 0..20 {
-            w.update(0.016, 800, 600);
+            w.update(0.016, 800, 600, false);
             if w.shake_offset() != (0, 0) {
                 nonzero = true;
                 break;
@@ -764,7 +790,7 @@ mod tests {
         let mut w = WeatherState::new();
         w.apply_packet(WeatherKind::Fire as u8, 200, 0, [0; 4], 0);
         for _ in 0..10 {
-            w.update(0.016, 800, 600);
+            w.update(0.016, 800, 600, false);
         }
         w.reset();
         assert_eq!(w.kind, WeatherKind::None);
@@ -783,7 +809,7 @@ mod tests {
             0b0000_0001,
         );
         for _ in 0..10 {
-            w.update(0.016, 800, 600);
+            w.update(0.016, 800, 600, false);
         }
         w.pause();
         // Metadata retained.
@@ -795,8 +821,39 @@ mod tests {
         assert!(w.particles.iter().all(|p| p.life <= 0.0));
         assert!(w.needs_initial_fill);
         // Resume → particles repopulate immediately.
-        w.update(0.016, 800, 600);
+        w.update(0.016, 800, 600, false);
         let alive = w.particles.iter().filter(|p| p.life > 0.0).count();
         assert!(alive > 0, "resume should refill particles");
+    }
+
+    #[test]
+    fn indoor_fade_ramps_down_then_back_up() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Rain as u8, 200, 0, [0; 4], 0);
+        assert_eq!(w.indoor_fade, 1.0);
+
+        // Stepping indoors ramps the fade toward 0 over ~1 second.
+        for _ in 0..30 {
+            w.update(0.05, 800, 600, true);
+        }
+        assert_eq!(w.indoor_fade, 0.0, "should fully fade out indoors");
+
+        // Stepping back outdoors ramps back toward 1.
+        for _ in 0..30 {
+            w.update(0.05, 800, 600, false);
+        }
+        assert_eq!(w.indoor_fade, 1.0, "should fully fade back in outdoors");
+    }
+
+    #[test]
+    fn indoor_fade_zero_yields_transparent_tint() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Rain as u8, 200, 0, [0; 4], 0);
+        w.indoor_fade = 0.0;
+        let tint = w.effective_tint();
+        assert_eq!(
+            tint.a, 0,
+            "effective tint should be invisible when faded out"
+        );
     }
 }

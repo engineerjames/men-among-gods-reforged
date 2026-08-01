@@ -337,7 +337,7 @@ impl DisplaySettingsSubPanel {
             ),
             chk_weather: Checkbox::new(
                 Bounds::new(x, origin_y + DS_Y_WEATHER, w, DS_ROW_H as u32),
-                "Enable Particle Effects",
+                "Enable Weather Effects",
                 0,
             ),
             btn_close: RectButton::new(Bounds::new(x, close_y, w, BTN_H), btn_bg())

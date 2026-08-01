@@ -119,6 +119,9 @@ pub struct GameState {
     pub talent_primary_hit_counts: Vec<u8>,
     /// Runtime-only last-element state for the Harakim Element Switching passive.
     pub element_switch_states: HashMap<usize, ElementSwitchState>,
+    /// Runtime-only per-area weather state, parallel to
+    /// `core::weather_areas::AREA_WEATHER_PROFILES`.
+    pub area_weather: Vec<crate::state::weather::AreaWeatherRuntime>,
 
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
@@ -221,6 +224,10 @@ impl GameState {
             penta_needed: 5,
             talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
             element_switch_states: HashMap::new(),
+            area_weather: vec![
+                crate::state::weather::AreaWeatherRuntime::default();
+                core::weather_areas::AREA_WEATHER_PROFILES.len()
+            ],
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding

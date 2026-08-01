@@ -133,6 +133,62 @@ pub fn parse_weather_name(name: &str) -> Option<WeatherKind> {
     })
 }
 
+/// Returns the chat line shown to a player when area-driven weather starts
+/// `kind`, or `None` for [`WeatherKind::None`] (nothing to announce).
+///
+/// # Arguments
+///
+/// * `kind` - The weather kind that just became active.
+///
+/// # Returns
+///
+/// * `Some(message)` for every kind except `None`.
+pub fn weather_start_message(kind: WeatherKind) -> Option<&'static str> {
+    Some(match kind {
+        WeatherKind::None => return None,
+        WeatherKind::Rain => "Dark clouds gather and it begins to rain.",
+        WeatherKind::Snow => "Snow begins to fall.",
+        WeatherKind::Fireflies => "Fireflies drift out of the undergrowth.",
+        WeatherKind::Fire => "The air grows hot as flames spring up around you.",
+        WeatherKind::BloodMoon => "The moon turns blood red.",
+        WeatherKind::Fog => "A thick fog rolls in.",
+        WeatherKind::Lightning => "Thunder rumbles as a storm rolls in.",
+        WeatherKind::Embers => "Embers drift through the air.",
+        WeatherKind::Leaves => "A breeze scatters leaves through the air.",
+        WeatherKind::HeatHaze => "Heat shimmers in the air around you.",
+        WeatherKind::Aurora => "Strange lights ripple across the sky.",
+        WeatherKind::Earthquake => "The ground begins to shake!",
+    })
+}
+
+/// Returns the chat line shown to a player when area-driven weather `kind`
+/// ends, or `None` for [`WeatherKind::None`] (nothing to announce).
+///
+/// # Arguments
+///
+/// * `kind` - The weather kind that just ended.
+///
+/// # Returns
+///
+/// * `Some(message)` for every kind except `None`.
+pub fn weather_stop_message(kind: WeatherKind) -> Option<&'static str> {
+    Some(match kind {
+        WeatherKind::None => return None,
+        WeatherKind::Rain => "The rain stops falling.",
+        WeatherKind::Snow => "The snow stops falling.",
+        WeatherKind::Fireflies => "The fireflies fade away.",
+        WeatherKind::Fire => "The flames die down.",
+        WeatherKind::BloodMoon => "The moon returns to its normal color.",
+        WeatherKind::Fog => "The fog lifts.",
+        WeatherKind::Lightning => "The storm passes.",
+        WeatherKind::Embers => "The embers fade away.",
+        WeatherKind::Leaves => "The breeze dies down.",
+        WeatherKind::HeatHaze => "The heat haze fades.",
+        WeatherKind::Aurora => "The lights in the sky fade away.",
+        WeatherKind::Earthquake => "The shaking subsides.",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,6 +218,36 @@ mod tests {
         for k in all {
             assert_eq!(WeatherKind::from(k.as_u8()), k);
         }
+    }
+
+    #[test]
+    fn start_and_stop_messages_cover_every_non_none_kind() {
+        let all = [
+            WeatherKind::Rain,
+            WeatherKind::Snow,
+            WeatherKind::Fireflies,
+            WeatherKind::Fire,
+            WeatherKind::BloodMoon,
+            WeatherKind::Fog,
+            WeatherKind::Lightning,
+            WeatherKind::Embers,
+            WeatherKind::Leaves,
+            WeatherKind::HeatHaze,
+            WeatherKind::Aurora,
+            WeatherKind::Earthquake,
+        ];
+        for k in all {
+            assert!(
+                weather_start_message(k).is_some(),
+                "missing start message for {k:?}"
+            );
+            assert!(
+                weather_stop_message(k).is_some(),
+                "missing stop message for {k:?}"
+            );
+        }
+        assert!(weather_start_message(WeatherKind::None).is_none());
+        assert!(weather_stop_message(WeatherKind::None).is_none());
     }
 
     #[test]

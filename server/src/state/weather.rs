@@ -10,15 +10,47 @@
 
 use core::server_commands::ServerCommandType;
 use core::weather::{WEATHER_FLAG_OVERRIDE, WeatherKind};
-use core::weather_areas::area_weather_for;
+use core::weather_areas::{self, AREA_WEATHER_PROFILES};
 
 use crate::game_state::GameState;
+use crate::helpers::random_mod;
 use crate::network_manager::xsend;
 
-/// Approximately one second at 36 TPS — how often the area-driven driver
-/// re-evaluates each player's location.
-#[allow(dead_code)]
+/// Approximately one second at 36 TPS — how often the per-player dispatcher
+/// re-evaluates each player's location against the current area weather state.
 const WEATHER_TICK_PERIOD: u32 = 36;
+
+/// How often (in ticks) an idle area is re-evaluated for a new weather
+/// trigger, and how long an area waits after clearing before its next
+/// trigger roll (~5 minutes at 36 TPS).
+const AREA_EVAL_PERIOD_TICKS: u32 = 36 * 60 * 5;
+
+/// Currently active weather for one area, rolled from a
+/// [`core::weather_areas::WeatherCandidate`] by [`area_weather_system_tick`].
+#[derive(Clone, Copy, Debug, Default)]
+pub struct ActiveAreaWeather {
+    /// Active weather kind for this area.
+    pub kind: WeatherKind,
+    /// Particle/effect intensity (0..=255).
+    pub intensity: u8,
+    /// RGBA tint; `[0;4]` means "use the kind's client-default tint".
+    pub tint: [u8; 4],
+    /// Wire-protocol flags forwarded to the client.
+    pub flags: u8,
+    /// Tick at which this weather expires.
+    pub expire_tick: u32,
+}
+
+/// Runtime weather state for one area, parallel to
+/// [`core::weather_areas::AREA_WEATHER_PROFILES`]. Transient — never
+/// persisted to KeyDB.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct AreaWeatherRuntime {
+    /// Currently active weather for this area, or `None` if clear.
+    pub active: Option<ActiveAreaWeather>,
+    /// Tick at which this area becomes eligible for its next trigger roll.
+    pub next_eval_tick: u32,
+}
 
 /// Build the 10-byte `SV_WEATHER` packet body and send it to a single player.
 ///
@@ -83,9 +115,83 @@ pub fn send_weather(
 ///
 /// * `gs` - Mutable game state.
 /// * `player_id` - Index into `gs.players`.
-#[allow(dead_code)]
 pub fn clear_weather(gs: &mut GameState, player_id: usize) {
     send_weather(gs, player_id, WeatherKind::None as u8, 0, 0, [0; 4], 0);
+}
+
+/// Area-driven weather system tick.
+///
+/// Called once per server tick. For each configured [`AREA_WEATHER_PROFILES`]
+/// entry: clears the area's active weather once it expires, and — once the
+/// area is idle and due for re-evaluation — rolls `trigger_chance_per_eval`
+/// (out of 1000) for a chance to start a new weighted-random candidate with
+/// a random duration in `[min_duration_ticks, max_duration_ticks]`.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+pub fn area_weather_system_tick(gs: &mut GameState) {
+    area_weather_system_tick_with_rng(gs, random_mod);
+}
+
+/// Implementation of [`area_weather_system_tick`] with the RNG injected as a
+/// closure, so trigger/duration decisions can be driven deterministically in
+/// tests instead of seeding a global RNG.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `rng` - Given an exclusive upper bound, returns a value in `[0, bound)`.
+fn area_weather_system_tick_with_rng(gs: &mut GameState, mut rng: impl FnMut(u32) -> u32) {
+    let ticker = gs.globals.ticker as u32;
+    for (idx, profile) in AREA_WEATHER_PROFILES.iter().enumerate() {
+        let Some(runtime) = gs.area_weather.get_mut(idx) else {
+            continue;
+        };
+
+        if let Some(active) = runtime.active {
+            if ticker >= active.expire_tick {
+                runtime.active = None;
+                runtime.next_eval_tick = ticker + AREA_EVAL_PERIOD_TICKS;
+            }
+            continue;
+        }
+
+        if ticker < runtime.next_eval_tick {
+            continue;
+        }
+        runtime.next_eval_tick = ticker + AREA_EVAL_PERIOD_TICKS;
+
+        if rng(1000) >= profile.trigger_chance_per_eval {
+            continue;
+        }
+
+        let total = weather_areas::total_weight(profile);
+        if total == 0 {
+            continue;
+        }
+        let candidate = weather_areas::pick_candidate(profile, rng(total));
+        // +1 so the inclusive max duration is reachable via rng's exclusive upper bound.
+        let span = profile
+            .max_duration_ticks
+            .saturating_sub(profile.min_duration_ticks)
+            + 1;
+        let duration = profile.min_duration_ticks + rng(span);
+
+        runtime.active = Some(ActiveAreaWeather {
+            kind: candidate.kind,
+            intensity: candidate.intensity,
+            tint: candidate.tint.unwrap_or([0u8; 4]),
+            flags: candidate.flags,
+            expire_tick: ticker + duration,
+        });
+        log::info!(
+            "area weather triggered: {} -> {:?} for {} ticks",
+            profile.area_name,
+            candidate.kind,
+            duration
+        );
+    }
 }
 
 /// Per-player weather tick.
@@ -94,10 +200,13 @@ pub fn clear_weather(gs: &mut GameState, player_id: usize) {
 /// one update per second per player. Behavior:
 ///
 /// 1. If the player has an admin override (`WEATHER_FLAG_OVERRIDE`) and it
-///    has expired, clear it (so the area driver can take over again).
-/// 2. Otherwise, look up the player's tile in the area-weather table and
-///    transition to/from the area-default weather only if it actually
-///    changes.
+///    has expired, clear it (so the area system can take over again).
+/// 2. Otherwise, look up the player's area and dispatch whatever weather is
+///    currently active there (populated by [`area_weather_system_tick`]), or
+///    clear back to [`WeatherKind::None`] if the area has no active weather
+///    or the player isn't in a configured area. Logs a chat line to the
+///    player on kind transitions (area-driven only; admin overrides don't
+///    get an automatic message).
 ///
 /// Skips players that aren't connected and in a normal play state.
 ///
@@ -105,7 +214,6 @@ pub fn clear_weather(gs: &mut GameState, player_id: usize) {
 ///
 /// * `gs` - Mutable game state.
 /// * `nr` - Player index.
-#[allow(dead_code)]
 pub fn weather_tick(gs: &mut GameState, nr: usize) {
     if nr == 0 || nr >= gs.players.len() {
         return;
@@ -132,14 +240,14 @@ pub fn weather_tick(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let cur_flags = gs.players[nr].weather_flags;
+    let flags_before = gs.players[nr].weather_flags;
     let expire = gs.players[nr].weather_expire_tick;
-    let is_override = (cur_flags & WEATHER_FLAG_OVERRIDE) != 0;
+    let is_override = (flags_before & WEATHER_FLAG_OVERRIDE) != 0;
 
-    // Expire any timed weather (override or area-default).
+    // Expire any timed weather (override or area-driven).
     if expire != 0 && ticker >= expire {
         clear_weather(gs, nr);
-        // Fall through to immediately apply the area default this tick.
+        // Fall through to immediately apply the area state this tick.
     } else if is_override {
         // Active override — leave it alone until it expires.
         return;
@@ -147,31 +255,45 @@ pub fn weather_tick(gs: &mut GameState, nr: usize) {
 
     let x = i32::from(gs.characters[cn].x);
     let y = i32::from(gs.characters[cn].y);
-    let area = area_weather_for(x, y);
+    let active = weather_areas::area_weather_profile_index_for(x, y)
+        .and_then(|idx| gs.area_weather.get(idx))
+        .and_then(|runtime| runtime.active);
 
-    let (target_kind, intensity, tint, flags) = match area {
-        Some(a) => (
-            a.kind as u8,
-            a.intensity,
-            a.tint.unwrap_or([0u8; 4]),
-            a.flags,
-        ),
-        None => (WeatherKind::None as u8, 0u8, [0u8; 4], 0u8),
+    let (target_kind, intensity, tint, flags) = match active {
+        Some(a) => (a.kind, a.intensity, a.tint, a.flags),
+        None => (WeatherKind::None, 0u8, [0u8; 4], 0u8),
     };
 
-    let new_cur_kind = gs.players[nr].weather_kind;
-    let new_cur_intensity = gs.players[nr].weather_intensity;
-    let new_cur_tint = gs.players[nr].weather_tint;
-    let new_cur_flags = gs.players[nr].weather_flags;
+    let prev_kind = WeatherKind::from(gs.players[nr].weather_kind);
+    let cur_intensity = gs.players[nr].weather_intensity;
+    let cur_tint = gs.players[nr].weather_tint;
+    let cur_flags = gs.players[nr].weather_flags;
 
-    if new_cur_kind == target_kind
-        && new_cur_intensity == intensity
-        && new_cur_tint == tint
-        && new_cur_flags == flags
+    if prev_kind == target_kind
+        && cur_intensity == intensity
+        && cur_tint == tint
+        && cur_flags == flags
     {
         return;
     }
-    send_weather(gs, nr, target_kind, intensity, 0, tint, flags);
+    log::info!(
+        "weather_tick: player {} ({}) changing from {:?} to {:?}",
+        nr,
+        cn,
+        prev_kind,
+        target_kind
+    );
+    send_weather(gs, nr, target_kind as u8, intensity, 0, tint, flags);
+
+    if target_kind != WeatherKind::None && target_kind != prev_kind {
+        if let Some(msg) = core::weather::weather_start_message(target_kind) {
+            gs.do_character_log(cn, core::types::FontColor::Blue, msg);
+        }
+    } else if target_kind == WeatherKind::None && prev_kind != WeatherKind::None {
+        if let Some(msg) = core::weather::weather_stop_message(prev_kind) {
+            gs.do_character_log(cn, core::types::FontColor::Blue, msg);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -262,13 +384,23 @@ mod tests {
     }
 
     #[test]
-    fn weather_tick_applies_area_default_when_no_override() {
+    fn weather_tick_applies_active_area_weather_when_no_override() {
         with_test_gs(|gs| {
             let (_cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
             let cn = gs.players[nr].usnr;
             gs.characters[cn].x = 550; // Strange Forest
             gs.characters[cn].y = 320;
+
+            let idx = weather_areas::area_weather_profile_index_for(550, 320)
+                .expect("Strange Forest profile");
+            gs.area_weather[idx].active = Some(ActiveAreaWeather {
+                kind: WeatherKind::Fireflies,
+                intensity: 64,
+                tint: [0; 4],
+                flags: 0,
+                expire_tick: 100_000,
+            });
 
             // Force throttle window.
             let phase = (nr as u32) % WEATHER_TICK_PERIOD;
@@ -279,10 +411,139 @@ mod tests {
             assert_eq!(
                 gs.players[nr].weather_kind,
                 WeatherKind::Fireflies as u8,
-                "Strange Forest should set fireflies"
+                "should apply the area's currently active weather"
             );
             assert_eq!(gs.players[nr].weather_intensity, 64);
             assert!(gs.players[nr].tptr >= 10);
+        });
+    }
+
+    #[test]
+    fn weather_tick_stays_clear_when_area_has_no_active_weather() {
+        with_test_gs(|gs| {
+            let (_cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let cn = gs.players[nr].usnr;
+            gs.characters[cn].x = 550; // Strange Forest, but no active roll set.
+            gs.characters[cn].y = 320;
+
+            let phase = (nr as u32) % WEATHER_TICK_PERIOD;
+            gs.globals.ticker = phase as i32;
+            gs.players[nr].tptr = 0;
+
+            weather_tick(gs, nr);
+            assert_eq!(gs.players[nr].weather_kind, WeatherKind::None as u8);
+            assert_eq!(gs.players[nr].tptr, 0, "no packet when nothing changed");
+        });
+    }
+
+    /// Reconstructs the concatenated text of all `SV_LOG*` packets appended
+    /// to `tbuf` starting at `start` (each is 16 bytes: 1-byte header + up to
+    /// 15 payload bytes, zero-padded).
+    fn reconstruct_logged_text(tbuf: &[u8], start: usize, tptr: usize) -> String {
+        let mut text = String::new();
+        let mut offset = start;
+        while offset + 16 <= tptr {
+            let payload = &tbuf[offset + 1..offset + 16];
+            let end = payload
+                .iter()
+                .position(|&b| b == 0)
+                .unwrap_or(payload.len());
+            text.push_str(&String::from_utf8_lossy(&payload[..end]));
+            offset += 16;
+        }
+        text
+    }
+
+    #[test]
+    fn weather_tick_logs_start_and_stop_messages_on_transition() {
+        with_test_gs(|gs| {
+            let (_cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            let cn = gs.players[nr].usnr;
+            gs.characters[cn].x = 550; // Strange Forest
+            gs.characters[cn].y = 320;
+
+            let idx = weather_areas::area_weather_profile_index_for(550, 320)
+                .expect("Strange Forest profile");
+            gs.area_weather[idx].active = Some(ActiveAreaWeather {
+                kind: WeatherKind::Fireflies,
+                intensity: 64,
+                tint: [0; 4],
+                flags: 0,
+                expire_tick: 100_000,
+            });
+
+            let phase = (nr as u32) % WEATHER_TICK_PERIOD;
+            gs.globals.ticker = phase as i32;
+            gs.players[nr].tptr = 0;
+
+            weather_tick(gs, nr);
+            let start_msg = core::weather::weather_start_message(WeatherKind::Fireflies).unwrap();
+            let tptr = gs.players[nr].tptr;
+            let logged = reconstruct_logged_text(&gs.players[nr].tbuf, 10, tptr);
+            assert!(
+                logged.contains(start_msg),
+                "expected start message, got: {logged:?}"
+            );
+
+            // Now clear the area's active weather and re-run on the next throttle window.
+            gs.area_weather[idx].active = None;
+            gs.players[nr].tptr = 0;
+            gs.globals.ticker += WEATHER_TICK_PERIOD as i32;
+
+            weather_tick(gs, nr);
+            let stop_msg = core::weather::weather_stop_message(WeatherKind::Fireflies).unwrap();
+            let tptr = gs.players[nr].tptr;
+            let logged = reconstruct_logged_text(&gs.players[nr].tbuf, 10, tptr);
+            assert!(
+                logged.contains(stop_msg),
+                "expected stop message, got: {logged:?}"
+            );
+        });
+    }
+
+    #[test]
+    fn area_weather_system_tick_triggers_and_expires_deterministically() {
+        with_test_gs(|gs| {
+            gs.globals.ticker = 0;
+            // Roll 0 always satisfies "trigger_roll < trigger_chance" (chance > 0)
+            // and always picks the first candidate / minimum duration.
+            area_weather_system_tick_with_rng(gs, |_bound| 0);
+
+            let strange_forest_idx = weather_areas::area_weather_profile_index_for(550, 320)
+                .expect("Strange Forest profile");
+            let active = gs.area_weather[strange_forest_idx]
+                .active
+                .expect("should have triggered with roll 0");
+            assert_eq!(active.kind, WeatherKind::Fireflies);
+            assert_eq!(
+                active.expire_tick,
+                AREA_WEATHER_PROFILES[strange_forest_idx].min_duration_ticks
+            );
+
+            // Advance past expiry; the expiry-clear branch always short-circuits
+            // before any re-trigger roll for that same area/tick.
+            gs.globals.ticker = active.expire_tick as i32;
+            area_weather_system_tick_with_rng(gs, |_bound| 0);
+            assert!(
+                gs.area_weather[strange_forest_idx].active.is_none(),
+                "expired weather should clear"
+            );
+        });
+    }
+
+    #[test]
+    fn area_weather_system_tick_never_triggers_below_chance_threshold() {
+        with_test_gs(|gs| {
+            gs.globals.ticker = 0;
+            // A roll always >= any trigger_chance_per_eval (all configured
+            // profiles use chances well under 1000) should never trigger.
+            area_weather_system_tick_with_rng(gs, |_bound| 1000);
+            assert!(
+                gs.area_weather.iter().all(|r| r.active.is_none()),
+                "no area should have triggered"
+            );
         });
     }
 

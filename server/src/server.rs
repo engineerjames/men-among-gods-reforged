@@ -489,6 +489,11 @@ impl Server {
         // Background save scheduling (KeyDB only)
         core::measure!(self.maybe_enqueue_background_save(gs));
 
+        core::measure!(
+            "weather.area_system_tick",
+            crate::state::weather::area_weather_system_tick(gs)
+        );
+
         // Send tick to players and count online
         let online = core::measure!("player.tick_and_online_count", {
             let mut online = 0;
@@ -506,9 +511,7 @@ impl Server {
                 }
 
                 player::tick::plr_tick(gs, n);
-                // Weather (especially area-driven effects) is temporarily disabled
-                // while we tune things — re-enable once areas are configured.
-                // crate::state::weather::weather_tick(gs, n);
+                crate::state::weather::weather_tick(gs, n);
 
                 if is_normal {
                     online += 1;
