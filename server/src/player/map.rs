@@ -481,7 +481,12 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].flags |= INFRARED;
                 }
 
-                smap[n].flags2 = 0;
+                // Low 32 bits of the raw map flags (MF_MOVEBLOCK, MF_INDOORS,
+                // MF_TAVERN, etc.) forwarded verbatim so the client can key
+                // rendering/effects off them; GFX_* bits (>=32) are dropped by
+                // the truncation and are already surfaced via `smap[n].flags`
+                // above.
+                smap[n].flags2 = map_flags as u32;
 
                 let rel_x = x - current_x + core::constants::VISI_CENTER;
                 let rel_y = y - current_y + core::constants::VISI_CENTER;
@@ -1231,6 +1236,28 @@ mod tests {
             assert_eq!(tile.it_sprite, 77);
             assert_eq!(gs.players[nr].vx, gs.see_map[cn].x);
             assert_eq!(gs.players[nr].vy, gs.see_map[cn].y);
+        });
+    }
+
+    #[test]
+    fn plr_getmap_forwards_raw_map_flags_into_flags2() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let x = i32::from(gs.characters[cn].x);
+            let y = i32::from(gs.characters[cn].y);
+            let tile = map_index(x as i16, y as i16);
+            gs.map[tile] = Map {
+                ch: cn as u32,
+                flags: u64::from(core::constants::MF_INDOORS | MF_TAVERN),
+                ..Map::default()
+            };
+
+            plr_getmap(gs, nr);
+
+            let sm_idx = small_map_index(gs, cn, x, y);
+            let tile = gs.players[nr].smap[sm_idx];
+            assert_ne!(tile.flags2 & core::constants::MF_INDOORS, 0);
+            assert_ne!(tile.flags2 & MF_TAVERN, 0);
         });
     }
 
