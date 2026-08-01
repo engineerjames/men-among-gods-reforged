@@ -5230,10 +5230,16 @@ mod tests {
 
             assert!(God::transfer_char(gs, cn, 50, 60));
 
-            let (owner_x, owner_y) = (gs.characters[cn].x as i32, gs.characters[cn].y as i32);
+            let (owner_x, owner_y) = (
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
+            );
 
             for &cc in &[2usize, 3usize] {
-                let (cc_x, cc_y) = (gs.characters[cc].x as i32, gs.characters[cc].y as i32);
+                let (cc_x, cc_y) = (
+                    i32::from(gs.characters[cc].x),
+                    i32::from(gs.characters[cc].y),
+                );
                 assert!(
                     (cc_x - owner_x).abs() <= 3 && (cc_y - owner_y).abs() <= 3,
                     "companion {} at ({}, {}) not near owner at ({}, {})",
