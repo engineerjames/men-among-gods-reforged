@@ -294,10 +294,11 @@ pub fn weather_tick(gs: &mut GameState, nr: usize) {
         if let Some(msg) = core::weather::weather_start_message(target_kind) {
             gs.do_character_log(cn, core::types::FontColor::Blue, msg);
         }
-    } else if target_kind == WeatherKind::None && prev_kind != WeatherKind::None {
-        if let Some(msg) = core::weather::weather_stop_message(prev_kind) {
-            gs.do_character_log(cn, core::types::FontColor::Blue, msg);
-        }
+    } else if target_kind == WeatherKind::None
+        && prev_kind != WeatherKind::None
+        && let Some(msg) = core::weather::weather_stop_message(prev_kind)
+    {
+        gs.do_character_log(cn, core::types::FontColor::Blue, msg);
     }
 }
 
