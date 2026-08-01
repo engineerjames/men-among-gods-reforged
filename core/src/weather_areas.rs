@@ -93,6 +93,9 @@ pub struct AreaWeatherProfile {
     pub min_duration_ticks: u32,
     /// Maximum duration (ticks) once a weather effect triggers.
     pub max_duration_ticks: u32,
+    /// When `true`, the client keeps the effect fully visible even while
+    /// standing on an indoor-flagged tile (see `WeatherFlags::IgnoreIndoorFade`).
+    pub ignore_indoor_fade: bool,
 }
 
 /// Default trigger chance shared by areas without special tuning (40%).
@@ -122,6 +125,7 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
         max_duration_ticks: DEFAULT_MAX_DURATION_TICKS,
+        ignore_indoor_fade: false,
     },
     AreaWeatherProfile {
         label: "Strange Forest",
@@ -136,6 +140,7 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
         max_duration_ticks: DEFAULT_MAX_DURATION_TICKS,
+        ignore_indoor_fade: false,
     },
     AreaWeatherProfile {
         label: "Pentagram Quest",
@@ -151,6 +156,7 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
         max_duration_ticks: DEFAULT_MAX_DURATION_TICKS,
+        ignore_indoor_fade: true,
     },
     AreaWeatherProfile {
         label: "Ice Pentagram Quest",
@@ -165,6 +171,7 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
         max_duration_ticks: DEFAULT_MAX_DURATION_TICKS,
+        ignore_indoor_fade: true,
     },
 ];
 
@@ -299,6 +306,7 @@ mod tests {
             trigger_chance_per_eval: 0,
             min_duration_ticks: 0,
             max_duration_ticks: 0,
+            ignore_indoor_fade: false,
         };
         assert!(profile.regions.iter().any(|r| r.contains(5, 5)));
         assert!(profile.regions.iter().any(|r| r.contains(105, 105)));
@@ -330,6 +338,7 @@ mod tests {
             trigger_chance_per_eval: 0,
             min_duration_ticks: 0,
             max_duration_ticks: 0,
+            ignore_indoor_fade: false,
         };
         assert_eq!(total_weight(&profile), 3);
         assert_eq!(pick_candidate(&profile, 0).kind, WeatherKind::Rain);

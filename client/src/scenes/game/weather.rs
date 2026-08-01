@@ -418,8 +418,16 @@ impl WeatherState {
     /// * `is_indoors` - Whether the player's current tile is
     ///   [`mag_core::constants::MF_INDOORS`]; ramps the visual fade toward 0
     ///   over roughly one second when `true`, and back toward 1 when `false`.
+    ///   Ignored entirely when the active packet carries
+    ///   [`WeatherFlags::IgnoreIndoorFade`] (e.g. Pentagram quest rooms that
+    ///   are flagged indoors but should still show their effect).
     pub fn update(&mut self, dt: f32, view_w: i32, view_h: i32, is_indoors: bool) {
-        let fade_target = if is_indoors { 0.0 } else { 1.0 };
+        let ignore_indoor_fade = (self.flags & WeatherFlags::IgnoreIndoorFade.bits()) != 0;
+        let fade_target = if is_indoors && !ignore_indoor_fade {
+            0.0
+        } else {
+            1.0
+        };
         let fade_rate_per_sec = 1.0; // ~1 second full fade in/out
         if self.indoor_fade < fade_target {
             self.indoor_fade = (self.indoor_fade + fade_rate_per_sec * dt).min(fade_target);
@@ -854,6 +862,26 @@ mod tests {
         assert_eq!(
             tint.a, 0,
             "effective tint should be invisible when faded out"
+        );
+    }
+
+    #[test]
+    fn ignore_indoor_fade_flag_keeps_effect_visible_indoors() {
+        let mut w = WeatherState::new();
+        w.apply_packet(
+            WeatherKind::Fire as u8,
+            200,
+            0,
+            [0; 4],
+            WeatherFlags::IgnoreIndoorFade.bits(),
+        );
+
+        for _ in 0..30 {
+            w.update(0.05, 800, 600, true);
+        }
+        assert_eq!(
+            w.indoor_fade, 1.0,
+            "IgnoreIndoorFade should keep the effect fully visible indoors"
         );
     }
 }

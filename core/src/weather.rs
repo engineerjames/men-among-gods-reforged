@@ -15,6 +15,10 @@ bitflags::bitflags! {
         /// Hints the client to use additive blending for particles
         /// (e.g. fire, embers).
         const Additive = 0b0000_0001;
+        /// Keeps the effect at full visibility even on indoor-flagged tiles
+        /// (e.g. the Pentagram quest rooms, which are marked indoors but
+        /// should still show their fire/snow effect).
+        const IgnoreIndoorFade = 0b0000_0010;
     }
 }
 

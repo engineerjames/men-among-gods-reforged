@@ -178,11 +178,16 @@ fn area_weather_system_tick_with_rng(gs: &mut GameState, mut rng: impl FnMut(u32
             + 1;
         let duration = profile.min_duration_ticks + rng(span);
 
+        let mut flags = candidate.flags;
+        if profile.ignore_indoor_fade {
+            flags |= WeatherFlags::IgnoreIndoorFade;
+        }
+
         runtime.active = Some(ActiveAreaWeather {
             kind: candidate.kind,
             intensity: candidate.intensity,
             tint: candidate.tint.unwrap_or([0u8; 4]),
-            flags: candidate.flags.bits(),
+            flags: flags.bits(),
             expire_tick: ticker + duration,
         });
         log::info!(
@@ -529,6 +534,31 @@ mod tests {
             assert!(
                 gs.area_weather[strange_forest_idx].active.is_none(),
                 "expired weather should clear"
+            );
+        });
+    }
+
+    #[test]
+    fn area_weather_system_tick_sets_ignore_indoor_fade_for_pentagram_quest() {
+        with_test_gs(|gs| {
+            gs.globals.ticker = 0;
+            area_weather_system_tick_with_rng(gs, |_bound| 0);
+
+            let idx = weather_areas::area_weather_profile_index_for(300, 400)
+                .expect("Pentagram Quest profile");
+            let active = gs.area_weather[idx]
+                .active
+                .expect("should have triggered with roll 0");
+            assert_eq!(active.kind, WeatherKind::Fire);
+            assert_ne!(
+                active.flags & WeatherFlags::IgnoreIndoorFade.bits(),
+                0,
+                "Pentagram Quest is flagged indoors but should ignore the fade"
+            );
+            assert_ne!(
+                active.flags & WeatherFlags::Additive.bits(),
+                0,
+                "the Fire candidate's own Additive flag should be preserved"
             );
         });
     }
