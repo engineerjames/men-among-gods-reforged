@@ -109,6 +109,20 @@ const DEFAULT_MAX_DURATION_TICKS: u32 = 36 * 60 * 20;
 /// matching entry wins (mirrors `get_area_m` semantics).
 pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
     AreaWeatherProfile {
+        label: "Aston",
+        regions: &[WeatherArea::new(0, 0, 1023, 767)],
+        candidates: &[WeatherCandidate {
+            kind: WeatherKind::Rain,
+            weight: 1,
+            intensity: 128,
+            tint: Some([100, 100, 120, 50]),
+            flags: 0,
+        }],
+        trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
+        min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
+        max_duration_ticks: DEFAULT_MAX_DURATION_TICKS,
+    },
+    AreaWeatherProfile {
         label: "Strange Forest",
         regions: &[WeatherArea::new(480, 234, 634, 405)],
         candidates: &[WeatherCandidate {
