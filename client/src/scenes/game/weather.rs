@@ -15,7 +15,7 @@ use sdl2::rect::{Point, Rect};
 use sdl2::render::{BlendMode, Canvas};
 use sdl2::video::Window;
 
-use mag_core::weather::{WEATHER_FLAG_ADDITIVE, WeatherKind};
+use mag_core::weather::{WeatherFlags, WeatherKind};
 
 use crate::constants::{TARGET_HEIGHT_INT, TARGET_WIDTH_INT};
 
@@ -618,7 +618,7 @@ impl WeatherState {
         }
 
         // Particle pass.
-        let additive = (self.flags & WEATHER_FLAG_ADDITIVE) != 0
+        let additive = (self.flags & WeatherFlags::Additive.bits()) != 0
             || matches!(self.kind, WeatherKind::Fire | WeatherKind::Embers);
         if additive {
             canvas.set_blend_mode(BlendMode::Add);

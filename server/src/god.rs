@@ -5061,7 +5061,7 @@ impl God {
         } else {
             target_arg
         };
-        let flags = core::weather::WEATHER_FLAG_OVERRIDE;
+        let flags = core::weather::WeatherFlags::Override.bits();
 
         let mut targets: Vec<usize> = Vec::new();
         match target {

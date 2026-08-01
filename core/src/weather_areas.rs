@@ -14,7 +14,7 @@
 //!
 //! Adding entries here is a one-line change; everything is `const`.
 
-use crate::weather::WeatherKind;
+use crate::weather::{WeatherFlags, WeatherKind};
 
 /// An axis-aligned rectangular region used to define where a weather
 /// pattern can trigger, independent of any named [`crate::area::Area`].
@@ -74,7 +74,7 @@ pub struct WeatherCandidate {
     /// Optional tint override; `None` keeps the kind's client default.
     pub tint: Option<[u8; 4]>,
     /// Wire-protocol flags forwarded to the client (e.g. additive blending).
-    pub flags: u8,
+    pub flags: WeatherFlags,
 }
 
 /// Probabilistic weather profile for a named area.
@@ -100,6 +100,7 @@ const DEFAULT_TRIGGER_CHANCE: u32 = 400;
 
 /// Default minimum duration shared by areas without special tuning (5 min at 36 TPS).
 const DEFAULT_MIN_DURATION_TICKS: u32 = 36 * 60 * 5;
+
 /// Default maximum duration shared by areas without special tuning (20 min at 36 TPS).
 const DEFAULT_MAX_DURATION_TICKS: u32 = 36 * 60 * 20;
 
@@ -110,13 +111,13 @@ const DEFAULT_MAX_DURATION_TICKS: u32 = 36 * 60 * 20;
 pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
     AreaWeatherProfile {
         label: "Aston",
-        regions: &[WeatherArea::new(0, 0, 1023, 767)],
+        regions: &[WeatherArea::new(481, 407, 633, 628)],
         candidates: &[WeatherCandidate {
             kind: WeatherKind::Rain,
             weight: 1,
             intensity: 128,
             tint: Some([100, 100, 120, 50]),
-            flags: 0,
+            flags: WeatherFlags::empty(),
         }],
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
@@ -130,7 +131,7 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
             weight: 1,
             intensity: 64,
             tint: None,
-            flags: 0,
+            flags: WeatherFlags::empty(),
         }],
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
@@ -145,7 +146,7 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
             intensity: 180,
             // Strong red glow.
             tint: Some([200, 50, 30, 80]),
-            flags: 0,
+            flags: WeatherFlags::Additive,
         }],
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
@@ -159,7 +160,7 @@ pub const AREA_WEATHER_PROFILES: &[AreaWeatherProfile] = &[
             weight: 1,
             intensity: 160,
             tint: Some([180, 200, 230, 50]),
-            flags: 0,
+            flags: WeatherFlags::empty(),
         }],
         trigger_chance_per_eval: DEFAULT_TRIGGER_CHANCE,
         min_duration_ticks: DEFAULT_MIN_DURATION_TICKS,
@@ -284,16 +285,17 @@ mod tests {
             WeatherArea::new(0, 0, 10, 10),
             WeatherArea::new(100, 100, 110, 110),
         ];
+        const CANDIDATES: &[WeatherCandidate] = &[WeatherCandidate {
+            kind: WeatherKind::Rain,
+            weight: 1,
+            intensity: 0,
+            tint: None,
+            flags: WeatherFlags::empty(),
+        }];
         let profile = AreaWeatherProfile {
             label: "test",
             regions: REGIONS,
-            candidates: &[WeatherCandidate {
-                kind: WeatherKind::Rain,
-                weight: 1,
-                intensity: 0,
-                tint: None,
-                flags: 0,
-            }],
+            candidates: CANDIDATES,
             trigger_chance_per_eval: 0,
             min_duration_ticks: 0,
             max_duration_ticks: 0,
@@ -305,25 +307,26 @@ mod tests {
 
     #[test]
     fn pick_candidate_respects_weight_boundaries() {
+        const CANDIDATES: &[WeatherCandidate] = &[
+            WeatherCandidate {
+                kind: WeatherKind::Rain,
+                weight: 2,
+                intensity: 0,
+                tint: None,
+                flags: WeatherFlags::empty(),
+            },
+            WeatherCandidate {
+                kind: WeatherKind::Snow,
+                weight: 1,
+                intensity: 0,
+                tint: None,
+                flags: WeatherFlags::empty(),
+            },
+        ];
         let profile = AreaWeatherProfile {
             label: "test",
             regions: &[],
-            candidates: &[
-                WeatherCandidate {
-                    kind: WeatherKind::Rain,
-                    weight: 2,
-                    intensity: 0,
-                    tint: None,
-                    flags: 0,
-                },
-                WeatherCandidate {
-                    kind: WeatherKind::Snow,
-                    weight: 1,
-                    intensity: 0,
-                    tint: None,
-                    flags: 0,
-                },
-            ],
+            candidates: CANDIDATES,
             trigger_chance_per_eval: 0,
             min_duration_ticks: 0,
             max_duration_ticks: 0,

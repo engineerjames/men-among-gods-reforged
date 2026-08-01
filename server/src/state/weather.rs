@@ -9,7 +9,7 @@
 //! protocol overview and [`core::weather`] for the wire-format constants.
 
 use core::server_commands::ServerCommandType;
-use core::weather::{WEATHER_FLAG_OVERRIDE, WeatherKind};
+use core::weather::{WeatherFlags, WeatherKind};
 use core::weather_areas::{self, AREA_WEATHER_PROFILES};
 
 use crate::game_state::GameState;
@@ -182,7 +182,7 @@ fn area_weather_system_tick_with_rng(gs: &mut GameState, mut rng: impl FnMut(u32
             kind: candidate.kind,
             intensity: candidate.intensity,
             tint: candidate.tint.unwrap_or([0u8; 4]),
-            flags: candidate.flags,
+            flags: candidate.flags.bits(),
             expire_tick: ticker + duration,
         });
         log::info!(
@@ -242,7 +242,7 @@ pub fn weather_tick(gs: &mut GameState, nr: usize) {
 
     let flags_before = gs.players[nr].weather_flags;
     let expire = gs.players[nr].weather_expire_tick;
-    let is_override = (flags_before & WEATHER_FLAG_OVERRIDE) != 0;
+    let is_override = (flags_before & WeatherFlags::Override.bits()) != 0;
 
     // Expire any timed weather (override or area-driven).
     if expire != 0 && ticker >= expire {
@@ -345,7 +345,7 @@ mod tests {
             let (_cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
             gs.players[nr].weather_kind = 4;
-            gs.players[nr].weather_flags = WEATHER_FLAG_OVERRIDE;
+            gs.players[nr].weather_flags = WeatherFlags::Override.bits();
 
             clear_weather(gs, nr);
             let tbuf = &gs.players[nr].tbuf[..10];
@@ -369,7 +369,7 @@ mod tests {
             gs.globals.ticker = 100;
             gs.players[nr].weather_kind = WeatherKind::Fire as u8;
             gs.players[nr].weather_intensity = 200;
-            gs.players[nr].weather_flags = WEATHER_FLAG_OVERRIDE;
+            gs.players[nr].weather_flags = WeatherFlags::Override.bits();
             gs.players[nr].weather_expire_tick = 10_000;
             gs.players[nr].tptr = 0;
 
@@ -560,7 +560,7 @@ mod tests {
             // Override that has already expired.
             gs.players[nr].weather_kind = WeatherKind::Fire as u8;
             gs.players[nr].weather_intensity = 200;
-            gs.players[nr].weather_flags = WEATHER_FLAG_OVERRIDE;
+            gs.players[nr].weather_flags = WeatherFlags::Override.bits();
             gs.players[nr].weather_expire_tick = 50;
 
             // Force throttle window with current ticker past expiration.

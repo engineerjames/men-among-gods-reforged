@@ -5,15 +5,18 @@
 //! opcode in [`crate::server_commands`]. The client renders particles and
 //! a tint overlay based on the kind.
 
-/// Bit in [`SetWeather.flags`](crate::server_commands::ServerCommandData::SetWeather)
-/// that marks the active weather as an admin override; the server's
-/// area-tick driver will not replace overridden weather until it expires.
-pub const WEATHER_FLAG_OVERRIDE: u8 = 0b1000_0000;
-
-/// Bit in [`SetWeather.flags`](crate::server_commands::ServerCommandData::SetWeather)
-/// hinting that the client should use additive blending for particles
-/// (e.g. fire, embers).
-pub const WEATHER_FLAG_ADDITIVE: u8 = 0b0000_0001;
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    /// Bitmask carried in [`SetWeather.flags`](crate::server_commands::ServerCommandData::SetWeather).
+    pub struct WeatherFlags: u8 {
+        /// Marks the active weather as an admin override; the server's
+        /// area-tick driver will not replace overridden weather until it expires.
+        const Override = 0b1000_0000;
+        /// Hints the client to use additive blending for particles
+        /// (e.g. fire, embers).
+        const Additive = 0b0000_0001;
+    }
+}
 
 /// All weather / ambient effect kinds the server can request.
 ///
