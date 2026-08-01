@@ -2,9 +2,7 @@ use sdl2::{pixels::Color, render::Canvas, video::Window};
 
 use mag_core::constants::{
     CMAGIC, DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, EMAGIC, GMAGIC, INJURED, INJURED1,
-    INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
-    MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
-    MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
+    INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, SPR_EMPTY, TILEX, TILEY, TOMB,
 };
 
 use crate::{
@@ -816,72 +814,6 @@ impl GameScene {
                 {
                     Self::draw_world_sprite(
                         canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-
-                if (tile.flags2 & MF_MOVEBLOCK) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 55, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_SIGHTBLOCK) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 84, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_INDOORS) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 56, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_UWATER) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 75, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOMONST) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 59, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_BANK) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 60, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_TAVERN) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 61, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOMAGIC) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 62, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_DEATHTRAP) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 73, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOLAG) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 57, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_ARENA) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 76, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOEXPIRE) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 82, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & 0x8000_0000) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 72, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                     )?;
                 }
 
