@@ -357,7 +357,7 @@ impl GameState {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
-                "No one knows when the gods where last seen.\n",
+                "No one knows when the gods were last seen.\n",
             );
             return;
         }
