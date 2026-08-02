@@ -1,9 +1,18 @@
 //! Minimal markdown-subset parser for Journal content.
 //!
 //! Deliberately hand-rolled and intentionally small: paragraphs separated by
-//! blank lines, `**bold**` emphasis spans, and standalone `![alt](path)`
-//! image lines. No headings, links, lists, or nested markup are supported —
-//! anything else is treated as plain text.
+//! blank lines, `**bold**` emphasis spans, standalone `![alt](path)` image
+//! lines, and two Journal-specific fenced-code-block extensions used to
+//! render server-driven completion data (see [`MdBlock::CompletionChecklist`]
+//! and [`MdBlock::CompletionCounter`]). No headings, links, lists, or nested
+//! markup are supported — anything else is treated as plain text.
+//!
+//! The two completion fences (` ```completion_checklist:<key> ` /
+//! ` ```completion_counter:<key> `) are plain fenced code blocks by design:
+//! an external, generic markdown viewer (e.g. GitHub, VS Code preview) will
+//! render their body as inert code text rather than crashing or mis-parsing,
+//! satisfying the "future portability" goal without needing a separate
+//! strip/post-process step.
 
 /// One inline run of text within a [`MdBlock::Paragraph`].
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -27,6 +36,29 @@ pub enum MdBlock {
         /// Alt text, shown as a fallback when the image fails to load.
         alt: String,
     },
+    /// A completion checklist, parsed from a
+    /// ` ```completion_checklist:<key> ` fenced block whose body lines are
+    /// `index: Label`.
+    CompletionChecklist {
+        /// Identifies which completion bitset this checklist renders against
+        /// (e.g. `"first_kill"`, `"explorer_points"`, `"quests"`,
+        /// `"labyrinth_overview"`). Interpreted by the renderer.
+        key: String,
+        /// `(index, label)` pairs, in source order.
+        items: Vec<(u16, String)>,
+    },
+    /// A completion counter, parsed from a
+    /// ` ```completion_counter:<key> ` fenced block whose body lines are
+    /// `label: ...` and optionally `max: N`.
+    CompletionCounter {
+        /// Identifies which completion value this counter renders (e.g.
+        /// `"pentagram_solves"`). Interpreted by the renderer.
+        key: String,
+        /// Optional upper bound, rendered as `value/max` when present.
+        max: Option<u32>,
+        /// Display label shown before the value.
+        label: String,
+    },
 }
 
 /// Parses `source` into a sequence of [`MdBlock`]s.
@@ -35,6 +67,13 @@ pub enum MdBlock {
 /// block consisting of exactly one line matching `![alt](path)` becomes an
 /// [`MdBlock::Image`]; any other block becomes an [`MdBlock::Paragraph`]
 /// with its lines joined by spaces and `**bold**` spans extracted.
+///
+/// Lines starting with `` ``` `` open a fenced block that runs until a line
+/// that is exactly `` ``` `` (or end of input). Fences tagged
+/// `completion_checklist:<key>` or `completion_counter:<key>` are parsed into
+/// the matching [`MdBlock`] variant; any other fenced content (unknown tag,
+/// plain code fence, or an unterminated fence) is treated as plain paragraph
+/// text instead, so this parser never panics on unexpected fenced content.
 ///
 /// # Arguments
 ///
@@ -47,17 +86,124 @@ pub enum MdBlock {
 pub fn parse(source: &str) -> Vec<MdBlock> {
     let mut blocks = Vec::new();
     let mut current_lines: Vec<&str> = Vec::new();
+    let lines: Vec<&str> = source.lines().collect();
 
-    for line in source.lines() {
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+
+        if let Some(tag) = line.trim().strip_prefix("```") {
+            let fence_start = i;
+            let close_idx = lines[(i + 1)..].iter().position(|l| l.trim() == "```");
+
+            match close_idx {
+                Some(offset) => {
+                    let close_idx = fence_start + 1 + offset;
+                    let body_lines = &lines[(fence_start + 1)..close_idx];
+                    let tag = tag.trim();
+                    if let Some(key) = tag.strip_prefix("completion_checklist:") {
+                        flush_paragraph(&mut current_lines, &mut blocks);
+                        blocks.push(parse_completion_checklist(key, body_lines));
+                    } else if let Some(key) = tag.strip_prefix("completion_counter:") {
+                        flush_paragraph(&mut current_lines, &mut blocks);
+                        blocks.push(parse_completion_counter(key, body_lines));
+                    } else {
+                        // Unknown tag or plain code fence: keep the fence
+                        // markers and body as plain paragraph text.
+                        current_lines.extend_from_slice(&lines[fence_start..=close_idx]);
+                    }
+                    i = close_idx + 1;
+                    continue;
+                }
+                None => {
+                    // Unterminated fence: treat the rest of the input as
+                    // plain paragraph text instead of panicking/looping.
+                    current_lines.extend_from_slice(&lines[fence_start..]);
+                    i = lines.len();
+                    continue;
+                }
+            }
+        }
+
         if line.trim().is_empty() {
             flush_paragraph(&mut current_lines, &mut blocks);
         } else {
             current_lines.push(line);
         }
+        i += 1;
     }
     flush_paragraph(&mut current_lines, &mut blocks);
 
     blocks
+}
+
+/// Parses the body of a `completion_checklist:<key>` fenced block.
+///
+/// Each non-blank body line is expected to be `index: Label`; lines that
+/// don't parse as `u16: text` are silently skipped (defensive against
+/// hand-typo'd markdown, never panics).
+///
+/// # Arguments
+///
+/// * `key` - The checklist key (text after the `completion_checklist:` tag).
+/// * `body_lines` - The fenced block's body lines (excluding the fence
+///   markers).
+///
+/// # Returns
+///
+/// * An [`MdBlock::CompletionChecklist`] with `key` and the parsed items.
+fn parse_completion_checklist(key: &str, body_lines: &[&str]) -> MdBlock {
+    let mut items = Vec::new();
+    for line in body_lines {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some((index_str, label)) = trimmed.split_once(':')
+            && let Ok(index) = index_str.trim().parse::<u16>()
+        {
+            items.push((index, label.trim().to_owned()));
+        }
+    }
+    MdBlock::CompletionChecklist {
+        key: key.to_owned(),
+        items,
+    }
+}
+
+/// Parses the body of a `completion_counter:<key>` fenced block.
+///
+/// Recognizes `label: ...` and `max: N` lines (any order, both optional);
+/// unrecognized lines are silently skipped.
+///
+/// # Arguments
+///
+/// * `key` - The counter key (text after the `completion_counter:` tag).
+/// * `body_lines` - The fenced block's body lines (excluding the fence
+///   markers).
+///
+/// # Returns
+///
+/// * An [`MdBlock::CompletionCounter`] with `key`, the parsed `max` (if any),
+///   and `label` (empty string if not specified).
+fn parse_completion_counter(key: &str, body_lines: &[&str]) -> MdBlock {
+    let mut max = None;
+    let mut label = String::new();
+    for line in body_lines {
+        let trimmed = line.trim();
+        if let Some(rest) = trimmed.strip_prefix("max:") {
+            if let Ok(parsed) = rest.trim().parse::<u32>() {
+                max = Some(parsed);
+            }
+        } else if let Some(rest) = trimmed.strip_prefix("label:") {
+            label = rest.trim().to_owned();
+        }
+    }
+    MdBlock::CompletionCounter {
+        key: key.to_owned(),
+        max,
+        label,
+    }
 }
 
 /// Flushes the currently accumulated non-blank `lines` into `blocks` as
@@ -268,6 +414,103 @@ mod tests {
                 MdInline::Text("This has an ".to_owned()),
                 MdInline::Text("**unmatched marker.".to_owned()),
             ])]
+        );
+    }
+
+    #[test]
+    fn completion_checklist_roundtrip() {
+        let src = "```completion_checklist:first_kill\n1: Weak Thief\n2: Thief\n```";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::CompletionChecklist {
+                key: "first_kill".to_owned(),
+                items: vec![(1, "Weak Thief".to_owned()), (2, "Thief".to_owned()),],
+            }]
+        );
+    }
+
+    #[test]
+    fn completion_checklist_skips_malformed_lines() {
+        let src = "```completion_checklist:quests\nnot_a_valid_line\n1: Valid Quest\n```";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::CompletionChecklist {
+                key: "quests".to_owned(),
+                items: vec![(1, "Valid Quest".to_owned())],
+            }]
+        );
+    }
+
+    #[test]
+    fn completion_counter_roundtrip() {
+        let src = "```completion_counter:pentagram_solves\nlabel: Times Solved\nmax: 10\n```";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::CompletionCounter {
+                key: "pentagram_solves".to_owned(),
+                max: Some(10),
+                label: "Times Solved".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn completion_counter_without_max_is_none() {
+        let src = "```completion_counter:pentagram_solves\nlabel: Times Solved\n```";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::CompletionCounter {
+                key: "pentagram_solves".to_owned(),
+                max: None,
+                label: "Times Solved".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn unknown_fence_tag_falls_back_to_paragraph() {
+        let src = "```rust\nfn main() {}\n```";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::Paragraph(vec![MdInline::Text(
+                "```rust fn main() {} ```".to_owned()
+            )])]
+        );
+    }
+
+    #[test]
+    fn unterminated_completion_fence_falls_back_to_paragraph() {
+        let src = "```completion_checklist:first_kill\n1: Weak Thief";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::Paragraph(vec![MdInline::Text(
+                "```completion_checklist:first_kill 1: Weak Thief".to_owned()
+            )])]
+        );
+    }
+
+    #[test]
+    fn completion_block_surrounded_by_paragraphs() {
+        let src =
+            "Intro.\n\n```completion_counter:pentagram_solves\nlabel: Times Solved\n```\n\nOutro.";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![
+                MdBlock::Paragraph(vec![MdInline::Text("Intro.".to_owned())]),
+                MdBlock::CompletionCounter {
+                    key: "pentagram_solves".to_owned(),
+                    max: None,
+                    label: "Times Solved".to_owned(),
+                },
+                MdBlock::Paragraph(vec![MdInline::Text("Outro.".to_owned())]),
+            ]
         );
     }
 }

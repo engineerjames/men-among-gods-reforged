@@ -79,6 +79,13 @@ pub enum ServerCommandType {
     /// (u16 LE) + tint_r (1) + tint_g (1) + tint_b (1) + tint_a (1) + flags
     /// (1) = **10 bytes total**. See [`crate::weather::WeatherKind`].
     SetWeather = 76,
+    /// Full snapshot of the character's Journal completion state.
+    ///
+    /// Wire format: opcode (1) + labyrinth_progress (1) + pentagram_solves
+    /// (u32 LE) + first_kill_bits (4x u32 LE) + explorer_point_bits (4x u32
+    /// LE) + quest_completion_bits (u32 LE) = **42 bytes total**. Always
+    /// sent as a full snapshot (no delta mode) since the payload is small.
+    SetCompletionData = 77,
     SetMap = 128,
 }
 
@@ -199,6 +206,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharDir => 2,
             ServerCommandType::SetCharTalents => 26,
             ServerCommandType::SetWeather => 10,
+            ServerCommandType::SetCompletionData => 42,
             ServerCommandType::SetCharPts => 13,
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
@@ -309,6 +317,7 @@ impl From<u8> for ServerCommandType {
             74 => ServerCommandType::Pong,
             75 => ServerCommandType::SetCharTalents,
             76 => ServerCommandType::SetWeather,
+            77 => ServerCommandType::SetCompletionData,
             128 => ServerCommandType::SetMap,
             _ => {
                 log::error!("Unknown server command opcode: {value}");
@@ -509,6 +518,15 @@ pub enum ServerCommandData {
         duration_ticks: u16,
         tint: [u8; 4],
         flags: u8,
+    },
+    /// Full snapshot of Journal completion state. See
+    /// [`ServerCommandType::SetCompletionData`] for the wire layout.
+    SetCompletionData {
+        labyrinth_progress: u8,
+        pentagram_solves: u32,
+        first_kill_bits: [u32; 4],
+        explorer_point_bits: [u32; 4],
+        quest_completion_bits: u32,
     },
     Load {
         load: u32,
@@ -1115,6 +1133,26 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 flags: *bytes.get(9)?,
             },
         )),
+        77 => Some((
+            ServerCommandType::SetCompletionData,
+            ServerCommandData::SetCompletionData {
+                labyrinth_progress: *bytes.get(1)?,
+                pentagram_solves: read_u32(bytes, 2)?,
+                first_kill_bits: [
+                    read_u32(bytes, 6)?,
+                    read_u32(bytes, 10)?,
+                    read_u32(bytes, 14)?,
+                    read_u32(bytes, 18)?,
+                ],
+                explorer_point_bits: [
+                    read_u32(bytes, 22)?,
+                    read_u32(bytes, 26)?,
+                    read_u32(bytes, 30)?,
+                    read_u32(bytes, 34)?,
+                ],
+                quest_completion_bits: read_u32(bytes, 38)?,
+            },
+        )),
         _ => None,
     }
 }
@@ -1360,5 +1398,59 @@ mod tests {
     #[test]
     fn set_weather_opcode_decodes_from_u8() {
         assert_eq!(ServerCommandType::from(76), ServerCommandType::SetWeather);
+    }
+
+    // -- SV_COMPLETIONDATA (opcode 77) --
+
+    #[test]
+    fn parse_set_completion_data_roundtrip() {
+        let mut pkt = [0u8; 42];
+        pkt[0] = 77;
+        pkt[1] = 7; // labyrinth_progress
+        pkt[2..6].copy_from_slice(&42u32.to_le_bytes()); // pentagram_solves
+        pkt[6..10].copy_from_slice(&1u32.to_le_bytes());
+        pkt[10..14].copy_from_slice(&2u32.to_le_bytes());
+        pkt[14..18].copy_from_slice(&3u32.to_le_bytes());
+        pkt[18..22].copy_from_slice(&4u32.to_le_bytes()); // first_kill_bits
+        pkt[22..26].copy_from_slice(&5u32.to_le_bytes());
+        pkt[26..30].copy_from_slice(&6u32.to_le_bytes());
+        pkt[30..34].copy_from_slice(&7u32.to_le_bytes());
+        pkt[34..38].copy_from_slice(&8u32.to_le_bytes()); // explorer_point_bits
+        pkt[38..42].copy_from_slice(&9u32.to_le_bytes()); // quest_completion_bits
+
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_eq!(cmd.header, ServerCommandType::SetCompletionData);
+        match cmd.structured_data {
+            ServerCommandData::SetCompletionData {
+                labyrinth_progress,
+                pentagram_solves,
+                first_kill_bits,
+                explorer_point_bits,
+                quest_completion_bits,
+            } => {
+                assert_eq!(labyrinth_progress, 7);
+                assert_eq!(pentagram_solves, 42);
+                assert_eq!(first_kill_bits, [1, 2, 3, 4]);
+                assert_eq!(explorer_point_bits, [5, 6, 7, 8]);
+                assert_eq!(quest_completion_bits, 9);
+            }
+            _ => panic!("Expected SetCompletionData variant"),
+        }
+    }
+
+    #[test]
+    fn set_completion_data_expected_length_is_42() {
+        let pkt = make_packet(77, &[0; 41]);
+        let mut last_n = 0i32;
+        let len = ServerCommandType::get_expected_length(&pkt, &mut last_n).unwrap();
+        assert_eq!(len, 42);
+    }
+
+    #[test]
+    fn set_completion_data_opcode_decodes_from_u8() {
+        assert_eq!(
+            ServerCommandType::from(77),
+            ServerCommandType::SetCompletionData
+        );
     }
 }

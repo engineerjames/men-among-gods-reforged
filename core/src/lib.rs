@@ -24,6 +24,7 @@ pub mod constants;
 pub mod item_store;
 pub mod logout_reasons;
 pub mod map_store;
+pub mod monster_classes;
 pub mod names;
 pub mod performance_wrapper;
 pub mod ranks;

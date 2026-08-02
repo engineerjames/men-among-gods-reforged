@@ -16,6 +16,7 @@ mod path_finding;
 mod player;
 mod points;
 mod populate;
+mod quest_completion;
 mod server;
 mod state;
 mod talk;

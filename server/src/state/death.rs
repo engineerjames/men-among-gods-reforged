@@ -301,6 +301,9 @@ impl GameState {
                             );
                             let score = self.do_char_score(character_id) * 25;
                             self.do_give_exp(killer_id, score, 0, -1);
+                            crate::player::commands::resend_completion_data_for_character(
+                                self, killer_id,
+                            );
                         }
                     }
                 }

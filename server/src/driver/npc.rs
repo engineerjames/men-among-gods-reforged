@@ -907,6 +907,14 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
             );
         }
 
+        // Journal "Quests Completable" tracking: a hand-authored table maps
+        // this NPC's template number to a quest id; set the matching bit in
+        // the receiving player's completion bitset if found.
+        if let Some(quest) = crate::quest_completion::find_by_npc_temp(gs.characters[cn].temp) {
+            gs.characters[co].future3[1] |= 1 << quest.id;
+            crate::player::commands::resend_completion_data_for_character(gs, co);
+        }
+
         // Quest-requested items: teach skill / give exp
         let nr = gs.characters[cn].data[50];
         if nr != 0 {

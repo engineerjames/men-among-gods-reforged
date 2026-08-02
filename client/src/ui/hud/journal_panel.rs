@@ -15,6 +15,7 @@ use crate::font_cache;
 use crate::journal::catalog::JOURNAL_CATALOG;
 use crate::journal::content;
 use crate::journal::markdown::{MdBlock, MdInline};
+use crate::player_state::CompletionSnapshot;
 use crate::ui::RenderContext;
 use crate::ui::widget::{Bounds, EventResponse, HudPanel, UiEvent, Widget, WidgetAction};
 use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
@@ -54,6 +55,57 @@ const BOLD_TINT: Color = Color::RGBA(255, 210, 110, 255);
 /// Bitmap font index (yellow, sprite 701) used throughout the panel.
 const UI_FONT: usize = 0;
 
+/// Per-frame data pushed into [`JournalPanel::update_data`].
+pub struct JournalPanelData {
+    /// Latest server-driven Journal completion snapshot.
+    pub completion: CompletionSnapshot,
+}
+
+/// Returns whether `key` is a checklist key this panel knows how to resolve.
+fn checklist_key_is_known(key: &str) -> bool {
+    matches!(
+        key,
+        "first_kill" | "explorer_points" | "quests" | "labyrinth_overview"
+    )
+}
+
+/// Resolves whether checklist item `index` (for the given `key`) is checked,
+/// given the current completion snapshot. Returns `false` for unknown keys
+/// (callers should gate on [`checklist_key_is_known`] first to show a
+/// dedicated "unknown key" message instead).
+fn resolve_checklist_bit(completion: &CompletionSnapshot, key: &str, index: u16) -> bool {
+    match key {
+        "first_kill" => bit_at(&completion.first_kill_bits, index),
+        "explorer_points" => bit_at(&completion.explorer_point_bits, index),
+        "quests" => index < 32 && (completion.quest_completion_bits >> index) & 1 != 0,
+        "labyrinth_overview" => u16::from(completion.labyrinth_progress) >= index,
+        _ => false,
+    }
+}
+
+/// Reads bit `index` out of a 4x32-bit flag array (128 bits total), as used
+/// by `first_kill_bits` / `explorer_point_bits`.
+fn bit_at(bits: &[u32; 4], index: u16) -> bool {
+    let slot = (index / 32) as usize;
+    let bit = index % 32;
+    slot < bits.len() && (bits[slot] >> bit) & 1 != 0
+}
+
+/// Returns whether `key` is a counter key this panel knows how to resolve.
+fn counter_key_is_known(key: &str) -> bool {
+    matches!(key, "pentagram_solves")
+}
+
+/// Resolves the numeric value for counter `key`, given the current
+/// completion snapshot. Returns `0` for unknown keys (callers should gate on
+/// [`counter_key_is_known`] first).
+fn resolve_counter_value(completion: &CompletionSnapshot, key: &str) -> u32 {
+    match key {
+        "pentagram_solves" => completion.pentagram_solves,
+        _ => 0,
+    }
+}
+
 // ---------------------------------------------------------------------------
 // JournalPanel
 // ---------------------------------------------------------------------------
@@ -90,6 +142,11 @@ pub struct JournalPanel {
     /// Lazily loaded image textures, keyed by content-relative path.
     /// `None` records a load failure so it isn't retried every frame.
     image_textures: HashMap<String, Option<usize>>,
+
+    /// Latest server-driven Journal completion snapshot, used to fill in
+    /// checkbox/counter state for [`MdBlock::CompletionChecklist`] and
+    /// [`MdBlock::CompletionCounter`] blocks.
+    completion: CompletionSnapshot,
 }
 
 impl JournalPanel {
@@ -118,14 +175,29 @@ impl JournalPanel {
             hovered_category: None,
             hovered_subcategory: None,
             image_textures: HashMap::new(),
+            completion: CompletionSnapshot::default(),
         };
         panel.select_category(0);
         panel
     }
 
+    /// Per-frame data pushed into the Journal panel from `AppState`.
+    ///
     /// Toggles the panel's visibility.
     pub fn toggle(&mut self) {
         self.visible = !self.visible;
+    }
+
+    /// Updates the panel's cached Journal completion snapshot.
+    ///
+    /// Call every frame (like other HUD panels' `update_data`), typically
+    /// sourced from `PlayerState::completion()`.
+    ///
+    /// # Arguments
+    ///
+    /// * `data` - The latest completion snapshot to render against.
+    pub fn update_data(&mut self, data: JournalPanelData) {
+        self.completion = data.completion;
     }
 
     /// Returns whether the panel is currently visible.
@@ -424,6 +496,20 @@ impl JournalPanel {
                         None => glyph_h,
                     }
                 }
+                MdBlock::CompletionChecklist { key, items } => {
+                    if !checklist_key_is_known(key) {
+                        glyph_h
+                    } else {
+                        let mut h = 0;
+                        for (_, label) in items {
+                            let text = format!("[ ] {label}");
+                            let lines = font_cache::wrap_lines_bitmap(&text, text_width);
+                            h += lines.len().max(1) as i32 * glyph_h;
+                        }
+                        h.max(glyph_h)
+                    }
+                }
+                MdBlock::CompletionCounter { .. } => glyph_h,
             };
             heights.push(height);
         }
@@ -482,6 +568,57 @@ impl JournalPanel {
                                 font_cache::TextStyle::default(),
                             )?;
                         }
+                    }
+                    MdBlock::CompletionChecklist { key, items } => {
+                        if !checklist_key_is_known(key) {
+                            font_cache::draw_text(
+                                ctx.canvas,
+                                ctx.gfx,
+                                UI_FONT,
+                                &format!("Unknown completion key: {key}"),
+                                content.x + CONTENT_PAD,
+                                y,
+                                font_cache::TextStyle::default(),
+                            )?;
+                        } else {
+                            let mut ry = y;
+                            for (index, label) in items {
+                                let checked = resolve_checklist_bit(&self.completion, key, *index);
+                                let prefix = if checked { "[x] " } else { "[ ] " };
+                                let text = format!("{prefix}{label}");
+                                let lines_drawn = font_cache::draw_wrapped_text(
+                                    ctx.canvas,
+                                    ctx.gfx,
+                                    UI_FONT,
+                                    &text,
+                                    content.x + CONTENT_PAD,
+                                    ry,
+                                    text_width,
+                                    font_cache::TextStyle::default(),
+                                )?;
+                                ry += lines_drawn.max(1) as i32 * glyph_h;
+                            }
+                        }
+                    }
+                    MdBlock::CompletionCounter { key, max, label } => {
+                        let text = if counter_key_is_known(key) {
+                            let value = resolve_counter_value(&self.completion, key);
+                            match max {
+                                Some(m) => format!("{label}: {value}/{m}"),
+                                None => format!("{label}: {value}"),
+                            }
+                        } else {
+                            format!("Unknown completion key: {key}")
+                        };
+                        font_cache::draw_text(
+                            ctx.canvas,
+                            ctx.gfx,
+                            UI_FONT,
+                            &text,
+                            content.x + CONTENT_PAD,
+                            y,
+                            font_cache::TextStyle::default(),
+                        )?;
                     }
                 }
             }

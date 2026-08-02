@@ -53,6 +53,9 @@ pub struct PlayerState {
     /// `talents[0]` is the unspent points pool; `talents[1..24]` are the
     /// per-layer bit fields (8 nodes per byte). See `core::talent_trees`.
     talents: [u8; 25],
+
+    /// Latest server snapshot of Journal completion-tracking state.
+    completion: CompletionSnapshot,
 }
 
 /// A cached (nr --> name) entry used by the auto-look name overlay.
@@ -60,6 +63,25 @@ pub struct PlayerState {
 struct LookNameEntry {
     id: u16,
     name: String,
+}
+
+/// Latest server snapshot of Journal completion-tracking state.
+///
+/// Mirrors the fields of `ServerCommandData::SetCompletionData` verbatim; see
+/// `core::server_commands::ServerCommandType::SetCompletionData` for the wire
+/// layout and field semantics.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CompletionSnapshot {
+    /// Highest labyrinth stage solved (`Character.data[20]` server-side).
+    pub labyrinth_progress: u8,
+    /// Number of times this character has personally solved the pentagram quest.
+    pub pentagram_solves: u32,
+    /// First-kill bits for monster classes 0-127, one bit per class id.
+    pub first_kill_bits: [u32; 4],
+    /// Explorer-point ("poles") visited bits.
+    pub explorer_point_bits: [u32; 4],
+    /// Hand-authored quest-completion bitset (bit index = `QuestDef::id`).
+    pub quest_completion_bits: u32,
 }
 
 impl Default for PlayerState {
@@ -94,6 +116,8 @@ impl Default for PlayerState {
             exit_requested_reason: None,
 
             talents: [0; 25],
+
+            completion: CompletionSnapshot::default(),
         }
     }
 }
@@ -165,6 +189,17 @@ impl PlayerState {
     /// * Value returned by `talents`.
     pub fn talents(&self) -> &[u8; 25] {
         &self.talents
+    }
+
+    /// Returns the latest server snapshot of Journal completion-tracking
+    /// state (labyrinth progress, pentagram solves, first-kill/explorer-point
+    /// bitsets, and hand-authored quest-completion bitset).
+    ///
+    /// # Returns
+    ///
+    /// * Value returned by `completion`.
+    pub fn completion(&self) -> &CompletionSnapshot {
+        &self.completion
     }
 
     /// Returns `true` when the shop overlay should be displayed.
@@ -496,6 +531,21 @@ impl PlayerState {
             }
             ServerCommandData::SetCharTalents { values } => {
                 self.talents = *values;
+            }
+            ServerCommandData::SetCompletionData {
+                labyrinth_progress,
+                pentagram_solves,
+                first_kill_bits,
+                explorer_point_bits,
+                quest_completion_bits,
+            } => {
+                self.completion = CompletionSnapshot {
+                    labyrinth_progress: *labyrinth_progress,
+                    pentagram_solves: *pentagram_solves,
+                    first_kill_bits: *first_kill_bits,
+                    explorer_point_bits: *explorer_point_bits,
+                    quest_completion_bits: *quest_completion_bits,
+                };
             }
             ServerCommandData::SetCharHp { values } => {
                 self.character_info.hp = *values;

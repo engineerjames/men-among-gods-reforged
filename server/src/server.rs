@@ -327,6 +327,45 @@ impl Server {
             }
         }
 
+        log::info!("Journal completion-data diagnostics:");
+        for quest in crate::quest_completion::QUEST_DEFS {
+            log::info!(
+                "  Quest id={} npc_temp={} label=\"{}\"",
+                quest.id,
+                quest.npc_temp,
+                quest.label
+            );
+        }
+        {
+            let mut points: Vec<(usize, u8, u16, u16)> = Vec::new();
+            for n in 1..gs.items.len() {
+                if gs.items[n].used == core::constants::USE_EMPTY {
+                    continue;
+                }
+                if gs.items[n].driver != 57 {
+                    continue;
+                }
+                for (slot, &mask) in gs.items[n].data[0..4].iter().enumerate() {
+                    for bit in 0..32u8 {
+                        if mask & (1 << bit) != 0 {
+                            points.push((slot, bit, gs.items[n].x, gs.items[n].y));
+                        }
+                    }
+                }
+            }
+            points.sort_unstable_by_key(|&(slot, bit, _, _)| (slot, bit));
+            for (slot, bit, x, y) in points {
+                log::info!(
+                    "  Explorer point id={} slot={} bit={} at ({}, {})",
+                    slot * 32 + bit as usize,
+                    slot,
+                    bit,
+                    x,
+                    y
+                );
+            }
+        }
+
         // Always spawn the background KeyDB saver.
         log::info!("Starting background KeyDB saver thread...");
         self.background_saver = Some(background_saver::spawn());
