@@ -1,6 +1,7 @@
 pub mod button_bar;
 pub mod chat_box;
 pub mod inventory_panel;
+pub mod journal_panel;
 pub mod keybindings_panel;
 pub mod look_panel;
 pub mod minimap_widget;

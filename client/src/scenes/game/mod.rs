@@ -62,6 +62,7 @@ use crate::{
         hud::button_bar::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::inventory_panel::InventoryPanel,
+        hud::journal_panel::{JOURNAL_PANEL_H, JOURNAL_PANEL_W, JournalPanel},
         hud::look_panel::LookPanel,
         hud::minimap_widget::MinimapWidget,
         hud::mode_button::ModeButton,
@@ -576,6 +577,7 @@ pub struct GameScene {
     pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
     pub(super) talent_panel: TalentPanel,
+    pub(super) journal_panel: JournalPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
@@ -798,6 +800,15 @@ impl GameScene {
                     );
                     Bounds::new(tx, ty, TALENT_PANEL_W, TALENT_PANEL_H)
                 },
+                HUD_PANEL_BG,
+            ),
+            journal_panel: JournalPanel::new(
+                Bounds::new(
+                    (TARGET_WIDTH_INT as i32 - JOURNAL_PANEL_W as i32) / 2,
+                    (TARGET_HEIGHT_INT as i32 - JOURNAL_PANEL_H as i32) / 2,
+                    JOURNAL_PANEL_W,
+                    JOURNAL_PANEL_H,
+                ),
                 HUD_PANEL_BG,
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
@@ -1709,6 +1720,10 @@ impl GameScene {
             return true;
         }
 
+        if self.journal_panel.is_visible() && self.journal_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
+
         if self.settings_panel.is_visible() && self.settings_panel.bounds().contains_point(mx, my) {
             return true;
         }
@@ -1724,6 +1739,8 @@ impl GameScene {
             || (self.settings_panel.is_visible()
                 && self.settings_panel.bounds().contains_point(mx, my))
             || (self.talent_panel.is_visible() && self.talent_panel.bounds().contains_point(mx, my))
+            || (self.journal_panel.is_visible()
+                && self.journal_panel.bounds().contains_point(mx, my))
             || (self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my))
             || (self.skill_picker.is_visible() && self.skill_picker.bounds().contains_point(mx, my))
     }
@@ -2782,6 +2799,7 @@ impl Scene for GameScene {
             // overlaps the skill bar, so it is drawn after the legacy HUD
             // chrome to keep its description box visible.
             self.talent_panel.render(&mut ctx)?;
+            self.journal_panel.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);

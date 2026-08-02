@@ -582,6 +582,22 @@ impl GameScene {
         }
     }
 
+    /// Drain pending `WidgetAction`s from the Journal panel.
+    ///
+    /// The Journal is purely client-local static content, so the only
+    /// action it can ever produce is a `TogglePanel` from its title bar's
+    /// close button, which needs no further handling.
+    pub(crate) fn process_journal_panel_actions(&mut self) {
+        for action in self.journal_panel.take_actions() {
+            match action {
+                WidgetAction::TogglePanel(_) => {
+                    // Panel was closed via its title bar X button.
+                }
+                _ => {}
+            }
+        }
+    }
+
     /// Drain pending `WidgetAction`s from the shop panel and send the
     /// corresponding network commands, or close the shop.
     ///
@@ -652,6 +668,10 @@ impl GameScene {
         }
         if self.talent_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
             self.process_talent_panel_actions(app_state);
+            return Some(UiHandleResult::Consumed);
+        }
+        if self.journal_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
+            self.process_journal_panel_actions();
             return Some(UiHandleResult::Consumed);
         }
 
@@ -816,7 +836,7 @@ impl GameScene {
                         HudPanel::Minimap => self.minimap_widget.toggle(),
                         HudPanel::KeyBindings => {}
                         HudPanel::Talents => self.talent_panel.toggle(),
-                        HudPanel::Journal => {}
+                        HudPanel::Journal => self.journal_panel.toggle(),
                     }
                 }
             }
