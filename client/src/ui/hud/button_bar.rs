@@ -131,7 +131,7 @@ impl HudButtonBar {
                     HudPanel::Settings => "Settings",
                     HudPanel::Minimap => "Minimap",
                     HudPanel::KeyBindings => "Key Bindings",
-                    HudPanel::QuestLog => "Quest Log",
+                    HudPanel::Journal => "Journal",
                 });
             }
         }

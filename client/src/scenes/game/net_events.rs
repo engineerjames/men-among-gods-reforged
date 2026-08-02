@@ -582,29 +582,6 @@ impl GameScene {
         }
     }
 
-    /// Drain pending `WidgetAction`s from the quest log panel and apply
-    /// `SetActiveQuest` selections locally (pure UI state).
-    ///
-    /// # Arguments
-    ///
-    /// * `app_state` - Shared application state.
-    pub(crate) fn process_quest_log_panel_actions(&mut self, app_state: &mut AppState<'_>) {
-        for action in self.quest_log_panel.take_actions() {
-            match action {
-                WidgetAction::SetActiveQuest { npc_template_id } => {
-                    self.play_click_sound(app_state);
-                    if let Some(ps) = app_state.player_state.as_mut() {
-                        ps.set_active_quest(npc_template_id);
-                    }
-                }
-                WidgetAction::TogglePanel(_) => {
-                    // Panel was closed via its title bar X button.
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// Drain pending `WidgetAction`s from the shop panel and send the
     /// corresponding network commands, or close the shop.
     ///
@@ -675,11 +652,6 @@ impl GameScene {
         }
         if self.talent_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed {
             self.process_talent_panel_actions(app_state);
-            return Some(UiHandleResult::Consumed);
-        }
-        if self.quest_log_panel.handle_event(ui_event) == crate::ui::widget::EventResponse::Consumed
-        {
-            self.process_quest_log_panel_actions(app_state);
             return Some(UiHandleResult::Consumed);
         }
 
@@ -844,7 +816,7 @@ impl GameScene {
                         HudPanel::Minimap => self.minimap_widget.toggle(),
                         HudPanel::KeyBindings => {}
                         HudPanel::Talents => self.talent_panel.toggle(),
-                        HudPanel::QuestLog => self.quest_log_panel.toggle(),
+                        HudPanel::Journal => {}
                     }
                 }
             }

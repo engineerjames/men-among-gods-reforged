@@ -26,23 +26,12 @@ Rust representation is unsigned because talent storage is byte-oriented.
 
 ### `future2: [i16; 49]`
 
-**Status: active per-player quest discovery + completion state.**
+**Status: unused. Reserved scratch space.**
 
-Each slot corresponds to a `QuestCatalog` index (49 max) and carries a
-tri-state value:
-
-| Value          | Meaning                                                                 |
-|----------------|-------------------------------------------------------------------------|
-| `-1`           | **Undiscovered**. Player has never been close enough to the quest-giver NPC for the quest to show up in the quest log. The minimap pin for that NPC is still visible. |
-| `0`            | **Discovered, no turn-ins yet.** Set when `npc_see` sights the player within the auto-talk gate (`do_char_can_see` both ways + distance < 3.5). |
-| `1..=stages`   | Number of accepted turn-ins (saturating per `QuestCatalogEntry::stages`; repeatable quests cap at `1`). |
-
-`Character::default()` initializes the array to `[-1; 49]`. Discovery is
-written by `crate::player::quest_log::record_discovery` and turn-ins by
-`record_turn_in` (`bump_completion` treats `-1` as `0` before
-incrementing, so a turn-in implicitly discovers). Both helpers emit a
-single-entry `SV_SETQUESTCOMPLETION` delta; a full snapshot is sent at
-login.
+Previously repurposed for per-player quest discovery/completion state
+(removed along with the dynamic quest-log system in favor of the static
+Journal panel). `Character::default()` still initializes the array to
+`[-1; 49]`, but nothing reads or writes it anymore.
 
 ### `future3: [i32; 12]`
 

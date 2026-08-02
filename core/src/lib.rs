@@ -26,7 +26,6 @@ pub mod logout_reasons;
 pub mod map_store;
 pub mod names;
 pub mod performance_wrapper;
-pub mod quest_defs;
 pub mod ranks;
 pub mod server_commands;
 pub mod skills;
