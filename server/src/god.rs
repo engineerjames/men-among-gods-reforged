@@ -306,11 +306,55 @@ impl God {
 
         for (try_x, try_y) in positions_to_try.iter() {
             if Self::drop_char_fuzzy_large(gs, character_id, *try_x, *try_y, x, y) {
+                Self::move_companions_with_owner(gs, character_id);
                 return true;
             }
         }
 
         false
+    }
+
+    /// Brings a player's live Ghost Companion(s) along after `transfer_char`
+    /// relocates them.
+    ///
+    /// Covers both the base `CHD_COMPANION` slot and the `CHD_COMPANION2`
+    /// slot granted by the Kindred Spirit talent, so both companions follow
+    /// when a player recalls, steps on a portal/hole/ladder, uses a
+    /// teleport/lag scroll, is moved by `/goto`, or dies and is returned to
+    /// their temple.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `owner_id` - Character id that was just transferred.
+    fn move_companions_with_owner(gs: &mut GameState, owner_id: usize) {
+        if (gs.characters[owner_id].flags & CharacterFlags::Player.bits()) == 0 {
+            return;
+        }
+
+        let (x, y) = (
+            gs.characters[owner_id].x as usize,
+            gs.characters[owner_id].y as usize,
+        );
+
+        for slot in [
+            core::constants::CHD_COMPANION,
+            core::constants::CHD_COMPANION2,
+        ] {
+            let cc = gs.characters[owner_id].data[slot] as usize;
+            if cc == 0 || !Character::is_sane_character(cc) {
+                continue;
+            }
+            if gs.characters[cc].data[63] != owner_id as i32
+                || gs.characters[cc].temp != core::constants::CT_COMPANION as u16
+                || gs.characters[cc].used == core::constants::USE_EMPTY
+                || (gs.characters[cc].flags & CharacterFlags::Body.bits()) != 0
+                || (gs.characters[cc].x as usize == x && gs.characters[cc].y as usize == y)
+            {
+                continue;
+            }
+            Self::transfer_char(gs, cc, x, y);
+        }
     }
 
     /// Place a character near a tile using an explicit game-state borrow.
@@ -5017,7 +5061,7 @@ impl God {
         } else {
             target_arg
         };
-        let flags = core::weather::WEATHER_FLAG_OVERRIDE;
+        let flags = core::weather::WeatherFlags::Override.bits();
 
         let mut targets: Vec<usize> = Vec::new();
         match target {
@@ -5153,6 +5197,78 @@ mod tests {
             gs.characters[cn].y = 100;
 
             let _ = God::transfer_char(gs, cn, 1, 100);
+        });
+    }
+
+    /// Sets up a companion character at `cc` owned by `owner`, filling in both
+    /// the `CHD_COMPANION`/`CHD_COMPANION2` slot on the owner and the
+    /// back-reference (`data[63]`) on the companion.
+    fn make_companion(gs: &mut super::GameState, owner: usize, cc: usize, slot: usize) {
+        use core::constants::{CT_COMPANION, USE_ACTIVE};
+
+        let (owner_x, owner_y) = (gs.characters[owner].x, gs.characters[owner].y);
+        let ch = &mut gs.characters[cc];
+        *ch = core::types::Character::default();
+        ch.used = USE_ACTIVE;
+        ch.temp = CT_COMPANION as u16;
+        ch.x = owner_x;
+        ch.y = owner_y;
+        ch.data[63] = owner as i32;
+
+        gs.characters[owner].data[slot] = cc as i32;
+    }
+
+    #[test]
+    fn transfer_char_brings_both_ghost_companions_along() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 10;
+
+            make_companion(gs, cn, 2, core::constants::CHD_COMPANION);
+            make_companion(gs, cn, 3, core::constants::CHD_COMPANION2);
+
+            assert!(God::transfer_char(gs, cn, 50, 60));
+
+            let (owner_x, owner_y) = (
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
+            );
+
+            for &cc in &[2usize, 3usize] {
+                let (cc_x, cc_y) = (
+                    i32::from(gs.characters[cc].x),
+                    i32::from(gs.characters[cc].y),
+                );
+                assert!(
+                    (cc_x - owner_x).abs() <= 3 && (cc_y - owner_y).abs() <= 3,
+                    "companion {} at ({}, {}) not near owner at ({}, {})",
+                    cc,
+                    cc_x,
+                    cc_y,
+                    owner_x,
+                    owner_y
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn transfer_char_does_not_move_companion_when_transferring_the_companion_itself() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 10;
+
+            make_companion(gs, cn, 2, core::constants::CHD_COMPANION);
+
+            // Transferring the companion directly must not recurse back into
+            // moving the owner (companions never own companions).
+            assert!(God::transfer_char(gs, 2, 200, 200));
+            assert_ne!(
+                (gs.characters[cn].x, gs.characters[cn].y),
+                (gs.characters[2].x, gs.characters[2].y)
+            );
         });
     }
 }

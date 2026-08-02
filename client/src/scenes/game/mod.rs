@@ -38,7 +38,7 @@ use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video
 
 use mag_core::{
     client_commands::ClientCommand,
-    constants::{TILEX, TILEY},
+    constants::{MF_INDOORS, TILEX, TILEY},
     ranks, skills,
     skills::{SK_BLAST, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex},
     types::api::NetworkTestSummary,
@@ -2664,8 +2664,16 @@ impl Scene for GameScene {
         // the world camera below. Rendering the weather overlay still happens
         // *after* the world pass so particles/tints layer on top.
         if settings.weather_enabled {
-            self.weather
-                .update_auto(TARGET_WIDTH_INT as i32, TARGET_HEIGHT_INT as i32);
+            let is_indoors = ps
+                .map()
+                .tile_at_xy(TILEX / 2, TILEY / 2)
+                .map(|t| (t.flags2 & MF_INDOORS) != 0)
+                .unwrap_or(false);
+            self.weather.update_auto(
+                TARGET_WIDTH_INT as i32,
+                TARGET_HEIGHT_INT as i32,
+                is_indoors,
+            );
         } else {
             // Pause (not reset) so re-enabling resumes the same effect; the
             // server only re-sends when the resolved state changes.

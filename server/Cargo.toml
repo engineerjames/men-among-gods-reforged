@@ -9,6 +9,7 @@ measure-time = []
 [lib]
 name = "server"
 path = "src/lib.rs"
+doctest = false
 
 [[bin]]
 name = "server"

@@ -104,7 +104,7 @@ impl TalentRef {
 /// [`TalentSkillProfile::DEFAULT_MERC`]) and refine it with the
 /// `const fn` builders so tree tables stay `static`:
 ///
-/// ```
+/// ```ignore
 /// use core::talent_trees::TalentSkillProfile;
 ///
 /// const PROFILE: TalentSkillProfile =

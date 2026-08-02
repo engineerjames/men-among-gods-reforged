@@ -10,7 +10,6 @@ use core::types::FontColor;
 
 use crate::driver;
 use crate::game_state::GameState;
-use crate::god::God;
 use crate::helpers;
 
 impl GameState {
@@ -248,13 +247,15 @@ impl GameState {
                 core::types::FontColor::Yellow,
                 "Your Companion killed your enemy.\n",
             );
+            // `finish_laby_teleport` transfers the master (`cc`), which in turn
+            // brings along any live Ghost Companion(s) it owns (including `cn`)
+            // via `God::transfer_char`'s companion-follow logic.
             driver::finish_laby_teleport(
                 self,
                 cc,
                 self.characters[co].data[1] as usize,
                 self.characters[co].data[2] as usize,
             );
-            God::transfer_char(self, cn, 512, 512);
             log::info!("Labkeeper room solved by GC: cc={}", cc);
             return;
         }
@@ -279,17 +280,9 @@ impl GameState {
         let ty = self.characters[co].data[2] as usize;
         driver::finish_laby_teleport(self, cn, tx, ty);
         log::info!("Solved Labkeeper Room: cn={}", cn);
-
-        // If cn has a GC in data[64] which is sane and a companion, transfer it as well
-        let cc2 = self.characters[cn].data[64] as usize;
-        // The C++ checks IS_SANENPC(cc) && IS_COMPANION(cc). We'll approximate by checking used/temp flags.
-        if cc2 != 0 {
-            let is_sane_and_companion = self.characters[cc2].used != core::constants::USE_EMPTY
-                && (self.characters[cc2].temp == core::constants::CT_COMPANION as u16);
-            if is_sane_and_companion {
-                God::transfer_char(self, cc2, 512, 512);
-            }
-        }
+        // Any live Ghost Companion(s) owned by `cn` (both the base slot and
+        // the Kindred Spirit second slot) are brought along automatically by
+        // `God::transfer_char`'s companion-follow logic inside `finish_laby_teleport`.
     }
 
     /// Port of `do_char_score(cn)` from `svr_do.cpp`.
@@ -364,7 +357,7 @@ impl GameState {
             self.do_character_log(
                 cn,
                 core::types::FontColor::Red,
-                "No one knows when the gods where last seen.\n",
+                "No one knows when the gods were last seen.\n",
             );
             return;
         }
