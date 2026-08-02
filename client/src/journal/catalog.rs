@@ -49,7 +49,7 @@ pub static JOURNAL_CATALOG: &[JournalCategory] = &[
     },
     JournalCategory {
         label: "Labyrinth",
-        content_file: None,
+        content_file: Some("labyrinth/overview.md"),
         subcategories: &[
             JournalSubcategory {
                 label: "Lab One: Grolms",

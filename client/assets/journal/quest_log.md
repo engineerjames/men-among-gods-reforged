@@ -1,3 +1,7 @@
 **Quest Log**
 
-Content coming soon.
+![Sample](../gfx/Protect.png)
+
+```completion_checklist:quests
+0: Black Candle (Cityguard)
+```

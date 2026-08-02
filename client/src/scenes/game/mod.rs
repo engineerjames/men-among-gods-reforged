@@ -2724,6 +2724,10 @@ impl Scene for GameScene {
                 self.hud_buttons.set_talent_points_badge(
                     mag_core::talent_trees::available_talent_points(ps.talents()),
                 );
+                use crate::ui::hud::journal_panel::JournalPanelData;
+                self.journal_panel.update_data(JournalPanelData {
+                    completion: *ps.completion(),
+                });
                 use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
                     items: ci.item,
