@@ -150,6 +150,7 @@ pub struct GameState {
 
 impl GameState {
     const TIMER_MIGRATION_KEY: &'static str = "game:meta:timers_migrated_v1";
+    const COMPLETION_SCRATCH_MIGRATION_KEY: &'static str = "game:meta:completion_future3_reset_v1";
 
     /// Normalize MOTD text for safe client display.
     ///
@@ -302,6 +303,7 @@ impl GameState {
         let mut data = store::load_all(&mut con)?;
 
         self.migrate_legacy_timer_data_once(&mut con, &mut data)?;
+        self.migrate_completion_scratch_once(&mut con, &mut data)?;
 
         self.map = data.map;
         self.items = data.items;
@@ -369,6 +371,84 @@ impl GameState {
         );
 
         Ok(())
+    }
+
+    /// Performs a one-time migration that zeroes `Character::future3[0]` and
+    /// `future3[1]`, the two slots newly repurposed for Journal completion
+    /// tracking (pentagram solve count / quest completion bitset).
+    ///
+    /// `future3` was undocumented legacy expansion space in the original C
+    /// server and was never guaranteed to contain zeroed bytes for
+    /// already-persisted characters, so existing saves can carry meaningless
+    /// leftover values in these slots. This migration clears them exactly
+    /// once so completion tracking starts from a known-good baseline.
+    ///
+    /// # Arguments
+    ///
+    /// * `con` - Open KeyDB connection used to read/write migration marker.
+    /// * `data` - Loaded snapshot data that may need scratch-slot clearing.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if migration is complete or already applied.
+    /// * `Err(String)` if marker read/write fails.
+    fn migrate_completion_scratch_once(
+        &self,
+        con: &mut redis::Connection,
+        data: &mut store::GameData,
+    ) -> Result<(), String> {
+        let already_migrated: bool =
+            con.exists(Self::COMPLETION_SCRATCH_MIGRATION_KEY)
+                .map_err(|e| {
+                    format!(
+                        "KeyDB EXISTS {}: {e}",
+                        Self::COMPLETION_SCRATCH_MIGRATION_KEY
+                    )
+                })?;
+
+        if already_migrated {
+            return Ok(());
+        }
+
+        let changed = Self::clear_completion_scratch_slots(&mut data.characters);
+
+        con.set::<_, _, ()>(Self::COMPLETION_SCRATCH_MIGRATION_KEY, 1)
+            .map_err(|e| format!("KeyDB SET {}: {e}", Self::COMPLETION_SCRATCH_MIGRATION_KEY))?;
+
+        log::info!(
+            "Applied completion-scratch migration v1: cleared future3[0..2] on {} characters",
+            changed
+        );
+
+        Ok(())
+    }
+
+    /// Zeroes `future3[0]` and `future3[1]` on every non-empty character that
+    /// has a nonzero value in either slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `characters` - Character slots to clear in-place.
+    ///
+    /// # Returns
+    ///
+    /// * Number of characters that had a nonzero value cleared.
+    pub(crate) fn clear_completion_scratch_slots(
+        characters: &mut [core::types::Character],
+    ) -> usize {
+        let mut changed = 0usize;
+        for character in characters.iter_mut() {
+            if character.used == USE_EMPTY {
+                continue;
+            }
+            for i in 0..character.future3.len() {
+                if character.future3[i] != 0 {
+                    character.future3[i] = 0;
+                    changed += 1;
+                }
+            }
+        }
+        changed
     }
 
     /// Normalizes runtime item timers that represent active countdown-based spell effects.
@@ -649,5 +729,28 @@ mod tests {
         assert_eq!(changed, 1);
         assert_eq!(templates[1].duration, 360);
         assert_eq!(templates[2].duration, 180);
+    }
+
+    #[test]
+    fn clear_completion_scratch_slots_zeroes_nonzero_used_characters_only() {
+        let mut characters = vec![core::types::Character::default(); 3];
+
+        characters[0].used = core::constants::USE_ACTIVE;
+        characters[0].future3[0] = 83_886_080;
+        characters[0].future3[1] = 42;
+
+        // Empty slot with garbage should be left untouched (nothing to migrate).
+        characters[1].future3[0] = 7;
+
+        // Used but already-zeroed character should not be counted as changed.
+        characters[2].used = core::constants::USE_ACTIVE;
+
+        let changed = GameState::clear_completion_scratch_slots(&mut characters);
+
+        assert_eq!(changed, 1);
+        assert_eq!(characters[0].future3[0], 0);
+        assert_eq!(characters[0].future3[1], 0);
+        assert_eq!(characters[1].future3[0], 7);
+        assert_eq!(characters[2].future3[0], 0);
     }
 }
