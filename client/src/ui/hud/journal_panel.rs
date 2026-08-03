@@ -96,6 +96,59 @@ fn counter_key_is_known(key: &str) -> bool {
     matches!(key, "pentagram_solves")
 }
 
+/// Computes the per-column display width (in characters) for a table, as
+/// the max of each column's header and cell content lengths (missing cells
+/// count as width 0). Uses the bitmap font's monospace character count
+/// rather than pixel width since rows are laid out with padded spaces.
+///
+/// # Arguments
+///
+/// * `headers` - Column header labels (may be empty for header-less tables).
+/// * `rows` - Data rows, each a list of cell values in column order.
+///
+/// # Returns
+///
+/// * One width per column, covering the widest header or row cell.
+fn table_column_widths(headers: &[String], rows: &[&Vec<String>]) -> Vec<usize> {
+    let ncols = headers
+        .len()
+        .max(rows.iter().map(|r| r.len()).max().unwrap_or(0))
+        .max(1);
+    let mut widths = vec![0usize; ncols];
+    for (i, h) in headers.iter().enumerate() {
+        widths[i] = widths[i].max(h.chars().count());
+    }
+    for row in rows {
+        for (i, c) in row.iter().enumerate() {
+            widths[i] = widths[i].max(c.chars().count());
+        }
+    }
+    widths
+}
+
+/// Formats one table row, padding each cell to its column width and
+/// separating columns with a fixed gap, for monospace-aligned rendering.
+///
+/// # Arguments
+///
+/// * `cells` - The row's cell values, in column order.
+/// * `widths` - Per-column widths, as computed by [`table_column_widths`].
+///
+/// # Returns
+///
+/// * The formatted, space-padded row text.
+fn format_table_row(cells: &[String], widths: &[usize]) -> String {
+    let mut out = String::new();
+    for (i, width) in widths.iter().enumerate() {
+        let cell = cells.get(i).map(|c| c.as_str()).unwrap_or("");
+        out.push_str(cell);
+        let pad = width.saturating_sub(cell.chars().count());
+        out.push_str(&" ".repeat(pad));
+        out.push_str("  ");
+    }
+    out
+}
+
 /// Resolves the numeric value for counter `key`, given the current
 /// completion snapshot. Returns `0` for unknown keys (callers should gate on
 /// [`counter_key_is_known`] first).
@@ -460,6 +513,40 @@ impl JournalPanel {
         )
     }
 
+    /// Computes the on-screen `(width, height)` for an image with natural
+    /// size `(tw, th)`, honoring explicit `width`/`height` overrides parsed
+    /// from the source (a missing dimension is derived from the natural
+    /// aspect ratio). Falls back to [`Self::scaled_image_size`]'s auto-fit
+    /// behavior when neither override is present.
+    fn resolved_image_size(
+        tw: u32,
+        th: u32,
+        max_width: u32,
+        width: Option<u32>,
+        height: Option<u32>,
+    ) -> (u32, u32) {
+        match (width, height) {
+            (Some(w), Some(h)) => (w, h),
+            (Some(w), None) => {
+                let h = if tw > 0 {
+                    (th as f32 * (w as f32 / tw as f32)).round() as u32
+                } else {
+                    0
+                };
+                (w, h)
+            }
+            (None, Some(h)) => {
+                let w = if th > 0 {
+                    (tw as f32 * (h as f32 / th as f32)).round() as u32
+                } else {
+                    0
+                };
+                (w, h)
+            }
+            (None, None) => Self::scaled_image_size(tw, th, max_width),
+        }
+    }
+
     /// Renders the scrollable content column, computing (and clamping)
     /// scroll bounds from the current content's total rendered height.
     fn render_content(
@@ -485,17 +572,25 @@ impl JournalPanel {
                     }
                     h
                 }
-                MdBlock::Image { path, .. } => {
+                MdBlock::Image {
+                    path,
+                    width,
+                    height,
+                    ..
+                } => {
                     let path = path.clone();
+                    let (width, height) = (*width, *height);
                     match self.ensure_image_texture(ctx, &path) {
                         Some(id) => {
                             let (tw, th) = ctx.gfx.query_texture_size(id);
-                            let (_, dh) = Self::scaled_image_size(tw, th, text_width);
+                            let (_, dh) =
+                                Self::resolved_image_size(tw, th, text_width, width, height);
                             dh.max(1) as i32
                         }
                         None => glyph_h,
                     }
                 }
+                MdBlock::Table { rows, .. } => (1 + rows.len()).max(1) as i32 * glyph_h,
                 MdBlock::CompletionChecklist { key, items } => {
                     if !checklist_key_is_known(key) {
                         glyph_h
@@ -507,6 +602,13 @@ impl JournalPanel {
                             h += lines.len().max(1) as i32 * glyph_h;
                         }
                         h.max(glyph_h)
+                    }
+                }
+                MdBlock::CompletionTable { key, headers, rows } => {
+                    if !checklist_key_is_known(key) {
+                        glyph_h
+                    } else {
+                        (rows.len() + usize::from(!headers.is_empty())).max(1) as i32 * glyph_h
                     }
                 }
                 MdBlock::CompletionCounter { .. } => glyph_h,
@@ -550,10 +652,16 @@ impl JournalPanel {
                             ry += lines_drawn.max(1) as i32 * glyph_h;
                         }
                     }
-                    MdBlock::Image { path, alt } => {
+                    MdBlock::Image {
+                        path,
+                        alt,
+                        width,
+                        height,
+                    } => {
                         if let Some(Some(id)) = self.image_textures.get(path).copied() {
                             let (tw, th) = ctx.gfx.query_texture_size(id);
-                            let (dw, dh) = Self::scaled_image_size(tw, th, text_width);
+                            let (dw, dh) =
+                                Self::resolved_image_size(tw, th, text_width, *width, *height);
                             let dst = sdl2::rect::Rect::new(content.x + CONTENT_PAD, y, dw, dh);
                             let tex = ctx.gfx.get_texture(id);
                             ctx.canvas.copy(tex, None, Some(dst))?;
@@ -567,6 +675,80 @@ impl JournalPanel {
                                 y,
                                 font_cache::TextStyle::default(),
                             )?;
+                        }
+                    }
+                    MdBlock::Table { headers, rows } => {
+                        let row_refs: Vec<&Vec<String>> = rows.iter().collect();
+                        let widths = table_column_widths(headers, &row_refs);
+                        let mut ry = y;
+                        if !headers.is_empty() {
+                            font_cache::draw_text(
+                                ctx.canvas,
+                                ctx.gfx,
+                                UI_FONT,
+                                &format_table_row(headers, &widths),
+                                content.x + CONTENT_PAD,
+                                ry,
+                                font_cache::TextStyle::default().with_tint(BOLD_TINT),
+                            )?;
+                            ry += glyph_h;
+                        }
+                        for row in rows {
+                            font_cache::draw_text(
+                                ctx.canvas,
+                                ctx.gfx,
+                                UI_FONT,
+                                &format_table_row(row, &widths),
+                                content.x + CONTENT_PAD,
+                                ry,
+                                font_cache::TextStyle::default(),
+                            )?;
+                            ry += glyph_h;
+                        }
+                    }
+                    MdBlock::CompletionTable { key, headers, rows } => {
+                        if !checklist_key_is_known(key) {
+                            font_cache::draw_text(
+                                ctx.canvas,
+                                ctx.gfx,
+                                UI_FONT,
+                                &format!("Unknown completion key: {key}"),
+                                content.x + CONTENT_PAD,
+                                y,
+                                font_cache::TextStyle::default(),
+                            )?;
+                        } else {
+                            let row_cols: Vec<&Vec<String>> =
+                                rows.iter().map(|(_, cols)| cols).collect();
+                            let widths = table_column_widths(headers, &row_cols);
+                            let mut ry = y;
+                            if !headers.is_empty() {
+                                font_cache::draw_text(
+                                    ctx.canvas,
+                                    ctx.gfx,
+                                    UI_FONT,
+                                    &format!("    {}", format_table_row(headers, &widths)),
+                                    content.x + CONTENT_PAD,
+                                    ry,
+                                    font_cache::TextStyle::default().with_tint(BOLD_TINT),
+                                )?;
+                                ry += glyph_h;
+                            }
+                            for (index, cols) in rows {
+                                let checked = resolve_checklist_bit(&self.completion, key, *index);
+                                let prefix = if checked { "[x] " } else { "[ ] " };
+                                let text = format!("{prefix}{}", format_table_row(cols, &widths));
+                                font_cache::draw_text(
+                                    ctx.canvas,
+                                    ctx.gfx,
+                                    UI_FONT,
+                                    &text,
+                                    content.x + CONTENT_PAD,
+                                    ry,
+                                    font_cache::TextStyle::default(),
+                                )?;
+                                ry += glyph_h;
+                            }
                         }
                     }
                     MdBlock::CompletionChecklist { key, items } => {
