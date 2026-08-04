@@ -1436,4 +1436,63 @@ mod tests {
         });
         assert_eq!(panel.scroll_offset, 0);
     }
+
+    #[test]
+    fn count_spoilers_counts_nested_spoilers() {
+        let blocks = vec![
+            MdBlock::Paragraph(vec![]),
+            MdBlock::Spoiler(vec![
+                MdBlock::Paragraph(vec![]),
+                MdBlock::Spoiler(vec![MdBlock::Paragraph(vec![])]),
+            ]),
+            MdBlock::Spoiler(vec![]),
+        ];
+        assert_eq!(count_spoilers(&blocks), 3);
+    }
+
+    #[test]
+    fn reload_content_resets_spoiler_state() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.spoiler_revealed = vec![true, true];
+        panel
+            .spoiler_click_regions
+            .push((0, Bounds::new(0, 0, 1, 1)));
+
+        panel.select_category(0);
+
+        assert_eq!(
+            panel.spoiler_revealed.len(),
+            count_spoilers(&panel.content_blocks)
+        );
+        assert!(panel.spoiler_click_regions.is_empty());
+    }
+
+    #[test]
+    fn clicking_spoiler_region_toggles_reveal_and_second_click_rehides() {
+        let mut panel = make_panel();
+        panel.toggle();
+        panel.spoiler_revealed = vec![false];
+        panel
+            .spoiler_click_regions
+            .push((0, Bounds::new(200, 200, 100, 20)));
+
+        let resp = panel.handle_event(&UiEvent::MouseClick {
+            x: 210,
+            y: 205,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(panel.spoiler_revealed, vec![true]);
+
+        let resp = panel.handle_event(&UiEvent::MouseClick {
+            x: 210,
+            y: 205,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert_eq!(panel.spoiler_revealed, vec![false]);
+    }
 }
