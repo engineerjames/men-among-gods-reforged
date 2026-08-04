@@ -34,6 +34,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn golden_shrines_parses_as_completion_table() {
+        let blocks = load("golden_shrines.md");
+        let table = blocks
+            .iter()
+            .find_map(|b| match b {
+                MdBlock::CompletionTable { key, headers, rows } if key == "explorer_points" => {
+                    Some((headers, rows))
+                }
+                _ => None,
+            })
+            .expect("golden_shrines.md should contain an explorer_points completion_table");
+        assert_eq!(table.0, &vec!["X".to_owned(), "Y".to_owned()]);
+        assert_eq!(table.1.len(), 77);
+    }
+
+    #[test]
     fn missing_file_returns_placeholder() {
         let blocks = load("this/file/does/not/exist.md");
         assert_eq!(

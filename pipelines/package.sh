@@ -19,6 +19,15 @@ require_file() {
   fi
 }
 
+require_dir_nonempty() {
+  local path="$1"
+
+  if [[ ! -d "$path" ]] || [[ -z "$(find "$path" -type f -print -quit)" ]]; then
+    echo "Missing or empty required directory: $path" >&2
+    exit 1
+  fi
+}
+
 copy_required_file() {
   local src="$1"
   local dest="$2"
@@ -79,6 +88,7 @@ if [[ "$PLATFORM" == "macos" ]]; then
 
   # The client expects assets next to the executable (current_exe()/assets).
   cp -R client/assets/. "${MACOS_DIR}/assets/"
+  require_dir_nonempty "${MACOS_DIR}/assets/journal"
 
   copy_required_file "target/release/men-among-gods-client" "${MACOS_DIR}/men-among-gods-client"
   chmod +x "${MACOS_DIR}/men-among-gods-client"
@@ -157,6 +167,7 @@ EOF
 else
   mkdir -p "dist/${CLIENT_DIR}/assets"
   cp -R client/assets/. "dist/${CLIENT_DIR}/assets/"
+  require_dir_nonempty "dist/${CLIENT_DIR}/assets/journal"
   copy_required_file "target/release/men-among-gods-client" "dist/${CLIENT_DIR}/men-among-gods-client"
 fi
 

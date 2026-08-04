@@ -145,4 +145,32 @@ mod tests {
         labels.dedup();
         assert_eq!(labels.len(), original_len);
     }
+
+    /// Guards against the real bundling failure mode: a catalog entry
+    /// pointing at a renamed/deleted `.md` file, which would otherwise
+    /// silently fall back to "Content coming soon." in a shipped build with
+    /// no build-time signal.
+    #[test]
+    fn all_content_files_exist_on_disk() {
+        let journal_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/journal");
+        for cat in JOURNAL_CATALOG {
+            if let Some(file) = cat.content_file {
+                assert!(
+                    journal_dir.join(file).is_file(),
+                    "category {:?} references missing content file {:?}",
+                    cat.label,
+                    file
+                );
+            }
+            for sub in cat.subcategories {
+                assert!(
+                    journal_dir.join(sub.content_file).is_file(),
+                    "subcategory {:?} (under {:?}) references missing content file {:?}",
+                    sub.label,
+                    cat.label,
+                    sub.content_file
+                );
+            }
+        }
+    }
 }

@@ -90,6 +90,11 @@ pub enum MdBlock {
         /// `(index, columns)` data rows, in source order.
         rows: Vec<(u16, Vec<String>)>,
     },
+    /// Hidden-by-default content, parsed from a ` ```spoiler ` fenced block.
+    /// Rendered as a click-to-reveal box; a second click re-hides it. The
+    /// body is parsed recursively, so it may contain any other block type
+    /// (including nested spoilers).
+    Spoiler(Vec<MdBlock>),
 }
 
 /// Parses `source` into a sequence of [`MdBlock`]s.
@@ -142,6 +147,9 @@ pub fn parse(source: &str) -> Vec<MdBlock> {
                     } else if let Some(key) = tag.strip_prefix("completion_table:") {
                         flush_paragraph(&mut current_lines, &mut blocks);
                         blocks.push(parse_completion_table(key, body_lines));
+                    } else if tag == "spoiler" {
+                        flush_paragraph(&mut current_lines, &mut blocks);
+                        blocks.push(MdBlock::Spoiler(parse(&body_lines.join("\n"))));
                     } else {
                         // Unknown tag or plain code fence: keep the fence
                         // markers and body as plain paragraph text.
@@ -759,6 +767,54 @@ mod tests {
                 headers: vec![],
                 rows: vec![(0, vec!["485".to_owned(), "402".to_owned()])],
             }]
+        );
+    }
+
+    #[test]
+    fn spoiler_body_is_parsed_recursively() {
+        let src = "```spoiler\nThe butler did it.\n```";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::Spoiler(vec![MdBlock::Paragraph(vec![
+                MdInline::Text("The butler did it.".to_owned())
+            ])])]
+        );
+    }
+
+    #[test]
+    fn spoiler_body_supports_nested_blocks() {
+        let src =
+            "```spoiler\n**Twist:** it was a dream.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n```";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![MdBlock::Spoiler(vec![
+                MdBlock::Paragraph(vec![
+                    MdInline::Bold("Twist:".to_owned()),
+                    MdInline::Text(" it was a dream.".to_owned()),
+                ]),
+                MdBlock::Table {
+                    headers: vec!["A".to_owned(), "B".to_owned()],
+                    rows: vec![vec!["1".to_owned(), "2".to_owned()]],
+                },
+            ])]
+        );
+    }
+
+    #[test]
+    fn spoiler_surrounded_by_paragraphs() {
+        let src = "Intro.\n\n```spoiler\nHidden.\n```\n\nOutro.";
+        let blocks = parse(src);
+        assert_eq!(
+            blocks,
+            vec![
+                MdBlock::Paragraph(vec![MdInline::Text("Intro.".to_owned())]),
+                MdBlock::Spoiler(vec![MdBlock::Paragraph(vec![MdInline::Text(
+                    "Hidden.".to_owned()
+                )])]),
+                MdBlock::Paragraph(vec![MdInline::Text("Outro.".to_owned())]),
+            ]
         );
     }
 }

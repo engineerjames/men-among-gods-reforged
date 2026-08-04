@@ -2,82 +2,83 @@
 
 Explorer points found across the world, in map coordinates.
 
-```completion_checklist:explorer_points
-0: Explorer Point (485, 402)
-1: Explorer Point (505, 334)
-2: Explorer Point (542, 253)
-3: Explorer Point (362, 519)
-4: Explorer Point (386, 528)
-5: Explorer Point (312, 457)
-6: Explorer Point (357, 597)
-7: Explorer Point (305, 594)
-8: Explorer Point (213, 593)
-9: Explorer Point (218, 464)
-10: Explorer Point (293, 516)
-11: Explorer Point (213, 437)
-12: Explorer Point (213, 324)
-13: Explorer Point (213, 335)
-14: Explorer Point (243, 407)
-15: Explorer Point (279, 337)
-16: Explorer Point (282, 420)
-17: Explorer Point (367, 433)
-18: Explorer Point (403, 303)
-19: Explorer Point (347, 318)
-20: Explorer Point (328, 303)
-21: Explorer Point (401, 278)
-22: Explorer Point (398, 249)
-23: Explorer Point (77, 52)
-24: Explorer Point (104, 104)
-25: Explorer Point (66, 98)
-26: Explorer Point (149, 202)
-27: Explorer Point (128, 174)
-28: Explorer Point (66, 170)
-29: Explorer Point (106, 243)
-30: Explorer Point (48, 307)
-32: Explorer Point (31, 298)
-33: Explorer Point (44, 354)
-34: Explorer Point (103, 332)
-35: Explorer Point (70, 360)
-36: Explorer Point (39, 479)
-37: Explorer Point (17, 474)
-38: Explorer Point (30, 485)
-39: Explorer Point (76, 528)
-40: Explorer Point (40, 506)
-41: Explorer Point (80, 500)
-42: Explorer Point (28, 532)
-43: Explorer Point (79, 585)
-44: Explorer Point (70, 538)
-45: Explorer Point (1007, 46)
-46: Explorer Point (858, 71)
-47: Explorer Point (989, 36)
-48: Explorer Point (919, 63)
-49: Explorer Point (985, 48)
-50: Explorer Point (605, 538)
-51: Explorer Point (930, 18)
-52: Explorer Point (855, 98)
-53: Explorer Point (915, 86)
-54: Explorer Point (498, 233)
-55: Explorer Point (941, 272)
-56: Explorer Point (980, 250)
-57: Explorer Point (1015, 206)
-58: Explorer Point (973, 194)
-59: Explorer Point (947, 240)
-60: Explorer Point (874, 277)
-61: Explorer Point (396, 243)
-62: Explorer Point (382, 237)
-64: Explorer Point (379, 228)
-65: Explorer Point (408, 228)
-66: Explorer Point (439, 228)
-67: Explorer Point (451, 228)
-68: Explorer Point (463, 228)
-69: Explorer Point (20, 631)
-70: Explorer Point (41, 694)
-71: Explorer Point (78, 674)
-72: Explorer Point (18, 705)
-73: Explorer Point (19, 745)
-74: Explorer Point (17, 811)
-75: Explorer Point (33, 34)
-76: Explorer Point (858, 383)
-77: Explorer Point (848, 679)
-78: Explorer Point (316, 255)
+```completion_table:explorer_points
+header: X | Y
+0: 485 | 402
+1: 505 | 334
+2: 542 | 253
+3: 362 | 519
+4: 386 | 528
+5: 312 | 457
+6: 357 | 597
+7: 305 | 594
+8: 213 | 593
+9: 218 | 464
+10: 293 | 516
+11: 213 | 437
+12: 213 | 324
+13: 213 | 335
+14: 243 | 407
+15: 279 | 337
+16: 282 | 420
+17: 367 | 433
+18: 403 | 303
+19: 347 | 318
+20: 328 | 303
+21: 401 | 278
+22: 398 | 249
+23: 77 | 52
+24: 104 | 104
+25: 66 | 98
+26: 149 | 202
+27: 128 | 174
+28: 66 | 170
+29: 106 | 243
+30: 48 | 307
+32: 31 | 298
+33: 44 | 354
+34: 103 | 332
+35: 70 | 360
+36: 39 | 479
+37: 17 | 474
+38: 30 | 485
+39: 76 | 528
+40: 40 | 506
+41: 80 | 500
+42: 28 | 532
+43: 79 | 585
+44: 70 | 538
+45: 1007 | 46
+46: 858 | 71
+47: 989 | 36
+48: 919 | 63
+49: 985 | 48
+50: 605 | 538
+51: 930 | 18
+52: 855 | 98
+53: 915 | 86
+54: 498 | 233
+55: 941 | 272
+56: 980 | 250
+57: 1015 | 206
+58: 973 | 194
+59: 947 | 240
+60: 874 | 277
+61: 396 | 243
+62: 382 | 237
+64: 379 | 228
+65: 408 | 228
+66: 439 | 228
+67: 451 | 228
+68: 463 | 228
+69: 20 | 631
+70: 41 | 694
+71: 78 | 674
+72: 18 | 705
+73: 19 | 745
+74: 17 | 811
+75: 33 | 34
+76: 858 | 383
+77: 848 | 679
+78: 316 | 255
 ```
