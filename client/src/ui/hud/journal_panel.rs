@@ -1336,7 +1336,7 @@ mod tests {
         let mut panel = make_panel();
         panel.toggle();
 
-        // "Labyrinth" is index 3 in JOURNAL_CATALOG and has 3 subcategories.
+        // "Labyrinth" is index 3 in JOURNAL_CATALOG and has 4 subcategories.
         let labyrinth_idx = JOURNAL_CATALOG
             .iter()
             .position(|c| c.label == "Labyrinth")

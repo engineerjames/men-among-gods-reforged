@@ -49,8 +49,15 @@ pub static JOURNAL_CATALOG: &[JournalCategory] = &[
     },
     JournalCategory {
         label: "Labyrinth",
-        content_file: Some("labyrinth/overview.md"),
+        // Selecting a category with subcategories always jumps to
+        // subcategory 0, so the overview must be a subcategory itself to
+        // ever be reachable — it can't live in `content_file` here.
+        content_file: None,
         subcategories: &[
+            JournalSubcategory {
+                label: "Overview",
+                content_file: "labyrinth/overview.md",
+            },
             JournalSubcategory {
                 label: "Lab One: Grolms",
                 content_file: "labyrinth/lab_one_grolms.md",
@@ -128,13 +135,14 @@ mod tests {
     }
 
     #[test]
-    fn labyrinth_has_three_subcategories() {
+    fn labyrinth_has_overview_plus_three_lab_subcategories() {
         let labyrinth = JOURNAL_CATALOG
             .iter()
             .find(|c| c.label == "Labyrinth")
             .expect("Labyrinth category should exist");
-        assert_eq!(labyrinth.subcategories.len(), 3);
-        assert_eq!(labyrinth.subcategories[2].label, "Lab Three: Wizards");
+        assert_eq!(labyrinth.subcategories.len(), 4);
+        assert_eq!(labyrinth.subcategories[0].label, "Overview");
+        assert_eq!(labyrinth.subcategories[3].label, "Lab Three: Wizards");
     }
 
     #[test]
