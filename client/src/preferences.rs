@@ -173,6 +173,10 @@ pub struct Settings {
     /// Whether weather / ambient particle effects are rendered.
     #[serde(default = "default_true")]
     pub weather_enabled: bool,
+    /// Intensity multiplier for weather / ambient particle effects
+    /// (0.0 = off, 1.0 = full server intensity).
+    #[serde(default = "default_weather_intensity")]
+    pub weather_intensity: f32,
     /// Master volume (0.0–1.0).
     #[serde(default)]
     pub master_volume: f32,
@@ -206,6 +210,7 @@ impl Default for Settings {
             shadows_enabled: true,
             spell_effects_enabled: true,
             weather_enabled: true,
+            weather_intensity: 1.0,
             master_volume: 0.0,
             hide: false,
             show_names: true,
@@ -255,6 +260,11 @@ fn default_true() -> bool {
     true
 }
 
+/// Serde helper: returns the default weather intensity multiplier.
+fn default_weather_intensity() -> f32 {
+    1.0
+}
+
 /// Returns a `Settings` snapshot containing only global fields.
 ///
 /// Character-scoped fields are always reset to defaults so account-level
@@ -269,6 +279,7 @@ fn global_settings_only(settings: &Settings) -> Settings {
         shadows_enabled: settings.shadows_enabled,
         spell_effects_enabled: settings.spell_effects_enabled,
         weather_enabled: settings.weather_enabled,
+        weather_intensity: settings.weather_intensity.clamp(0.0, 1.0),
         master_volume: settings.master_volume.clamp(0.0, 1.0),
         hide: settings.hide,
         show_names: settings.show_names,
@@ -558,6 +569,9 @@ mod tests {
         assert_eq!(deserialized.music_enabled, s.music_enabled);
         assert_eq!(deserialized.display_mode, s.display_mode);
         assert_eq!(deserialized.shadows_enabled, s.shadows_enabled);
+        assert!(
+            (deserialized.weather_intensity - s.weather_intensity).abs() < f32::EPSILON
+        );
         assert!((deserialized.master_volume - s.master_volume).abs() < f32::EPSILON);
         assert_eq!(
             deserialized.character.skill_keybinds,
@@ -575,6 +589,9 @@ mod tests {
         assert_eq!(deserialized.music_enabled, defaults.music_enabled);
         assert_eq!(deserialized.display_mode, defaults.display_mode);
         assert_eq!(deserialized.shadows_enabled, defaults.shadows_enabled);
+        assert!(
+            (deserialized.weather_intensity - defaults.weather_intensity).abs() < f32::EPSILON
+        );
         assert!((deserialized.master_volume - defaults.master_volume).abs() < f32::EPSILON);
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
         assert_eq!(deserialized.show_positions, defaults.show_positions);
@@ -750,6 +767,7 @@ mod tests {
     #[test]
     fn global_settings_only_clears_character_scoped_fields() {
         let mut settings = Settings::default();
+        settings.weather_intensity = 2.0;
         settings.character.skill_keybinds[0] = Some(42);
         settings.character.inventory_panel_pos = Some((99, 88));
         settings.character.settings_panel_pos = Some((77, 66));
@@ -766,6 +784,10 @@ mod tests {
         assert_eq!(global.music_enabled, settings.music_enabled);
         assert_eq!(global.display_mode, settings.display_mode);
         assert!(
+            (global.weather_intensity - 1.0).abs() < f32::EPSILON,
+            "weather_intensity should be clamped to 1.0"
+        );
+        assert!(
             global
                 .character
                 .skill_keybinds
@@ -776,5 +798,17 @@ mod tests {
         assert_eq!(global.character.settings_panel_pos, None);
         assert_eq!(global.character.chat_window, None);
         assert_eq!(global.character.minimap_window_pos, None);
+    }
+
+    #[test]
+    fn weather_intensity_default_is_one() {
+        let settings = Settings::default();
+        assert!((settings.weather_intensity - 1.0).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn weather_intensity_deserializes_from_empty_json() {
+        let deserialized: Settings = serde_json::from_str("{}").unwrap();
+        assert!((deserialized.weather_intensity - 1.0).abs() < f32::EPSILON);
     }
 }

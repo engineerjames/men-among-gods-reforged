@@ -97,6 +97,9 @@ pub struct WeatherState {
     /// and back toward 1 otherwise. Only affects rendered alpha; particle
     /// simulation and earthquake shake are unaffected.
     indoor_fade: f32,
+    /// Client-side intensity multiplier (0.0 = no effect, 1.0 = full
+    /// server intensity). Controlled by the "Weather Intensity" setting.
+    intensity_scale: f32,
 }
 
 impl Default for WeatherState {
@@ -129,6 +132,7 @@ impl WeatherState {
             last_update: None,
             needs_initial_fill: false,
             indoor_fade: 1.0,
+            intensity_scale: 1.0,
         }
     }
 
@@ -136,6 +140,19 @@ impl WeatherState {
     /// camera transform. `(0, 0)` whenever earthquake is inactive.
     pub fn shake_offset(&self) -> (i32, i32) {
         self.shake_offset
+    }
+
+    /// Sets the client-side intensity scale for all weather output.
+    ///
+    /// The value is clamped to `[0.0, 1.0]`. A scale of `0.0` suppresses
+    /// particles, tints, lightning/aurora brightness, and earthquake shake.
+    /// A scale of `1.0` uses the server's intensity unchanged.
+    ///
+    /// # Arguments
+    ///
+    /// * `scale` - Desired intensity multiplier.
+    pub fn set_intensity_scale(&mut self, scale: f32) {
+        self.intensity_scale = scale.clamp(0.0, 1.0);
     }
 
     /// Hard-reset all visual state (used on scene exit).
@@ -244,7 +261,8 @@ impl WeatherState {
             | WeatherKind::Aurora
             | WeatherKind::Earthquake => 0,
         };
-        let scaled = (max as u32 * u32::from(self.intensity)) / 255;
+        let effective = f32::from(self.intensity) * self.intensity_scale;
+        let scaled = (max as f32 * effective) / 255.0;
         (scaled as usize).min(MAX_PARTICLES)
     }
 
@@ -546,7 +564,7 @@ impl WeatherState {
 
         // Earthquake camera shake amplitude scales with intensity.
         if self.kind == WeatherKind::Earthquake {
-            let amp = (f32::from(self.intensity) / 255.0) * 6.0;
+            let amp = (f32::from(self.intensity) / 255.0) * 6.0 * self.intensity_scale;
             let dx = (self.rand_range(-1.0, 1.0) * amp) as i32;
             let dy = (self.rand_range(-1.0, 1.0) * amp) as i32;
             self.shake_offset = (dx, dy);
@@ -577,7 +595,7 @@ impl WeatherState {
             base.r,
             base.g,
             base.b,
-            (f32::from(base.a) * self.indoor_fade) as u8,
+            (f32::from(base.a) * self.indoor_fade * self.intensity_scale) as u8,
         )
     }
 
@@ -619,7 +637,7 @@ impl WeatherState {
                 let r = (60.0 + 40.0 * phase.sin().abs()) as u8;
                 let g = (180.0 + 60.0 * (phase * 1.3).cos().abs()) as u8;
                 let b = (180.0 + 60.0 * (phase * 0.7).sin().abs()) as u8;
-                let a = ((1.0 - t) * 90.0) as u8;
+                let a = ((1.0 - t) * 90.0 * self.intensity_scale) as u8;
                 canvas.set_draw_color(Color::RGBA(r, g, b, a));
                 canvas.draw_line(Point::new(0, y), Point::new(view_w, y))?;
             }
@@ -645,7 +663,10 @@ impl WeatherState {
 
         // Lightning flash.
         if self.lightning_flash > 0.0 {
-            let a = (self.lightning_flash.clamp(0.0, 1.0) * 200.0 * self.indoor_fade) as u8;
+            let a = (self.lightning_flash.clamp(0.0, 1.0)
+                * 200.0
+                * self.indoor_fade
+                * self.intensity_scale) as u8;
             canvas.set_draw_color(Color::RGBA(255, 255, 255, a));
             canvas.fill_rect(Rect::new(0, 0, view_w as u32, view_h as u32))?;
         }
@@ -656,7 +677,8 @@ impl WeatherState {
 
     /// Draw a single particle in its kind-specific style.
     fn draw_particle(&self, canvas: &mut Canvas<Window>, p: &Particle) -> Result<(), String> {
-        let alpha_t = (p.life / p.life_max).clamp(0.0, 1.0) * self.indoor_fade;
+        let alpha_t =
+            (p.life / p.life_max).clamp(0.0, 1.0) * self.indoor_fade * self.intensity_scale;
         let kind = WeatherKind::from(p.kind);
         match kind {
             WeatherKind::Rain => {
@@ -883,5 +905,60 @@ mod tests {
             w.indoor_fade, 1.0,
             "IgnoreIndoorFade should keep the effect fully visible indoors"
         );
+    }
+
+    #[test]
+    fn intensity_scale_clamps() {
+        let mut w = WeatherState::new();
+        w.set_intensity_scale(2.0);
+        assert!((w.intensity_scale - 1.0).abs() < f32::EPSILON);
+        w.set_intensity_scale(-0.5);
+        assert!((w.intensity_scale).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn intensity_scale_zero_suppresses_particles() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Rain as u8, 255, 0, [0; 4], 0);
+        w.set_intensity_scale(0.0);
+        assert_eq!(w.target_particle_count(), 0);
+    }
+
+    #[test]
+    fn intensity_scale_full_uses_server_intensity() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Rain as u8, 128, 0, [0; 4], 0);
+        w.set_intensity_scale(1.0);
+        let expected = (600.0 * 128.0 / 255.0) as usize;
+        assert_eq!(w.target_particle_count(), expected);
+    }
+
+    #[test]
+    fn intensity_scale_halves_effective_particle_count() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Rain as u8, 255, 0, [0; 4], 0);
+        w.set_intensity_scale(0.5);
+        let expected = (600.0 * 0.5) as usize;
+        assert_eq!(w.target_particle_count(), expected);
+    }
+
+    #[test]
+    fn intensity_scale_zero_makes_tint_transparent() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Rain as u8, 200, 0, [0; 4], 0);
+        w.set_intensity_scale(0.0);
+        let tint = w.effective_tint();
+        assert_eq!(tint.a, 0);
+    }
+
+    #[test]
+    fn intensity_scale_zero_eliminates_earthquake_shake() {
+        let mut w = WeatherState::new();
+        w.apply_packet(WeatherKind::Earthquake as u8, 255, 0, [0; 4], 0);
+        w.set_intensity_scale(0.0);
+        for _ in 0..20 {
+            w.update(0.016, 800, 600, false);
+        }
+        assert_eq!(w.shake_offset(), (0, 0));
     }
 }
