@@ -949,6 +949,7 @@ impl GameScene {
             shadows_enabled: app_state.settings.shadows_enabled,
             spell_effects_enabled: app_state.settings.spell_effects_enabled,
             weather_enabled: app_state.settings.weather_enabled,
+            weather_intensity: app_state.settings.weather_intensity,
             show_names: app_state.settings.show_names,
             show_health_pct: app_state.settings.show_proz,
             hide_walls: app_state.settings.hide,
@@ -1139,6 +1140,10 @@ impl GameScene {
                 }
                 WidgetAction::SetWeather(v) => {
                     app_state.settings.weather_enabled = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetWeatherIntensity(v) => {
+                    app_state.settings.weather_intensity = v.clamp(0.0, 1.0);
                     profile_changed = true;
                 }
                 WidgetAction::SetShowNames(v) => {
@@ -2629,6 +2634,8 @@ impl Scene for GameScene {
         // Advance weather state up-front so its shake offset is available to
         // the world camera below. Rendering the weather overlay still happens
         // *after* the world pass so particles/tints layer on top.
+        self.weather
+            .set_intensity_scale(settings.weather_intensity.clamp(0.0, 1.0));
         if settings.weather_enabled {
             let is_indoors = ps
                 .map()

@@ -333,6 +333,8 @@ pub enum WidgetAction {
     SetSpellEffects(bool),
     /// Toggle weather / ambient particle effects.
     SetWeather(bool),
+    /// Set the weather intensity multiplier (0.0 = off, 1.0 = full).
+    SetWeatherIntensity(f32),
     /// Toggle overhead player name display.
     SetShowNames(bool),
     /// Toggle overhead health percentage display.
