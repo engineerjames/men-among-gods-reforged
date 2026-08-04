@@ -569,9 +569,7 @@ mod tests {
         assert_eq!(deserialized.music_enabled, s.music_enabled);
         assert_eq!(deserialized.display_mode, s.display_mode);
         assert_eq!(deserialized.shadows_enabled, s.shadows_enabled);
-        assert!(
-            (deserialized.weather_intensity - s.weather_intensity).abs() < f32::EPSILON
-        );
+        assert!((deserialized.weather_intensity - s.weather_intensity).abs() < f32::EPSILON);
         assert!((deserialized.master_volume - s.master_volume).abs() < f32::EPSILON);
         assert_eq!(
             deserialized.character.skill_keybinds,
@@ -589,9 +587,7 @@ mod tests {
         assert_eq!(deserialized.music_enabled, defaults.music_enabled);
         assert_eq!(deserialized.display_mode, defaults.display_mode);
         assert_eq!(deserialized.shadows_enabled, defaults.shadows_enabled);
-        assert!(
-            (deserialized.weather_intensity - defaults.weather_intensity).abs() < f32::EPSILON
-        );
+        assert!((deserialized.weather_intensity - defaults.weather_intensity).abs() < f32::EPSILON);
         assert!((deserialized.master_volume - defaults.master_volume).abs() < f32::EPSILON);
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
         assert_eq!(deserialized.show_positions, defaults.show_positions);
@@ -766,8 +762,10 @@ mod tests {
 
     #[test]
     fn global_settings_only_clears_character_scoped_fields() {
-        let mut settings = Settings::default();
-        settings.weather_intensity = 2.0;
+        let mut settings = Settings {
+            weather_intensity: 2.0,
+            ..Default::default()
+        };
         settings.character.skill_keybinds[0] = Some(42);
         settings.character.inventory_panel_pos = Some((99, 88));
         settings.character.settings_panel_pos = Some((77, 66));
