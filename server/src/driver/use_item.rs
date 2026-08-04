@@ -912,6 +912,7 @@ pub fn finish_laby_teleport(gs: &mut GameState, cn: usize, nr: usize, exp: usize
         );
 
         gs.do_give_exp(cn, exp as i32, 0, -1);
+        crate::player::commands::resend_completion_data_for_character(gs, cn);
     }
 
     let citem = gs.characters[cn].citem;
@@ -3704,7 +3705,9 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     // Add bonus to character's pending exp
     {
         gs.characters[cn].data[18] += bonus as i32;
+        gs.characters[cn].future3[0] = gs.characters[cn].future3[0].saturating_add(1);
     };
+    crate::player::commands::resend_completion_data_for_character(gs, cn);
 
     // Log to character
     gs.do_character_log(
@@ -5953,6 +5956,7 @@ pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         );
 
         gs.do_give_exp(cn, exp as i32, 0, -1);
+        crate::player::commands::resend_completion_data_for_character(gs, cn);
     } else {
         gs.do_character_log(
             cn,

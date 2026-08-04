@@ -7,10 +7,11 @@ use crate::ui::widget::{Bounds, EventResponse, HudPanel, UiEvent, Widget, Widget
 use crate::ui::widgets::button::CircularImageButton;
 
 /// Number of panel toggle buttons displayed in the HUD button bar.
-pub const NUMBER_OF_BUTTONS: usize = 4;
+pub const NUMBER_OF_BUTTONS: usize = 5;
 
 /// Whole-button image filenames in panel order.
 const BUTTON_IMAGE_FILES: [&str; NUMBER_OF_BUTTONS] = [
+    "journal.png",
     "skills.png",
     "talent_tree.png",
     "inventory.png",
@@ -19,7 +20,7 @@ const BUTTON_IMAGE_FILES: [&str; NUMBER_OF_BUTTONS] = [
 
 /// Index of the Talents button within the button column. Kept in sync with
 /// `panel_kinds` construction in `HudButtonBar::new` via a debug assertion.
-const TALENTS_BUTTON_INDEX: usize = 1;
+const TALENTS_BUTTON_INDEX: usize = 2;
 
 /// Four circular image buttons arranged in a vertical column.
 ///
@@ -48,6 +49,7 @@ impl HudButtonBar {
     /// A new `HudButtonBar` ready for rendering.
     pub fn new(cx: i32, bottom_cy: i32, spacing: u32, button_radius: u32) -> Self {
         let panel_kinds = [
+            HudPanel::Journal,
             HudPanel::Skills,
             HudPanel::Talents,
             HudPanel::Inventory,
@@ -94,10 +96,11 @@ impl HudButtonBar {
     ///
     /// # Returns
     ///
-    /// An array of four `(i32, i32)` center positions, ordered top to bottom.
+    /// An array of five `(i32, i32)` center positions, ordered top to bottom.
     fn compute_positions(cx: i32, bottom_cy: i32, spacing: u32) -> [(i32, i32); NUMBER_OF_BUTTONS] {
         let s = spacing as i32;
         [
+            (cx, bottom_cy - 4 * s), // (Journal)
             (cx, bottom_cy - 3 * s), // (Skills)
             (cx, bottom_cy - 2 * s), // (Talents)
             (cx, bottom_cy - s),     // (Inventory)
@@ -131,7 +134,7 @@ impl HudButtonBar {
                     HudPanel::Settings => "Settings",
                     HudPanel::Minimap => "Minimap",
                     HudPanel::KeyBindings => "Key Bindings",
-                    HudPanel::QuestLog => "Quest Log",
+                    HudPanel::Journal => "Journal",
                 });
             }
         }
@@ -221,10 +224,11 @@ mod tests {
         assert!(positions.iter().all(|(x, _)| *x == 100));
 
         // Ordered top to bottom with equal spacing.
-        assert_eq!(positions[0].1, 180); // 300 - 3*40 (Skills)
-        assert_eq!(positions[1].1, 220); // 300 - 2*40 (Talents)
-        assert_eq!(positions[2].1, 260); // 300 - 40   (Inventory)
-        assert_eq!(positions[3].1, 300); // 300         (Settings)
+        assert_eq!(positions[0].1, 140); // 300 - 4*40 (Journal)
+        assert_eq!(positions[1].1, 180); // 300 - 3*40 (Skills)
+        assert_eq!(positions[2].1, 220); // 300 - 2*40 (Talents)
+        assert_eq!(positions[3].1, 260); // 300 - 40   (Inventory)
+        assert_eq!(positions[4].1, 300); // 300         (Settings)
     }
 
     #[test]
@@ -241,7 +245,7 @@ mod tests {
     fn click_produces_toggle_action() {
         let bar = HudButtonBar::new(200, 300, 40, 16);
         let positions = HudButtonBar::compute_positions(200, 300, 40);
-        let (cx, cy) = positions[2]; // Inventory button (index 2: Skills, Talents, Inventory, Settings)
+        let (cx, cy) = positions[3]; // Inventory button (index 3: Journal, Skills, Talents, Inventory, Settings)
 
         let mut bar = bar;
         let resp = bar.handle_event(&UiEvent::MouseClick {
@@ -277,7 +281,7 @@ mod tests {
     fn take_actions_drains() {
         let mut bar = HudButtonBar::new(200, 300, 40, 16);
         let positions = HudButtonBar::compute_positions(200, 300, 40);
-        let (cx, cy) = positions[0]; // Skills button (first active button)
+        let (cx, cy) = positions[0]; // Journal button (first active button)
 
         bar.handle_event(&UiEvent::MouseClick {
             x: cx,

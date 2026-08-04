@@ -840,6 +840,23 @@ pub fn npc_seemiss(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool 
     false
 }
 
+/// Records quest completion for player `co` when NPC `cn` accepts a
+/// quest-item turn-in. Looks up the NPC's template in the hand-authored
+/// quest catalog and, if found, sets the matching bit in the player's
+/// `future3[1]` bitset and resends the Journal completion snapshot.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - NPC character index that accepted the turn-in.
+/// * `co` - Player character index completing the quest.
+fn record_quest_completion(gs: &mut GameState, cn: usize, co: usize) {
+    if let Some(quest) = crate::quest_completion::find_by_npc_temp(gs.characters[cn].temp) {
+        gs.characters[co].future3[1] |= 1 << quest.id;
+        crate::player::commands::resend_completion_data_for_character(gs, co);
+    }
+}
+
 /// Handles the legacy `npc_give` NPC driver hook.
 ///
 /// # Arguments
@@ -869,10 +886,6 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
 
     // Item given and matches what NPC wants
     if in_item != 0 && i32::from(gs.items[in_item].temp) == gs.characters[cn].data[49] {
-        // Record completion for the player; safe to call even when no
-        // catalog index matches (no-op in that case).
-        let npc_temp = gs.characters[cn].temp;
-        crate::player::quest_log::record_turn_in(gs, co, npc_temp);
         // Black candle special-case
         if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
             gs.characters[co].data[43] += 1;
@@ -910,6 +923,9 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                 ),
             );
         }
+
+        // Journal "Quests Completable" tracking.
+        record_quest_completion(gs, cn, co);
 
         // Quest-requested items: teach skill / give exp
         let nr = gs.characters[cn].data[50];
@@ -1098,14 +1114,6 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
         return false;
     }
 
-    // Record completion for the player; safe to call even when no catalog
-    // index matches (no-op in that case). We record on the early "would
-    // accept" decision rather than per-branch to mirror the original
-    // `npc_give` semantics (which records once even when the
-    // teach-skill branch is short-circuited by "already knows skill").
-    let npc_temp = gs.characters[cn].temp;
-    crate::player::quest_log::record_turn_in(gs, co, npc_temp);
-
     // Black candle special-case (repeatable).
     if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
         gs.characters[co].data[43] += 1;
@@ -1129,8 +1137,12 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
                 gs.characters[co].get_name()
             ),
         );
+        record_quest_completion(gs, cn, co);
         return true;
     }
+
+    // Journal "Quests Completable" tracking for non-black-candle accepted items.
+    record_quest_completion(gs, cn, co);
 
     // Teach-skill branch.
     let nr = gs.characters[cn].data[50];
@@ -3691,19 +3703,6 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     // 4. NPC wants an item that the player is carrying
     let in_talk_range = gs.do_char_can_see(co, cn) != 0 && helpers::get_distance(gs, cn, co) < 3.5;
 
-    // Quest discovery: same sight/distance gate as auto turn-in, but
-    // independent of the player carrying any item. The NPC only needs to
-    // be a quest giver (data[49] != 0) and the observer must be a
-    // player/usurp. Flips `Character::future2[idx]` from -1 to 0 and
-    // emits a SV_SETQUESTCOMPLETION delta when discovery fires.
-    if in_talk_range
-        && gs.characters[cn].data[49] != 0
-        && (co_flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-    {
-        let npc_temp = gs.characters[cn].temp;
-        crate::player::quest_log::record_discovery(gs, co, npc_temp);
-    }
-
     if in_talk_range && npc_scan_player_items(gs, cn, co) {
         return true;
     }
@@ -4004,6 +4003,73 @@ mod tests {
             assert_eq!(gs.characters[player].skill[skills::SK_BLESS][0], 1);
             assert_eq!(gs.items[item_id].used, USE_EMPTY);
             assert!(!gs.characters[player].item.contains(&(item_id as u32)));
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_sets_quest_completion_bit() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Trainer");
+            gs.characters[npc].temp = 107; // Cirrus / Bless quest
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+
+            setup_item(gs, item_id, 500, "Quest Relic", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(npc_sight_turn_in(gs, npc, player, item_id));
+            assert!((gs.characters[player].future3[1] >> 7) & 1 != 0);
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_black_candle_sets_quest_completion_bit() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Cityguard");
+            gs.characters[npc].temp = 518;
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 740;
+
+            setup_item(gs, item_id, 740, "Black Candle", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(npc_sight_turn_in(gs, npc, player, item_id));
+            assert!(gs.characters[player].future3[1] & 1 != 0);
+        });
+    }
+
+    #[test]
+    fn npc_give_sets_quest_completion_bit() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Trainer");
+            gs.characters[npc].temp = 107; // Cirrus / Bless quest
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+
+            // npc_give expects the item to already be in the NPC's inventory
+            // (as do_give placed it there), not in the player's inventory.
+            setup_item(gs, item_id, 500, "Quest Relic", npc);
+            gs.characters[npc].item[0] = item_id as u32;
+
+            // The legacy npc_give hook returns false for most successful
+            // skill-teach paths, but the side effect we care about is the
+            // quest-completion bit being recorded.
+            npc_give(gs, npc, player, item_id, 0);
+            assert!((gs.characters[player].future3[1] >> 7) & 1 != 0);
         });
     }
 

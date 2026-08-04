@@ -26,37 +26,36 @@ Rust representation is unsigned because talent storage is byte-oriented.
 
 ### `future2: [i16; 49]`
 
-**Status: active per-player quest discovery + completion state.**
+**Status: unused. Reserved scratch space.**
 
-Each slot corresponds to a `QuestCatalog` index (49 max) and carries a
-tri-state value:
-
-| Value          | Meaning                                                                 |
-|----------------|-------------------------------------------------------------------------|
-| `-1`           | **Undiscovered**. Player has never been close enough to the quest-giver NPC for the quest to show up in the quest log. The minimap pin for that NPC is still visible. |
-| `0`            | **Discovered, no turn-ins yet.** Set when `npc_see` sights the player within the auto-talk gate (`do_char_can_see` both ways + distance < 3.5). |
-| `1..=stages`   | Number of accepted turn-ins (saturating per `QuestCatalogEntry::stages`; repeatable quests cap at `1`). |
-
-`Character::default()` initializes the array to `[-1; 49]`. Discovery is
-written by `crate::player::quest_log::record_discovery` and turn-ins by
-`record_turn_in` (`bump_completion` treats `-1` as `0` before
-incrementing, so a turn-in implicitly discovers). Both helpers emit a
-single-entry `SV_SETQUESTCOMPLETION` delta; a full snapshot is sent at
-login.
+Previously repurposed for per-player quest discovery/completion state
+(removed along with the dynamic quest-log system in favor of the static
+Journal panel). `Character::default()` still initializes the array to
+`[-1; 49]`, but nothing reads or writes it anymore.
 
 ### `future3: [i32; 12]`
 
-**Status: unused. Pure padding.**
+**Status: partially in use (Journal completion tracking).**
 
 This field exists solely because the original C code declared it as "space
 for future expansion" inside the on-disk character record. It was never
-populated by any driver in the legacy server, and the reforged codebase
-preserves it for binary-layout / save-file compatibility only.
+populated by any driver in the legacy server, but the reforged codebase now
+uses the first two slots as scratch state for server->client Journal
+completion tracking (see `SV_SETCOMPLETIONDATA` / opcode 77 in
+[core/src/server_commands.rs](core/src/server_commands.rs)):
+
+- `future3[0]` -- pentagram solve count for this character. Incremented
+  (saturating) in `solved_pentagram` ([server/src/driver/use_item.rs](server/src/driver/use_item.rs))
+  only for the character whose activation tipped the threshold.
+- `future3[1]` -- hand-authored quest completion bitset (one bit per entry in
+  `server::quest_completion::QUEST_DEFS`). Set in the quest-item turn-in
+  acceptance path in [server/src/driver/npc.rs](server/src/driver/npc.rs).
+- `future3[2..12]` -- still unused padding; same caveats as before apply.
 
 | Field     | Type        | Origin (`server/orig/data.h`) |
 |-----------|-------------|-------------------------------|
 | `future2` | `[i16; 49]` | `short future2[49];` (now in use, see above) |
-| `future3` | `[i32; 12]` | `int future3[12];` |
+| `future3` | `[i32; 12]` | `int future3[12];` (slots 0-1 now in use, see above) |
 
 Rules of thumb:
 
@@ -66,7 +65,9 @@ Rules of thumb:
   serialized form.
 - If you need scratch state for a new system, prefer adding a properly named
   field at the end of `Character` (and bumping the snapshot version) rather
-  than carving a slot out of `futureN`.
+  than carving a slot out of `futureN`. (Slots 0-1 above are an exception
+  made deliberately for a small, low-risk feature; prefer named fields for
+  anything larger.)
 - The same advice applies to `Item::future3` (see
   [core/src/types/item.rs](core/src/types/item.rs)), which is also unused
   legacy padding.
