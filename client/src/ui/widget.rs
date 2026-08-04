@@ -239,8 +239,8 @@ pub enum HudPanel {
     KeyBindings,
     /// Class talent tree.
     Talents,
-    /// Quest log overlay listing NPC quest givers.
-    QuestLog,
+    /// In-game Journal / Guidebook overlay.
+    Journal,
 }
 
 /// A side-effect that a widget wants the owning scene to perform.
@@ -383,14 +383,6 @@ pub enum WidgetAction {
     ///
     /// Mapped to `ClientCommand::new_reset_talents()` by the scene.
     ResetTalents,
-    /// Focus the quest given by NPC `npc_template_id` (`0` clears focus).
-    ///
-    /// Mapped to `ClientCommand::new_set_active_quest(npc_template_id)` by
-    /// the scene, which forwards it through the network layer.
-    SetActiveQuest {
-        /// NPC template ID of the quest giver to focus.
-        npc_template_id: u16,
-    },
 }
 
 // ---------------------------------------------------------------------------

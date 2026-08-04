@@ -62,6 +62,7 @@ use crate::{
         hud::button_bar::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::inventory_panel::InventoryPanel,
+        hud::journal_panel::{JOURNAL_PANEL_H, JOURNAL_PANEL_W, JournalPanel},
         hud::look_panel::LookPanel,
         hud::minimap_widget::MinimapWidget,
         hud::mode_button::ModeButton,
@@ -563,41 +564,6 @@ const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 // GameScene struct
 // ---------------------------------------------------------------------------
 
-/// Resolves the world-tile destination for the currently focused quest's
-/// active step.
-///
-/// Falls back to the cached NPC quest-giver position for
-/// `ReturnToQuestGiver` steps or whenever the static quest definition is
-/// missing or the step index is out of range.
-///
-/// # Arguments
-///
-/// * `template_id`     - NPC template ID of the focused quest.
-/// * `step_idx`        - Server-reported active step index within the quest's
-///   walkthrough.
-/// * `npc_pos_fallback` - World tile position of the NPC quest giver, used as
-///   a fallback when no `FixedLocation` step applies.
-///
-/// # Returns
-///
-/// * `Some((x, y))` when a destination tile can be resolved, or `None` when
-///   no fallback NPC position is known and no `FixedLocation` step applies.
-fn active_quest_destination(
-    template_id: u16,
-    step_idx: usize,
-    npc_pos_fallback: Option<(u16, u16)>,
-) -> Option<(u16, u16)> {
-    if let Some(def) = mag_core::quest_defs::find_quest_def(template_id)
-        && let Some(step) = def.steps.get(step_idx)
-    {
-        return match step {
-            mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
-            mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
-        };
-    }
-    npc_pos_fallback
-}
-
 /// The primary in-game scene.
 ///
 /// Holds all transient gameplay state: input buffer, modifier-key flags,
@@ -611,7 +577,7 @@ pub struct GameScene {
     pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
     pub(super) talent_panel: TalentPanel,
-    pub(super) quest_log_panel: crate::ui::hud::quest_log_panel::QuestLogPanel,
+    pub(super) journal_panel: JournalPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
@@ -836,8 +802,13 @@ impl GameScene {
                 },
                 HUD_PANEL_BG,
             ),
-            quest_log_panel: crate::ui::hud::quest_log_panel::QuestLogPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+            journal_panel: JournalPanel::new(
+                Bounds::new(
+                    (TARGET_WIDTH_INT as i32 - JOURNAL_PANEL_W as i32) / 2,
+                    (TARGET_HEIGHT_INT as i32 - JOURNAL_PANEL_H as i32) / 2,
+                    JOURNAL_PANEL_W,
+                    JOURNAL_PANEL_H,
+                ),
                 HUD_PANEL_BG,
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
@@ -1749,8 +1720,7 @@ impl GameScene {
             return true;
         }
 
-        if self.quest_log_panel.is_visible() && self.quest_log_panel.bounds().contains_point(mx, my)
-        {
+        if self.journal_panel.is_visible() && self.journal_panel.bounds().contains_point(mx, my) {
             return true;
         }
 
@@ -1769,8 +1739,8 @@ impl GameScene {
             || (self.settings_panel.is_visible()
                 && self.settings_panel.bounds().contains_point(mx, my))
             || (self.talent_panel.is_visible() && self.talent_panel.bounds().contains_point(mx, my))
-            || (self.quest_log_panel.is_visible()
-                && self.quest_log_panel.bounds().contains_point(mx, my))
+            || (self.journal_panel.is_visible()
+                && self.journal_panel.bounds().contains_point(mx, my))
             || (self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my))
             || (self.skill_picker.is_visible() && self.skill_picker.bounds().contains_point(mx, my))
     }
@@ -2220,10 +2190,6 @@ impl Scene for GameScene {
             if self.skills_panel.is_visible() {
                 self.skills_panel.toggle();
                 self.skills_panel.clear_controller_focus();
-            }
-
-            if self.quest_log_panel.is_visible() {
-                self.quest_log_panel.toggle();
             }
 
             if self.minimap_widget.is_visible() {
@@ -2758,6 +2724,10 @@ impl Scene for GameScene {
                 self.hud_buttons.set_talent_points_badge(
                     mag_core::talent_trees::available_talent_points(ps.talents()),
                 );
+                use crate::ui::hud::journal_panel::JournalPanelData;
+                self.journal_panel.update_data(JournalPanelData {
+                    completion: *ps.completion(),
+                });
                 use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
                     items: ci.item,
@@ -2797,98 +2767,6 @@ impl Scene for GameScene {
                     self.minimap_widget
                         .update_viewport(&self.minimap_xmap, cx, cy);
                 }
-
-                // --- Quest log panel data + minimap quest markers ---
-                {
-                    use crate::ui::hud::quest_log_panel::{
-                        QuestEntryDisplay, QuestLogPanelData, QuestTitle,
-                    };
-                    let catalog = ps.quest_catalog();
-                    let counts = ps.quest_completion_counts();
-                    let active_template = ps.active_quest_template_id();
-                    let active_step_idx = ps.active_quest_step_idx() as usize;
-                    let active_npc_pos = ps.active_quest_npc_pos();
-
-                    let mut display_entries: Vec<QuestEntryDisplay> = Vec::new();
-                    for (idx, entry) in catalog.iter().enumerate() {
-                        let count = counts.get(idx).copied().unwrap_or(-1);
-                        // Skip quests the player has not yet discovered
-                        // (server uses -1 sentinel until the player gets
-                        // close enough for the NPC to sight them).
-                        if count < 0 {
-                            continue;
-                        }
-                        // Decide how many "open" stage rows to emit for this NPC.
-                        let stage_rows: u8 = if entry.repeatable {
-                            1
-                        } else {
-                            let stages = entry.stages.max(1);
-                            (0..stages).filter(|s| count <= i16::from(*s)).count() as u8
-                        };
-                        if stage_rows == 0 {
-                            continue;
-                        }
-                        let (title, description, steps) =
-                            match mag_core::quest_defs::find_quest_def(entry.template_id) {
-                                Some(def) => {
-                                    let steps_str: Vec<String> = def
-                                        .steps
-                                        .iter()
-                                        .map(|s| {
-                                            match s {
-                                            mag_core::quest_defs::QuestStep::FixedLocation {
-                                                x,
-                                                y,
-                                                desc,
-                                            } => format!("• {desc} ({x},{y})"),
-                                            mag_core::quest_defs::QuestStep::ReturnToQuestGiver {
-                                                desc,
-                                            } => format!("• {desc}"),
-                                        }
-                                        })
-                                        .collect();
-                                    (
-                                        QuestTitle::Plain(def.title.to_owned()),
-                                        def.description.to_owned(),
-                                        steps_str,
-                                    )
-                                }
-                                None => (
-                                    QuestTitle::BringItemToNpc {
-                                        item_name: entry.item_name.clone(),
-                                        npc_name: entry.npc_name.clone(),
-                                    },
-                                    String::new(),
-                                    Vec::new(),
-                                ),
-                            };
-                        for _ in 0..stage_rows {
-                            display_entries.push(QuestEntryDisplay {
-                                template_id: entry.template_id,
-                                title: title.clone(),
-                                description: description.clone(),
-                                steps: steps.clone(),
-                                npc_x: entry.npc_x,
-                                npc_y: entry.npc_y,
-                            });
-                        }
-                    }
-
-                    self.quest_log_panel.update_data(QuestLogPanelData {
-                        entries: display_entries,
-                        active_template_id: active_template,
-                    });
-
-                    // Minimap markers: every quest giver in the catalog.
-                    let givers: Vec<(u16, u16)> =
-                        catalog.iter().map(|e| (e.npc_x, e.npc_y)).collect();
-                    let active_marker = if active_template == 0 {
-                        None
-                    } else {
-                        active_quest_destination(active_template, active_step_idx, active_npc_pos)
-                    };
-                    self.minimap_widget.set_quest_markers(givers, active_marker);
-                }
             }
             let mut ctx = RenderContext {
                 canvas,
@@ -2915,7 +2793,6 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
-            self.quest_log_panel.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
@@ -2926,6 +2803,7 @@ impl Scene for GameScene {
             // overlaps the skill bar, so it is drawn after the legacy HUD
             // chrome to keep its description box visible.
             self.talent_panel.render(&mut ctx)?;
+            self.journal_panel.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);

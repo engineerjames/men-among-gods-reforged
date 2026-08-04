@@ -174,6 +174,11 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     // talent panel immediately after login.
     crate::player::commands::send_set_char_talents(gs, nr);
 
+    // send initial Journal completion-data snapshot so the client can
+    // render labyrinth/pentagram/first-kill/explorer-point/quest checklists
+    // immediately after login.
+    crate::player::commands::send_set_completion_data(gs, nr);
+
     // mark active and set login date, addr, add net history
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -555,7 +555,7 @@ fn main() -> Result<(), String> {
                     HudPanel::Minimap => minimap_widget.toggle(),
                     HudPanel::KeyBindings => {}
                     HudPanel::Talents => {}
-                    HudPanel::QuestLog => {}
+                    HudPanel::Journal => {}
                 }
             }
         }

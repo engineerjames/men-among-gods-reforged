@@ -54,22 +54,8 @@ pub struct PlayerState {
     /// per-layer bit fields (8 nodes per byte). See `core::talent_trees`.
     talents: [u8; 25],
 
-    /// Immutable per-session catalog of NPC quests. Sent once at login
-    /// via `SV_SETQUESTCATALOG`.
-    quest_catalog: Vec<mag_core::quest_defs::QuestCatalogEntry>,
-    /// Per-quest completion counters, indexed by catalog index. Updated
-    /// at login (full snapshot) and incrementally on turn-in via
-    /// `SV_SETQUESTCOMPLETION` deltas.
-    quest_completion_counts: [i16; mag_core::quest_defs::MAX_QUEST_CATALOG],
-    /// NPC template ID of the quest currently focused (selected in the
-    /// quest panel). `0` = no focused quest. Pure client-local UI state.
-    active_quest_template_id: u16,
-    /// Index of the currently active step within the focused quest's
-    /// walkthrough. Valid only when `active_quest_template_id != 0`.
-    active_quest_step_idx: u8,
-    /// Tile coordinates of the currently focused NPC, when known. Used
-    /// by `QuestStep::ReturnToQuestGiver` to drive the minimap pin.
-    active_quest_npc_pos: Option<(u16, u16)>,
+    /// Latest server snapshot of Journal completion-tracking state.
+    completion: CompletionSnapshot,
 }
 
 /// A cached (nr --> name) entry used by the auto-look name overlay.
@@ -77,6 +63,25 @@ pub struct PlayerState {
 struct LookNameEntry {
     id: u16,
     name: String,
+}
+
+/// Latest server snapshot of Journal completion-tracking state.
+///
+/// Mirrors the fields of `ServerCommandData::SetCompletionData` verbatim; see
+/// `core::server_commands::ServerCommandType::SetCompletionData` for the wire
+/// layout and field semantics.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CompletionSnapshot {
+    /// Highest labyrinth stage solved (`Character.data[20]` server-side).
+    pub labyrinth_progress: u8,
+    /// Number of times this character has personally solved the pentagram quest.
+    pub pentagram_solves: u32,
+    /// First-kill bits for monster classes 0-127, one bit per class id.
+    pub first_kill_bits: [u32; 4],
+    /// Explorer-point ("poles") visited bits.
+    pub explorer_point_bits: [u32; 4],
+    /// Hand-authored quest-completion bitset (bit index = `QuestDef::id`).
+    pub quest_completion_bits: u32,
 }
 
 impl Default for PlayerState {
@@ -112,11 +117,7 @@ impl Default for PlayerState {
 
             talents: [0; 25],
 
-            quest_catalog: Vec::new(),
-            quest_completion_counts: [-1; mag_core::quest_defs::MAX_QUEST_CATALOG],
-            active_quest_template_id: 0,
-            active_quest_step_idx: 0,
-            active_quest_npc_pos: None,
+            completion: CompletionSnapshot::default(),
         }
     }
 }
@@ -190,73 +191,15 @@ impl PlayerState {
         &self.talents
     }
 
-    /// Returns the immutable per-session quest catalog snapshot.
+    /// Returns the latest server snapshot of Journal completion-tracking
+    /// state (labyrinth progress, pentagram solves, first-kill/explorer-point
+    /// bitsets, and hand-authored quest-completion bitset).
     ///
     /// # Returns
     ///
-    /// * Value returned by `quest_catalog`.
-    pub fn quest_catalog(&self) -> &[mag_core::quest_defs::QuestCatalogEntry] {
-        &self.quest_catalog
-    }
-
-    /// Returns the per-quest completion counters, indexed by catalog index.
-    ///
-    /// # Returns
-    ///
-    /// * Value returned by `quest_completion_counts`.
-    pub fn quest_completion_counts(&self) -> &[i16; mag_core::quest_defs::MAX_QUEST_CATALOG] {
-        &self.quest_completion_counts
-    }
-
-    /// Sets the focused quest to `npc_template_id` (or `0` to clear).
-    /// Resolves the NPC tile position and step index from the local
-    /// catalog. Pure client-local action — no network traffic.
-    ///
-    /// # Arguments
-    ///
-    /// * `npc_template_id` - Template id of the NPC, or `0` to clear focus.
-    pub fn set_active_quest(&mut self, npc_template_id: u16) {
-        self.active_quest_template_id = npc_template_id;
-        if npc_template_id == 0 {
-            self.active_quest_step_idx = 0;
-            self.active_quest_npc_pos = None;
-            return;
-        }
-        if let Some(e) = self
-            .quest_catalog
-            .iter()
-            .find(|e| e.template_id == npc_template_id)
-        {
-            self.active_quest_npc_pos = Some((e.npc_x, e.npc_y));
-        } else {
-            self.active_quest_npc_pos = None;
-        }
-        self.active_quest_step_idx = 0;
-    }
-
-    /// Returns the NPC template ID of the currently focused quest, or `0`
-    /// when none is focused.
-    ///
-    /// # Returns
-    ///
-    /// * Value returned by `active_quest_template_id`.
-    pub fn active_quest_template_id(&self) -> u16 {
-        self.active_quest_template_id
-    }
-
-    /// Returns the active step index within the focused quest's walkthrough.
-    ///
-    /// # Returns
-    ///
-    /// * Value returned by `active_quest_step_idx`.
-    pub fn active_quest_step_idx(&self) -> u8 {
-        self.active_quest_step_idx
-    }
-
-    /// Returns the cached tile position of the focused quest's NPC, when
-    /// known. Used to drive the minimap pin for `ReturnToQuestGiver` steps.
-    pub fn active_quest_npc_pos(&self) -> Option<(u16, u16)> {
-        self.active_quest_npc_pos
+    /// * Value returned by `completion`.
+    pub fn completion(&self) -> &CompletionSnapshot {
+        &self.completion
     }
 
     /// Returns `true` when the shop overlay should be displayed.
@@ -589,21 +532,20 @@ impl PlayerState {
             ServerCommandData::SetCharTalents { values } => {
                 self.talents = *values;
             }
-            ServerCommandData::SetQuestCatalog { entries } => {
-                self.quest_catalog = entries.clone();
-            }
-            ServerCommandData::SetQuestCompletion(payload) => {
-                use mag_core::server_commands::QuestCompletionPayload;
-                match payload {
-                    QuestCompletionPayload::Full(counts) => {
-                        self.quest_completion_counts = *counts;
-                    }
-                    QuestCompletionPayload::Delta { idx, count } => {
-                        if let Some(slot) = self.quest_completion_counts.get_mut(*idx as usize) {
-                            *slot = *count;
-                        }
-                    }
-                }
+            ServerCommandData::SetCompletionData {
+                labyrinth_progress,
+                pentagram_solves,
+                first_kill_bits,
+                explorer_point_bits,
+                quest_completion_bits,
+            } => {
+                self.completion = CompletionSnapshot {
+                    labyrinth_progress: *labyrinth_progress,
+                    pentagram_solves: *pentagram_solves,
+                    first_kill_bits: *first_kill_bits,
+                    explorer_point_bits: *explorer_point_bits,
+                    quest_completion_bits: *quest_completion_bits,
+                };
             }
             ServerCommandData::SetCharHp { values } => {
                 self.character_info.hp = *values;

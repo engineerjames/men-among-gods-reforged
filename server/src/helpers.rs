@@ -607,7 +607,8 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
 ///
 /// Port of the `npc_class[]` lookup from the original server. Returns a
 /// human-friendly string for `nr`, or a short error message when out of
-/// bounds.
+/// bounds. Thin wrapper around [`core::monster_classes::get_class_name`]
+/// (the shared source of truth, also used by the client's Journal panel).
 ///
 /// # Arguments
 /// * `nr` - Numeric monster class identifier
@@ -616,94 +617,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
 ///
 /// * Value returned by `get_class_name`.
 pub fn get_class_name(nr: i32) -> &'static str {
-    // List from C++ npc_class[]
-    const NPC_CLASS: [&str; 77] = [
-        "",
-        "Weak Thief",
-        "Thief",
-        "Ghost",
-        "Weak Skeleton",
-        "Strong Skeleton",
-        "Skeleton",
-        "Outlaw",
-        "Grolm Fighter",
-        "Grolm Warrior",
-        "Grolm Knight",
-        "Lizard Youngster",
-        "Lizard Youth",
-        "Lizard Worker",
-        "Lizard Fighter",
-        "Lizard Warrior",
-        "Lizard Mage",
-        "Ratling",
-        "Ratling Fighter",
-        "Ratling Warrior",
-        "Ratling Knight",
-        "Ratling Baron",
-        "Ratling Count",
-        "Ratling Duke",
-        "Ratling Prince",
-        "Ratling King",
-        "Spellcaster",
-        "Knight",
-        "Weak Golem",
-        "Captain Gargoyle",
-        "Undead",
-        "Very Strong Ice Gargoyle",
-        "Strong Outlaw",
-        "Private Grolm",
-        "PFC Grolm",
-        "Lance Corp Grolm",
-        "Corporal Grolm",
-        "Sergeant Grolm",
-        "Staff Sergeant Grolm",
-        "Master Sergeant Grolm",
-        "First Sergeant Grolm",
-        "Sergeant Major Grolm",
-        "2nd Lieutenant Grolm",
-        "1st Lieutenant Grolm",
-        "Major Gargoyle",
-        "Lt. Colonel Gargoyle",
-        "Colonel Gargoyle",
-        "Brig. General Gargoyle",
-        "Major General Gargoyle",
-        "Lieutenant Gargoyle",
-        "Weak Spider",
-        "Spider",
-        "Strong Spider",
-        "Very Strong Outlaw",
-        "Lizard Knight",
-        "Lizard Archmage",
-        "Undead Lord",
-        "Undead King",
-        "Very Weak Ice Gargoyle",
-        "Strong Golem",
-        "Strong Ghost",
-        "Shiva",
-        "Flame",
-        "Weak Ice Gargoyle",
-        "Ice Gargoyle",
-        "Strong Ice Gargoyle",
-        "Greenling",
-        "Greenling Fighter",
-        "Greenling Warrior",
-        "Greenling Knight",
-        "Greenling Baron",
-        "Greenling Count",
-        "Greenling Duke",
-        "Greenling Prince",
-        "Greenling King",
-        "Strong Thief",
-        "Major Grolm",
-    ];
-    if nr < 0 {
-        return "err... nothing";
-    }
-    let nr = nr as usize;
-    if nr >= NPC_CLASS.len() {
-        return "umm... whatzit";
-    }
-    NPC_CLASS[nr]
+    core::monster_classes::get_class_name(nr)
 }
 
 /// Returns true if the class was already marked as killed, false if this is the first kill. Side effect: sets the bit for this class.
