@@ -747,7 +747,9 @@ mod tests {
 
         let changed = GameState::clear_completion_scratch_slots(&mut characters);
 
-        assert_eq!(changed, 1);
+        // The helper returns the number of cleared *slots*, not characters.
+        // Character 0 has both future3[0] and future3[1] non-zero.
+        assert_eq!(changed, 2);
         assert_eq!(characters[0].future3[0], 0);
         assert_eq!(characters[0].future3[1], 0);
         assert_eq!(characters[1].future3[0], 7);

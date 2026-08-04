@@ -26,11 +26,81 @@ pub struct QuestDef {
 
 /// Hand-authored quest catalog. Add new entries as more quests are wired up;
 /// leave existing `id`s untouched since the client markdown references them.
-pub const QUEST_DEFS: &[QuestDef] = &[QuestDef {
-    id: 0,
-    npc_temp: 518,
-    label: "Black Candle (Cityguard)",
-}];
+pub const QUEST_DEFS: &[QuestDef] = &[
+    QuestDef {
+        id: 0,
+        npc_temp: 518,
+        label: "Black Candle (Cityguard)",
+    },
+    // Skill turn-in quests (NPC `data[49]` is the required item, `data[50]`
+    // is the taught skill). Identified by scanning `world_seed.wsnap` for
+    // character templates with `data[49] != 0` and `data[50] != 0`.
+    QuestDef {
+        id: 1,
+        npc_temp: 25,
+        label: "Barter (Jamil)",
+    },
+    QuestDef {
+        id: 2,
+        npc_temp: 28,
+        label: "Enhance Weapon (Sirjan)",
+    },
+    QuestDef {
+        id: 3,
+        npc_temp: 50,
+        label: "Recall (Inga)",
+    },
+    QuestDef {
+        id: 4,
+        npc_temp: 64,
+        label: "Repair (Jefferson)",
+    },
+    QuestDef {
+        id: 5,
+        npc_temp: 90,
+        label: "Stun (Ingrid)",
+    },
+    QuestDef {
+        id: 6,
+        npc_temp: 91,
+        label: "Lock (Steven)",
+    },
+    QuestDef {
+        id: 7,
+        npc_temp: 107,
+        label: "Bless (Cirrus)",
+    },
+    QuestDef {
+        id: 8,
+        npc_temp: 108,
+        label: "Identify (Nasir)",
+    },
+    QuestDef {
+        id: 9,
+        npc_temp: 109,
+        label: "Resist (Serena)",
+    },
+    QuestDef {
+        id: 10,
+        npc_temp: 111,
+        label: "Curse (Gordon)",
+    },
+    QuestDef {
+        id: 11,
+        npc_temp: 342,
+        label: "Sense (Manfred)",
+    },
+    QuestDef {
+        id: 12,
+        npc_temp: 343,
+        label: "Rest (Leopold)",
+    },
+    QuestDef {
+        id: 13,
+        npc_temp: 363,
+        label: "Heal (Gunther)",
+    },
+];
 
 /// Looks up the quest definition (if any) whose giving NPC template matches
 /// `npc_temp`.
@@ -54,6 +124,9 @@ mod tests {
     fn finds_known_npc_temp() {
         let quest = find_by_npc_temp(518).expect("expected a quest for temp 518");
         assert_eq!(quest.id, 0);
+
+        let quest = find_by_npc_temp(107).expect("expected a quest for temp 107");
+        assert_eq!(quest.id, 7);
     }
 
     #[test]
