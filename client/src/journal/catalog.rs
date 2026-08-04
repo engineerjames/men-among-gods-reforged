@@ -49,9 +49,6 @@ pub static JOURNAL_CATALOG: &[JournalCategory] = &[
     },
     JournalCategory {
         label: "Labyrinth",
-        // Selecting a category with subcategories always jumps to
-        // subcategory 0, so the overview must be a subcategory itself to
-        // ever be reachable — it can't live in `content_file` here.
         content_file: None,
         subcategories: &[
             JournalSubcategory {
