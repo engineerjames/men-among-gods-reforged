@@ -589,11 +589,8 @@ impl GameScene {
     /// close button, which needs no further handling.
     pub(crate) fn process_journal_panel_actions(&mut self) {
         for action in self.journal_panel.take_actions() {
-            match action {
-                WidgetAction::TogglePanel(_) => {
-                    // Panel was closed via its title bar X button.
-                }
-                _ => {}
+            if let WidgetAction::TogglePanel(_) = action {
+                // Panel was closed via its title bar X button.
             }
         }
     }

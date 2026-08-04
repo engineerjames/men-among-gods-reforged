@@ -342,7 +342,7 @@ fn is_table_separator_cell(cell: &str) -> bool {
 ///
 /// * `lines` - Accumulated non-blank source lines for the current block.
 /// * `blocks` - Output block list to append to.
-fn flush_paragraph<'a>(lines: &mut Vec<&'a str>, blocks: &mut Vec<MdBlock>) {
+fn flush_paragraph(lines: &mut Vec<&str>, blocks: &mut Vec<MdBlock>) {
     if lines.is_empty() {
         return;
     }
