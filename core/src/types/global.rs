@@ -2,7 +2,7 @@ use crate::constants;
 use bincode::{Decode, Encode};
 
 /// Global server state structure
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Global {
     pub mdtime: i32,
     pub mdday: i32,
@@ -117,53 +117,6 @@ impl Global {
             self.flags |= constants::GF_DIRTY;
         } else {
             self.flags &= !constants::GF_DIRTY;
-        }
-    }
-}
-
-impl Default for Global {
-    fn default() -> Self {
-        Self {
-            mdtime: 0,
-            mdday: 0,
-            mdyear: 0,
-            dlight: 0,
-            players_created: 0,
-            npcs_created: 0,
-            players_died: 0,
-            npcs_died: 0,
-            character_cnt: 0,
-            item_cnt: 0,
-            effect_cnt: 0,
-            expire_cnt: 0,
-            expire_run: 0,
-            gc_cnt: 0,
-            gc_run: 0,
-            lost_cnt: 0,
-            lost_run: 0,
-            reset_char: 0,
-            reset_item: 0,
-            ticker: 0,
-            total_online_time: 0,
-            online_per_hour: [0; 24],
-            uptime: 0,
-            uptime_per_hour: [0; 24],
-            flags: 0,
-            awake: 0,
-            body: 0,
-            players_online: 0,
-            queuesize: 0,
-            recv: 0,
-            send: 0,
-            transfer_reset_time: 0,
-            load_avg: 0,
-            load: 0,
-            max_online: 0,
-            max_online_per_hour: [0; 24],
-            fullmoon: 0,
-            newmoon: 0,
-            unique: 0,
-            cap: 500,
         }
     }
 }

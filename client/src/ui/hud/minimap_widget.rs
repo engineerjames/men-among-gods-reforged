@@ -375,15 +375,6 @@ impl MinimapWidget {
 
         self.viewport_dirty = true;
     }
-
-    /// Returns `true` if `(px, py)` lands inside the map panel rectangle.
-    #[allow(dead_code)]
-    fn panel_contains(&self, px: i32, py: i32) -> bool {
-        px >= self.panel_x
-            && py >= self.panel_y
-            && px < self.panel_x + self.panel_w as i32
-            && py < self.panel_y + self.panel_h as i32
-    }
 }
 
 impl Widget for MinimapWidget {
@@ -613,17 +604,6 @@ mod tests {
             button.x + button.width as i32 / 2,
             button.y + button.height as i32 / 2,
         ));
-    }
-
-    #[test]
-    fn panel_hit_test() {
-        let mut w = MinimapWidget::new(200, 30, 14);
-        w.toggle();
-
-        // Point inside the panel area should be contained.
-        assert!(w.panel_contains(w.panel_x + 5, w.panel_y + 5));
-        // Point outside should not.
-        assert!(!w.panel_contains(0, 0));
     }
 
     #[test]

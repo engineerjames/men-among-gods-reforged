@@ -2312,10 +2312,6 @@ fn paint_sprite_dd(
     yoff: i32,
     tint: egui::Color32,
 ) -> Result<(), String> {
-    let Some((xs, ys)) = cache.sprite_tiles_xy(ctx, sprite_id)? else {
-        return Ok(());
-    };
-
     let Some(texture) = cache.texture_for(ctx, sprite_id)? else {
         return Ok(());
     };

@@ -16,7 +16,6 @@ struct Destination {
 }
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)] // TODO: Check usage and remove if unnecessary
 struct Riddle {
     question: &'static str,
     answer_1: &'static str,

@@ -14,6 +14,11 @@ use crate::game_state::GameState;
 use crate::god::God;
 use crate::{driver, helpers, points};
 
+/// Maximum final value for a character attribute or skill.
+///
+/// Unrelated to `Global.cap`, which gates the player login queue.
+const MAX_ATTRIB_SKILL_VALUE: i32 = 500;
+
 impl GameState {
     /// Helper function to check if character wears a specific item
     /// Port of part of `really_update_char`
@@ -282,7 +287,7 @@ impl GameState {
                 + i32::from(self.characters[cn].attrib[z][1])
                 + bonus;
 
-            final_attrib = final_attrib.clamp(1, self.globals.cap);
+            final_attrib = final_attrib.clamp(1, MAX_ATTRIB_SKILL_VALUE);
             self.characters[cn].attrib[z][5] = final_attrib as u16;
         }
 
@@ -346,7 +351,7 @@ impl GameState {
                 + i32::from(self.characters[cn].attrib[attrs[2]][5]))
                 / 5;
             final_skill += attrib_contribution;
-            final_skill = final_skill.clamp(1, self.globals.cap);
+            final_skill = final_skill.clamp(1, MAX_ATTRIB_SKILL_VALUE);
             self.characters[cn].skill[z][5] = final_skill as u16;
         }
 
