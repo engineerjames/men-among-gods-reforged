@@ -85,7 +85,7 @@ impl From<Item> for super::super::Item {
             current_age: v1.current_age,
             max_damage: v1.max_damage,
             current_damage: v1.current_damage,
-            attrib: v1.attrib,
+            attrib: v1.attrib.map(|row| row.map(i16::from)),
             hp: v1.hp,
             end: v1.end,
             mana: v1.mana,
@@ -113,7 +113,7 @@ impl From<Item> for super::super::Item {
             data: v1.data,
         };
         for n in 0..V1_MAX_SKILLS {
-            out.skill[n] = v1.skill[n];
+            out.skill[n] = v1.skill[n].map(i16::from);
         }
         out
     }

@@ -52,7 +52,9 @@ const MAX_DECOMPRESSED_BYTES: usize = 1024 * 1024 * 1024;
 /// - **1** — initial layout (50-slot `Character.skill` / `Item.skill`).
 /// - **2** — skill matrix grew to [`core::skills::MAX_SKILLS`] (75) for
 ///   Harakim ability slots and future-class headroom.
-pub const SNAPSHOT_SCHEMA_VERSION: u32 = 2;
+/// - **3** — attribute/skill values widened from `u8`/`i8` to `u16`/`i16`
+///   and the global `cap` field became authoritative.
+pub const SNAPSHOT_SCHEMA_VERSION: u32 = 3;
 
 /// Complete portable snapshot of all server game-world data.
 ///
@@ -235,6 +237,7 @@ impl WorldSnapshot {
                 Ok(snapshot)
             }
             1 => migrate_v1_to_current(&bytes, path),
+            2 => migrate_v2_to_current(&bytes, path),
             other => Err(format!(
                 "Unsupported snapshot schema version {} in {} (expected {}). \
                  A migration tool is required.",
@@ -337,6 +340,68 @@ fn migrate_v1_to_current(bytes: &[u8], path: &Path) -> Result<WorldSnapshot, Str
         bad_names: v1.bad_names,
         bad_words: v1.bad_words,
         motd: v1.motd,
+    })
+}
+
+/// Frozen on-disk shape of [`WorldSnapshot`] at schema version 2.
+///
+/// Differs from the current shape only in using the v3 entity types
+/// (`u8`/`i8` attribute and skill values on 75-slot matrices).
+#[derive(Decode)]
+struct WorldSnapshotV2 {
+    #[allow(dead_code)]
+    magic: [u8; 4],
+    #[allow(dead_code)]
+    schema_version: u32,
+    created_unix_secs: i64,
+    map: Vec<core::types::v3::Map>,
+    items: Vec<core::types::v3::Item>,
+    item_templates: Vec<core::types::v3::Item>,
+    characters: Vec<core::types::v3::Character>,
+    character_templates: Vec<core::types::v3::Character>,
+    effects: Vec<core::types::v3::Effect>,
+    globals: core::types::v3::Global,
+    bad_names: Vec<String>,
+    bad_words: Vec<String>,
+    motd: String,
+}
+
+/// Decode the legacy v2 snapshot bytes and convert to the live (v3) shape.
+///
+/// Each `v3::Character` / `v3::Item` is promoted via its `From` impl, which
+/// widens `u8`/`i8` attribute and skill values to the live `u16`/`i16`
+/// representation. All other entity types (`Map`, `Effect`, `Global`) are
+/// unchanged and pass through verbatim.
+///
+/// # Arguments
+///
+/// * `bytes` - Raw bytes of the legacy v2 `.wsnap` file.
+/// * `path`  - Path the bytes were read from (used in error messages).
+///
+/// # Returns
+///
+/// * `Ok(WorldSnapshot)` populated with the migrated content, tagged with
+///   the current schema version.
+/// * `Err(String)` if the v2 payload cannot be decoded.
+fn migrate_v2_to_current(bytes: &[u8], path: &Path) -> Result<WorldSnapshot, String> {
+    let (v2, _consumed): (WorldSnapshotV2, usize) =
+        bincode::decode_from_slice(bytes, bincode::config::standard())
+            .map_err(|e| format!("WorldSnapshot v2 decode {}: {e}", path.display()))?;
+
+    Ok(WorldSnapshot {
+        magic: SNAPSHOT_MAGIC,
+        schema_version: SNAPSHOT_SCHEMA_VERSION,
+        created_unix_secs: v2.created_unix_secs,
+        map: v2.map,
+        items: v2.items.into_iter().map(Into::into).collect(),
+        item_templates: v2.item_templates.into_iter().map(Into::into).collect(),
+        characters: v2.characters.into_iter().map(Into::into).collect(),
+        character_templates: v2.character_templates.into_iter().map(Into::into).collect(),
+        effects: v2.effects,
+        globals: v2.globals,
+        bad_names: v2.bad_names,
+        bad_words: v2.bad_words,
+        motd: v2.motd,
     })
 }
 
@@ -467,7 +532,7 @@ mod tests {
 
     /// Snapshot schema version constant guard — mirrors keydb_store's schema test.
     #[test]
-    fn snapshot_schema_version_is_two() {
-        assert_eq!(SNAPSHOT_SCHEMA_VERSION, 2);
+    fn snapshot_schema_version_is_three() {
+        assert_eq!(SNAPSHOT_SCHEMA_VERSION, 3);
     }
 }

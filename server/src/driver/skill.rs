@@ -725,7 +725,7 @@ pub fn spell_light(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
             return false;
         }
         let sense = gs.characters[co].skill[SK_SENSE][5];
-        if sense + 10 > power as u8 {
+        if sense + 10 > power as u16 {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
                 co,
@@ -1381,7 +1381,7 @@ pub fn spell_bless(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         gs.items[in_].name = name_bytes;
         gs.items[in_].flags |= ItemFlags::IF_SPELL.bits();
         for n in 0..5 {
-            gs.items[in_].attrib[n][1] = (power / 5 + 3) as i8;
+            gs.items[in_].attrib[n][1] = (power / 5 + 3) as i16;
         }
         gs.items[in_].sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
         gs.items[in_].duration = (TICKS * 60 * 10) as u32;
@@ -2044,7 +2044,7 @@ pub fn spell_curse(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool
         gs.items[in_idx].name = name_bytes;
         gs.items[in_idx].flags |= ItemFlags::IF_SPELL.bits();
         for n in 0..5 {
-            gs.items[in_idx].attrib[n][1] = -((power / 3) as i8);
+            gs.items[in_idx].attrib[n][1] = -((power / 3) as i16);
         }
         gs.items[in_idx].sprite[1] = 89;
         gs.items[in_idx].duration = (TICKS * 60 * 2) as u32;
@@ -3365,7 +3365,7 @@ pub fn spell_stun(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
         gs.items[in_idx].power = power as u32;
     }
 
-    if gs.characters[co].skill[SK_SENSE][5] + 10 > power as u8 {
+    if gs.characters[co].skill[SK_SENSE][5] + 10 > power as u16 {
         gs.do_character_log(
             co,
             FontColor::Green,
@@ -4006,7 +4006,7 @@ fn recompute_companion_stats(gs: &mut GameState, cn: usize, cc: usize) -> i32 {
         tmp = tmp * 3 / std::cmp::max(1, i32::from(gs.characters[cc].attrib[n][3]));
         gs.characters[cc].attrib[n][0] = std::cmp::max(
             10,
-            std::cmp::min(i32::from(gs.characters[cc].attrib[n][2]), tmp) as u8,
+            std::cmp::min(i32::from(gs.characters[cc].attrib[n][2]), tmp) as u16,
         );
     }
 
@@ -4014,7 +4014,8 @@ fn recompute_companion_stats(gs: &mut GameState, cn: usize, cc: usize) -> i32 {
         let mut tmp = base;
         tmp = tmp * 3 / std::cmp::max(1, i32::from(gs.characters[cc].skill[n][3]));
         if gs.characters[cc].skill[n][2] != 0 {
-            gs.characters[cc].skill[n][0] = std::cmp::min(gs.characters[cc].skill[n][2], tmp as u8);
+            gs.characters[cc].skill[n][0] =
+                std::cmp::min(gs.characters[cc].skill[n][2], tmp as u16);
         }
     }
 
@@ -4919,7 +4920,7 @@ fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
         return false;
     }
     let in_idx = in_opt.unwrap();
-    let agility_penalty = -((power / 3).clamp(1, 30)) as i8;
+    let agility_penalty = -((power / 3).clamp(1, 30)) as i16;
     {
         let item = &mut gs.items[in_idx];
         let mut name_bytes = [0u8; 40];
@@ -5129,7 +5130,7 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    let weapon_penalty = -((power / 2).clamp(1, 50)) as i8;
+    let weapon_penalty = -((power / 2).clamp(1, 50)) as i16;
     {
         let item = &mut gs.items[in_idx];
         let mut name_bytes = [0u8; 40];
@@ -5477,7 +5478,7 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
         return;
     }
     let power = i32::from(gs.characters[cn].skill[SK_SUNS_BLESSING][5]);
-    let bonus = (power / 10 + 2).clamp(1, 30) as i8;
+    let bonus = (power / 10 + 2).clamp(1, 30) as i16;
     let buff_duration = TICKS * 60;
     let cooldown_len = TICKS * 55;
 
@@ -5503,8 +5504,8 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
         for n in 0..5 {
             item.attrib[n][1] = bonus;
         }
-        item.armor[1] = bonus;
-        item.weapon[1] = bonus;
+        item.armor[1] = bonus as i8;
+        item.weapon[1] = bonus as i8;
     }
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
@@ -5712,7 +5713,7 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
     gs.characters[cn].a_end -= 200 * 1000;
 
     let power = i32::from(gs.characters[cn].skill[SK_INNER_STRENGTH][5]);
-    let buff_amount = ((power / 5) + 2).clamp(1, 50) as i8;
+    let buff_amount = ((power / 5) + 2).clamp(1, 50) as i16;
     let buff_duration = TICKS * 30;
 
     // Self weapon-skill buff item.

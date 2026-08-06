@@ -1689,7 +1689,9 @@ pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize)
     if co.flags & CharacterFlags::Stoned.bits() != 0 {
         return false;
     }
-    if spell == skills::SK_BLAST && (i16::from(cn.skill[skills::SK_BLAST][5]) - co.armor) < 10 {
+    if spell == skills::SK_BLAST
+        && (i32::from(cn.skill[skills::SK_BLAST][5]) - i32::from(co.armor)) < 10
+    {
         return false;
     }
     if spell == skills::SK_CURSE
@@ -2946,14 +2948,14 @@ pub fn npc_check_placement(gs: &GameState, in_idx: usize, n: usize) -> bool {
 pub fn npc_can_wear_item(ch: &Character, it: &core::types::Item) -> bool {
     // Check attribute requirements
     for m in 0..5 {
-        if it.attrib[m][2] > ch.attrib[m][0] as i8 {
+        if it.attrib[m][2] > ch.attrib[m][0] as i16 {
             return false;
         }
     }
 
     // Check skill requirements
     for m in 0..core::skills::MAX_SKILLS {
-        if it.skill[m][2] > ch.skill[m][0] as i8 {
+        if it.skill[m][2] > ch.skill[m][0] as i16 {
             return false;
         }
     }

@@ -2124,23 +2124,23 @@ impl God {
 
                 let suffix: &str = match animal_type {
                     MagicArmorType::Lion => {
-                        item.attrib[core::constants::AT_BRAVE as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_BRAVE as usize][0] += 4 * mul;
                         " of the Lion"
                     }
                     MagicArmorType::Snake => {
-                        item.attrib[core::constants::AT_WILL as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_WILL as usize][0] += 4 * mul;
                         " of the Snake"
                     }
                     MagicArmorType::Owl => {
-                        item.attrib[core::constants::AT_INT as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_INT as usize][0] += 4 * mul;
                         " of the Owl"
                     }
                     MagicArmorType::Weasel => {
-                        item.attrib[core::constants::AT_AGIL as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_AGIL as usize][0] += 4 * mul;
                         " of the Weasel"
                     }
                     MagicArmorType::Bear => {
-                        item.attrib[core::constants::AT_STREN as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_STREN as usize][0] += 4 * mul;
                         " of the Bear"
                     }
                     MagicArmorType::Magic => {
@@ -2152,7 +2152,7 @@ impl God {
                         " of Life"
                     }
                     MagicArmorType::Defence => {
-                        item.armor[0] += 2 * mul as i8;
+                        item.armor[0] += (2 * mul) as i8;
                         " of Defence"
                     }
                 };
@@ -2597,20 +2597,20 @@ impl God {
                 mirror.skill[0][0] = (i32::from(target_skill[skills::SK_WEAPON][0])
                     + bonus
                     + (i32::from(target_attrib[4][0]) - i32::from(target_attrib[0][0])) / 5)
-                    .clamp(0, 255) as u8;
+                    .clamp(0, 65535) as u16;
             } else if target_kindred & (traits::KIN_HARAKIM | traits::KIN_ARCHHARAKIM) != 0 {
                 // Dag-> hand2hand (wil,agi,int)
                 mirror.skill[0][0] = (i32::from(target_skill[skills::SK_WEAPON][0])
                     + bonus
                     + (i32::from(target_attrib[2][0]) - i32::from(target_attrib[4][0])) / 5)
-                    .clamp(0, 255) as u8;
+                    .clamp(0, 65535) as u16;
             } else if target_kindred
                 & (traits::KIN_MERCENARY | traits::KIN_SORCERER | traits::KIN_WARRIOR)
                 != 0
             {
                 // Swo-> hand2hand (wil,agi,str)
                 mirror.skill[0][0] =
-                    (i32::from(target_skill[skills::SK_WEAPON][0]) + bonus).clamp(0, 255) as u8;
+                    (i32::from(target_skill[skills::SK_WEAPON][0]) + bonus).clamp(0, 65535) as u16;
             }
 
             mirror.weapon = caster_weapon;
@@ -3323,14 +3323,14 @@ impl God {
             return;
         }
 
-        let val = val.clamp(0, 127);
+        let val = val.clamp(0, 65535);
 
         let skill_name = core::skills::get_skill_name(n as usize);
 
         let target_name = gs.characters[co].get_name().to_owned();
         let target = &mut gs.characters[co];
-        target.skill[n as usize][0] = val as u8;
-        target.skill[n as usize][1] = val as u8;
+        target.skill[n as usize][0] = val as u16;
+        target.skill[n as usize][1] = val as u16;
         target.set_do_update_flags();
         gs.do_character_log(
             cn,

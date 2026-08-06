@@ -195,8 +195,8 @@ impl ServerCommandType {
 
         let len = match parsed_op {
             ServerCommandType::SetCharMode => 2,
-            ServerCommandType::SetCharAttrib => 8,
-            ServerCommandType::SetCharSkill => 8,
+            ServerCommandType::SetCharAttrib => 14,
+            ServerCommandType::SetCharSkill => 14,
             ServerCommandType::SetCharHp => 13,
             ServerCommandType::SetCharEndur => 13,
             ServerCommandType::SetCharMana => 13,
@@ -374,11 +374,11 @@ pub enum ServerCommandData {
     },
     SetCharAttrib {
         index: u8,
-        values: [u8; 6],
+        values: [u16; 6],
     },
     SetCharSkill {
         index: u8,
-        values: [u8; 6],
+        values: [u16; 6],
     },
     SetCharHp {
         values: [u16; 6],
@@ -719,14 +719,28 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             ServerCommandType::SetCharAttrib,
             ServerCommandData::SetCharAttrib {
                 index: *bytes.get(1)?,
-                values: bytes.get(2..8)?.try_into().ok()?,
+                values: [
+                    read_u16(bytes, 2)?,
+                    read_u16(bytes, 4)?,
+                    read_u16(bytes, 6)?,
+                    read_u16(bytes, 8)?,
+                    read_u16(bytes, 10)?,
+                    read_u16(bytes, 12)?,
+                ],
             },
         )),
         8 => Some((
             ServerCommandType::SetCharSkill,
             ServerCommandData::SetCharSkill {
                 index: *bytes.get(1)?,
-                values: bytes.get(2..8)?.try_into().ok()?,
+                values: [
+                    read_u16(bytes, 2)?,
+                    read_u16(bytes, 4)?,
+                    read_u16(bytes, 6)?,
+                    read_u16(bytes, 8)?,
+                    read_u16(bytes, 10)?,
+                    read_u16(bytes, 12)?,
+                ],
             },
         )),
         12 => Some((

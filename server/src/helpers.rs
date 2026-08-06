@@ -128,7 +128,7 @@ pub fn write_c_string(buf: &mut [u8], s: &str) {
 ///
 /// * `skill` - Mutable character skill array to normalize.
 pub(crate) fn sync_weapon_skill(
-    skill: &mut [[u8; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS],
+    skill: &mut [[u16; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS],
 ) {
     let base_idx = SkillIndex::BaseValue as usize;
     let preset_idx = SkillIndex::PresetModifier as usize;
@@ -170,7 +170,7 @@ pub(crate) fn sync_weapon_skill(
 /// # Returns
 ///
 /// * The maximum requirement from `Weapon Skill` or any retired weapon slot.
-pub(crate) fn item_weapon_requirement(skill: &[[i8; 3]; skills::MAX_SKILLS]) -> i8 {
+pub(crate) fn item_weapon_requirement(skill: &[[i16; 3]; skills::MAX_SKILLS]) -> i16 {
     let mut requirement = skill[skills::SK_WEAPON][2];
 
     for legacy in skills::LEGACY_WEAPON_SKILLS {
@@ -197,7 +197,7 @@ pub(crate) fn item_weapon_requirement(skill: &[[i8; 3]; skills::MAX_SKILLS]) -> 
 /// * Panics when `modifier_idx` is outside the source skill modifier columns.
 pub(crate) fn add_canonical_skill_bonuses(
     skill_bonus: &mut [i32; skills::MAX_SKILLS],
-    skill: &[[i8; 3]; skills::MAX_SKILLS],
+    skill: &[[i16; 3]; skills::MAX_SKILLS],
     modifier_idx: usize,
 ) {
     for skill_idx in 0..skills::MAX_SKILLS {
@@ -213,7 +213,10 @@ pub(crate) fn add_canonical_skill_bonuses(
 
 // TODO: Clean this up by updating the item templates once changes have settled.
 /// Returns the single effective weapon bonus encoded on one item source.
-fn collapsed_weapon_skill_bonus(skill: &[[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) -> i32 {
+fn collapsed_weapon_skill_bonus(
+    skill: &[[i16; 3]; skills::MAX_SKILLS],
+    modifier_idx: usize,
+) -> i32 {
     let mut strongest_bonus = 0i32;
     let mut strongest_penalty = 0i32;
 
@@ -403,23 +406,23 @@ pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
 
     let suffix: &str = match random_mod_usize(8) {
         0 => {
-            item.attrib[AT_BRAVE as usize][0] += 4 * mul as i8;
+            item.attrib[AT_BRAVE as usize][0] += 4 * mul;
             " of the Lion"
         }
         1 => {
-            item.attrib[AT_WILL as usize][0] += 4 * mul as i8;
+            item.attrib[AT_WILL as usize][0] += 4 * mul;
             " of the Snake"
         }
         2 => {
-            item.attrib[AT_INT as usize][0] += 4 * mul as i8;
+            item.attrib[AT_INT as usize][0] += 4 * mul;
             " of the Owl"
         }
         3 => {
-            item.attrib[AT_AGIL as usize][0] += 4 * mul as i8;
+            item.attrib[AT_AGIL as usize][0] += 4 * mul;
             " of the Weasel"
         }
         4 => {
-            item.attrib[AT_STREN as usize][0] += 4 * mul as i8;
+            item.attrib[AT_STREN as usize][0] += 4 * mul;
             " of the Bear"
         }
         5 => {
@@ -431,7 +434,7 @@ pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
             " of Life"
         }
         7 => {
-            item.armor[0] += 2 * mul as i8;
+            item.armor[0] += (2 * mul) as i8;
             " of Defence"
         }
         _ => "",
@@ -1257,7 +1260,7 @@ mod tests {
 
     #[test]
     fn sync_weapon_skill_promotes_legacy_maximums() {
-        let mut skill = [[0u8; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS];
+        let mut skill = [[0u16; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS];
         skill[skills::SK_SWORD][SkillIndex::BaseValue as usize] = 5;
         skill[skills::SK_SWORD][SkillIndex::MaxValue as usize] = 20;
         skill[skills::SK_SWORD][SkillIndex::RaiseDifficulty as usize] = 4;
@@ -1277,7 +1280,7 @@ mod tests {
 
     #[test]
     fn item_weapon_requirement_uses_highest_legacy_requirement() {
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_WEAPON][2] = 3;
         skill[skills::SK_DAGGER][2] = 5;
         skill[skills::SK_STAFF][2] = 7;
@@ -1288,7 +1291,7 @@ mod tests {
     #[test]
     fn add_canonical_skill_bonuses_collapses_legacy_weapon_slots() {
         let mut skill_bonus = [0i32; skills::MAX_SKILLS];
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_WEAPON][0] = 8;
         skill[skills::SK_HAND][0] = 10;
         skill[skills::SK_DAGGER][0] = 10;
@@ -1305,7 +1308,7 @@ mod tests {
     #[test]
     fn add_canonical_skill_bonuses_preserves_non_weapon_bonuses() {
         let mut skill_bonus = [0i32; skills::MAX_SKILLS];
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_STEALTH][0] = 4;
         skill[skills::SK_REPAIR][0] = 6;
 
@@ -1319,7 +1322,7 @@ mod tests {
     #[test]
     fn add_canonical_skill_bonuses_collapses_weapon_penalties() {
         let mut skill_bonus = [0i32; skills::MAX_SKILLS];
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_HAND][1] = -5;
         skill[skills::SK_DAGGER][1] = -10;
         skill[skills::SK_TWOHAND][1] = -7;

@@ -160,10 +160,10 @@ pub fn use_door(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
                     let citem = character.citem as usize;
                     if citem != 0 && (citem & 0x80000000) == 0 && gs.items[citem].driver == 3 {
                         let skill =
-                            character.skill[skills::SK_LOCK][5] + gs.items[citem].data[0] as u8;
+                            character.skill[skills::SK_LOCK][5] + gs.items[citem].data[0] as u16;
                         let power = gs.items[item_idx].data[2];
 
-                        if power == 0 || skill >= (power + helpers::random_mod(20)) as u8 {
+                        if power == 0 || skill >= (power + helpers::random_mod(20)) as u16 {
                             lock = true;
                         } else {
                             gs.do_character_log(
@@ -1828,7 +1828,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
             t = t * 3 / diff;
             let maxv = i32::from(ch.attrib[n][2]);
             let v = std::cmp::max(10, std::cmp::min(maxv, t));
-            ch.attrib[n][0] = v as u8;
+            ch.attrib[n][0] = v as u16;
         }
 
         for n in 0..core::skills::MAX_SKILLS {
@@ -1837,7 +1837,7 @@ pub fn use_crystal_sub(gs: &mut GameState, _cn: usize, item_idx: usize) -> i32 {
             t = t * 3 / diff;
             if ch.skill[n][2] != 0 {
                 let maxv = i32::from(ch.skill[n][2]);
-                ch.skill[n][0] = std::cmp::min(maxv, t) as u8;
+                ch.skill[n][0] = std::cmp::min(maxv, t) as u16;
             }
         }
 
@@ -3528,7 +3528,7 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
             if i32::from(gs.characters[cn].attrib[n][0]) > divi as i32 {
                 let boost = crate::helpers::random_mod(
                     u32::from(gs.characters[cn].attrib[n][0]) / divi as u32,
-                ) as u8;
+                ) as u16;
                 gs.characters[cn].attrib[n][0] =
                     gs.characters[cn].attrib[n][0].saturating_add(boost);
             }
@@ -3539,7 +3539,7 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
             if i32::from(gs.characters[cn].skill[n][0]) > divi as i32 {
                 let boost = crate::helpers::random_mod(
                     u32::from(gs.characters[cn].skill[n][0]) / divi as u32,
-                ) as u8;
+                ) as u16;
                 gs.characters[cn].skill[n][0] = gs.characters[cn].skill[n][0].saturating_add(boost);
             }
         }
@@ -6624,121 +6624,121 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
                 2..=6 => {
                     let attr_idx = ran - 2;
                     let current = item.attrib[attr_idx][2] as u32;
-                    item.attrib[attr_idx][2] = std::cmp::min(120, current + (stren * 3)) as i8;
+                    item.attrib[attr_idx][2] = std::cmp::min(120, current + (stren * 3)) as i16;
                     item.attrib[attr_idx][0] =
-                        item.attrib[attr_idx][0].saturating_add((stren / 2) as i8);
+                        item.attrib[attr_idx][0].saturating_add((stren / 2) as i16);
                 }
                 7..=9 => {
                     let current = item.skill[skills::SK_WEAPON][2] as u32;
                     item.skill[skills::SK_WEAPON][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_WEAPON][0] =
-                        item.skill[skills::SK_WEAPON][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_WEAPON][0].saturating_add(stren as i16);
                 }
                 10 => {
                     let current = item.skill[skills::SK_STEALTH][2] as u32;
                     item.skill[skills::SK_STEALTH][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_STEALTH][0] =
-                        item.skill[skills::SK_STEALTH][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_STEALTH][0].saturating_add(stren as i16);
                 }
                 11 => {
                     let current = item.skill[skills::SK_MSHIELD][2] as u32;
                     item.skill[skills::SK_MSHIELD][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_MSHIELD][0] =
-                        item.skill[skills::SK_MSHIELD][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_MSHIELD][0].saturating_add(stren as i16);
                 }
                 12 => {
                     let current = item.skill[skills::SK_PROTECT][2] as u32;
                     item.skill[skills::SK_PROTECT][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_PROTECT][0] =
-                        item.skill[skills::SK_PROTECT][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_PROTECT][0].saturating_add(stren as i16);
                 }
                 13 => {
                     let current = item.skill[skills::SK_ENHANCE][2] as u32;
                     item.skill[skills::SK_ENHANCE][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_ENHANCE][0] =
-                        item.skill[skills::SK_ENHANCE][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_ENHANCE][0].saturating_add(stren as i16);
                 }
                 14 => {
                     let current = item.skill[skills::SK_STUN][2] as u32;
                     item.skill[skills::SK_STUN][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_STUN][0] =
-                        item.skill[skills::SK_STUN][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_STUN][0].saturating_add(stren as i16);
                 }
                 15 => {
                     let current = item.skill[skills::SK_CURSE][2] as u32;
                     item.skill[skills::SK_CURSE][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_CURSE][0] =
-                        item.skill[skills::SK_CURSE][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_CURSE][0].saturating_add(stren as i16);
                 }
                 16 => {
                     let current = item.skill[skills::SK_BLESS][2] as u32;
                     item.skill[skills::SK_BLESS][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_BLESS][0] =
-                        item.skill[skills::SK_BLESS][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_BLESS][0].saturating_add(stren as i16);
                 }
                 17 => {
                     let current = item.skill[skills::SK_RESIST][2] as u32;
                     item.skill[skills::SK_RESIST][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_RESIST][0] =
-                        item.skill[skills::SK_RESIST][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_RESIST][0].saturating_add(stren as i16);
                 }
                 18 => {
                     let current = item.skill[skills::SK_BLAST][2] as u32;
                     item.skill[skills::SK_BLAST][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_BLAST][0] =
-                        item.skill[skills::SK_BLAST][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_BLAST][0].saturating_add(stren as i16);
                 }
                 19 => {
                     let current = item.skill[skills::SK_HEAL][2] as u32;
                     item.skill[skills::SK_HEAL][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_HEAL][0] =
-                        item.skill[skills::SK_HEAL][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_HEAL][0].saturating_add(stren as i16);
                 }
                 20 => {
                     let current = item.skill[skills::SK_GHOST][2] as u32;
                     item.skill[skills::SK_GHOST][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_GHOST][0] =
-                        item.skill[skills::SK_GHOST][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_GHOST][0].saturating_add(stren as i16);
                 }
                 21 => {
                     let current = item.skill[skills::SK_IMMUN][2] as u32;
                     item.skill[skills::SK_IMMUN][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_IMMUN][0] =
-                        item.skill[skills::SK_IMMUN][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_IMMUN][0].saturating_add(stren as i16);
                 }
                 22 => {
                     let current = item.skill[skills::SK_SURROUND][2] as u32;
                     item.skill[skills::SK_SURROUND][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_SURROUND][0] =
-                        item.skill[skills::SK_SURROUND][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_SURROUND][0].saturating_add(stren as i16);
                 }
                 23 => {
                     let current = item.skill[skills::SK_CONCEN][2] as u32;
                     item.skill[skills::SK_CONCEN][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_CONCEN][0] =
-                        item.skill[skills::SK_CONCEN][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_CONCEN][0].saturating_add(stren as i16);
                 }
                 24 => {
                     let current = item.skill[skills::SK_WARCRY][2] as u32;
                     item.skill[skills::SK_WARCRY][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i8;
+                        std::cmp::min(120, current + (stren * 5)) as i16;
                     item.skill[skills::SK_WARCRY][0] =
-                        item.skill[skills::SK_WARCRY][0].saturating_add(stren as i8);
+                        item.skill[skills::SK_WARCRY][0].saturating_add(stren as i16);
                 }
                 25 => {
                     item.armor[0] = item.armor[0].saturating_add((stren / 2) as i8);

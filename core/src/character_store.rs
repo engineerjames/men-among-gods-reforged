@@ -223,7 +223,7 @@ pub struct CharacterPatch {
     /// Template index this slot was created from.
     pub temp: u16,
     /// Per-attribute base values (`[base, mod, max?]` per skill axis).
-    pub attrib: [[u8; SKILL_AXIS]; 5],
+    pub attrib: [[u16; SKILL_AXIS]; 5],
     /// Base HP per skill axis.
     pub hp: [u16; SKILL_AXIS],
     /// Base endurance per skill axis.
@@ -231,7 +231,7 @@ pub struct CharacterPatch {
     /// Base mana per skill axis.
     pub mana: [u16; SKILL_AXIS],
     /// Base skill values, `[base, mod, max?]` per skill axis.
-    pub skill: [[u8; SKILL_AXIS]; MAX_SKILLS],
+    pub skill: [[u16; SKILL_AXIS]; MAX_SKILLS],
     /// Weapon proficiency bonus.
     pub weapon_bonus: u8,
     /// Armor proficiency bonus.
