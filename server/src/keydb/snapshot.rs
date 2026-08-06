@@ -287,9 +287,7 @@ struct SnapshotHeader {
 /// (50-slot skill matrix on `Character` / `Item`).
 #[derive(Decode)]
 struct WorldSnapshotV1 {
-    #[allow(dead_code)]
     magic: [u8; 4],
-    #[allow(dead_code)]
     schema_version: u32,
     created_unix_secs: i64,
     map: Vec<core::types::v1::Map>,
@@ -349,9 +347,7 @@ fn migrate_v1_to_current(bytes: &[u8], path: &Path) -> Result<WorldSnapshot, Str
 /// (`u8`/`i8` attribute and skill values on 75-slot matrices).
 #[derive(Decode)]
 struct WorldSnapshotV2 {
-    #[allow(dead_code)]
     magic: [u8; 4],
-    #[allow(dead_code)]
     schema_version: u32,
     created_unix_secs: i64,
     map: Vec<core::types::v3::Map>,

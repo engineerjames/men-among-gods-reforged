@@ -1362,7 +1362,6 @@ pub fn pop_tick(gs: &mut GameState) {
 /// # Arguments
 ///
 /// * `gs` - Active game state used by this function.
-#[allow(dead_code)]
 pub fn pop_reset_all(gs: &mut GameState) {
     for n in 1..MAXTCHARS {
         let used = gs.character_templates[n].used;

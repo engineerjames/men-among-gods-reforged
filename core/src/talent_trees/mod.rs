@@ -202,7 +202,6 @@ impl Default for TalentSkillProfile {
 /// amount or percent. A single-element list is the natural way to express a
 /// bonus to one stat. Length mismatches are rejected by both structural tests
 /// and a runtime assertion in [`accumulate_stat_bonus`].
-#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TalentEffect {
     /// Learned talent has runtime behavior checked directly by server systems.

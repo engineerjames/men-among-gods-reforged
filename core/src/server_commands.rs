@@ -333,7 +333,6 @@ pub enum ServerCommandData {
     Empty,
     Pong {
         seq: u32,
-        #[allow(dead_code)]
         client_time_ms: u32,
     },
     SetMap {
@@ -366,7 +365,6 @@ pub enum ServerCommandData {
     },
     SetCharName3 {
         chunk: String,
-        #[allow(dead_code)]
         race: u32,
     },
     SetCharMode {
