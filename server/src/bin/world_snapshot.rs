@@ -620,6 +620,24 @@ fn cmd_verify(input: &Path) {
 }
 
 // ---------------------------------------------------------------------------
+//  Entry point
+// ---------------------------------------------------------------------------
+
+fn main() {
+    let cmd = parse_args();
+    match cmd {
+        Command::Export { output } => cmd_export(&output),
+        Command::Import {
+            input,
+            skip_if_seeded,
+            force,
+        } => cmd_import(&input, skip_if_seeded, force),
+        Command::Verify { input } => cmd_verify(&input),
+        Command::ClearPlayers { input, output } => cmd_clear_players(&input, &output),
+    }
+}
+
+// ---------------------------------------------------------------------------
 //  Tests
 // ---------------------------------------------------------------------------
 
@@ -716,23 +734,5 @@ mod tests {
 
         assert_eq!(stats.removed_players, 1);
         assert_eq!(snapshot.characters[2].used, core::constants::USE_ACTIVE);
-    }
-}
-
-// ---------------------------------------------------------------------------
-//  Entry point
-// ---------------------------------------------------------------------------
-
-fn main() {
-    let cmd = parse_args();
-    match cmd {
-        Command::Export { output } => cmd_export(&output),
-        Command::Import {
-            input,
-            skip_if_seeded,
-            force,
-        } => cmd_import(&input, skip_if_seeded, force),
-        Command::Verify { input } => cmd_verify(&input),
-        Command::ClearPlayers { input, output } => cmd_clear_players(&input, &output),
     }
 }
