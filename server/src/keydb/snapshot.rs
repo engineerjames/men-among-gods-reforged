@@ -275,6 +275,7 @@ impl WorldSnapshot {
 
 /// Just the leading fields of [`WorldSnapshot`] used to peek at version
 /// information before committing to a full decode.
+#[allow(dead_code)]
 #[derive(Decode)]
 struct SnapshotHeader {
     magic: [u8; 4],
@@ -285,6 +286,7 @@ struct SnapshotHeader {
 ///
 /// Differs from the current shape only in using the v1 entity types
 /// (50-slot skill matrix on `Character` / `Item`).
+#[allow(dead_code)]
 #[derive(Decode)]
 struct WorldSnapshotV1 {
     magic: [u8; 4],
@@ -345,6 +347,7 @@ fn migrate_v1_to_current(bytes: &[u8], path: &Path) -> Result<WorldSnapshot, Str
 ///
 /// Differs from the current shape only in using the v3 entity types
 /// (`u8`/`i8` attribute and skill values on 75-slot matrices).
+#[allow(dead_code)]
 #[derive(Decode)]
 struct WorldSnapshotV2 {
     magic: [u8; 4],

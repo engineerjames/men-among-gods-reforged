@@ -632,6 +632,7 @@ pub(crate) async fn update_character(
 /// Sets the `server_id` field for a character hash.
 ///
 /// This is written by the game server once it assigns an internal character index.
+#[allow(dead_code)]
 pub(crate) async fn set_character_server_id(
     con: &mut redis::aio::ConnectionManager,
     character_id: u64,
@@ -699,6 +700,7 @@ pub(crate) async fn delete_character(
 /// # Returns
 /// * `Ok(count)` where `count` is in `0..=max`.
 /// * `Err(redis::RedisError)` on KeyDB failure.
+#[allow(dead_code)]
 pub(crate) async fn count_characters_for_account_scan_up_to(
     con: &mut redis::aio::ConnectionManager,
     account_id: u64,
@@ -749,6 +751,7 @@ pub(crate) async fn count_characters_for_account_scan_up_to(
 /// Scans `character:*` keys and compares normalized names using ASCII-insensitive
 /// matching. Used by create-character flows to enforce global character-name
 /// uniqueness.
+#[allow(dead_code)]
 pub(crate) async fn character_name_exists_scan(
     con: &mut redis::aio::ConnectionManager,
     name: &str,
@@ -758,6 +761,7 @@ pub(crate) async fn character_name_exists_scan(
 
 /// Checks whether any existing character (other than `exclude_character_id`) already
 /// uses `name` (case-insensitive).
+#[allow(dead_code)]
 pub(crate) async fn character_name_exists_scan_excluding(
     con: &mut redis::aio::ConnectionManager,
     name: &str,
@@ -944,6 +948,7 @@ pub(crate) async fn search_characters_by_name_scan(
 /// # Returns
 /// * `Ok(Vec<CharacterSummary>)` for all matching characters.
 /// * `Err(redis::RedisError)` on KeyDB failure.
+#[allow(dead_code)]
 pub(crate) async fn list_characters_for_account_scan(
     con: &mut redis::aio::ConnectionManager,
     account_id: u64,
