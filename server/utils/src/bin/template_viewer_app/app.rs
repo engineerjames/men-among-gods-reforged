@@ -40,6 +40,7 @@ pub(crate) struct TemplateViewerApp {
     item_instance_filter: String,
     character_instance_filter: String,
     character_instances_player_only: bool,
+    show_unused_instances: bool,
     show_unused_templates: bool,
     show_all_data_fields: bool,
     load_error: Option<String>,
@@ -116,6 +117,7 @@ impl Default for TemplateViewerApp {
             item_instance_filter: String::new(),
             character_instance_filter: String::new(),
             character_instances_player_only: false,
+            show_unused_instances: false,
             show_unused_templates: false,
             show_all_data_fields: false,
             load_error: None,
@@ -1037,6 +1039,10 @@ impl TemplateViewerApp {
             ui.text_edit_singleline(&mut self.item_instance_filter);
         });
 
+        ui.horizontal(|ui| {
+            ui.checkbox(&mut self.show_unused_instances, "Show unused");
+        });
+
         ui.separator();
 
         let list_width = ui.available_width();
@@ -1045,13 +1051,20 @@ impl TemplateViewerApp {
             .show(ui, |ui| {
                 ui.set_min_width(list_width);
                 for (idx, item) in self.items.iter().enumerate() {
-                    if item.used == mag_core::constants::USE_EMPTY {
+                    let is_empty = item.used == mag_core::constants::USE_EMPTY;
+                    if is_empty && !self.show_unused_instances {
                         continue;
                     }
 
                     let name = item.get_name();
+                    let label = if name.is_empty() {
+                        format!("[{}] <empty>", idx)
+                    } else {
+                        format!("[{}] {}", idx, name)
+                    };
+
                     if !self.item_instance_filter.is_empty()
-                        && !name
+                        && !label
                             .to_lowercase()
                             .contains(&self.item_instance_filter.to_lowercase())
                     {
@@ -1059,10 +1072,7 @@ impl TemplateViewerApp {
                     }
 
                     if ui
-                        .selectable_label(
-                            self.selected_item_instance_index == Some(idx),
-                            format!("[{}] {}", idx, name),
-                        )
+                        .selectable_label(self.selected_item_instance_index == Some(idx), label)
                         .clicked()
                     {
                         self.selected_item_instance_index = Some(idx);
@@ -1125,6 +1135,7 @@ impl TemplateViewerApp {
 
         ui.horizontal(|ui| {
             ui.checkbox(&mut self.character_instances_player_only, "Player only");
+            ui.checkbox(&mut self.show_unused_instances, "Show unused");
         });
 
         ui.separator();
@@ -1135,7 +1146,8 @@ impl TemplateViewerApp {
             .show(ui, |ui| {
                 ui.set_min_width(list_width);
                 for (idx, character) in self.characters.iter().enumerate() {
-                    if character.used == mag_core::constants::USE_EMPTY {
+                    let is_empty = character.used == mag_core::constants::USE_EMPTY;
+                    if is_empty && !self.show_unused_instances {
                         continue;
                     }
 
@@ -1150,8 +1162,14 @@ impl TemplateViewerApp {
                     }
 
                     let name = character.get_name();
+                    let label = if name.is_empty() {
+                        format!("[{}] <empty>", idx)
+                    } else {
+                        format!("[{}] {}", idx, name)
+                    };
+
                     if !self.character_instance_filter.is_empty()
-                        && !name
+                        && !label
                             .to_lowercase()
                             .contains(&self.character_instance_filter.to_lowercase())
                     {
@@ -1161,7 +1179,7 @@ impl TemplateViewerApp {
                     if ui
                         .selectable_label(
                             self.selected_character_instance_index == Some(idx),
-                            format!("[{}] {}", idx, name),
+                            label,
                         )
                         .clicked()
                     {
@@ -2653,7 +2671,11 @@ impl eframe::App for TemplateViewerApp {
                             .iter()
                             .filter(|item| item.used != mag_core::constants::USE_EMPTY)
                             .count();
-                        ui.heading(format!("Items ({})", used_count));
+                        if self.show_unused_instances {
+                            ui.heading(format!("Items ({}/{})", used_count, self.items.len()));
+                        } else {
+                            ui.heading(format!("Items ({})", used_count));
+                        }
                         ui.separator();
                         self.render_item_instance_list(ui);
                     });
@@ -2680,7 +2702,15 @@ impl eframe::App for TemplateViewerApp {
                             .iter()
                             .filter(|character| character.used != mag_core::constants::USE_EMPTY)
                             .count();
-                        ui.heading(format!("Characters ({})", used_count));
+                        if self.show_unused_instances {
+                            ui.heading(format!(
+                                "Characters ({}/{})",
+                                used_count,
+                                self.characters.len()
+                            ));
+                        } else {
+                            ui.heading(format!("Characters ({})", used_count));
+                        }
                         ui.separator();
                         self.render_character_instance_list(ui);
                     });

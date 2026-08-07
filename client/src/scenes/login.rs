@@ -175,15 +175,14 @@ impl LoginScene {
             return;
         }
 
-        let api_base_url = if let Some(rest) = entered_host.strip_prefix("https://") {
-            format!("https://{}", rest.trim_end_matches('/'))
-        } else if entered_host.starts_with("http://") {
-            self.login_form.set_error(Some(
-                "Server URL must use https:// (TLS required)".to_owned(),
-            ));
-            return;
-        } else {
-            format!("https://{}:5554", entered_host)
+        let api_base_url = match crate::hosts::build_api_base_url(entered_host) {
+            Some(url) => url,
+            None => {
+                self.login_form.set_error(Some(
+                    "Server URL must use https:// (TLS required)".to_owned(),
+                ));
+                return;
+            }
         };
 
         self.begin_login_request(app_state, api_base_url, username, password);
@@ -337,6 +336,10 @@ impl Scene for LoginScene {
                 }
                 LoginFormAction::CreateAccount => {
                     log::info!("Create new account clicked");
+                    let ip = self.login_form.server_ip().to_owned();
+                    if let Some(base_url) = crate::hosts::build_api_base_url(&ip) {
+                        app_state.api.base_url = base_url;
+                    }
                     return Some(SceneType::NewAccount);
                 }
                 LoginFormAction::ResetPassword => {

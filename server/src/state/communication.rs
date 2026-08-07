@@ -858,8 +858,8 @@ impl GameState {
         }
 
         if p != 0 {
-            self.characters[cn].points += p * 10;
-            self.characters[cn].points_tot += p * 10;
+            self.characters[cn].points += p;
+            self.characters[cn].points_tot += p;
             self.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -1483,5 +1483,24 @@ impl GameState {
             }
         }
         bestmatch as i32
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_helpers::{add_test_player, with_test_gs};
+
+    #[test]
+    fn do_give_exp_adds_exact_amount_without_multiplier() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].points = 100;
+            gs.characters[cn].points_tot = 100;
+
+            gs.do_give_exp(cn, 25, 0, -1);
+
+            assert_eq!(gs.characters[cn].points, 125);
+            assert_eq!(gs.characters[cn].points_tot, 125);
+        });
     }
 }
