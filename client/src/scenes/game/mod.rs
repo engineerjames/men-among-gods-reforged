@@ -40,7 +40,10 @@ use mag_core::{
     client_commands::ClientCommand,
     constants::{MF_INDOORS, TILEX, TILEY},
     ranks, skills,
-    skills::{SK_BLAST, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex},
+    skills::{
+        SK_BLAST, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_STUN, SK_THUNDEROUS_FURY,
+        SK_WARCRY, SkillIndex,
+    },
     types::api::NetworkTestSummary,
 };
 
@@ -444,8 +447,12 @@ const HELPER_TEXT_CURSOR_GAP_Y: i32 = 16;
 const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
 
 /// Skill pairs where a talent replaces a base skill with an upgraded version.
-const REPLACEMENT_SKILL_PAIRS: [(usize, usize); 2] =
-    [(SK_BLAST, SK_LAVA_BLAST), (SK_STUN, SK_ICE_STUN)];
+const REPLACEMENT_SKILL_PAIRS: [(usize, usize); 4] = [
+    (SK_BLAST, SK_LAVA_BLAST),
+    (SK_STUN, SK_ICE_STUN),
+    (SK_WARCRY, SK_THUNDEROUS_FURY),
+    (SK_WARCRY, SK_INNER_STRENGTH),
+];
 
 /// Rewrite saved keybinds for talent-replaced skills to match what is learned.
 ///

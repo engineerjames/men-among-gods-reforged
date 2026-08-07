@@ -140,7 +140,9 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
             prereqs: &[STAFF_SERGEANT_STRENGTH],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::Meditate,
-                profile: TalentSkillProfile::DEFAULT_NON_MERC.with_base(5),
+                profile: TalentSkillProfile::DEFAULT_NON_MERC
+                    .with_base(5)
+                    .with_max(60),
             },
         },
         TalentNode {
@@ -218,22 +220,24 @@ pub static TEMPLAR_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: HOLY_FURY,
             name: "Holy Fury",
-            description: "Learn Thunderous Fury, an upgraded Warcry that stuns and damages every nearby enemy.",
+            description: "Replaces Warcry with Thunderous Fury, which stuns and damages every nearby enemy.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
-            effect: TalentEffect::GrantSkill {
-                skill: Skill::ThunderousFury,
+            effect: TalentEffect::ReplaceSkill {
+                from: Skill::Warcry,
+                to: Skill::ThunderousFury,
                 profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
             slot: INNER_STRENGTH,
             name: "Inner Strength",
-            description: "Learn Inner Strength, an upgraded Warcry that stuns nearby enemies and raises your weapon skill for a while.",
+            description: "Replaces Warcry with Inner Strength, which stuns nearby enemies and raises your weapon skill for a while.",
             cost: 1,
             prereqs: &[BRIGADIER_GENERAL_VITALITY],
-            effect: TalentEffect::GrantSkill {
-                skill: Skill::InnerStrength,
+            effect: TalentEffect::ReplaceSkill {
+                from: Skill::Warcry,
+                to: Skill::InnerStrength,
                 profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
