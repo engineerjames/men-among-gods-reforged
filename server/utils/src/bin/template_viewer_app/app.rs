@@ -1443,7 +1443,7 @@ impl TemplateViewerApp {
                         for j in 0..3 {
                             let mut v = i32::from(attrib[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
-                                attrib[i][j] = Self::clamp_i8(v);
+                                attrib[i][j] = Self::clamp_i16(v);
                                 changed = true;
                             }
                         }
@@ -1501,7 +1501,7 @@ impl TemplateViewerApp {
                         for j in 0..3 {
                             let mut v = i32::from(skill[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
-                                skill[i][j] = Self::clamp_i8(v);
+                                skill[i][j] = Self::clamp_i16(v);
                                 changed = true;
                             }
                         }
@@ -2024,7 +2024,7 @@ impl TemplateViewerApp {
                         for j in 0..6 {
                             let mut v = i32::from(attrib[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
-                                attrib[i][j] = Self::clamp_u8(v);
+                                attrib[i][j] = Self::clamp_u16(v);
                                 changed = true;
                             }
                         }
@@ -2121,7 +2121,7 @@ impl TemplateViewerApp {
                         for j in 0..6 {
                             let mut v = i32::from(skills[i][j]);
                             if ui.add(egui::DragValue::new(&mut v).speed(1)).changed() {
-                                skills[i][j] = Self::clamp_u8(v);
+                                skills[i][j] = Self::clamp_u16(v);
                                 changed = true;
                             }
                         }

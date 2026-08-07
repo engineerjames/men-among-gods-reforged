@@ -461,7 +461,7 @@ const REPLACEMENT_SKILL_PAIRS: [(usize, usize); 2] =
 fn normalize_replacement_skill_keybind_arrays(
     primary: &mut [Option<usize>],
     secondary: &mut [Option<usize>],
-    skills: &[[u8; SkillIndex::MaxIndex as usize]],
+    skills: &[[u16; SkillIndex::MaxIndex as usize]],
 ) -> bool {
     let mut changed = false;
 
@@ -704,7 +704,7 @@ impl GameScene {
     fn normalize_replacement_skill_keybinds(
         &self,
         app_state: &mut AppState<'_>,
-        skills: &[[u8; SkillIndex::MaxIndex as usize]],
+        skills: &[[u16; SkillIndex::MaxIndex as usize]],
     ) {
         if normalize_replacement_skill_keybind_arrays(
             &mut app_state.settings.character.skill_keybinds,
@@ -2926,7 +2926,7 @@ mod tests {
     const SCREEN_W: i32 = 800;
     const SCREEN_H: i32 = 600;
 
-    fn empty_skill_rows() -> [[u8; SkillIndex::MaxIndex as usize]; 100] {
+    fn empty_skill_rows() -> [[u16; SkillIndex::MaxIndex as usize]; 100] {
         [[0; SkillIndex::MaxIndex as usize]; 100]
     }
 

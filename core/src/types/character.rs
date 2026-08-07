@@ -39,13 +39,13 @@ pub struct Character {
 
     pub temp: u16, // 321, created from template n
 
-    pub attrib: [[u8; SkillIndex::MaxIndex as usize]; 5], // 351
+    pub attrib: [[u16; SkillIndex::MaxIndex as usize]; 5], // 361
 
-    pub hp: [u16; SkillIndex::MaxIndex as usize],  // 363
-    pub end: [u16; SkillIndex::MaxIndex as usize], // 375
-    pub mana: [u16; SkillIndex::MaxIndex as usize], // 387
+    pub hp: [u16; SkillIndex::MaxIndex as usize],  // 373
+    pub end: [u16; SkillIndex::MaxIndex as usize], // 385
+    pub mana: [u16; SkillIndex::MaxIndex as usize], // 397
 
-    pub skill: [[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS], // 687
+    pub skill: [[u16; SkillIndex::MaxIndex as usize]; MAX_SKILLS], // 1297
 
     pub weapon_bonus: u8,
     pub armor_bonus: u8,

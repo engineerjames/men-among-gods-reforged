@@ -614,18 +614,22 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         gs.players[nr].cpl.mode = i32::from(mode);
     }
 
-    // attribs (5 x 6 bytes)
+    // attribs (5 x 6 u16 values)
     for a in 0..5usize {
         let chv = gs.characters[cn].attrib[a];
         let changed = gs.players[nr].cpl.attrib[a] != chv;
         if changed {
-            let bytes = gs.characters[cn].attrib[a];
-            let mut buf: [u8; 8] = [0; 8];
+            let arr = gs.characters[cn].attrib[a];
+            let mut buf: [u8; 14] = [0; 14];
             buf[0] = ServerCommandType::SetCharAttrib as u8;
             buf[1] = a as u8;
-            buf[2..8].copy_from_slice(&bytes);
-            network_manager::xsend(gs, nr, &buf, 8);
-            gs.players[nr].cpl.attrib[a] = bytes;
+            for (i, &v) in arr.iter().enumerate() {
+                let off = 2 + i * 2;
+                buf[off] = (v & 0xff) as u8;
+                buf[off + 1] = (v >> 8) as u8;
+            }
+            network_manager::xsend(gs, nr, &buf, 14);
+            gs.players[nr].cpl.attrib[a] = arr;
         }
     }
 
@@ -672,13 +676,17 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         let chv = gs.characters[cn].skill[s];
         let changed = gs.players[nr].cpl.skill[s] != chv;
         if changed {
-            let bytes = gs.characters[cn].skill[s];
-            let mut buf: [u8; 8] = [0; 8];
+            let arr = gs.characters[cn].skill[s];
+            let mut buf: [u8; 14] = [0; 14];
             buf[0] = ServerCommandType::SetCharSkill as u8;
             buf[1] = s as u8;
-            buf[2..8].copy_from_slice(&bytes);
-            network_manager::xsend(gs, nr, &buf, 8);
-            gs.players[nr].cpl.skill[s] = bytes;
+            for (i, &v) in arr.iter().enumerate() {
+                let off = 2 + i * 2;
+                buf[off] = (v & 0xff) as u8;
+                buf[off + 1] = (v >> 8) as u8;
+            }
+            network_manager::xsend(gs, nr, &buf, 14);
+            gs.players[nr].cpl.skill[s] = arr;
         }
     }
 

@@ -56,7 +56,7 @@ pub fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
     let v = u16::from_le_bytes([gs.players[_nr].inbuf[3], gs.players[_nr].inbuf[4]]) as usize;
 
     // sanity checks
-    if n > 107 || v > 99 {
+    if n > 107 || v > 250 {
         return;
     }
 

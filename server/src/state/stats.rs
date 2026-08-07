@@ -14,6 +14,11 @@ use crate::game_state::GameState;
 use crate::god::God;
 use crate::{driver, helpers, points};
 
+/// Maximum final value for a character attribute or skill.
+///
+/// Unrelated to `Global.cap`, which gates the player login queue.
+const MAX_ATTRIB_SKILL_VALUE: i32 = 500;
+
 impl GameState {
     /// Helper function to check if character wears a specific item
     /// Port of part of `really_update_char`
@@ -282,28 +287,28 @@ impl GameState {
                 + i32::from(self.characters[cn].attrib[z][1])
                 + bonus;
 
-            final_attrib = final_attrib.clamp(1, 250);
-            self.characters[cn].attrib[z][5] = final_attrib as u8;
+            final_attrib = final_attrib.clamp(1, MAX_ATTRIB_SKILL_VALUE);
+            self.characters[cn].attrib[z][5] = final_attrib as u16;
         }
 
         // Calculate final HP
         let mut final_hp =
             i32::from(self.characters[cn].hp[0]) + i32::from(self.characters[cn].hp[1]) + hp_bonus;
-        final_hp = final_hp.clamp(10, 999);
+        final_hp = final_hp.clamp(10, 9999);
         self.characters[cn].hp[5] = final_hp as u16;
 
         // Calculate final endurance
         let mut final_end = i32::from(self.characters[cn].end[0])
             + i32::from(self.characters[cn].end[1])
             + end_bonus;
-        final_end = final_end.clamp(10, 999);
+        final_end = final_end.clamp(10, 9999);
         self.characters[cn].end[5] = final_end as u16;
 
         // Calculate final mana
         let mut final_mana = i32::from(self.characters[cn].mana[0])
             + i32::from(self.characters[cn].mana[1])
             + mana_bonus;
-        final_mana = final_mana.clamp(10, 999);
+        final_mana = final_mana.clamp(10, 9999);
         self.characters[cn].mana[5] = final_mana as u16;
 
         // Handle infrared vision
@@ -346,8 +351,8 @@ impl GameState {
                 + i32::from(self.characters[cn].attrib[attrs[2]][5]))
                 / 5;
             final_skill += attrib_contribution;
-            final_skill = final_skill.clamp(1, 250);
-            self.characters[cn].skill[z][5] = final_skill as u8;
+            final_skill = final_skill.clamp(1, MAX_ATTRIB_SKILL_VALUE);
+            self.characters[cn].skill[z][5] = final_skill as u16;
         }
 
         // Apply talent-derived armor/weapon percent bonuses to the aggregated
@@ -1924,7 +1929,7 @@ mod tests {
             / 5
     }
 
-    fn set_legacy_weapon_bonuses(skill: &mut [[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
+    fn set_legacy_weapon_bonuses(skill: &mut [[i16; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
         skill[skills::SK_HAND][modifier_idx] = 10;
         skill[skills::SK_DAGGER][modifier_idx] = 10;
         skill[skills::SK_TWOHAND][modifier_idx] = 10;

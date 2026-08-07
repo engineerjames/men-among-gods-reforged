@@ -187,7 +187,7 @@ pub struct ItemPatch {
     /// Maximum damage in inactive/active state.
     pub max_damage: u32,
     /// Per-attribute modifiers `[wear, active, min]`.
-    pub attrib: [[i8; 3]; 5],
+    pub attrib: [[i16; 3]; 5],
     /// HP modifiers `[wear, active, min]`.
     pub hp: [i16; 3],
     /// Endurance modifiers `[wear, active, min]`.
@@ -195,7 +195,7 @@ pub struct ItemPatch {
     /// Mana modifiers `[wear, active, min]`.
     pub mana: [i16; 3],
     /// Per-skill modifiers `[wear, active, min]`.
-    pub skill: [[i8; 3]; MAX_SKILLS],
+    pub skill: [[i16; 3]; MAX_SKILLS],
     /// Armor bonus (inactive/active).
     pub armor: [i8; 2],
     /// Weapon bonus (inactive/active).

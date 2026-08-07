@@ -194,7 +194,7 @@ impl SkillPickerPopup {
     /// * `anchor_y` - Desired top-edge Y position (clamped to screen).
     /// * `player_skills` - The player's skill array from `character_info().skill`.
     ///   Only entries where `player_skills[skill_nr][0] > 0` are displayed.
-    pub fn show(&mut self, slot: u8, anchor_x: i32, anchor_y: i32, player_skills: &[[u8; 6]]) {
+    pub fn show(&mut self, slot: u8, anchor_x: i32, anchor_y: i32, player_skills: &[[u16; 6]]) {
         self.visible = true;
         self.target_slot = slot;
         self.scroll_offset = 0;
@@ -539,8 +539,8 @@ mod tests {
     use super::*;
 
     /// Returns a skill array with every skill at level 1 (all learned).
-    fn all_skills_learned() -> [[u8; 6]; 100] {
-        [[1u8, 0, 0, 0, 0, 0]; 100]
+    fn all_skills_learned() -> [[u16; 6]; 100] {
+        [[1u16, 0, 0, 0, 0, 0]; 100]
     }
 
     #[test]
@@ -643,7 +643,7 @@ mod tests {
     #[test]
     fn show_filters_unlearned_skills() {
         let mut popup = SkillPickerPopup::new();
-        let mut skills = [[0u8; 6]; 100];
+        let mut skills = [[0u16; 6]; 100];
         skills[SK_BLAST][0] = 5;
         skills[SK_LAVA_BLAST][0] = 4;
         popup.show(0, 0, 0, &skills);
@@ -651,7 +651,7 @@ mod tests {
         assert_eq!(popup.entries[0].skill_nr, SK_BLAST);
         assert_eq!(popup.entries[1].skill_nr, SK_LAVA_BLAST);
         // Show with no learned skills — popup should have no entries.
-        popup.show(0, 0, 0, &[[0u8; 6]; 100]);
+        popup.show(0, 0, 0, &[[0u16; 6]; 100]);
         assert!(popup.entries.is_empty());
     }
 

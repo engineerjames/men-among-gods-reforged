@@ -86,7 +86,7 @@ impl GameState {
 
             // Check attribute requirements
             for (m, at_text) in AT_TEXT.iter().enumerate().take(5) {
-                if self.items[tmp].attrib[m][2] > self.characters[cn].attrib[m][0] as i8 {
+                if self.items[tmp].attrib[m][2] > self.characters[cn].attrib[m][0] as i16 {
                     self.do_character_log(
                         cn,
                         FontColor::Red,
@@ -97,7 +97,7 @@ impl GameState {
             }
 
             let weapon_requirement = helpers::item_weapon_requirement(&self.items[tmp].skill);
-            if weapon_requirement > self.characters[cn].skill[skills::SK_WEAPON][0] as i8 {
+            if weapon_requirement > self.characters[cn].skill[skills::SK_WEAPON][0] as i16 {
                 self.do_character_log(cn, FontColor::Red, "You don't know how to use that.\n");
                 return -1;
             }
@@ -108,7 +108,7 @@ impl GameState {
                     continue;
                 }
 
-                if self.items[tmp].skill[m][2] > self.characters[cn].skill[m][0] as i8 {
+                if self.items[tmp].skill[m][2] > self.characters[cn].skill[m][0] as i16 {
                     self.do_character_log(cn, FontColor::Red, "You don't know how to use that.\n");
                     return -1;
                 }

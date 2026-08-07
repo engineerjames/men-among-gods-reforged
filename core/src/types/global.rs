@@ -151,7 +151,7 @@ mod tests {
             fullmoon: 1,
             newmoon: 0,
             unique: 0xDEADBEEFCAFEBABE,
-            cap: 250,
+            cap: 500,
             ..Global::default()
         };
 

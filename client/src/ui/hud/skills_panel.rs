@@ -59,7 +59,7 @@ pub enum SkillsFocusCol {
 #[derive(Clone)]
 pub struct SkillsPanelData {
     /// The 5 attributes, each with 6 sub-values.
-    pub attrib: [[u8; 6]; 5],
+    pub attrib: [[u16; 6]; 5],
     /// HP pool sub-values.
     pub hp: [u16; 6],
     /// Endurance pool sub-values.
@@ -67,7 +67,7 @@ pub struct SkillsPanelData {
     /// Mana pool sub-values.
     pub mana: [u16; 6],
     /// All 100 skills, each with 6 sub-values.
-    pub skill: [[u8; 6]; 100],
+    pub skill: [[u16; 6]; 100],
     /// Available experience points for raising.
     pub points: i32,
     /// Pre-sorted visible skill indices (learned first, then by sort key).
@@ -788,7 +788,7 @@ impl SkillsPanel {
     /// # Returns
     ///
     /// A vector of visible skill indices sorted for display.
-    pub fn build_sorted_skills(skill: &[[u8; 6]; 100]) -> Vec<usize> {
+    pub fn build_sorted_skills(skill: &[[u16; 6]; 100]) -> Vec<usize> {
         let mut out: Vec<usize> = (0..MAX_SKILLS)
             .filter(|&skill_id| !is_legacy_weapon_skill(skill_id))
             .collect();
@@ -1624,7 +1624,7 @@ mod tests {
 
     #[test]
     fn build_sorted_skills_handles_empty() {
-        let skill = [[0u8; 6]; 100];
+        let skill = [[0u16; 6]; 100];
         let sorted = SkillsPanel::build_sorted_skills(&skill);
         assert_eq!(
             sorted.len(),

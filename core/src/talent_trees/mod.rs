@@ -119,17 +119,17 @@ pub struct TalentSkillProfile {
     ///
     /// Existing higher investment is always preserved; this is a floor, not
     /// an assignment.
-    pub base: u8,
+    pub base: u16,
     /// `MaxValue` written to the skill row, capping how far it can be raised.
     ///
     /// A `MaxValue` of `0` caps progression at the granted base value.
-    pub max_value: u8,
+    pub max_value: u16,
     /// `RaiseDifficulty` written to the skill row.
     ///
     /// `0` means "not raisable", `1` is easy and `10` is hard, matching
     /// [`crate::skills::SkillIndex::RaiseDifficulty`]. This must never be left
     /// at zero for a skill the player is expected to train.
-    pub raise_difficulty: u8,
+    pub raise_difficulty: u16,
 }
 
 impl TalentSkillProfile {
@@ -154,7 +154,7 @@ impl TalentSkillProfile {
     /// # Returns
     ///
     /// * The same profile with [`Self::base`] replaced.
-    pub const fn with_base(self, base: u8) -> Self {
+    pub const fn with_base(self, base: u16) -> Self {
         Self { base, ..self }
     }
 
@@ -167,7 +167,7 @@ impl TalentSkillProfile {
     /// # Returns
     ///
     /// * The same profile with [`Self::max_value`] replaced.
-    pub const fn with_max(self, max_value: u8) -> Self {
+    pub const fn with_max(self, max_value: u16) -> Self {
         Self { max_value, ..self }
     }
 
@@ -180,7 +180,7 @@ impl TalentSkillProfile {
     /// # Returns
     ///
     /// * The same profile with [`Self::raise_difficulty`] replaced.
-    pub const fn with_difficulty(self, raise_difficulty: u8) -> Self {
+    pub const fn with_difficulty(self, raise_difficulty: u16) -> Self {
         Self {
             raise_difficulty,
             ..self
@@ -202,7 +202,6 @@ impl Default for TalentSkillProfile {
 /// amount or percent. A single-element list is the natural way to express a
 /// bonus to one stat. Length mismatches are rejected by both structural tests
 /// and a runtime assertion in [`accumulate_stat_bonus`].
-#[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum TalentEffect {
     /// Learned talent has runtime behavior checked directly by server systems.
@@ -613,8 +612,8 @@ pub fn grant_talent_points(talents: &mut [u8; 25], amount: u8) {
 pub fn talent_stat_bonuses(
     kindred: i32,
     talents: &[u8; 25],
-    attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
-    skill: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
+    attrib: &[[u16; SkillIndex::MaxIndex as usize]; 5],
+    skill: &[[u16; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
 ) -> TalentStatBonuses {
     let class = Class::from(kindred);
     let Some(tree) = tree_for(class) else {
@@ -883,8 +882,8 @@ fn accumulate_skill_ownership(effect: TalentEffect, ownership: &mut TalentSkillO
 /// * `bonuses` - Accumulator to mutate.
 fn accumulate_stat_bonus(
     effect: TalentEffect,
-    attrib: &[[u8; SkillIndex::MaxIndex as usize]; 5],
-    skill_rows: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
+    attrib: &[[u16; SkillIndex::MaxIndex as usize]; 5],
+    skill_rows: &[[u16; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
     bonuses: &mut TalentStatBonuses,
 ) {
     match effect {
@@ -967,9 +966,9 @@ fn accumulate_stat_bonus(
 ///
 /// # Returns
 ///
-/// * Rounded bonus amount, clamped into `0..=u8::MAX`.
-fn percent_bonus(base: u8, percent: i32) -> i32 {
-    ((f32::from(base) * (percent as f32 / 100.0)).round() as i32).clamp(0, i32::from(u8::MAX))
+/// * Rounded bonus amount, clamped into `0..=u16::MAX`.
+fn percent_bonus(base: u16, percent: i32) -> i32 {
+    ((f32::from(base) * (percent as f32 / 100.0)).round() as i32).clamp(0, i32::from(u16::MAX))
 }
 
 #[cfg(test)]
@@ -1448,11 +1447,11 @@ mod tests {
         }
     }
 
-    fn empty_attrib() -> [[u8; SkillIndex::MaxIndex as usize]; 5] {
+    fn empty_attrib() -> [[u16; SkillIndex::MaxIndex as usize]; 5] {
         [[0; SkillIndex::MaxIndex as usize]; 5]
     }
 
-    fn empty_skill() -> [[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS] {
+    fn empty_skill() -> [[u16; SkillIndex::MaxIndex as usize]; MAX_SKILLS] {
         [[0; SkillIndex::MaxIndex as usize]; MAX_SKILLS]
     }
 
@@ -1736,7 +1735,7 @@ mod tests {
         }
     }
 
-    fn assert_grants_skill_at_base(node: &TalentNode, expected: Skill, expected_base: u8) {
+    fn assert_grants_skill_at_base(node: &TalentNode, expected: Skill, expected_base: u16) {
         match node.effect {
             TalentEffect::GrantSkill { skill, profile } => {
                 assert_eq!(skill, expected);

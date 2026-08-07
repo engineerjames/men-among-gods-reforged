@@ -226,7 +226,7 @@ fn grant_skill(
 ///   refunded into `points`. Talent-owned rows are never clamped.
 pub fn apply_template_skills(
     character: &mut Character,
-    template_skills: &[[u8; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
+    template_skills: &[[u16; SkillIndex::MaxIndex as usize]; MAX_SKILLS],
     clamp_to_template_max: bool,
 ) {
     let ownership = talent_skill_ownership(Class::from(character.kindred), &character.future1);
@@ -1549,7 +1549,7 @@ mod tests {
     }
 
     /// Learn Renewal + Sun's Blessing and train both to `base`.
-    fn templar_with_trained_talent_skills(gs: &mut GameState, cn: usize, base: u8) {
+    fn templar_with_trained_talent_skills(gs: &mut GameState, cn: usize, base: u16) {
         give_class_and_points(gs, cn, KIN_TEMPLAR, 2);
         learn_talent(gs, cn, templar_slot("Renewal")).unwrap();
         // Satisfy the prerequisite layers leading up to Sun's Blessing.

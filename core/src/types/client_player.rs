@@ -13,13 +13,13 @@ pub struct ClientPlayer {
     // [3]=race specific difficulty to raise (0=not raisable, 1=easy ... 10=hard)
     // [4]=dynamic modifier, depends on equipment and spells
     // [5]=total value
-    pub attrib: [[u8; 6]; 5],
+    pub attrib: [[u16; 6]; 5],
 
     pub hp: [u16; 6],
     pub end: [u16; 6],
     pub mana: [u16; 6],
 
-    pub skill: [[u8; 6]; 100],
+    pub skill: [[u16; 6]; 100],
 
     // temporary attributes
     pub a_hp: i32,

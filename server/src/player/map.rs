@@ -265,21 +265,6 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
     );
 }
 
-/// Clear the saved small map for all players to force a full resend
-/// TODO: Do we need this for any reason?
-///
-/// # Arguments
-///
-/// * `gs` - Active game state used by this function.
-#[allow(dead_code)]
-pub fn plr_clear_map(gs: &mut GameState) {
-    for n in 1..gs.players.len() {
-        gs.players[n].smap = std::array::from_fn(|_| CMap::default());
-        gs.players[n].vx = 0; // force do_all in map generation
-        gs.players[n].last_dlight = -1;
-    }
-}
-
 /// Choose and dispatch the appropriate map update implementation.
 ///
 /// Decides between the full (`plr_getmap_complete`) or fast (`plr_getmap_fast`)
@@ -1191,20 +1176,6 @@ mod tests {
             assert_eq!(gs.characters[cn].a_hp, 10000);
             assert_eq!(gs.characters[cn].x, 20);
             assert_eq!(gs.characters[cn].y, 20);
-        });
-    }
-
-    #[test]
-    fn plr_clear_map_resets_cached_tiles_and_view_origin() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            gs.players[nr].vx = 123;
-            gs.players[nr].smap[0] = make_tile(42, 3);
-
-            plr_clear_map(gs);
-
-            assert_eq!(gs.players[nr].vx, 0);
-            assert_eq!(gs.players[nr].smap[0], CMap::default());
         });
     }
 

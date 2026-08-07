@@ -2312,14 +2312,13 @@ fn paint_sprite_dd(
     yoff: i32,
     tint: egui::Color32,
 ) -> Result<(), String> {
-    let Some((xs, ys)) = cache.sprite_tiles_xy(ctx, sprite_id)? else {
-        return Ok(());
-    };
-
     let Some(texture) = cache.texture_for(ctx, sprite_id)? else {
         return Ok(());
     };
 
+    let size = texture.size();
+    let xs = (size[0] as i32) / 32;
+    let ys = (size[1] as i32) / 32;
     let (rx, ry) = dd_copysprite_screen_pos(xpos, ypos, xoff, yoff, xs, ys);
     let top_left = map_to_screen(rect, pan, zoom, Vec2::new(rx as f32, ry as f32));
     let dst = Rect::from_min_size(top_left, texture.size_vec2() * zoom);
