@@ -846,7 +846,7 @@ impl GameState {
                     // Tick once per second of real time.
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let base_dam = (power / 4).max(1);
+                        let base_dam = ((power * 3) / 4).max(1);
                         let dam = match item_temp {
                             temp if temp == skills::SK_CONTAGION as u16 => base_dam * 2,
                             temp if temp == skills::SK_LAVA_BLAST as u16 => (base_dam / 2).max(1),
@@ -900,7 +900,7 @@ impl GameState {
                     let power = item.power as i32;
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let heal = (power / 4).max(1) * 1000;
+                        let heal = ((power * 3) / 4).max(1) * 1000;
                         self.characters[cn].a_hp += heal;
                         let max_hp = i32::from(self.characters[cn].hp[5]) * 1000;
                         if self.characters[cn].a_hp > max_hp {
@@ -918,7 +918,7 @@ impl GameState {
                     let active_i = active as i32;
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let drain = 2 * 1000;
+                        let drain = 1000;
                         self.characters[cn].a_end -= drain;
                         if self.characters[cn].a_end <= 0 {
                             self.characters[cn].a_end = 0;

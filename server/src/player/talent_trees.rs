@@ -252,12 +252,11 @@ pub fn apply_template_skills(
             if template_row[preset_idx] != 0 {
                 character.skill[n][preset_idx] = template_row[preset_idx];
             }
-            // Never lower a live character's tuned row: take the most
-            // permissive of what it already has, what the template declares,
-            // and what the granting talent asks for.
-            character.skill[n][max_idx] = character.skill[n][max_idx]
-                .max(template_row[max_idx])
-                .max(profile.max_value);
+            // Never lower a live character's tuned row, but a template's own
+            // declared row must not override a talent-granted skill's
+            // authored cap — only the character's prior value and the
+            // granting talent's current profile compete here.
+            character.skill[n][max_idx] = character.skill[n][max_idx].max(profile.max_value);
             if character.skill[n][diff_idx] == 0 {
                 character.skill[n][diff_idx] = if template_row[diff_idx] != 0 {
                     template_row[diff_idx]
@@ -633,7 +632,10 @@ mod tests {
     use crate::god::God;
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::{CharacterFlags, USE_ACTIVE};
-    use core::skills::{Attribute, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_LAVA_BLAST};
+    use core::skills::{
+        Attribute, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST,
+        SK_THUNDEROUS_FURY,
+    };
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
         is_talent_spent, reset_talent_points, talent_stat_bonuses,
@@ -1111,6 +1113,94 @@ mod tests {
             assert_eq!(
                 gs.characters[cn].skill[Skill::Meditate as usize][SkillIndex::BaseValue as usize],
                 5
+            );
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Meditate as usize][SkillIndex::MaxValue as usize],
+                60,
+                "talent-granted Meditate must cap at 60 regardless of template baseline"
+            );
+        });
+    }
+
+    #[test]
+    fn learn_templar_inner_strength_replaces_warcry_with_existing_investment() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            for layer in 1..=8 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::BaseValue as usize] = 12;
+            gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::RaiseDifficulty as usize] =
+                5;
+
+            learn_talent(gs, cn, templar_slot("Inner Strength")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::BaseValue as usize],
+                0,
+                "Inner Strength should wholly replace Warcry"
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_INNER_STRENGTH][SkillIndex::BaseValue as usize],
+                12
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_INNER_STRENGTH][SkillIndex::MaxValue as usize],
+                TalentSkillProfile::DEFAULT_NON_MERC.max_value
+            );
+        });
+    }
+
+    #[test]
+    fn learn_templar_thunderous_fury_replaces_warcry_with_existing_investment() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            for layer in 1..=8 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::BaseValue as usize] = 12;
+
+            learn_talent(gs, cn, templar_slot("Holy Fury")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::BaseValue as usize],
+                0,
+                "Thunderous Fury should wholly replace Warcry"
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_THUNDEROUS_FURY][SkillIndex::BaseValue as usize],
+                12
+            );
+        });
+    }
+
+    #[test]
+    fn reset_talents_swaps_inner_strength_back_to_warcry() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_TEMPLAR, 1);
+            for layer in 1..=8 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::BaseValue as usize] = 12;
+            gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::RaiseDifficulty as usize] =
+                5;
+            learn_talent(gs, cn, templar_slot("Inner Strength")).unwrap();
+            gs.characters[cn].skill[SK_INNER_STRENGTH][SkillIndex::BaseValue as usize] = 20;
+
+            reset_talents(gs, cn);
+
+            assert_eq!(
+                gs.characters[cn].skill[Skill::Warcry as usize][SkillIndex::BaseValue as usize],
+                20
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_INNER_STRENGTH][SkillIndex::BaseValue as usize],
+                0
             );
         });
     }

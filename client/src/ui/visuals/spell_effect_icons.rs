@@ -120,13 +120,19 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_SEEING_RED
         | skills::SK_INNER_STRENGTH
         | skills::SK_REVENANT_CONDUIT2
-        | skills::SK_SPECTRAL_PACT2 => SpellEffectKind::Positive,
+        | skills::SK_SPECTRAL_PACT2
+        | skills::SK_GASH
+        | skills::SK_DELIVER_DEATH
+        | skills::SK_BLADE_DANCE
+        | skills::SK_THUNDEROUS_FURY => SpellEffectKind::Positive,
         skills::SK_CURSE
         | skills::SK_STUN
         | skills::SK_WIMPY
         | skills::SK_ANGUISH_LAVA
         | skills::SK_ANGUISH_EARTH
-        | skills::SK_ANGUISH_ICE => SpellEffectKind::Negative,
+        | skills::SK_ANGUISH_ICE
+        | skills::SK_PARASITE
+        | skills::SK_DISTRACT => SpellEffectKind::Negative,
         // Eye potions and Potion of Golem are positive buffs.
         254 | 449 => SpellEffectKind::Positive,
         _ => return None,
@@ -716,6 +722,31 @@ mod tests {
                 .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
             assert_eq!(meta.kind, SpellEffectKind::Positive, "{name} kind");
             assert_eq!(meta.icon.name, name, "{name} icon");
+        }
+    }
+
+    #[test]
+    fn cooldown_markers_render_as_positive_and_debuffs_as_negative() {
+        let positive_cases = [
+            (skills::SK_GASH as i16, "Gash"),
+            (skills::SK_DELIVER_DEATH as i16, "Deliver Death"),
+            (skills::SK_BLADE_DANCE as i16, "Blade Dance"),
+            (skills::SK_THUNDEROUS_FURY as i16, "Thunderous Fury"),
+        ];
+        for (temp, name) in positive_cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, SpellEffectKind::Positive, "{name} kind");
+        }
+
+        let negative_cases = [
+            (skills::SK_PARASITE as i16, "Parasite"),
+            (skills::SK_DISTRACT as i16, "Distract"),
+        ];
+        for (temp, name) in negative_cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, SpellEffectKind::Negative, "{name} kind");
         }
     }
 

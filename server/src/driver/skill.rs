@@ -3042,7 +3042,7 @@ fn apply_lava_blast_dot(gs: &mut GameState, caster: usize, co: usize, power: i32
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
         item.sprite[1] = 89;
-        item.duration = (TICKS * 5) as u32;
+        item.duration = (TICKS * 15) as u32;
         item.active = item.duration;
         item.temp = SK_LAVA_BLAST as u16;
         item.power = power.max(1) as u32;
@@ -3070,9 +3070,9 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
     let mut power = i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][5]);
     power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
-    let mut dam = (power * 3) / 2;
+    let cost_dam = (power * 3) / 2;
 
-    let mut cost = dam / 8 + 8;
+    let mut cost = cost_dam / 8 + 8;
     if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
         && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
     {
@@ -3081,6 +3081,9 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
     if spellcost(gs, cn, cost) != 0 {
         return;
     }
+
+    // Talent buff: triple the damage dealt while the mana cost stays the same.
+    let mut dam = cost_dam * 3;
 
     if chance_base(
         gs,
@@ -4797,7 +4800,7 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
     if !hostile_cast_preflight(gs, cn, co, "You cannot infect yourself.\n") {
         return;
     }
-    if spellcost(gs, cn, 20) != 0 {
+    if spellcost(gs, cn, 10) != 0 {
         return;
     }
     if chance(gs, cn, 18) != 0 {
@@ -4811,7 +4814,7 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
         co,
         power,
         SK_PARASITE as u16,
-        TICKS * 8,
+        TICKS * 24,
         b"Parasite",
     ) {
         gs.do_character_log(
@@ -4858,7 +4861,7 @@ pub fn skill_parasite(gs: &mut GameState, cn: usize) {
             maybe_co,
             power,
             SK_PARASITE as u16,
-            TICKS * 8,
+            TICKS * 24,
             b"Parasite",
         ) {
             continue;
@@ -4920,7 +4923,7 @@ fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
         return false;
     }
     let in_idx = in_opt.unwrap();
-    let agility_penalty = -((power / 3).clamp(1, 30)) as i16;
+    let agility_penalty = -(((power / 3) * 3).clamp(3, 90)) as i16;
     {
         let item = &mut gs.items[in_idx];
         let mut name_bytes = [0u8; 40];
@@ -4930,8 +4933,8 @@ fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
         item.sprite[1] = 89;
-        item.duration = (TICKS * 10) as u32;
-        item.active = (TICKS * 10) as u32;
+        item.duration = (TICKS * 30) as u32;
+        item.active = (TICKS * 30) as u32;
         item.temp = SK_DISTRACT as u16;
         item.power = power as u32;
         item.attrib[AT_AGIL as usize][1] = agility_penalty;
@@ -4953,7 +4956,7 @@ pub fn skill_distract(gs: &mut GameState, cn: usize) {
     if !hostile_cast_preflight(gs, cn, co, "You cannot distract yourself.\n") {
         return;
     }
-    if spellcost(gs, cn, 15) != 0 {
+    if spellcost(gs, cn, 7) != 0 {
         return;
     }
     if chance(gs, cn, 18) != 0 {
@@ -5052,19 +5055,19 @@ pub fn skill_deliver_death(gs: &mut GameState, cn: usize) {
         gs.do_character_log(cn, FontColor::Red, "Your target is too far away.\n");
         return;
     }
-    if gs.characters[cn].a_end < 150 * 1000 {
+    if gs.characters[cn].a_end < 75 * 1000 {
         gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
         return;
     }
-    gs.characters[cn].a_end -= 150 * 1000;
+    gs.characters[cn].a_end -= 75 * 1000;
 
     let weapon = i32::from(gs.characters[cn].weapon).max(1);
     let max_hp = i32::from(gs.characters[co].hp[5]).max(1);
     let cur_hp_pct = gs.characters[co].a_hp / max_hp; // 0..1000
     let dam = if cur_hp_pct < 250 {
-        weapon * 5 + helpers::random_mod_i32(weapon * 2)
+        weapon * 15 + helpers::random_mod_i32(weapon * 6)
     } else {
-        weapon * 2 + helpers::random_mod_i32(weapon)
+        weapon * 6 + helpers::random_mod_i32(weapon * 3)
     };
 
     let applied = gs.do_hurt(cn, co, dam, 0);
@@ -5106,7 +5109,7 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
     if !hostile_cast_preflight(gs, cn, co, "You cannot disarm yourself.\n") {
         return;
     }
-    if spellcost(gs, cn, 25) != 0 {
+    if spellcost(gs, cn, 12) != 0 {
         return;
     }
     if chance(gs, cn, 18) != 0 {
@@ -5130,7 +5133,7 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    let weapon_penalty = -((power / 2).clamp(1, 50)) as i16;
+    let weapon_penalty = -(((power / 2) * 3).clamp(3, 150)) as i16;
     {
         let item = &mut gs.items[in_idx];
         let mut name_bytes = [0u8; 40];
@@ -5140,8 +5143,8 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
         item.name = name_bytes;
         item.flags |= ItemFlags::IF_SPELL.bits();
         item.sprite[1] = 89;
-        item.duration = (TICKS * 15) as u32;
-        item.active = (TICKS * 15) as u32;
+        item.duration = (TICKS * 45) as u32;
+        item.active = (TICKS * 45) as u32;
         item.temp = SK_DISARM as u16;
         item.power = power as u32;
         item.skill[SK_WEAPON][1] = weapon_penalty;
@@ -5187,7 +5190,7 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
     if !hostile_cast_preflight(gs, cn, co, "You cannot infect yourself.\n") {
         return;
     }
-    if spellcost(gs, cn, 40) != 0 {
+    if spellcost(gs, cn, 20) != 0 {
         return;
     }
     if chance(gs, cn, 18) != 0 {
@@ -5201,7 +5204,7 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
         co,
         power,
         SK_CONTAGION as u16,
-        TICKS * 60 * 8,
+        TICKS * 60 * 24,
         b"Contagion",
     ) {
         gs.do_character_log(
@@ -5244,11 +5247,11 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
     if skill_on_cooldown(gs, cn, SK_BLADE_DANCE as u16) {
         return;
     }
-    if gs.characters[cn].a_end < 200 * 1000 {
+    if gs.characters[cn].a_end < 100 * 1000 {
         gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
         return;
     }
-    gs.characters[cn].a_end -= 200 * 1000;
+    gs.characters[cn].a_end -= 100 * 1000;
 
     let weapon = i32::from(gs.characters[cn].weapon).max(1);
     let caster_x = i32::from(gs.characters[cn].x);
@@ -5265,8 +5268,8 @@ pub fn skill_blade_dance(gs: &mut GameState, cn: usize) {
             continue;
         }
         let base_dam = weapon + helpers::random_mod_i32(weapon.max(1));
-        // Mirror Surround Hit's reduction (3/4 of base) then double it for Blade Dance.
-        let sdam = (base_dam - base_dam / 4) * 2;
+        // Mirror Surround Hit's reduction (3/4 of base) then 6x it for Blade Dance.
+        let sdam = (base_dam - base_dam / 4) * 6;
         gs.remember_pvp(cn, co);
         let applied = gs.do_hurt(cn, co, sdam, 0);
         if applied > 0 {
@@ -5354,14 +5357,14 @@ pub fn skill_rains_of_renewal(gs: &mut GameState, cn: usize) {
     if skill_on_cooldown(gs, cn, SK_RAINS_OF_RENEWAL as u16) {
         return;
     }
-    if gs.characters[cn].a_end < 100 * 1000 {
+    if gs.characters[cn].a_end < 50 * 1000 {
         gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
         return;
     }
-    gs.characters[cn].a_end -= 100 * 1000;
+    gs.characters[cn].a_end -= 50 * 1000;
 
     let power = i32::from(gs.characters[cn].skill[SK_RAINS_OF_RENEWAL][5]);
-    let duration = TICKS * 20;
+    let duration = TICKS * 60;
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
@@ -5426,8 +5429,8 @@ pub fn skill_gash(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    // Self damage: 5% of current HP (a_hp is stored in 1/1000ths).
-    let self_dam_units = (gs.characters[cn].a_hp / 20).max(1);
+    // Self damage: 5% of current HP, halved by the talent buff (a_hp is stored in 1/1000ths).
+    let self_dam_units = (gs.characters[cn].a_hp / 40).max(1);
     if gs.characters[cn].a_hp <= self_dam_units {
         gs.do_character_log(
             cn,
@@ -5440,9 +5443,9 @@ pub fn skill_gash(gs: &mut GameState, cn: usize) {
 
     let weapon = i32::from(gs.characters[cn].weapon).max(1);
     let power = i32::from(gs.characters[cn].skill[SK_GASH][5]);
-    // Amplification scales with skill power: +50% at power=50, +150% at power=150.
-    let bonus_pct = power.clamp(10, 200);
-    let dam = weapon * (100 + bonus_pct) / 100 + helpers::random_mod_i32(weapon.max(1));
+    // Amplification scales with skill power: +90% at power=30, +450% at power=150.
+    let bonus_pct = (power * 3).clamp(30, 600);
+    let dam = weapon * (100 + bonus_pct) / 100 + helpers::random_mod_i32(weapon.max(1) * 3);
 
     let applied = gs.do_hurt(cn, co, dam, 0);
     if applied < 1 {
@@ -5478,8 +5481,8 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
         return;
     }
     let power = i32::from(gs.characters[cn].skill[SK_SUNS_BLESSING][5]);
-    let bonus = (power / 10 + 2).clamp(1, 30) as i16;
-    let buff_duration = TICKS * 60;
+    let bonus = ((power / 10 + 2) * 3).clamp(3, 90) as i16;
+    let buff_duration = TICKS * 180;
     let cooldown_len = TICKS * 55;
 
     let in_opt = God::create_item(gs, 1);
@@ -5552,17 +5555,17 @@ pub fn skill_seeing_red(gs: &mut GameState, cn: usize) {
     if skill_on_cooldown(gs, cn, SK_SEEING_RED as u16) {
         return;
     }
-    if gs.characters[cn].a_end < 150 * 1000 {
+    if gs.characters[cn].a_end < 75 * 1000 {
         gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
         return;
     }
-    gs.characters[cn].a_end -= 150 * 1000;
+    gs.characters[cn].a_end -= 75 * 1000;
 
     let power = i32::from(gs.characters[cn].skill[SK_SEEING_RED][5]);
-    // Roughly double outgoing damage by mirroring the caster's current
-    // weapon value as a flat weapon[1] bonus, capped to i8 range.
-    let weapon = i32::from(gs.characters[cn].weapon).clamp(1, 120) as i8;
-    let duration = TICKS * (5 + (power / 5).clamp(0, 25));
+    // Roughly doubles outgoing damage per unit weapon by mirroring 3x the
+    // caster's current weapon value as a flat weapon[1] bonus, i8-capped.
+    let weapon = (i32::from(gs.characters[cn].weapon) * 3).clamp(3, 127) as i8;
+    let duration = TICKS * (15 + (power / 5).clamp(0, 75));
     let cooldown_len = TICKS * 60;
 
     let in_opt = God::create_item(gs, 1);
@@ -5633,7 +5636,7 @@ pub fn skill_thunderous_fury(gs: &mut GameState, cn: usize) {
     gs.characters[cn].a_end -= 250 * 1000;
 
     let power = i32::from(gs.characters[cn].skill[SK_THUNDEROUS_FURY][5]);
-    let blast_base = (power / 4).max(1);
+    let blast_base = ((power * 3) / 4).max(1);
 
     let xf = std::cmp::max(1, i32::from(gs.characters[cn].x) - 10);
     let yf = std::cmp::max(1, i32::from(gs.characters[cn].y) - 10);
@@ -5713,8 +5716,8 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
     gs.characters[cn].a_end -= 200 * 1000;
 
     let power = i32::from(gs.characters[cn].skill[SK_INNER_STRENGTH][5]);
-    let buff_amount = ((power / 5) + 2).clamp(1, 50) as i16;
-    let buff_duration = TICKS * 30;
+    let buff_amount = (((power / 5) + 2) * 3).clamp(3, 150) as i16;
+    let buff_duration = TICKS * 90;
 
     // Self weapon-skill buff item.
     let in_opt = God::create_item(gs, 1);
@@ -5877,18 +5880,18 @@ pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
         chlog!(cn, "Uncast Revenant Conduit");
         return;
     }
-    if gs.characters[cn].a_end < 50 * 1000 {
+    if gs.characters[cn].a_end < 25 * 1000 {
         gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
         return;
     }
-    if spellcost(gs, cn, 35) != 0 {
+    if spellcost(gs, cn, 17) != 0 {
         return;
     }
 
     let power = i32::from(gs.characters[cn].skill[SK_REVENANT_CONDUIT][5]);
-    // +X% effective SK_GHOST per power tier, capped at +50%.
-    let boost_pct = ((power / 10) * 10).clamp(10, 50);
-    let duration = TICKS * 120;
+    // +X% effective SK_GHOST per power tier, capped at +150%.
+    let boost_pct = (((power / 10) * 10) * 3).clamp(30, 150);
+    let duration = TICKS * 360;
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
@@ -5981,12 +5984,12 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         gs.do_character_log(cn, FontColor::Red, "The pact is already in force.\n");
         return;
     }
-    if spellcost(gs, cn, 40) != 0 {
+    if spellcost(gs, cn, 20) != 0 {
         return;
     }
     let power = i32::from(gs.characters[cn].skill[SK_SPECTRAL_PACT][5]);
-    let redirect_pct = (10 + (power * 40) / 100).clamp(10, 50);
-    let duration = TICKS * 60;
+    let redirect_pct = ((10 + (power * 40) / 100) * 3).clamp(30, 150);
+    let duration = TICKS * 180;
 
     let in_opt = God::create_item(gs, 1);
     if in_opt.is_none() {
@@ -6149,7 +6152,7 @@ pub fn skill_anguish_lava(gs: &mut GameState, cn: usize) {
 /// Active hostile AoE: Anguish (Earth). Attaches a move-block debuff to every
 /// hostile inside a 7x7 area around the resolved primary target.
 pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
-    let Some(co) = anguish_preflight(gs, cn, SK_ANGUISH_EARTH, 45) else {
+    let Some(co) = anguish_preflight(gs, cn, SK_ANGUISH_EARTH, 22) else {
         return;
     };
     let power = i32::from(gs.characters[cn].skill[SK_ANGUISH_EARTH][5]);
@@ -6162,7 +6165,7 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
         b"Anguish - Earth",
         SK_ANGUISH_EARTH as u16,
         power.max(1) as u32,
-        TICKS * 6,
+        TICKS * 18,
         0,
         0,
     );
@@ -6190,7 +6193,7 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
             b"Anguish - Earth",
             SK_ANGUISH_EARTH as u16,
             power.max(1) as u32,
-            TICKS * 6,
+            TICKS * 18,
             0,
             0,
         );

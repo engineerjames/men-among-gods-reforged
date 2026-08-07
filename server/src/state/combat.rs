@@ -566,12 +566,12 @@ impl GameState {
                     if surround_eff + helpers::random_mod_i32(20) > self.get_fight_skill(co2) {
                         let base_sdam = odam - odam / 4;
                         // Blade Dance amplifier: if attacker has learned Blade
-                        // Dance, every surround strike hits for double damage.
+                        // Dance, every surround strike hits for 6x damage.
                         let sdam = if self.characters[attacker_index].skill[skills::SK_BLADE_DANCE]
                             [0]
                             != 0
                         {
-                            base_sdam * 2
+                            base_sdam * 6
                         } else {
                             base_sdam
                         };

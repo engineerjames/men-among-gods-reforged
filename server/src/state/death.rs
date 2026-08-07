@@ -821,13 +821,13 @@ impl GameState {
         }
 
         self.items[marker_idx].active = 0;
-        if helpers::random_mod(100) >= 25 {
+        if helpers::random_mod(100) >= 75 {
             return;
         }
 
         let dx0 = i32::from(self.characters[dying].x);
         let dy0 = i32::from(self.characters[dying].y);
-        let damage = (power / 2).max(1);
+        let damage = ((power * 3) / 2).max(1);
         let damage_unit = damage * 1000;
 
         for dy in -1..=1i32 {

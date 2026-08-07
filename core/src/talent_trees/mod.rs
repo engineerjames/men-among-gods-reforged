@@ -1640,8 +1640,16 @@ mod tests {
             TalentPrimaryHitProcKind::DamageTarget { damage: 25 },
         );
         assert_hp_end(named_node(tree, "Vitality Boost II"), 100, 50);
-        assert_grants_skill(named_node(tree, "Holy Fury"), Skill::ThunderousFury);
-        assert_grants_skill(named_node(tree, "Inner Strength"), Skill::InnerStrength);
+        assert_replaces_skill(
+            named_node(tree, "Holy Fury"),
+            Skill::Warcry,
+            Skill::ThunderousFury,
+        );
+        assert_replaces_skill(
+            named_node(tree, "Inner Strength"),
+            Skill::Warcry,
+            Skill::InnerStrength,
+        );
         assert_attribute_percent(named_node(tree, "Agility Boost I"), Attribute::Agility, 5);
         assert_attribute_percent(named_node(tree, "Agility Boost II"), Attribute::Agility, 5);
     }
