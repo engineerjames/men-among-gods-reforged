@@ -9090,7 +9090,7 @@ pub fn step_driver_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
 mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
-    use core::constants::{IF_USE, IF_USEDESTROY, USE_ACTIVE};
+    use core::constants::USE_ACTIVE;
 
     /// Creates a carried use-destroy item for `use_driver` tests.
     fn add_consumable(
@@ -9103,7 +9103,7 @@ mod tests {
         gs.items[item_idx] = core::types::Item::default();
         gs.items[item_idx].used = USE_ACTIVE;
         gs.items[item_idx].temp = template_id as u16;
-        gs.items[item_idx].flags = u64::from(IF_USE | IF_USEDESTROY);
+        gs.items[item_idx].flags = ItemFlags::IF_USE.bits() | ItemFlags::IF_USEDESTROY.bits();
         gs.items[item_idx].carried = cn as u16;
         if in_citem {
             gs.characters[cn].citem = item_idx as u32;
