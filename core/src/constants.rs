@@ -622,6 +622,9 @@ pub const IT_RED_FLOWER: usize = 18;
 pub const IT_PURPLE_FLOWER: usize = 46;
 pub const IT_HEALING_POTION: usize = 101;
 pub const IT_MANA_POTION: usize = 102;
+pub const IT_GREATER_HEALING_POTION: usize = 127;
+pub const IT_GREATER_MANA_POTION: usize = 131;
+pub const IT_STRENGTH_POTION: usize = 135;
 pub const IT_YELLOW_FLOWER: usize = 140;
 pub const IT_BLUE_FLOWER: usize = 141;
 pub const IT_GREEN_FLOWER: usize = 142;
@@ -645,6 +648,35 @@ pub const IT_AGILITY_POTION: usize = 224;
 
 pub const IT_YELLOW_TULIP: usize = 294;
 pub const IT_YELLOW_TULIP_POTION: usize = 295;
+
+/// Item template IDs whose contents are stored in a reusable flask.
+///
+/// This list is explicit because flask contents are defined by the binary
+/// item-template data rather than by a reliable runtime flag.
+pub const POTION_TEMPLATE_IDS: &[usize] = &[
+    IT_HEALING_POTION,
+    IT_MANA_POTION,
+    127,
+    131,
+    135,
+    IT_GREEN_POTION,
+    IT_YELLOW_POTION,
+    IT_BLUE_POTION,
+    IT_BLACK_POTION,
+    IT_ORANGE_POTION,
+    IT_POTION_OF_LIFE,
+    IT_YELLOW_AND_GREEN_POTION,
+    IT_RED_AND_GREEN_POTION,
+    IT_BLUE_AND_GREEN_POTION,
+    IT_BLUE_YELLOW_AND_GREEN_POTION,
+    IT_BLUE_RED_AND_GREEN_POTION,
+    IT_RED_YELLOW_AND_GREEN_POTION,
+    IT_AGILITY_POTION,
+    273,
+    274,
+    IT_YELLOW_TULIP_POTION,
+    449,
+];
 
 /// Item template IDs that are automatically looted from graves when the
 /// auto-loot feature is enabled. Gold (grave slot 61) is always taken
