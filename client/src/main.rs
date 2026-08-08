@@ -208,7 +208,6 @@ fn main() -> Result<(), String> {
     let mut scene_manager = scenes::scene::SceneManager::new();
     let mut last_frame = Instant::now();
     let mut pixel_perfect_resize_deadline = None;
-    let mut window_maximized = false;
 
     // Log info about the monitor, graphics card, etc.
     if let Ok(video_subsystem) = sdl_context.video() {
@@ -253,17 +252,6 @@ fn main() -> Result<(), String> {
                 scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
             }
 
-            if let sdl2::event::Event::Window { win_event, .. } = event {
-                match win_event {
-                    WindowEvent::Maximized => {
-                        window_maximized = true;
-                        pixel_perfect_resize_deadline = None;
-                    }
-                    WindowEvent::Restored => window_maximized = false,
-                    _ => {}
-                }
-            }
-
             if matches!(
                 event,
                 sdl2::event::Event::Window {
@@ -273,9 +261,8 @@ fn main() -> Result<(), String> {
             ) && should_fit_pixel_perfect_window(
                 app_state.settings.display_mode,
                 app_state.settings.pixel_perfect_scaling,
-                window_maximized,
-            )
-            {
+                window_occupies_display(canvas.window()),
+            ) {
                 pixel_perfect_resize_deadline = Some(Instant::now() + Duration::from_millis(200));
             }
 
@@ -349,10 +336,10 @@ fn main() -> Result<(), String> {
             }
         }
 
-        if !window_maximized
-            && pixel_perfect_resize_deadline.is_some_and(|deadline| Instant::now() >= deadline)
-        {
-            fit_pixel_perfect_window(&mut canvas);
+        if pixel_perfect_resize_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            if !window_occupies_display(canvas.window()) {
+                fit_pixel_perfect_window(&mut canvas);
+            }
             pixel_perfect_resize_deadline = None;
         }
 
@@ -382,7 +369,7 @@ fn main() -> Result<(), String> {
                     if should_fit_pixel_perfect_window(
                         applied_mode,
                         app_state.settings.pixel_perfect_scaling,
-                        window_maximized,
+                        window_occupies_display(canvas.window()),
                     ) {
                         fit_pixel_perfect_window(&mut canvas);
                     }
@@ -393,7 +380,7 @@ fn main() -> Result<(), String> {
                     if should_fit_pixel_perfect_window(
                         app_state.settings.display_mode,
                         enabled,
-                        window_maximized,
+                        window_occupies_display(canvas.window()),
                     ) {
                         fit_pixel_perfect_window(&mut canvas);
                     }
@@ -445,7 +432,8 @@ fn main() -> Result<(), String> {
 ///
 /// * `display_mode` - Display mode selected in game settings.
 /// * `pixel_perfect_scaling` - Whether integer scaling is enabled.
-/// * `window_maximized` - Whether the OS has natively maximized the window.
+/// * `window_occupies_display` - Whether the OS has maximized or fullscreened
+///   the window independently of the in-game display setting.
 ///
 /// # Returns
 ///
@@ -453,9 +441,23 @@ fn main() -> Result<(), String> {
 fn should_fit_pixel_perfect_window(
     display_mode: DisplayMode,
     pixel_perfect_scaling: bool,
-    window_maximized: bool,
+    window_occupies_display: bool,
 ) -> bool {
-    display_mode == DisplayMode::Windowed && pixel_perfect_scaling && !window_maximized
+    display_mode == DisplayMode::Windowed && pixel_perfect_scaling && !window_occupies_display
+}
+
+/// Returns whether SDL currently considers a window maximized or fullscreen.
+///
+/// # Arguments
+///
+/// * `window` - SDL window whose live native state should be inspected.
+///
+/// # Returns
+///
+/// * `true` when fitting the window size would interfere with an OS-managed
+///   maximized or fullscreen state.
+fn window_occupies_display(window: &sdl2::video::Window) -> bool {
+    window.is_maximized() || window.fullscreen_state() != FullscreenType::Off
 }
 
 /// Shrinks a windowed canvas to the largest exact integer-scaled viewport
