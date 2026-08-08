@@ -6393,92 +6393,92 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
     }
 
     // Handle IF_USEDESTROY items (potions, etc.)
-    if carried {
-        let has_usedestroy =
-            { (gs.items[item_idx].flags & core::constants::ItemFlags::IF_USEDESTROY.bits()) != 0 };
+    let will_destroy_on_use =
+        (gs.items[item_idx].flags & core::constants::ItemFlags::IF_USEDESTROY.bits()) != 0;
 
-        if has_usedestroy {
-            // Check min_rank requirement
-            let min_rank = gs.items[item_idx].min_rank;
-            let curr_rank = { core::ranks::points2rank(gs.characters[cn].points_tot as u32) };
-            if i32::from(min_rank) > curr_rank as i32 {
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "You're not experienced enough to use this.\n",
-                );
-                return;
-            }
-
-            // Log usage
-            let item_name = gs.items[item_idx].get_name().to_owned();
-            log::info!("Used {}", item_name);
-
-            // Apply hp/end/mana changes
-            {
-                let hp = gs.items[item_idx].hp[0];
-                let end = gs.items[item_idx].end[0];
-                let mana = gs.items[item_idx].mana[0];
-
-                gs.characters[cn].a_hp += i32::from(hp) * 1000;
-                if gs.characters[cn].a_hp < 0 {
-                    gs.characters[cn].a_hp = 0;
-                }
-                gs.characters[cn].a_end += i32::from(end) * 1000;
-                if gs.characters[cn].a_end < 0 {
-                    gs.characters[cn].a_end = 0;
-                }
-                gs.characters[cn].a_mana += i32::from(mana) * 1000;
-                if gs.characters[cn].a_mana < 0 {
-                    gs.characters[cn].a_mana = 0;
-                }
-            };
-
-            // If item grants a spell-like effect, apply it
-            let duration = gs.items[item_idx].duration;
-            if duration != 0 {
-                driver::spell_from_item(gs, cn, item_idx);
-            }
-
-            // Remove item from character
-            God::take_from_char(gs, item_idx, cn);
-            gs.items[item_idx].used = USE_EMPTY;
-
-            // If character died as a result, announce and handle death
-            let a_hp = gs.characters[cn].a_hp;
-            if a_hp < 500 {
-                let (x, y) = {
-                    (
-                        i32::from(gs.characters[cn].x),
-                        i32::from(gs.characters[cn].y),
-                    )
-                };
-                gs.do_area_log(
-                    cn,
-                    0,
-                    x,
-                    y,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "{} was killed by {}.\n",
-                        gs.characters[cn].get_name().to_owned(),
-                        c_string_to_str(&gs.items[item_idx].reference).to_owned()
-                    ),
-                );
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "You were killed by {}.\n",
-                        c_string_to_str(&gs.items[item_idx].reference).to_owned()
-                    ),
-                );
-                gs.do_character_killed(cn, 0, true);
-            }
-
-            gs.do_update_char(cn);
-        }
+    // This is the last case--so if both of these flags aren't set
+    // correctly then we want to exit early.
+    if !carried || !will_destroy_on_use {
+        return;
     }
+
+    // Check min_rank requirement
+    let min_rank = gs.items[item_idx].min_rank;
+    let curr_rank = { core::ranks::points2rank(gs.characters[cn].points_tot as u32) };
+    if i32::from(min_rank) > curr_rank as i32 {
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You're not experienced enough to use this.\n",
+        );
+        return;
+    }
+
+    // Log usage
+    let item_name = gs.items[item_idx].get_name().to_owned();
+    log::info!("Used {}", item_name);
+
+    // Apply hp/end/mana changes
+    let hp = gs.items[item_idx].hp[0];
+    let end = gs.items[item_idx].end[0];
+    let mana = gs.items[item_idx].mana[0];
+
+    gs.characters[cn].a_hp += i32::from(hp) * 1000;
+    if gs.characters[cn].a_hp < 0 {
+        gs.characters[cn].a_hp = 0;
+    }
+    gs.characters[cn].a_end += i32::from(end) * 1000;
+    if gs.characters[cn].a_end < 0 {
+        gs.characters[cn].a_end = 0;
+    }
+    gs.characters[cn].a_mana += i32::from(mana) * 1000;
+    if gs.characters[cn].a_mana < 0 {
+        gs.characters[cn].a_mana = 0;
+    }
+
+    // If item grants a spell-like effect, apply it
+    let duration = gs.items[item_idx].duration;
+    if duration != 0 {
+        driver::spell_from_item(gs, cn, item_idx);
+    }
+
+    // Remove item from character
+    God::take_from_char(gs, item_idx, cn);
+    gs.items[item_idx].used = USE_EMPTY;
+
+    // If character died as a result, announce and handle death
+    let a_hp = gs.characters[cn].a_hp;
+    if a_hp < 500 {
+        let (x, y) = {
+            (
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
+            )
+        };
+        gs.do_area_log(
+            cn,
+            0,
+            x,
+            y,
+            core::types::FontColor::Yellow,
+            &format!(
+                "{} was killed by {}.\n",
+                gs.characters[cn].get_name().to_owned(),
+                c_string_to_str(&gs.items[item_idx].reference).to_owned()
+            ),
+        );
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            &format!(
+                "You were killed by {}.\n",
+                c_string_to_str(&gs.items[item_idx].reference).to_owned()
+            ),
+        );
+        gs.do_character_killed(cn, 0, true);
+    }
+
+    gs.do_update_char(cn);
 }
 
 /// Handles the legacy `use_soulstone` item-use hook.
