@@ -349,6 +349,9 @@ impl Scene for LoginScene {
                 LoginFormAction::Quit => {
                     return Some(SceneType::Exit);
                 }
+                LoginFormAction::OpenDiscord => {
+                    crate::platform::open_url("https://discord.gg/PdvduwGPnW");
+                }
                 LoginFormAction::ToggleMusic(enabled) => {
                     app_state.settings.music_enabled = enabled;
                     if enabled {
