@@ -599,8 +599,52 @@ pub const CT_PRIEST: i32 = 180;
 
 pub const COMPANION_TIMEOUT: i32 = 5 * 60 * TICKS;
 
+// =============================================================================
+// Item template IDs (from numbers.h)
+// =============================================================================
 pub const IT_TOMBSTONE: i32 = 170;
 pub const IT_LAGSCROLL: i32 = 500;
+pub const IT_FLASK: usize = 100;
+
+pub const IT_BRONZE_HELMET: usize = 57;
+pub const IT_BRONZE_ARMOR: usize = 59;
+pub const IT_STEEL_HELMET: usize = 63;
+pub const IT_STEEL_ARMOR: usize = 65;
+pub const IT_GOLD_HELMET: usize = 69;
+pub const IT_GOLD_ARMOR: usize = 71;
+pub const IT_CRYSTAL_HELMET: usize = 75;
+pub const IT_CRYSTAL_ARMOR: usize = 76;
+pub const IT_TITANIUM_HELMET: usize = 94;
+pub const IT_TITANIUM_ARMOR: usize = 95;
+pub const IT_EMERALD_HELMET: usize = 981;
+pub const IT_EMERALD_ARMOR: usize = 982;
+pub const IT_RED_FLOWER: usize = 18;
+pub const IT_PURPLE_FLOWER: usize = 46;
+pub const IT_HEALING_POTION: usize = 101;
+pub const IT_MANA_POTION: usize = 102;
+pub const IT_YELLOW_FLOWER: usize = 140;
+pub const IT_BLUE_FLOWER: usize = 141;
+pub const IT_GREEN_FLOWER: usize = 142;
+pub const IT_GREEN_POTION: usize = 143;
+pub const IT_YELLOW_POTION: usize = 144;
+pub const IT_BLUE_POTION: usize = 145;
+pub const IT_BLACK_POTION: usize = 146;
+pub const IT_ORANGE_POTION: usize = 147;
+pub const IT_POTION_OF_LIFE: usize = 148;
+pub const IT_JUNGLE_FLOWER_PINK: usize = 197;
+pub const IT_JUNGLE_FLOWER_BLUE: usize = 198;
+pub const IT_JUNGLE_FLOWER_YELLOW: usize = 199;
+
+pub const IT_YELLOW_AND_GREEN_POTION: usize = 218;
+pub const IT_RED_AND_GREEN_POTION: usize = 219;
+pub const IT_BLUE_AND_GREEN_POTION: usize = 220;
+pub const IT_BLUE_YELLOW_AND_GREEN_POTION: usize = 221;
+pub const IT_BLUE_RED_AND_GREEN_POTION: usize = 222;
+pub const IT_RED_YELLOW_AND_GREEN_POTION: usize = 223;
+pub const IT_AGILITY_POTION: usize = 224;
+
+pub const IT_YELLOW_TULIP: usize = 294;
+pub const IT_YELLOW_TULIP_POTION: usize = 295;
 
 /// Item template IDs that are automatically looted from graves when the
 /// auto-loot feature is enabled. Gold (grave slot 61) is always taken

@@ -6,9 +6,17 @@ use crate::helpers::{self};
 use crate::populate::pop_create_char;
 use crate::{chlog, driver, player, points, populate};
 use core::constants::{
-    AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, ItemFlags, MAXITEM, MAXSKILL,
-    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
-    WN_LHAND, WN_RHAND,
+    AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, IT_AGILITY_POTION,
+    IT_BLACK_POTION, IT_BLUE_AND_GREEN_POTION, IT_BLUE_FLOWER, IT_BLUE_POTION,
+    IT_BLUE_RED_AND_GREEN_POTION, IT_BLUE_YELLOW_AND_GREEN_POTION, IT_BRONZE_ARMOR,
+    IT_BRONZE_HELMET, IT_CRYSTAL_ARMOR, IT_CRYSTAL_HELMET, IT_EMERALD_ARMOR, IT_EMERALD_HELMET,
+    IT_FLASK, IT_GOLD_ARMOR, IT_GOLD_HELMET, IT_GREEN_FLOWER, IT_GREEN_POTION, IT_HEALING_POTION,
+    IT_JUNGLE_FLOWER_BLUE, IT_JUNGLE_FLOWER_PINK, IT_JUNGLE_FLOWER_YELLOW, IT_MANA_POTION,
+    IT_ORANGE_POTION, IT_POTION_OF_LIFE, IT_PURPLE_FLOWER, IT_RED_AND_GREEN_POTION, IT_RED_FLOWER,
+    IT_RED_YELLOW_AND_GREEN_POTION, IT_STEEL_ARMOR, IT_STEEL_HELMET, IT_TITANIUM_ARMOR,
+    IT_TITANIUM_HELMET, IT_YELLOW_AND_GREEN_POTION, IT_YELLOW_FLOWER, IT_YELLOW_POTION,
+    IT_YELLOW_TULIP, IT_YELLOW_TULIP_POTION, ItemFlags, MAXITEM, MAXSKILL, MAXTITEM, MF_NOEXPIRE,
+    NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY, WN_LHAND, WN_RHAND,
 };
 use core::skills::{self, attribute_name};
 use core::string_operations::c_string_to_str;
@@ -557,7 +565,9 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 
     // Check if this is a special item template
     let in2 = match template_id {
-        57 | 59 | 63 | 65 | 69 | 71 | 75 | 76 | 94 | 95 | 981 | 982 => {
+        IT_BRONZE_HELMET | IT_BRONZE_ARMOR | IT_STEEL_HELMET | IT_STEEL_ARMOR | IT_GOLD_HELMET
+        | IT_GOLD_ARMOR | IT_CRYSTAL_HELMET | IT_CRYSTAL_ARMOR | IT_TITANIUM_HELMET
+        | IT_TITANIUM_ARMOR | IT_EMERALD_HELMET | IT_EMERALD_ARMOR => {
             helpers::create_special_item(gs, template_id)
         }
         _ => God::create_item(gs, template_id),
@@ -640,68 +650,138 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     let (base_temp, ingredient_temp) = (gs.items[item_idx].temp, gs.items[citem].temp);
 
-    let result_template: Option<usize> = match base_temp {
-        100 => match ingredient_temp {
-            18 => Some(101),
-            46 => Some(102),
-            141 => Some(145),
-            140 => Some(144),
-            142 => Some(143),
-            197 => Some(219),
-            198 => Some(220),
-            199 => Some(218),
-            294 => Some(295),
+    let result_template: Option<usize> = match base_temp as usize {
+        // TODO: Evaluate usage of usize vs. u16 vs. u32, etc., etc.
+        IT_FLASK => match ingredient_temp as usize {
+            IT_RED_FLOWER => Some(IT_HEALING_POTION),
+            IT_PURPLE_FLOWER => Some(IT_MANA_POTION),
+            IT_BLUE_FLOWER => Some(IT_BLUE_POTION),
+            IT_YELLOW_FLOWER => Some(IT_YELLOW_POTION),
+            IT_GREEN_FLOWER => Some(IT_GREEN_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_RED_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_BLUE_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_YELLOW_AND_GREEN_POTION),
+            IT_YELLOW_TULIP => Some(IT_YELLOW_TULIP_POTION),
             _ => None,
         },
-        143 | 145 | 146 => match ingredient_temp {
-            18 | 46 | 140 | 141 | 142 | 197 | 198 | 199 | 294 => Some(146),
+        IT_GREEN_POTION | IT_BLUE_POTION | IT_BLACK_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
             _ => None,
         },
-        144 => match ingredient_temp {
-            18 | 46 | 140 | 141 | 197 | 198 | 199 | 294 => Some(146),
-            142 => Some(147),
+        IT_YELLOW_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_GREEN_FLOWER => Some(IT_ORANGE_POTION),
             _ => None,
         },
-        147 => match ingredient_temp {
-            18 | 46 | 140 | 142 | 197 | 198 | 199 | 294 => Some(146),
-            141 => Some(148),
+        IT_ORANGE_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_BLUE_FLOWER => Some(IT_POTION_OF_LIFE),
             _ => None,
         },
-        218 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 199 | 294 => Some(146),
-            197 => Some(223),
-            198 => Some(221),
+        IT_YELLOW_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_RED_YELLOW_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_BLUE_YELLOW_AND_GREEN_POTION),
             _ => None,
         },
-        219 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 294 => Some(146),
-            198 => Some(222),
-            199 => Some(223),
+        IT_RED_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_BLUE_RED_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_RED_YELLOW_AND_GREEN_POTION),
             _ => None,
         },
-        220 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 198 | 294 => Some(146),
-            197 => Some(222),
-            199 => Some(221),
+        IT_BLUE_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_BLUE_RED_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_BLUE_YELLOW_AND_GREEN_POTION),
             _ => None,
         },
-        221 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 198 | 199 | 294 => Some(146),
-            197 => Some(224),
+        IT_BLUE_YELLOW_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_AGILITY_POTION),
             _ => None,
         },
-        222 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 198 | 294 => Some(146),
-            199 => Some(224),
+        IT_BLUE_RED_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_AGILITY_POTION),
             _ => None,
         },
-        223 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 199 | 294 => Some(146),
-            198 => Some(224),
+        IT_RED_YELLOW_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_AGILITY_POTION),
             _ => None,
         },
-        295 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 198 | 199 | 294 => Some(146),
+        IT_YELLOW_TULIP_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
             _ => None,
         },
         _ => None,
@@ -8245,7 +8325,7 @@ pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_trap` is outside the corresponding game-state collection.
-pub fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
     if is_player {
@@ -8272,7 +8352,7 @@ pub fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_trap_remove` is outside the corresponding game-state collection.
-pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
+fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
     let (active, light0, light1, x, y) = {
         let item = &gs.items[item_idx];
         (item.active, item.light[0], item.light[1], item.x, item.y)
@@ -8306,7 +8386,7 @@ pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_portal1_lab13` is outside the corresponding game-state collection.
-pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     // Check kindred
     let kindred = gs.characters[cn].kindred as u32;
     if (kindred & traits::KIN_HARAKIM) == 0
@@ -8389,7 +8469,7 @@ pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_portal2_lab13` is outside the corresponding game-state collection.
-pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
     if !is_player {
         return -1;
@@ -8577,7 +8657,7 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_portal_arena` is outside the corresponding game-state collection.
-pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Check for arena token (temp 687) in citem
     let citem = gs.characters[cn].citem;
     let mut flag = 0;
@@ -8722,7 +8802,7 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_teleport` is outside the corresponding game-state collection.
-pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     if cn == 0 {
         log::error!("step_teleport(gs, ): cn = 0");
         return -1;
@@ -8854,7 +8934,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_firefloor` is outside the corresponding game-state collection.
-pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
 
     let in2 = match God::create_item(gs, 1) {
@@ -8891,7 +8971,7 @@ pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_firefloor_remove` is outside the corresponding game-state collection.
-pub fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
+fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
     let temp = gs.items[item_idx].temp;
 
     for n in 0..20 {
