@@ -646,8 +646,11 @@ pub const IT_BLUE_RED_AND_GREEN_POTION: usize = 222;
 pub const IT_RED_YELLOW_AND_GREEN_POTION: usize = 223;
 pub const IT_AGILITY_POTION: usize = 224;
 
+pub const IT_GREATER_MANA_POTION_2: usize = 273;
+pub const IT_GREATER_HEALING_POTION_2: usize = 274;
 pub const IT_YELLOW_TULIP: usize = 294;
 pub const IT_YELLOW_TULIP_POTION: usize = 295;
+pub const IT_GOLEM_POTION: usize = 449;
 
 /// Item template IDs whose contents are stored in a reusable flask.
 ///
@@ -656,9 +659,9 @@ pub const IT_YELLOW_TULIP_POTION: usize = 295;
 pub const POTION_TEMPLATE_IDS: &[usize] = &[
     IT_HEALING_POTION,
     IT_MANA_POTION,
-    127,
-    131,
-    135,
+    IT_GREATER_HEALING_POTION,
+    IT_GREATER_MANA_POTION,
+    IT_STRENGTH_POTION,
     IT_GREEN_POTION,
     IT_YELLOW_POTION,
     IT_BLUE_POTION,
@@ -672,10 +675,10 @@ pub const POTION_TEMPLATE_IDS: &[usize] = &[
     IT_BLUE_RED_AND_GREEN_POTION,
     IT_RED_YELLOW_AND_GREEN_POTION,
     IT_AGILITY_POTION,
-    273,
-    274,
+    IT_GREATER_MANA_POTION_2,
+    IT_GREATER_HEALING_POTION_2,
     IT_YELLOW_TULIP_POTION,
-    449,
+    IT_GOLEM_POTION,
 ];
 
 /// Item template IDs that are automatically looted from graves when the

@@ -16,7 +16,8 @@ use core::constants::{
     IT_RED_YELLOW_AND_GREEN_POTION, IT_STEEL_ARMOR, IT_STEEL_HELMET, IT_TITANIUM_ARMOR,
     IT_TITANIUM_HELMET, IT_YELLOW_AND_GREEN_POTION, IT_YELLOW_FLOWER, IT_YELLOW_POTION,
     IT_YELLOW_TULIP, IT_YELLOW_TULIP_POTION, ItemFlags, MAXITEM, MAXSKILL, MAXTITEM, MF_NOEXPIRE,
-    NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY, WN_LHAND, WN_RHAND,
+    NT_HITME, POTION_TEMPLATE_IDS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
+    WN_LHAND, WN_RHAND,
 };
 use core::skills::{self, attribute_name};
 use core::string_operations::c_string_to_str;
@@ -6115,6 +6116,32 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     true
 }
 
+/// Replaces a consumed potion with an empty flask while preserving its slot.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the consumed potion.
+/// * `cn` - Character carrying the consumed potion.
+/// * `item_idx` - Item index of the consumed potion.
+///
+/// # Returns
+///
+/// * `true` when the item was a known potion and was replaced, otherwise `false`.
+fn replace_consumed_potion_with_flask(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
+    if !POTION_TEMPLATE_IDS.contains(&(gs.items[item_idx].temp as usize)) {
+        return false;
+    }
+
+    let mut flask = gs.item_templates[IT_FLASK];
+    flask.temp = IT_FLASK as u16;
+    flask.carried = cn as u16;
+    flask.x = 0;
+    flask.y = 0;
+    flask.flags |= ItemFlags::IF_UPDATE.bits();
+    gs.items[item_idx] = flask;
+    true
+}
+
 /// Handles the legacy `use_driver` item-use hook.
 ///
 /// # Arguments
@@ -6416,6 +6443,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
 
     // Log usage
     let item_name = gs.items[item_idx].get_name().to_owned();
+    let item_reference = c_string_to_str(&gs.items[item_idx].reference).to_owned();
     log::info!("Used {}", item_name);
 
     // Apply hp/end/mana changes
@@ -6442,9 +6470,12 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         driver::spell_from_item(gs, cn, item_idx);
     }
 
-    // Remove item from character
-    God::take_from_char(gs, item_idx, cn);
-    gs.items[item_idx].used = USE_EMPTY;
+    // Potions leave their reusable container in the same cursor or inventory
+    // slot. Other use-destroy items are removed normally.
+    if !replace_consumed_potion_with_flask(gs, cn, item_idx) {
+        God::take_from_char(gs, item_idx, cn);
+        gs.items[item_idx].used = USE_EMPTY;
+    }
 
     // If character died as a result, announce and handle death
     let a_hp = gs.characters[cn].a_hp;
@@ -6464,16 +6495,13 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
             &format!(
                 "{} was killed by {}.\n",
                 gs.characters[cn].get_name().to_owned(),
-                c_string_to_str(&gs.items[item_idx].reference).to_owned()
+                item_reference
             ),
         );
         gs.do_character_log(
             cn,
             core::types::FontColor::Red,
-            &format!(
-                "You were killed by {}.\n",
-                c_string_to_str(&gs.items[item_idx].reference).to_owned()
-            ),
+            &format!("You were killed by {}.\n", item_reference),
         );
         gs.do_character_killed(cn, 0, true);
     }
@@ -9062,7 +9090,73 @@ pub fn step_driver_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
 mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
-    use core::constants::USE_ACTIVE;
+    use core::constants::{IF_USE, IF_USEDESTROY, USE_ACTIVE};
+
+    /// Creates a carried use-destroy item for `use_driver` tests.
+    fn add_consumable(
+        gs: &mut GameState,
+        cn: usize,
+        item_idx: usize,
+        template_id: usize,
+        in_citem: bool,
+    ) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].temp = template_id as u16;
+        gs.items[item_idx].flags = u64::from(IF_USE | IF_USEDESTROY);
+        gs.items[item_idx].carried = cn as u16;
+        if in_citem {
+            gs.characters[cn].citem = item_idx as u32;
+        } else {
+            gs.characters[cn].item[0] = item_idx as u32;
+        }
+    }
+
+    #[test]
+    fn consumed_inventory_potion_becomes_flask_in_same_slot() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.item_templates[IT_FLASK].used = USE_ACTIVE;
+            add_consumable(gs, cn, item_idx, IT_HEALING_POTION, false);
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.characters[cn].item[0], item_idx as u32);
+            assert_eq!(gs.items[item_idx].temp as usize, IT_FLASK);
+            assert_eq!(gs.items[item_idx].carried as usize, cn);
+        });
+    }
+
+    #[test]
+    fn consumed_cursor_potion_becomes_flask_in_cursor() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.item_templates[IT_FLASK].used = USE_ACTIVE;
+            add_consumable(gs, cn, item_idx, IT_POTION_OF_LIFE, true);
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.characters[cn].citem, item_idx as u32);
+            assert_eq!(gs.items[item_idx].temp as usize, IT_FLASK);
+            assert_eq!(gs.items[item_idx].carried as usize, cn);
+        });
+    }
+
+    #[test]
+    fn consumed_non_potion_is_destroyed() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_consumable(gs, cn, item_idx, IT_RED_FLOWER, false);
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
 
     /// Puts a damageable item in a worn slot and returns its index.
     fn wear_damageable_item(gs: &mut GameState, cn: usize, slot: usize) -> usize {
