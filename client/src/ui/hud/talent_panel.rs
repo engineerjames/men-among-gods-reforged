@@ -19,6 +19,7 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use mag_core::ranks::{rank_name_by_index, talent_rank_for_layer};
 use mag_core::talent_trees::{
     TalentNode, TalentRef, available_talent_points, is_talent_layer_spent, is_talent_spent,
     talent_prereqs_met, total_points_spent, tree_for,
@@ -479,6 +480,29 @@ impl TalentPanel {
             return NodeStatus::NotEnoughPoints;
         }
         NodeStatus::Available
+    }
+
+    /// Formats the cost, required rank, and current status for a talent.
+    ///
+    /// # Arguments
+    ///
+    /// * `node` - Talent metadata containing the cost and tree layer.
+    /// * `status` - Current client-side availability status.
+    ///
+    /// # Returns
+    ///
+    /// * Player-facing footer text for the talent description box.
+    fn description_footer(node: &TalentNode, status: NodeStatus) -> String {
+        let required_rank = talent_rank_for_layer(node.slot.layer)
+            .map(|rank| rank_name_by_index(rank.index()))
+            .unwrap_or("Unknown rank");
+
+        format!(
+            "Cost: {}  -  Requires: {}  -  {}",
+            node.cost,
+            required_rank,
+            status.label()
+        )
     }
 }
 
@@ -958,7 +982,7 @@ impl TalentPanel {
             font_cache::TextStyle::default().with_tint(Color::RGBA(210, 210, 220, 255)),
         )?;
 
-        let footer = format!("Cost: {}  -  {}", node.cost, status.label());
+        let footer = Self::description_footer(node, status);
         font_cache::draw_text(
             ctx.canvas,
             ctx.gfx,
@@ -1399,5 +1423,24 @@ mod tests {
             TalentPanel::node_status(parasite, &talents),
             NodeStatus::Locked
         );
+    }
+
+    #[test]
+    fn description_footer_shows_required_rank_for_representative_layers() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+
+        for (layer, rank_name) in [(1, "Private First Class"), (6, "Captain"), (12, "Warlord")] {
+            let node = tree
+                .nodes
+                .iter()
+                .find(|node| node.slot.layer == layer)
+                .unwrap();
+            let footer = TalentPanel::description_footer(node, NodeStatus::Locked);
+
+            assert_eq!(
+                footer,
+                format!("Cost: {}  -  Requires: {}  -  Locked", node.cost, rank_name)
+            );
+        }
     }
 }

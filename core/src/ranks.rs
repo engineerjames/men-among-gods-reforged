@@ -279,6 +279,26 @@ pub fn rank_name_by_index(rank_idx: usize) -> &'static str {
     RANK_NAMES[idx]
 }
 
+/// Returns the rank that awards the talent point for a tree layer.
+///
+/// Talent layers are one-based and correspond in order to the twelve ranks
+/// whose promotion awards a talent point.
+///
+/// # Arguments
+///
+/// * `layer` - One-based talent-tree layer in `1..=12`.
+///
+/// # Returns
+///
+/// * The rank associated with the layer, or `None` for an invalid layer.
+pub const fn talent_rank_for_layer(layer: u8) -> Option<Rank> {
+    if layer == 0 || layer > 12 {
+        return None;
+    }
+
+    Some(Rank::from_index(layer as usize * 2 - 1))
+}
+
 /// Counts talent points awarded when advancing between rank indices.
 ///
 /// The old rank is exclusive and the new rank is inclusive, so advancing from
@@ -385,7 +405,7 @@ mod tests {
     use super::{
         RANK_NAMES, RANK_THRESHOLDS, Rank, TOTAL_RANKS, points2rank, rank_name, rank_name_by_index,
         rank_name_shortened, rank_progress, rank_short_name, rank_short_name_by_index, ranks,
-        talent_points_awarded_between,
+        talent_points_awarded_between, talent_rank_for_layer,
     };
 
     #[test]
@@ -515,6 +535,37 @@ mod tests {
                 Rank::Warlord.index(),
             ]
         );
+    }
+
+    #[test]
+    fn talent_layers_map_to_talent_point_ranks() {
+        let expected = [
+            Rank::PrivateFirstClass,
+            Rank::Corporal,
+            Rank::StaffSergeant,
+            Rank::FirstSergeant,
+            Rank::SecondLieutenant,
+            Rank::Captain,
+            Rank::LieutenantColonel,
+            Rank::BrigadierGeneral,
+            Rank::LieutenantGeneral,
+            Rank::FieldMarshal,
+            Rank::Baron,
+            Rank::Warlord,
+        ];
+
+        for (index, expected_rank) in expected.into_iter().enumerate() {
+            let rank = talent_rank_for_layer(index as u8 + 1);
+            assert_eq!(rank, Some(expected_rank));
+            assert!(rank.is_some_and(Rank::awards_talent_point));
+        }
+    }
+
+    #[test]
+    fn talent_rank_rejects_invalid_layers() {
+        assert_eq!(talent_rank_for_layer(0), None);
+        assert_eq!(talent_rank_for_layer(13), None);
+        assert_eq!(talent_rank_for_layer(u8::MAX), None);
     }
 
     #[test]
