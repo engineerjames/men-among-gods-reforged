@@ -6,7 +6,7 @@ use crate::helpers::{self};
 use crate::populate::pop_create_char;
 use crate::{chlog, driver, player, points, populate};
 use core::constants::{
-    AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, IT_AGILITY_POTION,
+    AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, IT_AGILITY_POTION,
     IT_BLACK_POTION, IT_BLUE_AND_GREEN_POTION, IT_BLUE_FLOWER, IT_BLUE_POTION,
     IT_BLUE_RED_AND_GREEN_POTION, IT_BLUE_YELLOW_AND_GREEN_POTION, IT_BRONZE_ARMOR,
     IT_BRONZE_HELMET, IT_CRYSTAL_ARMOR, IT_CRYSTAL_HELMET, IT_EMERALD_ARMOR, IT_EMERALD_HELMET,
@@ -19,7 +19,7 @@ use core::constants::{
     NT_HITME, POTION_TEMPLATE_IDS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     WN_LHAND, WN_RHAND,
 };
-use core::skills::{self, attribute_name};
+use core::skills::{self, SK_IMMUN, SK_RESIST, attribute_name};
 use core::string_operations::c_string_to_str;
 use core::traits;
 use core::types::FontColor;
@@ -4730,7 +4730,7 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     }
 
     // Check if character is Seyan'Du
-    let is_seyan = { (gs.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) != 0 };
+    let is_seyan = (gs.characters[cn].kindred & traits::KIN_SEYAN_DU as i32) != 0;
 
     if !is_seyan {
         gs.do_character_log(
@@ -4854,6 +4854,41 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     let cn_name = gs.characters[cn].name;
 
     gs.items[in2].weapon[0] = 15 + visited_bits * 4;
+
+    // Grant 1 of all attributes per shrine visited
+    gs.items[in2].attrib[AT_BRAVE as usize][0] = i16::from(visited_bits);
+    gs.items[in2].attrib[AT_WILL as usize][0] = i16::from(visited_bits);
+    gs.items[in2].attrib[AT_INT as usize][0] = i16::from(visited_bits);
+    gs.items[in2].attrib[AT_STREN as usize][0] = i16::from(visited_bits);
+    gs.items[in2].attrib[AT_AGIL as usize][0] = i16::from(visited_bits);
+
+    // Grant 25 hp/end/mana per 5 shrines visited
+    let bonus_stats = (visited_bits / 5) * 25;
+    log::info!(
+        "Character {} visited {} shrines, granting {} bonus stats to sword.",
+        cn,
+        visited_bits,
+        bonus_stats
+    );
+    gs.items[in2].hp[0] = i16::from(bonus_stats);
+    gs.items[in2].end[0] = i16::from(bonus_stats);
+    gs.items[in2].mana[0] = i16::from(bonus_stats);
+
+    // Every shrine beyond 10 should also give +5 immunity and resistance
+    let bonus_resist = visited_bits.saturating_sub_unsigned(10) * 5;
+
+    log::info!(
+        "Character {} visited {} shrines, granting {} bonus resistances to sword.",
+        cn,
+        visited_bits,
+        bonus_resist
+    );
+
+    if bonus_resist > 0 {
+        gs.items[in2].skill[SK_IMMUN][0] = i16::from(bonus_resist);
+        gs.items[in2].skill[SK_RESIST][0] = i16::from(bonus_resist);
+    }
+
     gs.items[in2].flags |= ItemFlags::IF_UPDATE.bits();
     gs.items[in2].temp = 0;
     let description = format!(
@@ -4958,9 +4993,7 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
             None => return false,
         };
         God::give_character_item(gs, cn, in2);
-        {
-            gs.items[in2].data[0] = cn as u32;
-        };
+        gs.items[in2].data[0] = cn as u32;
     }
 
     // Remove IF_LABYDESTROY items from citem
