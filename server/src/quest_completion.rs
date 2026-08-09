@@ -21,6 +21,7 @@ pub struct QuestDef {
     /// quest-completing item turn-in.
     pub npc_temp: u16,
     /// Human-readable label shown on the client's Journal quest checklist.
+    #[allow(dead_code)]
     pub label: &'static str,
 }
 

@@ -3604,36 +3604,33 @@ pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 /// * Panics if any legacy id or index parameter used by `boost_char` is outside the corresponding game-state collection.
 pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
     // Boost attributes
-    {
-        for n in 0..5 {
-            if i32::from(gs.characters[cn].attrib[n][0]) > divi as i32 {
-                let boost = crate::helpers::random_mod(
-                    u32::from(gs.characters[cn].attrib[n][0]) / divi as u32,
-                ) as u16;
-                gs.characters[cn].attrib[n][0] =
-                    gs.characters[cn].attrib[n][0].saturating_add(boost);
-            }
+    for n in 0..5 {
+        if i32::from(gs.characters[cn].attrib[n][0]) > divi as i32 {
+            let boost =
+                crate::helpers::random_mod(u32::from(gs.characters[cn].attrib[n][0]) / divi as u32)
+                    as u16;
+            gs.characters[cn].attrib[n][0] = gs.characters[cn].attrib[n][0].saturating_add(boost);
         }
+    }
 
-        // Boost skills
-        for n in 0..MAXSKILL {
-            if i32::from(gs.characters[cn].skill[n][0]) > divi as i32 {
-                let boost = crate::helpers::random_mod(
-                    u32::from(gs.characters[cn].skill[n][0]) / divi as u32,
-                ) as u16;
-                gs.characters[cn].skill[n][0] = gs.characters[cn].skill[n][0].saturating_add(boost);
-            }
+    // Boost skills
+    for n in 0..MAXSKILL {
+        if i32::from(gs.characters[cn].skill[n][0]) > divi as i32 {
+            let boost =
+                crate::helpers::random_mod(u32::from(gs.characters[cn].skill[n][0]) / divi as u32)
+                    as u16;
+            gs.characters[cn].skill[n][0] = gs.characters[cn].skill[n][0].saturating_add(boost);
         }
+    }
 
-        // Update name
-        let old_name = gs.characters[cn].get_name();
-        let new_name = format!("Strong {}", old_name);
-        let new_name_bytes = new_name.as_bytes();
-        let len = new_name_bytes.len().min(39);
-        gs.characters[cn].name[..len].copy_from_slice(&new_name_bytes[..len]);
-        gs.characters[cn].name[len..].fill(0);
-        gs.characters[cn].reference = gs.characters[cn].name;
-    };
+    // Update name
+    let old_name = gs.characters[cn].get_name();
+    let new_name = format!("Strong {}", old_name);
+    let new_name_bytes = new_name.as_bytes();
+    let len = new_name_bytes.len().min(39);
+    gs.characters[cn].name[..len].copy_from_slice(&new_name_bytes[..len]);
+    gs.characters[cn].name[len..].fill(0);
+    gs.characters[cn].reference = gs.characters[cn].name;
 
     // Create soulstone
     if let Some(in_idx) = God::create_item(gs, 1146) {
@@ -3644,26 +3641,24 @@ pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
             (exp, rank)
         };
 
-        {
-            let name = b"Soulstone";
-            gs.items[in_idx].name[..name.len()].copy_from_slice(name);
-            gs.items[in_idx].name[name.len()..].fill(0);
+        let name = b"Soulstone";
+        gs.items[in_idx].name[..name.len()].copy_from_slice(name);
+        gs.items[in_idx].name[name.len()..].fill(0);
 
-            let reference = b"soulstone";
-            gs.items[in_idx].reference[..reference.len()].copy_from_slice(reference);
-            gs.items[in_idx].reference[reference.len()..].fill(0);
+        let reference = b"soulstone";
+        gs.items[in_idx].reference[..reference.len()].copy_from_slice(reference);
+        gs.items[in_idx].reference[reference.len()..].fill(0);
 
-            let description = format!("Level {} soulstone, holding {} exp.", rank, exp);
-            let desc_bytes = description.as_bytes();
-            let len = desc_bytes.len().min(gs.items[in_idx].description.len());
-            gs.items[in_idx].description[..len].copy_from_slice(&desc_bytes[..len]);
-            gs.items[in_idx].description[len..].fill(0);
+        let description = format!("Level {} soulstone, holding {} exp.", rank, exp);
+        let desc_bytes = description.as_bytes();
+        let len = desc_bytes.len().min(gs.items[in_idx].description.len());
+        gs.items[in_idx].description[..len].copy_from_slice(&desc_bytes[..len]);
+        gs.items[in_idx].description[len..].fill(0);
 
-            gs.items[in_idx].data[0] = rank;
-            gs.items[in_idx].data[1] = exp;
-            gs.items[in_idx].temp = 0;
-            gs.items[in_idx].driver = 68;
-        };
+        gs.items[in_idx].data[0] = rank;
+        gs.items[in_idx].data[1] = exp;
+        gs.items[in_idx].temp = 0;
+        gs.items[in_idx].driver = 68;
 
         God::give_character_item(gs, cn, in_idx);
     }
@@ -3730,19 +3725,15 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     };
 
     // Configure character
-    {
-        gs.characters[cn].flags &= !CharacterFlags::Respawn.bits();
-    };
+    gs.characters[cn].flags &= !CharacterFlags::Respawn.bits();
 
     let (x, y) = (gs.items[item_idx].x, gs.items[item_idx].y);
 
-    {
-        gs.characters[cn].data[0] = item_idx as i32;
-        gs.characters[cn].data[29] = i32::from(x) + i32::from(y) * core::constants::SERVER_MAPX;
-        gs.characters[cn].data[60] = TICKS * 60 * 2;
-        gs.characters[cn].data[73] = 8;
-        gs.characters[cn].dir = DX_RIGHT;
-    };
+    gs.characters[cn].data[0] = item_idx as i32;
+    gs.characters[cn].data[29] = i32::from(x) + i32::from(y) * core::constants::SERVER_MAPX;
+    gs.characters[cn].data[60] = TICKS * 60 * 2;
+    gs.characters[cn].data[73] = 8;
+    gs.characters[cn].dir = DX_RIGHT;
 
     // Randomly boost character (1 in 25 chance)
     if crate::helpers::random_mod(25) == 0 {
@@ -3752,9 +3743,7 @@ pub fn spawn_penta_enemy(gs: &mut GameState, item_idx: usize) -> i32 {
     // Try to drop character
     if !God::drop_char_fuzzy(gs, cn, x as usize, y as usize) {
         God::destroy_items(gs, cn);
-        {
-            gs.characters[cn].used = USE_EMPTY;
-        };
+        gs.characters[cn].used = USE_EMPTY;
         return 0;
     }
 
@@ -3784,10 +3773,9 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     };
 
     // Add bonus to character's pending exp
-    {
-        gs.characters[cn].data[18] += bonus as i32;
-        gs.characters[cn].future3[0] = gs.characters[cn].future3[0].saturating_add(1);
-    };
+    gs.characters[cn].data[18] += bonus as i32;
+    gs.characters[cn].future3[0] = gs.characters[cn].future3[0].saturating_add(1);
+
     crate::player::commands::resend_completion_data_for_character(gs, cn);
 
     // Log to character
@@ -3840,9 +3828,7 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
         // Award pending bonus exp
         if has_bonus != 0 {
             gs.do_give_exp(n, has_bonus, 0, -1);
-            {
-                gs.characters[n].data[18] = 0;
-            };
+            gs.characters[n].data[18] = 0;
         }
 
         if area::is_in_pentagram_quest(gs, n) {
@@ -3851,28 +3837,26 @@ pub fn solved_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     }
 
     // Activate all pentagram items (driver 33)
-    {
-        for n in 1..gs.items.len() {
-            if gs.items[n].used == core::constants::USE_EMPTY {
-                continue;
-            }
-            if gs.items[n].driver != 33 {
-                continue;
-            }
-            if gs.items[n].active == 0
-                && gs.items[n].light[0] != gs.items[n].light[1]
-                && gs.items[n].x > 0
-            {
-                gs.do_add_light(
-                    i32::from(gs.items[n].x),
-                    i32::from(gs.items[n].y),
-                    i32::from(gs.items[n].light[1]) - i32::from(gs.items[n].light[0]),
-                );
-            }
-            gs.items[n].duration = 10 * 60 + crate::helpers::random_mod(20 * 60);
-            gs.items[n].active = gs.items[n].duration;
+    for n in 1..gs.items.len() {
+        if gs.items[n].used == core::constants::USE_EMPTY {
+            continue;
         }
-    };
+        if gs.items[n].driver != 33 {
+            continue;
+        }
+        if gs.items[n].active == 0
+            && gs.items[n].light[0] != gs.items[n].light[1]
+            && gs.items[n].x > 0
+        {
+            gs.do_add_light(
+                i32::from(gs.items[n].x),
+                i32::from(gs.items[n].y),
+                i32::from(gs.items[n].light[1]) - i32::from(gs.items[n].light[0]),
+            );
+        }
+        gs.items[n].duration = 10 * 60 + crate::helpers::random_mod(20 * 60);
+        gs.items[n].active = gs.items[n].duration;
+    }
 
     let new_solve = {
         let state = gs;
@@ -4097,9 +4081,7 @@ pub fn use_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         }
     }
 
-    {
-        gs.characters[cn].data[18] = exp;
-    };
+    gs.characters[cn].data[18] = exp;
 
     gs.do_character_log(
         cn,
@@ -4227,9 +4209,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
             if in2 < gs.items.len() {
                 gs.items[in2].used = USE_EMPTY;
             };
-            {
-                gs.characters[cn].citem = 0;
-            };
+            gs.characters[cn].citem = 0;
 
             let (better, worse, equal, bestval, bestcn, bestcount) = {
                 let mut better = 0;
@@ -4317,27 +4297,25 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
                 );
                 gs.do_character_log(cn, core::types::FontColor::Yellow, " \n");
 
-                {
-                    for m in 1..core::constants::MAXCHARS {
-                        if gs.characters[m].used == core::constants::USE_EMPTY {
-                            continue;
-                        }
-                        if (gs.characters[m].flags & CharacterFlags::Player.bits()) == 0 {
-                            continue;
-                        }
-                        if gs.characters[m].data[70] == 0 {
-                            continue;
-                        }
-                        if gs.characters[m].data[70] == bestval {
-                            let name = gs.characters[m].get_name();
-                            gs.do_character_log(
-                                cn,
-                                core::types::FontColor::Yellow,
-                                &format!("{}\n", name),
-                            );
-                        }
+                for m in 1..core::constants::MAXCHARS {
+                    if gs.characters[m].used == core::constants::USE_EMPTY {
+                        continue;
                     }
-                };
+                    if (gs.characters[m].flags & CharacterFlags::Player.bits()) == 0 {
+                        continue;
+                    }
+                    if gs.characters[m].data[70] == 0 {
+                        continue;
+                    }
+                    if gs.characters[m].data[70] == bestval {
+                        let name = gs.characters[m].get_name();
+                        gs.do_character_log(
+                            cn,
+                            core::types::FontColor::Yellow,
+                            &format!("{}\n", name),
+                        );
+                    }
+                }
             }
 
             gs.do_character_log(cn, core::types::FontColor::Yellow, " \n");
@@ -4350,9 +4328,8 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     let val = if (in2 & 0x80000000) != 0 {
         // Money
         let val = (in2 & 0x7fffffff) as i32;
-        {
-            gs.characters[cn].citem = 0;
-        };
+        gs.characters[cn].citem = 0;
+
         val
     } else {
         // Item
@@ -4364,12 +4341,8 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
             val
         };
 
-        {
-            gs.items[in2].used = USE_EMPTY;
-        };
-        {
-            gs.characters[cn].citem = 0;
-        };
+        gs.items[in2].used = USE_EMPTY;
+        gs.characters[cn].citem = 0;
         value as i32
     };
 
@@ -4431,9 +4404,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
         // Increase luck
         if val != 0 && rank != 0 {
             let m = val / rank;
-            {
-                gs.characters[cn].luck += m;
-            };
+            gs.characters[cn].luck += m;
         }
     } else {
         // Offering not good enough
@@ -4453,9 +4424,7 @@ pub fn use_shrine(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
         gs.do_character_log(cn, core::types::FontColor::Yellow, message);
 
         if luck_change != 0 {
-            {
-                gs.characters[cn].luck += luck_change;
-            };
+            gs.characters[cn].luck += luck_change;
         }
     }
 
@@ -4588,12 +4557,9 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let citem = gs.characters[cn].citem as usize;
     if citem != 0 && is_nolab_item(gs, citem) {
         let item_ref = gs.items[citem].reference;
-        {
-            gs.characters[cn].citem = 0;
-        };
-        {
-            gs.items[citem].used = USE_EMPTY;
-        };
+        gs.characters[cn].citem = 0;
+        gs.items[citem].used = USE_EMPTY;
+
         gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
@@ -4606,12 +4572,9 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         let in2 = gs.characters[cn].item[n] as usize;
         if in2 != 0 && is_nolab_item(gs, in2) {
             let item_ref = gs.items[in2].reference;
-            {
-                gs.characters[cn].item[n] = 0;
-            };
-            {
-                gs.items[in2].used = USE_EMPTY;
-            };
+            gs.characters[cn].item[n] = 0;
+            gs.items[in2].used = USE_EMPTY;
+
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -4626,12 +4589,8 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         if in2 != 0 {
             let temp = gs.items[in2].temp;
             if temp as usize == skills::SK_RECALL {
-                {
-                    gs.characters[cn].spell[n] = 0;
-                };
-                {
-                    gs.items[in2].used = USE_EMPTY;
-                };
+                gs.characters[cn].spell[n] = 0;
+                gs.items[in2].used = USE_EMPTY;
             }
         }
     }
@@ -4667,12 +4626,8 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         let has_flag = { (gs.items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 };
         if has_flag {
             let item_ref = { c_string_to_str(&gs.items[citem].reference).to_owned() };
-            {
-                gs.characters[cn].citem = 0;
-            };
-            {
-                gs.items[citem].used = USE_EMPTY;
-            };
+            gs.characters[cn].citem = 0;
+            gs.items[citem].used = USE_EMPTY;
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
@@ -4692,12 +4647,8 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
                 )
             };
             if has_flag {
-                {
-                    gs.characters[cn].item[n] = 0;
-                };
-                {
-                    gs.items[in2].used = USE_EMPTY;
-                };
+                gs.characters[cn].item[n] = 0;
+                gs.items[in2].used = USE_EMPTY;
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -4718,12 +4669,8 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
                 )
             };
             if has_flag {
-                {
-                    gs.characters[cn].worn[n] = 0;
-                };
-                {
-                    gs.items[in2].used = USE_EMPTY;
-                };
+                gs.characters[cn].worn[n] = 0;
+                gs.items[in2].used = USE_EMPTY;
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Yellow,
@@ -4743,26 +4690,20 @@ pub fn teleport3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     if (kindred & 0x00000001) != 0 {
         // KIN_PURPLE
-        {
-            gs.characters[cn].temple_x = 558;
-            gs.characters[cn].temple_y = 542;
-            gs.characters[cn].tavern_x = 558;
-            gs.characters[cn].tavern_y = 542;
-        };
+        gs.characters[cn].temple_x = 558;
+        gs.characters[cn].temple_y = 542;
+        gs.characters[cn].tavern_x = 558;
+        gs.characters[cn].tavern_y = 542;
     } else if is_staff {
-        {
-            gs.characters[cn].temple_x = 813;
-            gs.characters[cn].temple_y = 165;
-            gs.characters[cn].tavern_x = 813;
-            gs.characters[cn].tavern_y = 165;
-        };
+        gs.characters[cn].temple_x = 813;
+        gs.characters[cn].temple_y = 165;
+        gs.characters[cn].tavern_x = 813;
+        gs.characters[cn].tavern_y = 165;
     } else {
-        {
-            gs.characters[cn].temple_x = 512;
-            gs.characters[cn].temple_y = 512;
-            gs.characters[cn].tavern_x = 512;
-            gs.characters[cn].tavern_y = 512;
-        };
+        gs.characters[cn].temple_x = 512;
+        gs.characters[cn].temple_y = 512;
+        gs.characters[cn].tavern_x = 512;
+        gs.characters[cn].tavern_y = 512;
     }
 
     true
@@ -4828,16 +4769,14 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
                     if broken_sword == 0 {
                         continue;
                     }
-                    {
-                        gs.items[broken_sword].x = x;
-                        gs.items[broken_sword].y = y;
-                        gs.items[broken_sword].carried = carried;
-                        gs.items[broken_sword].temp = 683;
-                        gs.items[broken_sword].flags |= ItemFlags::IF_UPDATE.bits();
-                    };
-                    {
-                        gs.items[n].used = USE_EMPTY;
-                    };
+
+                    gs.items[broken_sword].x = x;
+                    gs.items[broken_sword].y = y;
+                    gs.items[broken_sword].carried = carried;
+                    gs.items[broken_sword].temp = 683;
+                    gs.items[broken_sword].flags |= ItemFlags::IF_UPDATE.bits();
+
+                    gs.items[n].used = USE_EMPTY;
                 }
             }
         }
@@ -4870,9 +4809,8 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
             core::types::FontColor::Yellow,
             "Kwai, the great goddess of war, deemed you worthy to receive a new blade.\n",
         );
-        {
-            gs.characters[cn].luck -= 50;
-        };
+
+        gs.characters[cn].luck -= 50;
     }
 
     // Mark this shrine as visited
@@ -4880,17 +4818,14 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     let already_visited = { (gs.characters[cn].data[21] as u32 & shrine_bit) != 0 };
 
     if !already_visited {
-        {
-            gs.characters[cn].data[21] |= shrine_bit as i32;
-        };
+        gs.characters[cn].data[21] |= shrine_bit as i32;
+
         gs.do_character_log(
             cn,
             core::types::FontColor::Yellow,
             "You found a new shrine of Kwai!\n",
         );
-        {
-            gs.characters[cn].luck += 10;
-        };
+        gs.characters[cn].luck += 10;
     }
 
     // Count visited shrines
@@ -4917,21 +4852,20 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 
     // Update sword weapon power based on shrines visited
     let cn_name = gs.characters[cn].name;
-    {
-        gs.items[in2].weapon[0] = 15 + visited_bits * 4;
-        gs.items[in2].flags |= ItemFlags::IF_UPDATE.bits();
-        gs.items[in2].temp = 0;
-        let description = format!(
-            "A huge, two-handed sword, engraved with runes and magic symbols. It bears the name {}.",
-            c_string_to_str(&cn_name)
-        );
-        let desc_bytes = description.as_bytes();
-        let len = desc_bytes.len().min(gs.items[in2].description.len());
-        gs.items[in2].description[..len].copy_from_slice(&desc_bytes[..len]);
-        if len < gs.items[in2].description.len() {
-            gs.items[in2].description[len..].fill(0);
-        }
-    };
+
+    gs.items[in2].weapon[0] = 15 + visited_bits * 4;
+    gs.items[in2].flags |= ItemFlags::IF_UPDATE.bits();
+    gs.items[in2].temp = 0;
+    let description = format!(
+        "A huge, two-handed sword, engraved with runes and magic symbols. It bears the name {}.",
+        c_string_to_str(&cn_name)
+    );
+    let desc_bytes = description.as_bytes();
+    let len = desc_bytes.len().min(gs.items[in2].description.len());
+    gs.items[in2].description[..len].copy_from_slice(&desc_bytes[..len]);
+    if len < gs.items[in2].description.len() {
+        gs.items[in2].description[len..].fill(0);
+    }
 
     gs.do_update_char(cn);
 
@@ -5035,12 +4969,9 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
         let has_flag = { (gs.items[citem].flags & ItemFlags::IF_LABYDESTROY.bits()) != 0 };
         if has_flag {
             let item_ref = gs.items[citem].reference;
-            {
-                gs.characters[cn].citem = 0;
-            };
-            {
-                gs.items[citem].used = USE_EMPTY;
-            };
+            gs.characters[cn].citem = 0;
+            gs.items[citem].used = USE_EMPTY;
+
             gs.do_character_log(
                 cn,
                 core::types::FontColor::Green,
@@ -5060,12 +4991,8 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
                 )
             };
             if has_flag {
-                {
-                    gs.characters[cn].item[n] = 0;
-                };
-                {
-                    gs.items[in2].used = USE_EMPTY;
-                };
+                gs.characters[cn].item[n] = 0;
+                gs.items[in2].used = USE_EMPTY;
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Green,
@@ -5086,12 +5013,8 @@ pub fn use_seyan_portal(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
                 )
             };
             if has_flag {
-                {
-                    gs.characters[cn].worn[n] = 0;
-                };
-                {
-                    gs.items[in2].used = USE_EMPTY;
-                };
+                gs.characters[cn].worn[n] = 0;
+                gs.items[in2].used = USE_EMPTY;
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Green,
@@ -5233,10 +5156,9 @@ pub fn spell_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     // Decrement charges if spell succeeded
     if ret {
         let new_charges = charges - 1;
-        {
-            gs.items[item_idx].data[2] = new_charges;
-            gs.items[item_idx].value /= 2;
-        };
+        gs.items[item_idx].data[2] = new_charges;
+        gs.items[item_idx].value /= 2;
+
         if new_charges < 1 {
             return true; // Scroll consumed
         }
@@ -5272,11 +5194,9 @@ pub fn use_blook_pentagram(gs: &mut GameState, cn: usize, item_idx: usize) -> bo
     );
 
     // Set blood state and update sprite
-    {
-        gs.items[item_idx].data[0] = 1;
-        gs.items[item_idx].sprite[0] =
-            gs.items[item_idx].data[1] as i16 + gs.items[item_idx].data[0] as i16;
-    };
+    gs.items[item_idx].data[0] = 1;
+    gs.items[item_idx].sprite[0] =
+        gs.items[item_idx].data[1] as i16 + gs.items[item_idx].data[0] as i16;
 
     true
 }
@@ -5318,16 +5238,13 @@ pub fn use_create_npc(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let (x, y) = (gs.items[item_idx].x as usize, gs.items[item_idx].y as usize);
     if !God::drop_char_fuzzy(gs, co, x, y) {
         God::destroy_items(gs, co);
-        {
-            gs.characters[co].used = USE_EMPTY;
-        };
+        gs.characters[co].used = USE_EMPTY;
+
         return false;
     }
 
     // Link NPC to creator
-    {
-        gs.characters[co].data[0] = cn as i32;
-    };
+    gs.characters[co].data[0] = cn as i32;
 
     true
 }
@@ -5353,15 +5270,14 @@ pub fn use_rotate(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     }
 
     // Rotate item: increment data[1] (0-3), update sprite
-    {
-        gs.items[item_idx].data[1] += 1;
-        if gs.items[item_idx].data[1] > 3 {
-            gs.items[item_idx].data[1] = 0;
-        }
-        gs.items[item_idx].sprite[0] =
-            gs.items[item_idx].data[0] as i16 + gs.items[item_idx].data[1] as i16;
-        gs.items[item_idx].flags |= ItemFlags::IF_UPDATE.bits();
-    };
+
+    gs.items[item_idx].data[1] += 1;
+    if gs.items[item_idx].data[1] > 3 {
+        gs.items[item_idx].data[1] = 0;
+    }
+    gs.items[item_idx].sprite[0] =
+        gs.items[item_idx].data[0] as i16 + gs.items[item_idx].data[1] as i16;
+    gs.items[item_idx].flags |= ItemFlags::IF_UPDATE.bits();
 
     true
 }
@@ -6004,13 +5920,11 @@ pub fn explorer_point(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         && ((char_data49 & data3 as i32) == 0)
     {
         // Mark as visited
-        {
-            gs.characters[cn].data[46] |= data0 as i32;
-            gs.characters[cn].data[47] |= data1 as i32;
-            gs.characters[cn].data[48] |= data2 as i32;
-            gs.characters[cn].data[49] |= data3 as i32;
-            gs.characters[cn].luck += 10;
-        };
+        gs.characters[cn].data[46] |= data0 as i32;
+        gs.characters[cn].data[47] |= data1 as i32;
+        gs.characters[cn].data[48] |= data2 as i32;
+        gs.characters[cn].data[49] |= data3 as i32;
+        gs.characters[cn].luck += 10;
 
         gs.do_character_log(
             cn,
@@ -6082,9 +5996,7 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     if (citem & 0x80000000) != 0 {
         // Money
         let val = citem & 0x7fffffff;
-        {
-            gs.characters[cn].citem = 0;
-        };
+        gs.characters[cn].citem = 0;
 
         gs.do_character_log(
             cn,
@@ -6098,13 +6010,8 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     } else {
         // Item
         let reference = { c_string_to_str(&gs.items[citem as usize].reference).to_owned() };
-
-        {
-            gs.characters[cn].citem = 0;
-        };
-        {
-            gs.items[citem as usize].used = USE_EMPTY;
-        };
+        gs.characters[cn].citem = 0;
+        gs.items[citem as usize].used = USE_EMPTY;
 
         gs.do_character_log(
             cn,
@@ -6169,9 +6076,7 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
 
     // Default to failed action for non-carried use; will be updated on success
     if cn != 0 && !carried {
-        {
-            gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
-        };
+        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
     }
 
     let has_use_flag =
@@ -6319,17 +6224,13 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         if cn != 0 {
             if !ret {
                 if !carried {
-                    {
-                        gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
-                    };
+                    gs.characters[cn].cerrno = core::constants::ERR_FAILED as u16;
                 }
                 return;
             }
 
             if !carried {
-                {
-                    gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
-                };
+                gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
             }
 
             // Ensure client update for the acting character
@@ -6372,16 +6273,12 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         }
 
         if carried {
-            {
-                gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
-            };
+            gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
             gs.do_update_char(cn);
         }
 
         if cn != 0 && !carried {
-            {
-                gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
-            };
+            gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
         }
     } else if active == 0 && has_useactivate {
         // activate: set active=duration and adjust lighting
@@ -6406,16 +6303,12 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
         }
 
         if carried {
-            {
-                gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
-            };
+            gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
             gs.do_update_char(cn);
         }
 
         if cn != 0 && !carried {
-            {
-                gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
-            };
+            gs.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
         }
     }
 
@@ -6551,28 +6444,27 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let in2_driver = gs.items[in2].driver;
     if in2_driver == 68 {
         // Absorb the second soulstone into the first
-        {
-            let exp_gain = helpers::random_mod(gs.items[in2].data[1].saturating_add(1));
-            gs.items[item_idx].data[1] += exp_gain;
-            let rank = core::ranks::points2rank(gs.items[item_idx].data[1]);
-            gs.items[item_idx].data[0] = rank;
 
-            // Update description - read data value first to avoid packed field reference
-            let data1_value = gs.items[item_idx].data[1];
-            let description = format!("Level {} soulstone, holding {} exp.", rank, data1_value);
-            gs.items[item_idx].description.copy_from_slice(&[0u8; 120]);
-            let bytes = description.as_bytes();
-            let len = bytes.len().min(119);
-            gs.items[item_idx].description[..len].copy_from_slice(&bytes[..len]);
+        let exp_gain = helpers::random_mod(gs.items[in2].data[1].saturating_add(1));
+        gs.items[item_idx].data[1] += exp_gain;
+        let rank = core::ranks::points2rank(gs.items[item_idx].data[1]);
+        gs.items[item_idx].data[0] = rank;
 
-            if rank > 20 {
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Blue,
-                    "That's as high as they go.",
-                );
-            }
-        };
+        // Update description - read data value first to avoid packed field reference
+        let data1_value = gs.items[item_idx].data[1];
+        let description = format!("Level {} soulstone, holding {} exp.", rank, data1_value);
+        gs.items[item_idx].description.fill(0);
+        let bytes = description.as_bytes();
+        let len = bytes.len().min(119);
+        gs.items[item_idx].description[..len].copy_from_slice(&bytes[..len]);
+
+        if rank > 20 {
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Blue,
+                "That's as high as they go.",
+            );
+        }
 
         soul_destroy(gs, cn, in2);
         return true;
@@ -6581,8 +6473,8 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
     let in2_temp = gs.items[in2].temp;
 
     // Handle different item types based on temp value
-    match in2_temp {
-        18 => {
+    match in2_temp as usize {
+        IT_RED_FLOWER => {
             // Red flower -> healing potion
             soul_transform(gs, cn, item_idx, in2, 101);
             {
@@ -6590,7 +6482,7 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             };
             true
         }
-        46 => {
+        IT_PURPLE_FLOWER => {
             // Purple flower -> mana potion
             soul_transform(gs, cn, item_idx, in2, 102);
             {
@@ -6606,21 +6498,18 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
             };
             true
         }
-        100 => {
-            // Flask -> mana potion
+        IT_FLASK => {
             soul_transform(gs, cn, item_idx, in2, 102);
             true
         }
-        101 => {
-            // Healing potion
+        IT_HEALING_POTION => {
             soul_destroy(gs, cn, item_idx);
             {
                 gs.items[in2].hp[0] += 10;
             };
             true
         }
-        102 => {
-            // Mana potion
+        IT_MANA_POTION => {
             soul_destroy(gs, cn, item_idx);
             {
                 gs.items[in2].mana[0] += 10;
@@ -6647,15 +6536,11 @@ fn soul_transform(
     item_idx: usize,
     new_temp: usize,
 ) -> usize {
-    use crate::god::God;
-
     God::take_from_char(gs, soulstone_idx, cn);
     God::take_from_char(gs, item_idx, cn);
 
-    {
-        gs.items[soulstone_idx].used = core::constants::USE_EMPTY;
-        gs.items[item_idx].used = core::constants::USE_EMPTY;
-    };
+    gs.items[soulstone_idx].used = core::constants::USE_EMPTY;
+    gs.items[item_idx].used = core::constants::USE_EMPTY;
 
     let new_item = God::create_item(gs, new_temp);
     if let Some(new_item_idx) = new_item {
@@ -6668,36 +6553,22 @@ fn soul_transform(
 
 /// Repair an item using soulstone
 fn soul_repair(gs: &mut GameState, cn: usize, soulstone_idx: usize, item_idx: usize) -> usize {
-    use crate::god::God;
-
     God::take_from_char(gs, soulstone_idx, cn);
-
-    {
-        gs.items[soulstone_idx].used = core::constants::USE_EMPTY;
-    };
+    gs.items[soulstone_idx].used = core::constants::USE_EMPTY;
 
     let item_temp = gs.items[item_idx].temp as usize;
-
-    {
-        {
-            gs.items[item_idx] = gs.item_templates[item_temp];
-            gs.items[item_idx].carried = cn as u16;
-            gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
-            gs.items[item_idx].temp = 0;
-        };
-    };
+    gs.items[item_idx] = gs.item_templates[item_temp];
+    gs.items[item_idx].carried = cn as u16;
+    gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
+    gs.items[item_idx].temp = 0;
 
     item_idx
 }
 
 /// Destroy an item and remove it from character
 fn soul_destroy(gs: &mut GameState, cn: usize, item_idx: usize) {
-    use crate::god::God;
-
     God::take_from_char(gs, item_idx, cn);
-    {
-        gs.items[item_idx].used = core::constants::USE_EMPTY;
-    };
+    gs.items[item_idx].used = core::constants::USE_EMPTY;
 }
 
 /// Transfer soulstone power to equipment
@@ -6717,179 +6588,163 @@ fn soul_trans_equipment(gs: &mut GameState, cn: usize, soulstone_idx: usize, ite
             helpers::random_mod_usize(26)
         };
 
-        {
-            let item = &mut gs.items[item_idx];
+        let item = &mut gs.items[item_idx];
 
-            match ran {
-                0 => {
-                    item.hp[2] = item.hp[2].saturating_add((stren * 25) as i16);
-                    item.hp[0] = item.hp[0].saturating_add((stren * 5) as i16);
-                }
-                1 => {
-                    item.mana[2] = item.mana[2].saturating_add((stren * 25) as i16);
-                    item.mana[0] = item.mana[0].saturating_add((stren * 5) as i16);
-                }
-                2..=6 => {
-                    let attr_idx = ran - 2;
-                    let current = item.attrib[attr_idx][2] as u32;
-                    item.attrib[attr_idx][2] = std::cmp::min(120, current + (stren * 3)) as i16;
-                    item.attrib[attr_idx][0] =
-                        item.attrib[attr_idx][0].saturating_add((stren / 2) as i16);
-                }
-                7..=9 => {
-                    let current = item.skill[skills::SK_WEAPON][2] as u32;
-                    item.skill[skills::SK_WEAPON][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_WEAPON][0] =
-                        item.skill[skills::SK_WEAPON][0].saturating_add(stren as i16);
-                }
-                10 => {
-                    let current = item.skill[skills::SK_STEALTH][2] as u32;
-                    item.skill[skills::SK_STEALTH][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_STEALTH][0] =
-                        item.skill[skills::SK_STEALTH][0].saturating_add(stren as i16);
-                }
-                11 => {
-                    let current = item.skill[skills::SK_MSHIELD][2] as u32;
-                    item.skill[skills::SK_MSHIELD][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_MSHIELD][0] =
-                        item.skill[skills::SK_MSHIELD][0].saturating_add(stren as i16);
-                }
-                12 => {
-                    let current = item.skill[skills::SK_PROTECT][2] as u32;
-                    item.skill[skills::SK_PROTECT][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_PROTECT][0] =
-                        item.skill[skills::SK_PROTECT][0].saturating_add(stren as i16);
-                }
-                13 => {
-                    let current = item.skill[skills::SK_ENHANCE][2] as u32;
-                    item.skill[skills::SK_ENHANCE][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_ENHANCE][0] =
-                        item.skill[skills::SK_ENHANCE][0].saturating_add(stren as i16);
-                }
-                14 => {
-                    let current = item.skill[skills::SK_STUN][2] as u32;
-                    item.skill[skills::SK_STUN][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_STUN][0] =
-                        item.skill[skills::SK_STUN][0].saturating_add(stren as i16);
-                }
-                15 => {
-                    let current = item.skill[skills::SK_CURSE][2] as u32;
-                    item.skill[skills::SK_CURSE][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_CURSE][0] =
-                        item.skill[skills::SK_CURSE][0].saturating_add(stren as i16);
-                }
-                16 => {
-                    let current = item.skill[skills::SK_BLESS][2] as u32;
-                    item.skill[skills::SK_BLESS][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_BLESS][0] =
-                        item.skill[skills::SK_BLESS][0].saturating_add(stren as i16);
-                }
-                17 => {
-                    let current = item.skill[skills::SK_RESIST][2] as u32;
-                    item.skill[skills::SK_RESIST][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_RESIST][0] =
-                        item.skill[skills::SK_RESIST][0].saturating_add(stren as i16);
-                }
-                18 => {
-                    let current = item.skill[skills::SK_BLAST][2] as u32;
-                    item.skill[skills::SK_BLAST][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_BLAST][0] =
-                        item.skill[skills::SK_BLAST][0].saturating_add(stren as i16);
-                }
-                19 => {
-                    let current = item.skill[skills::SK_HEAL][2] as u32;
-                    item.skill[skills::SK_HEAL][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_HEAL][0] =
-                        item.skill[skills::SK_HEAL][0].saturating_add(stren as i16);
-                }
-                20 => {
-                    let current = item.skill[skills::SK_GHOST][2] as u32;
-                    item.skill[skills::SK_GHOST][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_GHOST][0] =
-                        item.skill[skills::SK_GHOST][0].saturating_add(stren as i16);
-                }
-                21 => {
-                    let current = item.skill[skills::SK_IMMUN][2] as u32;
-                    item.skill[skills::SK_IMMUN][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_IMMUN][0] =
-                        item.skill[skills::SK_IMMUN][0].saturating_add(stren as i16);
-                }
-                22 => {
-                    let current = item.skill[skills::SK_SURROUND][2] as u32;
-                    item.skill[skills::SK_SURROUND][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_SURROUND][0] =
-                        item.skill[skills::SK_SURROUND][0].saturating_add(stren as i16);
-                }
-                23 => {
-                    let current = item.skill[skills::SK_CONCEN][2] as u32;
-                    item.skill[skills::SK_CONCEN][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_CONCEN][0] =
-                        item.skill[skills::SK_CONCEN][0].saturating_add(stren as i16);
-                }
-                24 => {
-                    let current = item.skill[skills::SK_WARCRY][2] as u32;
-                    item.skill[skills::SK_WARCRY][2] =
-                        std::cmp::min(120, current + (stren * 5)) as i16;
-                    item.skill[skills::SK_WARCRY][0] =
-                        item.skill[skills::SK_WARCRY][0].saturating_add(stren as i16);
-                }
-                25 => {
-                    item.armor[0] = item.armor[0].saturating_add((stren / 2) as i8);
-                }
-                26 => {
-                    item.weapon[0] = item.weapon[0].saturating_add((stren / 2) as i8);
-                }
-                _ => {
-                    log::error!("should never happen in soul_trans_equipment(gs, )");
-                }
+        match ran {
+            0 => {
+                item.hp[2] = item.hp[2].saturating_add((stren * 25) as i16);
+                item.hp[0] = item.hp[0].saturating_add((stren * 5) as i16);
             }
-        };
+            1 => {
+                item.mana[2] = item.mana[2].saturating_add((stren * 25) as i16);
+                item.mana[0] = item.mana[0].saturating_add((stren * 5) as i16);
+            }
+            2..=6 => {
+                let attr_idx = ran - 2;
+                let current = item.attrib[attr_idx][2] as u32;
+                item.attrib[attr_idx][2] = std::cmp::min(120, current + (stren * 3)) as i16;
+                item.attrib[attr_idx][0] =
+                    item.attrib[attr_idx][0].saturating_add((stren / 2) as i16);
+            }
+            7..=9 => {
+                let current = item.skill[skills::SK_WEAPON][2] as u32;
+                item.skill[skills::SK_WEAPON][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_WEAPON][0] =
+                    item.skill[skills::SK_WEAPON][0].saturating_add(stren as i16);
+            }
+            10 => {
+                let current = item.skill[skills::SK_STEALTH][2] as u32;
+                item.skill[skills::SK_STEALTH][2] =
+                    std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_STEALTH][0] =
+                    item.skill[skills::SK_STEALTH][0].saturating_add(stren as i16);
+            }
+            11 => {
+                let current = item.skill[skills::SK_MSHIELD][2] as u32;
+                item.skill[skills::SK_MSHIELD][2] =
+                    std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_MSHIELD][0] =
+                    item.skill[skills::SK_MSHIELD][0].saturating_add(stren as i16);
+            }
+            12 => {
+                let current = item.skill[skills::SK_PROTECT][2] as u32;
+                item.skill[skills::SK_PROTECT][2] =
+                    std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_PROTECT][0] =
+                    item.skill[skills::SK_PROTECT][0].saturating_add(stren as i16);
+            }
+            13 => {
+                let current = item.skill[skills::SK_ENHANCE][2] as u32;
+                item.skill[skills::SK_ENHANCE][2] =
+                    std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_ENHANCE][0] =
+                    item.skill[skills::SK_ENHANCE][0].saturating_add(stren as i16);
+            }
+            14 => {
+                let current = item.skill[skills::SK_STUN][2] as u32;
+                item.skill[skills::SK_STUN][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_STUN][0] =
+                    item.skill[skills::SK_STUN][0].saturating_add(stren as i16);
+            }
+            15 => {
+                let current = item.skill[skills::SK_CURSE][2] as u32;
+                item.skill[skills::SK_CURSE][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_CURSE][0] =
+                    item.skill[skills::SK_CURSE][0].saturating_add(stren as i16);
+            }
+            16 => {
+                let current = item.skill[skills::SK_BLESS][2] as u32;
+                item.skill[skills::SK_BLESS][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_BLESS][0] =
+                    item.skill[skills::SK_BLESS][0].saturating_add(stren as i16);
+            }
+            17 => {
+                let current = item.skill[skills::SK_RESIST][2] as u32;
+                item.skill[skills::SK_RESIST][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_RESIST][0] =
+                    item.skill[skills::SK_RESIST][0].saturating_add(stren as i16);
+            }
+            18 => {
+                let current = item.skill[skills::SK_BLAST][2] as u32;
+                item.skill[skills::SK_BLAST][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_BLAST][0] =
+                    item.skill[skills::SK_BLAST][0].saturating_add(stren as i16);
+            }
+            19 => {
+                let current = item.skill[skills::SK_HEAL][2] as u32;
+                item.skill[skills::SK_HEAL][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_HEAL][0] =
+                    item.skill[skills::SK_HEAL][0].saturating_add(stren as i16);
+            }
+            20 => {
+                let current = item.skill[skills::SK_GHOST][2] as u32;
+                item.skill[skills::SK_GHOST][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_GHOST][0] =
+                    item.skill[skills::SK_GHOST][0].saturating_add(stren as i16);
+            }
+            21 => {
+                let current = item.skill[skills::SK_IMMUN][2] as u32;
+                item.skill[skills::SK_IMMUN][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_IMMUN][0] =
+                    item.skill[skills::SK_IMMUN][0].saturating_add(stren as i16);
+            }
+            22 => {
+                let current = item.skill[skills::SK_SURROUND][2] as u32;
+                item.skill[skills::SK_SURROUND][2] =
+                    std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_SURROUND][0] =
+                    item.skill[skills::SK_SURROUND][0].saturating_add(stren as i16);
+            }
+            23 => {
+                let current = item.skill[skills::SK_CONCEN][2] as u32;
+                item.skill[skills::SK_CONCEN][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_CONCEN][0] =
+                    item.skill[skills::SK_CONCEN][0].saturating_add(stren as i16);
+            }
+            24 => {
+                let current = item.skill[skills::SK_WARCRY][2] as u32;
+                item.skill[skills::SK_WARCRY][2] = std::cmp::min(120, current + (stren * 5)) as i16;
+                item.skill[skills::SK_WARCRY][0] =
+                    item.skill[skills::SK_WARCRY][0].saturating_add(stren as i16);
+            }
+            25 => {
+                item.armor[0] = item.armor[0].saturating_add((stren / 2) as i8);
+            }
+            26 => {
+                item.weapon[0] = item.weapon[0].saturating_add((stren / 2) as i8);
+            }
+            _ => {
+                log::error!("should never happen in soul_trans_equipment(gs, )");
+            }
+        }
     }
 
     // Finalize the enhancement
-    {
-        let soulstone_rank = gs.items[soulstone_idx].data[0];
-        gs.items[item_idx].temp = 0;
-        gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits()
-            | core::constants::ItemFlags::IF_IDENTIFIED.bits()
-            | core::constants::ItemFlags::IF_NOREPAIR.bits()
-            | core::constants::ItemFlags::IF_SOULSTONE.bits();
+    let soulstone_rank = gs.items[soulstone_idx].data[0];
+    gs.items[item_idx].temp = 0;
+    gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits()
+        | core::constants::ItemFlags::IF_IDENTIFIED.bits()
+        | core::constants::ItemFlags::IF_NOREPAIR.bits()
+        | core::constants::ItemFlags::IF_SOULSTONE.bits();
 
-        gs.items[item_idx].min_rank =
-            std::cmp::max(soulstone_rank as i8, gs.items[item_idx].min_rank);
+    gs.items[item_idx].min_rank = std::cmp::max(soulstone_rank as i8, gs.items[item_idx].min_rank);
 
-        if gs.items[item_idx].max_damage == 0 {
-            gs.items[item_idx].max_damage = 60000;
-        }
+    if gs.items[item_idx].max_damage == 0 {
+        gs.items[item_idx].max_damage = 60000;
+    }
 
-        // Get item name before destruction
-        let item_name = gs.items[item_idx].get_name().to_owned();
+    // Get item name before destruction
+    let item_name = gs.items[item_idx].get_name().to_owned();
 
-        // Update description
-        let description = format!(
-            "A {} enhanced by a rank {} soulstone.",
-            item_name, soulstone_rank
-        );
-        gs.items[item_idx].description.fill(0);
-        let bytes = description.as_bytes();
-        let len = bytes.len().min(199);
-        gs.items[item_idx].description[..len].copy_from_slice(&bytes[..len]);
-    };
+    // Update description
+    let description = format!(
+        "A {} enhanced by a rank {} soulstone.",
+        item_name, soulstone_rank
+    );
+    gs.items[item_idx].description.fill(0);
+    let bytes = description.as_bytes();
+    let len = bytes.len().min(199);
+    gs.items[item_idx].description[..len].copy_from_slice(&bytes[..len]);
 
     soul_destroy(gs, cn, soulstone_idx);
 }
@@ -6922,45 +6777,43 @@ pub fn item_age(gs: &mut GameState, item_idx: usize) -> bool {
     if (max_age_act != 0 && current_age_act > max_age_act)
         || (max_damage != 0 && current_damage > max_damage)
     {
-        {
-            gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
-            gs.items[item_idx].current_damage = 0;
-            gs.items[item_idx].current_age[0] = 0;
-            gs.items[item_idx].current_age[1] = 0;
-            gs.items[item_idx].damage_state += 1;
-            gs.items[item_idx].value /= 2;
+        gs.items[item_idx].flags |= core::constants::ItemFlags::IF_UPDATE.bits();
+        gs.items[item_idx].current_damage = 0;
+        gs.items[item_idx].current_age[0] = 0;
+        gs.items[item_idx].current_age[1] = 0;
+        gs.items[item_idx].damage_state += 1;
+        gs.items[item_idx].value /= 2;
 
-            if gs.items[item_idx].damage_state > 1 {
-                let st = std::cmp::max(0, 4 - i32::from(gs.items[item_idx].damage_state));
+        if gs.items[item_idx].damage_state > 1 {
+            let st = std::cmp::max(0, 4 - i32::from(gs.items[item_idx].damage_state));
 
-                if gs.items[item_idx].armor[0] > st as i8 {
-                    gs.items[item_idx].armor[0] -= 1;
-                }
-                if gs.items[item_idx].armor[1] > st as i8 {
-                    gs.items[item_idx].armor[1] -= 1;
-                }
+            if gs.items[item_idx].armor[0] > st as i8 {
+                gs.items[item_idx].armor[0] -= 1;
+            }
+            if gs.items[item_idx].armor[1] > st as i8 {
+                gs.items[item_idx].armor[1] -= 1;
+            }
 
-                if gs.items[item_idx].weapon[0] > st as i8 * 2 {
+            if gs.items[item_idx].weapon[0] > st as i8 * 2 {
+                gs.items[item_idx].weapon[0] -= 1;
+                if gs.items[item_idx].weapon[0] > 0 {
                     gs.items[item_idx].weapon[0] -= 1;
-                    if gs.items[item_idx].weapon[0] > 0 {
-                        gs.items[item_idx].weapon[0] -= 1;
-                    }
                 }
-                if gs.items[item_idx].weapon[1] > st as i8 * 2 {
+            }
+            if gs.items[item_idx].weapon[1] > st as i8 * 2 {
+                gs.items[item_idx].weapon[1] -= 1;
+                if gs.items[item_idx].weapon[1] > 0 {
                     gs.items[item_idx].weapon[1] -= 1;
-                    if gs.items[item_idx].weapon[1] > 0 {
-                        gs.items[item_idx].weapon[1] -= 1;
-                    }
                 }
             }
+        }
 
-            if gs.items[item_idx].max_age[0] != 0 {
-                gs.items[item_idx].sprite[0] += 1;
-            }
-            if gs.items[item_idx].max_age[1] != 0 {
-                gs.items[item_idx].sprite[1] += 1;
-            }
-        };
+        if gs.items[item_idx].max_age[0] != 0 {
+            gs.items[item_idx].sprite[0] += 1;
+        }
+        if gs.items[item_idx].max_age[1] != 0 {
+            gs.items[item_idx].sprite[1] += 1;
+        }
 
         return true;
     }
@@ -6975,9 +6828,7 @@ pub fn item_age(gs: &mut GameState, item_idx: usize) -> bool {
         };
 
         if current_age_act > expire_time as u32 {
-            {
-                gs.items[item_idx].damage_state = 5;
-            };
+            gs.items[item_idx].damage_state = 5;
             return true;
         }
     }
@@ -7054,12 +6905,8 @@ pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
                 );
             }
             5 => {
-                {
-                    gs.characters[cn].worn[n] = 0;
-                };
-                {
-                    gs.items[worn_idx].used = USE_EMPTY;
-                };
+                gs.characters[cn].worn[n] = 0;
+                gs.items[worn_idx].used = USE_EMPTY;
                 gs.do_character_log(
                     cn,
                     core::types::FontColor::Red,
@@ -7084,8 +6931,6 @@ pub fn item_damage_worn(gs: &mut GameState, cn: usize, n: usize, damage: i32) {
 ///
 /// * Panics if any legacy id or index parameter used by `item_damage_citem` is outside the corresponding game-state collection.
 pub fn item_damage_citem(gs: &mut GameState, cn: usize, damage: i32) {
-    use core::constants::USE_EMPTY;
-
     let citem = gs.characters[cn].citem;
     if citem == 0 || (citem & 0x80000000) != 0 {
         return;
@@ -7219,15 +7064,13 @@ pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
     // Determine map coordinates: if carried by a character, use that character's position
     let (mx, my) = if carried != 0 {
         let cn = carried as usize;
-        {
-            if cn >= core::constants::MAXCHARS || gs.characters[cn].used == USE_EMPTY {
-                (it_x, it_y)
-            } else {
-                (
-                    i32::from(gs.characters[cn].x),
-                    i32::from(gs.characters[cn].y),
-                )
-            }
+        if cn >= core::constants::MAXCHARS || gs.characters[cn].used == USE_EMPTY {
+            (it_x, it_y)
+        } else {
+            (
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
+            )
         }
     } else {
         (it_x, it_y)
@@ -7253,10 +7096,8 @@ pub fn lightage(gs: &mut GameState, item_idx: usize, multi: i32) {
 
     let act = if active != 0 { 1usize } else { 0usize };
 
-    {
-        gs.items[item_idx].current_age[act] =
-            gs.items[item_idx].current_age[act].wrapping_add((light as u32) * 2);
-    };
+    gs.items[item_idx].current_age[act] =
+        gs.items[item_idx].current_age[act].wrapping_add((light as u32) * 2);
 }
 
 /// Handles the legacy `age_message` item-use hook.
@@ -7716,16 +7557,14 @@ pub fn greenlingball(gs: &mut GameState, item_idx: usize) {
 ///
 /// * Panics if any legacy id or index parameter used by `expire_blood_penta` is outside the corresponding game-state collection.
 pub fn expire_blood_penta(gs: &mut GameState, item_idx: usize) {
-    {
-        let item = &mut gs.items[item_idx];
-        if item.data[0] != 0 {
-            item.data[0] += 1;
-            if item.data[0] > 7 {
-                item.data[0] = 0;
-            }
-            item.sprite[0] = item.data[1] as i16 + item.data[0] as i16;
+    let item = &mut gs.items[item_idx];
+    if item.data[0] != 0 {
+        item.data[0] += 1;
+        if item.data[0] > 7 {
+            item.data[0] = 0;
         }
-    };
+        item.sprite[0] = item.data[1] as i16 + item.data[0] as i16;
+    }
 }
 
 /// Handles the legacy `expire_driver` item-use hook.
@@ -7858,10 +7697,7 @@ pub fn item_tick_expire(gs: &mut GameState) {
                 // Skip expiration
             } else {
                 let act = if active != 0 { 1 } else { 0 };
-
-                {
-                    gs.items[in_idx].current_age[act] += EXP_TIME as u32;
-                };
+                gs.items[in_idx].current_age[act] += EXP_TIME as u32;
 
                 if (flags & ItemFlags::IF_LIGHTAGE.bits()) != 0 {
                     lightage(gs, in_idx, EXP_TIME);
@@ -7956,12 +7792,8 @@ pub fn item_tick_expire(gs: &mut GameState) {
             };
             if tox != x as i16 || toy != y as i16 || ch_used != USE_ACTIVE {
                 log::error!("map[{},{}].to_ch reset from {} to 0", x, y, cn);
-                {
-                    gs.map[m].to_ch = 0;
-                };
-                {
-                    gs.globals.lost_cnt += 1;
-                };
+                gs.map[m].to_ch = 0;
+                gs.globals.lost_cnt += 1;
             }
         }
 
@@ -9155,6 +8987,41 @@ mod tests {
 
             assert_eq!(gs.characters[cn].item[0], 0);
             assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn combining_soulstones_rewrites_description_and_consumes_cursor_stone() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let soulstone_idx = 1;
+            let cursor_soulstone_idx = 2;
+
+            for item_idx in [soulstone_idx, cursor_soulstone_idx] {
+                gs.items[item_idx] = core::types::Item::default();
+                gs.items[item_idx].used = USE_ACTIVE;
+                gs.items[item_idx].driver = 68;
+                gs.items[item_idx].carried = cn as u16;
+            }
+            gs.items[soulstone_idx].description.fill(b'x');
+            gs.items[cursor_soulstone_idx].data[1] = 0;
+            gs.characters[cn].item[0] = soulstone_idx as u32;
+            gs.characters[cn].citem = cursor_soulstone_idx as u32;
+
+            assert!(use_soulstone(gs, cn, soulstone_idx));
+
+            let expected = b"Level 0 soulstone, holding 0 exp.";
+            assert_eq!(
+                &gs.items[soulstone_idx].description[..expected.len()],
+                expected
+            );
+            assert!(
+                gs.items[soulstone_idx].description[expected.len()..]
+                    .iter()
+                    .all(|byte| *byte == 0)
+            );
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.items[cursor_soulstone_idx].used, USE_EMPTY);
         });
     }
 

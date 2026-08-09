@@ -67,6 +67,9 @@ const BTN_GAP: i32 = 6;
 /// Bitmap font index used throughout the form.
 const FONT: usize = 1;
 
+/// Additional separation and bottom padding reserved when an error is shown.
+const ERROR_PANEL_PADDING: u32 = 8;
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -338,6 +341,7 @@ impl LoginForm {
         self.show_submitting = submitting;
         if submitting {
             self.error_text = None;
+            self.resize_for_error();
         }
     }
 
@@ -348,6 +352,24 @@ impl LoginForm {
     /// * `msg` - Error text, or `None` to clear.
     pub fn set_error(&mut self, msg: Option<String>) {
         self.error_text = msg;
+        self.resize_for_error();
+    }
+
+    /// Resizes and recenters the panel to contain the current wrapped error.
+    fn resize_for_error(&mut self) {
+        let error_height = self
+            .error_text
+            .as_deref()
+            .map(|error| font_cache::measure_wrapped_bitmap(error, INPUT_W).1)
+            .unwrap_or(0);
+        self.bounds.height = PANEL_H
+            + if error_height > 0 {
+                error_height + ERROR_PANEL_PADDING
+            } else {
+                0
+            };
+        self.bounds.y =
+            (crate::constants::TARGET_HEIGHT_INT as i32 - self.bounds.height as i32) / 2;
     }
 
     /// Drains pending [`LoginFormAction`]s.
@@ -963,10 +985,38 @@ mod tests {
     #[test]
     fn set_error_shown_and_cleared() {
         let mut form = make_form();
+        let normal_y = form.bounds.y;
         form.set_error(Some("bad password".to_owned()));
         assert!(form.error_text.is_some());
+        assert_eq!(
+            form.bounds.height,
+            PANEL_H + font_cache::BITMAP_GLYPH_H + ERROR_PANEL_PADDING
+        );
+        assert!(form.bounds.y < normal_y);
+
         form.set_error(None);
         assert!(form.error_text.is_none());
+        assert_eq!(form.bounds.height, PANEL_H);
+        assert_eq!(form.bounds.y, normal_y);
+    }
+
+    #[test]
+    fn wrapped_error_expands_panel_for_every_line() {
+        let mut form = make_form();
+        let error = "This deliberately long login error wraps across multiple lines so the panel must reserve all of the rendered text height.";
+        let expected_error_height = font_cache::measure_wrapped_bitmap(error, INPUT_W).1;
+        assert!(expected_error_height > font_cache::BITMAP_GLYPH_H);
+
+        form.set_error(Some(error.to_owned()));
+
+        assert_eq!(
+            form.bounds.height,
+            PANEL_H + expected_error_height + ERROR_PANEL_PADDING
+        );
+        assert_eq!(
+            form.bounds.y,
+            (crate::constants::TARGET_HEIGHT_INT as i32 - form.bounds.height as i32) / 2
+        );
     }
 
     #[test]
