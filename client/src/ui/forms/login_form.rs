@@ -67,6 +67,9 @@ const BTN_GAP: i32 = 6;
 /// Bitmap font index used throughout the form.
 const FONT: usize = 1;
 
+/// Additional separation and bottom padding reserved when an error is shown.
+const ERROR_PANEL_PADDING: u32 = 8;
+
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
@@ -338,6 +341,7 @@ impl LoginForm {
         self.show_submitting = submitting;
         if submitting {
             self.error_text = None;
+            self.resize_for_error();
         }
     }
 
@@ -348,6 +352,24 @@ impl LoginForm {
     /// * `msg` - Error text, or `None` to clear.
     pub fn set_error(&mut self, msg: Option<String>) {
         self.error_text = msg;
+        self.resize_for_error();
+    }
+
+    /// Resizes and recenters the panel to contain the current wrapped error.
+    fn resize_for_error(&mut self) {
+        let error_height = self
+            .error_text
+            .as_deref()
+            .map(|error| font_cache::measure_wrapped_bitmap(error, INPUT_W).1)
+            .unwrap_or(0);
+        self.bounds.height = PANEL_H
+            + if error_height > 0 {
+                error_height + ERROR_PANEL_PADDING
+            } else {
+                0
+            };
+        self.bounds.y =
+            (crate::constants::TARGET_HEIGHT_INT as i32 - self.bounds.height as i32) / 2;
     }
 
     /// Drains pending [`LoginFormAction`]s.
