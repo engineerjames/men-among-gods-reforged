@@ -3604,36 +3604,33 @@ pub fn use_grolm(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 /// * Panics if any legacy id or index parameter used by `boost_char` is outside the corresponding game-state collection.
 pub fn boost_char(gs: &mut GameState, cn: usize, divi: usize) -> bool {
     // Boost attributes
-    {
-        for n in 0..5 {
-            if i32::from(gs.characters[cn].attrib[n][0]) > divi as i32 {
-                let boost = crate::helpers::random_mod(
-                    u32::from(gs.characters[cn].attrib[n][0]) / divi as u32,
-                ) as u16;
-                gs.characters[cn].attrib[n][0] =
-                    gs.characters[cn].attrib[n][0].saturating_add(boost);
-            }
+    for n in 0..5 {
+        if i32::from(gs.characters[cn].attrib[n][0]) > divi as i32 {
+            let boost =
+                crate::helpers::random_mod(u32::from(gs.characters[cn].attrib[n][0]) / divi as u32)
+                    as u16;
+            gs.characters[cn].attrib[n][0] = gs.characters[cn].attrib[n][0].saturating_add(boost);
         }
+    }
 
-        // Boost skills
-        for n in 0..MAXSKILL {
-            if i32::from(gs.characters[cn].skill[n][0]) > divi as i32 {
-                let boost = crate::helpers::random_mod(
-                    u32::from(gs.characters[cn].skill[n][0]) / divi as u32,
-                ) as u16;
-                gs.characters[cn].skill[n][0] = gs.characters[cn].skill[n][0].saturating_add(boost);
-            }
+    // Boost skills
+    for n in 0..MAXSKILL {
+        if i32::from(gs.characters[cn].skill[n][0]) > divi as i32 {
+            let boost =
+                crate::helpers::random_mod(u32::from(gs.characters[cn].skill[n][0]) / divi as u32)
+                    as u16;
+            gs.characters[cn].skill[n][0] = gs.characters[cn].skill[n][0].saturating_add(boost);
         }
+    }
 
-        // Update name
-        let old_name = gs.characters[cn].get_name();
-        let new_name = format!("Strong {}", old_name);
-        let new_name_bytes = new_name.as_bytes();
-        let len = new_name_bytes.len().min(39);
-        gs.characters[cn].name[..len].copy_from_slice(&new_name_bytes[..len]);
-        gs.characters[cn].name[len..].fill(0);
-        gs.characters[cn].reference = gs.characters[cn].name;
-    };
+    // Update name
+    let old_name = gs.characters[cn].get_name();
+    let new_name = format!("Strong {}", old_name);
+    let new_name_bytes = new_name.as_bytes();
+    let len = new_name_bytes.len().min(39);
+    gs.characters[cn].name[..len].copy_from_slice(&new_name_bytes[..len]);
+    gs.characters[cn].name[len..].fill(0);
+    gs.characters[cn].reference = gs.characters[cn].name;
 
     // Create soulstone
     if let Some(in_idx) = God::create_item(gs, 1146) {
@@ -6456,7 +6453,7 @@ pub fn use_soulstone(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         // Update description - read data value first to avoid packed field reference
         let data1_value = gs.items[item_idx].data[1];
         let description = format!("Level {} soulstone, holding {} exp.", rank, data1_value);
-        gs.items[item_idx].description.copy_from_slice(&[0u8; 120]);
+        gs.items[item_idx].description.fill(0);
         let bytes = description.as_bytes();
         let len = bytes.len().min(119);
         gs.items[item_idx].description[..len].copy_from_slice(&bytes[..len]);
@@ -8990,6 +8987,41 @@ mod tests {
 
             assert_eq!(gs.characters[cn].item[0], 0);
             assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
+
+    #[test]
+    fn combining_soulstones_rewrites_description_and_consumes_cursor_stone() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let soulstone_idx = 1;
+            let cursor_soulstone_idx = 2;
+
+            for item_idx in [soulstone_idx, cursor_soulstone_idx] {
+                gs.items[item_idx] = core::types::Item::default();
+                gs.items[item_idx].used = USE_ACTIVE;
+                gs.items[item_idx].driver = 68;
+                gs.items[item_idx].carried = cn as u16;
+            }
+            gs.items[soulstone_idx].description.fill(b'x');
+            gs.items[cursor_soulstone_idx].data[1] = 0;
+            gs.characters[cn].item[0] = soulstone_idx as u32;
+            gs.characters[cn].citem = cursor_soulstone_idx as u32;
+
+            assert!(use_soulstone(gs, cn, soulstone_idx));
+
+            let expected = b"Level 0 soulstone, holding 0 exp.";
+            assert_eq!(
+                &gs.items[soulstone_idx].description[..expected.len()],
+                expected
+            );
+            assert!(
+                gs.items[soulstone_idx].description[expected.len()..]
+                    .iter()
+                    .all(|byte| *byte == 0)
+            );
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.items[cursor_soulstone_idx].used, USE_EMPTY);
         });
     }
 
