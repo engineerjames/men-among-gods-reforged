@@ -4535,19 +4535,19 @@ fn add_skill_cooldown(gs: &mut GameState, cn: usize, len: i32, skill_temp: u16, 
             return;
         }
     };
-    {
-        let item = &mut gs.items[in_];
-        let mut name_bytes = [0u8; 40];
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 97;
-        item.duration = len as u32;
-        item.active = len as u32;
-        item.temp = skill_temp;
-        item.power = 255;
-    }
+
+    let item = &mut gs.items[in_];
+    let mut name_bytes = [0u8; 40];
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 97;
+    item.duration = len as u32;
+    item.active = len as u32;
+    item.temp = skill_temp;
+    item.power = 255;
+
     add_spell(gs, cn, in_);
 }
 
@@ -4763,23 +4763,21 @@ pub(crate) fn apply_parasitic_dot(
         return false;
     }
 
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = duration_ticks as u32;
-        item.active = duration_ticks as u32;
-        item.temp = temp;
-        item.power = power as u32;
-        item.data[0] = caster as u32;
-        // data[1] is reserved for Contagion to track the last tick at which it
-        // spread, preventing repeat spreads within the same combat round.
-        item.data[1] = 0;
-    }
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = duration_ticks as u32;
+    item.active = duration_ticks as u32;
+    item.temp = temp;
+    item.power = power as u32;
+    item.data[0] = caster as u32;
+    // data[1] is reserved for Contagion to track the last tick at which it
+    // spread, preventing repeat spreads within the same combat round.
+    item.data[1] = 0;
 
     if add_spell(gs, co, in_idx) == 0 {
         return false;
@@ -4924,21 +4922,20 @@ fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
     }
     let in_idx = in_opt.unwrap();
     let agility_penalty = -(((power / 3) * 3).clamp(3, 90)) as i16;
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Distract";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = (TICKS * 30) as u32;
-        item.active = (TICKS * 30) as u32;
-        item.temp = SK_DISTRACT as u16;
-        item.power = power as u32;
-        item.attrib[AT_AGIL as usize][1] = agility_penalty;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Distract";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = (TICKS * 30) as u32;
+    item.active = (TICKS * 30) as u32;
+    item.temp = SK_DISTRACT as u16;
+    item.power = power as u32;
+    item.attrib[AT_AGIL as usize][1] = agility_penalty;
 
     add_spell(gs, co, in_idx) != 0
 }
@@ -5134,21 +5131,21 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
     }
     let in_idx = in_opt.unwrap();
     let weapon_penalty = -(((power / 2) * 3).clamp(3, 150)) as i16;
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Disarm";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = (TICKS * 45) as u32;
-        item.active = (TICKS * 45) as u32;
-        item.temp = SK_DISARM as u16;
-        item.power = power as u32;
-        item.skill[SK_WEAPON][1] = weapon_penalty;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Disarm";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = (TICKS * 45) as u32;
+    item.active = (TICKS * 45) as u32;
+    item.temp = SK_DISARM as u16;
+    item.power = power as u32;
+    item.skill[SK_WEAPON][1] = weapon_penalty;
+
     if add_spell(gs, co, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5372,20 +5369,20 @@ pub fn skill_rains_of_renewal(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Rains of Renewal";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_RAINS_OF_RENEWAL as u16;
-        item.power = power.max(1) as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Rains of Renewal";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_RAINS_OF_RENEWAL as u16;
+    item.power = power.max(1) as u32;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5491,25 +5488,25 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Sun's Blessing";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = buff_duration as u32;
-        item.active = buff_duration as u32;
-        item.temp = SK_SUNS_BLESSING2 as u16;
-        item.power = power.max(1) as u32;
-        for n in 0..5 {
-            item.attrib[n][1] = bonus;
-        }
-        item.armor[1] = bonus as i8;
-        item.weapon[1] = bonus as i8;
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Sun's Blessing";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = buff_duration as u32;
+    item.active = buff_duration as u32;
+    item.temp = SK_SUNS_BLESSING2 as u16;
+    item.power = power.max(1) as u32;
+    for n in 0..5 {
+        item.attrib[n][1] = bonus;
     }
+    item.armor[1] = bonus as i8;
+    item.weapon[1] = bonus as i8;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5574,21 +5571,21 @@ pub fn skill_seeing_red(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Seeing Red";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_SEEING_RED as u16;
-        item.power = power.max(1) as u32;
-        item.weapon[1] = weapon;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Seeing Red";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_SEEING_RED as u16;
+    item.power = power.max(1) as u32;
+    item.weapon[1] = weapon;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5726,21 +5723,21 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Inner Strength";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = buff_duration as u32;
-        item.active = buff_duration as u32;
-        item.temp = SK_INNER_STRENGTH as u16;
-        item.power = power.max(1) as u32;
-        item.skill[SK_WEAPON][1] = buff_amount;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Inner Strength";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = buff_duration as u32;
+    item.active = buff_duration as u32;
+    item.temp = SK_INNER_STRENGTH as u16;
+    item.power = power.max(1) as u32;
+    item.skill[SK_WEAPON][1] = buff_amount;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5899,20 +5896,20 @@ pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Revenant Conduit";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 96;
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_REVENANT_CONDUIT2 as u16;
-        item.power = boost_pct.max(1) as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Revenant Conduit";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 96;
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_REVENANT_CONDUIT2 as u16;
+    item.power = boost_pct.max(1) as u32;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5997,20 +5994,20 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Spectral Pact";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_SPECTRAL_PACT2 as u16;
-        item.power = redirect_pct.max(1) as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Spectral Pact";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_SPECTRAL_PACT2 as u16;
+    item.power = redirect_pct.max(1) as u32;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -6095,22 +6092,22 @@ fn attach_anguish(
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = duration_ticks as u32;
-        item.active = duration_ticks as u32;
-        item.temp = temp;
-        item.power = power.max(1);
-        item.armor[1] = armor_mod;
-        item.weapon[1] = weapon_mod;
-        item.data[0] = cn as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = duration_ticks as u32;
+    item.active = duration_ticks as u32;
+    item.temp = temp;
+    item.power = power.max(1);
+    item.armor[1] = armor_mod;
+    item.weapon[1] = weapon_mod;
+    item.data[0] = cn as u32;
+
     add_spell(gs, co, in_idx);
     EffectManager::fx_add_effect(
         gs,
