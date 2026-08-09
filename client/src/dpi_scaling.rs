@@ -1,5 +1,51 @@
 use sdl2::{event::Event, video::Window};
 
+/// Computes the window size that exactly contains the largest integer-scaled
+/// logical viewport fitting inside the current drawable area.
+///
+/// # Arguments
+///
+/// * `window_size` - Current window size in OS window coordinates.
+/// * `drawable_size` - Current renderer drawable size in physical pixels.
+/// * `logical_size` - Game rendering size in logical pixels.
+///
+/// # Returns
+///
+/// * The smaller window size that removes unused letterbox space, or `None`
+///   when any supplied dimension is zero.
+pub fn fitted_pixel_perfect_window_size(
+    window_size: (u32, u32),
+    drawable_size: (u32, u32),
+    logical_size: (u32, u32),
+) -> Option<(u32, u32)> {
+    let (window_width, window_height) = window_size;
+    let (drawable_width, drawable_height) = drawable_size;
+    let (logical_width, logical_height) = logical_size;
+    if window_width == 0
+        || window_height == 0
+        || drawable_width == 0
+        || drawable_height == 0
+        || logical_width == 0
+        || logical_height == 0
+    {
+        return None;
+    }
+
+    let integer_scale = (drawable_width / logical_width)
+        .min(drawable_height / logical_height)
+        .max(1);
+    let viewport_width = logical_width.saturating_mul(integer_scale);
+    let viewport_height = logical_height.saturating_mul(integer_scale);
+    let fitted_width = (u64::from(viewport_width) * u64::from(window_width)
+        + u64::from(drawable_width) / 2)
+        / u64::from(drawable_width);
+    let fitted_height = (u64::from(viewport_height) * u64::from(window_height)
+        + u64::from(drawable_height) / 2)
+        / u64::from(drawable_height);
+
+    Some((fitted_width as u32, fitted_height as u32))
+}
+
 /// Computes the viewport rectangle used to map logical coordinates
 /// into the current drawable area.
 ///
@@ -266,5 +312,42 @@ pub fn adjust_mouse_event_for_hidpi(
             }
         }
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fitted_pixel_perfect_window_size;
+
+    #[test]
+    fn fitted_size_removes_standard_dpi_letterboxing() {
+        assert_eq!(
+            fitted_pixel_perfect_window_size((2_500, 1_440), (2_500, 1_440), (960, 540)),
+            Some((1_920, 1_080))
+        );
+    }
+
+    #[test]
+    fn fitted_size_accounts_for_retina_drawable_pixels() {
+        assert_eq!(
+            fitted_pixel_perfect_window_size((1_500, 900), (3_000, 1_800), (960, 540)),
+            Some((1_440, 810))
+        );
+    }
+
+    #[test]
+    fn fitted_size_accounts_for_fractional_dpi_scaling() {
+        assert_eq!(
+            fitted_pixel_perfect_window_size((1_600, 900), (2_400, 1_350), (960, 540)),
+            Some((1_280, 720))
+        );
+    }
+
+    #[test]
+    fn fitted_size_rejects_zero_dimensions() {
+        assert_eq!(
+            fitted_pixel_perfect_window_size((0, 540), (0, 540), (960, 540)),
+            None
+        );
     }
 }

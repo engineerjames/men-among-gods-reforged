@@ -153,6 +153,28 @@ pub fn open_directory_in_file_manager(directory: &Path) {
     }
 }
 
+/// Opens a URL in the user's default web browser.
+///
+/// # Arguments
+///
+/// * `url` - Absolute URL to open.
+pub fn open_url(url: &str) {
+    let result = if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(url).spawn()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", url])
+            .spawn()
+    } else {
+        std::process::Command::new("xdg-open").arg(url).spawn()
+    };
+
+    match result {
+        Ok(_) => log::info!("Opened URL: {url}"),
+        Err(error) => log::warn!("Failed to open URL {url}: {error}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

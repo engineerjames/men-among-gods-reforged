@@ -26,7 +26,22 @@ use crate::ui::widgets::text_input::TextInput;
 
 /// Panel dimensions.
 const PANEL_W: u32 = 350;
-const PANEL_H: u32 = 310;
+const PANEL_H: u32 = 360;
+
+/// Display size of the Discord invite QR code.
+const QR_SIZE: u32 = 96;
+
+/// Vertical space between the login buttons and Discord invite.
+const DISCORD_TOP_GAP: i32 = 24;
+
+/// Invitation shown immediately above the Discord QR code.
+const DISCORD_LABEL: &str = "Join the conversation on Discord!";
+
+/// Space between the Discord invitation label and QR code.
+const DISCORD_LABEL_GAP: i32 = 4;
+
+/// Discord invite shown below the QR code.
+const DISCORD_INVITE: &str = "https://discord.gg/PdvduwGPnW";
 
 /// Horizontal padding inside the panel.
 const PAD_X: i32 = 20;
@@ -74,6 +89,8 @@ pub enum LoginFormAction {
     ResetPassword,
     /// User pressed the Quit button.
     Quit,
+    /// User activated the Discord invite QR code or link.
+    OpenDiscord,
     /// Music checkbox was toggled.
     ToggleMusic(bool),
     /// Controller wants to open the on-screen keyboard for a text field.
@@ -106,6 +123,16 @@ pub struct LoginForm {
     reset_button: RectButton,
     /// Quit button.
     quit_button: RectButton,
+    /// Clickable Discord invite text.
+    discord_button: RectButton,
+    /// Clickable bounds of the Discord QR code.
+    discord_qr_bounds: Bounds,
+    /// Lazily loaded QR-code texture.
+    discord_qr_texture_id: Option<usize>,
+    /// Whether loading the QR-code texture has already failed.
+    discord_qr_load_failed: bool,
+    /// Whether the mouse is over the QR code.
+    discord_qr_hovered: bool,
     /// Index of the currently focused text field (0–1).
     focused_field: usize,
     /// Pending actions for the scene to drain.
@@ -115,7 +142,8 @@ pub struct LoginForm {
     /// Optional error message text.
     error_text: Option<String>,
     /// Controller focus index into the focusable elements list, if any.
-    /// Order: 0=server, 1=username, 2=password, 3=music, 4=login, 5=create, 6=reset, 7=quit.
+    /// Order: 0=server, 1=username, 2=password, 3=music, 4=login, 5=create,
+    /// 6=reset, 7=quit, 8=Discord.
     controller_focused: Option<usize>,
 }
 
@@ -231,6 +259,25 @@ impl LoginForm {
         .with_border(btn_border)
         .with_label("Quit", FONT);
 
+        let qr_x = panel_x + (PANEL_W as i32 - QR_SIZE as i32) / 2;
+        let qr_y = cursor_y
+            + BTN_H as i32
+            + DISCORD_TOP_GAP
+            + font_cache::BITMAP_GLYPH_H as i32
+            + DISCORD_LABEL_GAP;
+        let discord_qr_bounds = Bounds::new(qr_x, qr_y, QR_SIZE, QR_SIZE);
+        let discord_link_w = font_cache::text_width(DISCORD_INVITE);
+        let discord_button = RectButton::new(
+            Bounds::new(
+                panel_x + (PANEL_W as i32 - discord_link_w as i32) / 2,
+                qr_y + QR_SIZE as i32 + 4,
+                discord_link_w,
+                14,
+            ),
+            Background::None,
+        )
+        .with_label(DISCORD_INVITE, FONT);
+
         Self {
             bounds,
             server_dropdown,
@@ -242,6 +289,11 @@ impl LoginForm {
             create_button,
             reset_button,
             quit_button,
+            discord_button,
+            discord_qr_bounds,
+            discord_qr_texture_id: None,
+            discord_qr_load_failed: false,
+            discord_qr_hovered: false,
             focused_field: 0,
             actions: Vec::new(),
             show_submitting: false,
@@ -357,8 +409,9 @@ impl LoginForm {
     }
 
     /// Total number of controller-focusable elements.
-    /// 0=IP, 1=username, 2=password, 3=music_checkbox, 4=login, 5=create, 6=reset, 7=quit.
-    const FOCUSABLE_COUNT: usize = 8;
+    /// 0=IP, 1=username, 2=password, 3=music_checkbox, 4=login, 5=create,
+    /// 6=reset, 7=quit, 8=Discord.
+    const FOCUSABLE_COUNT: usize = 9;
 
     /// Applies the controller focus highlight to the appropriate child widget.
     fn apply_controller_focus(&mut self) {
@@ -371,6 +424,7 @@ impl LoginForm {
         self.create_button.set_hovered(focused == Some(5));
         self.reset_button.set_hovered(focused == Some(6));
         self.quit_button.set_hovered(focused == Some(7));
+        self.discord_button.set_hovered(focused == Some(8));
     }
 
     /// Injects a character into the currently focused text field.
@@ -456,6 +510,7 @@ impl Widget for LoginForm {
                     Some(5) => self.actions.push(LoginFormAction::CreateAccount),
                     Some(6) => self.actions.push(LoginFormAction::ResetPassword),
                     Some(7) => self.actions.push(LoginFormAction::Quit),
+                    Some(8) => self.actions.push(LoginFormAction::OpenDiscord),
                     _ => {}
                 }
                 return EventResponse::Consumed;
@@ -466,6 +521,22 @@ impl Widget for LoginForm {
                 self.apply_controller_focus();
             }
             _ => {}
+        }
+
+        if let UiEvent::MouseMove { x, y } = event {
+            self.discord_qr_hovered = self.discord_qr_bounds.contains_point(*x, *y);
+        }
+
+        if let UiEvent::MouseClick {
+            x,
+            y,
+            button: MouseButton::Left,
+            ..
+        } = event
+            && self.discord_qr_bounds.contains_point(*x, *y)
+        {
+            self.actions.push(LoginFormAction::OpenDiscord);
+            return EventResponse::Consumed;
         }
 
         // Expanded combo box gets first chance at clicks so its option list
@@ -535,6 +606,12 @@ impl Widget for LoginForm {
         let quit_resp = self.quit_button.handle_event(event);
         if quit_resp == EventResponse::Consumed {
             self.actions.push(LoginFormAction::Quit);
+            return EventResponse::Consumed;
+        }
+
+        let discord_resp = self.discord_button.handle_event(event);
+        if discord_resp == EventResponse::Consumed {
+            self.actions.push(LoginFormAction::OpenDiscord);
             return EventResponse::Consumed;
         }
 
@@ -673,7 +750,61 @@ impl Widget for LoginForm {
         self.create_button.render(ctx)?;
         self.reset_button.render(ctx)?;
         self.quit_button.render(ctx)?;
-        cursor_y += BTN_H as i32 + 8;
+        cursor_y += BTN_H as i32 + DISCORD_TOP_GAP;
+
+        // ── Discord invite ──────────────────────────────────────────────
+        font_cache::draw_text(
+            ctx.canvas,
+            ctx.gfx,
+            FONT,
+            DISCORD_LABEL,
+            self.bounds.x + self.bounds.width as i32 / 2,
+            cursor_y,
+            font_cache::TextStyle::centered(),
+        )?;
+        cursor_y += font_cache::BITMAP_GLYPH_H as i32 + DISCORD_LABEL_GAP;
+
+        let qr_x = self.bounds.x + (self.bounds.width as i32 - QR_SIZE as i32) / 2;
+        self.discord_qr_bounds.x = qr_x;
+        self.discord_qr_bounds.y = cursor_y;
+        if self.discord_qr_texture_id.is_none() && !self.discord_qr_load_failed {
+            let path = crate::filepaths::get_asset_directory()
+                .join("gfx")
+                .join("qr-code.png");
+            match ctx.gfx.load_texture_from_path(&path) {
+                Ok(texture_id) => self.discord_qr_texture_id = Some(texture_id),
+                Err(error) => {
+                    log::warn!("Failed to load Discord QR code {}: {error}", path.display());
+                    self.discord_qr_load_failed = true;
+                }
+            }
+        }
+        if let Some(texture_id) = self.discord_qr_texture_id {
+            let texture = ctx.gfx.get_texture(texture_id);
+            ctx.canvas.copy(
+                texture,
+                None,
+                Some(sdl2::rect::Rect::new(qr_x, cursor_y, QR_SIZE, QR_SIZE)),
+            )?;
+        }
+        if self.discord_qr_hovered || self.controller_focused == Some(8) {
+            ctx.canvas.set_draw_color(Color::RGB(180, 180, 255));
+            ctx.canvas.draw_rect(sdl2::rect::Rect::new(
+                qr_x - 1,
+                cursor_y - 1,
+                QR_SIZE + 2,
+                QR_SIZE + 2,
+            ))?;
+        }
+        cursor_y += QR_SIZE as i32 + 4;
+
+        let link_w = font_cache::text_width(DISCORD_INVITE);
+        self.discord_button.set_position(
+            self.bounds.x + (self.bounds.width as i32 - link_w as i32) / 2,
+            cursor_y,
+        );
+        self.discord_button.render(ctx)?;
+        cursor_y += 18;
 
         // ── Status / error labels ────────────────────────────────────────
         if self.show_submitting {
@@ -798,6 +929,35 @@ mod tests {
             }
             other => panic!("Expected Login, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn clicking_discord_qr_pushes_open_action() {
+        let mut form = make_form();
+        let qr = form.discord_qr_bounds;
+        form.handle_event(&UiEvent::MouseClick {
+            x: qr.x + 2,
+            y: qr.y + 2,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+
+        assert!(matches!(
+            form.take_login_actions().as_slice(),
+            [LoginFormAction::OpenDiscord]
+        ));
+    }
+
+    #[test]
+    fn controller_can_activate_discord_invite() {
+        let mut form = make_form();
+        form.controller_focused = Some(8);
+        form.handle_event(&UiEvent::NavConfirm);
+
+        assert!(matches!(
+            form.take_login_actions().as_slice(),
+            [LoginFormAction::OpenDiscord]
+        ));
     }
 
     #[test]

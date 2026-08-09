@@ -6,8 +6,17 @@ use crate::helpers::{self};
 use crate::populate::pop_create_char;
 use crate::{chlog, driver, player, points, populate};
 use core::constants::{
-    AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, ItemFlags, MAXITEM, MAXSKILL,
-    MAXTITEM, MF_NOEXPIRE, NT_HITME, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
+    AT_AGIL, AT_INT, AT_STREN, AT_WILL, CharacterFlags, DX_RIGHT, IT_AGILITY_POTION,
+    IT_BLACK_POTION, IT_BLUE_AND_GREEN_POTION, IT_BLUE_FLOWER, IT_BLUE_POTION,
+    IT_BLUE_RED_AND_GREEN_POTION, IT_BLUE_YELLOW_AND_GREEN_POTION, IT_BRONZE_ARMOR,
+    IT_BRONZE_HELMET, IT_CRYSTAL_ARMOR, IT_CRYSTAL_HELMET, IT_EMERALD_ARMOR, IT_EMERALD_HELMET,
+    IT_FLASK, IT_GOLD_ARMOR, IT_GOLD_HELMET, IT_GREEN_FLOWER, IT_GREEN_POTION, IT_HEALING_POTION,
+    IT_JUNGLE_FLOWER_BLUE, IT_JUNGLE_FLOWER_PINK, IT_JUNGLE_FLOWER_YELLOW, IT_MANA_POTION,
+    IT_ORANGE_POTION, IT_POTION_OF_LIFE, IT_PURPLE_FLOWER, IT_RED_AND_GREEN_POTION, IT_RED_FLOWER,
+    IT_RED_YELLOW_AND_GREEN_POTION, IT_STEEL_ARMOR, IT_STEEL_HELMET, IT_TITANIUM_ARMOR,
+    IT_TITANIUM_HELMET, IT_YELLOW_AND_GREEN_POTION, IT_YELLOW_FLOWER, IT_YELLOW_POTION,
+    IT_YELLOW_TULIP, IT_YELLOW_TULIP_POTION, ItemFlags, MAXITEM, MAXSKILL, MAXTITEM, MF_NOEXPIRE,
+    NT_HITME, POTION_TEMPLATE_IDS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     WN_LHAND, WN_RHAND,
 };
 use core::skills::{self, attribute_name};
@@ -557,7 +566,9 @@ pub fn use_create_item3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
 
     // Check if this is a special item template
     let in2 = match template_id {
-        57 | 59 | 63 | 65 | 69 | 71 | 75 | 76 | 94 | 95 | 981 | 982 => {
+        IT_BRONZE_HELMET | IT_BRONZE_ARMOR | IT_STEEL_HELMET | IT_STEEL_ARMOR | IT_GOLD_HELMET
+        | IT_GOLD_ARMOR | IT_CRYSTAL_HELMET | IT_CRYSTAL_ARMOR | IT_TITANIUM_HELMET
+        | IT_TITANIUM_ARMOR | IT_EMERALD_HELMET | IT_EMERALD_ARMOR => {
             helpers::create_special_item(gs, template_id)
         }
         _ => God::create_item(gs, template_id),
@@ -640,68 +651,138 @@ pub fn use_mix_potion(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
 
     let (base_temp, ingredient_temp) = (gs.items[item_idx].temp, gs.items[citem].temp);
 
-    let result_template: Option<usize> = match base_temp {
-        100 => match ingredient_temp {
-            18 => Some(101),
-            46 => Some(102),
-            141 => Some(145),
-            140 => Some(144),
-            142 => Some(143),
-            197 => Some(219),
-            198 => Some(220),
-            199 => Some(218),
-            294 => Some(295),
+    let result_template: Option<usize> = match base_temp as usize {
+        // TODO: Evaluate usage of usize vs. u16 vs. u32, etc., etc.
+        IT_FLASK => match ingredient_temp as usize {
+            IT_RED_FLOWER => Some(IT_HEALING_POTION),
+            IT_PURPLE_FLOWER => Some(IT_MANA_POTION),
+            IT_BLUE_FLOWER => Some(IT_BLUE_POTION),
+            IT_YELLOW_FLOWER => Some(IT_YELLOW_POTION),
+            IT_GREEN_FLOWER => Some(IT_GREEN_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_RED_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_BLUE_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_YELLOW_AND_GREEN_POTION),
+            IT_YELLOW_TULIP => Some(IT_YELLOW_TULIP_POTION),
             _ => None,
         },
-        143 | 145 | 146 => match ingredient_temp {
-            18 | 46 | 140 | 141 | 142 | 197 | 198 | 199 | 294 => Some(146),
+        IT_GREEN_POTION | IT_BLUE_POTION | IT_BLACK_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
             _ => None,
         },
-        144 => match ingredient_temp {
-            18 | 46 | 140 | 141 | 197 | 198 | 199 | 294 => Some(146),
-            142 => Some(147),
+        IT_YELLOW_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_GREEN_FLOWER => Some(IT_ORANGE_POTION),
             _ => None,
         },
-        147 => match ingredient_temp {
-            18 | 46 | 140 | 142 | 197 | 198 | 199 | 294 => Some(146),
-            141 => Some(148),
+        IT_ORANGE_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_BLUE_FLOWER => Some(IT_POTION_OF_LIFE),
             _ => None,
         },
-        218 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 199 | 294 => Some(146),
-            197 => Some(223),
-            198 => Some(221),
+        IT_YELLOW_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_RED_YELLOW_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_BLUE_YELLOW_AND_GREEN_POTION),
             _ => None,
         },
-        219 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 294 => Some(146),
-            198 => Some(222),
-            199 => Some(223),
+        IT_RED_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_BLUE_RED_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_RED_YELLOW_AND_GREEN_POTION),
             _ => None,
         },
-        220 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 198 | 294 => Some(146),
-            197 => Some(222),
-            199 => Some(221),
+        IT_BLUE_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_BLUE_RED_AND_GREEN_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_BLUE_YELLOW_AND_GREEN_POTION),
             _ => None,
         },
-        221 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 198 | 199 | 294 => Some(146),
-            197 => Some(224),
+        IT_BLUE_YELLOW_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_PINK => Some(IT_AGILITY_POTION),
             _ => None,
         },
-        222 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 198 | 294 => Some(146),
-            199 => Some(224),
+        IT_BLUE_RED_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_YELLOW => Some(IT_AGILITY_POTION),
             _ => None,
         },
-        223 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 199 | 294 => Some(146),
-            198 => Some(224),
+        IT_RED_YELLOW_AND_GREEN_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
+            IT_JUNGLE_FLOWER_BLUE => Some(IT_AGILITY_POTION),
             _ => None,
         },
-        295 => match ingredient_temp {
-            18 | 46 | 141 | 140 | 142 | 197 | 198 | 199 | 294 => Some(146),
+        IT_YELLOW_TULIP_POTION => match ingredient_temp as usize {
+            IT_RED_FLOWER
+            | IT_PURPLE_FLOWER
+            | IT_BLUE_FLOWER
+            | IT_YELLOW_FLOWER
+            | IT_GREEN_FLOWER
+            | IT_JUNGLE_FLOWER_PINK
+            | IT_JUNGLE_FLOWER_BLUE
+            | IT_JUNGLE_FLOWER_YELLOW
+            | IT_YELLOW_TULIP => Some(IT_BLACK_POTION),
             _ => None,
         },
         _ => None,
@@ -6035,6 +6116,32 @@ pub fn use_garbage(gs: &mut GameState, cn: usize, _item_idx: usize) -> bool {
     true
 }
 
+/// Replaces a consumed potion with an empty flask while preserving its slot.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state containing the consumed potion.
+/// * `cn` - Character carrying the consumed potion.
+/// * `item_idx` - Item index of the consumed potion.
+///
+/// # Returns
+///
+/// * `true` when the item was a known potion and was replaced, otherwise `false`.
+fn replace_consumed_potion_with_flask(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
+    if !POTION_TEMPLATE_IDS.contains(&(gs.items[item_idx].temp as usize)) {
+        return false;
+    }
+
+    let mut flask = gs.item_templates[IT_FLASK];
+    flask.temp = IT_FLASK as u16;
+    flask.carried = cn as u16;
+    flask.x = 0;
+    flask.y = 0;
+    flask.flags |= ItemFlags::IF_UPDATE.bits();
+    gs.items[item_idx] = flask;
+    true
+}
+
 /// Handles the legacy `use_driver` item-use hook.
 ///
 /// # Arguments
@@ -6313,92 +6420,93 @@ pub fn use_driver(gs: &mut GameState, cn: usize, item_idx: usize, carried: bool)
     }
 
     // Handle IF_USEDESTROY items (potions, etc.)
-    if carried {
-        let has_usedestroy =
-            { (gs.items[item_idx].flags & core::constants::ItemFlags::IF_USEDESTROY.bits()) != 0 };
+    let will_destroy_on_use =
+        (gs.items[item_idx].flags & core::constants::ItemFlags::IF_USEDESTROY.bits()) != 0;
 
-        if has_usedestroy {
-            // Check min_rank requirement
-            let min_rank = gs.items[item_idx].min_rank;
-            let curr_rank = { core::ranks::points2rank(gs.characters[cn].points_tot as u32) };
-            if i32::from(min_rank) > curr_rank as i32 {
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Red,
-                    "You're not experienced enough to use this.\n",
-                );
-                return;
-            }
-
-            // Log usage
-            let item_name = gs.items[item_idx].get_name().to_owned();
-            log::info!("Used {}", item_name);
-
-            // Apply hp/end/mana changes
-            {
-                let hp = gs.items[item_idx].hp[0];
-                let end = gs.items[item_idx].end[0];
-                let mana = gs.items[item_idx].mana[0];
-
-                gs.characters[cn].a_hp += i32::from(hp) * 1000;
-                if gs.characters[cn].a_hp < 0 {
-                    gs.characters[cn].a_hp = 0;
-                }
-                gs.characters[cn].a_end += i32::from(end) * 1000;
-                if gs.characters[cn].a_end < 0 {
-                    gs.characters[cn].a_end = 0;
-                }
-                gs.characters[cn].a_mana += i32::from(mana) * 1000;
-                if gs.characters[cn].a_mana < 0 {
-                    gs.characters[cn].a_mana = 0;
-                }
-            };
-
-            // If item grants a spell-like effect, apply it
-            let duration = gs.items[item_idx].duration;
-            if duration != 0 {
-                driver::spell_from_item(gs, cn, item_idx);
-            }
-
-            // Remove item from character
-            God::take_from_char(gs, item_idx, cn);
-            gs.items[item_idx].used = USE_EMPTY;
-
-            // If character died as a result, announce and handle death
-            let a_hp = gs.characters[cn].a_hp;
-            if a_hp < 500 {
-                let (x, y) = {
-                    (
-                        i32::from(gs.characters[cn].x),
-                        i32::from(gs.characters[cn].y),
-                    )
-                };
-                gs.do_area_log(
-                    cn,
-                    0,
-                    x,
-                    y,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "{} was killed by {}.\n",
-                        gs.characters[cn].get_name().to_owned(),
-                        c_string_to_str(&gs.items[item_idx].reference).to_owned()
-                    ),
-                );
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Yellow,
-                    &format!(
-                        "You were killed by {}.\n",
-                        c_string_to_str(&gs.items[item_idx].reference).to_owned()
-                    ),
-                );
-                gs.do_character_killed(cn, 0, true);
-            }
-
-            gs.do_update_char(cn);
-        }
+    // This is the last case--so if both of these flags aren't set
+    // correctly then we want to exit early.
+    if !carried || !will_destroy_on_use {
+        return;
     }
+
+    // Check min_rank requirement
+    let min_rank = gs.items[item_idx].min_rank;
+    let curr_rank = { core::ranks::points2rank(gs.characters[cn].points_tot as u32) };
+    if i32::from(min_rank) > curr_rank as i32 {
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            "You're not experienced enough to use this.\n",
+        );
+        return;
+    }
+
+    // Log usage
+    let item_name = gs.items[item_idx].get_name().to_owned();
+    let item_reference = c_string_to_str(&gs.items[item_idx].reference).to_owned();
+    log::info!("Used {}", item_name);
+
+    // Apply hp/end/mana changes
+    let hp = gs.items[item_idx].hp[0];
+    let end = gs.items[item_idx].end[0];
+    let mana = gs.items[item_idx].mana[0];
+
+    gs.characters[cn].a_hp += i32::from(hp) * 1000;
+    if gs.characters[cn].a_hp < 0 {
+        gs.characters[cn].a_hp = 0;
+    }
+    gs.characters[cn].a_end += i32::from(end) * 1000;
+    if gs.characters[cn].a_end < 0 {
+        gs.characters[cn].a_end = 0;
+    }
+    gs.characters[cn].a_mana += i32::from(mana) * 1000;
+    if gs.characters[cn].a_mana < 0 {
+        gs.characters[cn].a_mana = 0;
+    }
+
+    // If item grants a spell-like effect, apply it
+    let duration = gs.items[item_idx].duration;
+    if duration != 0 {
+        driver::spell_from_item(gs, cn, item_idx);
+    }
+
+    // Potions leave their reusable container in the same cursor or inventory
+    // slot. Other use-destroy items are removed normally.
+    if !replace_consumed_potion_with_flask(gs, cn, item_idx) {
+        God::take_from_char(gs, item_idx, cn);
+        gs.items[item_idx].used = USE_EMPTY;
+    }
+
+    // If character died as a result, announce and handle death
+    let a_hp = gs.characters[cn].a_hp;
+    if a_hp < 500 {
+        let (x, y) = {
+            (
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
+            )
+        };
+        gs.do_area_log(
+            cn,
+            0,
+            x,
+            y,
+            core::types::FontColor::Yellow,
+            &format!(
+                "{} was killed by {}.\n",
+                gs.characters[cn].get_name().to_owned(),
+                item_reference
+            ),
+        );
+        gs.do_character_log(
+            cn,
+            core::types::FontColor::Red,
+            &format!("You were killed by {}.\n", item_reference),
+        );
+        gs.do_character_killed(cn, 0, true);
+    }
+
+    gs.do_update_char(cn);
 }
 
 /// Handles the legacy `use_soulstone` item-use hook.
@@ -8245,7 +8353,7 @@ pub fn start_trap(gs: &mut GameState, cn: usize, item_idx: usize) {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_trap` is outside the corresponding game-state collection.
-pub fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
 
     if is_player {
@@ -8272,7 +8380,7 @@ pub fn step_trap(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_trap_remove` is outside the corresponding game-state collection.
-pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
+fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
     let (active, light0, light1, x, y) = {
         let item = &gs.items[item_idx];
         (item.active, item.light[0], item.light[1], item.x, item.y)
@@ -8306,7 +8414,7 @@ pub fn step_trap_remove(gs: &mut GameState, _cn: usize, item_idx: usize) {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_portal1_lab13` is outside the corresponding game-state collection.
-pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     // Check kindred
     let kindred = gs.characters[cn].kindred as u32;
     if (kindred & traits::KIN_HARAKIM) == 0
@@ -8389,7 +8497,7 @@ pub fn step_portal1_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_portal2_lab13` is outside the corresponding game-state collection.
-pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
+fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i32 {
     let is_player = gs.characters[cn].flags & CharacterFlags::Player.bits() != 0;
     if !is_player {
         return -1;
@@ -8577,7 +8685,7 @@ pub fn step_portal2_lab13(gs: &mut GameState, cn: usize, _item_idx: usize) -> i3
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_portal_arena` is outside the corresponding game-state collection.
-pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     // Check for arena token (temp 687) in citem
     let citem = gs.characters[cn].citem;
     let mut flag = 0;
@@ -8722,7 +8830,7 @@ pub fn step_portal_arena(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_teleport` is outside the corresponding game-state collection.
-pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     if cn == 0 {
         log::error!("step_teleport(gs, ): cn = 0");
         return -1;
@@ -8854,7 +8962,7 @@ pub fn step_teleport(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_firefloor` is outside the corresponding game-state collection.
-pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
+fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
     gs.do_character_log(cn, core::types::FontColor::Red, "Outch!\n");
 
     let in2 = match God::create_item(gs, 1) {
@@ -8891,7 +8999,7 @@ pub fn step_firefloor(gs: &mut GameState, cn: usize, item_idx: usize) -> i32 {
 /// # Panics
 ///
 /// * Panics if any legacy id or index parameter used by `step_firefloor_remove` is outside the corresponding game-state collection.
-pub fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
+fn step_firefloor_remove(gs: &mut GameState, cn: usize, item_idx: usize) {
     let temp = gs.items[item_idx].temp;
 
     for n in 0..20 {
@@ -8983,6 +9091,72 @@ mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::USE_ACTIVE;
+
+    /// Creates a carried use-destroy item for `use_driver` tests.
+    fn add_consumable(
+        gs: &mut GameState,
+        cn: usize,
+        item_idx: usize,
+        template_id: usize,
+        in_citem: bool,
+    ) {
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].temp = template_id as u16;
+        gs.items[item_idx].flags = ItemFlags::IF_USE.bits() | ItemFlags::IF_USEDESTROY.bits();
+        gs.items[item_idx].carried = cn as u16;
+        if in_citem {
+            gs.characters[cn].citem = item_idx as u32;
+        } else {
+            gs.characters[cn].item[0] = item_idx as u32;
+        }
+    }
+
+    #[test]
+    fn consumed_inventory_potion_becomes_flask_in_same_slot() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.item_templates[IT_FLASK].used = USE_ACTIVE;
+            add_consumable(gs, cn, item_idx, IT_HEALING_POTION, false);
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.characters[cn].item[0], item_idx as u32);
+            assert_eq!(gs.items[item_idx].temp as usize, IT_FLASK);
+            assert_eq!(gs.items[item_idx].carried as usize, cn);
+        });
+    }
+
+    #[test]
+    fn consumed_cursor_potion_becomes_flask_in_cursor() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            gs.item_templates[IT_FLASK].used = USE_ACTIVE;
+            add_consumable(gs, cn, item_idx, IT_POTION_OF_LIFE, true);
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.characters[cn].citem, item_idx as u32);
+            assert_eq!(gs.items[item_idx].temp as usize, IT_FLASK);
+            assert_eq!(gs.items[item_idx].carried as usize, cn);
+        });
+    }
+
+    #[test]
+    fn consumed_non_potion_is_destroyed() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            let item_idx = 1;
+            add_consumable(gs, cn, item_idx, IT_RED_FLOWER, false);
+
+            use_driver(gs, cn, item_idx, true);
+
+            assert_eq!(gs.characters[cn].item[0], 0);
+            assert_eq!(gs.items[item_idx].used, USE_EMPTY);
+        });
+    }
 
     /// Puts a damageable item in a worn slot and returns its index.
     fn wear_damageable_item(gs: &mut GameState, cn: usize, slot: usize) -> usize {
