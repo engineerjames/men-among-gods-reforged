@@ -283,6 +283,30 @@ pub enum TalentEffect {
         /// Passive proc configuration.
         proc: TalentPrimaryHitProc,
     },
+    /// Add `percent`% to HP, endurance, and/or mana regeneration rate.
+    ///
+    /// Each component is independent; any may be `0` to leave that pool's
+    /// regeneration rate unchanged.
+    RegenPercent {
+        /// HP regeneration percent bonus.
+        hp: i32,
+        /// Endurance regeneration percent bonus.
+        end: i32,
+        /// Mana regeneration percent bonus.
+        mana: i32,
+    },
+    /// Reduce a spell target's effective resist/immunity by `percent`%.
+    SpellPenetrationPercent {
+        /// Percent reduction applied to the target's `SK_RESIST`/`SK_IMMUN`.
+        percent: i32,
+    },
+    /// Grant a chance for physical attacks to deal amplified damage.
+    CriticalStrike {
+        /// Chance out of 100 that a landed physical attack crits.
+        chance_percent: i32,
+        /// Damage multiplier applied on a crit, in percent (e.g. `250` = 2.5x).
+        damage_percent: i32,
+    },
 }
 
 /// Passive effect that can trigger from a character's landed primary attack.
@@ -351,6 +375,18 @@ pub struct TalentStatBonuses {
     pub mana_flat: i32,
     /// Flat endurance bonus from talents, added to the max endurance pool.
     pub end_flat: i32,
+    /// HP regeneration rate bonus from talents, in percent.
+    pub hp_regen_percent: i32,
+    /// Endurance regeneration rate bonus from talents, in percent.
+    pub end_regen_percent: i32,
+    /// Mana regeneration rate bonus from talents, in percent.
+    pub mana_regen_percent: i32,
+    /// Spell penetration bonus from talents, in percent.
+    pub spell_penetration_percent: i32,
+    /// Critical strike chance from talents, out of 100.
+    pub crit_chance_percent: i32,
+    /// Critical strike damage multiplier from talents, in percent.
+    pub crit_damage_percent: i32,
 }
 
 impl Default for TalentStatBonuses {
@@ -364,6 +400,12 @@ impl Default for TalentStatBonuses {
             hp_flat: 0,
             mana_flat: 0,
             end_flat: 0,
+            hp_regen_percent: 0,
+            end_regen_percent: 0,
+            mana_regen_percent: 0,
+            spell_penetration_percent: 0,
+            crit_chance_percent: 0,
+            crit_damage_percent: 0,
         }
     }
 }
@@ -724,7 +766,10 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
         | TalentEffect::GrantSkill { .. }
-        | TalentEffect::ReplaceSkill { .. } => None,
+        | TalentEffect::ReplaceSkill { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. } => None,
     }
 }
 
@@ -868,7 +913,10 @@ fn accumulate_skill_ownership(effect: TalentEffect, ownership: &mut TalentSkillO
         | TalentEffect::ArmorPercent { .. }
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
-        | TalentEffect::PrimaryHitProc { .. } => {}
+        | TalentEffect::PrimaryHitProc { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. } => {}
     }
 }
 
@@ -944,6 +992,21 @@ fn accumulate_stat_bonus(
             bonuses.hp_flat += hp;
             bonuses.mana_flat += mana;
             bonuses.end_flat += end;
+        }
+        TalentEffect::RegenPercent { hp, end, mana } => {
+            bonuses.hp_regen_percent += hp;
+            bonuses.end_regen_percent += end;
+            bonuses.mana_regen_percent += mana;
+        }
+        TalentEffect::SpellPenetrationPercent { percent } => {
+            bonuses.spell_penetration_percent += percent;
+        }
+        TalentEffect::CriticalStrike {
+            chance_percent,
+            damage_percent,
+        } => {
+            bonuses.crit_chance_percent += chance_percent;
+            bonuses.crit_damage_percent += damage_percent;
         }
         TalentEffect::Composite { effects } => {
             for effect in effects {
@@ -1443,7 +1506,10 @@ mod tests {
             | TalentEffect::HpManaEndFlat { .. }
             | TalentEffect::GrantSkill { .. }
             | TalentEffect::ReplaceSkill { .. }
-            | TalentEffect::PrimaryHitProc { .. } => {}
+            | TalentEffect::PrimaryHitProc { .. }
+            | TalentEffect::RegenPercent { .. }
+            | TalentEffect::SpellPenetrationPercent { .. }
+            | TalentEffect::CriticalStrike { .. } => {}
         }
     }
 

@@ -81,6 +81,20 @@ impl GameState {
         Self::percent_roll_succeeds(percent, helpers::random_mod_i32(MERCENARY_MAX_DODGE_CHANCE))
     }
 
+    /// Rolls whether an attacker's landed physical attack is a critical strike.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Attacker character index.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the attacker's talent-derived crit chance succeeds.
+    fn rolls_critical_strike(&self, cn: usize) -> bool {
+        let percent = self.talent_runtime[cn].crit_chance_percent;
+        Self::percent_roll_succeeds(percent, helpers::random_mod_i32(MERCENARY_MAX_DODGE_CHANCE))
+    }
+
     /// Emits the existing miss feedback for a physical attack.
     ///
     /// # Arguments
@@ -495,6 +509,19 @@ impl GameState {
 
         let odam = dam;
         dam += bonus;
+
+        let is_critical = self.rolls_critical_strike(attacker_index);
+        if is_critical {
+            let crit_percent = self.talent_runtime[attacker_index]
+                .crit_damage_percent
+                .max(100);
+            dam = dam * crit_percent / 100;
+            log::info!(
+                "Character {} landed a critical strike on {}!",
+                self.characters[attacker_index].get_name(),
+                self.characters[defender_index].get_name()
+            );
+        }
 
         let triggered_proc = self.trigger_primary_hit_talent_proc(attacker_index);
         if let Some(TalentPrimaryHitProcKind::DamageTarget { damage }) = triggered_proc {

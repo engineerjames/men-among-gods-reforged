@@ -342,6 +342,42 @@ fn format_talent_bonus_lines(bonuses: &TalentStatBonuses) -> Vec<String> {
         lines.push(format!("  Endurance: {:+}", bonuses.end_flat));
     }
 
+    if bonuses.hp_regen_percent != 0 {
+        lines.push(format!("  HP regen: {:+}%", bonuses.hp_regen_percent));
+    }
+
+    if bonuses.end_regen_percent != 0 {
+        lines.push(format!(
+            "  Endurance regen: {:+}%",
+            bonuses.end_regen_percent
+        ));
+    }
+
+    if bonuses.mana_regen_percent != 0 {
+        lines.push(format!("  Mana regen: {:+}%", bonuses.mana_regen_percent));
+    }
+
+    if bonuses.spell_penetration_percent != 0 {
+        lines.push(format!(
+            "  Spell penetration: {:+}%",
+            bonuses.spell_penetration_percent
+        ));
+    }
+
+    if bonuses.crit_chance_percent != 0 {
+        lines.push(format!(
+            "  Critical strike chance: {:+}%",
+            bonuses.crit_chance_percent
+        ));
+    }
+
+    if bonuses.crit_damage_percent != 0 {
+        lines.push(format!(
+            "  Critical strike damage: {:+}%",
+            bonuses.crit_damage_percent
+        ));
+    }
+
     lines
 }
 

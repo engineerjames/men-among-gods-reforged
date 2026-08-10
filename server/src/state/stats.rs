@@ -281,6 +281,18 @@ impl GameState {
         mana_bonus += talent_bonuses.mana_flat;
         end_bonus += talent_bonuses.end_flat;
 
+        // Cache the percent-shaped bonuses that are consumed outside this
+        // function (regen, spell penetration, crit) instead of recomputing
+        // `talent_stat_bonuses` on every regen tick or attack roll.
+        self.talent_runtime[cn] = crate::game_state::TalentRuntimeBonuses {
+            hp_regen_percent: talent_bonuses.hp_regen_percent,
+            end_regen_percent: talent_bonuses.end_regen_percent,
+            mana_regen_percent: talent_bonuses.mana_regen_percent,
+            spell_penetration_percent: talent_bonuses.spell_penetration_percent,
+            crit_chance_percent: talent_bonuses.crit_chance_percent,
+            crit_damage_percent: talent_bonuses.crit_damage_percent,
+        };
+
         // Calculate final attributes
         for (z, &bonus) in attrib_bonus.iter().enumerate().take(5) {
             let mut final_attrib = i32::from(self.characters[cn].attrib[z][0])
@@ -508,23 +520,29 @@ impl GameState {
             match base_status {
                 // Standing/idle states - regenerate normally
                 0..=7 => {
+                    let end_pct = self.talent_runtime[cn].end_regen_percent;
+                    let hp_pct = self.talent_runtime[cn].hp_regen_percent;
+                    let mana_pct = self.talent_runtime[cn].mana_regen_percent;
+
                     if !noend {
-                        self.characters[cn].a_end += scale(moonmult * 4);
+                        let mut end_gain = scale(moonmult * 4);
 
                         // Add bonus from Rest skill
                         if self.characters[cn].skill[skills::SK_REST][0] != 0 {
-                            self.characters[cn].a_end += scale(
+                            end_gain += scale(
                                 i32::from(self.characters[cn].skill[skills::SK_REST][5]) * moonmult
                                     / 30,
                             );
                         }
+
+                        self.characters[cn].a_end += end_gain * (100 + end_pct) / 100;
                     }
 
                     if !nohp {
                         hp_regen = true;
-                        self.characters[cn].a_hp += scale(moonmult * 2);
+                        let mut hp_gain = scale(moonmult * 2);
                         // C original: gothp += moonmult (tracks half the HP regen increment)
-                        gothp += scale(moonmult);
+                        let mut gothp_gain = scale(moonmult);
 
                         // Add bonus from Regen skill
                         if self.characters[cn].skill[skills::SK_REGEN][0] != 0 {
@@ -533,9 +551,13 @@ impl GameState {
                                     * moonmult
                                     / 30,
                             );
-                            self.characters[cn].a_hp += regen_bonus;
-                            gothp += regen_bonus;
+                            hp_gain += regen_bonus;
+                            gothp_gain += regen_bonus;
                         }
+
+                        let hp_mult = 100 + hp_pct;
+                        self.characters[cn].a_hp += hp_gain * hp_mult / 100;
+                        gothp += gothp_gain * hp_mult / 100;
                     }
 
                     if !nomana {
@@ -543,12 +565,13 @@ impl GameState {
 
                         if has_medit {
                             mana_regen = true;
-                            self.characters[cn].a_mana += scale(moonmult);
-                            self.characters[cn].a_mana += scale(
+                            let mut mana_gain = scale(moonmult);
+                            mana_gain += scale(
                                 i32::from(self.characters[cn].skill[skills::SK_MEDIT][5])
                                     * moonmult
                                     / 30,
                             );
+                            self.characters[cn].a_mana += mana_gain * (100 + mana_pct) / 100;
                         }
                     }
                 }

@@ -116,6 +116,13 @@ pub const SK_AURA_CURSE: usize = 60;
 /// War Banner Aura: buff aura that improves armor and weapon of nearby allies.
 pub const SK_AURA_WAR_BANNER: usize = 61;
 
+// ---- Seyan'Du talent-granted skills (reserved slot 62) ----
+/// Soul Reflection: fear aura that routs nearby NPCs into fleeing.
+pub const SK_SOUL_REFLECTION: usize = 62;
+/// Soul Reflection companion temp identifier for the attached duration item
+/// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
+pub const SK_SOUL_REFLECTION2: usize = SK_SOUL_REFLECTION + 100;
+
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
 const AT_DESC: [&str; 5] = [
@@ -193,6 +200,8 @@ pub const fn is_hostile_skill(skill: usize) -> bool {
             | SK_ANGUISH_LAVA
             | SK_ANGUISH_EARTH
             | SK_ANGUISH_ICE
+            | SK_AURA_CURSE
+            | SK_SOUL_REFLECTION
     )
 }
 
@@ -308,6 +317,9 @@ pub enum Skill {
     LavaBlast = SK_LAVA_BLAST,
     IceStun = SK_ICE_STUN,
     SpellcasterKindredSpirit = SK_SPELLCASTER_KINDRED_SPIRIT,
+    AuraCurse = SK_AURA_CURSE,
+    AuraWarBanner = SK_AURA_WAR_BANNER,
+    SoulReflection = SK_SOUL_REFLECTION,
 }
 
 /// A skill definition entry describing one learnable ability.
@@ -918,7 +930,15 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         2,
         1,
     ),
-    SkillTab::new(62, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(
+        62,
+        SkillCategory::Magic,
+        "Soul Reflection",
+        "Spell: Terrifies nearby enemies, causing them to flee.",
+        2,
+        1,
+        4,
+    ),
     SkillTab::new(63, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(64, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(65, SkillCategory::Unknown, "", "", 0, 0, 0),
@@ -1104,7 +1124,7 @@ const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "",
     "Curse Aura",
     "War Banner",
-    "",
+    "Soul Reflection",
     "",
     "",
     "",

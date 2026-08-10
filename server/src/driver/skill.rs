@@ -12,10 +12,10 @@ use core::{
         SK_GASH, SK_GHOST, SK_HEAL, SK_ICE_STUN, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH,
         SK_KINDRED_SPIRIT, SK_LAVA_BLAST, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE,
         SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST,
-        SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SPECTRAL_PACT,
-        SK_SPECTRAL_PACT2, SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN, SK_SUNS_BLESSING,
-        SK_SUNS_BLESSING2, SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY,
-        SK_WARCRY2, SK_WEAPON, SK_WIMPY, attribute_name, get_skill_name,
+        SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SOUL_REFLECTION,
+        SK_SPECTRAL_PACT, SK_SPECTRAL_PACT2, SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN,
+        SK_SUNS_BLESSING, SK_SUNS_BLESSING2, SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND,
+        SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY, attribute_name, get_skill_name,
     },
     string_operations::c_string_to_str,
     talent_trees::harakim,
@@ -386,6 +386,30 @@ pub fn spell_immunity(_gs: &GameState, power: i32, immun: i32) -> i32 {
     // Ported from C++ spell_immunity(int power, int immun)
     let immun = immun / 2;
     if power <= immun { 1 } else { power - immun }
+}
+
+/// Reduces a target's effective resistance value by the caster's talent-derived
+/// spell penetration percent.
+///
+/// Only affects whether a spell *lands* (the `SK_RESIST` opposed rolls and
+/// `chance_base` checks); it deliberately does not touch `spell_immunity`, so
+/// damage-scaling spells like Blast keep their power unaffected by this talent.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to read the caster's cached talent bonuses.
+/// * `caster_cn` - Caster character index.
+/// * `raw_resist` - Target's raw `SK_RESIST` value before penetration.
+///
+/// # Returns
+///
+/// * `raw_resist` scaled down by `100 / (100 + penetration_percent)`.
+pub fn effective_resist(gs: &GameState, caster_cn: usize, raw_resist: i32) -> i32 {
+    let pct = gs.talent_runtime[caster_cn].spell_penetration_percent;
+    if pct == 0 {
+        return raw_resist;
+    }
+    raw_resist * 100 / (100 + pct)
 }
 
 /// Applies caster kindred and moon-phase modifiers to spell power.
@@ -2161,7 +2185,7 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         cn,
         i32::from(gs.characters[cn].skill[SK_CURSE][5]),
         10,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         if cn != co
@@ -2220,7 +2244,11 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
             continue;
         }
         if curse_power + helpers::random_mod_i32(20)
-            > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + helpers::random_mod_i32(20)
+            > effective_resist(
+                gs,
+                cn,
+                i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+            ) + helpers::random_mod_i32(20)
             && spell_curse(gs, cn, maybe_co, curse_power)
         {
             gs.remember_pvp(cn, maybe_co);
@@ -2264,7 +2292,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         return false;
     }
 
-    if power < i32::from(gs.characters[co].skill[SK_RESIST][5]) {
+    if power < effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])) {
         return false;
     }
 
@@ -2422,6 +2450,86 @@ pub fn skill_warcry(gs: &mut GameState, cn: usize) {
             hit,
             hit + miss
         ),
+    );
+}
+
+/// Active hostile AoE: Soul Reflection. Terrifies nearby NPCs, causing them to
+/// flee from the caster for a short time. Has no effect on player characters.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for endurance costs, nearby target lookup, and NPC panic state.
+/// * `cn` - Caster character index.
+pub fn skill_soul_reflection(gs: &mut GameState, cn: usize) {
+    if skill_on_cooldown(gs, cn, SK_SOUL_REFLECTION as u16) {
+        return;
+    }
+    if gs.characters[cn].a_end < 150 * 1000 {
+        gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
+        return;
+    }
+    gs.characters[cn].a_end -= 150 * 1000;
+
+    let power = i32::from(gs.characters[cn].skill[SK_SOUL_REFLECTION][5]);
+    let flee_until = gs.globals.ticker + TICKS * 10;
+
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    let xf = std::cmp::max(1, caster_x - 8);
+    let yf = std::cmp::max(1, caster_y - 8);
+    let xt = std::cmp::min(core::constants::SERVER_MAPX - 1, caster_x + 8);
+    let yt = std::cmp::min(core::constants::SERVER_MAPY - 1, caster_y + 8);
+
+    let mut routed = 0;
+    for x in xf..xt {
+        for y in yf..yt {
+            let m = (x + y * core::constants::SERVER_MAPX) as usize;
+            let co = gs.map[m].ch as usize;
+            if co == 0 || co == cn {
+                continue;
+            }
+            // NPCs only; players are unaffected by this fear effect.
+            if (gs.characters[co].flags & CharacterFlags::Player.bits()) != 0 {
+                continue;
+            }
+            if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+                continue;
+            }
+            if !gs.may_attack_msg(cn, co, false) {
+                continue;
+            }
+            if power < effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])) {
+                continue;
+            }
+
+            // Reuse the existing NPC panic-flee timer and clear its current
+            // target so `npc_driver_high` picks a flee destination next tick.
+            gs.characters[co].data[78] = flee_until;
+            gs.characters[co].attack_cn = 0;
+            gs.characters[co].goto_x = 0;
+            gs.characters[co].goto_y = 0;
+            routed += 1;
+        }
+    }
+
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!(
+            "Your presence unravels the courage of {} nearby foe(s).\n",
+            routed
+        ),
+    );
+    chlog!(cn, "Cast Soul Reflection ({} routed)", routed);
+
+    EffectManager::fx_add_effect(gs, 7, 0, caster_x, caster_y, 0);
+
+    add_skill_cooldown(
+        gs,
+        cn,
+        TICKS * 30,
+        SK_SOUL_REFLECTION as u16,
+        b"Soul Reflection Cooldown",
     );
 }
 
@@ -2748,7 +2856,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
         let target = gs.characters[cn].skill_target1 as usize;
         if target != 0 {
             co = target;
-            power = i32::from(gs.characters[co].skill[SK_RESIST][5]);
+            power = effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5]));
         } else {
             co = cn;
             power = 10;
@@ -3091,7 +3199,7 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
         cn,
         i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][5]),
         12,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         return;
@@ -3497,7 +3605,7 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
         cn,
         i32::from(gs.characters[cn].skill[SK_STUN][5]),
         12,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         if cn != co
@@ -3550,7 +3658,11 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
             let s_rand = helpers::random_mod_i32(20);
             let o_rand = helpers::random_mod_i32(20);
             if i32::from(gs.characters[cn].skill[SK_STUN][5]) + s_rand
-                > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
+                > effective_resist(
+                    gs,
+                    cn,
+                    i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+                ) + o_rand
             {
                 spell_stun(
                     gs,
@@ -3605,7 +3717,7 @@ pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
         cn,
         i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]),
         12,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         if gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_ICE_STUN][5] + 5 {
@@ -3658,7 +3770,12 @@ pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
         if maybe_co != 0 && gs.characters[maybe_co].attack_cn == cn as u16 && maybe_co != co_orig {
             let s_rand = helpers::random_mod_i32(20);
             let o_rand = helpers::random_mod_i32(20);
-            if power + s_rand > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
+            if power + s_rand
+                > effective_resist(
+                    gs,
+                    cn,
+                    i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+                ) + o_rand
                 && spell_stun(gs, cn, maybe_co, power)
             {
                 attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
@@ -6062,7 +6179,7 @@ fn anguish_preflight(
         cn,
         i32::from(gs.characters[cn].skill[skill_const][5]),
         10,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         return None;
@@ -6179,7 +6296,11 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
         if !gs.may_attack_msg(cn, maybe_co, false) {
             continue;
         }
-        let resist = i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]);
+        let resist = effective_resist(
+            gs,
+            cn,
+            i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+        );
         if power + helpers::random_mod_i32(20) <= resist + helpers::random_mod_i32(20) {
             continue;
         }
@@ -6398,6 +6519,13 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
         }
         x if x == SK_AURA_CURSE as i32 => skill_curse_aura(gs, cn),
         x if x == SK_AURA_WAR_BANNER as i32 => skill_war_banner_aura(gs, cn),
+        x if x == SK_SOUL_REFLECTION as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_soul_reflection(gs, cn);
+            }
+        }
         x if x == SK_IMMUN as i32 => gs.do_character_log(
             cn,
             FontColor::Green,

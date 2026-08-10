@@ -128,7 +128,10 @@ fn dispatch_immediate_effect(
         | TalentEffect::ArmorPercent { .. }
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
-        | TalentEffect::PrimaryHitProc { .. } => Ok(()),
+        | TalentEffect::PrimaryHitProc { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. } => Ok(()),
     }
 }
 
@@ -415,7 +418,10 @@ fn dispatch_undo_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) {
         | TalentEffect::ArmorPercent { .. }
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
-        | TalentEffect::PrimaryHitProc { .. } => {}
+        | TalentEffect::PrimaryHitProc { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. } => {}
     }
 }
 
@@ -1976,8 +1982,8 @@ mod tests {
                 50;
             grant_talent_points(&mut gs.characters[cn].future1, 2);
 
-            learn_talent(gs, cn, seyan_du_slot("Veteran's Poise")).unwrap();
-            learn_talent(gs, cn, seyan_du_slot("Evasion Drill I")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Wellspring")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Fleet Hands")).unwrap();
 
             let bonuses = talent_stat_bonuses(
                 gs.characters[cn].kindred,
@@ -2027,9 +2033,9 @@ mod tests {
             Skill::LavaBlast,
         );
         assert_effect(
-            tree_for(Class::SeyanDu).unwrap().nodes[17].effect,
-            Attribute::Intuition,
-            18,
+            tree_for(Class::SeyanDu).unwrap().nodes[6].effect,
+            Attribute::Agility,
+            15,
         );
     }
 
