@@ -1301,4 +1301,22 @@ mod tests {
         assert!(!GameState::percent_roll_succeeds(0, 0));
         assert!(GameState::percent_roll_succeeds(100, 99));
     }
+
+    #[test]
+    fn rolls_critical_strike_respects_talent_runtime_chance() {
+        with_test_gs(|gs| {
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_MERCENARY as i32,
+            );
+
+            gs.talent_runtime[1].crit_chance_percent = 0;
+            assert!(!gs.rolls_critical_strike(1));
+
+            gs.talent_runtime[1].crit_chance_percent = 100;
+            assert!(gs.rolls_critical_strike(1));
+        });
+    }
 }

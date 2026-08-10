@@ -2181,4 +2181,24 @@ mod tests {
             assert_eq!(gs.characters[cn].data[45], 3);
         });
     }
+
+    #[test]
+    fn regen_percent_talent_doubles_mana_gain_when_medit_known() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].skill[skills::SK_MEDIT][SkillIndex::BaseValue as usize] = 1;
+            gs.characters[cn].mana[SkillIndex::TotalValue as usize] = 50;
+            gs.characters[cn].status = 0;
+
+            gs.do_regenerate(cn);
+            let baseline_mana = gs.characters[cn].a_mana;
+            assert!(baseline_mana > 0, "expected some baseline mana regen");
+
+            gs.characters[cn].a_mana = 0;
+            gs.talent_runtime[cn].mana_regen_percent = 100;
+            gs.do_regenerate(cn);
+
+            assert_eq!(gs.characters[cn].a_mana, baseline_mana * 2);
+        });
+    }
 }

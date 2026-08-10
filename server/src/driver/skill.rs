@@ -6845,6 +6845,63 @@ mod harakim_ability_tests {
 }
 
 #[cfg(test)]
+mod seyan_du_ability_tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::USE_ACTIVE;
+
+    #[test]
+    fn effective_resist_scales_down_with_penetration_percent() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            assert_eq!(effective_resist(gs, cn, 100), 100);
+
+            gs.talent_runtime[cn].spell_penetration_percent = 25;
+            assert_eq!(effective_resist(gs, cn, 100), 80);
+        });
+    }
+
+    #[test]
+    fn skill_soul_reflection_routs_npc_but_spares_player() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].skill[SK_SOUL_REFLECTION][0] = 1;
+            gs.characters[cn].skill[SK_SOUL_REFLECTION][5] = 50;
+            gs.characters[cn].a_end = 1_000_000;
+            gs.globals.ticker = 1000;
+
+            let npc = 2;
+            gs.characters[npc] = Character::default();
+            gs.characters[npc].used = USE_ACTIVE;
+            gs.characters[npc].x = gs.characters[cn].x + 1;
+            gs.characters[npc].y = gs.characters[cn].y;
+            gs.characters[npc].attack_cn = cn as u16;
+            gs.map[gs.characters[npc].x as usize
+                + gs.characters[npc].y as usize * SERVER_MAPX as usize]
+                .ch = npc as u32;
+
+            let other_player = 3;
+            gs.characters[other_player] = Character::default();
+            gs.characters[other_player].used = USE_ACTIVE;
+            gs.characters[other_player].flags = CharacterFlags::Player.bits();
+            gs.characters[other_player].x = gs.characters[cn].x - 1;
+            gs.characters[other_player].y = gs.characters[cn].y;
+            gs.characters[other_player].attack_cn = cn as u16;
+            gs.map[gs.characters[other_player].x as usize
+                + gs.characters[other_player].y as usize * SERVER_MAPX as usize]
+                .ch = other_player as u32;
+
+            skill_soul_reflection(gs, cn);
+
+            assert_eq!(gs.characters[npc].data[78], 1000 + TICKS * 10);
+            assert_eq!(gs.characters[npc].attack_cn, 0);
+            assert_eq!(gs.characters[other_player].data[78], 0);
+            assert_eq!(gs.characters[other_player].attack_cn, cn as u16);
+        });
+    }
+}
+
+#[cfg(test)]
 mod offensive_target_tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};

@@ -369,10 +369,13 @@ impl TalentPanel {
     /// Rebuilds the placed node squares for the current class and
     /// [`TalentPanel::art_rect`].
     ///
-    /// Nodes are laid out on a [`TALENT_ROWS`]-row grid. Column 0 (`mask` bit
-    /// 0) is centered on the left half of the artwork and column 1 (`mask` bit
-    /// 1) on the right half, matching how the class artwork is split. No-op
-    ///    when the class is `None` or has no tree defined.
+    /// Nodes are laid out on a grid whose row count matches the tree's
+    /// highest talent layer (falling back to [`TALENT_ROWS`] for an empty
+    /// tree), so a shorter tree like Seyan'Du's fills the artwork instead of
+    /// clustering in the top rows. Column 0 (`mask` bit 0) is centered on the
+    /// left half of the artwork and column 1 (`mask` bit 1) on the right
+    /// half, matching how the class artwork is split. No-op when the class
+    /// is `None` or has no tree defined.
     fn rebuild_nodes(&mut self) {
         self.nodes.clear();
         self.nodes_for_class = self.class;
@@ -383,8 +386,15 @@ impl TalentPanel {
             return;
         };
 
+        let rows = tree
+            .nodes
+            .iter()
+            .map(|node| i32::from(node.slot.layer))
+            .max()
+            .unwrap_or(TALENT_ROWS);
+
         let art = self.art_rect;
-        let pitch = (art.height as i32 / TALENT_ROWS).max(NODE_SIZE as i32);
+        let pitch = (art.height as i32 / rows).max(NODE_SIZE as i32);
         let half = NODE_SIZE as i32 / 2;
 
         for node in tree.nodes.iter() {

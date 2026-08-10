@@ -1644,6 +1644,74 @@ mod tests {
     }
 
     #[test]
+    fn accumulate_regen_percent_sums_each_pool_independently() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::RegenPercent {
+                hp: 0,
+                end: 0,
+                mana: 100,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+        accumulate_stat_bonus(
+            TalentEffect::RegenPercent {
+                hp: 0,
+                end: 100,
+                mana: 0,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.hp_regen_percent, 0);
+        assert_eq!(bonuses.end_regen_percent, 100);
+        assert_eq!(bonuses.mana_regen_percent, 100);
+    }
+
+    #[test]
+    fn accumulate_spell_penetration_percent_sums_into_bonuses() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::SpellPenetrationPercent { percent: 15 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.spell_penetration_percent, 15);
+    }
+
+    #[test]
+    fn accumulate_critical_strike_sums_chance_and_damage_independently() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::CriticalStrike {
+                chance_percent: 5,
+                damage_percent: 250,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.crit_chance_percent, 5);
+        assert_eq!(bonuses.crit_damage_percent, 250);
+    }
+
+    #[test]
     fn accumulate_composite_applies_nested_stat_effects() {
         let mut attrib = empty_attrib();
         attrib[Attribute::Strength as usize][SkillIndex::BaseValue as usize] = 50;
@@ -1775,6 +1843,48 @@ mod tests {
     }
 
     #[test]
+    fn seyan_du_tree_matches_design() {
+        let tree = tree_for(Class::SeyanDu).unwrap();
+
+        assert_eq!(tree.nodes.len(), 12);
+        assert_regen_percent(named_node(tree, "Wellspring"), 0, 0, 100);
+        assert_regen_percent(named_node(tree, "Second Wind"), 0, 100, 0);
+        assert_spell_penetration(named_node(tree, "Piercing Will"), 15);
+        assert_attribute_percent(named_node(tree, "Fleet Hands"), Attribute::Agility, 10);
+        assert_grants_skill(named_node(tree, "Aura of Despair"), Skill::AuraCurse);
+        assert_grants_skill(named_node(tree, "War Banner"), Skill::AuraWarBanner);
+        assert_attribute_percent(named_node(tree, "Windstep"), Attribute::Agility, 15);
+        assert_grants_skill(named_node(tree, "Soul Reflection"), Skill::SoulReflection);
+        assert_grants_skill(named_node(tree, "Blade Dance"), Skill::BladeDance);
+        assert_attribute_percent_multi(
+            named_node(tree, "Warrior's Discipline"),
+            &[Attribute::Strength, Attribute::Agility],
+            &[10, 10],
+        );
+        assert_attribute_percent_multi(
+            named_node(tree, "Scholar's Discipline"),
+            &[Attribute::Willpower, Attribute::Intuition],
+            &[10, 10],
+        );
+        assert_attribute_percent(
+            named_node(tree, "Unbroken Resolve"),
+            Attribute::Braveness,
+            20,
+        );
+    }
+
+    #[test]
+    fn mercenary_tree_grants_critical_strikes_instead_of_blade_dance() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+
+        assert!(
+            tree.nodes.iter().all(|node| node.name != "Blade Dance"),
+            "Blade Dance should no longer be a mercenary talent"
+        );
+        assert_critical_strike(named_node(tree, "Critical Strikes"), 5, 250);
+    }
+
+    #[test]
     fn talent_primary_hit_proc_returns_learned_templar_choice() {
         let tree = tree_for(Class::Templar).unwrap();
         let mut talents = [0u8; 25];
@@ -1855,6 +1965,58 @@ mod tests {
                 assert_eq!(percents, &[expected_percent]);
             }
             other => panic!("expected AttributesPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_attribute_percent_multi(
+        node: &TalentNode,
+        expected_attrs: &[Attribute],
+        expected_percents: &[i32],
+    ) {
+        match node.effect {
+            TalentEffect::AttributesPercent { attrs, percents } => {
+                assert_eq!(attrs, expected_attrs);
+                assert_eq!(percents, expected_percents);
+            }
+            other => panic!("expected AttributesPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_regen_percent(
+        node: &TalentNode,
+        expected_hp: i32,
+        expected_end: i32,
+        expected_mana: i32,
+    ) {
+        match node.effect {
+            TalentEffect::RegenPercent { hp, end, mana } => {
+                assert_eq!(hp, expected_hp);
+                assert_eq!(end, expected_end);
+                assert_eq!(mana, expected_mana);
+            }
+            other => panic!("expected RegenPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_spell_penetration(node: &TalentNode, expected_percent: i32) {
+        match node.effect {
+            TalentEffect::SpellPenetrationPercent { percent } => {
+                assert_eq!(percent, expected_percent);
+            }
+            other => panic!("expected SpellPenetrationPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_critical_strike(node: &TalentNode, expected_chance: i32, expected_damage: i32) {
+        match node.effect {
+            TalentEffect::CriticalStrike {
+                chance_percent,
+                damage_percent,
+            } => {
+                assert_eq!(chance_percent, expected_chance);
+                assert_eq!(damage_percent, expected_damage);
+            }
+            other => panic!("expected CriticalStrike, got {other:?}"),
         }
     }
 
