@@ -123,6 +123,9 @@ pub struct GameState {
     /// `core::weather_areas::AREA_WEATHER_PROFILES`.
     pub area_weather: Vec<crate::state::weather::AreaWeatherRuntime>,
 
+    /// Runtime-only active aura sources keyed by character index.
+    pub aura_states: HashMap<usize, crate::aura::AuraState>,
+
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
 
@@ -229,6 +232,7 @@ impl GameState {
                 crate::state::weather::AreaWeatherRuntime::default();
                 core::weather_areas::AREA_WEATHER_PROFILES.len()
             ],
+            aura_states: HashMap::new(),
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding

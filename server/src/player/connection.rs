@@ -519,6 +519,9 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
     };
     let valid_character = character_id > 0 && character_id < core::constants::MAXCHARS;
 
+    // Remove any active aura source so it stops pulsing after logout.
+    crate::aura::logic::remove_aura(gs, character_id);
+
     if valid_character && reason != LogoutReason::Shutdown {
         let character_name = gs.characters[character_id].get_name().to_owned();
         log::debug!(

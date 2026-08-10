@@ -6,16 +6,16 @@ use core::{
         NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     },
     skills::{
-        SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AXE, SK_BLADE_DANCE, SK_BLAST,
-        SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER, SK_DELIVER_DEATH, SK_DISARM,
-        SK_DISPEL, SK_DISTRACT, SK_ELEMENT_SWITCHING, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL,
-        SK_ICE_STUN, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH, SK_KINDRED_SPIRIT, SK_LAVA_BLAST,
-        SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL,
-        SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_REVENANT_CONDUIT,
-        SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SPECTRAL_PACT, SK_SPECTRAL_PACT2,
-        SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2,
-        SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON,
-        SK_WIMPY, attribute_name, get_skill_name,
+        SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AURA_CURSE, SK_AURA_WAR_BANNER,
+        SK_AXE, SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER,
+        SK_DELIVER_DEATH, SK_DISARM, SK_DISPEL, SK_DISTRACT, SK_ELEMENT_SWITCHING, SK_ENHANCE,
+        SK_GASH, SK_GHOST, SK_HEAL, SK_ICE_STUN, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH,
+        SK_KINDRED_SPIRIT, SK_LAVA_BLAST, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE,
+        SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST,
+        SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SPECTRAL_PACT,
+        SK_SPECTRAL_PACT2, SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN, SK_SUNS_BLESSING,
+        SK_SUNS_BLESSING2, SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY,
+        SK_WARCRY2, SK_WEAPON, SK_WIMPY, attribute_name, get_skill_name,
     },
     string_operations::c_string_to_str,
     talent_trees::harakim,
@@ -27,6 +27,7 @@ use core::{
 };
 
 use crate::{
+    aura::{self, AuraId},
     chlog, driver,
     effect::EffectManager,
     game_state::{ElementSwitchState, GameState},
@@ -6235,6 +6236,43 @@ pub fn skill_anguish_ice(gs: &mut GameState, cn: usize) {
     chlog!(cn, "Cast Anguish-Ice on {}", name);
 }
 
+/// Toggles the Curse Aura on or off.
+///
+/// When active, the caster periodically curses nearby enemies.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Character index toggling the aura.
+pub fn skill_curse_aura(gs: &mut GameState, cn: usize) {
+    aura::logic::toggle_aura(
+        gs,
+        cn,
+        AuraId::CurseAura,
+        "You surround yourself with an aura of curses.\n",
+        "You dismiss your aura of curses.\n",
+    );
+}
+
+/// Toggles the War Banner aura on or off.
+///
+/// When active, the caster periodically improves the armor and weapon values
+/// of nearby allies.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Character index toggling the aura.
+pub fn skill_war_banner_aura(gs: &mut GameState, cn: usize) {
+    aura::logic::toggle_aura(
+        gs,
+        cn,
+        AuraId::WarBannerAura,
+        "You raise a war banner.\n",
+        "You lower your war banner.\n",
+    );
+}
+
 /// Dispatches direct skill use to the matching skill handler.
 ///
 /// # Arguments
@@ -6358,6 +6396,8 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 skill_mshield(gs, cn);
             }
         }
+        x if x == SK_AURA_CURSE as i32 => skill_curse_aura(gs, cn),
+        x if x == SK_AURA_WAR_BANNER as i32 => skill_war_banner_aura(gs, cn),
         x if x == SK_IMMUN as i32 => gs.do_character_log(
             cn,
             FontColor::Green,

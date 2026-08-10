@@ -702,6 +702,7 @@ impl Server {
         core::measure!(populate::pop_tick(gs));
         core::measure!(EffectManager::effect_tick(gs));
         core::measure!(driver::item_tick(gs));
+        core::measure!(crate::aura::logic::tick_auras(gs, ticker));
 
         core::measure!(self.global_tick(gs));
     }

@@ -1,4 +1,5 @@
 mod area;
+mod aura;
 mod driver;
 mod effect;
 mod game_state;

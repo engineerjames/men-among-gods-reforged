@@ -111,6 +111,10 @@ pub const SK_ICE_STUN: usize = 57;
 pub const SK_ELEMENT_SWITCHING: usize = 58;
 /// Spellcaster Kindred Spirit: passive that lets ghost companions cast Blast.
 pub const SK_SPELLCASTER_KINDRED_SPIRIT: usize = 59;
+/// Curse Aura: debuff aura that mimics a curse on nearby enemies.
+pub const SK_AURA_CURSE: usize = 60;
+/// War Banner Aura: buff aura that improves armor and weapon of nearby allies.
+pub const SK_AURA_WAR_BANNER: usize = 61;
 
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 
@@ -896,8 +900,24 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         2,
         1,
     ),
-    SkillTab::new(60, SkillCategory::Unknown, "", "", 0, 0, 0),
-    SkillTab::new(61, SkillCategory::Unknown, "", "", 0, 0, 0),
+    SkillTab::new(
+        60,
+        SkillCategory::Magic,
+        "Curse Aura",
+        "Aura: Curses nearby enemies.",
+        2,
+        1,
+        4,
+    ),
+    SkillTab::new(
+        61,
+        SkillCategory::Magic,
+        "War Banner",
+        "Aura: Raises armor and weapon of nearby allies.",
+        0,
+        2,
+        1,
+    ),
     SkillTab::new(62, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(63, SkillCategory::Unknown, "", "", 0, 0, 0),
     SkillTab::new(64, SkillCategory::Unknown, "", "", 0, 0, 0),
@@ -1082,8 +1102,8 @@ const SKILL_NAMES: [&str; MAX_SKILLS] = [
     "Ice Stun",
     "",
     "",
-    "",
-    "",
+    "Curse Aura",
+    "War Banner",
     "",
     "",
     "",

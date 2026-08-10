@@ -108,6 +108,9 @@ impl GameState {
             0,
         );
 
+        // Remove any active aura source so it stops pulsing after death.
+        crate::aura::logic::remove_aura(self, character_id);
+
         // Contagion / Parasite: if the dying character was infected, the
         // infestation leaps to adjacent enemies sharing the caster's faction
         // enmity.
