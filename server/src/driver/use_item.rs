@@ -4877,16 +4877,21 @@ pub fn use_seyan_shrine(gs: &mut GameState, cn: usize, item_idx: usize) -> bool 
     // Every shrine beyond 10 should also give +5 immunity and resistance
     let bonus_resist = visited_bits.saturating_sub_unsigned(10) * 5;
 
-    log::info!(
-        "Character {} visited {} shrines, granting {} bonus resistances to sword.",
-        cn,
-        visited_bits,
-        bonus_resist
-    );
-
     if bonus_resist > 0 {
+        log::info!(
+            "Character {} visited {} shrines, granting {} bonus resistances to sword.",
+            cn,
+            visited_bits,
+            bonus_resist
+        );
         gs.items[in2].skill[SK_IMMUN][0] = i16::from(bonus_resist);
         gs.items[in2].skill[SK_RESIST][0] = i16::from(bonus_resist);
+    } else {
+        log::info!(
+            "Character {} visited {} shrines, granting no bonus resistances to sword.",
+            cn,
+            visited_bits
+        );
     }
 
     gs.items[in2].flags |= ItemFlags::IF_UPDATE.bits();
