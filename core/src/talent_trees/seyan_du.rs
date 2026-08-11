@@ -115,10 +115,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Increase attack speed by 10%.",
             cost: 1,
             prereqs: &[WELLSPRING, SECOND_WIND],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[10],
-            },
+            effect: TalentEffect::AttackSpeedPercent { percent: 10 },
         },
         TalentNode {
             slot: AURA_OF_DESPAIR,
@@ -148,10 +145,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             description: "Increase movement speed by 15%.",
             cost: 1,
             prereqs: &[AURA_OF_DESPAIR, WAR_BANNER],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[15],
-            },
+            effect: TalentEffect::MovementSpeedPercent { percent: 15 },
         },
         TalentNode {
             slot: SOUL_REFLECTION,

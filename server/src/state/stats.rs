@@ -395,7 +395,7 @@ impl GameState {
         self.characters[cn].light = light as u8;
 
         // Calculate speed based on mode
-        let mut speed_calc = 10i32;
+        let mut base_speed_calc = 10i32;
         let mode = self.characters[cn].mode;
         let agil = i32::from(self.characters[cn].attrib[core::constants::AT_AGIL as usize][5]);
         let stren = i32::from(self.characters[cn].attrib[core::constants::AT_STREN as usize][5]);
@@ -403,19 +403,33 @@ impl GameState {
 
         if mode == 0 {
             // Sneak mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 12;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 12;
         } else if mode == 1 {
             // Normal mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 14;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 14;
         } else if mode == 2 {
             // Fast mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 16;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 16;
         }
 
-        self.characters[cn].speed = 20 - speed_calc as i16;
+        // Movement speed and attack/action speed are independently derived from the
+        // same baseline so a talent bonus to one never affects the other.
+        let movement_speed_calc = base_speed_calc
+            + (base_speed_calc as f32 * (talent_bonuses.movement_speed_percent as f32 / 100.0))
+                .round() as i32;
+        let action_speed_calc = base_speed_calc
+            + (base_speed_calc as f32 * (talent_bonuses.attack_speed_percent as f32 / 100.0))
+                .round() as i32;
+
+        self.characters[cn].speed = 20 - movement_speed_calc as i16;
         self.characters[cn].speed = self.characters[cn]
             .speed
             .clamp(MIN_SPEEDTAB_INDEX as i16, MAX_SPEEDTAB_SPEED_INDEX as i16);
+
+        // `future3[2]` is a recomputed-every-pass cache of the attack/action speed
+        // row (parallel to `speed` but gating `plr_act`'s misc/attack states only).
+        self.characters[cn].future3[2] = (20 - action_speed_calc)
+            .clamp(MIN_SPEEDTAB_INDEX as i32, MAX_SPEEDTAB_SPEED_INDEX as i32);
 
         // Cap current stats at their maximums
         if self.characters[cn].a_hp > i32::from(self.characters[cn].hp[5]) * 1000 {
@@ -2199,6 +2213,56 @@ mod tests {
             gs.do_regenerate(cn);
 
             assert_eq!(gs.characters[cn].a_mana, baseline_mana * 2);
+        });
+    }
+
+    #[test]
+    fn attack_speed_talent_changes_action_speed_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_SEYAN_DU as i32;
+
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            // Seyan'Du "Fleet Hands" (layer 2, mask 0b10): AttackSpeedPercent { percent: 10 }.
+            gs.characters[cn].future1[2] |= 0b0000_0010;
+            gs.really_update_char(cn);
+
+            assert_eq!(
+                gs.characters[cn].speed, baseline_speed,
+                "attack speed talent must not change movement speed"
+            );
+            assert!(
+                gs.characters[cn].future3[2] < baseline_action_speed,
+                "attack speed row must decrease (faster) when the talent is learned"
+            );
+        });
+    }
+
+    #[test]
+    fn movement_speed_talent_changes_movement_speed_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_SEYAN_DU as i32;
+
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            // Seyan'Du "Windstep" (layer 4, mask 0b1): MovementSpeedPercent { percent: 15 }.
+            gs.characters[cn].future1[4] |= 0b0000_0001;
+            gs.really_update_char(cn);
+
+            assert!(
+                gs.characters[cn].speed < baseline_speed,
+                "movement speed row must decrease (faster) when the talent is learned"
+            );
+            assert_eq!(
+                gs.characters[cn].future3[2], baseline_action_speed,
+                "movement speed talent must not change attack speed"
+            );
         });
     }
 }

@@ -393,12 +393,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc actions: 160..166 increment, 167 execute misc then doact
         160..=166 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         167 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 160;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -407,12 +407,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc down 168..174 then 175
         168..=174 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         175 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 168;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -421,12 +421,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc left 176..182 then 183
         176..=182 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         183 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 176;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -435,12 +435,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc right 184..190 then 191
         184..=190 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         191 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 184;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -472,6 +472,25 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 /// * Value returned by `speedo`.
 pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
     let speed = (gs.characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
+    let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
+    i32::from(SPEEDTAB[speed][ctick])
+}
+
+/// Fast helper to compute the per-tick attack/action index for a character.
+///
+/// Mirrors [`speedo`] but reads the independently-derived attack/action
+/// speed row cached in `future3[2]` (see `really_update_char`) instead of
+/// `speed`, so talent bonuses to one never advance the other.
+///
+/// # Arguments
+/// * `n` - Character index
+///
+/// # Returns
+///
+/// * Value returned by the attack/action speed table lookup.
+pub fn speedo_action(gs: &mut GameState, n: usize) -> i32 {
+    let speed =
+        (gs.characters[n].future3[2] as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
     let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
     i32::from(SPEEDTAB[speed][ctick])
 }

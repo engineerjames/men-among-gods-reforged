@@ -791,6 +791,7 @@ impl PlayerState {
                 ch_nr,
                 ch_id,
                 ch_speed,
+                ch_aspeed,
                 ch_proz,
             } => {
                 self.map.apply_set_map(
@@ -807,6 +808,7 @@ impl PlayerState {
                     *ch_nr,
                     *ch_id,
                     *ch_speed,
+                    *ch_aspeed,
                     *ch_proz,
                 );
             }

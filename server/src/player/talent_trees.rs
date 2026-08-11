@@ -131,7 +131,9 @@ fn dispatch_immediate_effect(
         | TalentEffect::PrimaryHitProc { .. }
         | TalentEffect::RegenPercent { .. }
         | TalentEffect::SpellPenetrationPercent { .. }
-        | TalentEffect::CriticalStrike { .. } => Ok(()),
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => Ok(()),
     }
 }
 
@@ -421,7 +423,9 @@ fn dispatch_undo_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) {
         | TalentEffect::PrimaryHitProc { .. }
         | TalentEffect::RegenPercent { .. }
         | TalentEffect::SpellPenetrationPercent { .. }
-        | TalentEffect::CriticalStrike { .. } => {}
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => {}
     }
 }
 
@@ -1992,7 +1996,7 @@ mod tests {
                 &gs.characters[cn].skill,
             );
 
-            assert_eq!(bonuses.attrib[Attribute::Agility as usize], 5);
+            assert_eq!(bonuses.attack_speed_percent, 10);
         });
     }
 
@@ -2094,22 +2098,15 @@ mod tests {
             Skill::Blast,
             Skill::LavaBlast,
         );
-        assert_effect(
-            tree_for(Class::SeyanDu).unwrap().nodes[6].effect,
-            Attribute::Agility,
-            15,
-        );
+        assert_movement_speed_effect(tree_for(Class::SeyanDu).unwrap().nodes[6].effect, 15);
     }
 
-    fn assert_effect(effect: TalentEffect, expected_attr: Attribute, expected_percent: i32) {
+    fn assert_movement_speed_effect(effect: TalentEffect, expected_percent: i32) {
         match effect {
-            TalentEffect::AttributesPercent { attrs, percents } => {
-                assert_eq!(attrs.len(), 1, "expected single-attribute talent");
-                assert_eq!(percents.len(), 1, "expected single-percent talent");
-                assert_eq!(attrs[0], expected_attr);
-                assert_eq!(percents[0], expected_percent);
+            TalentEffect::MovementSpeedPercent { percent } => {
+                assert_eq!(percent, expected_percent);
             }
-            other => panic!("expected AttributesPercent, got {other:?}"),
+            other => panic!("expected MovementSpeedPercent, got {other:?}"),
         }
     }
 

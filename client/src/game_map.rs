@@ -148,6 +148,7 @@ impl GameMap {
         ch_nr: Option<u16>,
         ch_id: Option<u16>,
         ch_speed: Option<u8>,
+        ch_aspeed: Option<u8>,
         ch_proz: Option<u8>,
     ) {
         let next_index = if off == 0 {
@@ -204,6 +205,9 @@ impl GameMap {
         }
         if let Some(v) = ch_speed {
             tile.ch_speed = v;
+        }
+        if let Some(v) = ch_aspeed {
+            tile.ch_aspeed = v;
         }
         if let Some(v) = ch_proz {
             tile.ch_proz = v;
@@ -434,6 +438,7 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         let tile = map.tile_at_index(10).unwrap();
         assert_eq!(tile.ba_sprite, 42);
@@ -459,12 +464,14 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         // Second: delta +5 --> index 15
         map.apply_set_map(
             5,
             None,
             Some(99),
+            None,
             None,
             None,
             None,
@@ -499,12 +506,14 @@ mod tests {
             None,
             None,
             None,
+            None,
         );
         map.reset_last_setmap_index();
         map.apply_set_map(
             5,
             None,
             Some(99),
+            None,
             None,
             None,
             None,

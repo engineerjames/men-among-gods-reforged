@@ -144,7 +144,7 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
         p += 4;
     }
     if flags & 64 != 0 {
-        p += 5;
+        p += 6;
     }
     if flags & 128 != 0 {
         p += 1;
@@ -350,6 +350,7 @@ pub enum ServerCommandData {
         ch_nr: Option<u16>,
         ch_id: Option<u16>,
         ch_speed: Option<u8>,
+        ch_aspeed: Option<u8>,
         ch_proz: Option<u8>,
     },
     SetMap3 {
@@ -622,6 +623,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         let mut ch_nr = None;
         let mut ch_id = None;
         let mut ch_speed = None;
+        let mut ch_aspeed = None;
         let mut ch_proz = None;
 
         if (flags & 1) != 0 {
@@ -659,6 +661,8 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             p += 2;
             ch_speed = Some(*bytes.get(p)?);
             p += 1;
+            ch_aspeed = Some(*bytes.get(p)?);
+            p += 1;
         }
         if (flags & 128) != 0 {
             ch_proz = Some(*bytes.get(p)?);
@@ -681,6 +685,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 ch_nr,
                 ch_id,
                 ch_speed,
+                ch_aspeed,
                 ch_proz,
             },
         ));

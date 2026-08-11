@@ -205,10 +205,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your attack speed by 5%.",
             cost: 1,
             prereqs: &[DODGE_BOOST_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[10],
-            },
+            effect: TalentEffect::AttackSpeedPercent { percent: 10 },
         },
         TalentNode {
             slot: DAMAGE_BOOST_1,
@@ -249,10 +246,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase your attack speed by 5%.",
             cost: 1,
             prereqs: &[DISARM],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[15],
-            },
+            effect: TalentEffect::AttackSpeedPercent { percent: 15 },
         },
         TalentNode {
             slot: DAMAGE_BOOST_2,

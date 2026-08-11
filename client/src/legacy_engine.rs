@@ -441,7 +441,8 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             };
 
             let stat_off = (tile.ch_stat_off as usize).min(STATTAB.len() - 1);
-            let stat_add = if (160..=191).contains(&tile.ch_status) {
+            let is_misc_action = (160..=191).contains(&tile.ch_status);
+            let stat_add = if is_misc_action {
                 STATTAB[stat_off] << 5
             } else {
                 0
@@ -450,12 +451,15 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             let frame = status - start;
             let tmp = base + frame + base_add + stat_add;
 
-            if speedo(tile.ch_speed, ctick) && update {
-                let max = if (160..=191).contains(&tile.ch_status) {
-                    start + 7
-                } else {
-                    start + 3
-                };
+            // Misc/attack states (160..=191) pace off the independently-derived
+            // attack/action speed; turn states (96..=159) keep movement speed.
+            let advance_speed = if is_misc_action {
+                tile.ch_aspeed
+            } else {
+                tile.ch_speed
+            };
+            if speedo(advance_speed, ctick) && update {
+                let max = if is_misc_action { start + 7 } else { start + 3 };
                 if i32::from(tile.ch_status) >= max {
                     tile.ch_status = wrap;
                 } else {
@@ -607,5 +611,47 @@ mod tests {
         eng_char(&mut tile, 0);
         assert_eq!(tile.obj_xoff_sub, 0);
         assert_eq!(tile.obj_yoff_sub, 0);
+    }
+
+    #[test]
+    fn misc_action_status_advances_using_ch_aspeed_not_ch_speed() {
+        // ch_speed is pinned to the slowest row while ch_aspeed is the
+        // fastest row, proving misc/attack states (160..=191) gate on the
+        // independent attack/action speed field, not movement speed.
+        let mut tile = CMapTile {
+            ch_sprite: 1000,
+            ch_status: 160,
+            ch_speed: MAX_SPEEDTAB_SPEED_INDEX as u8,
+            ch_aspeed: 0,
+            ..CMapTile::default()
+        };
+
+        eng_char(&mut tile, 0);
+
+        assert_eq!(
+            tile.ch_status, 161,
+            "misc/attack status must advance using ch_aspeed"
+        );
+    }
+
+    #[test]
+    fn turn_status_advances_using_ch_speed_not_ch_aspeed() {
+        // ch_aspeed is pinned to the slowest row while ch_speed is the
+        // fastest row, proving turn states (96..=159) still gate on
+        // movement speed.
+        let mut tile = CMapTile {
+            ch_sprite: 1000,
+            ch_status: 96,
+            ch_speed: 0,
+            ch_aspeed: MAX_SPEEDTAB_SPEED_INDEX as u8,
+            ..CMapTile::default()
+        };
+
+        eng_char(&mut tile, 0);
+
+        assert_eq!(
+            tile.ch_status, 97,
+            "turn status must advance using ch_speed"
+        );
     }
 }

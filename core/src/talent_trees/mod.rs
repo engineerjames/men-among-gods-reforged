@@ -307,6 +307,16 @@ pub enum TalentEffect {
         /// Damage multiplier applied on a crit, in percent (e.g. `250` = 2.5x).
         damage_percent: i32,
     },
+    /// Add `percent`% to walking movement speed only (attack cadence unaffected).
+    MovementSpeedPercent {
+        /// Percent bonus applied to the movement speed derivation.
+        percent: i32,
+    },
+    /// Add `percent`% to attack/action cadence only (walking speed unaffected).
+    AttackSpeedPercent {
+        /// Percent bonus applied to the attack/action speed derivation.
+        percent: i32,
+    },
 }
 
 /// Passive effect that can trigger from a character's landed primary attack.
@@ -387,6 +397,10 @@ pub struct TalentStatBonuses {
     pub crit_chance_percent: i32,
     /// Critical strike damage multiplier from talents, in percent.
     pub crit_damage_percent: i32,
+    /// Movement speed bonus from talents, in percent.
+    pub movement_speed_percent: i32,
+    /// Attack/action speed bonus from talents, in percent.
+    pub attack_speed_percent: i32,
 }
 
 impl Default for TalentStatBonuses {
@@ -406,6 +420,8 @@ impl Default for TalentStatBonuses {
             spell_penetration_percent: 0,
             crit_chance_percent: 0,
             crit_damage_percent: 0,
+            movement_speed_percent: 0,
+            attack_speed_percent: 0,
         }
     }
 }
@@ -769,7 +785,9 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
         | TalentEffect::ReplaceSkill { .. }
         | TalentEffect::RegenPercent { .. }
         | TalentEffect::SpellPenetrationPercent { .. }
-        | TalentEffect::CriticalStrike { .. } => None,
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => None,
     }
 }
 
@@ -916,7 +934,9 @@ fn accumulate_skill_ownership(effect: TalentEffect, ownership: &mut TalentSkillO
         | TalentEffect::PrimaryHitProc { .. }
         | TalentEffect::RegenPercent { .. }
         | TalentEffect::SpellPenetrationPercent { .. }
-        | TalentEffect::CriticalStrike { .. } => {}
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => {}
     }
 }
 
@@ -1007,6 +1027,12 @@ fn accumulate_stat_bonus(
         } => {
             bonuses.crit_chance_percent += chance_percent;
             bonuses.crit_damage_percent += damage_percent;
+        }
+        TalentEffect::MovementSpeedPercent { percent } => {
+            bonuses.movement_speed_percent += percent;
+        }
+        TalentEffect::AttackSpeedPercent { percent } => {
+            bonuses.attack_speed_percent += percent;
         }
         TalentEffect::Composite { effects } => {
             for effect in effects {
@@ -1509,7 +1535,9 @@ mod tests {
             | TalentEffect::PrimaryHitProc { .. }
             | TalentEffect::RegenPercent { .. }
             | TalentEffect::SpellPenetrationPercent { .. }
-            | TalentEffect::CriticalStrike { .. } => {}
+            | TalentEffect::CriticalStrike { .. }
+            | TalentEffect::MovementSpeedPercent { .. }
+            | TalentEffect::AttackSpeedPercent { .. } => {}
         }
     }
 
@@ -1712,6 +1740,33 @@ mod tests {
     }
 
     #[test]
+    fn accumulate_movement_and_attack_speed_percent_are_independent() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::MovementSpeedPercent { percent: 15 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.movement_speed_percent, 15);
+        assert_eq!(bonuses.attack_speed_percent, 0);
+
+        accumulate_stat_bonus(
+            TalentEffect::AttackSpeedPercent { percent: 10 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.movement_speed_percent, 15);
+        assert_eq!(bonuses.attack_speed_percent, 10);
+    }
+
+    #[test]
     fn accumulate_composite_applies_nested_stat_effects() {
         let mut attrib = empty_attrib();
         attrib[Attribute::Strength as usize][SkillIndex::BaseValue as usize] = 50;
@@ -1850,10 +1905,10 @@ mod tests {
         assert_regen_percent(named_node(tree, "Wellspring"), 0, 0, 100);
         assert_regen_percent(named_node(tree, "Second Wind"), 0, 100, 0);
         assert_spell_penetration(named_node(tree, "Piercing Will"), 15);
-        assert_attribute_percent(named_node(tree, "Fleet Hands"), Attribute::Agility, 10);
+        assert_attack_speed_percent(named_node(tree, "Fleet Hands"), 10);
         assert_grants_skill(named_node(tree, "Aura of Despair"), Skill::AuraCurse);
         assert_grants_skill(named_node(tree, "War Banner"), Skill::AuraWarBanner);
-        assert_attribute_percent(named_node(tree, "Windstep"), Attribute::Agility, 15);
+        assert_movement_speed_percent(named_node(tree, "Windstep"), 15);
         assert_grants_skill(named_node(tree, "Soul Reflection"), Skill::SoulReflection);
         assert_grants_skill(named_node(tree, "Blade Dance"), Skill::BladeDance);
         assert_attribute_percent_multi(
@@ -2028,6 +2083,24 @@ mod tests {
                 assert_eq!(end, expected_end);
             }
             other => panic!("expected HpManaEndFlat, got {other:?}"),
+        }
+    }
+
+    fn assert_movement_speed_percent(node: &TalentNode, expected_percent: i32) {
+        match node.effect {
+            TalentEffect::MovementSpeedPercent { percent } => {
+                assert_eq!(percent, expected_percent);
+            }
+            other => panic!("expected MovementSpeedPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_attack_speed_percent(node: &TalentNode, expected_percent: i32) {
+        match node.effect {
+            TalentEffect::AttackSpeedPercent { percent } => {
+                assert_eq!(percent, expected_percent);
+            }
+            other => panic!("expected AttackSpeedPercent, got {other:?}"),
         }
     }
 
