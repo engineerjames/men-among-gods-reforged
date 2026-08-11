@@ -34,7 +34,9 @@
 //!   `depot`, `depot_cost`, `depot_sold`, `luck`
 //! * Identity timestamps managed by the server: `creation_date`
 //! * Talent progression: `future1`
-//! * Reserved padding: `unused`, `future2`, `future3`
+//! * Reserved padding: `unused`, `future2`, `future3` (`future3[2]` is a
+//!   recomputed-every-stats-pass cache of the talent-derived attack/action
+//!   speed row, parallel to `speed`; see `really_update_char`)
 //!
 //! The watcher overwrites only the patch fields when applying, so the
 //! tick thread keeps full ownership of placement, combat, and per-character
