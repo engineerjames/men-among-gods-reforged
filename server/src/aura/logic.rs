@@ -173,6 +173,7 @@ fn apply_or_refresh_aura(
     target_cn: usize,
     template: &AuraTemplate,
 ) {
+    let new_power = template.aura_power(gs, source_cn);
     match find_aura_spell(gs, target_cn, template.temp) {
         Some((slot, spell_idx)) => {
             let existing_source = gs.items[spell_idx].data[0] as usize;
@@ -183,7 +184,7 @@ fn apply_or_refresh_aura(
                 gs.items[spell_idx].active = template.spell_duration_ticks as u32;
                 gs.items[spell_idx].duration = template.spell_duration_ticks as u32;
                 gs.characters[target_cn].set_do_update_flags();
-            } else if template.power > existing_power {
+            } else if new_power > existing_power {
                 // Strictly stronger source: remove old and apply new.
                 gs.items[spell_idx].used = core::constants::USE_EMPTY;
                 gs.characters[target_cn].spell[slot] = 0;
@@ -311,6 +312,53 @@ mod tests {
                 gs.items[spell_idx].active,
                 template.spell_duration_ticks as u32
             );
+        });
+    }
+
+    #[test]
+    fn curse_aura_power_scales_with_skill_total() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.item_templates[1].used = core::constants::USE_ACTIVE;
+            gs.characters[1].used = core::constants::USE_ACTIVE;
+
+            let template = aura_template(AuraId::CurseAura);
+            let skill_idx = core::skills::SK_AURA_CURSE;
+
+            // Baseline at low skill total.
+            gs.characters[1].skill[skill_idx][core::skills::SkillIndex::TotalValue as usize] = 1;
+            let baseline_power = template.aura_power(gs, 1);
+            let baseline_idx = template.create_spell_item(gs, 1).unwrap();
+            let baseline_penalty = gs.items[baseline_idx].attrib[0][1];
+
+            // Higher skill total should produce a stronger aura.
+            gs.characters[1].skill[skill_idx][core::skills::SkillIndex::TotalValue as usize] = 100;
+            let scaled_power = template.aura_power(gs, 1);
+            let scaled_idx = template.create_spell_item(gs, 1).unwrap();
+            let scaled_penalty = gs.items[scaled_idx].attrib[0][1];
+
+            assert!(scaled_power > baseline_power);
+            assert!(scaled_penalty.abs() > baseline_penalty.abs());
+        });
+    }
+
+    #[test]
+    fn war_banner_aura_power_scales_with_skill_total() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.item_templates[1].used = core::constants::USE_ACTIVE;
+            gs.characters[1].used = core::constants::USE_ACTIVE;
+
+            let template = aura_template(AuraId::WarBannerAura);
+            let skill_idx = core::skills::SK_AURA_WAR_BANNER;
+
+            gs.characters[1].skill[skill_idx][core::skills::SkillIndex::TotalValue as usize] = 1;
+            let baseline_idx = template.create_spell_item(gs, 1).unwrap();
+            let baseline_armor = gs.items[baseline_idx].armor[1];
+
+            gs.characters[1].skill[skill_idx][core::skills::SkillIndex::TotalValue as usize] = 100;
+            let scaled_idx = template.create_spell_item(gs, 1).unwrap();
+            let scaled_armor = gs.items[scaled_idx].armor[1];
+
+            assert!(scaled_armor > baseline_armor);
         });
     }
 }

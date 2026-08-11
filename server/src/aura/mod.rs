@@ -8,6 +8,7 @@
 
 use crate::game_state::GameState;
 use core::constants::{CharacterFlags, ItemFlags, USE_ACTIVE};
+use core::skills::SkillIndex;
 
 pub mod logic;
 pub mod templates;
@@ -58,7 +59,11 @@ pub struct AuraTemplate {
     pub sprite: i16,
     /// Skill/template marker used to identify this aura's spell items.
     pub temp: u16,
-    /// Base power used for scaling modifiers and resolving "strongest wins".
+    /// Base power used when scaling modifiers and resolving "strongest wins".
+    ///
+    /// The actual power applied to a spell item also includes a contribution
+    /// from the source character's aura skill total, so raising the aura skill
+    /// strengthens the effect.
     pub power: u32,
 }
 
@@ -97,6 +102,26 @@ impl AuraTemplate {
         }
     }
 
+    /// Returns the effective power of this aura for a given source.
+    ///
+    /// The base template power is increased by half the source's total aura
+    /// skill value, so raising the aura skill makes the aura stronger.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state.
+    /// * `source_cn` - Character index emitting the aura.
+    ///
+    /// # Returns
+    ///
+    /// * Effective power, always at least 1.
+    pub fn aura_power(&self, gs: &GameState, source_cn: usize) -> u32 {
+        let skill_idx = self.temp as usize;
+        let skill_total =
+            gs.characters[source_cn].skill[skill_idx][SkillIndex::TotalValue as usize];
+        (self.power + u32::from(skill_total) / 2).max(1)
+    }
+
     /// Applies aura-specific modifiers to a freshly created spell item.
     ///
     /// # Arguments
@@ -104,17 +129,18 @@ impl AuraTemplate {
     /// * `gs` - Active game state.
     /// * `item_idx` - Index of the spell item to modify.
     pub fn apply_modifiers(&self, gs: &mut GameState, item_idx: usize) {
+        let power = gs.items[item_idx].power as i16;
         let item = &mut gs.items[item_idx];
         match self.id {
             AuraId::CurseAura => {
                 // Mirror the attribute penalty from spell_curse at reduced power.
                 for n in 0..5 {
-                    item.attrib[n][1] = -((self.power as i16) / 3);
+                    item.attrib[n][1] = -(power / 3);
                 }
             }
             AuraId::WarBannerAura => {
                 // Improve armor and weapon values while active.
-                let bonus = ((self.power as i16) / 10).max(1);
+                let bonus = (power / 10).max(1);
                 item.armor[1] = bonus as i8;
                 item.weapon[1] = bonus as i8;
             }
@@ -138,6 +164,7 @@ impl AuraTemplate {
             return None;
         }
         let in_idx = in_opt.unwrap();
+        let power = self.aura_power(gs, source_cn);
         let item = &mut gs.items[in_idx];
 
         let name_len = self.name.len().min(40);
@@ -147,7 +174,7 @@ impl AuraTemplate {
         item.duration = self.spell_duration_ticks as u32;
         item.active = self.spell_duration_ticks as u32;
         item.temp = self.temp;
-        item.power = self.power;
+        item.power = power;
         item.data[0] = source_cn as u32;
 
         self.apply_modifiers(gs, in_idx);

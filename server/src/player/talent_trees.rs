@@ -639,8 +639,8 @@ mod tests {
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::{CharacterFlags, USE_ACTIVE};
     use core::skills::{
-        Attribute, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST,
-        SK_THUNDEROUS_FURY,
+        Attribute, SK_AURA_CURSE, SK_AURA_WAR_BANNER, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN,
+        SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_THUNDEROUS_FURY,
     };
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
@@ -2017,6 +2017,68 @@ mod tests {
                 gs.characters[cn].skill[SK_BLAST][SkillIndex::BaseValue as usize],
                 0,
                 "the superseded skill must not come back with its old investment"
+            );
+        });
+    }
+
+    #[test]
+    fn seyan_du_aura_of_despair_is_raisable() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            give_class_and_points(gs, cn, KIN_SEYAN_DU, 3);
+
+            learn_talent(gs, cn, seyan_du_slot("Wellspring")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Piercing Will")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Aura of Despair")).unwrap();
+
+            let skill = &gs.characters[cn].skill[SK_AURA_CURSE];
+            assert_eq!(skill[SkillIndex::BaseValue as usize], 1);
+            assert!(
+                skill[SkillIndex::MaxValue as usize] > 1,
+                "Aura of Despair must have a non-zero raise cap"
+            );
+            assert_ne!(
+                skill[SkillIndex::RaiseDifficulty as usize],
+                0,
+                "Aura of Despair must be raisable"
+            );
+
+            gs.characters[cn].points = 10_000_000;
+            assert!(
+                gs.do_raise_skill(cn, SK_AURA_CURSE as i32),
+                "Aura of Despair should accept skill-point raises"
+            );
+        });
+    }
+
+    #[test]
+    fn seyan_du_war_banner_is_raisable() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            give_class_and_points(gs, cn, KIN_SEYAN_DU, 3);
+
+            learn_talent(gs, cn, seyan_du_slot("Second Wind")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Fleet Hands")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("War Banner")).unwrap();
+
+            let skill = &gs.characters[cn].skill[SK_AURA_WAR_BANNER];
+            assert_eq!(skill[SkillIndex::BaseValue as usize], 1);
+            assert!(
+                skill[SkillIndex::MaxValue as usize] > 1,
+                "War Banner must have a non-zero raise cap"
+            );
+            assert_ne!(
+                skill[SkillIndex::RaiseDifficulty as usize],
+                0,
+                "War Banner must be raisable"
+            );
+
+            gs.characters[cn].points = 10_000_000;
+            assert!(
+                gs.do_raise_skill(cn, SK_AURA_WAR_BANNER as i32),
+                "War Banner should accept skill-point raises"
             );
         });
     }

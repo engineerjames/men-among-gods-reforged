@@ -128,9 +128,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             prereqs: &[PIERCING_WILL, FLEET_HANDS],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::AuraCurse,
-                profile: TalentSkillProfile::DEFAULT_NON_MERC
-                    .with_max(0)
-                    .with_difficulty(0),
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
@@ -141,9 +139,7 @@ pub static SEYAN_DU_TREE: TalentTree = TalentTree {
             prereqs: &[PIERCING_WILL, FLEET_HANDS],
             effect: TalentEffect::GrantSkill {
                 skill: Skill::AuraWarBanner,
-                profile: TalentSkillProfile::DEFAULT_NON_MERC
-                    .with_max(0)
-                    .with_difficulty(0),
+                profile: TalentSkillProfile::DEFAULT_NON_MERC,
             },
         },
         TalentNode {
