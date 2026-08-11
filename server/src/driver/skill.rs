@@ -5972,6 +5972,71 @@ pub(crate) fn remove_active_spell_temp(gs: &mut GameState, cn: usize, skill_temp
     removed
 }
 
+/// Returns whether `owner_id` still has a live Ghost Companion in either slot.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `owner_id` - Character id to check for a live companion.
+///
+/// # Returns
+///
+/// * `true` if either companion slot points to a live, owned companion.
+fn owner_has_live_companion(gs: &GameState, owner_id: usize) -> bool {
+    for slot in [CHD_COMPANION, CHD_COMPANION2] {
+        let cc = gs.characters[owner_id].data[slot] as usize;
+        if cc == 0 || !Character::is_sane_character(cc) {
+            continue;
+        }
+        if gs.characters[cc].data[63] == owner_id as i32
+            && gs.characters[cc].temp == CT_COMPANION as u16
+            && gs.characters[cc].used != USE_EMPTY
+            && (gs.characters[cc].flags & CharacterFlags::Body.bits()) == 0
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Clears Ghost-Companion-dependent Harakim buffs (Revenant Conduit,
+/// Spectral Pact) from `owner_id` once they have no live Ghost Companion
+/// left.
+///
+/// Companions can be lost through the `transfer` talk command, combat
+/// death, or self-destruct from neglect. Without this, a stale Revenant
+/// Conduit buff would keep boosting the effective Ghost Companion skill
+/// used to stat the next summoned companion, letting a player ratchet up
+/// companion power well beyond what a single cast of the conduit should
+/// grant. Spectral Pact is cleared alongside it since it is equally
+/// meaningless without a companion to redirect damage to.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `owner_id` - Character id that just lost a companion.
+pub(crate) fn clear_companion_dependent_buffs_if_none_left(gs: &mut GameState, owner_id: usize) {
+    if !Character::is_sane_character(owner_id) || owner_has_live_companion(gs, owner_id) {
+        return;
+    }
+    if remove_active_spell_temp(gs, owner_id, SK_REVENANT_CONDUIT2 as u16) {
+        gs.do_character_log(
+            owner_id,
+            FontColor::Green,
+            "With your ghost companion gone, the conduit closes.\n",
+        );
+        chlog!(owner_id, "Revenant Conduit closed (companion lost)");
+    }
+    if remove_active_spell_temp(gs, owner_id, SK_SPECTRAL_PACT2 as u16) {
+        gs.do_character_log(
+            owner_id,
+            FontColor::Green,
+            "With your ghost companion gone, the spectral pact fades.\n",
+        );
+        chlog!(owner_id, "Spectral Pact faded (companion lost)");
+    }
+}
+
 /// Active self-buff: Revenant Conduit. Spends mana up front and attaches a
 /// spell item that boosts the caster's effective Ghost Companion skill while
 /// draining endurance over time (the drain is processed in `state/stats.rs`).
@@ -6826,6 +6891,47 @@ mod harakim_ability_tests {
             assert_eq!(gs.items[marker].data[0] as usize, cn);
             assert_eq!(gs.items[marker].power, 40);
             assert!(gs.items[marker].active > 0);
+        });
+    }
+
+    #[test]
+    fn clear_companion_dependent_buffs_removed_when_no_companion_left() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            attach_marker(gs, owner, 0, 10, SK_REVENANT_CONDUIT2 as u16);
+            attach_marker(gs, owner, 1, 11, SK_SPECTRAL_PACT2 as u16);
+
+            clear_companion_dependent_buffs_if_none_left(gs, owner);
+
+            assert!(!has_active_spell_temp(
+                gs,
+                owner,
+                SK_REVENANT_CONDUIT2 as u16
+            ));
+            assert!(!has_active_spell_temp(gs, owner, SK_SPECTRAL_PACT2 as u16));
+        });
+    }
+
+    #[test]
+    fn clear_companion_dependent_buffs_kept_while_a_companion_is_alive() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            attach_marker(gs, owner, 0, 10, SK_REVENANT_CONDUIT2 as u16);
+
+            let companion = 2;
+            gs.characters[companion] = core::types::Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].data[CHD_COMPANION] = companion as i32;
+
+            clear_companion_dependent_buffs_if_none_left(gs, owner);
+
+            assert!(has_active_spell_temp(
+                gs,
+                owner,
+                SK_REVENANT_CONDUIT2 as u16
+            ));
         });
     }
 

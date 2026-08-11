@@ -183,6 +183,13 @@ impl GameState {
                 self.characters[cc].data[64] = 0;
             }
             self.characters[character_id].data[63] = 0;
+
+            // Once the owner has no other live companion, drop Revenant
+            // Conduit/Spectral Pact so a fresh companion can't be boosted by
+            // a stale buff from a companion that no longer exists.
+            if Character::is_sane_character(cc) {
+                crate::driver::clear_companion_dependent_buffs_if_none_left(self, cc);
+            }
         }
 
         // A player killed someone or something
@@ -1077,6 +1084,41 @@ mod tests {
             gs.do_character_killed(co, 0, false);
 
             assert_eq!(gs.map[map_index].ch, 0);
+        });
+    }
+
+    /// Regression test: killing a player's Ghost Companion used to leave a
+    /// Revenant Conduit buff active, letting the effective Ghost Companion
+    /// skill stay boosted for the next summoned companion.
+    #[test]
+    fn companion_death_clears_owners_revenant_conduit() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+
+            let in_idx = 10;
+            gs.items[in_idx] = core::types::Item::default();
+            gs.items[in_idx].used = USE_ACTIVE;
+            gs.items[in_idx].temp = skills::SK_REVENANT_CONDUIT2 as u16;
+            gs.items[in_idx].active = 100;
+            gs.items[in_idx].duration = 100;
+            gs.characters[owner].spell[0] = in_idx as u32;
+
+            let companion = 3;
+            gs.characters[companion] = Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].data[64] = companion as i32;
+            let map_index = 10 + 10 * core::constants::SERVER_MAPX as usize;
+            gs.characters[companion].x = 10;
+            gs.characters[companion].y = 10;
+            gs.map[map_index].ch = companion as u32;
+
+            gs.do_character_killed(companion, 0, false);
+
+            assert_eq!(gs.characters[owner].data[64], 0);
+            assert_eq!(gs.items[in_idx].used, USE_EMPTY);
+            assert_eq!(gs.characters[owner].spell[0], 0);
         });
     }
 }
