@@ -436,6 +436,17 @@ impl GameState {
         // Set data[3] = killer_id for the effect, if possible
         if let Some(fn_idx) = fn_idx {
             self.effects[fn_idx].data[3] = killer_id as u32;
+        } else if corpse_id != 0 {
+            // Effect table was full: finalize the corpse immediately instead of
+            // leaving it stuck on the map forever with no mist/grave effect
+            // ever scheduled to clean it up.
+            log::warn!(
+                "do_character_killed: effect table full, could not schedule death mist for corpse {}; finalizing immediately",
+                corpse_id
+            );
+            let map_index =
+                (i32::from(co_x) + i32::from(co_y) * core::constants::SERVER_MAPX) as usize;
+            EffectManager::finalize_death_mist(self, map_index, corpse_id, killer_id as i32);
         }
     }
 
@@ -892,6 +903,7 @@ impl GameState {
 mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::MAXEFFECT;
     use core::constants::{MAXCHARS, MF_ARENA, USE_ACTIVE};
 
     fn prepare_player_death(gs: &mut GameState) -> usize {
@@ -1037,6 +1049,34 @@ mod tests {
             assert_eq!(gs.characters[cn].gold, 750);
             assert_eq!(gs.characters[cn].item[0], 41);
             assert_eq!(gs.characters[cn].a_hp, 10_000);
+        });
+    }
+
+    /// Regression test: `do_character_killed` used to silently leave a
+    /// killed NPC's corpse stuck on the map forever (`map[].ch` never
+    /// cleared) when the effect table was full and the type-3 death-mist
+    /// effect couldn't be scheduled.
+    #[test]
+    fn npc_death_finalizes_corpse_immediately_when_effect_table_is_full() {
+        with_test_gs(|gs| {
+            let co = 2;
+            let x = 10i16;
+            let y = 10i16;
+            gs.characters[co].used = USE_ACTIVE;
+            gs.characters[co].x = x;
+            gs.characters[co].y = y;
+            gs.characters[co].tox = x;
+            gs.characters[co].toy = y;
+            let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
+            gs.map[map_index].ch = co as u32;
+
+            for effect in &mut gs.effects[1..MAXEFFECT] {
+                effect.used = USE_ACTIVE;
+            }
+
+            gs.do_character_killed(co, 0, false);
+
+            assert_eq!(gs.map[map_index].ch, 0);
         });
     }
 }
