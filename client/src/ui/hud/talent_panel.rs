@@ -1690,4 +1690,75 @@ mod tests {
             );
         }
     }
+
+    /// Rune slots are only placed for Seyan'Du, and are cleared for every
+    /// other class.
+    #[test]
+    fn rune_slots_only_placed_for_seyan_du() {
+        let p = panel_for(Class::SeyanDu);
+        for slot in &p.rune_slots {
+            assert!(slot.width > 0 && slot.height > 0);
+        }
+
+        let p = panel_for(Class::Mercenary);
+        for slot in &p.rune_slots {
+            assert_eq!((slot.width, slot.height), (0, 0));
+        }
+    }
+
+    /// Clicking an unlocked rune slot emits a `SetActiveRune` action for that
+    /// exact index.
+    #[test]
+    fn click_on_rune_slot_emits_set_active_rune() {
+        let mut p = panel_for(Class::SeyanDu);
+        p.toggle();
+
+        let slot = p.rune_slots[2];
+        let cx = slot.x + slot.width as i32 / 2;
+        let cy = slot.y + slot.height as i32 / 2;
+        p.handle_event(&UiEvent::MouseClick {
+            x: cx,
+            y: cy,
+            button: MouseButton::Left,
+            modifiers: Default::default(),
+        });
+
+        let actions = p.take_actions();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            actions[0],
+            WidgetAction::SetActiveRune { rune_idx: 2 }
+        ));
+    }
+
+    /// Clicking a rune slot while a swap is on cooldown emits nothing.
+    #[test]
+    fn click_on_rune_slot_during_cooldown_emits_nothing() {
+        let mut p = panel_for(Class::SeyanDu);
+        p.sync_rune_state(0, 360);
+        p.toggle();
+
+        let slot = p.rune_slots[2];
+        let cx = slot.x + slot.width as i32 / 2;
+        let cy = slot.y + slot.height as i32 / 2;
+        p.handle_event(&UiEvent::MouseClick {
+            x: cx,
+            y: cy,
+            button: MouseButton::Left,
+            modifiers: Default::default(),
+        });
+
+        assert!(p.take_actions().is_empty());
+    }
+
+    /// `update` counts the swap cooldown down to zero and no further.
+    #[test]
+    fn update_counts_down_rune_cooldown() {
+        let mut p = panel_for(Class::SeyanDu);
+        p.sync_rune_state(1, 36); // 1 second at 36 ticks/sec
+        p.update(Duration::from_millis(500));
+        assert!(!p.rune_swap_cooldown_remaining.is_zero());
+        p.update(Duration::from_secs(10));
+        assert!(p.rune_swap_cooldown_remaining.is_zero());
+    }
 }
