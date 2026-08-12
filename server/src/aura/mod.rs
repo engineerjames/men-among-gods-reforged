@@ -80,7 +80,9 @@ impl AuraTemplate {
             return false;
         }
         if source_cn == target_cn {
-            return false;
+            // Buff auras are intended to help the caster; debuffs should never
+            // apply to their own source.
+            return matches!(self.kind, AuraKind::Buff);
         }
 
         let target = &gs.characters[target_cn];

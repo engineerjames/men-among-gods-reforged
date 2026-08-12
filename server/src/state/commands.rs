@@ -378,6 +378,20 @@ fn format_talent_bonus_lines(bonuses: &TalentStatBonuses) -> Vec<String> {
         ));
     }
 
+    if bonuses.movement_speed_percent != 0 {
+        lines.push(format!(
+            "  Movement speed: {:+}%",
+            bonuses.movement_speed_percent
+        ));
+    }
+
+    if bonuses.attack_speed_percent != 0 {
+        lines.push(format!(
+            "  Attack speed: {:+}%",
+            bonuses.attack_speed_percent
+        ));
+    }
+
     lines
 }
 
@@ -2032,6 +2046,8 @@ mod tests {
         bonuses.hp_flat = 12;
         bonuses.mana_flat = -3;
         bonuses.end_flat = 8;
+        bonuses.movement_speed_percent = 15;
+        bonuses.attack_speed_percent = -5;
 
         assert_eq!(
             format_talent_bonus_lines(&bonuses),
@@ -2044,6 +2060,8 @@ mod tests {
                 "  HP: +12".to_owned(),
                 "  Mana: -3".to_owned(),
                 "  Endurance: +8".to_owned(),
+                "  Movement speed: +15%".to_owned(),
+                "  Attack speed: -5%".to_owned(),
             ]
         );
     }

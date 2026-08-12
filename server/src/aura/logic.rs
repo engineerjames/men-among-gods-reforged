@@ -152,6 +152,12 @@ fn pulse_aura(gs: &mut GameState, source_cn: usize, template: &AuraTemplate) {
             }
         }
     });
+
+    // Beneficial auras also affect their caster, who is not found by scanning
+    // the surrounding map tiles.
+    if matches!(template.kind, super::AuraKind::Buff) {
+        apply_or_refresh_aura(gs, source_cn, source_cn, template);
+    }
 }
 
 /// Applies or refreshes an aura on a single target.
@@ -359,6 +365,70 @@ mod tests {
             let scaled_armor = gs.items[scaled_idx].armor[1];
 
             assert!(scaled_armor > baseline_armor);
+        });
+    }
+
+    #[test]
+    fn war_banner_applies_buff_to_caster() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.globals.ticker = 100;
+            gs.item_templates[1].used = core::constants::USE_ACTIVE;
+
+            // Source stands at (100, 100) in group 1 with no nearby allies.
+            gs.characters[1].used = core::constants::USE_ACTIVE;
+            gs.characters[1].x = 100;
+            gs.characters[1].y = 100;
+            gs.characters[1].data[core::constants::CHD_GROUP] = 1;
+            let source_idx = 100 + 100 * core::constants::SERVER_MAPX as usize;
+            gs.map[source_idx].ch = 1;
+
+            add_aura(gs, 1, AuraId::WarBannerAura);
+            let first_pulse = gs.aura_states[&1].next_pulse_tick;
+            tick_auras(gs, first_pulse);
+
+            let template = aura_template(AuraId::WarBannerAura);
+            let (slot, spell_idx) =
+                find_aura_spell(gs, 1, template.temp).expect("caster should have war banner spell");
+            assert_eq!(gs.items[spell_idx].data[0], 1);
+
+            // Simulate the spell ticking down, then pulse again from the same source.
+            gs.items[spell_idx].active = 10;
+            let second_pulse = gs.aura_states[&1].next_pulse_tick;
+            tick_auras(gs, second_pulse);
+
+            let (refreshed_slot, refreshed_idx) =
+                find_aura_spell(gs, 1, template.temp).expect("spell should still exist");
+            assert_eq!(slot, refreshed_slot);
+            assert_eq!(refreshed_idx, spell_idx);
+            assert_eq!(
+                gs.items[spell_idx].active,
+                template.spell_duration_ticks as u32
+            );
+        });
+    }
+
+    #[test]
+    fn curse_aura_does_not_apply_to_caster() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.globals.ticker = 100;
+            gs.item_templates[1].used = core::constants::USE_ACTIVE;
+
+            gs.characters[1].used = core::constants::USE_ACTIVE;
+            gs.characters[1].x = 100;
+            gs.characters[1].y = 100;
+            gs.characters[1].data[core::constants::CHD_GROUP] = 1;
+            let source_idx = 100 + 100 * core::constants::SERVER_MAPX as usize;
+            gs.map[source_idx].ch = 1;
+
+            add_aura(gs, 1, AuraId::CurseAura);
+            let first_pulse = gs.aura_states[&1].next_pulse_tick;
+            tick_auras(gs, first_pulse);
+
+            let template = aura_template(AuraId::CurseAura);
+            assert!(
+                find_aura_spell(gs, 1, template.temp).is_none(),
+                "caster should not be cursed by their own debuff aura"
+            );
         });
     }
 }

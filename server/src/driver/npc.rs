@@ -2732,49 +2732,48 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
         }
 
         if i32::from(ch_dir) != data_30 {
-            {
-                gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
+            gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
 
-                // Turn toward an adjacent tile based on desired direction.
-                // (misc_target1/misc_target2 are coordinates, not the direction value.)
-                let mut target_x = x;
-                let mut target_y = y;
+            // Turn toward an adjacent tile based on desired direction.
+            // (misc_target1/misc_target2 are coordinates, not the direction value.)
+            let mut target_x = x;
+            let mut target_y = y;
 
-                match data_30 {
-                    d if d == i32::from(DX_UP) => target_y -= 1,
-                    d if d == i32::from(DX_DOWN) => target_y += 1,
-                    d if d == i32::from(DX_LEFT) => target_x -= 1,
-                    d if d == i32::from(DX_RIGHT) => target_x += 1,
-                    d if d == i32::from(DX_LEFTUP) => {
-                        target_x -= 1;
-                        target_y -= 1;
-                    }
-                    d if d == i32::from(DX_LEFTDOWN) => {
-                        target_x -= 1;
-                        target_y += 1;
-                    }
-                    d if d == i32::from(DX_RIGHTUP) => {
-                        target_x += 1;
-                        target_y -= 1;
-                    }
-                    d if d == i32::from(DX_RIGHTDOWN) => {
-                        target_x += 1;
-                        target_y += 1;
-                    }
-                    _ => {
-                        gs.characters[cn].misc_action = DR_IDLE as u16;
-                        return;
-                    }
+            match data_30 {
+                d if d == i32::from(DX_UP) => target_y -= 1,
+                d if d == i32::from(DX_DOWN) => target_y += 1,
+                d if d == i32::from(DX_LEFT) => target_x -= 1,
+                d if d == i32::from(DX_RIGHT) => target_x += 1,
+                d if d == i32::from(DX_LEFTUP) => {
+                    target_x -= 1;
+                    target_y -= 1;
                 }
-
-                if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
-                    gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
+                d if d == i32::from(DX_LEFTDOWN) => {
+                    target_x -= 1;
+                    target_y += 1;
+                }
+                d if d == i32::from(DX_RIGHTUP) => {
+                    target_x += 1;
+                    target_y -= 1;
+                }
+                d if d == i32::from(DX_RIGHTDOWN) => {
+                    target_x += 1;
+                    target_y += 1;
+                }
+                _ => {
+                    gs.characters[cn].misc_action = DR_IDLE as u16;
                     return;
                 }
-
-                gs.characters[cn].misc_target1 = target_x as u16;
-                gs.characters[cn].misc_target2 = target_y as u16;
             }
+
+            if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
+                gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
+                return;
+            }
+
+            gs.characters[cn].misc_target1 = target_x as u16;
+            gs.characters[cn].misc_target2 = target_y as u16;
+
             return;
         }
     }
