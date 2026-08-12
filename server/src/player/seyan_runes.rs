@@ -51,7 +51,7 @@ pub fn rune_state(gs: &GameState, cn: usize) -> (u8, u16) {
     let active = gs.characters[cn].future3[RUNE_ACTIVE_IDX].clamp(0, 3) as u8;
     let ready_at = gs.characters[cn].future3[RUNE_COOLDOWN_IDX];
     let remaining = (ready_at - gs.globals.ticker).max(0);
-    (active, remaining.min(u16::MAX as i32) as u16)
+    (active, remaining.min(i32::from(u16::MAX)) as u16)
 }
 
 /// Sets the caller's active Seyan'Du rune, enforcing the class gate and swap
