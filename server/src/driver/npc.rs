@@ -2637,9 +2637,8 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
             let mut y = 0;
 
             for attempt in 0..5 {
-                // TODO: Call RANDOM function (doesn't exist yet, use placeholder)
-                x = i32::from(ch_x) - 5 + (ticker % 11); // RANDOM(11)
-                y = i32::from(ch_y) - 5 + ((ticker / 11) % 11); // RANDOM(11)
+                x = i32::from(ch_x) - 5 + helpers::random_mod_i32(11);
+                y = i32::from(ch_y) - 5 + helpers::random_mod_i32(11);
 
                 if !(1..SERVER_MAPX).contains(&x) || !(1..=SERVER_MAPX).contains(&y) {
                     panic = attempt + 1;
