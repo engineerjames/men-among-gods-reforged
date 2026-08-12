@@ -54,6 +54,11 @@ pub struct PlayerState {
     /// per-layer bit fields (8 nodes per byte). See `core::talent_trees`.
     talents: [u8; 25],
 
+    /// Latest server snapshot of the active Seyan'Du rune (`0..=3`).
+    active_rune: u8,
+    /// Latest server snapshot of the remaining rune-swap cooldown, in ticks.
+    rune_cooldown_remaining_ticks: u16,
+
     /// Latest server snapshot of Journal completion-tracking state.
     completion: CompletionSnapshot,
 }
@@ -116,6 +121,9 @@ impl Default for PlayerState {
             exit_requested_reason: None,
 
             talents: [0; 25],
+
+            active_rune: 0,
+            rune_cooldown_remaining_ticks: 0,
 
             completion: CompletionSnapshot::default(),
         }
@@ -189,6 +197,16 @@ impl PlayerState {
     /// * Value returned by `talents`.
     pub fn talents(&self) -> &[u8; 25] {
         &self.talents
+    }
+
+    /// Returns the latest server snapshot of the active Seyan'Du rune and
+    /// remaining swap cooldown.
+    ///
+    /// # Returns
+    ///
+    /// * `(active_rune, cooldown_remaining_ticks)`.
+    pub fn rune_state(&self) -> (u8, u16) {
+        (self.active_rune, self.rune_cooldown_remaining_ticks)
     }
 
     /// Returns the latest server snapshot of Journal completion-tracking
@@ -531,6 +549,13 @@ impl PlayerState {
             }
             ServerCommandData::SetCharTalents { values } => {
                 self.talents = *values;
+            }
+            ServerCommandData::SetCharRuneState {
+                active_rune,
+                cooldown_remaining_ticks,
+            } => {
+                self.active_rune = *active_rune;
+                self.rune_cooldown_remaining_ticks = *cooldown_remaining_ticks;
             }
             ServerCommandData::SetCompletionData {
                 labyrinth_progress,

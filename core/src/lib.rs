@@ -29,6 +29,7 @@ pub mod names;
 pub mod performance_wrapper;
 pub mod ranks;
 pub mod server_commands;
+pub mod seyan_runes;
 pub mod skills;
 pub mod stat_buffer;
 pub mod string_operations;

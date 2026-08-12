@@ -122,6 +122,9 @@ pub const SK_SOUL_REFLECTION: usize = 62;
 /// Soul Reflection companion temp identifier for the attached duration item
 /// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
 pub const SK_SOUL_REFLECTION2: usize = SK_SOUL_REFLECTION + 100;
+/// Corrosion rune debuff item marker (not a learnable skill): identifies the
+/// stacking WV/AV degrade item attached by the Seyan'Du Corrosion rune.
+pub const SK_RUNE_CORROSION: usize = 63;
 
 const AT_NAME: [&str; 5] = ["Braveness", "Willpower", "Intuition", "Agility", "Strength"];
 

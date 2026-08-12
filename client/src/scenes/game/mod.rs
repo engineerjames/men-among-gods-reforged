@@ -2735,6 +2735,9 @@ impl Scene for GameScene {
                 });
                 self.talent_panel
                     .sync_state(*ps.talents(), class_from_kindred(ci.kindred));
+                let (active_rune, rune_cooldown_remaining_ticks) = ps.rune_state();
+                self.talent_panel
+                    .sync_rune_state(active_rune, rune_cooldown_remaining_ticks);
                 self.hud_buttons.set_talent_points_badge(
                     mag_core::talent_trees::available_talent_points(ps.talents()),
                 );

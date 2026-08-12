@@ -173,6 +173,7 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     // send initial talent-tree snapshot so the client can render the
     // talent panel immediately after login.
     crate::player::commands::send_set_char_talents(gs, nr);
+    crate::player::commands::send_set_char_rune_state(gs, nr);
 
     // send initial Journal completion-data snapshot so the client can
     // render labyrinth/pentagram/first-kill/explorer-point/quest checklists

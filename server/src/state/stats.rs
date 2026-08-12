@@ -1407,6 +1407,7 @@ impl GameState {
             if player_id > 0 && player_id < self.players.len() && self.players[player_id].usnr == cn
             {
                 crate::player::commands::send_set_char_talents(self, player_id);
+                crate::player::commands::send_set_char_rune_state(self, player_id);
             }
         }
     }

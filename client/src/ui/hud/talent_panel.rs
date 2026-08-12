@@ -19,7 +19,10 @@
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
 
+use std::time::Duration;
+
 use mag_core::ranks::{rank_name_by_index, talent_rank_for_layer};
+use mag_core::seyan_runes::ALL as ALL_RUNES;
 use mag_core::talent_trees::{
     TalentNode, TalentRef, available_talent_points, is_talent_layer_spent, is_talent_spent,
     talent_prereqs_met, total_points_spent, tree_for,
@@ -34,6 +37,7 @@ use crate::ui::widget::{
     Bounds, EventResponse, HudPanel, MouseButton, UiEvent, Widget, WidgetAction,
 };
 use crate::ui::widgets::button::RectButton;
+use crate::ui::widgets::radio_group::{draw_circle, draw_filled_circle};
 use crate::ui::widgets::title_bar::{TITLE_BAR_H, TitleBar, clamp_to_viewport};
 
 /// Bitmap font index used for button labels (yellow).
@@ -71,6 +75,37 @@ const NODE_SIZE: u32 = 20;
 
 /// Number of talent layers (rows) rendered in the tree.
 const TALENT_ROWS: i32 = 12;
+
+/// Radius in pixels of a Seyan'Du rune slot circle.
+const RUNE_SLOT_RADIUS: i32 = 16;
+
+/// Vertical gap in pixels between stacked rune slot circles.
+const RUNE_SLOT_GAP: i32 = 30;
+
+/// Placeholder fill color for each rune slot, in [`mag_core::seyan_runes::SeyanRune`] order.
+const RUNE_SLOT_COLORS: [Color; 4] = [
+    Color::RGBA(90, 140, 235, 235),
+    Color::RGBA(190, 70, 200, 235),
+    Color::RGBA(150, 170, 60, 235),
+    Color::RGBA(220, 90, 90, 235),
+];
+
+/// Blends `color` toward grey to indicate a cooldown-disabled rune slot.
+fn dim_color(color: Color) -> Color {
+    let mix = |c: u8| ((u16::from(c) + 90) / 2) as u8;
+    Color::RGBA(
+        mix(color.r),
+        mix(color.g),
+        mix(color.b),
+        color.a.saturating_sub(60),
+    )
+}
+
+/// Converts a server tick count into a wall-clock [`Duration`], using
+/// [`mag_core::constants::TICKS`] as ticks-per-second.
+fn ticks_to_duration(ticks: u16) -> Duration {
+    Duration::from_secs_f64(f64::from(ticks) / f64::from(mag_core::constants::TICKS))
+}
 
 /// Thickness in pixels of the bright core of a prerequisite connector.
 const EDGE_CORE_W: u32 = 3;
@@ -216,6 +251,13 @@ pub struct TalentPanel {
     /// Player's class, or `None` if the kindred bits don't map to a class
     /// that has a tree defined.
     class: Option<Class>,
+
+    /// Placed rune slot circles, only populated for [`Class::SeyanDu`].
+    rune_slots: [Bounds; 4],
+    /// Latest server snapshot of the active rune index (`0..=3`).
+    active_rune: u8,
+    /// Time remaining before the active rune can be swapped again.
+    rune_swap_cooldown_remaining: Duration,
 }
 
 impl TalentPanel {
@@ -265,6 +307,9 @@ impl TalentPanel {
             mouse_y: -1,
             talents: None,
             class: None,
+            rune_slots: [Bounds::new(0, 0, 0, 0); 4],
+            active_rune: 0,
+            rune_swap_cooldown_remaining: Duration::ZERO,
         }
     }
 
@@ -298,7 +343,20 @@ impl TalentPanel {
             self.bg_load_failed = false;
             self.art_rect = Self::art_viewport(&self.bounds);
             self.rebuild_nodes();
+            self.rebuild_rune_slots();
         }
+    }
+
+    /// Updates the per-frame snapshot of the active Seyan'Du rune and
+    /// remaining swap cooldown. No-op for classes without a rune loadout.
+    ///
+    /// # Arguments
+    ///
+    /// * `active_rune` - The active rune slot index (`0..=3`).
+    /// * `cooldown_remaining_ticks` - Remaining swap cooldown, in server ticks.
+    pub fn sync_rune_state(&mut self, active_rune: u8, cooldown_remaining_ticks: u16) {
+        self.active_rune = active_rune;
+        self.rune_swap_cooldown_remaining = ticks_to_duration(cooldown_remaining_ticks);
     }
 
     /// Returns the reserved artwork viewport for a panel rectangle.
@@ -409,6 +467,41 @@ impl TalentPanel {
         }
     }
 
+    /// Rebuilds the 4 rune slot circles for Seyan'Du in whichever letterbox
+    /// margin (left or right of the fitted artwork, within the reserved
+    /// viewport) currently has more room. No-op — and clears any previously
+    /// placed slots — for every other class.
+    fn rebuild_rune_slots(&mut self) {
+        self.rune_slots = [Bounds::new(0, 0, 0, 0); 4];
+        if self.class != Some(Class::SeyanDu) {
+            return;
+        }
+
+        let viewport = Self::art_viewport(&self.bounds);
+        let art = self.art_rect;
+        let left_margin = art.x - viewport.x;
+        let right_margin = (viewport.x + viewport.width as i32) - (art.x + art.width as i32);
+
+        let center_x = if right_margin >= left_margin {
+            art.x + art.width as i32 + right_margin / 2
+        } else {
+            viewport.x + left_margin / 2
+        };
+
+        let total_span = RUNE_SLOT_GAP * (self.rune_slots.len() as i32 - 1);
+        let start_y = viewport.y + (viewport.height as i32 - total_span) / 2;
+
+        for (i, slot) in self.rune_slots.iter_mut().enumerate() {
+            let cy = start_y + RUNE_SLOT_GAP * i as i32;
+            *slot = Bounds::new(
+                center_x - RUNE_SLOT_RADIUS,
+                cy - RUNE_SLOT_RADIUS,
+                (RUNE_SLOT_RADIUS * 2) as u32,
+                (RUNE_SLOT_RADIUS * 2) as u32,
+            );
+        }
+    }
+
     /// Returns the center point of the node occupying `slot`.
     ///
     /// # Arguments
@@ -443,6 +536,21 @@ impl TalentPanel {
         self.nodes
             .iter()
             .position(|n| n.rect.contains_point(self.mouse_x, self.mouse_y))
+    }
+
+    /// Returns the index of the rune slot currently under the cursor.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(index)` in `0..4`, or `None` when the panel is hidden, the
+    ///   class has no rune loadout, or no slot is hovered.
+    fn hovered_rune_slot(&self) -> Option<usize> {
+        if !self.visible || self.class != Some(Class::SeyanDu) {
+            return None;
+        }
+        self.rune_slots
+            .iter()
+            .position(|r| r.contains_point(self.mouse_x, self.mouse_y))
     }
 
     /// Returns the artwork file name for a class, if one exists.
@@ -538,6 +646,10 @@ impl Widget for TalentPanel {
             node.rect.x += dx;
             node.rect.y += dy;
         }
+        for slot in &mut self.rune_slots {
+            slot.x += dx;
+            slot.y += dy;
+        }
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
@@ -588,6 +700,26 @@ impl Widget for TalentPanel {
             return EventResponse::Consumed;
         }
 
+        // Left-click a rune slot to activate it, unless a swap is on cooldown.
+        if let UiEvent::MouseClick {
+            x,
+            y,
+            button: MouseButton::Left,
+            ..
+        } = event
+            && self.class == Some(Class::SeyanDu)
+            && self.rune_swap_cooldown_remaining.is_zero()
+            && let Some(rune_idx) = self
+                .rune_slots
+                .iter()
+                .position(|r| r.contains_point(*x, *y))
+        {
+            self.pending_actions.push(WidgetAction::SetActiveRune {
+                rune_idx: rune_idx as u8,
+            });
+            return EventResponse::Consumed;
+        }
+
         // Reset button.
         if self.reset_button.handle_event(event) == EventResponse::Consumed {
             self.pending_actions.push(WidgetAction::ResetTalents);
@@ -607,6 +739,10 @@ impl Widget for TalentPanel {
             }
             _ => EventResponse::Ignored,
         }
+    }
+
+    fn update(&mut self, dt: Duration) {
+        self.rune_swap_cooldown_remaining = self.rune_swap_cooldown_remaining.saturating_sub(dt);
     }
 
     fn render(&mut self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
@@ -636,6 +772,7 @@ impl Widget for TalentPanel {
             self.render_edges(ctx, &talents)?;
             self.render_nodes(ctx, &talents)?;
         }
+        self.render_runes(ctx)?;
         self.render_description(ctx)?;
 
         Ok(())
@@ -728,6 +865,7 @@ impl TalentPanel {
         if fitted != self.art_rect {
             self.art_rect = fitted;
             self.rebuild_nodes();
+            self.rebuild_rune_slots();
         }
 
         if let Some(id) = self.bg_texture_id {
@@ -933,6 +1071,61 @@ impl TalentPanel {
         Ok(())
     }
 
+    /// Draws the 4 Seyan'Du rune slot circles, highlighted when active and
+    /// dimmed while a swap is on cooldown. No-op for every other class.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - Render context.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` on success, or an SDL2 error string.
+    fn render_runes(&self, ctx: &mut RenderContext<'_, '_>) -> Result<(), String> {
+        if self.class != Some(Class::SeyanDu) {
+            return Ok(());
+        }
+
+        let on_cooldown = !self.rune_swap_cooldown_remaining.is_zero();
+        let hovered = self.hovered_rune_slot();
+
+        for (i, rune) in ALL_RUNES.iter().enumerate() {
+            let slot = self.rune_slots[i];
+            let cx = slot.x + slot.width as i32 / 2;
+            let cy = slot.y + slot.height as i32 / 2;
+            let is_active = self.active_rune == rune.index();
+
+            let fill = if on_cooldown && !is_active {
+                dim_color(RUNE_SLOT_COLORS[i])
+            } else {
+                RUNE_SLOT_COLORS[i]
+            };
+            draw_filled_circle(ctx.canvas, cx, cy, RUNE_SLOT_RADIUS - 2, fill)?;
+
+            let border = if is_active {
+                Color::RGBA(255, 255, 255, 255)
+            } else {
+                Color::RGBA(160, 160, 180, 220)
+            };
+            draw_circle(ctx.canvas, cx, cy, RUNE_SLOT_RADIUS, border)?;
+            if is_active {
+                draw_circle(ctx.canvas, cx, cy, RUNE_SLOT_RADIUS + 1, border)?;
+            }
+
+            if hovered == Some(i) {
+                draw_circle(
+                    ctx.canvas,
+                    cx,
+                    cy,
+                    RUNE_SLOT_RADIUS + 3,
+                    Color::RGBA(255, 255, 255, 200),
+                )?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Draws the description box for the hovered node, or a hint when nothing
     /// is hovered.
     ///
@@ -955,6 +1148,50 @@ impl TalentPanel {
         let text_y = box_rect.y + TOOLTIP_PAD;
         let max_width = box_rect.width.saturating_sub(TOOLTIP_PAD as u32 * 2);
         let line_h = font_cache::BITMAP_GLYPH_H as i32;
+
+        if let Some(rune_idx) = self.hovered_rune_slot() {
+            let rune = ALL_RUNES[rune_idx];
+            let tint = Color::RGBA(230, 220, 110, 255);
+            font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                TEXT_FONT,
+                rune.name(),
+                text_x,
+                text_y,
+                font_cache::TextStyle::default().with_tint(tint),
+            )?;
+            font_cache::draw_wrapped_text(
+                ctx.canvas,
+                ctx.gfx,
+                TEXT_FONT,
+                rune.description(),
+                text_x,
+                text_y + line_h + 2,
+                max_width,
+                font_cache::TextStyle::default().with_tint(Color::RGBA(210, 210, 220, 255)),
+            )?;
+
+            let footer = if self.active_rune == rune.index() {
+                "Active".to_owned()
+            } else if !self.rune_swap_cooldown_remaining.is_zero() {
+                format!(
+                    "On cooldown ({:.0}s)",
+                    self.rune_swap_cooldown_remaining.as_secs_f64().ceil()
+                )
+            } else {
+                "Click to activate".to_owned()
+            };
+            return font_cache::draw_text(
+                ctx.canvas,
+                ctx.gfx,
+                TEXT_FONT,
+                &footer,
+                text_x,
+                box_rect.y + box_rect.height as i32 - TOOLTIP_PAD - line_h,
+                font_cache::TextStyle::default().with_tint(tint),
+            );
+        }
 
         let (Some(index), Some(talents)) = (self.hovered_node(), self.talents) else {
             return font_cache::draw_text(

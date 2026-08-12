@@ -2180,6 +2180,24 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         return;
     }
 
+    cast_curse_effect(gs, cn, co);
+
+    add_exhaust(gs, cn, core::constants::TICKS * 4);
+}
+
+/// Rolls the resist/sense chance and applies Curse (with AoE splash) to `co`
+/// using the caster's current Curse skill level.
+///
+/// Shared by the direct Curse cast (`skill_curse`, after its mana/cooldown
+/// gate) and the Seyan'Du Free Curse rune proc (no gate). Does not check
+/// exhaustion, mana cost, or `may_attack_msg` — callers must do so first.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for the resist roll, item creation, and effects.
+/// * `cn` - Caster character index.
+/// * `co` - Primary target character index.
+pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize) {
     if chance_base(
         gs,
         cn,
@@ -2263,8 +2281,6 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[cn].y),
         0,
     );
-
-    add_exhaust(gs, cn, core::constants::TICKS * 4);
 }
 
 /// Attempts to apply Warcry effects to one target.
@@ -2968,6 +2984,40 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         return;
     }
 
+    let (power, dam) = compute_blast_damage(gs, cn, co);
+
+    let mut cost = dam / 8 + 5;
+    if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+        && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
+    {
+        cost /= 3;
+    }
+
+    if spellcost_blast(gs, cn, cost) != 0 {
+        return;
+    }
+
+    cast_blast_effect(gs, cn, co, power, dam);
+
+    add_exhaust(gs, cn, core::constants::TICKS * 6);
+}
+
+/// Computes Blast damage against `co`, applying immunity/race modifiers and
+/// consuming an Anguish (Lava) marker on the target if present.
+///
+/// Shared by [`skill_blast`]'s mana-cost calculation and the Seyan'Du Free
+/// Blast rune proc.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to read skills and the target's items.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+///
+/// # Returns
+///
+/// * `(power, damage)` to pass to [`cast_blast_effect`].
+pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> (i32, i32) {
     let mut power = i32::from(gs.characters[cn].skill[SK_BLAST][5]);
     power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
@@ -2990,17 +3040,24 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         gs.items[in_].active = 0;
     }
 
-    let mut cost = dam / 8 + 5;
-    if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
-        && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
-    {
-        cost /= 3;
-    }
+    (power, dam)
+}
 
-    if spellcost_blast(gs, cn, cost) != 0 {
-        return;
-    }
-
+/// Rolls the resist/sense chance and applies Blast damage (with AoE splash)
+/// to `co` for a precomputed `power`/`dam` pair.
+///
+/// Shared by the direct Blast cast (`skill_blast`, after its mana/cooldown
+/// gate) and the Seyan'Du Free Blast rune proc (no gate). Does not check
+/// exhaustion, mana cost, or `may_attack_msg` — callers must do so first.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for the resist roll, damage, and effects.
+/// * `cn` - Caster character index.
+/// * `co` - Primary target character index.
+/// * `power` - Effective Blast power from [`compute_blast_damage`], used only for the cast log line.
+/// * `dam` - Damage amount from [`compute_blast_damage`].
+pub fn cast_blast_effect(gs: &mut GameState, cn: usize, co: usize, power: i32, mut dam: i32) {
     if chance(gs, cn, 18) != 0 {
         if cn != co
             && gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_BLAST][5] + 5
@@ -3116,7 +3173,6 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         );
     }
 
-    add_exhaust(gs, cn, core::constants::TICKS * 6);
     EffectManager::fx_add_effect(
         gs,
         7,

@@ -3736,6 +3736,7 @@ impl God {
         let player_id = gs.characters[co].player as usize;
         if player_id > 0 && player_id < gs.players.len() && gs.players[player_id].usnr == co {
             crate::player::commands::send_set_char_talents(gs, player_id);
+            crate::player::commands::send_set_char_rune_state(gs, player_id);
         }
 
         gs.sync_character_selection_metadata(co);
