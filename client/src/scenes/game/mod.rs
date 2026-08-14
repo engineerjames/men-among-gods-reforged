@@ -2375,6 +2375,7 @@ impl Scene for GameScene {
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
+        self.talent_panel.update(dt);
         // Keep read-only settings panel values current each frame.
         if self.settings_panel.is_visible() {
             let rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);

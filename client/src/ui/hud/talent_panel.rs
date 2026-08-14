@@ -258,6 +258,10 @@ pub struct TalentPanel {
     active_rune: u8,
     /// Time remaining before the active rune can be swapped again.
     rune_swap_cooldown_remaining: Duration,
+    /// Raw tick count from the last `sync_rune_state` call, so repeated
+    /// syncs of the same stale server snapshot (sent every frame) don't
+    /// clobber the locally ticking `rune_swap_cooldown_remaining`.
+    last_synced_cooldown_ticks: Option<u16>,
 }
 
 impl TalentPanel {
@@ -310,6 +314,7 @@ impl TalentPanel {
             rune_slots: [Bounds::new(0, 0, 0, 0); 4],
             active_rune: 0,
             rune_swap_cooldown_remaining: Duration::ZERO,
+            last_synced_cooldown_ticks: None,
         }
     }
 
@@ -356,7 +361,13 @@ impl TalentPanel {
     /// * `cooldown_remaining_ticks` - Remaining swap cooldown, in server ticks.
     pub fn sync_rune_state(&mut self, active_rune: u8, cooldown_remaining_ticks: u16) {
         self.active_rune = active_rune;
-        self.rune_swap_cooldown_remaining = ticks_to_duration(cooldown_remaining_ticks);
+        // The caller resyncs every render frame from the last-received
+        // packet, not just when a new one arrives; only reset the
+        // locally-ticking countdown when the server value actually changed.
+        if self.last_synced_cooldown_ticks != Some(cooldown_remaining_ticks) {
+            self.rune_swap_cooldown_remaining = ticks_to_duration(cooldown_remaining_ticks);
+            self.last_synced_cooldown_ticks = Some(cooldown_remaining_ticks);
+        }
     }
 
     /// Returns the reserved artwork viewport for a panel rectangle.
@@ -1760,5 +1771,22 @@ mod tests {
         assert!(!p.rune_swap_cooldown_remaining.is_zero());
         p.update(Duration::from_secs(10));
         assert!(p.rune_swap_cooldown_remaining.is_zero());
+    }
+
+    /// Regression test: the game scene calls `sync_rune_state` every render
+    /// frame with the last-received (unchanging) server snapshot, not just
+    /// when a new packet arrives. That repeated resync must not clobber the
+    /// locally ticking countdown back to the full duration every frame.
+    #[test]
+    fn repeated_sync_with_same_ticks_does_not_reset_countdown() {
+        let mut p = panel_for(Class::SeyanDu);
+        p.sync_rune_state(0, 2160); // 60 seconds at 36 ticks/sec
+        p.update(Duration::from_secs(30));
+        // Simulate the per-frame render-time resync with the same stale value.
+        p.sync_rune_state(0, 2160);
+        assert!(
+            p.rune_swap_cooldown_remaining <= Duration::from_secs(30),
+            "resyncing the same ticks value must not reset the countdown"
+        );
     }
 }

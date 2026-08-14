@@ -1932,6 +1932,56 @@ mod tests {
         });
     }
 
+    /// Regression test for a bug where `character_templates` loaded from a
+    /// world snapshot carry stale/garbage `future3` values (never zeroed,
+    /// previously harmless unused padding). Racechanging into a template
+    /// with garbage in the Seyan'Du rune slots must not leave the new
+    /// character with a bogus multi-hour swap cooldown, and pentagram/quest
+    /// progress in `future3[0]`/`future3[1]` must survive the change.
+    #[test]
+    fn racechange_resets_rune_cooldown_and_preserves_pentagram_quest_progress() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            give_class_and_points(gs, cn, KIN_MERCENARY, 0);
+            gs.characters[cn].future3[0] = 7; // pentagram solves
+            gs.characters[cn].future3[1] = 0b101; // quest completion bits
+            gs.globals.ticker = 1_000;
+
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            // Simulate the garbage a real world-snapshot template carries.
+            gs.character_templates[SEYAN_DU_TEMPLATE].future3 = [
+                83_886_080,
+                67_108_864,
+                50_331_648,
+                2_113_929_216,
+                2_113_932_801,
+                2_113_932_801,
+                318_770_689,
+                318_767_104,
+                67_108_864,
+                16_777_216,
+                16_777_216,
+                0,
+            ];
+
+            God::racechange(gs, cn, SEYAN_DU_TEMPLATE as i32);
+
+            let (_, remaining) = crate::player::seyan_runes::rune_state(gs, cn);
+            assert_eq!(
+                remaining, 0,
+                "a freshly race-changed character must not start on a rune-swap cooldown"
+            );
+            assert_eq!(
+                gs.characters[cn].future3[0], 7,
+                "pentagram solves must survive"
+            );
+            assert_eq!(
+                gs.characters[cn].future3[1], 0b101,
+                "quest completion bits must survive"
+            );
+        });
+    }
+
     #[test]
     fn racechange_to_seyan_du_leaves_only_the_seyan_du_class_bit() {
         with_test_gs(|gs| {

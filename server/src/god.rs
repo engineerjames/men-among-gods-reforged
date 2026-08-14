@@ -494,6 +494,11 @@ impl God {
         for i in 0..100_usize {
             character.data[i] = 0;
         }
+        // character_templates carry stale/garbage future3 values (never
+        // zeroed, previously harmless unused padding); a freshly created
+        // character must start with no pentagram/quest progress and no
+        // bogus Seyan'Du rune-swap cooldown.
+        character.future3 = [0; 12];
         character.attack_cn = 0;
         character.skill_nr = 0;
         character.goto_x = 0;
@@ -3640,6 +3645,13 @@ impl God {
             let old_status2 = character.status2;
             let old_data = character.data;
             let old_depot = character.depot;
+            // future3[0]/[1] are pentagram-solve/quest-completion progress,
+            // which must survive a race change; the rest of future3 (incl.
+            // the Seyan'Du rune slots) comes fresh from the template below,
+            // since character_templates carry stale/garbage values there
+            // (never zeroed, previously harmless unused padding).
+            let old_pentagram_solves = character.future3[0];
+            let old_quest_completion_bits = character.future3[1];
 
             // Replace character with template
             *character = template;
@@ -3718,6 +3730,13 @@ impl God {
 
             // Restore depot
             character.depot = old_depot;
+
+            character.future3[0] = old_pentagram_solves;
+            character.future3[1] = old_quest_completion_bits;
+            // Reset the Seyan'Du rune loadout so a fresh class never starts
+            // out with a bogus swap cooldown inherited from template garbage.
+            character.future3[3] = 0;
+            character.future3[4] = 0;
 
             character.set_do_update_flags();
 
@@ -5198,6 +5217,38 @@ mod tests {
             gs.characters[cn].y = 100;
 
             let _ = God::transfer_char(gs, cn, 1, 100);
+        });
+    }
+
+    /// Regression test: `character_templates` loaded from a world snapshot
+    /// carry stale/garbage `future3` values (never zeroed, previously
+    /// harmless unused padding). A freshly created character must not
+    /// inherit that garbage as a bogus Seyan'Du rune-swap cooldown or
+    /// phantom pentagram/quest progress.
+    #[test]
+    fn create_char_zeroes_template_future3_garbage() {
+        with_test_gs(|gs| {
+            let template_id = 900;
+            gs.character_templates[template_id] = core::types::Character::default();
+            gs.character_templates[template_id].used = core::constants::USE_ACTIVE;
+            gs.character_templates[template_id].future3 = [
+                83_886_080,
+                67_108_864,
+                50_331_648,
+                2_113_929_216,
+                2_113_932_801,
+                2_113_932_801,
+                318_770_689,
+                318_767_104,
+                67_108_864,
+                16_777_216,
+                16_777_216,
+                0,
+            ];
+
+            let cn = God::create_char(gs, template_id, false).expect("create_char") as usize;
+
+            assert_eq!(gs.characters[cn].future3, [0; 12]);
         });
     }
 
