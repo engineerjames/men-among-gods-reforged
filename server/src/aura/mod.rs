@@ -169,6 +169,9 @@ impl AuraTemplate {
         let power = self.aura_power(gs, source_cn);
         let item = &mut gs.items[in_idx];
 
+        // The template's name field is longer than most aura names; clear it
+        // first so a shorter name doesn't leave a leftover suffix visible.
+        item.name = [0; 40];
         let name_len = self.name.len().min(40);
         item.name[..name_len].copy_from_slice(&self.name[..name_len]);
         item.flags |= ItemFlags::IF_SPELL.bits();

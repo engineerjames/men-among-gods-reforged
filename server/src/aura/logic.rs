@@ -368,6 +368,25 @@ mod tests {
         });
     }
 
+    /// Regression test: `item_templates[1]` ("Blank Template", 14 bytes) is
+    /// longer than "War Banner" (10 bytes); `create_spell_item` must clear
+    /// the full name buffer first or the leftover "late" suffix from the
+    /// template bleeds through as "War Bannerlate".
+    #[test]
+    fn create_spell_item_does_not_leak_template_name_suffix() {
+        crate::test_helpers::with_test_gs(|gs| {
+            gs.item_templates[1].used = core::constants::USE_ACTIVE;
+            gs.item_templates[1].name =
+                *b"Blank Template\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+            gs.characters[1].used = core::constants::USE_ACTIVE;
+
+            let template = aura_template(AuraId::WarBannerAura);
+            let idx = template.create_spell_item(gs, 1).unwrap();
+
+            assert_eq!(gs.items[idx].get_name(), "War Banner");
+        });
+    }
+
     #[test]
     fn war_banner_applies_buff_to_caster() {
         crate::test_helpers::with_test_gs(|gs| {
