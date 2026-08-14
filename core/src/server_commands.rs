@@ -86,6 +86,12 @@ pub enum ServerCommandType {
     /// LE) + quest_completion_bits (u32 LE) = **42 bytes total**. Always
     /// sent as a full snapshot (no delta mode) since the payload is small.
     SetCompletionData = 77,
+    /// Active Seyan'Du rune and remaining swap cooldown.
+    ///
+    /// Wire format: opcode (1) + active_rune (1, `0..=3`, see
+    /// `core::seyan_runes::SeyanRune`) + cooldown_remaining_ticks (u16 LE)
+    /// = **4 bytes total**.
+    SetCharRuneState = 78,
     SetMap = 128,
 }
 
@@ -144,7 +150,7 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
         p += 4;
     }
     if flags & 64 != 0 {
-        p += 5;
+        p += 6;
     }
     if flags & 128 != 0 {
         p += 1;
@@ -205,6 +211,7 @@ impl ServerCommandType {
             ServerCommandType::SetCharAMana => 3,
             ServerCommandType::SetCharDir => 2,
             ServerCommandType::SetCharTalents => 26,
+            ServerCommandType::SetCharRuneState => 4,
             ServerCommandType::SetWeather => 10,
             ServerCommandType::SetCompletionData => 42,
             ServerCommandType::SetCharPts => 13,
@@ -318,6 +325,7 @@ impl From<u8> for ServerCommandType {
             75 => ServerCommandType::SetCharTalents,
             76 => ServerCommandType::SetWeather,
             77 => ServerCommandType::SetCompletionData,
+            78 => ServerCommandType::SetCharRuneState,
             128 => ServerCommandType::SetMap,
             _ => {
                 log::error!("Unknown server command opcode: {value}");
@@ -350,6 +358,7 @@ pub enum ServerCommandData {
         ch_nr: Option<u16>,
         ch_id: Option<u16>,
         ch_speed: Option<u8>,
+        ch_aspeed: Option<u8>,
         ch_proz: Option<u8>,
     },
     SetMap3 {
@@ -405,6 +414,11 @@ pub enum ServerCommandData {
     /// per-layer bit fields (8 nodes per byte).
     SetCharTalents {
         values: [u8; 25],
+    },
+    /// Active Seyan'Du rune and remaining swap cooldown.
+    SetCharRuneState {
+        active_rune: u8,
+        cooldown_remaining_ticks: u16,
     },
     SetCharPts {
         points: u32,
@@ -622,6 +636,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         let mut ch_nr = None;
         let mut ch_id = None;
         let mut ch_speed = None;
+        let mut ch_aspeed = None;
         let mut ch_proz = None;
 
         if (flags & 1) != 0 {
@@ -659,6 +674,8 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             p += 2;
             ch_speed = Some(*bytes.get(p)?);
             p += 1;
+            ch_aspeed = Some(*bytes.get(p)?);
+            p += 1;
         }
         if (flags & 128) != 0 {
             ch_proz = Some(*bytes.get(p)?);
@@ -681,6 +698,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 ch_nr,
                 ch_id,
                 ch_speed,
+                ch_aspeed,
                 ch_proz,
             },
         ));
@@ -1165,6 +1183,13 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 quest_completion_bits: read_u32(bytes, 38)?,
             },
         )),
+        78 => Some((
+            ServerCommandType::SetCharRuneState,
+            ServerCommandData::SetCharRuneState {
+                active_rune: *bytes.get(1)?,
+                cooldown_remaining_ticks: read_u16(bytes, 2)?,
+            },
+        )),
         _ => None,
     }
 }
@@ -1463,6 +1488,39 @@ mod tests {
         assert_eq!(
             ServerCommandType::from(77),
             ServerCommandType::SetCompletionData
+        );
+    }
+
+    #[test]
+    fn set_char_rune_state_roundtrip() {
+        let pkt = make_packet(78, &[2, 0x34, 0x12]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_eq!(cmd.header, ServerCommandType::SetCharRuneState);
+        match cmd.structured_data {
+            ServerCommandData::SetCharRuneState {
+                active_rune,
+                cooldown_remaining_ticks,
+            } => {
+                assert_eq!(active_rune, 2);
+                assert_eq!(cooldown_remaining_ticks, 0x1234);
+            }
+            _ => panic!("Expected SetCharRuneState variant"),
+        }
+    }
+
+    #[test]
+    fn set_char_rune_state_expected_length_is_4() {
+        let pkt = make_packet(78, &[0; 3]);
+        let mut last_n = 0i32;
+        let len = ServerCommandType::get_expected_length(&pkt, &mut last_n).unwrap();
+        assert_eq!(len, 4);
+    }
+
+    #[test]
+    fn set_char_rune_state_opcode_decodes_from_u8() {
+        assert_eq!(
+            ServerCommandType::from(78),
+            ServerCommandType::SetCharRuneState
         );
     }
 }

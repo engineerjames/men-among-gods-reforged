@@ -1,4 +1,10 @@
 use core::constants::{CharacterFlags, ItemFlags};
+use core::ranks::points2rank;
+use core::seyan_runes::{
+    RUNE_CORROSION_MAX, RUNE_CORROSION_STEP, RUNE_LIFESTEAL_FLAT, RUNE_PROC_CHANCE_PERCENT,
+    SeyanRune,
+};
+use core::skills::SK_RUNE_CORROSION;
 use core::string_operations::c_string_to_str;
 use core::talent_trees::{TalentPrimaryHitProcKind, talent_dodge_bonuses, talent_primary_hit_proc};
 use core::types::{Class, FontColor};
@@ -78,6 +84,20 @@ impl GameState {
     /// * `true` when the defender's physical dodge chance succeeds.
     fn dodges_physical_attack(&self, co: usize) -> bool {
         let percent = self.physical_dodge_percent(co);
+        Self::percent_roll_succeeds(percent, helpers::random_mod_i32(MERCENARY_MAX_DODGE_CHANCE))
+    }
+
+    /// Rolls whether an attacker's landed physical attack is a critical strike.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Attacker character index.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when the attacker's talent-derived crit chance succeeds.
+    fn rolls_critical_strike(&self, cn: usize) -> bool {
+        let percent = self.talent_runtime[cn].crit_chance_percent;
         Self::percent_roll_succeeds(percent, helpers::random_mod_i32(MERCENARY_MAX_DODGE_CHANCE))
     }
 
@@ -496,6 +516,19 @@ impl GameState {
         let odam = dam;
         dam += bonus;
 
+        let is_critical = self.rolls_critical_strike(attacker_index);
+        if is_critical {
+            let crit_percent = self.talent_runtime[attacker_index]
+                .crit_damage_percent
+                .max(100);
+            dam = dam * crit_percent / 100;
+            log::info!(
+                "Character {} landed a critical strike on {}!",
+                self.characters[attacker_index].get_name(),
+                self.characters[defender_index].get_name()
+            );
+        }
+
         let triggered_proc = self.trigger_primary_hit_talent_proc(attacker_index);
         if let Some(TalentPrimaryHitProcKind::DamageTarget { damage }) = triggered_proc {
             dam += damage.max(0);
@@ -515,6 +548,8 @@ impl GameState {
         if let Some(TalentPrimaryHitProcKind::HealSelfHp { hp }) = triggered_proc {
             self.apply_primary_hit_talent_heal(attacker_index, hp);
         }
+
+        self.trigger_seyan_rune_proc(attacker_index, defender_index);
 
         // Play sounds depending on whether damage occurred (match original behaviour)
         let tx = i32::from(self.characters[defender_index].x);
@@ -638,6 +673,128 @@ impl GameState {
         if self.characters[attacker_index].a_hp > max_hp {
             self.characters[attacker_index].a_hp = max_hp;
         }
+    }
+
+    /// Returns the attacker's active Seyan'Du rune, if applicable.
+    ///
+    /// Only Seyan'Du players have an active rune loadout.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Character index to check.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(rune)` when `cn` is a Seyan'Du player with a rune active.
+    fn active_seyan_rune(&self, cn: usize) -> Option<SeyanRune> {
+        let character = &self.characters[cn];
+        let is_player = (character.flags & CharacterFlags::Player.bits()) != 0;
+        if !is_player || Class::from(character.kindred) != Class::SeyanDu {
+            return None;
+        }
+        crate::player::seyan_runes::active_rune(character)
+    }
+
+    /// Rolls and applies the attacker's active Seyan'Du rune proc on a landed
+    /// primary hit.
+    ///
+    /// # Arguments
+    ///
+    /// * `attacker_index` - Attacker character index.
+    /// * `defender_index` - Primary defender character index.
+    fn trigger_seyan_rune_proc(&mut self, attacker_index: usize, defender_index: usize) {
+        let Some(rune) = self.active_seyan_rune(attacker_index) else {
+            return;
+        };
+
+        if helpers::random_mod_i32(100) >= RUNE_PROC_CHANCE_PERCENT {
+            return;
+        }
+
+        match rune {
+            SeyanRune::FreeBlast => {
+                let (power, dam) =
+                    driver::skill::compute_blast_damage(self, attacker_index, defender_index);
+                driver::skill::cast_blast_effect(self, attacker_index, defender_index, power, dam);
+            }
+            SeyanRune::FreeCurse => {
+                driver::skill::cast_curse_effect(self, attacker_index, defender_index);
+            }
+            SeyanRune::Corrosion => {
+                self.apply_corrosion_stack(attacker_index, defender_index);
+            }
+            SeyanRune::Lifesteal => {
+                let rank = points2rank(self.characters[attacker_index].points.max(0) as u32) as i32;
+                self.apply_primary_hit_talent_heal(attacker_index, rank + RUNE_LIFESTEAL_FLAT);
+            }
+        }
+    }
+
+    /// Returns the current Corrosion rune stack magnitude on `co`, if any.
+    ///
+    /// # Arguments
+    ///
+    /// * `co` - Character index to inspect.
+    ///
+    /// # Returns
+    ///
+    /// * The stacked WV/AV reduction magnitude, or `0` if not present.
+    fn corrosion_magnitude(&self, co: usize) -> i32 {
+        for n in 0..20 {
+            let idx = self.characters[co].spell[n] as usize;
+            if idx != 0 && self.items[idx].temp == SK_RUNE_CORROSION as u16 {
+                return self.items[idx].power as i32;
+            }
+        }
+        0
+    }
+
+    /// Applies or refreshes the Corrosion rune's stacking WV/AV debuff on `co`.
+    ///
+    /// Re-attaching with the same `temp` marker relies on `add_spell`'s
+    /// existing same-source overwrite behavior to replace the prior stack
+    /// instead of occupying an extra spell slot per hit.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Attacker character index.
+    /// * `co` - Defender character index.
+    fn apply_corrosion_stack(&mut self, cn: usize, co: usize) {
+        let magnitude =
+            (self.corrosion_magnitude(co) + RUNE_CORROSION_STEP).min(RUNE_CORROSION_MAX);
+
+        let Some(in_idx) = crate::god::God::create_item(self, 1) else {
+            log::error!("god_create_item failed in apply_corrosion_stack");
+            return;
+        };
+
+        {
+            let item = &mut self.items[in_idx];
+            let mut name_bytes = [0u8; 40];
+            let name = b"Corrosion";
+            let len = name.len().min(40);
+            name_bytes[..len].copy_from_slice(&name[..len]);
+            item.name = name_bytes;
+            item.flags |= ItemFlags::IF_SPELL.bits();
+            item.sprite[1] = 89;
+            item.duration = (core::constants::TICKS * 10) as u32;
+            item.active = (core::constants::TICKS * 10) as u32;
+            item.temp = SK_RUNE_CORROSION as u16;
+            item.power = magnitude.max(1) as u32;
+            item.armor[1] = -(magnitude as i8);
+            item.weapon[1] = -(magnitude as i8);
+            item.data[0] = cn as u32;
+        }
+
+        driver::skill::add_spell(self, co, in_idx);
+        crate::effect::EffectManager::fx_add_effect(
+            self,
+            5,
+            0,
+            i32::from(self.characters[co].x),
+            i32::from(self.characters[co].y),
+            0,
+        );
     }
 
     /// Port of `do_char_can_flee(int cn)` from `svr_do.cpp`
@@ -1273,5 +1430,105 @@ mod tests {
         assert!(!GameState::percent_roll_succeeds(10, 10));
         assert!(!GameState::percent_roll_succeeds(0, 0));
         assert!(GameState::percent_roll_succeeds(100, 99));
+    }
+
+    #[test]
+    fn rolls_critical_strike_respects_talent_runtime_chance() {
+        with_test_gs(|gs| {
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_MERCENARY as i32,
+            );
+
+            gs.talent_runtime[1].crit_chance_percent = 0;
+            assert!(!gs.rolls_critical_strike(1));
+
+            gs.talent_runtime[1].crit_chance_percent = 100;
+            assert!(gs.rolls_critical_strike(1));
+        });
+    }
+
+    #[test]
+    fn active_seyan_rune_requires_player_and_seyan_du_class() {
+        with_test_gs(|gs| {
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_SEYAN_DU as i32,
+            );
+            gs.characters[1].future3[3] = 2;
+            assert_eq!(gs.active_seyan_rune(1), Some(SeyanRune::Corrosion));
+
+            // NPC with the same kindred: no rune (player-only mechanic).
+            seed_character(gs, 2, 0, traits::KIN_SEYAN_DU as i32);
+            gs.characters[2].future3[3] = 2;
+            assert_eq!(gs.active_seyan_rune(2), None);
+
+            // Player of a different class: no rune.
+            seed_character(
+                gs,
+                3,
+                CharacterFlags::Player.bits(),
+                traits::KIN_MERCENARY as i32,
+            );
+            gs.characters[3].future3[3] = 2;
+            assert_eq!(gs.active_seyan_rune(3), None);
+        });
+    }
+
+    #[test]
+    fn corrosion_magnitude_reads_existing_stack() {
+        with_test_gs(|gs| {
+            gs.item_templates[1].used = USE_ACTIVE;
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_SEYAN_DU as i32,
+            );
+            seed_character(gs, 2, 0, traits::KIN_MONSTER as i32);
+
+            assert_eq!(gs.corrosion_magnitude(2), 0);
+            gs.apply_corrosion_stack(1, 2);
+            assert_eq!(gs.corrosion_magnitude(2), 1);
+        });
+    }
+
+    #[test]
+    fn apply_corrosion_stack_stacks_and_caps_without_filling_spell_slots() {
+        with_test_gs(|gs| {
+            gs.item_templates[1].used = USE_ACTIVE;
+            seed_character(
+                gs,
+                1,
+                CharacterFlags::Player.bits(),
+                traits::KIN_SEYAN_DU as i32,
+            );
+            seed_character(gs, 2, 0, traits::KIN_MONSTER as i32);
+
+            for _ in 0..(RUNE_CORROSION_MAX + 10) {
+                gs.apply_corrosion_stack(1, 2);
+            }
+
+            assert_eq!(gs.corrosion_magnitude(2), RUNE_CORROSION_MAX);
+
+            let occupied_slots = gs.characters[2].spell.iter().filter(|&&s| s != 0).count();
+            assert_eq!(
+                occupied_slots, 1,
+                "repeated procs must refresh one stack, not fill every spell slot"
+            );
+
+            let in_idx = gs.characters[2]
+                .spell
+                .iter()
+                .find(|&&s| s != 0)
+                .copied()
+                .unwrap() as usize;
+            assert_eq!(gs.items[in_idx].armor[1], -(RUNE_CORROSION_MAX as i8));
+            assert_eq!(gs.items[in_idx].weapon[1], -(RUNE_CORROSION_MAX as i8));
+        });
     }
 }

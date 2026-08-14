@@ -124,7 +124,9 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_GASH
         | skills::SK_DELIVER_DEATH
         | skills::SK_BLADE_DANCE
-        | skills::SK_THUNDEROUS_FURY => SpellEffectKind::Positive,
+        | skills::SK_THUNDEROUS_FURY
+        | skills::SK_AURA_WAR_BANNER
+        | skills::SK_SOUL_REFLECTION => SpellEffectKind::Positive,
         skills::SK_CURSE
         | skills::SK_STUN
         | skills::SK_WIMPY
@@ -132,7 +134,9 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_ANGUISH_EARTH
         | skills::SK_ANGUISH_ICE
         | skills::SK_PARASITE
-        | skills::SK_DISTRACT => SpellEffectKind::Negative,
+        | skills::SK_DISTRACT
+        | skills::SK_ICE_STUN
+        | skills::SK_AURA_CURSE => SpellEffectKind::Negative,
         // Eye potions and Potion of Golem are positive buffs.
         254 | 449 => SpellEffectKind::Positive,
         _ => return None,
@@ -747,6 +751,57 @@ mod tests {
             let meta = spell_meta(temp, 1)
                 .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
             assert_eq!(meta.kind, SpellEffectKind::Negative, "{name} kind");
+        }
+    }
+
+    /// Regression test: `SK_AURA_WAR_BANNER`, `SK_AURA_CURSE`, `SK_ICE_STUN`,
+    /// and `SK_SOUL_REFLECTION` all have entries in
+    /// `active_spell_effect_icon_meta` but were missing from `spell_meta`'s
+    /// `kind` match, so they silently fell through to `_ => return None` and
+    /// never rendered an icon at all.
+    #[test]
+    fn aura_and_ice_stun_and_soul_reflection_render_icons() {
+        let cases = [
+            (
+                skills::SK_AURA_WAR_BANNER as i16,
+                "War Banner",
+                SpellEffectKind::Positive,
+            ),
+            (
+                skills::SK_AURA_CURSE as i16,
+                "Aura of Despair",
+                SpellEffectKind::Negative,
+            ),
+            (
+                skills::SK_ICE_STUN as i16,
+                "Ice Stun",
+                SpellEffectKind::Negative,
+            ),
+            (
+                skills::SK_SOUL_REFLECTION as i16,
+                "Soul Reflection",
+                SpellEffectKind::Positive,
+            ),
+        ];
+        for (temp, name, kind) in cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, kind, "{name} kind");
+        }
+    }
+
+    /// Every skill with `active_spell_effect_icon_meta` metadata must also be
+    /// classified by `spell_meta`'s `kind` match, or its icon silently never
+    /// renders. Guards against the two matches drifting out of sync again.
+    #[test]
+    fn every_active_effect_meta_has_a_kind_classification() {
+        for skill_nr in 0..400usize {
+            if active_spell_effect_icon_meta(skill_nr, 1).is_some() {
+                assert!(
+                    spell_meta(skill_nr as i16, 1).is_some(),
+                    "skill_nr {skill_nr} has icon meta but no kind classification in spell_meta"
+                );
+            }
         }
     }
 

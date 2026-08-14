@@ -97,7 +97,7 @@ const IMMUN_RESIST_BOOST_2: TalentRef = TalentRef {
 };
 
 // Layer 9
-const BLADE_DANCE: TalentRef = TalentRef {
+const CRITICAL_STRIKES: TalentRef = TalentRef {
     layer: 9,
     mask: 0b0000_0001,
 };
@@ -205,10 +205,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Increase your attack speed by 5%.",
             cost: 1,
             prereqs: &[DODGE_BOOST_2],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[10],
-            },
+            effect: TalentEffect::AttackSpeedPercent { percent: 10 },
         },
         TalentNode {
             slot: DAMAGE_BOOST_1,
@@ -249,10 +246,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             description: "Further increase your attack speed by 5%.",
             cost: 1,
             prereqs: &[DISARM],
-            effect: TalentEffect::AttributesPercent {
-                attrs: &[Attribute::Agility],
-                percents: &[15],
-            },
+            effect: TalentEffect::AttackSpeedPercent { percent: 15 },
         },
         TalentNode {
             slot: DAMAGE_BOOST_2,
@@ -310,14 +304,14 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             },
         },
         TalentNode {
-            slot: BLADE_DANCE,
-            name: "Blade Dance",
-            description: "A flurry of strikes against all adjacent enemies.",
+            slot: CRITICAL_STRIKES,
+            name: "Critical Strikes",
+            description: "Unlock a chance for physical attacks to land a critical strike.",
             cost: 1,
             prereqs: &[PROTECTIVE_SPELLS_BOOST_2],
-            effect: TalentEffect::GrantSkill {
-                skill: Skill::BladeDance,
-                profile: TalentSkillProfile::DEFAULT_MERC,
+            effect: TalentEffect::CriticalStrike {
+                chance_percent: 5,
+                damage_percent: 250,
             },
         },
         TalentNode {
@@ -336,7 +330,7 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
             name: "Strength Boost I",
             description: "Increase your Strength attribute by 10%.",
             cost: 1,
-            prereqs: &[BLADE_DANCE],
+            prereqs: &[CRITICAL_STRIKES],
             effect: TalentEffect::AttributesPercent {
                 attrs: &[Attribute::Strength],
                 percents: &[10],

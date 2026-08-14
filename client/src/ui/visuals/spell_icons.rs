@@ -218,6 +218,21 @@ pub fn spell_icon_meta(skill_nr: usize) -> Option<SpellIconMeta> {
             color: Color::RGB(100, 180, 230),
             icon_filename: "elemental_anguish_icon.png",
         }),
+        skills::SK_AURA_CURSE => Some(SpellIconMeta {
+            name: "Aura of Despair",
+            color: Color::RGB(180, 40, 200),
+            icon_filename: "curse_aura_icon.png",
+        }),
+        skills::SK_AURA_WAR_BANNER => Some(SpellIconMeta {
+            name: "War Banner",
+            color: Color::RGB(200, 200, 255),
+            icon_filename: "war_banner_icon.png",
+        }),
+        skills::SK_SOUL_REFLECTION => Some(SpellIconMeta {
+            name: "Soul Reflection",
+            color: Color::RGB(220, 110, 70),
+            icon_filename: "soul_reflection_icon.png",
+        }),
         _ => None,
     }
 }
@@ -262,7 +277,10 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         | skills::SK_BLADE_DANCE
         | skills::SK_THUNDEROUS_FURY
         | skills::SK_PARASITE
-        | skills::SK_DISTRACT => spell_icon_meta(skill_nr),
+        | skills::SK_DISTRACT
+        | skills::SK_AURA_CURSE
+        | skills::SK_AURA_WAR_BANNER
+        | skills::SK_SOUL_REFLECTION => spell_icon_meta(skill_nr),
         // Sun's Blessing active buff — server item uses the *2 temp marker,
         // so reuse the castable skill's icon metadata.
         skills::SK_SUNS_BLESSING2 => spell_icon_meta(skills::SK_SUNS_BLESSING),

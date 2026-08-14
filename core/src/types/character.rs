@@ -162,6 +162,11 @@ pub struct Character {
 
     pub monster_class: i32, // monster class
 
+    /// Generic reserved i32 slots. Known claims: `[2]` = cached attack/action
+    /// speed (see `server/src/state/stats.rs`); `[3]` = active Seyan'Du rune
+    /// index (`0..=3`, see `core::seyan_runes::SeyanRune`, defaults to `0`);
+    /// `[4]` = ticker value when the next rune swap is allowed (defaults to
+    /// `0`, i.e. immediately). See `server/src/player/seyan_runes.rs`.
     pub future3: [i32; 12],
 
     // In reality this should be time_t

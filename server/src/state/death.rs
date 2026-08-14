@@ -108,6 +108,9 @@ impl GameState {
             0,
         );
 
+        // Remove any active aura source so it stops pulsing after death.
+        crate::aura::logic::remove_aura(self, character_id);
+
         // Contagion / Parasite: if the dying character was infected, the
         // infestation leaps to adjacent enemies sharing the caster's faction
         // enmity.
@@ -180,6 +183,13 @@ impl GameState {
                 self.characters[cc].data[64] = 0;
             }
             self.characters[character_id].data[63] = 0;
+
+            // Once the owner has no other live companion, drop Revenant
+            // Conduit/Spectral Pact so a fresh companion can't be boosted by
+            // a stale buff from a companion that no longer exists.
+            if Character::is_sane_character(cc) {
+                crate::driver::clear_companion_dependent_buffs_if_none_left(self, cc);
+            }
         }
 
         // A player killed someone or something
@@ -433,6 +443,17 @@ impl GameState {
         // Set data[3] = killer_id for the effect, if possible
         if let Some(fn_idx) = fn_idx {
             self.effects[fn_idx].data[3] = killer_id as u32;
+        } else if corpse_id != 0 {
+            // Effect table was full: finalize the corpse immediately instead of
+            // leaving it stuck on the map forever with no mist/grave effect
+            // ever scheduled to clean it up.
+            log::warn!(
+                "do_character_killed: effect table full, could not schedule death mist for corpse {}; finalizing immediately",
+                corpse_id
+            );
+            let map_index =
+                (i32::from(co_x) + i32::from(co_y) * core::constants::SERVER_MAPX) as usize;
+            EffectManager::finalize_death_mist(self, map_index, corpse_id, killer_id as i32);
         }
     }
 
@@ -889,6 +910,7 @@ impl GameState {
 mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::MAXEFFECT;
     use core::constants::{MAXCHARS, MF_ARENA, USE_ACTIVE};
 
     fn prepare_player_death(gs: &mut GameState) -> usize {
@@ -1034,6 +1056,69 @@ mod tests {
             assert_eq!(gs.characters[cn].gold, 750);
             assert_eq!(gs.characters[cn].item[0], 41);
             assert_eq!(gs.characters[cn].a_hp, 10_000);
+        });
+    }
+
+    /// Regression test: `do_character_killed` used to silently leave a
+    /// killed NPC's corpse stuck on the map forever (`map[].ch` never
+    /// cleared) when the effect table was full and the type-3 death-mist
+    /// effect couldn't be scheduled.
+    #[test]
+    fn npc_death_finalizes_corpse_immediately_when_effect_table_is_full() {
+        with_test_gs(|gs| {
+            let co = 2;
+            let x = 10i16;
+            let y = 10i16;
+            gs.characters[co].used = USE_ACTIVE;
+            gs.characters[co].x = x;
+            gs.characters[co].y = y;
+            gs.characters[co].tox = x;
+            gs.characters[co].toy = y;
+            let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
+            gs.map[map_index].ch = co as u32;
+
+            for effect in &mut gs.effects[1..MAXEFFECT] {
+                effect.used = USE_ACTIVE;
+            }
+
+            gs.do_character_killed(co, 0, false);
+
+            assert_eq!(gs.map[map_index].ch, 0);
+        });
+    }
+
+    /// Regression test: killing a player's Ghost Companion used to leave a
+    /// Revenant Conduit buff active, letting the effective Ghost Companion
+    /// skill stay boosted for the next summoned companion.
+    #[test]
+    fn companion_death_clears_owners_revenant_conduit() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+
+            let in_idx = 10;
+            gs.items[in_idx] = core::types::Item::default();
+            gs.items[in_idx].used = USE_ACTIVE;
+            gs.items[in_idx].temp = skills::SK_REVENANT_CONDUIT2 as u16;
+            gs.items[in_idx].active = 100;
+            gs.items[in_idx].duration = 100;
+            gs.characters[owner].spell[0] = in_idx as u32;
+
+            let companion = 3;
+            gs.characters[companion] = Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].data[64] = companion as i32;
+            let map_index = 10 + 10 * core::constants::SERVER_MAPX as usize;
+            gs.characters[companion].x = 10;
+            gs.characters[companion].y = 10;
+            gs.map[map_index].ch = companion as u32;
+
+            gs.do_character_killed(companion, 0, false);
+
+            assert_eq!(gs.characters[owner].data[64], 0);
+            assert_eq!(gs.items[in_idx].used, USE_EMPTY);
+            assert_eq!(gs.characters[owner].spell[0], 0);
         });
     }
 }

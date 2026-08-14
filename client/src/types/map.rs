@@ -27,6 +27,7 @@ pub struct CMapTile {
     pub ch_status: u8,
     pub ch_stat_off: u8,
     pub ch_speed: u8,
+    pub ch_aspeed: u8,
     pub ch_nr: u16,
     pub ch_id: u16,
     pub ch_proz: u8,

@@ -283,6 +283,40 @@ pub enum TalentEffect {
         /// Passive proc configuration.
         proc: TalentPrimaryHitProc,
     },
+    /// Add `percent`% to HP, endurance, and/or mana regeneration rate.
+    ///
+    /// Each component is independent; any may be `0` to leave that pool's
+    /// regeneration rate unchanged.
+    RegenPercent {
+        /// HP regeneration percent bonus.
+        hp: i32,
+        /// Endurance regeneration percent bonus.
+        end: i32,
+        /// Mana regeneration percent bonus.
+        mana: i32,
+    },
+    /// Reduce a spell target's effective resist/immunity by `percent`%.
+    SpellPenetrationPercent {
+        /// Percent reduction applied to the target's `SK_RESIST`/`SK_IMMUN`.
+        percent: i32,
+    },
+    /// Grant a chance for physical attacks to deal amplified damage.
+    CriticalStrike {
+        /// Chance out of 100 that a landed physical attack crits.
+        chance_percent: i32,
+        /// Damage multiplier applied on a crit, in percent (e.g. `250` = 2.5x).
+        damage_percent: i32,
+    },
+    /// Add `percent`% to walking movement speed only (attack cadence unaffected).
+    MovementSpeedPercent {
+        /// Percent bonus applied to the movement speed derivation.
+        percent: i32,
+    },
+    /// Add `percent`% to attack/action cadence only (walking speed unaffected).
+    AttackSpeedPercent {
+        /// Percent bonus applied to the attack/action speed derivation.
+        percent: i32,
+    },
 }
 
 /// Passive effect that can trigger from a character's landed primary attack.
@@ -351,6 +385,22 @@ pub struct TalentStatBonuses {
     pub mana_flat: i32,
     /// Flat endurance bonus from talents, added to the max endurance pool.
     pub end_flat: i32,
+    /// HP regeneration rate bonus from talents, in percent.
+    pub hp_regen_percent: i32,
+    /// Endurance regeneration rate bonus from talents, in percent.
+    pub end_regen_percent: i32,
+    /// Mana regeneration rate bonus from talents, in percent.
+    pub mana_regen_percent: i32,
+    /// Spell penetration bonus from talents, in percent.
+    pub spell_penetration_percent: i32,
+    /// Critical strike chance from talents, out of 100.
+    pub crit_chance_percent: i32,
+    /// Critical strike damage multiplier from talents, in percent.
+    pub crit_damage_percent: i32,
+    /// Movement speed bonus from talents, in percent.
+    pub movement_speed_percent: i32,
+    /// Attack/action speed bonus from talents, in percent.
+    pub attack_speed_percent: i32,
 }
 
 impl Default for TalentStatBonuses {
@@ -364,6 +414,14 @@ impl Default for TalentStatBonuses {
             hp_flat: 0,
             mana_flat: 0,
             end_flat: 0,
+            hp_regen_percent: 0,
+            end_regen_percent: 0,
+            mana_regen_percent: 0,
+            spell_penetration_percent: 0,
+            crit_chance_percent: 0,
+            crit_damage_percent: 0,
+            movement_speed_percent: 0,
+            attack_speed_percent: 0,
         }
     }
 }
@@ -724,7 +782,12 @@ fn primary_hit_proc_from_effect(effect: TalentEffect) -> Option<TalentPrimaryHit
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
         | TalentEffect::GrantSkill { .. }
-        | TalentEffect::ReplaceSkill { .. } => None,
+        | TalentEffect::ReplaceSkill { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => None,
     }
 }
 
@@ -868,7 +931,12 @@ fn accumulate_skill_ownership(effect: TalentEffect, ownership: &mut TalentSkillO
         | TalentEffect::ArmorPercent { .. }
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
-        | TalentEffect::PrimaryHitProc { .. } => {}
+        | TalentEffect::PrimaryHitProc { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => {}
     }
 }
 
@@ -944,6 +1012,27 @@ fn accumulate_stat_bonus(
             bonuses.hp_flat += hp;
             bonuses.mana_flat += mana;
             bonuses.end_flat += end;
+        }
+        TalentEffect::RegenPercent { hp, end, mana } => {
+            bonuses.hp_regen_percent += hp;
+            bonuses.end_regen_percent += end;
+            bonuses.mana_regen_percent += mana;
+        }
+        TalentEffect::SpellPenetrationPercent { percent } => {
+            bonuses.spell_penetration_percent += percent;
+        }
+        TalentEffect::CriticalStrike {
+            chance_percent,
+            damage_percent,
+        } => {
+            bonuses.crit_chance_percent += chance_percent;
+            bonuses.crit_damage_percent += damage_percent;
+        }
+        TalentEffect::MovementSpeedPercent { percent } => {
+            bonuses.movement_speed_percent += percent;
+        }
+        TalentEffect::AttackSpeedPercent { percent } => {
+            bonuses.attack_speed_percent += percent;
         }
         TalentEffect::Composite { effects } => {
             for effect in effects {
@@ -1443,7 +1532,12 @@ mod tests {
             | TalentEffect::HpManaEndFlat { .. }
             | TalentEffect::GrantSkill { .. }
             | TalentEffect::ReplaceSkill { .. }
-            | TalentEffect::PrimaryHitProc { .. } => {}
+            | TalentEffect::PrimaryHitProc { .. }
+            | TalentEffect::RegenPercent { .. }
+            | TalentEffect::SpellPenetrationPercent { .. }
+            | TalentEffect::CriticalStrike { .. }
+            | TalentEffect::MovementSpeedPercent { .. }
+            | TalentEffect::AttackSpeedPercent { .. } => {}
         }
     }
 
@@ -1578,6 +1672,101 @@ mod tests {
     }
 
     #[test]
+    fn accumulate_regen_percent_sums_each_pool_independently() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::RegenPercent {
+                hp: 0,
+                end: 0,
+                mana: 100,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+        accumulate_stat_bonus(
+            TalentEffect::RegenPercent {
+                hp: 0,
+                end: 100,
+                mana: 0,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.hp_regen_percent, 0);
+        assert_eq!(bonuses.end_regen_percent, 100);
+        assert_eq!(bonuses.mana_regen_percent, 100);
+    }
+
+    #[test]
+    fn accumulate_spell_penetration_percent_sums_into_bonuses() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::SpellPenetrationPercent { percent: 15 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.spell_penetration_percent, 15);
+    }
+
+    #[test]
+    fn accumulate_critical_strike_sums_chance_and_damage_independently() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::CriticalStrike {
+                chance_percent: 5,
+                damage_percent: 250,
+            },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.crit_chance_percent, 5);
+        assert_eq!(bonuses.crit_damage_percent, 250);
+    }
+
+    #[test]
+    fn accumulate_movement_and_attack_speed_percent_are_independent() {
+        let attrib = empty_attrib();
+        let skill_rows = empty_skill();
+        let mut bonuses = TalentStatBonuses::default();
+
+        accumulate_stat_bonus(
+            TalentEffect::MovementSpeedPercent { percent: 15 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.movement_speed_percent, 15);
+        assert_eq!(bonuses.attack_speed_percent, 0);
+
+        accumulate_stat_bonus(
+            TalentEffect::AttackSpeedPercent { percent: 10 },
+            &attrib,
+            &skill_rows,
+            &mut bonuses,
+        );
+
+        assert_eq!(bonuses.movement_speed_percent, 15);
+        assert_eq!(bonuses.attack_speed_percent, 10);
+    }
+
+    #[test]
     fn accumulate_composite_applies_nested_stat_effects() {
         let mut attrib = empty_attrib();
         attrib[Attribute::Strength as usize][SkillIndex::BaseValue as usize] = 50;
@@ -1709,6 +1898,48 @@ mod tests {
     }
 
     #[test]
+    fn seyan_du_tree_matches_design() {
+        let tree = tree_for(Class::SeyanDu).unwrap();
+
+        assert_eq!(tree.nodes.len(), 12);
+        assert_regen_percent(named_node(tree, "Wellspring"), 0, 0, 100);
+        assert_regen_percent(named_node(tree, "Second Wind"), 0, 100, 0);
+        assert_spell_penetration(named_node(tree, "Piercing Will"), 15);
+        assert_attack_speed_percent(named_node(tree, "Fleet Hands"), 10);
+        assert_grants_skill(named_node(tree, "Aura of Despair"), Skill::AuraCurse);
+        assert_grants_skill(named_node(tree, "War Banner"), Skill::AuraWarBanner);
+        assert_movement_speed_percent(named_node(tree, "Windstep"), 15);
+        assert_grants_skill(named_node(tree, "Soul Reflection"), Skill::SoulReflection);
+        assert_grants_skill(named_node(tree, "Blade Dance"), Skill::BladeDance);
+        assert_attribute_percent_multi(
+            named_node(tree, "Warrior's Discipline"),
+            &[Attribute::Strength, Attribute::Agility],
+            &[10, 10],
+        );
+        assert_attribute_percent_multi(
+            named_node(tree, "Scholar's Discipline"),
+            &[Attribute::Willpower, Attribute::Intuition],
+            &[10, 10],
+        );
+        assert_attribute_percent(
+            named_node(tree, "Unbroken Resolve"),
+            Attribute::Braveness,
+            20,
+        );
+    }
+
+    #[test]
+    fn mercenary_tree_grants_critical_strikes_instead_of_blade_dance() {
+        let tree = tree_for(Class::Mercenary).unwrap();
+
+        assert!(
+            tree.nodes.iter().all(|node| node.name != "Blade Dance"),
+            "Blade Dance should no longer be a mercenary talent"
+        );
+        assert_critical_strike(named_node(tree, "Critical Strikes"), 5, 250);
+    }
+
+    #[test]
     fn talent_primary_hit_proc_returns_learned_templar_choice() {
         let tree = tree_for(Class::Templar).unwrap();
         let mut talents = [0u8; 25];
@@ -1792,6 +2023,58 @@ mod tests {
         }
     }
 
+    fn assert_attribute_percent_multi(
+        node: &TalentNode,
+        expected_attrs: &[Attribute],
+        expected_percents: &[i32],
+    ) {
+        match node.effect {
+            TalentEffect::AttributesPercent { attrs, percents } => {
+                assert_eq!(attrs, expected_attrs);
+                assert_eq!(percents, expected_percents);
+            }
+            other => panic!("expected AttributesPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_regen_percent(
+        node: &TalentNode,
+        expected_hp: i32,
+        expected_end: i32,
+        expected_mana: i32,
+    ) {
+        match node.effect {
+            TalentEffect::RegenPercent { hp, end, mana } => {
+                assert_eq!(hp, expected_hp);
+                assert_eq!(end, expected_end);
+                assert_eq!(mana, expected_mana);
+            }
+            other => panic!("expected RegenPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_spell_penetration(node: &TalentNode, expected_percent: i32) {
+        match node.effect {
+            TalentEffect::SpellPenetrationPercent { percent } => {
+                assert_eq!(percent, expected_percent);
+            }
+            other => panic!("expected SpellPenetrationPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_critical_strike(node: &TalentNode, expected_chance: i32, expected_damage: i32) {
+        match node.effect {
+            TalentEffect::CriticalStrike {
+                chance_percent,
+                damage_percent,
+            } => {
+                assert_eq!(chance_percent, expected_chance);
+                assert_eq!(damage_percent, expected_damage);
+            }
+            other => panic!("expected CriticalStrike, got {other:?}"),
+        }
+    }
+
     fn assert_hp_end(node: &TalentNode, expected_hp: i32, expected_end: i32) {
         match node.effect {
             TalentEffect::HpManaEndFlat { hp, mana, end } => {
@@ -1800,6 +2083,24 @@ mod tests {
                 assert_eq!(end, expected_end);
             }
             other => panic!("expected HpManaEndFlat, got {other:?}"),
+        }
+    }
+
+    fn assert_movement_speed_percent(node: &TalentNode, expected_percent: i32) {
+        match node.effect {
+            TalentEffect::MovementSpeedPercent { percent } => {
+                assert_eq!(percent, expected_percent);
+            }
+            other => panic!("expected MovementSpeedPercent, got {other:?}"),
+        }
+    }
+
+    fn assert_attack_speed_percent(node: &TalentNode, expected_percent: i32) {
+        match node.effect {
+            TalentEffect::AttackSpeedPercent { percent } => {
+                assert_eq!(percent, expected_percent);
+            }
+            other => panic!("expected AttackSpeedPercent, got {other:?}"),
         }
     }
 

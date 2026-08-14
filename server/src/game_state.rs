@@ -17,6 +17,28 @@ pub struct ElementSwitchState {
     pub expires_at_tick: i32,
 }
 
+/// Cached talent-derived percent bonuses that are too expensive to recompute
+/// every tick from the packed talent bits (unlike the attribute/skill/armor
+/// bonuses, which are cheap and recomputed directly in `really_update_char`).
+///
+/// Refreshed once per `really_update_char` call and read by `do_regenerate`,
+/// spell resistance checks, and physical attack rolls.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TalentRuntimeBonuses {
+    /// HP regeneration rate bonus from talents, in percent.
+    pub hp_regen_percent: i32,
+    /// Endurance regeneration rate bonus from talents, in percent.
+    pub end_regen_percent: i32,
+    /// Mana regeneration rate bonus from talents, in percent.
+    pub mana_regen_percent: i32,
+    /// Spell penetration bonus from talents, in percent.
+    pub spell_penetration_percent: i32,
+    /// Critical strike chance from talents, out of 100.
+    pub crit_chance_percent: i32,
+    /// Critical strike damage multiplier from talents, in percent.
+    pub crit_damage_percent: i32,
+}
+
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -117,11 +139,17 @@ pub struct GameState {
 
     /// Runtime-only landed primary-hit counters for talent passives.
     pub talent_primary_hit_counts: Vec<u8>,
+    /// Runtime-only cache of talent-derived regen/penetration/crit percent
+    /// bonuses, refreshed by `really_update_char`.
+    pub talent_runtime: Vec<TalentRuntimeBonuses>,
     /// Runtime-only last-element state for the Harakim Element Switching passive.
     pub element_switch_states: HashMap<usize, ElementSwitchState>,
     /// Runtime-only per-area weather state, parallel to
     /// `core::weather_areas::AREA_WEATHER_PROFILES`.
     pub area_weather: Vec<crate::state::weather::AreaWeatherRuntime>,
+
+    /// Runtime-only active aura sources keyed by character index.
+    pub aura_states: HashMap<usize, crate::aura::AuraState>,
 
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
@@ -224,11 +252,13 @@ impl GameState {
             is_monster: false,
             penta_needed: 5,
             talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
+            talent_runtime: vec![TalentRuntimeBonuses::default(); core::constants::MAXCHARS],
             element_switch_states: HashMap::new(),
             area_weather: vec![
                 crate::state::weather::AreaWeatherRuntime::default();
                 core::weather_areas::AREA_WEATHER_PROFILES.len()
             ],
+            aura_states: HashMap::new(),
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding

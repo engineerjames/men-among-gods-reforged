@@ -385,6 +385,13 @@ pub enum WidgetAction {
     ///
     /// Mapped to `ClientCommand::new_reset_talents()` by the scene.
     ResetTalents,
+    /// Set the active Seyan'Du rune.
+    ///
+    /// Mapped to `ClientCommand::new_set_active_rune(rune_idx)` by the scene.
+    SetActiveRune {
+        /// Rune slot index (`0..=3`).
+        rune_idx: u8,
+    },
 }
 
 // ---------------------------------------------------------------------------

@@ -49,6 +49,13 @@ pub enum ClientCommandType {
     CmdLearnTalent = 37,
     /// Refund all spent talent points.  No payload (all-zero past the opcode).
     CmdResetTalents = 38,
+    /// Set the caller's active Seyan'Du rune.
+    ///
+    /// Wire format:
+    /// * byte 0: opcode `39`
+    /// * byte 1: rune slot index (`0..=3`, see `core::seyan_runes::SeyanRune`)
+    /// * bytes 2..16: zero-padding
+    CmdSetActiveRune = 39,
     CmdCTick = 255,
 }
 
@@ -87,6 +94,7 @@ impl From<u8> for ClientCommandType {
             36 => ClientCommandType::CmdAutoloot,
             37 => ClientCommandType::CmdLearnTalent,
             38 => ClientCommandType::CmdResetTalents,
+            39 => ClientCommandType::CmdSetActiveRune,
             255 => ClientCommandType::CmdCTick,
             _ => {
                 log::error!("Unknown client command type: {}", value);
@@ -586,6 +594,21 @@ impl ClientCommand {
     pub fn new_reset_talents() -> Self {
         Self::new(ClientCommandType::CmdResetTalents, Vec::new())
     }
+
+    /// Creates a set-active-rune command for the given Seyan'Du rune slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `rune_idx` - Rune slot index (`0..=3`).
+    ///
+    /// # Returns
+    ///
+    /// * A new instance configured by `new_set_active_rune`.
+    pub fn new_set_active_rune(rune_idx: u8) -> Self {
+        let mut cmd = Self::new(ClientCommandType::CmdSetActiveRune, vec![rune_idx]);
+        cmd.context = Some(format!("rune_idx={rune_idx}"));
+        cmd
+    }
 }
 
 #[cfg(test)]
@@ -791,6 +814,27 @@ mod tests {
         assert_eq!(
             ClientCommandType::from(38u8),
             ClientCommandType::CmdResetTalents
+        );
+    }
+
+    #[test]
+    fn set_active_rune_opcode_and_payload() {
+        let cmd = ClientCommand::new_set_active_rune(2);
+        let bytes = cmd.to_bytes();
+        assert_eq!(bytes.len(), 16);
+        assert_eq!(bytes[0], 39u8, "CmdSetActiveRune must be opcode 39");
+        assert_eq!(bytes[0], ClientCommandType::CmdSetActiveRune as u8);
+        assert_eq!(bytes[1], 2);
+        for b in &bytes[2..] {
+            assert_eq!(*b, 0, "trailing bytes must be zero-padded");
+        }
+    }
+
+    #[test]
+    fn set_active_rune_from_u8_roundtrip() {
+        assert_eq!(
+            ClientCommandType::from(39u8),
+            ClientCommandType::CmdSetActiveRune
         );
     }
 

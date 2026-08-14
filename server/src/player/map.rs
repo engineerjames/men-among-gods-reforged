@@ -552,6 +552,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].ch_status = char_co.status as u8;
                     smap[n].ch_status2 = char_co.status2 as u8;
                     smap[n].ch_speed = char_co.speed as u8;
+                    smap[n].ch_aspeed = char_co.future3[2] as u8;
                     smap[n].ch_nr = co as u16;
                     smap[n].ch_id = helpers::char_id(&char_co) as u16;
 
@@ -577,6 +578,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].ch_status = 0;
                     smap[n].ch_status2 = 0;
                     smap[n].ch_speed = 0;
+                    smap[n].ch_aspeed = 0;
                     smap[n].ch_nr = 0;
                     smap[n].ch_id = 0;
                     smap[n].ch_proz = 0;
@@ -926,6 +928,7 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
             }
 
             if cmap.ch_speed != smap.ch_speed
+                || cmap.ch_aspeed != smap.ch_aspeed
                 || cmap.ch_nr != smap.ch_nr
                 || cmap.ch_id != smap.ch_id
             {
@@ -939,6 +942,8 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
                 buf[p + 1] = id_bytes[1];
                 p += 2;
                 buf[p] = smap.ch_speed;
+                p += 1;
+                buf[p] = smap.ch_aspeed;
                 p += 1;
             }
 

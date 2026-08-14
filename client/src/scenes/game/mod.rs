@@ -2375,6 +2375,7 @@ impl Scene for GameScene {
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
+        self.talent_panel.update(dt);
         // Keep read-only settings panel values current each frame.
         if self.settings_panel.is_visible() {
             let rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
@@ -2735,6 +2736,9 @@ impl Scene for GameScene {
                 });
                 self.talent_panel
                     .sync_state(*ps.talents(), class_from_kindred(ci.kindred));
+                let (active_rune, rune_cooldown_remaining_ticks) = ps.rune_state();
+                self.talent_panel
+                    .sync_rune_state(active_rune, rune_cooldown_remaining_ticks);
                 self.hud_buttons.set_talent_points_badge(
                     mag_core::talent_trees::available_talent_points(ps.talents()),
                 );

@@ -173,6 +173,7 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     // send initial talent-tree snapshot so the client can render the
     // talent panel immediately after login.
     crate::player::commands::send_set_char_talents(gs, nr);
+    crate::player::commands::send_set_char_rune_state(gs, nr);
 
     // send initial Journal completion-data snapshot so the client can
     // render labyrinth/pentagram/first-kill/explorer-point/quest checklists
@@ -518,6 +519,9 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
         0
     };
     let valid_character = character_id > 0 && character_id < core::constants::MAXCHARS;
+
+    // Remove any active aura source so it stops pulsing after logout.
+    crate::aura::logic::remove_aura(gs, character_id);
 
     if valid_character && reason != LogoutReason::Shutdown {
         let character_name = gs.characters[character_id].get_name().to_owned();

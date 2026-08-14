@@ -128,7 +128,12 @@ fn dispatch_immediate_effect(
         | TalentEffect::ArmorPercent { .. }
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
-        | TalentEffect::PrimaryHitProc { .. } => Ok(()),
+        | TalentEffect::PrimaryHitProc { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => Ok(()),
     }
 }
 
@@ -415,7 +420,12 @@ fn dispatch_undo_effect(cn: usize, gs: &mut GameState, effect: TalentEffect) {
         | TalentEffect::ArmorPercent { .. }
         | TalentEffect::WeaponPercent { .. }
         | TalentEffect::HpManaEndFlat { .. }
-        | TalentEffect::PrimaryHitProc { .. } => {}
+        | TalentEffect::PrimaryHitProc { .. }
+        | TalentEffect::RegenPercent { .. }
+        | TalentEffect::SpellPenetrationPercent { .. }
+        | TalentEffect::CriticalStrike { .. }
+        | TalentEffect::MovementSpeedPercent { .. }
+        | TalentEffect::AttackSpeedPercent { .. } => {}
     }
 }
 
@@ -633,8 +643,8 @@ mod tests {
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::{CharacterFlags, USE_ACTIVE};
     use core::skills::{
-        Attribute, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST,
-        SK_THUNDEROUS_FURY,
+        Attribute, SK_AURA_CURSE, SK_AURA_WAR_BANNER, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN,
+        SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_THUNDEROUS_FURY,
     };
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
@@ -1922,6 +1932,56 @@ mod tests {
         });
     }
 
+    /// Regression test for a bug where `character_templates` loaded from a
+    /// world snapshot carry stale/garbage `future3` values (never zeroed,
+    /// previously harmless unused padding). Racechanging into a template
+    /// with garbage in the Seyan'Du rune slots must not leave the new
+    /// character with a bogus multi-hour swap cooldown, and pentagram/quest
+    /// progress in `future3[0]`/`future3[1]` must survive the change.
+    #[test]
+    fn racechange_resets_rune_cooldown_and_preserves_pentagram_quest_progress() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            give_class_and_points(gs, cn, KIN_MERCENARY, 0);
+            gs.characters[cn].future3[0] = 7; // pentagram solves
+            gs.characters[cn].future3[1] = 0b101; // quest completion bits
+            gs.globals.ticker = 1_000;
+
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            // Simulate the garbage a real world-snapshot template carries.
+            gs.character_templates[SEYAN_DU_TEMPLATE].future3 = [
+                83_886_080,
+                67_108_864,
+                50_331_648,
+                2_113_929_216,
+                2_113_932_801,
+                2_113_932_801,
+                318_770_689,
+                318_767_104,
+                67_108_864,
+                16_777_216,
+                16_777_216,
+                0,
+            ];
+
+            God::racechange(gs, cn, SEYAN_DU_TEMPLATE as i32);
+
+            let (_, remaining) = crate::player::seyan_runes::rune_state(gs, cn);
+            assert_eq!(
+                remaining, 0,
+                "a freshly race-changed character must not start on a rune-swap cooldown"
+            );
+            assert_eq!(
+                gs.characters[cn].future3[0], 7,
+                "pentagram solves must survive"
+            );
+            assert_eq!(
+                gs.characters[cn].future3[1], 0b101,
+                "quest completion bits must survive"
+            );
+        });
+    }
+
     #[test]
     fn racechange_to_seyan_du_leaves_only_the_seyan_du_class_bit() {
         with_test_gs(|gs| {
@@ -1976,8 +2036,8 @@ mod tests {
                 50;
             grant_talent_points(&mut gs.characters[cn].future1, 2);
 
-            learn_talent(gs, cn, seyan_du_slot("Veteran's Poise")).unwrap();
-            learn_talent(gs, cn, seyan_du_slot("Evasion Drill I")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Wellspring")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Fleet Hands")).unwrap();
 
             let bonuses = talent_stat_bonuses(
                 gs.characters[cn].kindred,
@@ -1986,7 +2046,7 @@ mod tests {
                 &gs.characters[cn].skill,
             );
 
-            assert_eq!(bonuses.attrib[Attribute::Agility as usize], 5);
+            assert_eq!(bonuses.attack_speed_percent, 10);
         });
     }
 
@@ -2016,6 +2076,68 @@ mod tests {
     }
 
     #[test]
+    fn seyan_du_aura_of_despair_is_raisable() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            give_class_and_points(gs, cn, KIN_SEYAN_DU, 3);
+
+            learn_talent(gs, cn, seyan_du_slot("Wellspring")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Piercing Will")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Aura of Despair")).unwrap();
+
+            let skill = &gs.characters[cn].skill[SK_AURA_CURSE];
+            assert_eq!(skill[SkillIndex::BaseValue as usize], 1);
+            assert!(
+                skill[SkillIndex::MaxValue as usize] > 1,
+                "Aura of Despair must have a non-zero raise cap"
+            );
+            assert_ne!(
+                skill[SkillIndex::RaiseDifficulty as usize],
+                0,
+                "Aura of Despair must be raisable"
+            );
+
+            gs.characters[cn].points = 10_000_000;
+            assert!(
+                gs.do_raise_skill(cn, SK_AURA_CURSE as i32),
+                "Aura of Despair should accept skill-point raises"
+            );
+        });
+    }
+
+    #[test]
+    fn seyan_du_war_banner_is_raisable() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            install_template(gs, SEYAN_DU_TEMPLATE, KIN_SEYAN_DU);
+            give_class_and_points(gs, cn, KIN_SEYAN_DU, 3);
+
+            learn_talent(gs, cn, seyan_du_slot("Second Wind")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("Fleet Hands")).unwrap();
+            learn_talent(gs, cn, seyan_du_slot("War Banner")).unwrap();
+
+            let skill = &gs.characters[cn].skill[SK_AURA_WAR_BANNER];
+            assert_eq!(skill[SkillIndex::BaseValue as usize], 1);
+            assert!(
+                skill[SkillIndex::MaxValue as usize] > 1,
+                "War Banner must have a non-zero raise cap"
+            );
+            assert_ne!(
+                skill[SkillIndex::RaiseDifficulty as usize],
+                0,
+                "War Banner must be raisable"
+            );
+
+            gs.characters[cn].points = 10_000_000;
+            assert!(
+                gs.do_raise_skill(cn, SK_AURA_WAR_BANNER as i32),
+                "War Banner should accept skill-point raises"
+            );
+        });
+    }
+
+    #[test]
     fn core_node_effects_have_distinct_class_flavors() {
         assert_grant_effect(
             tree_for(Class::Templar).unwrap().nodes[0].effect,
@@ -2026,22 +2148,15 @@ mod tests {
             Skill::Blast,
             Skill::LavaBlast,
         );
-        assert_effect(
-            tree_for(Class::SeyanDu).unwrap().nodes[17].effect,
-            Attribute::Intuition,
-            18,
-        );
+        assert_movement_speed_effect(tree_for(Class::SeyanDu).unwrap().nodes[6].effect, 15);
     }
 
-    fn assert_effect(effect: TalentEffect, expected_attr: Attribute, expected_percent: i32) {
+    fn assert_movement_speed_effect(effect: TalentEffect, expected_percent: i32) {
         match effect {
-            TalentEffect::AttributesPercent { attrs, percents } => {
-                assert_eq!(attrs.len(), 1, "expected single-attribute talent");
-                assert_eq!(percents.len(), 1, "expected single-percent talent");
-                assert_eq!(attrs[0], expected_attr);
-                assert_eq!(percents[0], expected_percent);
+            TalentEffect::MovementSpeedPercent { percent } => {
+                assert_eq!(percent, expected_percent);
             }
-            other => panic!("expected AttributesPercent, got {other:?}"),
+            other => panic!("expected MovementSpeedPercent, got {other:?}"),
         }
     }
 

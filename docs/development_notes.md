@@ -238,4 +238,4 @@ message.
   most of the magic numbers in `server/orig/*.c` are slot indices into
   `data[]`.
 - Anything labelled "reserved" (slot 92 for players, the gaps in the NPC
-  range) should be assumed to be load-bearing somewhere; grep before reusing.
+  range) should be assumed to be used somewhere; grep before reusing.

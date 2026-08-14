@@ -554,7 +554,7 @@ impl GameScene {
     }
 
     /// Drain pending `WidgetAction`s from the talent panel and forward
-    /// `LearnTalent` / `ResetTalents` commands to the server.
+    /// `LearnTalent` / `ResetTalents` / `SetActiveRune` commands to the server.
     ///
     /// # Arguments
     ///
@@ -572,6 +572,12 @@ impl GameScene {
                     if let Some(net) = app_state.network.as_ref() {
                         self.play_click_sound(app_state);
                         net.send(ClientCommand::new_reset_talents());
+                    }
+                }
+                WidgetAction::SetActiveRune { rune_idx } => {
+                    if let Some(net) = app_state.network.as_ref() {
+                        self.play_click_sound(app_state);
+                        net.send(ClientCommand::new_set_active_rune(rune_idx));
                     }
                 }
                 WidgetAction::TogglePanel(_) => {

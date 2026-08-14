@@ -322,7 +322,7 @@ impl<T: Copy + PartialEq + Debug> Widget for RadioGroup<T> {
 // ---------------------------------------------------------------------------
 
 /// Draws a circle outline using the midpoint algorithm.
-fn draw_circle(
+pub(crate) fn draw_circle(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     cx: i32,
     cy: i32,
@@ -355,7 +355,7 @@ fn draw_circle(
 }
 
 /// Draws a filled circle using horizontal scan lines.
-fn draw_filled_circle(
+pub(crate) fn draw_filled_circle(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
     cx: i32,
     cy: i32,

@@ -1786,6 +1786,25 @@ pub fn send_set_char_talents(gs: &mut GameState, nr: usize) {
     network_manager::xsend(gs, nr, &buf, 26);
 }
 
+/// Send the active Seyan'Du rune and remaining swap cooldown for `nr`'s character.
+///
+/// Wire format: 1-byte opcode (`SetCharRuneState = 78`) + active rune index
+/// (1 byte) + cooldown remaining in ticks (u16 LE) -- 4 bytes total.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `nr` - Player slot index.
+pub fn send_set_char_rune_state(gs: &mut GameState, nr: usize) {
+    let cn = gs.players[nr].usnr;
+    let (active_rune, cooldown_remaining_ticks) = crate::player::seyan_runes::rune_state(gs, cn);
+    let mut buf: [u8; 4] = [0; 4];
+    buf[0] = ServerCommandType::SetCharRuneState as u8;
+    buf[1] = active_rune;
+    buf[2..4].copy_from_slice(&cooldown_remaining_ticks.to_le_bytes());
+    network_manager::xsend(gs, nr, &buf, 4);
+}
+
 /// Send the full Journal completion-data snapshot for `nr`'s character.
 ///
 /// Wire format: 1-byte opcode (`SetCompletionData = 77`) followed by
@@ -1929,6 +1948,40 @@ pub fn plr_cmd_reset_talents(gs: &mut GameState, nr: usize) {
         cn
     );
     send_set_char_talents(gs, nr);
+}
+
+/// Handle the `CmdSetActiveRune` packet.
+///
+/// Parses the requested rune slot from `inbuf[1]`, calls
+/// [`crate::player::seyan_runes::set_active_rune`], and resyncs the
+/// authoritative rune state to the client either way.
+///
+/// # Arguments
+///
+/// * `nr` - Player slot index issuing the command.
+pub fn plr_cmd_set_active_rune(gs: &mut GameState, nr: usize) {
+    let rune_idx = gs.players[nr].inbuf[1];
+    let cn = gs.players[nr].usnr;
+    match crate::player::seyan_runes::set_active_rune(gs, cn, rune_idx) {
+        Ok(()) => {
+            log::info!(
+                "Player {} (cn={}) activated rune {}",
+                c_string_to_str(&gs.characters[cn].name),
+                cn,
+                rune_idx
+            );
+        }
+        Err(reason) => {
+            log::warn!(
+                "Player {} (cn={}) failed to activate rune {}: {}",
+                c_string_to_str(&gs.characters[cn].name),
+                cn,
+                rune_idx,
+                reason
+            );
+        }
+    }
+    send_set_char_rune_state(gs, nr);
 }
 
 #[cfg(test)]

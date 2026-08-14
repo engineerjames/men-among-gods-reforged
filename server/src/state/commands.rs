@@ -342,6 +342,56 @@ fn format_talent_bonus_lines(bonuses: &TalentStatBonuses) -> Vec<String> {
         lines.push(format!("  Endurance: {:+}", bonuses.end_flat));
     }
 
+    if bonuses.hp_regen_percent != 0 {
+        lines.push(format!("  HP regen: {:+}%", bonuses.hp_regen_percent));
+    }
+
+    if bonuses.end_regen_percent != 0 {
+        lines.push(format!(
+            "  Endurance regen: {:+}%",
+            bonuses.end_regen_percent
+        ));
+    }
+
+    if bonuses.mana_regen_percent != 0 {
+        lines.push(format!("  Mana regen: {:+}%", bonuses.mana_regen_percent));
+    }
+
+    if bonuses.spell_penetration_percent != 0 {
+        lines.push(format!(
+            "  Spell penetration: {:+}%",
+            bonuses.spell_penetration_percent
+        ));
+    }
+
+    if bonuses.crit_chance_percent != 0 {
+        lines.push(format!(
+            "  Critical strike chance: {:+}%",
+            bonuses.crit_chance_percent
+        ));
+    }
+
+    if bonuses.crit_damage_percent != 0 {
+        lines.push(format!(
+            "  Critical strike damage: {:+}%",
+            bonuses.crit_damage_percent
+        ));
+    }
+
+    if bonuses.movement_speed_percent != 0 {
+        lines.push(format!(
+            "  Movement speed: {:+}%",
+            bonuses.movement_speed_percent
+        ));
+    }
+
+    if bonuses.attack_speed_percent != 0 {
+        lines.push(format!(
+            "  Attack speed: {:+}%",
+            bonuses.attack_speed_percent
+        ));
+    }
+
     lines
 }
 
@@ -1996,6 +2046,8 @@ mod tests {
         bonuses.hp_flat = 12;
         bonuses.mana_flat = -3;
         bonuses.end_flat = 8;
+        bonuses.movement_speed_percent = 15;
+        bonuses.attack_speed_percent = -5;
 
         assert_eq!(
             format_talent_bonus_lines(&bonuses),
@@ -2008,6 +2060,8 @@ mod tests {
                 "  HP: +12".to_owned(),
                 "  Mana: -3".to_owned(),
                 "  Endurance: +8".to_owned(),
+                "  Movement speed: +15%".to_owned(),
+                "  Attack speed: -5%".to_owned(),
             ]
         );
     }

@@ -281,6 +281,18 @@ impl GameState {
         mana_bonus += talent_bonuses.mana_flat;
         end_bonus += talent_bonuses.end_flat;
 
+        // Cache the percent-shaped bonuses that are consumed outside this
+        // function (regen, spell penetration, crit) instead of recomputing
+        // `talent_stat_bonuses` on every regen tick or attack roll.
+        self.talent_runtime[cn] = crate::game_state::TalentRuntimeBonuses {
+            hp_regen_percent: talent_bonuses.hp_regen_percent,
+            end_regen_percent: talent_bonuses.end_regen_percent,
+            mana_regen_percent: talent_bonuses.mana_regen_percent,
+            spell_penetration_percent: talent_bonuses.spell_penetration_percent,
+            crit_chance_percent: talent_bonuses.crit_chance_percent,
+            crit_damage_percent: talent_bonuses.crit_damage_percent,
+        };
+
         // Calculate final attributes
         for (z, &bonus) in attrib_bonus.iter().enumerate().take(5) {
             let mut final_attrib = i32::from(self.characters[cn].attrib[z][0])
@@ -383,7 +395,7 @@ impl GameState {
         self.characters[cn].light = light as u8;
 
         // Calculate speed based on mode
-        let mut speed_calc = 10i32;
+        let mut base_speed_calc = 10i32;
         let mode = self.characters[cn].mode;
         let agil = i32::from(self.characters[cn].attrib[core::constants::AT_AGIL as usize][5]);
         let stren = i32::from(self.characters[cn].attrib[core::constants::AT_STREN as usize][5]);
@@ -391,19 +403,33 @@ impl GameState {
 
         if mode == 0 {
             // Sneak mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 12;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 12;
         } else if mode == 1 {
             // Normal mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 14;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 14;
         } else if mode == 2 {
             // Fast mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 16;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 16;
         }
 
-        self.characters[cn].speed = 20 - speed_calc as i16;
+        // Movement speed and attack/action speed are independently derived from the
+        // same baseline so a talent bonus to one never affects the other.
+        let movement_speed_calc = base_speed_calc
+            + (base_speed_calc as f32 * (talent_bonuses.movement_speed_percent as f32 / 100.0))
+                .round() as i32;
+        let action_speed_calc = base_speed_calc
+            + (base_speed_calc as f32 * (talent_bonuses.attack_speed_percent as f32 / 100.0))
+                .round() as i32;
+
+        self.characters[cn].speed = 20 - movement_speed_calc as i16;
         self.characters[cn].speed = self.characters[cn]
             .speed
             .clamp(MIN_SPEEDTAB_INDEX as i16, MAX_SPEEDTAB_SPEED_INDEX as i16);
+
+        // `future3[2]` is a recomputed-every-pass cache of the attack/action speed
+        // row (parallel to `speed` but gating `plr_act`'s misc/attack states only).
+        self.characters[cn].future3[2] = (20 - action_speed_calc)
+            .clamp(MIN_SPEEDTAB_INDEX as i32, MAX_SPEEDTAB_SPEED_INDEX as i32);
 
         // Cap current stats at their maximums
         if self.characters[cn].a_hp > i32::from(self.characters[cn].hp[5]) * 1000 {
@@ -508,23 +534,29 @@ impl GameState {
             match base_status {
                 // Standing/idle states - regenerate normally
                 0..=7 => {
+                    let end_pct = self.talent_runtime[cn].end_regen_percent;
+                    let hp_pct = self.talent_runtime[cn].hp_regen_percent;
+                    let mana_pct = self.talent_runtime[cn].mana_regen_percent;
+
                     if !noend {
-                        self.characters[cn].a_end += scale(moonmult * 4);
+                        let mut end_gain = scale(moonmult * 4);
 
                         // Add bonus from Rest skill
                         if self.characters[cn].skill[skills::SK_REST][0] != 0 {
-                            self.characters[cn].a_end += scale(
+                            end_gain += scale(
                                 i32::from(self.characters[cn].skill[skills::SK_REST][5]) * moonmult
                                     / 30,
                             );
                         }
+
+                        self.characters[cn].a_end += end_gain * (100 + end_pct) / 100;
                     }
 
                     if !nohp {
                         hp_regen = true;
-                        self.characters[cn].a_hp += scale(moonmult * 2);
+                        let mut hp_gain = scale(moonmult * 2);
                         // C original: gothp += moonmult (tracks half the HP regen increment)
-                        gothp += scale(moonmult);
+                        let mut gothp_gain = scale(moonmult);
 
                         // Add bonus from Regen skill
                         if self.characters[cn].skill[skills::SK_REGEN][0] != 0 {
@@ -533,9 +565,13 @@ impl GameState {
                                     * moonmult
                                     / 30,
                             );
-                            self.characters[cn].a_hp += regen_bonus;
-                            gothp += regen_bonus;
+                            hp_gain += regen_bonus;
+                            gothp_gain += regen_bonus;
                         }
+
+                        let hp_mult = 100 + hp_pct;
+                        self.characters[cn].a_hp += hp_gain * hp_mult / 100;
+                        gothp += gothp_gain * hp_mult / 100;
                     }
 
                     if !nomana {
@@ -543,12 +579,13 @@ impl GameState {
 
                         if has_medit {
                             mana_regen = true;
-                            self.characters[cn].a_mana += scale(moonmult);
-                            self.characters[cn].a_mana += scale(
+                            let mut mana_gain = scale(moonmult);
+                            mana_gain += scale(
                                 i32::from(self.characters[cn].skill[skills::SK_MEDIT][5])
                                     * moonmult
                                     / 30,
                             );
+                            self.characters[cn].a_mana += mana_gain * (100 + mana_pct) / 100;
                         }
                     }
                 }
@@ -1370,6 +1407,7 @@ impl GameState {
             if player_id > 0 && player_id < self.players.len() && self.players[player_id].usnr == cn
             {
                 crate::player::commands::send_set_char_talents(self, player_id);
+                crate::player::commands::send_set_char_rune_state(self, player_id);
             }
         }
     }
@@ -2156,6 +2194,76 @@ mod tests {
 
             assert_eq!(gs.characters[cn].future1[0], 2);
             assert_eq!(gs.characters[cn].data[45], 3);
+        });
+    }
+
+    #[test]
+    fn regen_percent_talent_doubles_mana_gain_when_medit_known() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].skill[skills::SK_MEDIT][SkillIndex::BaseValue as usize] = 1;
+            gs.characters[cn].mana[SkillIndex::TotalValue as usize] = 50;
+            gs.characters[cn].status = 0;
+
+            gs.do_regenerate(cn);
+            let baseline_mana = gs.characters[cn].a_mana;
+            assert!(baseline_mana > 0, "expected some baseline mana regen");
+
+            gs.characters[cn].a_mana = 0;
+            gs.talent_runtime[cn].mana_regen_percent = 100;
+            gs.do_regenerate(cn);
+
+            assert_eq!(gs.characters[cn].a_mana, baseline_mana * 2);
+        });
+    }
+
+    #[test]
+    fn attack_speed_talent_changes_action_speed_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_SEYAN_DU as i32;
+
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            // Seyan'Du "Fleet Hands" (layer 2, mask 0b10): AttackSpeedPercent { percent: 10 }.
+            gs.characters[cn].future1[2] |= 0b0000_0010;
+            gs.really_update_char(cn);
+
+            assert_eq!(
+                gs.characters[cn].speed, baseline_speed,
+                "attack speed talent must not change movement speed"
+            );
+            assert!(
+                gs.characters[cn].future3[2] < baseline_action_speed,
+                "attack speed row must decrease (faster) when the talent is learned"
+            );
+        });
+    }
+
+    #[test]
+    fn movement_speed_talent_changes_movement_speed_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_SEYAN_DU as i32;
+
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            // Seyan'Du "Windstep" (layer 4, mask 0b1): MovementSpeedPercent { percent: 15 }.
+            gs.characters[cn].future1[4] |= 0b0000_0001;
+            gs.really_update_char(cn);
+
+            assert!(
+                gs.characters[cn].speed < baseline_speed,
+                "movement speed row must decrease (faster) when the talent is learned"
+            );
+            assert_eq!(
+                gs.characters[cn].future3[2], baseline_action_speed,
+                "movement speed talent must not change attack speed"
+            );
         });
     }
 }

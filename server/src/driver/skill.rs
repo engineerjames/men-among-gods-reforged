@@ -6,16 +6,16 @@ use core::{
         NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
     },
     skills::{
-        SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AXE, SK_BLADE_DANCE, SK_BLAST,
-        SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER, SK_DELIVER_DEATH, SK_DISARM,
-        SK_DISPEL, SK_DISTRACT, SK_ELEMENT_SWITCHING, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL,
-        SK_ICE_STUN, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH, SK_KINDRED_SPIRIT, SK_LAVA_BLAST,
-        SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL,
-        SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST, SK_REVENANT_CONDUIT,
-        SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SPECTRAL_PACT, SK_SPECTRAL_PACT2,
-        SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN, SK_SUNS_BLESSING, SK_SUNS_BLESSING2,
-        SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND, SK_WARCRY, SK_WARCRY2, SK_WEAPON,
-        SK_WIMPY, attribute_name, get_skill_name,
+        SK_ANGUISH_EARTH, SK_ANGUISH_ICE, SK_ANGUISH_LAVA, SK_AURA_CURSE, SK_AURA_WAR_BANNER,
+        SK_AXE, SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONCEN, SK_CONTAGION, SK_CURSE, SK_DAGGER,
+        SK_DELIVER_DEATH, SK_DISARM, SK_DISPEL, SK_DISTRACT, SK_ELEMENT_SWITCHING, SK_ENHANCE,
+        SK_GASH, SK_GHOST, SK_HEAL, SK_ICE_STUN, SK_IDENT, SK_IMMUN, SK_INNER_STRENGTH,
+        SK_KINDRED_SPIRIT, SK_LAVA_BLAST, SK_LIGHT, SK_LOCK, SK_MEDIT, SK_MSHIELD, SK_PARASITE,
+        SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REGEN, SK_REPAIR, SK_RESIST, SK_REST,
+        SK_REVENANT_CONDUIT, SK_REVENANT_CONDUIT2, SK_SEEING_RED, SK_SENSE, SK_SOUL_REFLECTION,
+        SK_SPECTRAL_PACT, SK_SPECTRAL_PACT2, SK_SPELLCASTER_KINDRED_SPIRIT, SK_STAFF, SK_STUN,
+        SK_SUNS_BLESSING, SK_SUNS_BLESSING2, SK_SURROUND, SK_SWORD, SK_THUNDEROUS_FURY, SK_TWOHAND,
+        SK_WARCRY, SK_WARCRY2, SK_WEAPON, SK_WIMPY, attribute_name, get_skill_name,
     },
     string_operations::c_string_to_str,
     talent_trees::harakim,
@@ -27,6 +27,7 @@ use core::{
 };
 
 use crate::{
+    aura::{self, AuraId},
     chlog, driver,
     effect::EffectManager,
     game_state::{ElementSwitchState, GameState},
@@ -385,6 +386,30 @@ pub fn spell_immunity(_gs: &GameState, power: i32, immun: i32) -> i32 {
     // Ported from C++ spell_immunity(int power, int immun)
     let immun = immun / 2;
     if power <= immun { 1 } else { power - immun }
+}
+
+/// Reduces a target's effective resistance value by the caster's talent-derived
+/// spell penetration percent.
+///
+/// Only affects whether a spell *lands* (the `SK_RESIST` opposed rolls and
+/// `chance_base` checks); it deliberately does not touch `spell_immunity`, so
+/// damage-scaling spells like Blast keep their power unaffected by this talent.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to read the caster's cached talent bonuses.
+/// * `caster_cn` - Caster character index.
+/// * `raw_resist` - Target's raw `SK_RESIST` value before penetration.
+///
+/// # Returns
+///
+/// * `raw_resist` scaled down by `100 / (100 + penetration_percent)`.
+pub fn effective_resist(gs: &GameState, caster_cn: usize, raw_resist: i32) -> i32 {
+    let pct = gs.talent_runtime[caster_cn].spell_penetration_percent;
+    if pct == 0 {
+        return raw_resist;
+    }
+    raw_resist * 100 / (100 + pct)
 }
 
 /// Applies caster kindred and moon-phase modifiers to spell power.
@@ -2155,12 +2180,30 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         return;
     }
 
+    cast_curse_effect(gs, cn, co);
+
+    add_exhaust(gs, cn, core::constants::TICKS * 4);
+}
+
+/// Rolls the resist/sense chance and applies Curse (with AoE splash) to `co`
+/// using the caster's current Curse skill level.
+///
+/// Shared by the direct Curse cast (`skill_curse`, after its mana/cooldown
+/// gate) and the Seyan'Du Free Curse rune proc (no gate). Does not check
+/// exhaustion, mana cost, or `may_attack_msg` — callers must do so first.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for the resist roll, item creation, and effects.
+/// * `cn` - Caster character index.
+/// * `co` - Primary target character index.
+pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize) {
     if chance_base(
         gs,
         cn,
         i32::from(gs.characters[cn].skill[SK_CURSE][5]),
         10,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         if cn != co
@@ -2219,7 +2262,11 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
             continue;
         }
         if curse_power + helpers::random_mod_i32(20)
-            > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + helpers::random_mod_i32(20)
+            > effective_resist(
+                gs,
+                cn,
+                i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+            ) + helpers::random_mod_i32(20)
             && spell_curse(gs, cn, maybe_co, curse_power)
         {
             gs.remember_pvp(cn, maybe_co);
@@ -2234,8 +2281,6 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         i32::from(gs.characters[cn].y),
         0,
     );
-
-    add_exhaust(gs, cn, core::constants::TICKS * 4);
 }
 
 /// Attempts to apply Warcry effects to one target.
@@ -2263,7 +2308,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
         return false;
     }
 
-    if power < i32::from(gs.characters[co].skill[SK_RESIST][5]) {
+    if power < effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])) {
         return false;
     }
 
@@ -2421,6 +2466,86 @@ pub fn skill_warcry(gs: &mut GameState, cn: usize) {
             hit,
             hit + miss
         ),
+    );
+}
+
+/// Active hostile AoE: Soul Reflection. Terrifies nearby NPCs, causing them to
+/// flee from the caster for a short time. Has no effect on player characters.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for endurance costs, nearby target lookup, and NPC panic state.
+/// * `cn` - Caster character index.
+pub fn skill_soul_reflection(gs: &mut GameState, cn: usize) {
+    if skill_on_cooldown(gs, cn, SK_SOUL_REFLECTION as u16) {
+        return;
+    }
+    if gs.characters[cn].a_end < 150 * 1000 {
+        gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
+        return;
+    }
+    gs.characters[cn].a_end -= 150 * 1000;
+
+    let power = i32::from(gs.characters[cn].skill[SK_SOUL_REFLECTION][5]);
+    let flee_until = gs.globals.ticker + TICKS * 10;
+
+    let caster_x = i32::from(gs.characters[cn].x);
+    let caster_y = i32::from(gs.characters[cn].y);
+    let xf = std::cmp::max(1, caster_x - 8);
+    let yf = std::cmp::max(1, caster_y - 8);
+    let xt = std::cmp::min(core::constants::SERVER_MAPX - 1, caster_x + 8);
+    let yt = std::cmp::min(core::constants::SERVER_MAPY - 1, caster_y + 8);
+
+    let mut routed = 0;
+    for x in xf..xt {
+        for y in yf..yt {
+            let m = (x + y * core::constants::SERVER_MAPX) as usize;
+            let co = gs.map[m].ch as usize;
+            if co == 0 || co == cn {
+                continue;
+            }
+            // NPCs only; players are unaffected by this fear effect.
+            if (gs.characters[co].flags & CharacterFlags::Player.bits()) != 0 {
+                continue;
+            }
+            if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
+                continue;
+            }
+            if !gs.may_attack_msg(cn, co, false) {
+                continue;
+            }
+            if power < effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])) {
+                continue;
+            }
+
+            // Reuse the existing NPC panic-flee timer and clear its current
+            // target so `npc_driver_high` picks a flee destination next tick.
+            gs.characters[co].data[78] = flee_until;
+            gs.characters[co].attack_cn = 0;
+            gs.characters[co].goto_x = 0;
+            gs.characters[co].goto_y = 0;
+            routed += 1;
+        }
+    }
+
+    gs.do_character_log(
+        cn,
+        FontColor::Green,
+        &format!(
+            "Your presence unravels the courage of {} nearby foe(s).\n",
+            routed
+        ),
+    );
+    chlog!(cn, "Cast Soul Reflection ({} routed)", routed);
+
+    EffectManager::fx_add_effect(gs, 7, 0, caster_x, caster_y, 0);
+
+    add_skill_cooldown(
+        gs,
+        cn,
+        TICKS * 30,
+        SK_SOUL_REFLECTION as u16,
+        b"Soul Reflection Cooldown",
     );
 }
 
@@ -2747,7 +2872,7 @@ pub fn skill_identify(gs: &mut GameState, cn: usize) {
         let target = gs.characters[cn].skill_target1 as usize;
         if target != 0 {
             co = target;
-            power = i32::from(gs.characters[co].skill[SK_RESIST][5]);
+            power = effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5]));
         } else {
             co = cn;
             power = 10;
@@ -2859,6 +2984,40 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         return;
     }
 
+    let (power, dam) = compute_blast_damage(gs, cn, co);
+
+    let mut cost = dam / 8 + 5;
+    if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
+        && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
+    {
+        cost /= 3;
+    }
+
+    if spellcost_blast(gs, cn, cost) != 0 {
+        return;
+    }
+
+    cast_blast_effect(gs, cn, co, power, dam);
+
+    add_exhaust(gs, cn, core::constants::TICKS * 6);
+}
+
+/// Computes Blast damage against `co`, applying immunity/race modifiers and
+/// consuming an Anguish (Lava) marker on the target if present.
+///
+/// Shared by [`skill_blast`]'s mana-cost calculation and the Seyan'Du Free
+/// Blast rune proc.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used to read skills and the target's items.
+/// * `cn` - Caster character index.
+/// * `co` - Target character index.
+///
+/// # Returns
+///
+/// * `(power, damage)` to pass to [`cast_blast_effect`].
+pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> (i32, i32) {
     let mut power = i32::from(gs.characters[cn].skill[SK_BLAST][5]);
     power = spell_immunity(gs, power, i32::from(gs.characters[co].skill[SK_IMMUN][5]));
     power = spell_race_mod(gs, power, gs.characters[cn].kindred);
@@ -2881,17 +3040,24 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         gs.items[in_].active = 0;
     }
 
-    let mut cost = dam / 8 + 5;
-    if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0
-        && ((gs.characters[cn].kindred as u32) & (KIN_HARAKIM | KIN_ARCHHARAKIM) != 0)
-    {
-        cost /= 3;
-    }
+    (power, dam)
+}
 
-    if spellcost_blast(gs, cn, cost) != 0 {
-        return;
-    }
-
+/// Rolls the resist/sense chance and applies Blast damage (with AoE splash)
+/// to `co` for a precomputed `power`/`dam` pair.
+///
+/// Shared by the direct Blast cast (`skill_blast`, after its mana/cooldown
+/// gate) and the Seyan'Du Free Blast rune proc (no gate). Does not check
+/// exhaustion, mana cost, or `may_attack_msg` — callers must do so first.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for the resist roll, damage, and effects.
+/// * `cn` - Caster character index.
+/// * `co` - Primary target character index.
+/// * `power` - Effective Blast power from [`compute_blast_damage`], used only for the cast log line.
+/// * `dam` - Damage amount from [`compute_blast_damage`].
+pub fn cast_blast_effect(gs: &mut GameState, cn: usize, co: usize, power: i32, mut dam: i32) {
     if chance(gs, cn, 18) != 0 {
         if cn != co
             && gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_BLAST][5] + 5
@@ -3007,7 +3173,6 @@ pub fn skill_blast(gs: &mut GameState, cn: usize) {
         );
     }
 
-    add_exhaust(gs, cn, core::constants::TICKS * 6);
     EffectManager::fx_add_effect(
         gs,
         7,
@@ -3090,7 +3255,7 @@ pub fn skill_lava_blast(gs: &mut GameState, cn: usize) {
         cn,
         i32::from(gs.characters[cn].skill[SK_LAVA_BLAST][5]),
         12,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         return;
@@ -3496,7 +3661,7 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
         cn,
         i32::from(gs.characters[cn].skill[SK_STUN][5]),
         12,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         if cn != co
@@ -3549,7 +3714,11 @@ pub fn skill_stun(gs: &mut GameState, cn: usize) {
             let s_rand = helpers::random_mod_i32(20);
             let o_rand = helpers::random_mod_i32(20);
             if i32::from(gs.characters[cn].skill[SK_STUN][5]) + s_rand
-                > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
+                > effective_resist(
+                    gs,
+                    cn,
+                    i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+                ) + o_rand
             {
                 spell_stun(
                     gs,
@@ -3604,7 +3773,7 @@ pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
         cn,
         i32::from(gs.characters[cn].skill[SK_ICE_STUN][5]),
         12,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         if gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_ICE_STUN][5] + 5 {
@@ -3657,7 +3826,12 @@ pub fn skill_ice_stun(gs: &mut GameState, cn: usize) {
         if maybe_co != 0 && gs.characters[maybe_co].attack_cn == cn as u16 && maybe_co != co_orig {
             let s_rand = helpers::random_mod_i32(20);
             let o_rand = helpers::random_mod_i32(20);
-            if power + s_rand > i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]) + o_rand
+            if power + s_rand
+                > effective_resist(
+                    gs,
+                    cn,
+                    i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+                ) + o_rand
                 && spell_stun(gs, cn, maybe_co, power)
             {
                 attach_ice_stun_marker(gs, cn, maybe_co, burst_power);
@@ -4535,19 +4709,19 @@ fn add_skill_cooldown(gs: &mut GameState, cn: usize, len: i32, skill_temp: u16, 
             return;
         }
     };
-    {
-        let item = &mut gs.items[in_];
-        let mut name_bytes = [0u8; 40];
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 97;
-        item.duration = len as u32;
-        item.active = len as u32;
-        item.temp = skill_temp;
-        item.power = 255;
-    }
+
+    let item = &mut gs.items[in_];
+    let mut name_bytes = [0u8; 40];
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 97;
+    item.duration = len as u32;
+    item.active = len as u32;
+    item.temp = skill_temp;
+    item.power = 255;
+
     add_spell(gs, cn, in_);
 }
 
@@ -4763,23 +4937,21 @@ pub(crate) fn apply_parasitic_dot(
         return false;
     }
 
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = duration_ticks as u32;
-        item.active = duration_ticks as u32;
-        item.temp = temp;
-        item.power = power as u32;
-        item.data[0] = caster as u32;
-        // data[1] is reserved for Contagion to track the last tick at which it
-        // spread, preventing repeat spreads within the same combat round.
-        item.data[1] = 0;
-    }
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = duration_ticks as u32;
+    item.active = duration_ticks as u32;
+    item.temp = temp;
+    item.power = power as u32;
+    item.data[0] = caster as u32;
+    // data[1] is reserved for Contagion to track the last tick at which it
+    // spread, preventing repeat spreads within the same combat round.
+    item.data[1] = 0;
 
     if add_spell(gs, co, in_idx) == 0 {
         return false;
@@ -4924,21 +5096,20 @@ fn apply_distract(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool 
     }
     let in_idx = in_opt.unwrap();
     let agility_penalty = -(((power / 3) * 3).clamp(3, 90)) as i16;
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Distract";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = (TICKS * 30) as u32;
-        item.active = (TICKS * 30) as u32;
-        item.temp = SK_DISTRACT as u16;
-        item.power = power as u32;
-        item.attrib[AT_AGIL as usize][1] = agility_penalty;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Distract";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = (TICKS * 30) as u32;
+    item.active = (TICKS * 30) as u32;
+    item.temp = SK_DISTRACT as u16;
+    item.power = power as u32;
+    item.attrib[AT_AGIL as usize][1] = agility_penalty;
 
     add_spell(gs, co, in_idx) != 0
 }
@@ -5134,21 +5305,21 @@ pub fn skill_disarm(gs: &mut GameState, cn: usize) {
     }
     let in_idx = in_opt.unwrap();
     let weapon_penalty = -(((power / 2) * 3).clamp(3, 150)) as i16;
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Disarm";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = (TICKS * 45) as u32;
-        item.active = (TICKS * 45) as u32;
-        item.temp = SK_DISARM as u16;
-        item.power = power as u32;
-        item.skill[SK_WEAPON][1] = weapon_penalty;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Disarm";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = (TICKS * 45) as u32;
+    item.active = (TICKS * 45) as u32;
+    item.temp = SK_DISARM as u16;
+    item.power = power as u32;
+    item.skill[SK_WEAPON][1] = weapon_penalty;
+
     if add_spell(gs, co, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5372,20 +5543,20 @@ pub fn skill_rains_of_renewal(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Rains of Renewal";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_RAINS_OF_RENEWAL as u16;
-        item.power = power.max(1) as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Rains of Renewal";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_RAINS_OF_RENEWAL as u16;
+    item.power = power.max(1) as u32;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5491,25 +5662,25 @@ pub fn skill_suns_blessing(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Sun's Blessing";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = buff_duration as u32;
-        item.active = buff_duration as u32;
-        item.temp = SK_SUNS_BLESSING2 as u16;
-        item.power = power.max(1) as u32;
-        for n in 0..5 {
-            item.attrib[n][1] = bonus;
-        }
-        item.armor[1] = bonus as i8;
-        item.weapon[1] = bonus as i8;
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Sun's Blessing";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = buff_duration as u32;
+    item.active = buff_duration as u32;
+    item.temp = SK_SUNS_BLESSING2 as u16;
+    item.power = power.max(1) as u32;
+    for n in 0..5 {
+        item.attrib[n][1] = bonus;
     }
+    item.armor[1] = bonus as i8;
+    item.weapon[1] = bonus as i8;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5574,21 +5745,21 @@ pub fn skill_seeing_red(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Seeing Red";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_SEEING_RED as u16;
-        item.power = power.max(1) as u32;
-        item.weapon[1] = weapon;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Seeing Red";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_SEEING_RED as u16;
+    item.power = power.max(1) as u32;
+    item.weapon[1] = weapon;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5726,21 +5897,21 @@ pub fn skill_inner_strength(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Inner Strength";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = buff_duration as u32;
-        item.active = buff_duration as u32;
-        item.temp = SK_INNER_STRENGTH as u16;
-        item.power = power.max(1) as u32;
-        item.skill[SK_WEAPON][1] = buff_amount;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Inner Strength";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = buff_duration as u32;
+    item.active = buff_duration as u32;
+    item.temp = SK_INNER_STRENGTH as u16;
+    item.power = power.max(1) as u32;
+    item.skill[SK_WEAPON][1] = buff_amount;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5857,6 +6028,71 @@ pub(crate) fn remove_active_spell_temp(gs: &mut GameState, cn: usize, skill_temp
     removed
 }
 
+/// Returns whether `owner_id` still has a live Ghost Companion in either slot.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `owner_id` - Character id to check for a live companion.
+///
+/// # Returns
+///
+/// * `true` if either companion slot points to a live, owned companion.
+fn owner_has_live_companion(gs: &GameState, owner_id: usize) -> bool {
+    for slot in [CHD_COMPANION, CHD_COMPANION2] {
+        let cc = gs.characters[owner_id].data[slot] as usize;
+        if cc == 0 || !Character::is_sane_character(cc) {
+            continue;
+        }
+        if gs.characters[cc].data[63] == owner_id as i32
+            && gs.characters[cc].temp == CT_COMPANION as u16
+            && gs.characters[cc].used != USE_EMPTY
+            && (gs.characters[cc].flags & CharacterFlags::Body.bits()) == 0
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Clears Ghost-Companion-dependent Harakim buffs (Revenant Conduit,
+/// Spectral Pact) from `owner_id` once they have no live Ghost Companion
+/// left.
+///
+/// Companions can be lost through the `transfer` talk command, combat
+/// death, or self-destruct from neglect. Without this, a stale Revenant
+/// Conduit buff would keep boosting the effective Ghost Companion skill
+/// used to stat the next summoned companion, letting a player ratchet up
+/// companion power well beyond what a single cast of the conduit should
+/// grant. Spectral Pact is cleared alongside it since it is equally
+/// meaningless without a companion to redirect damage to.
+///
+/// # Arguments
+///
+/// * `gs` - Game state.
+/// * `owner_id` - Character id that just lost a companion.
+pub(crate) fn clear_companion_dependent_buffs_if_none_left(gs: &mut GameState, owner_id: usize) {
+    if !Character::is_sane_character(owner_id) || owner_has_live_companion(gs, owner_id) {
+        return;
+    }
+    if remove_active_spell_temp(gs, owner_id, SK_REVENANT_CONDUIT2 as u16) {
+        gs.do_character_log(
+            owner_id,
+            FontColor::Green,
+            "With your ghost companion gone, the conduit closes.\n",
+        );
+        chlog!(owner_id, "Revenant Conduit closed (companion lost)");
+    }
+    if remove_active_spell_temp(gs, owner_id, SK_SPECTRAL_PACT2 as u16) {
+        gs.do_character_log(
+            owner_id,
+            FontColor::Green,
+            "With your ghost companion gone, the spectral pact fades.\n",
+        );
+        chlog!(owner_id, "Spectral Pact faded (companion lost)");
+    }
+}
+
 /// Active self-buff: Revenant Conduit. Spends mana up front and attaches a
 /// spell item that boosts the caster's effective Ghost Companion skill while
 /// draining endurance over time (the drain is processed in `state/stats.rs`).
@@ -5899,20 +6135,20 @@ pub fn skill_revenant_conduit(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Revenant Conduit";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 96;
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_REVENANT_CONDUIT2 as u16;
-        item.power = boost_pct.max(1) as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Revenant Conduit";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 96;
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_REVENANT_CONDUIT2 as u16;
+    item.power = boost_pct.max(1) as u32;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -5997,20 +6233,20 @@ pub fn skill_spectral_pact(gs: &mut GameState, cn: usize) {
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let name = b"Spectral Pact";
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
-        item.duration = duration as u32;
-        item.active = duration as u32;
-        item.temp = SK_SPECTRAL_PACT2 as u16;
-        item.power = redirect_pct.max(1) as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let name = b"Spectral Pact";
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 88; // TODO: assign unique spell-effect sprite ID once buff sprite assets are finalized
+    item.duration = duration as u32;
+    item.active = duration as u32;
+    item.temp = SK_SPECTRAL_PACT2 as u16;
+    item.power = redirect_pct.max(1) as u32;
+
     if add_spell(gs, cn, in_idx) == 0 {
         gs.do_character_log(
             cn,
@@ -6064,7 +6300,7 @@ fn anguish_preflight(
         cn,
         i32::from(gs.characters[cn].skill[skill_const][5]),
         10,
-        i32::from(gs.characters[co].skill[SK_RESIST][5]),
+        effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
         return None;
@@ -6095,22 +6331,22 @@ fn attach_anguish(
         return;
     }
     let in_idx = in_opt.unwrap();
-    {
-        let item = &mut gs.items[in_idx];
-        let mut name_bytes = [0u8; 40];
-        let nlen = name.len().min(40);
-        name_bytes[..nlen].copy_from_slice(&name[..nlen]);
-        item.name = name_bytes;
-        item.flags |= ItemFlags::IF_SPELL.bits();
-        item.sprite[1] = 89;
-        item.duration = duration_ticks as u32;
-        item.active = duration_ticks as u32;
-        item.temp = temp;
-        item.power = power.max(1);
-        item.armor[1] = armor_mod;
-        item.weapon[1] = weapon_mod;
-        item.data[0] = cn as u32;
-    }
+
+    let item = &mut gs.items[in_idx];
+    let mut name_bytes = [0u8; 40];
+    let nlen = name.len().min(40);
+    name_bytes[..nlen].copy_from_slice(&name[..nlen]);
+    item.name = name_bytes;
+    item.flags |= ItemFlags::IF_SPELL.bits();
+    item.sprite[1] = 89;
+    item.duration = duration_ticks as u32;
+    item.active = duration_ticks as u32;
+    item.temp = temp;
+    item.power = power.max(1);
+    item.armor[1] = armor_mod;
+    item.weapon[1] = weapon_mod;
+    item.data[0] = cn as u32;
+
     add_spell(gs, co, in_idx);
     EffectManager::fx_add_effect(
         gs,
@@ -6181,7 +6417,11 @@ pub fn skill_anguish_earth(gs: &mut GameState, cn: usize) {
         if !gs.may_attack_msg(cn, maybe_co, false) {
             continue;
         }
-        let resist = i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]);
+        let resist = effective_resist(
+            gs,
+            cn,
+            i32::from(gs.characters[maybe_co].skill[SK_RESIST][5]),
+        );
         if power + helpers::random_mod_i32(20) <= resist + helpers::random_mod_i32(20) {
             continue;
         }
@@ -6236,6 +6476,43 @@ pub fn skill_anguish_ice(gs: &mut GameState, cn: usize) {
         &format!("Glacial anguish bites into {}.\n", name),
     );
     chlog!(cn, "Cast Anguish-Ice on {}", name);
+}
+
+/// Toggles the Curse Aura on or off.
+///
+/// When active, the caster periodically curses nearby enemies.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Character index toggling the aura.
+pub fn skill_curse_aura(gs: &mut GameState, cn: usize) {
+    aura::logic::toggle_aura(
+        gs,
+        cn,
+        AuraId::CurseAura,
+        "You surround yourself with an aura of curses.\n",
+        "You dismiss your aura of curses.\n",
+    );
+}
+
+/// Toggles the War Banner aura on or off.
+///
+/// When active, the caster periodically improves the armor and weapon values
+/// of nearby allies.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - Character index toggling the aura.
+pub fn skill_war_banner_aura(gs: &mut GameState, cn: usize) {
+    aura::logic::toggle_aura(
+        gs,
+        cn,
+        AuraId::WarBannerAura,
+        "You raise a war banner.\n",
+        "You lower your war banner.\n",
+    );
 }
 
 /// Dispatches direct skill use to the matching skill handler.
@@ -6359,6 +6636,15 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
                 nomagic(gs, cn);
             } else {
                 skill_mshield(gs, cn);
+            }
+        }
+        x if x == SK_AURA_CURSE as i32 => skill_curse_aura(gs, cn),
+        x if x == SK_AURA_WAR_BANNER as i32 => skill_war_banner_aura(gs, cn),
+        x if x == SK_SOUL_REFLECTION as i32 => {
+            if (gs.characters[cn].flags & CharacterFlags::NoMagic.bits()) != 0 {
+                nomagic(gs, cn);
+            } else {
+                skill_soul_reflection(gs, cn);
             }
         }
         x if x == SK_IMMUN as i32 => gs.do_character_log(
@@ -6665,6 +6951,47 @@ mod harakim_ability_tests {
     }
 
     #[test]
+    fn clear_companion_dependent_buffs_removed_when_no_companion_left() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            attach_marker(gs, owner, 0, 10, SK_REVENANT_CONDUIT2 as u16);
+            attach_marker(gs, owner, 1, 11, SK_SPECTRAL_PACT2 as u16);
+
+            clear_companion_dependent_buffs_if_none_left(gs, owner);
+
+            assert!(!has_active_spell_temp(
+                gs,
+                owner,
+                SK_REVENANT_CONDUIT2 as u16
+            ));
+            assert!(!has_active_spell_temp(gs, owner, SK_SPECTRAL_PACT2 as u16));
+        });
+    }
+
+    #[test]
+    fn clear_companion_dependent_buffs_kept_while_a_companion_is_alive() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            attach_marker(gs, owner, 0, 10, SK_REVENANT_CONDUIT2 as u16);
+
+            let companion = 2;
+            gs.characters[companion] = core::types::Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].data[CHD_COMPANION] = companion as i32;
+
+            clear_companion_dependent_buffs_if_none_left(gs, owner);
+
+            assert!(has_active_spell_temp(
+                gs,
+                owner,
+                SK_REVENANT_CONDUIT2 as u16
+            ));
+        });
+    }
+
+    #[test]
     fn anguish_earth_blocks_player_movement() {
         with_test_gs(|gs| {
             let (cn, _nr) = add_test_player(gs);
@@ -6675,6 +7002,63 @@ mod harakim_ability_tests {
             assert_eq!(gs.characters[cn].x, start_x);
             assert_eq!(gs.characters[cn].y, start_y);
             assert_eq!(gs.characters[cn].cerrno, core::constants::ERR_FAILED as u16);
+        });
+    }
+}
+
+#[cfg(test)]
+mod seyan_du_ability_tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::USE_ACTIVE;
+
+    #[test]
+    fn effective_resist_scales_down_with_penetration_percent() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            assert_eq!(effective_resist(gs, cn, 100), 100);
+
+            gs.talent_runtime[cn].spell_penetration_percent = 25;
+            assert_eq!(effective_resist(gs, cn, 100), 80);
+        });
+    }
+
+    #[test]
+    fn skill_soul_reflection_routs_npc_but_spares_player() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].skill[SK_SOUL_REFLECTION][0] = 1;
+            gs.characters[cn].skill[SK_SOUL_REFLECTION][5] = 50;
+            gs.characters[cn].a_end = 1_000_000;
+            gs.globals.ticker = 1000;
+
+            let npc = 2;
+            gs.characters[npc] = Character::default();
+            gs.characters[npc].used = USE_ACTIVE;
+            gs.characters[npc].x = gs.characters[cn].x + 1;
+            gs.characters[npc].y = gs.characters[cn].y;
+            gs.characters[npc].attack_cn = cn as u16;
+            gs.map[gs.characters[npc].x as usize
+                + gs.characters[npc].y as usize * SERVER_MAPX as usize]
+                .ch = npc as u32;
+
+            let other_player = 3;
+            gs.characters[other_player] = Character::default();
+            gs.characters[other_player].used = USE_ACTIVE;
+            gs.characters[other_player].flags = CharacterFlags::Player.bits();
+            gs.characters[other_player].x = gs.characters[cn].x - 1;
+            gs.characters[other_player].y = gs.characters[cn].y;
+            gs.characters[other_player].attack_cn = cn as u16;
+            gs.map[gs.characters[other_player].x as usize
+                + gs.characters[other_player].y as usize * SERVER_MAPX as usize]
+                .ch = other_player as u32;
+
+            skill_soul_reflection(gs, cn);
+
+            assert_eq!(gs.characters[npc].data[78], 1000 + TICKS * 10);
+            assert_eq!(gs.characters[npc].attack_cn, 0);
+            assert_eq!(gs.characters[other_player].data[78], 0);
+            assert_eq!(gs.characters[other_player].attack_cn, cn as u16);
         });
     }
 }
