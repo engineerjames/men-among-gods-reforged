@@ -77,10 +77,10 @@ const NODE_SIZE: u32 = 20;
 const TALENT_ROWS: i32 = 12;
 
 /// Radius in pixels of a Seyan'Du rune slot circle.
-const RUNE_SLOT_RADIUS: i32 = 16;
+const RUNE_SLOT_RADIUS: i32 = 12;
 
 /// Vertical gap in pixels between stacked rune slot circles.
-const RUNE_SLOT_GAP: i32 = 30;
+const RUNE_SLOT_GAP: i32 = 32;
 
 /// Placeholder fill color for each rune slot, in [`mag_core::seyan_runes::SeyanRune`] order.
 const RUNE_SLOT_COLORS: [Color; 4] = [
@@ -724,6 +724,7 @@ impl Widget for TalentPanel {
                 .rune_slots
                 .iter()
                 .position(|r| r.contains_point(*x, *y))
+                .filter(|&idx| idx as u8 != self.active_rune)
         {
             self.pending_actions.push(WidgetAction::SetActiveRune {
                 rune_idx: rune_idx as u8,
@@ -1740,6 +1741,27 @@ mod tests {
             actions[0],
             WidgetAction::SetActiveRune { rune_idx: 2 }
         ));
+    }
+
+    /// Clicking the already-active rune slot must not re-emit `SetActiveRune`
+    /// — doing so would needlessly reset its own swap cooldown.
+    #[test]
+    fn click_on_already_active_rune_slot_emits_nothing() {
+        let mut p = panel_for(Class::SeyanDu);
+        p.toggle();
+        p.sync_rune_state(2, 0);
+
+        let slot = p.rune_slots[2];
+        let cx = slot.x + slot.width as i32 / 2;
+        let cy = slot.y + slot.height as i32 / 2;
+        p.handle_event(&UiEvent::MouseClick {
+            x: cx,
+            y: cy,
+            button: MouseButton::Left,
+            modifiers: Default::default(),
+        });
+
+        assert!(p.take_actions().is_empty());
     }
 
     /// Clicking a rune slot while a swap is on cooldown emits nothing.

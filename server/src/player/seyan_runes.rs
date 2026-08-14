@@ -77,7 +77,11 @@ pub fn set_active_rune(gs: &mut GameState, cn: usize, rune_idx: u8) -> Result<()
         return Err(format!("Unknown rune index {rune_idx}"));
     }
 
-    let (_, remaining) = rune_state(gs, cn);
+    let (active, remaining) = rune_state(gs, cn);
+    if rune_idx == active {
+        // Re-picking the already-active rune is a no-op, not a fresh swap.
+        return Ok(());
+    }
     if remaining > 0 {
         return Err(format!(
             "Rune swap still on cooldown for {remaining} more ticks"
@@ -149,6 +153,23 @@ mod tests {
             gs.globals.ticker += RUNE_SWAP_COOLDOWN_TICKS;
             assert!(set_active_rune(gs, 1, 2).is_ok());
             assert_eq!(rune_state(gs, 1).0, 2);
+        });
+    }
+
+    /// Re-picking the already-active rune must be a no-op, not a fresh swap
+    /// that resets its own cooldown.
+    #[test]
+    fn reselecting_active_rune_does_not_reset_cooldown() {
+        with_test_gs(|gs| {
+            seed_seyan_du(gs, 1);
+            assert!(set_active_rune(gs, 1, 1).is_ok());
+            let (_, remaining_before) = rune_state(gs, 1);
+            assert!(remaining_before > 0);
+
+            assert!(set_active_rune(gs, 1, 1).is_ok());
+            let (active, remaining_after) = rune_state(gs, 1);
+            assert_eq!(active, 1);
+            assert_eq!(remaining_after, remaining_before);
         });
     }
 }
