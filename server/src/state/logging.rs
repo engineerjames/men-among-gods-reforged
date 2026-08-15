@@ -358,7 +358,7 @@ impl GameState {
     /// * `source` - Source character id (for visibility checks)
     /// * `author` - Optional author character id to prefix the message
     /// * `text` - Message text
-    pub(crate) fn do_caution(&mut self, source: usize, author: usize, text: &str) {
+    pub(crate) fn do_caution(&mut self, _source: usize, author: usize, text: &str) {
         if text.is_empty() {
             log::error!("do_caution called with empty text");
             return;

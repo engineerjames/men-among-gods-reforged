@@ -1,7 +1,7 @@
 use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS};
 use core::ranks::Rank;
 use core::string_operations::c_string_to_str;
-use core::{ranks, traits};
+use core::traits;
 
 use crate::game_state::GameState;
 use core::types::Character;
