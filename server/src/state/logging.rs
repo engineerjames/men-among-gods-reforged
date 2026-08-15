@@ -377,14 +377,7 @@ impl GameState {
             if !(self.characters[n].player != 0 || self.characters[n].temp == CT_LGUARD as u16) {
                 continue;
             }
-            if source != 0
-                && (self.characters[source].flags
-                    & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()))
-                    != 0
-            {
-                // visibility rules omitted
-            }
-            self.do_log(n, core::types::FontColor::Blue, &named);
+            self.do_log(n, core::types::FontColor::Red, &named);
         }
     }
 

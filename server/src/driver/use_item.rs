@@ -1520,6 +1520,9 @@ pub fn use_scroll(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         let v = i32::from(current_val);
         let diff = i32::from(difficulty);
         let pts = points::skill_needed(v, diff);
+
+        // We also intentionally leave out rank-based EXP bonuses here as well,
+        // since this function just adds exp based on skill-raise specifics.
         gs.characters[cn].points_tot += pts;
         gs.characters[cn].skill[skill_nr][0] += 1;
         gs.do_check_new_level(cn);
@@ -1659,6 +1662,8 @@ pub fn use_scroll3(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         pts += (n + v) * diff;
     }
 
+    // We also intentionally leave out rank-based EXP bonuses here as well,
+    // since this function just adds exp based on skill-raise specifics.
     gs.characters[cn].points_tot += pts;
     gs.characters[cn].hp[0] += amount as u16;
     gs.do_check_new_level(cn);
@@ -1713,6 +1718,8 @@ pub fn use_scroll4(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         pts += ((n + v) * diff) / 2;
     }
 
+    // We also intentionally leave out rank-based EXP bonuses here as well,
+    // since this function just adds exp based on skill-raise specifics.
     gs.characters[cn].points_tot += pts;
     gs.characters[cn].end[0] += amount as u16;
     gs.do_check_new_level(cn);
@@ -1768,6 +1775,8 @@ pub fn use_scroll5(gs: &mut GameState, cn: usize, item_idx: usize) -> bool {
         pts += (n + v) * diff;
     }
 
+    // We also intentionally leave out rank-based EXP bonuses here as well,
+    // since this function just adds exp based on skill-raise specifics.
     gs.characters[cn].points_tot += pts;
     gs.characters[cn].mana[0] += amount as u16;
     gs.do_check_new_level(cn);

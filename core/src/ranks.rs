@@ -126,6 +126,41 @@ impl Rank {
                 | Self::Warlord
         )
     }
+
+    /// Returns the rank corresponding to the given total points.
+    pub fn from_points(points: u32) -> Self {
+        Self::from_index(points2rank(points) as usize)
+    }
+
+    /// Returns the experience-point bonus multiplier for this rank.
+    pub const fn exp_bonus(self) -> f32 {
+        match self {
+            Self::Private => 1.0,
+            Self::PrivateFirstClass => 5.0,
+            Self::LanceCorporal => 4.5,
+            Self::Corporal => 4.5,
+            Self::Sergeant => 4.0,
+            Self::StaffSergeant => 3.5,
+            Self::MasterSergeant => 3.5,
+            Self::FirstSergeant => 3.0,
+            Self::SergeantMajor => 3.0,
+            Self::SecondLieutenant => 2.5,
+            Self::FirstLieutenant => 2.5,
+            Self::Captain => 2.0,
+            Self::Major => 2.0,
+            Self::LieutenantColonel => 1.5,
+            Self::Colonel => 1.5,
+            Self::BrigadierGeneral => 1.0,
+            Self::MajorGeneral => 1.0,
+            Self::LieutenantGeneral => 1.0,
+            Self::General => 1.0,
+            Self::FieldMarshal => 1.0,
+            Self::Knight => 1.0,
+            Self::Baron => 1.0,
+            Self::Earl => 1.0,
+            Self::Warlord => 1.0,
+        }
+    }
 }
 
 /// Full rank names matching `WHO_RANK_NAME` indices.

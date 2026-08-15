@@ -2988,6 +2988,8 @@ impl God {
             return;
         }
 
+        // We intentionally do not use the EXP bonuses here,
+        // as this is a direct admin command to adjust experience.
         gs.characters[co].points += value;
         gs.characters[co].points_tot += value;
 

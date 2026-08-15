@@ -1,6 +1,7 @@
 use core::constants::{CT_COMPANION, NT_GOTMISS, SERVER_MAPX, SERVER_MAPY, TICKS};
+use core::ranks::Rank;
 use core::string_operations::c_string_to_str;
-use core::traits;
+use core::{ranks, traits};
 
 use crate::game_state::GameState;
 use core::types::Character;
@@ -3851,7 +3852,8 @@ pub fn answer_buyexp(gs: &mut GameState, cn: usize, co: usize) {
         return;
     }
 
-    let total_exp = pts * exp;
+    let exp_multiplier = Rank::from_points(gs.characters[co].points_tot as u32).exp_bonus();
+    let total_exp = f32::round(pts as f32 * exp as f32 * exp_multiplier) as i32;
 
     let co_name = {
         let characters = &mut gs.characters;
