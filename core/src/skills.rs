@@ -80,8 +80,8 @@ pub const SK_INNER_STRENGTH: usize = 48;
 
 // ---- Harakim talent-granted skills and markers (reserved slots 50..=59) ----
 /// Revenant Conduit: self-buff that raises the caster's effective Ghost
-/// Companion skill at summon time; mana to cast, slow endurance drain to
-/// maintain.
+/// Companion skill and returns part of companion damage as healing; mana to
+/// cast, slow endurance drain to maintain.
 pub const SK_REVENANT_CONDUIT: usize = 50;
 /// Revenant Conduit companion temp identifier for the attached buff item
 /// (mirrors the [`SK_WARCRY`] / [`SK_WARCRY2`] pattern).
@@ -837,7 +837,7 @@ pub static SKILLTAB: [SkillTab; MAX_SKILLS] = [
         50,
         SkillCategory::Magic,
         "Revenant Conduit",
-        "Spell: Empower future ghost companions; drains endurance over time.",
+        "Spell: Empower ghosts; their damage heals you for 10-50%.",
         0,
         2,
         1,

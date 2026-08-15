@@ -20,6 +20,51 @@ use crate::{driver, helpers, points};
 const MAX_ATTRIB_SKILL_VALUE: i32 = 500;
 
 impl GameState {
+    /// Heals a ghost companion's owner from damage dealt while Revenant Conduit is active.
+    ///
+    /// The conduit marker stores the ghost-skill boost percentage. Its healing
+    /// percentage is one third of that value, scaling from 10% to 50% across
+    /// the existing +30% to +150% conduit tiers.
+    ///
+    /// # Arguments
+    ///
+    /// * `attacker` - Character index that dealt the damage.
+    /// * `damage` - Post-mitigation damage in internal thousandths-of-HP units.
+    fn apply_revenant_conduit_heal(&mut self, attacker: usize, damage: i32) {
+        if damage <= 0 || self.characters[attacker].temp != core::constants::CT_COMPANION as u16 {
+            return;
+        }
+
+        let owner = self.characters[attacker].data[63] as usize;
+        if owner == 0
+            || !core::types::Character::is_sane_character(owner)
+            || self.characters[owner].used != core::constants::USE_ACTIVE
+            || (self.characters[owner].flags & CharacterFlags::Player.bits()) == 0
+        {
+            return;
+        }
+
+        let conduit_boost = self.characters[owner].spell[..20]
+            .iter()
+            .map(|&spell| spell as usize)
+            .find(|&item| {
+                item != 0
+                    && self.items[item].used == core::constants::USE_ACTIVE
+                    && self.items[item].active > 0
+                    && self.items[item].temp == skills::SK_REVENANT_CONDUIT2 as u16
+            })
+            .map(|item| self.items[item].power as i32)
+            .unwrap_or(0);
+        let heal_percent = (conduit_boost / 3).clamp(0, 50);
+        if heal_percent == 0 {
+            return;
+        }
+
+        let heal = damage.saturating_mul(heal_percent) / 100;
+        let max_hp = i32::from(self.characters[owner].hp[5]) * 1000;
+        self.characters[owner].a_hp = self.characters[owner].a_hp.saturating_add(heal).min(max_hp);
+    }
+
     /// Helper function to check if character wears a specific item
     /// Port of part of `really_update_char`
     pub(crate) fn char_wears_item(&mut self, cn: usize, item_template: u16) -> bool {
@@ -1836,8 +1881,11 @@ impl GameState {
             return dam / 1000;
         }
 
-        // Subtract hp
+        // Subtract HP and let an active Revenant Conduit return part of a
+        // ghost companion's actual post-mitigation damage to its owner.
+        let applied_damage = dam.min(self.characters[co].a_hp.max(0));
         self.characters[co].a_hp -= dam;
+        self.apply_revenant_conduit_heal(cn, applied_damage);
 
         // Warn about low HP
         let cur_hp = self.characters[co].a_hp;
@@ -1965,6 +2013,64 @@ mod tests {
             + i32::from(gs.characters[cn].attrib[attrs[1]][SkillIndex::TotalValue as usize])
             + i32::from(gs.characters[cn].attrib[attrs[2]][SkillIndex::TotalValue as usize]))
             / 5
+    }
+
+    fn add_revenant_conduit_marker(gs: &mut GameState, owner: usize, boost_percent: u32) {
+        let item_idx = 10;
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].active = 100;
+        gs.items[item_idx].temp = skills::SK_REVENANT_CONDUIT2 as u16;
+        gs.items[item_idx].power = boost_percent;
+        gs.characters[owner].spell[0] = item_idx as u32;
+    }
+
+    #[test]
+    fn revenant_conduit_heals_owner_by_scaled_damage_percentage() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            let companion = owner + 1;
+            gs.characters[companion] = core::types::Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].hp[5] = 100;
+            gs.characters[owner].a_hp = 10_000;
+
+            add_revenant_conduit_marker(gs, owner, 30);
+            gs.apply_revenant_conduit_heal(companion, 20_000);
+            assert_eq!(gs.characters[owner].a_hp, 12_000);
+
+            gs.items[10].power = 150;
+            gs.apply_revenant_conduit_heal(companion, 20_000);
+            assert_eq!(gs.characters[owner].a_hp, 22_000);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_heal_requires_active_marker_and_caps_at_max_hp() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            let companion = owner + 1;
+            gs.characters[companion] = core::types::Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].hp[5] = 100;
+            gs.characters[owner].a_hp = 90_000;
+
+            gs.apply_revenant_conduit_heal(companion, 20_000);
+            assert_eq!(gs.characters[owner].a_hp, 90_000);
+
+            add_revenant_conduit_marker(gs, owner, 150);
+            gs.apply_revenant_conduit_heal(companion, 40_000);
+            assert_eq!(gs.characters[owner].a_hp, 100_000);
+
+            gs.items[10].active = 0;
+            gs.characters[owner].a_hp = 50_000;
+            gs.apply_revenant_conduit_heal(companion, 40_000);
+            assert_eq!(gs.characters[owner].a_hp, 50_000);
+        });
     }
 
     fn set_legacy_weapon_bonuses(skill: &mut [[i16; 3]; skills::MAX_SKILLS], modifier_idx: usize) {

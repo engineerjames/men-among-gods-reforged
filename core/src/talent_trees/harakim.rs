@@ -134,7 +134,7 @@ pub static HARAKIM_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: REVENANT_CONDUIT,
             name: "Revenant Conduit",
-            description: "Learn a toggled self-buff that raises your Ghost Companion skill, at the cost of mana and a steady endurance drain.",
+            description: "Learn a toggled self-buff that raises your Ghost Companion skill and makes companion damage heal you for 10-50%, at the cost of mana and a steady endurance drain.",
             cost: 1,
             prereqs: &[],
             effect: TalentEffect::GrantSkill {
