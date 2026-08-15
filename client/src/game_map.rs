@@ -2,6 +2,37 @@ use mag_core::constants::{TILEX, TILEY};
 
 use crate::types::map::CMapTile;
 
+/// Returns the protocol base status for a character animation.
+///
+/// # Arguments
+/// * `status` - Character animation status to normalize.
+///
+/// # Returns
+/// * The first status in the animation's frame range.
+fn character_animation_base_status(status: u8) -> u8 {
+    match status {
+        16..=47 => 16 + (status - 16) / 8 * 8,
+        48..=95 => 48 + (status - 48) / 12 * 12,
+        96..=159 => 96 + (status - 96) / 4 * 4,
+        160..=191 => 160 + (status - 160) / 8 * 8,
+        _ => status,
+    }
+}
+
+/// Returns the base status for a directional movement animation.
+///
+/// # Arguments
+/// * `status` - Character animation status to classify.
+///
+/// # Returns
+/// * The movement range's base status, or `None` for non-movement actions.
+fn movement_base_status(status: u8) -> Option<u8> {
+    match status {
+        16..=95 => Some(character_animation_base_status(status)),
+        _ => None,
+    }
+}
+
 /// Fixed-size tile grid representing the player's visible map window.
 ///
 /// The map is `TILEX × TILEY` tiles. Each tile stores background / item /
@@ -13,6 +44,7 @@ use crate::types::map::CMapTile;
 pub struct GameMap {
     tiles: Vec<CMapTile>,
     last_setmap_index: Option<u16>,
+    animation_started_since_last_check: bool,
 }
 
 impl Default for GameMap {
@@ -42,6 +74,7 @@ impl GameMap {
         Self {
             tiles,
             last_setmap_index: None,
+            animation_started_since_last_check: false,
         }
     }
 
@@ -66,6 +99,14 @@ impl GameMap {
     #[inline]
     pub fn reset_last_setmap_index(&mut self) {
         self.last_setmap_index = None;
+    }
+
+    /// Takes the one-shot signal that an existing character changed animations.
+    ///
+    /// # Returns
+    /// * `true` once after a character animation base changes.
+    pub fn take_animation_started(&mut self) -> bool {
+        std::mem::take(&mut self.animation_started_since_last_check)
     }
 
     /// Converts (x, y) grid coordinates to a flat index.
@@ -192,6 +233,21 @@ impl GameMap {
             tile.ch_sprite = v;
         }
         if let Some(v) = ch_status {
+            let incoming_ch_nr = ch_nr.unwrap_or(tile.ch_nr);
+            let incoming_ch_id = ch_id.unwrap_or(tile.ch_id);
+            let same_character =
+                tile.ch_nr != 0 && tile.ch_nr == incoming_ch_nr && tile.ch_id == incoming_ch_id;
+            let starts_new_movement = movement_base_status(v).is_some()
+                && movement_base_status(v) != movement_base_status(tile.ch_status);
+
+            if same_character
+                && character_animation_base_status(v)
+                    != character_animation_base_status(tile.ch_status)
+            {
+                self.animation_started_since_last_check = true;
+            }
+            tile.movement_start_pending = same_character && starts_new_movement;
+            tile.movement_start_lead_ticks = 0;
             tile.ch_status = v;
         }
         if let Some(v) = ch_stat_off {
@@ -486,6 +542,73 @@ mod tests {
         );
         let tile = map.tile_at_index(15).unwrap();
         assert_eq!(tile.ba_sprite, 99);
+    }
+
+    #[test]
+    fn same_character_movement_and_turn_starts_raise_presentation_signal() {
+        let mut map = GameMap::new();
+        map.apply_set_map(
+            0,
+            Some(10),
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(1000),
+            Some(0),
+            None,
+            Some(7),
+            Some(9),
+            Some(1),
+            None,
+            None,
+        );
+        map.apply_set_map(
+            0,
+            Some(10),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(48),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        {
+            let tile = map.tile_at_index(10).unwrap();
+            assert!(tile.movement_start_pending);
+            assert_eq!(tile.movement_start_lead_ticks, 0);
+        }
+        assert!(map.take_animation_started());
+        assert!(!map.take_animation_started());
+
+        map.apply_set_map(
+            0,
+            Some(10),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(96),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert!(map.take_animation_started());
     }
 
     #[test]

@@ -2557,9 +2557,13 @@ impl Scene for GameScene {
         }
 
         let mut scene = self.process_network_events(app_state);
+        let mut animation_started = false;
         if scene.is_none() {
             if let Some(batch) = self.pending_tick_batches.pop_front() {
                 self.apply_server_tick_batch(app_state, batch);
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    animation_started = ps.map_mut().take_animation_started();
+                }
             }
             if let Some(ps) = app_state.player_state.as_mut()
                 && ps.take_exit_requested_reason().is_some()
@@ -2567,9 +2571,11 @@ impl Scene for GameScene {
                 scene = Some(SceneType::CharacterSelection);
             }
         }
-        self.frame_presentation = self
-            .tick_scheduler
-            .complete_iteration(Instant::now(), self.pending_tick_batches.len());
+        self.frame_presentation = self.tick_scheduler.complete_iteration(
+            Instant::now(),
+            self.pending_tick_batches.len(),
+            animation_started,
+        );
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
                 && !Self::is_selected_visible(ps)
