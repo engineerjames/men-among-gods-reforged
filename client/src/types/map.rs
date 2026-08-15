@@ -45,4 +45,9 @@ pub struct CMapTile {
     pub ovl_yoff: i32,
 
     pub idle_ani: i32,
+    /// Whether the next movement render must capture cadence time from before
+    /// the current movement action began.
+    pub movement_start_pending: bool,
+    /// Number of cadence ticks inferred before the current movement began.
+    pub movement_start_lead_ticks: u8,
 }

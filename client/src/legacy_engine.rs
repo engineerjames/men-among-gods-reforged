@@ -46,7 +46,15 @@ fn speedo(ch_speed: u8, ctick: usize) -> bool {
 ///
 /// # Returns
 /// * A sub-pixel offset in the range `[0, 32 * SUBPIXEL_UNIT)`.
-fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: usize) -> i32 {
+fn speedstep(
+    ch_speed: u8,
+    ch_status: u8,
+    d: i32,
+    s: i32,
+    update: bool,
+    ctick: usize,
+    start_lead_ticks: i32,
+) -> i32 {
     let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
     let max_tick = (SPEEDTAB[0].len() - 1) as i32;
 
@@ -102,7 +110,64 @@ fn speedstep(ch_speed: u8, ch_status: u8, d: i32, s: i32, update: bool, ctick: u
         total_step += 1;
     }
 
-    32 * SUBPIXEL_UNIT * total_step_start / (total_step + 1)
+    let adjusted_start = (total_step_start - start_lead_ticks).max(0);
+    let adjusted_total = (total_step + 1 - start_lead_ticks).max(1);
+    32 * SUBPIXEL_UNIT * adjusted_start / adjusted_total
+}
+
+/// Counts cadence ticks inferred before the current animation status.
+///
+/// # Arguments
+/// * `ch_speed` - Speed table row.
+/// * `ctick` - Current animation tick.
+///
+/// # Returns
+/// * Number of non-advancing ticks since the preceding speed-table event.
+fn movement_start_lead_ticks(ch_speed: u8, ctick: usize) -> u8 {
+    let speed = (ch_speed as usize).min(MAX_SPEEDTAB_SPEED_INDEX);
+    let max_tick = SPEEDTAB[0].len();
+    let mut lead_ticks = 0u8;
+    let mut tick = ctick;
+
+    loop {
+        tick = if tick == 0 { max_tick - 1 } else { tick - 1 };
+        if SPEEDTAB[speed][tick] != 0 {
+            return lead_ticks;
+        }
+        lead_ticks = lead_ticks.saturating_add(1);
+    }
+}
+
+/// Computes a movement offset while removing cadence time that predates the action.
+///
+/// # Arguments
+/// * `tile` - Character tile carrying the movement-onset state.
+/// * `d` - Base status value for this direction.
+/// * `s` - Number of frames in one movement cycle.
+/// * `update` - `false` when the character is stunned.
+/// * `ctick` - Current animation tick.
+///
+/// # Returns
+/// * The corrected movement offset in sub-pixel units.
+fn movement_speedstep(tile: &mut CMapTile, d: i32, s: i32, update: bool, ctick: usize) -> i32 {
+    if tile.movement_start_pending && update {
+        let hard_step = i32::from(tile.ch_status) - d;
+
+        if hard_step == 0 {
+            tile.movement_start_lead_ticks = movement_start_lead_ticks(tile.ch_speed, ctick);
+        }
+        tile.movement_start_pending = false;
+    }
+
+    speedstep(
+        tile.ch_speed,
+        tile.ch_status,
+        d,
+        s,
+        update,
+        ctick,
+        i32::from(tile.movement_start_lead_ticks),
+    )
 }
 
 /// Returns a small frame offset for the idle animation of specific sprites.
@@ -283,12 +348,13 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
 
         16..=23 => {
-            let step = speedstep(tile.ch_speed, tile.ch_status, 16, 8, update, ctick);
+            let step = movement_speedstep(tile, 16, 8, update, ctick);
             tile.obj_xoff_sub = -step / 2;
             tile.obj_yoff_sub = step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 16) + 64;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 23 {
+                    tile.movement_start_lead_ticks = 0;
                     16
                 } else {
                     tile.ch_status + 1
@@ -297,12 +363,13 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         24..=31 => {
-            let step = speedstep(tile.ch_speed, tile.ch_status, 24, 8, update, ctick);
+            let step = movement_speedstep(tile, 24, 8, update, ctick);
             tile.obj_xoff_sub = step / 2;
             tile.obj_yoff_sub = -step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 24) + 72;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 31 {
+                    tile.movement_start_lead_ticks = 0;
                     24
                 } else {
                     tile.ch_status + 1
@@ -311,12 +378,13 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         32..=39 => {
-            let step = speedstep(tile.ch_speed, tile.ch_status, 32, 8, update, ctick);
+            let step = movement_speedstep(tile, 32, 8, update, ctick);
             tile.obj_xoff_sub = -step / 2;
             tile.obj_yoff_sub = -step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 32) + 80;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 39 {
+                    tile.movement_start_lead_ticks = 0;
                     32
                 } else {
                     tile.ch_status + 1
@@ -325,12 +393,13 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         40..=47 => {
-            let step = speedstep(tile.ch_speed, tile.ch_status, 40, 8, update, ctick);
+            let step = movement_speedstep(tile, 40, 8, update, ctick);
             tile.obj_xoff_sub = step / 2;
             tile.obj_yoff_sub = step / 4;
             let tmp = base + (i32::from(tile.ch_status) - 40) + 88;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 47 {
+                    tile.movement_start_lead_ticks = 0;
                     40
                 } else {
                     tile.ch_status + 1
@@ -340,11 +409,12 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
 
         48..=59 => {
-            tile.obj_xoff_sub = -speedstep(tile.ch_speed, tile.ch_status, 48, 12, update, ctick);
+            tile.obj_xoff_sub = -movement_speedstep(tile, 48, 12, update, ctick);
             tile.obj_yoff_sub = 0;
             let tmp = base + ((i32::from(tile.ch_status) - 48) * 8 / 12) + 96;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 59 {
+                    tile.movement_start_lead_ticks = 0;
                     48
                 } else {
                     tile.ch_status + 1
@@ -354,11 +424,11 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
         60..=71 => {
             tile.obj_xoff_sub = 0;
-            tile.obj_yoff_sub =
-                -speedstep(tile.ch_speed, tile.ch_status, 60, 12, update, ctick) / 2;
+            tile.obj_yoff_sub = -movement_speedstep(tile, 60, 12, update, ctick) / 2;
             let tmp = base + ((i32::from(tile.ch_status) - 60) * 8 / 12) + 104;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 71 {
+                    tile.movement_start_lead_ticks = 0;
                     60
                 } else {
                     tile.ch_status + 1
@@ -368,10 +438,11 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
         }
         72..=83 => {
             tile.obj_xoff_sub = 0;
-            tile.obj_yoff_sub = speedstep(tile.ch_speed, tile.ch_status, 72, 12, update, ctick) / 2;
+            tile.obj_yoff_sub = movement_speedstep(tile, 72, 12, update, ctick) / 2;
             let tmp = base + ((i32::from(tile.ch_status) - 72) * 8 / 12) + 112;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 83 {
+                    tile.movement_start_lead_ticks = 0;
                     72
                 } else {
                     tile.ch_status + 1
@@ -380,11 +451,12 @@ fn eng_char(tile: &mut CMapTile, ctick: usize) -> i32 {
             tmp
         }
         84..=95 => {
-            tile.obj_xoff_sub = speedstep(tile.ch_speed, tile.ch_status, 84, 12, update, ctick);
+            tile.obj_xoff_sub = movement_speedstep(tile, 84, 12, update, ctick);
             tile.obj_yoff_sub = 0;
             let tmp = base + ((i32::from(tile.ch_status) - 84) * 8 / 12) + 120;
             if speedo(tile.ch_speed, ctick) && update {
                 tile.ch_status = if tile.ch_status == 95 {
+                    tile.movement_start_lead_ticks = 0;
                     84
                 } else {
                     tile.ch_status + 1
@@ -600,7 +672,7 @@ mod tests {
     #[test]
     fn stunned_character_uses_the_hard_step() {
         assert_eq!(
-            speedstep(0, 54, 48, 12, false, 7),
+            speedstep(0, 54, 48, 12, false, 7, 0),
             32 * SUBPIXEL_UNIT * 6 / 12
         );
     }
@@ -611,6 +683,21 @@ mod tests {
         eng_char(&mut tile, 0);
         assert_eq!(tile.obj_xoff_sub, 0);
         assert_eq!(tile.obj_yoff_sub, 0);
+    }
+
+    #[test]
+    fn newly_started_movement_does_not_inherit_pre_action_progress() {
+        let ctick = (0..SPEEDTAB[0].len())
+            .find(|&tick| speedstep(1, 48, 48, 12, true, tick, 0) > 0)
+            .expect("speed row should contain a phase with inferred progress");
+        let mut tile = walking_tile(48, 1);
+        tile.movement_start_pending = true;
+
+        eng_char(&mut tile, ctick);
+
+        assert_eq!(tile.obj_xoff_sub, 0);
+        assert!(!tile.movement_start_pending);
+        assert!(tile.movement_start_lead_ticks > 0);
     }
 
     #[test]
