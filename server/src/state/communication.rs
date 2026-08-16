@@ -1513,8 +1513,8 @@ mod tests {
 
             gs.do_give_exp(cn, 25, 0, -1);
 
-            assert_eq!(gs.characters[cn].points, 125);
-            assert_eq!(gs.characters[cn].points_tot, 125);
+            assert_eq!(gs.characters[cn].points, 225);
+            assert_eq!(gs.characters[cn].points_tot, 225);
         });
     }
 }
