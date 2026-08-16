@@ -22,13 +22,31 @@
 /// randomizing which draw it occurs on.
 use rand::seq::SliceRandom;
 
-const MARBLE_BAG_SIZE: usize = 100;
+const fn gcd(mut a: u32, mut b: u32) -> u32 {
+    while b != 0 {
+        let temp = b;
+        b = a % b;
+        a = temp;
+    }
+    a
+}
+
+const fn precompute_gcds() -> [u32; 100] {
+    let mut gcds = [0; 100];
+    let mut i = 0;
+
+    while i < 100 {
+        gcds[i] = gcd(i as u32, 100);
+        i += 1;
+    }
+
+    gcds
+}
+
+const PRECOMPUTED_GCD: [u32; 100] = precompute_gcds();
 
 pub struct MarbleBag {
-    // TODO: This isn't really space optimized; but I know I can represent
-    // all percentages provided with this. There are certainly a lot of
-    // optimizations that could be done here.
-    bag: [bool; MARBLE_BAG_SIZE],
+    bag: Vec<bool>,
     marble: usize,
 }
 
@@ -39,15 +57,16 @@ impl MarbleBag {
             "Percent chance should be from 1% - 99%"
         );
 
+        let divisor = PRECOMPUTED_GCD[percent];
+        let successes = percent / divisor as usize;
+        let draw_count = (100 / divisor) as usize;
+
         // Since we know that we have 100 marbles in the bag,
         // we know that the number of 'true' marbles are equal
         // to the percent passed in here.
-        let mut marble_bag = [false; MARBLE_BAG_SIZE];
-
-        marble_bag[MARBLE_BAG_SIZE - percent..MARBLE_BAG_SIZE].fill(true);
-
-        let mut rng = rand::thread_rng();
-        marble_bag.shuffle(&mut rng);
+        let mut marble_bag = vec![false; draw_count];
+        marble_bag[draw_count - successes..].fill(true);
+        marble_bag.shuffle(&mut rand::thread_rng());
 
         MarbleBag {
             bag: marble_bag,
@@ -56,22 +75,153 @@ impl MarbleBag {
     }
 
     pub fn draw(&mut self) -> bool {
-        let return_value = self.bag[self.marble];
+        let result = self.bag[self.marble];
+        self.marble += 1;
 
-        if self.marble == MARBLE_BAG_SIZE - 1 {
+        if self.marble == self.bag.len() {
             self.reset();
-        } else {
-            self.marble += 1;
         }
 
-        return_value
+        result
     }
 
     fn reset(&mut self) {
         self.marble = 0;
-        let mut rng = rand::thread_rng();
-        self.bag.shuffle(&mut rng);
+        self.bag.shuffle(&mut rand::thread_rng());
     }
 }
 
-mod tests {}
+#[cfg(test)]
+mod tests {
+    use super::MarbleBag;
+
+    fn count_outcomes(bag: &[bool; MARBLE_BAG_SIZE]) -> (usize, usize) {
+        let true_count = bag.iter().filter(|&&marble| marble).count();
+        (true_count, MARBLE_BAG_SIZE - true_count)
+    }
+
+    #[test]
+    fn from_percent_builds_every_valid_percentage_exactly() {
+        for percent in 1..100 {
+            let bag = MarbleBag::from_percent(percent);
+
+            assert_eq!(count_outcomes(&bag.bag), (percent, 100 - percent));
+            assert_eq!(bag.marble, 0);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Percent chance should be from 1% - 99%")]
+    fn from_percent_panics_for_zero() {
+        let _ = MarbleBag::from_percent(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Percent chance should be from 1% - 99%")]
+    fn from_percent_panics_for_one_hundred() {
+        let _ = MarbleBag::from_percent(100);
+    }
+
+    #[test]
+    #[should_panic(expected = "Percent chance should be from 1% - 99%")]
+    fn from_percent_panics_for_values_above_one_hundred() {
+        let _ = MarbleBag::from_percent(101);
+    }
+
+    #[test]
+    #[should_panic(expected = "Percent chance should be from 1% - 99%")]
+    fn from_percent_panics_for_largest_usize() {
+        let _ = MarbleBag::from_percent(usize::MAX);
+    }
+
+    #[test]
+    fn draw_returns_current_marble_and_advances_cursor() {
+        let mut values = [false; MARBLE_BAG_SIZE];
+        values[0] = true;
+        values[2] = true;
+        let mut bag = MarbleBag {
+            bag: values,
+            marble: 0,
+        };
+
+        assert!(bag.draw());
+        assert_eq!(bag.marble, 1);
+        assert!(!bag.draw());
+        assert_eq!(bag.marble, 2);
+        assert!(bag.draw());
+        assert_eq!(bag.marble, 3);
+    }
+
+    #[test]
+    fn final_draw_returns_final_marble_and_resets_cursor() {
+        let mut values = [false; MARBLE_BAG_SIZE];
+        values[MARBLE_BAG_SIZE - 1] = true;
+        let mut bag = MarbleBag {
+            bag: values,
+            marble: MARBLE_BAG_SIZE - 1,
+        };
+
+        assert!(bag.draw());
+        assert_eq!(bag.marble, 0);
+        assert_eq!(count_outcomes(&bag.bag), (1, 99));
+    }
+
+    #[test]
+    fn reset_rewinds_cursor_and_preserves_outcomes() {
+        let mut bag = MarbleBag::from_percent(37);
+        bag.marble = 63;
+
+        bag.reset();
+
+        assert_eq!(bag.marble, 0);
+        assert_eq!(count_outcomes(&bag.bag), (37, 63));
+    }
+
+    #[test]
+    fn complete_cycle_draws_exact_requested_percentage() {
+        for percent in 1..100 {
+            let mut bag = MarbleBag::from_percent(percent);
+            let true_count = (0..MARBLE_BAG_SIZE).filter(|_| bag.draw()).count();
+
+            assert_eq!(true_count, percent, "failed for {percent}% bag");
+            assert_eq!(bag.marble, 0, "cursor did not reset for {percent}% bag");
+        }
+    }
+
+    #[test]
+    fn repeated_cycles_preserve_requested_percentage() {
+        const PERCENT: usize = 41;
+        const CYCLES: usize = 10;
+
+        let mut bag = MarbleBag::from_percent(PERCENT);
+
+        for cycle in 0..CYCLES {
+            let true_count = (0..MARBLE_BAG_SIZE).filter(|_| bag.draw()).count();
+
+            assert_eq!(true_count, PERCENT, "failed on cycle {cycle}");
+            assert_eq!(bag.marble, 0, "cursor did not reset on cycle {cycle}");
+        }
+    }
+
+    #[test]
+    fn arbitrary_draw_count_matches_full_cycles_plus_current_prefix() {
+        const PERCENT: usize = 23;
+        const FULL_CYCLES: usize = 4;
+        const PREFIX_LENGTH: usize = 57;
+
+        let mut bag = MarbleBag::from_percent(PERCENT);
+        let true_count = (0..FULL_CYCLES * MARBLE_BAG_SIZE + PREFIX_LENGTH)
+            .filter(|_| bag.draw())
+            .count();
+        let remaining_true_count = bag.bag[PREFIX_LENGTH..]
+            .iter()
+            .filter(|&&marble| marble)
+            .count();
+
+        assert_eq!(
+            true_count + remaining_true_count,
+            (FULL_CYCLES + 1) * PERCENT
+        );
+        assert_eq!(bag.marble, PREFIX_LENGTH);
+    }
+}
