@@ -41,8 +41,8 @@ use mag_core::{
     constants::{MF_INDOORS, TILEX, TILEY},
     ranks, skills,
     skills::{
-        SK_BLAST, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_STUN, SK_THUNDEROUS_FURY,
-        SK_WARCRY, SkillIndex,
+        SK_BLAST, SK_CONTAGION, SK_CURSE, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_STUN,
+        SK_THUNDEROUS_FURY, SK_WARCRY, SkillIndex,
     },
     types::api::NetworkTestSummary,
 };
@@ -447,8 +447,9 @@ const HELPER_TEXT_CURSOR_GAP_Y: i32 = 16;
 const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
 
 /// Skill pairs where a talent replaces a base skill with an upgraded version.
-const REPLACEMENT_SKILL_PAIRS: [(usize, usize); 4] = [
+const REPLACEMENT_SKILL_PAIRS: [(usize, usize); 5] = [
     (SK_BLAST, SK_LAVA_BLAST),
+    (SK_CURSE, SK_CONTAGION),
     (SK_STUN, SK_ICE_STUN),
     (SK_WARCRY, SK_THUNDEROUS_FURY),
     (SK_WARCRY, SK_INNER_STRENGTH),
@@ -2937,7 +2938,9 @@ mod tests {
         normalize_replacement_skill_keybind_arrays,
     };
     use flate2::read::GzDecoder;
-    use mag_core::skills::{SK_BLAST, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex};
+    use mag_core::skills::{
+        SK_BLAST, SK_CONTAGION, SK_CURSE, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex,
+    };
     use std::io::Read;
 
     const SCREEN_W: i32 = 800;
@@ -3045,6 +3048,40 @@ mod tests {
         assert!(changed);
         assert_eq!(primary[0], Some(SK_BLAST));
         assert_eq!(secondary[1], Some(SK_BLAST));
+    }
+
+    #[test]
+    fn contagion_keybind_normalization_rewrites_curse_when_replacement_is_learned() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[0] = Some(SK_CURSE);
+        secondary[1] = Some(SK_CURSE);
+        let mut skills = empty_skill_rows();
+        skills[SK_CONTAGION][SkillIndex::BaseValue as usize] = 4;
+
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[0], Some(SK_CONTAGION));
+        assert_eq!(secondary[1], Some(SK_CONTAGION));
+    }
+
+    #[test]
+    fn contagion_keybind_normalization_rewrites_back_after_reset() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[0] = Some(SK_CONTAGION);
+        secondary[1] = Some(SK_CONTAGION);
+        let mut skills = empty_skill_rows();
+        skills[SK_CURSE][SkillIndex::BaseValue as usize] = 4;
+
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[0], Some(SK_CURSE));
+        assert_eq!(secondary[1], Some(SK_CURSE));
     }
 
     #[test]

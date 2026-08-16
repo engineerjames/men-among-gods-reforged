@@ -1937,6 +1937,11 @@ mod tests {
             "Blade Dance should no longer be a mercenary talent"
         );
         assert_critical_strike(named_node(tree, "Critical Strikes"), 5, 250);
+        assert_replaces_skill(
+            named_node(tree, "Contagion"),
+            Skill::Curse,
+            Skill::Contagion,
+        );
     }
 
     #[test]

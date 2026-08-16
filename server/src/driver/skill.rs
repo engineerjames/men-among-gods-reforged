@@ -2180,13 +2180,13 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
         return;
     }
 
-    cast_curse_effect(gs, cn, co);
+    cast_curse_effect(gs, cn, co, SK_CURSE);
 
     add_exhaust(gs, cn, core::constants::TICKS * 4);
 }
 
 /// Rolls the resist/sense chance and applies Curse (with AoE splash) to `co`
-/// using the caster's current Curse skill level.
+/// using the caster's selected source skill level.
 ///
 /// Shared by the direct Curse cast (`skill_curse`, after its mana/cooldown
 /// gate) and the Seyan'Du Free Curse rune proc (no gate). Does not check
@@ -2197,18 +2197,18 @@ pub fn skill_curse(gs: &mut GameState, cn: usize) {
 /// * `gs` - Active game state used for the resist roll, item creation, and effects.
 /// * `cn` - Caster character index.
 /// * `co` - Primary target character index.
-pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize) {
+/// * `source_skill` - Skill row that supplies Curse power and area scaling.
+pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize, source_skill: usize) {
+    let source_power = gs.characters[cn].skill[source_skill][5];
     if chance_base(
         gs,
         cn,
-        i32::from(gs.characters[cn].skill[SK_CURSE][5]),
+        i32::from(source_power),
         10,
         effective_resist(gs, cn, i32::from(gs.characters[co].skill[SK_RESIST][5])),
     ) != 0
     {
-        if cn != co
-            && gs.characters[co].skill[SK_SENSE][5] > (gs.characters[cn].skill[SK_CURSE][5] + 5)
-        {
+        if cn != co && gs.characters[co].skill[SK_SENSE][5] > (source_power + 5) {
             let reference = gs.characters[cn].reference;
             gs.do_character_log(
                 co,
@@ -2232,16 +2232,31 @@ pub fn cast_curse_effect(gs: &mut GameState, cn: usize, co: usize) {
         return;
     }
 
+    apply_curse_effect_after_focus(gs, cn, co, source_skill);
+}
+
+/// Applies Curse to the primary target and eligible area targets after the
+/// caster has passed the focus check.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state used for spell creation and area targeting.
+/// * `cn` - Caster character index.
+/// * `co` - Primary target character index.
+/// * `source_skill` - Skill row that supplies Curse power and area scaling.
+fn apply_curse_effect_after_focus(gs: &mut GameState, cn: usize, co: usize, source_skill: usize) {
+    let source_power = gs.characters[cn].skill[source_skill][5];
+
     if (gs.characters[co].flags & CharacterFlags::Immortal.bits()) != 0 {
         gs.do_character_log(cn, core::types::FontColor::Red, "You lost your focus.\n");
         return;
     }
 
-    spell_curse(gs, cn, co, i32::from(gs.characters[cn].skill[SK_CURSE][5]));
+    spell_curse(gs, cn, co, i32::from(source_power));
 
     let co_orig = co;
-    let curse_base = i32::from(gs.characters[cn].skill[SK_CURSE][0]);
-    let curse_power = i32::from(gs.characters[cn].skill[SK_CURSE][5]);
+    let curse_base = i32::from(gs.characters[cn].skill[source_skill][0]);
+    let curse_power = i32::from(source_power);
     let aoe_base = if (gs.characters[cn].flags & CharacterFlags::Player.bits()) != 0 {
         curse_base
     } else {
@@ -5386,6 +5401,8 @@ pub fn skill_contagion(gs: &mut GameState, cn: usize) {
         return;
     }
 
+    cast_curse_effect(gs, cn, co, SK_CONTAGION);
+
     let name = gs.characters[co].get_name().to_owned();
     gs.do_character_log(
         cn,
@@ -6783,6 +6800,121 @@ pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
         _ => {
             gs.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n");
         }
+    }
+}
+
+#[cfg(test)]
+mod contagion_ability_tests {
+    use super::*;
+    use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::USE_ACTIVE;
+
+    fn place_hostile_target(gs: &mut GameState, cn: usize, co: usize, x: i16, y: i16) {
+        gs.characters[cn].flags |= CharacterFlags::Infrared.bits();
+        gs.characters[co] = Character::default();
+        gs.characters[co].used = USE_ACTIVE;
+        gs.characters[co].x = x;
+        gs.characters[co].y = y;
+        gs.characters[co].attack_cn = cn as u16;
+        gs.map[x as usize + y as usize * SERVER_MAPX as usize].ch = co as u32;
+    }
+
+    fn active_spell_item(gs: &GameState, cn: usize, temp: usize) -> Option<usize> {
+        gs.characters[cn]
+            .spell
+            .iter()
+            .map(|&item_idx| item_idx as usize)
+            .find(|&item_idx| item_idx != 0 && gs.items[item_idx].temp == temp as u16)
+    }
+
+    #[test]
+    fn contagion_and_curse_can_coexist_using_contagion_power() {
+        with_test_gs(|gs| {
+            gs.item_templates[1].used = USE_ACTIVE;
+            let (cn, _nr) = add_test_player(gs);
+            let co = 2;
+            place_hostile_target(gs, cn, co, 10, 11);
+            gs.characters[cn].skill[SK_CURSE][0] = 0;
+            gs.characters[cn].skill[SK_CURSE][5] = 0;
+            gs.characters[cn].skill[SK_CONTAGION][0] = 4;
+            gs.characters[cn].skill[SK_CONTAGION][5] = 60;
+
+            assert!(apply_parasitic_dot(
+                gs,
+                cn,
+                co,
+                60,
+                SK_CONTAGION as u16,
+                TICKS * 60 * 24,
+                b"Contagion",
+            ));
+            apply_curse_effect_after_focus(gs, cn, co, SK_CONTAGION);
+
+            let contagion =
+                active_spell_item(gs, co, SK_CONTAGION).expect("Contagion should remain attached");
+            let curse = active_spell_item(gs, co, SK_CURSE).expect("Curse should also be attached");
+            assert_eq!(gs.items[contagion].data[0] as usize, cn);
+            assert!(gs.items[curse].power > 0);
+            assert!(gs.items[curse].attrib.iter().all(|attrib| attrib[1] < 0));
+        });
+    }
+
+    #[test]
+    fn failed_bundled_curse_roll_leaves_contagion_attached() {
+        with_test_gs(|gs| {
+            gs.item_templates[1].used = USE_ACTIVE;
+            let (cn, _nr) = add_test_player(gs);
+            let co = 2;
+            place_hostile_target(gs, cn, co, 10, 11);
+            gs.characters[cn].skill[SK_CONTAGION][0] = 1;
+            gs.characters[cn].skill[SK_CONTAGION][5] = 1;
+            gs.characters[co].skill[SK_RESIST][5] = 100;
+
+            assert!(apply_parasitic_dot(
+                gs,
+                cn,
+                co,
+                1,
+                SK_CONTAGION as u16,
+                TICKS * 60 * 24,
+                b"Contagion",
+            ));
+            cast_curse_effect(gs, cn, co, SK_CONTAGION);
+
+            assert!(active_spell_item(gs, co, SK_CONTAGION).is_some());
+            assert!(active_spell_item(gs, co, SK_CURSE).is_none());
+        });
+    }
+
+    #[test]
+    fn bundled_curse_uses_contagion_base_for_area_targets() {
+        with_test_gs(|gs| {
+            gs.item_templates[1].used = USE_ACTIVE;
+            let (cn, _nr) = add_test_player(gs);
+            let primary = 2;
+            let splash = 3;
+            place_hostile_target(gs, cn, primary, 10, 11);
+            place_hostile_target(gs, cn, splash, 11, 10);
+            gs.characters[cn].skill[SK_CURSE][0] = 0;
+            gs.characters[cn].skill[SK_CURSE][5] = 0;
+            gs.characters[cn].skill[SK_CONTAGION][0] = 4;
+            gs.characters[cn].skill[SK_CONTAGION][5] = 60;
+
+            assert!(apply_parasitic_dot(
+                gs,
+                cn,
+                primary,
+                60,
+                SK_CONTAGION as u16,
+                TICKS * 60 * 24,
+                b"Contagion",
+            ));
+            apply_curse_effect_after_focus(gs, cn, primary, SK_CONTAGION);
+
+            assert!(active_spell_item(gs, primary, SK_CURSE).is_some());
+            assert!(active_spell_item(gs, splash, SK_CURSE).is_some());
+            assert!(active_spell_item(gs, splash, SK_CONTAGION).is_none());
+        });
     }
 }
 
