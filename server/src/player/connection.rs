@@ -591,7 +591,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
                     damage_message.as_str(),
                 );
 
-                gs.characters[character_id].a_hp -= i32::from(hp5 * 800);
+                gs.characters[character_id].a_hp -= i32::from(hp5) * 800;
                 let a_hp = gs.characters[character_id].a_hp;
 
                 if a_hp < 500 {
@@ -661,10 +661,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
             gs.remove_enemy(character_id);
 
             // Handle lag scroll
-            if reason == LogoutReason::IdleTooLong
-                || reason == LogoutReason::Shutdown
-                || reason == LogoutReason::Unknown
-            {
+            if reason == LogoutReason::Unknown || reason == LogoutReason::IdleTooLong {
                 let ch = gs.characters[character_id];
                 let (is_close_to_temple, map_index) = (
                     ch.is_close_to_temple(),
@@ -679,7 +676,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
 
                 if should_give {
                     log::info!(
-                        "Giving lag scroll to character '{}' for idle/logout too long.",
+                        "Giving lag scroll to character '{}' after an unexpected disconnect.",
                         gs.characters[character_id].get_name(),
                     );
 
@@ -1122,7 +1119,46 @@ mod tests {
 
             assert_eq!(gs.players[nr].state, ST_EXIT);
             assert_eq!(gs.characters[cn].used, USE_NONACTIVE);
+            assert!(!gs.characters[cn].item.iter().any(|&item| item != 0
+                && gs.items[item as usize].temp == core::constants::IT_LAGSCROLL as u16));
+        });
+    }
+
+    #[test]
+    fn unexpected_disconnect_gives_lag_scroll() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = 1234;
+            gs.item_templates[core::constants::IT_LAGSCROLL as usize].used = USE_ACTIVE;
+            setup_existing_character(gs, cn, nr as i32, USE_ACTIVE, "Laggy");
+            gs.characters[cn].flags = CharacterFlags::Player.bits();
+            gs.characters[cn].temple_x = 0;
+            gs.characters[cn].temple_y = 0;
+
+            plr_logout(gs, cn, nr, LogoutReason::Unknown);
+
             assert!(gs.characters[cn].item.iter().any(|&item| item != 0
+                && gs.items[item as usize].temp == core::constants::IT_LAGSCROLL as u16));
+        });
+    }
+
+    #[test]
+    fn explicit_exit_does_not_give_lag_scroll() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.item_templates[core::constants::IT_LAGSCROLL as usize].used = USE_ACTIVE;
+            setup_existing_character(gs, cn, nr as i32, USE_ACTIVE, "Quitter");
+            gs.characters[cn].flags = CharacterFlags::Player.bits();
+            gs.characters[cn].temple_x = 0;
+            gs.characters[cn].temple_y = 0;
+            gs.characters[cn].hp[5] = 100;
+            gs.characters[cn].a_hp = 100_000;
+
+            plr_logout(gs, cn, nr, LogoutReason::Exit);
+
+            assert!(!gs.characters[cn].item.iter().any(|&item| item != 0
                 && gs.items[item as usize].temp == core::constants::IT_LAGSCROLL as u16));
         });
     }

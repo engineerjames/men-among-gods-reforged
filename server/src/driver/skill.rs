@@ -4227,7 +4227,7 @@ fn recompute_companion_stats(gs: &mut GameState, cn: usize, cc: usize) -> i32 {
 ///
 /// * `gs` - Game state.
 /// * `cn` - Owner (caster) character index.
-fn restat_owned_companions(gs: &mut GameState, cn: usize) {
+pub(crate) fn restat_owned_companions(gs: &mut GameState, cn: usize) {
     for cc in 1..gs.characters.len() {
         if gs.characters[cc].used == USE_EMPTY {
             continue;

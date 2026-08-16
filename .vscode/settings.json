@@ -1,10 +1,11 @@
 {
     "[rust]": {
-    "editor.defaultFormatter": "rust-lang.rust-analyzer",
-    "editor.formatOnSave": true
-},
+        "editor.defaultFormatter": "rust-lang.rust-analyzer",
+        "editor.formatOnSave": true
+    },
     "rust-analyzer.check.command": "clippy",
     "rust-analyzer.cargo.extraEnv": {
-        "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
-    }
+        "CMAKE_POLICY_VERSION_MINIMUM": "3.5",
+        "CARGO_TARGET_DIR": "target/analyzer"
+    },
 }
