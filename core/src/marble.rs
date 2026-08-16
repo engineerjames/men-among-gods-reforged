@@ -20,26 +20,58 @@
 /// The marble bag instead allows us to distribute outcomes more evenly,
 /// ensuring that a 25% event occurs once within every 4 draws while still
 /// randomizing which draw it occurs on.
+use rand::seq::SliceRandom;
+
+const MARBLE_BAG_SIZE: usize = 100;
+
 pub struct MarbleBag {
-    p: f32,
+    // TODO: This isn't really space optimized; but I know I can represent
+    // all percentages provided with this. There are certainly a lot of
+    // optimizations that could be done here.
+    bag: [bool; MARBLE_BAG_SIZE],
+    marble: usize,
 }
 
 impl MarbleBag {
-    pub fn new(draws: usize, probability: f32) -> Self {
-        assert!(draws > 0, "draws must be > 0");
+    pub fn from_percent(percent: usize) -> Self {
         assert!(
-            probability >= 0.0 && probability <= 1.0,
-            "probability must be between 0.0 and 1.0"
+            percent > 0 && percent < 100,
+            "Percent chance should be from 1% - 99%"
         );
+
+        // Since we know that we have 100 marbles in the bag,
+        // we know that the number of 'true' marbles are equal
+        // to the percent passed in here.
+        let mut marble_bag = [false; MARBLE_BAG_SIZE];
+
+        marble_bag[MARBLE_BAG_SIZE - percent..MARBLE_BAG_SIZE].fill(true);
+
+        let mut rng = rand::thread_rng();
+        marble_bag.shuffle(&mut rng);
+
         MarbleBag {
-            p: probability / draws as f32,
+            bag: marble_bag,
+            marble: 0,
         }
     }
 
-    pub fn draw(&self) -> bool {
-        let roll = rand::random::<f32>();
-        roll <= self.p
+    pub fn draw(&mut self) -> bool {
+        let return_value = self.bag[self.marble];
+
+        if self.marble == MARBLE_BAG_SIZE - 1 {
+            self.reset();
+        } else {
+            self.marble += 1;
+        }
+
+        return_value
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.marble = 0;
+        let mut rng = rand::thread_rng();
+        self.bag.shuffle(&mut rng);
+    }
 }
+
+mod tests {}
