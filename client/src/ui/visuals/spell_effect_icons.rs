@@ -134,6 +134,7 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_ANGUISH_EARTH
         | skills::SK_ANGUISH_ICE
         | skills::SK_PARASITE
+        | skills::SK_CONTAGION
         | skills::SK_DISTRACT
         | skills::SK_ICE_STUN
         | skills::SK_AURA_CURSE => SpellEffectKind::Negative,
@@ -745,6 +746,7 @@ mod tests {
 
         let negative_cases = [
             (skills::SK_PARASITE as i16, "Parasite"),
+            (skills::SK_CONTAGION as i16, "Contagion"),
             (skills::SK_DISTRACT as i16, "Distract"),
         ];
         for (temp, name) in negative_cases {

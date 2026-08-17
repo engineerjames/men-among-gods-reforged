@@ -3,6 +3,7 @@ use crate::god::God;
 use crate::network_manager;
 use crate::{driver, helpers};
 use core::constants::{CT_LGUARD, CharacterFlags};
+use core::ranks::Rank;
 use core::server_commands::ServerCommandType;
 use core::string_operations::c_string_to_str;
 use core::traits;
@@ -858,18 +859,31 @@ impl GameState {
         }
 
         if p != 0 {
-            self.characters[cn].points += p;
-            self.characters[cn].points_tot += p;
+            // TODO: This matches the C implementation but we should remove this
+            // (specifically the p != 0)
+            let exp_multiplier =
+                Rank::from_points(self.characters[cn].points_tot as u32).exp_bonus();
+            let total_exp_gained = f32::round(p as f32 * exp_multiplier) as i32;
+
+            self.characters[cn].points += total_exp_gained;
+            self.characters[cn].points_tot += total_exp_gained;
             self.do_character_log(
                 cn,
                 core::types::FontColor::Green,
                 &format!("You get {} experience points.\n", p),
             );
-            self.do_notify_character(cn as u32, i32::from(core::constants::NT_GOTEXP), p, 0, 0, 0);
+            self.do_notify_character(
+                cn as u32,
+                i32::from(core::constants::NT_GOTEXP),
+                total_exp_gained,
+                0,
+                0,
+                0,
+            );
             chlog!(
                 cn,
                 "Gets {} EXP (total {})",
-                p,
+                total_exp_gained,
                 self.characters[cn].points_tot
             );
             self.do_update_char(cn);
@@ -1499,8 +1513,8 @@ mod tests {
 
             gs.do_give_exp(cn, 25, 0, -1);
 
-            assert_eq!(gs.characters[cn].points, 125);
-            assert_eq!(gs.characters[cn].points_tot, 125);
+            assert_eq!(gs.characters[cn].points, 225);
+            assert_eq!(gs.characters[cn].points_tot, 225);
         });
     }
 }

@@ -2,7 +2,8 @@
 //!
 //! Renders an 8-column × 8-row grid of up to 62 item slots (shops, depots,
 //! and graves all use the same layout). Shows sell/buy price labels at the
-//! bottom. Clicking outside the panel while it is visible closes it.
+//! bottom. Clicking outside a grave closes it, while shops and depots remain
+//! open so other HUD panels can be used alongside them.
 
 use sdl2::pixels::Color;
 use sdl2::render::BlendMode;
@@ -111,8 +112,8 @@ pub struct ShopPanelData {
 /// Shop/depot/grave overlay widget.
 ///
 /// Displays an 8×8 grid of item slots with hover highlighting and
-/// sell/buy price labels. Any click outside the panel while it is
-/// visible produces a [`WidgetAction::CloseShop`] action.
+/// sell/buy price labels. A click outside a visible grave produces a
+/// [`WidgetAction::CloseShop`] action; shops and depots ignore outside clicks.
 pub struct ShopPanel {
     bounds: Bounds,
     bg_color: Color,
@@ -381,8 +382,9 @@ impl Widget for ShopPanel {
     ///
     /// When the shop is visible:
     /// - Clicks inside the grid produce [`WidgetAction::ShopAction`].
-    /// - Clicks anywhere outside the panel produce [`WidgetAction::CloseShop`].
-    /// - Both return [`EventResponse::Consumed`].
+    /// - Clicks outside a grave produce [`WidgetAction::CloseShop`].
+    /// - Clicks outside a shop or depot return [`EventResponse::Ignored`] so
+    ///   other HUD panels can handle them.
     ///
     /// When the shop is hidden all events pass through as `Ignored`.
     ///
@@ -416,10 +418,14 @@ impl Widget for ShopPanel {
                     return EventResponse::Consumed;
                 }
 
-                // Click outside the panel --> close shop.
+                // Graves dismiss on outside clicks. Shops and depots stay open
+                // so the same click can reach inventory or another HUD panel.
                 if !self.bounds.contains_point(*x, *y) {
-                    self.actions.push(WidgetAction::CloseShop);
-                    return EventResponse::Consumed;
+                    if self.data.as_ref().is_some_and(|data| data.is_grave) {
+                        self.actions.push(WidgetAction::CloseShop);
+                        return EventResponse::Consumed;
+                    }
+                    return EventResponse::Ignored;
                 }
 
                 // Hit-test the item grid.
@@ -766,11 +772,32 @@ mod tests {
     }
 
     #[test]
-    fn click_outside_closes_shop() {
+    fn click_outside_shop_is_ignored() {
         let mut panel = make_panel();
         panel.update_data(make_visible_data());
 
         // Click well outside the panel bounds.
+        let click = UiEvent::MouseClick {
+            x: 0,
+            y: 0,
+            button: MouseButton::Left,
+            modifiers: crate::ui::widget::KeyModifiers {
+                ctrl: false,
+                shift: false,
+                alt: false,
+            },
+        };
+        assert_eq!(panel.handle_event(&click), EventResponse::Ignored);
+        assert!(panel.take_actions().is_empty());
+    }
+
+    #[test]
+    fn click_outside_grave_closes_shop() {
+        let mut panel = make_panel();
+        let mut data = make_visible_data();
+        data.is_grave = true;
+        panel.update_data(data);
+
         let click = UiEvent::MouseClick {
             x: 0,
             y: 0,

@@ -842,7 +842,7 @@ impl GameState {
                     self.items[spell_item as usize].active -= 1;
                 }
 
-                let active = self.items[spell_item as usize].active;
+                let mut active = self.items[spell_item as usize].active;
 
                 // Warn when spell is about to run out
                 if active == core::constants::TICKS as u32 * 30 {
@@ -1005,6 +1005,7 @@ impl GameState {
                         if self.characters[cn].a_end <= 0 {
                             self.characters[cn].a_end = 0;
                             self.items[spell_item as usize].active = 0;
+                            active = 0;
                         }
                     }
                 }
@@ -1062,6 +1063,10 @@ impl GameState {
                             FontColor::Red,
                             &format!("{} ran out.\n", spell_name),
                         );
+                    }
+
+                    if item_temp == skills::SK_REVENANT_CONDUIT2 as u16 {
+                        driver::skill::restat_owned_companions(self, cn);
                     }
 
                     // Remove spell
@@ -2070,6 +2075,22 @@ mod tests {
             gs.characters[owner].a_hp = 50_000;
             gs.apply_revenant_conduit_heal(companion, 40_000);
             assert_eq!(gs.characters[owner].a_hp, 50_000);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_closes_immediately_when_endurance_runs_out() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            add_revenant_conduit_marker(gs, owner, 30);
+            gs.items[10].duration = (core::constants::TICKS * 2) as u32;
+            gs.items[10].active = (core::constants::TICKS + 1) as u32;
+            gs.characters[owner].a_end = 1;
+
+            gs.do_regenerate(owner);
+
+            assert_eq!(gs.characters[owner].spell[0], 0);
+            assert_eq!(gs.items[10].used, core::constants::USE_EMPTY);
         });
     }
 

@@ -643,8 +643,8 @@ mod tests {
     use crate::test_helpers::{add_test_player, with_test_gs};
     use core::constants::{CharacterFlags, USE_ACTIVE};
     use core::skills::{
-        Attribute, SK_AURA_CURSE, SK_AURA_WAR_BANNER, SK_BLAST, SK_ELEMENT_SWITCHING, SK_ICE_STUN,
-        SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_THUNDEROUS_FURY,
+        Attribute, SK_AURA_CURSE, SK_AURA_WAR_BANNER, SK_BLAST, SK_CONTAGION, SK_CURSE,
+        SK_ELEMENT_SWITCHING, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_THUNDEROUS_FURY,
     };
     use core::talent_trees::{
         TALENT_LAYER_END, TALENT_LAYER_START, TALENT_POINTS_INDEX, grant_talent_points,
@@ -663,6 +663,8 @@ mod tests {
     const ARCH_HARAKIM_TEMPLATE: usize = 545;
     /// Character template id used for the base-harakim template in tests.
     const HARAKIM_TEMPLATE: usize = 541;
+    /// Character template id used for the base-mercenary template in tests.
+    const MERCENARY_TEMPLATE: usize = 542;
     /// Character template id used for the male Seyan'Du template in tests.
     const SEYAN_DU_TEMPLATE: usize = 13;
 
@@ -1211,6 +1213,107 @@ mod tests {
             assert_eq!(
                 gs.characters[cn].skill[SK_INNER_STRENGTH][SkillIndex::BaseValue as usize],
                 0
+            );
+        });
+    }
+
+    #[test]
+    fn learn_mercenary_contagion_replaces_curse_with_existing_investment() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 1);
+            for layer in 1..=8 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].skill[SK_CURSE][SkillIndex::BaseValue as usize] = 14;
+            gs.characters[cn].skill[SK_CURSE][SkillIndex::MaxValue as usize] = 100;
+            gs.characters[cn].skill[SK_CURSE][SkillIndex::RaiseDifficulty as usize] = 7;
+
+            learn_talent(gs, cn, mercenary_slot("Contagion")).unwrap();
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_CURSE][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_CONTAGION][SkillIndex::BaseValue as usize],
+                14
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_CONTAGION][SkillIndex::MaxValue as usize],
+                TalentSkillProfile::DEFAULT_MERC.max_value
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_CONTAGION][SkillIndex::RaiseDifficulty as usize],
+                TalentSkillProfile::DEFAULT_MERC.raise_difficulty
+            );
+        });
+    }
+
+    #[test]
+    fn learn_mercenary_contagion_rejects_existing_replacement_without_spending_point() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 1);
+            for layer in 1..=8 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            gs.characters[cn].skill[SK_CURSE][SkillIndex::BaseValue as usize] = 14;
+            gs.characters[cn].skill[SK_CONTAGION][SkillIndex::BaseValue as usize] = 2;
+
+            let err = learn_talent(gs, cn, mercenary_slot("Contagion")).unwrap_err();
+
+            assert!(err.contains("already has replacement skill"), "got: {err}");
+            assert_eq!(gs.characters[cn].future1[TALENT_POINTS_INDEX], 1);
+            assert_eq!(
+                gs.characters[cn].skill[SK_CURSE][SkillIndex::BaseValue as usize],
+                14
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_CONTAGION][SkillIndex::BaseValue as usize],
+                2
+            );
+        });
+    }
+
+    #[test]
+    fn reset_talents_restores_curse_from_contagion_using_template_tuning() {
+        with_test_gs(|gs| {
+            let cn = 1;
+            give_class_and_points(gs, cn, KIN_MERCENARY, 1);
+            for layer in 1..=8 {
+                gs.characters[cn].future1[layer] |= 0b0000_0001;
+            }
+            install_template(gs, MERCENARY_TEMPLATE, KIN_MERCENARY);
+            let template = &mut gs.character_templates[MERCENARY_TEMPLATE];
+            template.skill[SK_CURSE][SkillIndex::BaseValue as usize] = 1;
+            template.skill[SK_CURSE][SkillIndex::MaxValue as usize] = 80;
+            template.skill[SK_CURSE][SkillIndex::RaiseDifficulty as usize] = 7;
+            gs.characters[cn].temp = MERCENARY_TEMPLATE as u16;
+            gs.characters[cn].skill[SK_CURSE][SkillIndex::BaseValue as usize] = 14;
+            gs.characters[cn].skill[SK_CURSE][SkillIndex::MaxValue as usize] = 80;
+            gs.characters[cn].skill[SK_CURSE][SkillIndex::RaiseDifficulty as usize] = 7;
+
+            learn_talent(gs, cn, mercenary_slot("Contagion")).unwrap();
+            gs.characters[cn].skill[SK_CONTAGION][SkillIndex::BaseValue as usize] = 90;
+
+            reset_talents(gs, cn);
+
+            assert_eq!(
+                gs.characters[cn].skill[SK_CONTAGION][SkillIndex::BaseValue as usize],
+                0
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_CURSE][SkillIndex::BaseValue as usize],
+                80
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_CURSE][SkillIndex::MaxValue as usize],
+                80
+            );
+            assert_eq!(
+                gs.characters[cn].skill[SK_CURSE][SkillIndex::RaiseDifficulty as usize],
+                7
             );
         });
     }

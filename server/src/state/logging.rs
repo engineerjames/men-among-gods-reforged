@@ -358,7 +358,7 @@ impl GameState {
     /// * `source` - Source character id (for visibility checks)
     /// * `author` - Optional author character id to prefix the message
     /// * `text` - Message text
-    pub(crate) fn do_caution(&mut self, source: usize, author: usize, text: &str) {
+    pub(crate) fn do_caution(&mut self, _source: usize, author: usize, text: &str) {
         if text.is_empty() {
             log::error!("do_caution called with empty text");
             return;
@@ -377,14 +377,7 @@ impl GameState {
             if !(self.characters[n].player != 0 || self.characters[n].temp == CT_LGUARD as u16) {
                 continue;
             }
-            if source != 0
-                && (self.characters[source].flags
-                    & (CharacterFlags::Invisible.bits() | CharacterFlags::NoWho.bits()))
-                    != 0
-            {
-                // visibility rules omitted
-            }
-            self.do_log(n, core::types::FontColor::Blue, &named);
+            self.do_log(n, core::types::FontColor::Red, &named);
         }
     }
 

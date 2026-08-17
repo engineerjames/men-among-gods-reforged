@@ -77,6 +77,10 @@ impl AuraTemplate {
     /// * `target_cn` - Character index being considered.
     pub fn is_valid_target(&self, gs: &GameState, source_cn: usize, target_cn: usize) -> bool {
         if target_cn == 0 || target_cn >= core::constants::MAXCHARS {
+            log::error!(
+                "AuraTemplate::is_valid_target: invalid target_cn {}",
+                target_cn
+            );
             return false;
         }
         if source_cn == target_cn {

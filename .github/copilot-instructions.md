@@ -22,17 +22,7 @@
   - `API_JWT_SECRET` (API refuses to start without it)
   - `API_BIND_ADDR`, `API_PORT`, `MAG_API_BASE_URL`, `MAG_ASSETS_DIR`, `MAG_LOG_DIR`
 
-## Developer workflows (repo-specific)
-- Build all crates: `cargo build`
-- Run quality gate matching CI: `cargo test && cargo clippy -- -D warnings`
-- Run server: `cargo run -p server`
-- Run API: `cargo run -p api`
-- Run client binary: `cargo run -p client`
-- Start full local stack with auth + game + keydb: `docker compose up -d --build`
-- API integration tests are Python stdlib scripts (not pytest): `python3 api/tests/api_integration.py --base-url http://127.0.0.1:5554`
-
 ## Code patterns to preserve
-- Server global mutable state is accessed through closure helpers (`Repository::with_*`, `Server::with_players_*`) guarded by `OnceLock + ReentrantMutex + UnsafeCell`; follow this pattern instead of introducing ad-hoc globals.
 - Networking split is intentional: `csend` for immediate control packets vs `xsend` for batched tick payloads (`compress_ticks` flow in `server/src/server.rs` and `docs/server/DESIGN.md`).
 - API request limits are strict (global 1 req/sec governor). Client-side code already handles 429 retries with ~1.1s backoff (`client/src/account_api.rs`); preserve this behavior.
 - Account passwords sent to API are Argon2 PHC strings produced client-side (deterministic salt from username), not plaintext (`client/src/account_api.rs`).

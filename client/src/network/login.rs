@@ -258,6 +258,11 @@ fn run_network_loop(
                                 .map_err(|e| format!("Send failed: {e}"))?;
                         }
                         NetworkCommand::Shutdown => {
+                            stream
+                                .write_all(&client_commands::ClientCommand::new_exit().to_bytes())
+                                .map_err(|e| format!("Failed to send graceful exit: {e}"))?;
+                            stream.flush()
+                                .map_err(|e| format!("Failed to flush graceful exit: {e}"))?;
                             stream.shutdown();
                             let _ = event_tx.send(NetworkEvent::Status("Disconnected".to_owned()));
                             return Ok(());

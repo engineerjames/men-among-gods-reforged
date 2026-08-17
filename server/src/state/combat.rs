@@ -718,7 +718,12 @@ impl GameState {
                 driver::skill::cast_blast_effect(self, attacker_index, defender_index, power, dam);
             }
             SeyanRune::FreeCurse => {
-                driver::skill::cast_curse_effect(self, attacker_index, defender_index);
+                driver::skill::cast_curse_effect(
+                    self,
+                    attacker_index,
+                    defender_index,
+                    skills::SK_CURSE,
+                );
             }
             SeyanRune::Corrosion => {
                 self.apply_corrosion_stack(attacker_index, defender_index);

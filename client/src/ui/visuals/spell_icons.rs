@@ -277,6 +277,7 @@ pub fn active_spell_effect_icon_meta(skill_nr: usize, sprite: i16) -> Option<Spe
         | skills::SK_BLADE_DANCE
         | skills::SK_THUNDEROUS_FURY
         | skills::SK_PARASITE
+        | skills::SK_CONTAGION
         | skills::SK_DISTRACT
         | skills::SK_AURA_CURSE
         | skills::SK_AURA_WAR_BANNER
