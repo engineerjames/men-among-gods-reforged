@@ -5,20 +5,40 @@ use mag_core::constants::{ItemFlags, SERVER_MAPX, SERVER_MAPY, TILEX, USE_EMPTY,
 use mag_core::map_store::MapPatch;
 use mag_core::types::{Item, Map};
 use mag_core::world_action_store::WorldActionKind;
+use serde::{Deserialize, Serialize};
 use server::keydb::snapshot::WorldSnapshot;
 use server_utils::admin_client::AdminClient;
 use server_utils::{DataSource, load_world_snapshot, save_world_snapshot};
 use std::collections::BTreeSet;
+use std::collections::VecDeque;
 use std::path::Path;
 use std::path::PathBuf;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum PaletteEntryKind {
-    Sprite(u16),
-    ItemTemplate(u16),
+/// Which `Map` sprite field a palette sprite entry paints.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+enum SpriteLayer {
+    /// Background/floor sprite (`Map::sprite`).
+    #[default]
+    Floor,
+    /// Foreground/wall/object sprite (`Map::fsprite`).
+    Object,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+enum PaletteEntryKind {
+    Sprite {
+        sprite: u16,
+        layer: SpriteLayer,
+    },
+    ItemTemplate(u16),
+    /// Set (`clear == false`) or clear (`clear == true`) a mask of map flags.
+    Flags {
+        mask: u64,
+        clear: bool,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct PaletteEntry {
     kind: PaletteEntryKind,
 }
@@ -35,6 +55,28 @@ enum PendingItemAction {
         y: usize,
     },
 }
+
+/// Pre-mutation snapshot of one tile, used to support undo.
+#[derive(Clone, Copy, Debug)]
+struct UndoTileSnapshot {
+    x: usize,
+    y: usize,
+    tile: Map,
+    /// The runtime item slot referenced by `tile.it` before the edit, if any.
+    item: Option<(usize, Item)>,
+}
+
+/// One user-initiated edit (a click, or a whole Shift+click line stroke),
+/// captured before mutation so [`MapViewerApp::undo`] can revert it exactly.
+struct UndoAction {
+    tiles: Vec<UndoTileSnapshot>,
+    dirty_before: bool,
+    dirty_tiles_before: BTreeSet<(usize, usize)>,
+    pending_item_actions_before: Vec<PendingItemAction>,
+}
+
+/// Maximum number of edits kept in the undo history.
+const MAX_UNDO_HISTORY: usize = 10;
 
 #[derive(Default)]
 pub(crate) struct MapViewerApp {
@@ -82,7 +124,10 @@ pub(crate) struct MapViewerApp {
     palette: Vec<PaletteEntry>,
     selected_palette_index: Option<usize>,
     draft_sprite: u16,
+    draft_sprite_layer: SpriteLayer,
     draft_item_template_id: u16,
+    draft_flag_mask: u64,
+    draft_flag_clear: bool,
     palette_rect: Option<Rect>,
     line_anchor: Option<(usize, usize)>,
 
@@ -113,6 +158,8 @@ pub(crate) struct MapViewerApp {
     connect_dialog_error: Option<String>,
     /// Whether the "confirm server map reload" modal dialog is open.
     reload_confirm_open: bool,
+    /// Bounded undo history (most recent action at the back), capped at [`MAX_UNDO_HISTORY`].
+    undo_stack: VecDeque<UndoAction>,
 }
 
 impl MapViewerApp {
@@ -146,6 +193,7 @@ impl MapViewerApp {
         self.dirty = false;
         self.dirty_tiles.clear();
         self.pending_item_actions.clear();
+        self.undo_stack.clear();
     }
 
     fn apply_loaded_world(&mut self, world: WorldSnapshot, status: String) {
@@ -163,6 +211,7 @@ impl MapViewerApp {
         self.dirty = false;
         self.dirty_tiles.clear();
         self.pending_item_actions.clear();
+        self.undo_stack.clear();
     }
 
     fn load_current_source(&mut self) {
@@ -367,6 +416,83 @@ impl MapViewerApp {
         self.dirty = !self.dirty_tiles.is_empty() || !self.pending_item_actions.is_empty();
     }
 
+    /// Capture "before" state for a set of tiles about to be painted, deduping coordinates.
+    fn snapshot_tiles_for_undo(&self, coords: &[(usize, usize)]) -> Vec<UndoTileSnapshot> {
+        let mut seen = BTreeSet::new();
+        let mut snapshots = Vec::new();
+        for &(x, y) in coords {
+            if !seen.insert((x, y)) {
+                continue;
+            }
+            let idx = tile_index(x, y);
+            let Some(tile) = self.map_tiles.get(idx).copied() else {
+                continue;
+            };
+            let item = if tile.it != 0 {
+                self.items
+                    .get(tile.it as usize)
+                    .map(|i| (tile.it as usize, *i))
+            } else {
+                None
+            };
+            snapshots.push(UndoTileSnapshot { x, y, tile, item });
+        }
+        snapshots
+    }
+
+    /// Push one undo action onto the bounded history stack. No-op for an empty snapshot.
+    fn push_undo(&mut self, tiles: Vec<UndoTileSnapshot>) {
+        if tiles.is_empty() {
+            return;
+        }
+        self.undo_stack.push_back(UndoAction {
+            tiles,
+            dirty_before: self.dirty,
+            dirty_tiles_before: self.dirty_tiles.clone(),
+            pending_item_actions_before: self.pending_item_actions.clone(),
+        });
+        while self.undo_stack.len() > MAX_UNDO_HISTORY {
+            self.undo_stack.pop_front();
+        }
+    }
+
+    /// Revert the most recent undoable action, if any.
+    ///
+    /// Only reverts local/unsaved editor state (map tiles, item slots, dirty
+    /// bookkeeping and queued item actions) — mirrors "Revert (discard changes)".
+    fn undo(&mut self) {
+        let Some(action) = self.undo_stack.pop_back() else {
+            self.save_status = Some("Nothing to undo".to_owned());
+            return;
+        };
+
+        for snapshot in &action.tiles {
+            let idx = tile_index(snapshot.x, snapshot.y);
+            let Some(current_tile) = self.map_tiles.get(idx).copied() else {
+                continue;
+            };
+
+            // Free any item slot the undone action allocated/reassigned.
+            let current_it = current_tile.it as usize;
+            let restored_it = snapshot.item.map(|(slot, _)| slot).unwrap_or(0);
+            if current_it != 0 && current_it != restored_it && current_it < self.items.len() {
+                self.items[current_it] = Item::default();
+            }
+
+            self.map_tiles[idx] = snapshot.tile;
+            if let Some((slot, item)) = snapshot.item
+                && slot < self.items.len()
+            {
+                self.items[slot] = item;
+            }
+        }
+
+        self.dirty = action.dirty_before;
+        self.dirty_tiles = action.dirty_tiles_before;
+        self.pending_item_actions = action.pending_item_actions_before;
+        self.save_status = Some(format!("Undid last edit ({} left)", self.undo_stack.len()));
+    }
+
     /// Return the currently selected palette entry, clearing stale selection.
     fn selected_palette_entry(&mut self) -> Option<PaletteEntry> {
         let index = self.selected_palette_index?;
@@ -424,15 +550,24 @@ impl MapViewerApp {
     /// Apply a palette entry to one map tile and mark it dirty when changed.
     fn apply_palette_to_tile(&mut self, x: usize, y: usize, entry: PaletteEntry) -> bool {
         match entry.kind {
-            PaletteEntryKind::Sprite(sprite) => self.apply_sprite_to_tile(x, y, sprite),
+            PaletteEntryKind::Sprite { sprite, layer } => {
+                self.apply_sprite_to_tile(x, y, sprite, layer)
+            }
             PaletteEntryKind::ItemTemplate(template_id) => {
                 self.apply_item_template_to_tile(x, y, template_id)
             }
+            PaletteEntryKind::Flags { mask, clear } => self.apply_flags_to_tile(x, y, mask, clear),
         }
     }
 
-    /// Apply a foreground sprite to one map tile and mark it dirty when changed.
-    fn apply_sprite_to_tile(&mut self, x: usize, y: usize, sprite: u16) -> bool {
+    /// Apply a sprite to one map tile's floor or object layer and mark it dirty when changed.
+    fn apply_sprite_to_tile(
+        &mut self,
+        x: usize,
+        y: usize,
+        sprite: u16,
+        layer: SpriteLayer,
+    ) -> bool {
         if sprite == 0 {
             return false;
         }
@@ -443,7 +578,37 @@ impl MapViewerApp {
         };
 
         let mut tile = current;
-        tile.fsprite = sprite;
+        match layer {
+            SpriteLayer::Floor => tile.sprite = sprite,
+            SpriteLayer::Object => tile.fsprite = sprite,
+        }
+
+        if tile == current {
+            return false;
+        }
+
+        self.map_tiles[idx] = tile;
+        self.mark_tile_dirty(x, y);
+        true
+    }
+
+    /// Set or clear a mask of map flags on one tile and mark it dirty when changed.
+    fn apply_flags_to_tile(&mut self, x: usize, y: usize, mask: u64, clear: bool) -> bool {
+        if mask == 0 {
+            return false;
+        }
+
+        let idx = tile_index(x, y);
+        let Some(current) = self.map_tiles.get(idx).copied() else {
+            return false;
+        };
+
+        let mut tile = current;
+        if clear {
+            tile.flags &= !mask;
+        } else {
+            tile.flags |= mask;
+        }
 
         if tile == current {
             return false;
@@ -544,12 +709,11 @@ impl MapViewerApp {
         let Some(current_tile) = self.map_tiles.get(map_idx).copied() else {
             return false;
         };
-        if current_tile.it != 0 {
-            self.save_status = Some(format!(
-                "Tile ({}, {}) already has item {}",
-                x, y, current_tile.it
-            ));
-            return false;
+
+        // Placing over an existing item replaces it rather than erroring.
+        let replaced_item_id = current_tile.it as usize;
+        if replaced_item_id != 0 && replaced_item_id < self.items.len() {
+            self.items[replaced_item_id] = Item::default();
         }
 
         let Some(item_id) = self.find_free_snapshot_item_slot() else {
@@ -1013,6 +1177,76 @@ impl MapViewerApp {
         }
     }
 
+    /// Return whether a texture exists for `sprite + 1`, the companion frame the
+    /// real client substitutes for foreground/object sprites in Hide Walls mode.
+    fn has_object_hide_companion(&mut self, ctx: &egui::Context, sprite: u16) -> bool {
+        let Some(companion) = sprite.checked_add(1) else {
+            return false;
+        };
+        let Some(cache) = self.graphics_zip.as_mut() else {
+            return true; // Can't validate without a loaded graphics zip; don't warn.
+        };
+        matches!(cache.texture_for(ctx, companion as usize), Ok(Some(_)))
+    }
+
+    /// Remove the currently selected palette entry.
+    fn remove_selected_palette_entry(&mut self) {
+        let Some(index) = self.selected_palette_index else {
+            return;
+        };
+        if index < self.palette.len() {
+            self.palette.remove(index);
+        }
+        self.selected_palette_index = None;
+    }
+
+    /// Save the current palette to a JSON file chosen via a file dialog.
+    fn save_palette_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Palette JSON", &["json"])
+            .set_file_name("palette.json")
+            .save_file()
+        else {
+            return;
+        };
+
+        let result = serde_json::to_string_pretty(&self.palette)
+            .map_err(|e| e.to_string())
+            .and_then(|json| std::fs::write(&path, json).map_err(|e| e.to_string()));
+
+        self.save_status = Some(match result {
+            Ok(()) => format!("Saved palette: {}", path.display()),
+            Err(e) => format!("Save palette failed: {e}"),
+        });
+    }
+
+    /// Load a palette from a JSON file chosen via a file dialog, replacing the current one.
+    fn load_palette_dialog(&mut self) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Palette JSON", &["json"])
+            .pick_file()
+        else {
+            return;
+        };
+
+        let result = std::fs::read_to_string(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|contents| {
+                serde_json::from_str::<Vec<PaletteEntry>>(&contents).map_err(|e| e.to_string())
+            });
+
+        match result {
+            Ok(palette) => {
+                self.palette = palette;
+                self.selected_palette_index = None;
+                self.save_status = Some(format!("Loaded palette: {}", path.display()));
+            }
+            Err(e) => {
+                self.save_status = Some(format!("Load palette failed: {e}"));
+            }
+        }
+    }
+
     fn render_palette_overlay(&mut self, ctx: &egui::Context, anchor: Pos2) -> Rect {
         let response = egui::Window::new("Palette")
             .id(egui::Id::new("map_palette_overlay_window"))
@@ -1024,12 +1258,40 @@ impl MapViewerApp {
             .show(ctx, |ui| {
                 ui.set_min_width(260.0);
                 ui.vertical(|ui| {
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add_enabled(
+                                self.selected_palette_index.is_some(),
+                                egui::Button::new("Remove selected"),
+                            )
+                            .clicked()
+                        {
+                            self.remove_selected_palette_entry();
+                        }
+                        if ui.small_button("Save palette...").clicked() {
+                            self.save_palette_dialog();
+                        }
+                        if ui.small_button("Load palette...").clicked() {
+                            self.load_palette_dialog();
+                        }
+                    });
+
                     ui.separator();
 
                     ui.add_enabled_ui(true, |ui| {
                         ui.horizontal(|ui| {
                             ui.label("sprite:");
                             ui.add(egui::DragValue::new(&mut self.draft_sprite));
+                            ui.selectable_value(
+                                &mut self.draft_sprite_layer,
+                                SpriteLayer::Floor,
+                                "Floor",
+                            );
+                            ui.selectable_value(
+                                &mut self.draft_sprite_layer,
+                                SpriteLayer::Object,
+                                "Object",
+                            );
 
                             let preview_size = Vec2::new(96.0, 96.0);
                             let mut preview_drawn = false;
@@ -1053,9 +1315,22 @@ impl MapViewerApp {
                             if ui.small_button("Add").clicked() && self.draft_sprite != 0 {
                                 match self.can_add_palette_sprite(ctx, self.draft_sprite) {
                                     Ok(()) => {
-                                        self.palette.push(PaletteEntry {
-                                            kind: PaletteEntryKind::Sprite(self.draft_sprite),
-                                        });
+                                        let sprite = self.draft_sprite;
+                                        let layer = self.draft_sprite_layer;
+                                        self.palette
+                                            .push(PaletteEntry { kind: PaletteEntryKind::Sprite { sprite, layer } });
+                                        self.selected_palette_index = Some(self.palette.len() - 1);
+                                        if layer == SpriteLayer::Object
+                                            && !self.has_object_hide_companion(ctx, sprite)
+                                        {
+                                            self.save_status = Some(format!(
+                                                "Added sprite {sprite} (Object); no companion texture at {} — Hide Walls will show an error texture near this tile.",
+                                                u32::from(sprite) + 1
+                                            ));
+                                        } else {
+                                            self.save_status =
+                                                Some(format!("Added sprite {sprite} ({layer:?}) to palette"));
+                                        }
                                     }
                                     Err(e) => {
                                         self.save_status = Some(e);
@@ -1151,6 +1426,40 @@ impl MapViewerApp {
 
                         ui.separator();
 
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label("flags:");
+                            for (mask, name) in map_flag_defs() {
+                                let mut on = (self.draft_flag_mask & *mask) != 0;
+                                if ui.checkbox(&mut on, *name).changed() {
+                                    if on {
+                                        self.draft_flag_mask |= *mask;
+                                    } else {
+                                        self.draft_flag_mask &= !*mask;
+                                    }
+                                }
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.selectable_value(&mut self.draft_flag_clear, false, "Set");
+                            ui.selectable_value(&mut self.draft_flag_clear, true, "Clear");
+
+                            if ui.small_button("Add").clicked() && self.draft_flag_mask != 0 {
+                                let mask = self.draft_flag_mask;
+                                let clear = self.draft_flag_clear;
+                                self.palette
+                                    .push(PaletteEntry { kind: PaletteEntryKind::Flags { mask, clear } });
+                                self.selected_palette_index = Some(self.palette.len() - 1);
+                                self.draft_flag_mask = 0;
+                                self.save_status = Some(format!(
+                                    "Added {} flags entry to palette",
+                                    if clear { "clear" } else { "set" }
+                                ));
+                            }
+                        });
+
+                        ui.separator();
+
                         egui::ScrollArea::vertical().show(ui, |ui| {
                             let icon_size = Vec2::new(48.0, 48.0);
                             egui::Grid::new("palette_image_grid")
@@ -1161,7 +1470,7 @@ impl MapViewerApp {
                                     for idx in 0..self.palette.len() {
                                         let entry = self.palette[idx];
                                         let sprite_id: Option<usize> = match entry.kind {
-                                            PaletteEntryKind::Sprite(sprite) => {
+                                            PaletteEntryKind::Sprite { sprite, .. } => {
                                                 if sprite == 0 {
                                                     None
                                                 } else {
@@ -1191,6 +1500,7 @@ impl MapViewerApp {
                                                     }
                                                 }
                                             }
+                                            PaletteEntryKind::Flags { .. } => None,
                                         };
 
                                         let selected = self.selected_palette_index == Some(idx);
@@ -1214,19 +1524,7 @@ impl MapViewerApp {
                                                     )
                                                     .clicked()
                                                 } else {
-                                                    let label = match entry.kind {
-                                                        PaletteEntryKind::Sprite(sprite) => {
-                                                            format!("S{}", sprite)
-                                                        }
-                                                        PaletteEntryKind::ItemTemplate(
-                                                            template_id,
-                                                        ) => {
-                                                            format!(
-                                                                "T{}\nS{}",
-                                                                template_id, sprite_id
-                                                            )
-                                                        }
-                                                    };
+                                                    let label = palette_entry_label(entry, Some(sprite_id));
                                                     ui.add_sized(
                                                         icon_size,
                                                         egui::Button::new(label).fill(
@@ -1243,14 +1541,7 @@ impl MapViewerApp {
                                                 false
                                             }
                                         } else {
-                                            let label = match entry.kind {
-                                                PaletteEntryKind::Sprite(sprite) => {
-                                                    format!("S{}", sprite)
-                                                }
-                                                PaletteEntryKind::ItemTemplate(template_id) => {
-                                                    format!("T{}", template_id)
-                                                }
-                                            };
+                                            let label = palette_entry_label(entry, None);
                                             ui.add_sized(
                                                 icon_size,
                                                 egui::Button::new(label).fill(if selected {
@@ -1294,6 +1585,28 @@ impl MapViewerApp {
     }
 }
 
+/// Fallback label for a palette grid cell when no texture preview is available.
+fn palette_entry_label(entry: PaletteEntry, sprite_id: Option<usize>) -> String {
+    match entry.kind {
+        PaletteEntryKind::Sprite { sprite, layer } => {
+            let prefix = match layer {
+                SpriteLayer::Floor => "F",
+                SpriteLayer::Object => "O",
+            };
+            format!("{prefix}{sprite}")
+        }
+        PaletteEntryKind::ItemTemplate(template_id) => match sprite_id {
+            Some(sprite_id) => format!("T{template_id}\nS{sprite_id}"),
+            None => format!("T{template_id}"),
+        },
+        PaletteEntryKind::Flags { mask, clear } => {
+            let count = mask.count_ones();
+            let verb = if clear { "Clear" } else { "Set" };
+            format!("{verb}\n{count} flag(s)")
+        }
+    }
+}
+
 #[inline]
 fn item_map_sprite(item: Item) -> Option<i16> {
     // Mirror server logic used to populate client map tiles.
@@ -1330,6 +1643,41 @@ fn template_preview_sprite(item: Item) -> Option<usize> {
 #[inline]
 fn tile_index(x: usize, y: usize) -> usize {
     y * (SERVER_MAPX as usize) + x
+}
+
+/// Shared map flag definitions, aligned with `core/src/constants.rs`.
+///
+/// Used by both the per-tile flag checkboxes and the palette's flag builder.
+fn map_flag_defs() -> &'static [(u64, &'static str)] {
+    const DEFS: &[(u64, &str)] = &[
+        (mag_core::constants::MF_MOVEBLOCK as u64, "MF_MOVEBLOCK"),
+        (mag_core::constants::MF_SIGHTBLOCK as u64, "MF_SIGHTBLOCK"),
+        (mag_core::constants::MF_INDOORS as u64, "MF_INDOORS"),
+        (mag_core::constants::MF_UWATER as u64, "MF_UWATER"),
+        (mag_core::constants::MF_NOLAG as u64, "MF_NOLAG"),
+        (mag_core::constants::MF_NOMONST as u64, "MF_NOMONST"),
+        (mag_core::constants::MF_BANK as u64, "MF_BANK"),
+        (mag_core::constants::MF_TAVERN as u64, "MF_TAVERN"),
+        (mag_core::constants::MF_NOMAGIC as u64, "MF_NOMAGIC"),
+        (mag_core::constants::MF_DEATHTRAP as u64, "MF_DEATHTRAP"),
+        (mag_core::constants::MF_ARENA as u64, "MF_ARENA"),
+        (mag_core::constants::MF_NOEXPIRE as u64, "MF_NOEXPIRE"),
+        (mag_core::constants::MF_NOFIGHT, "MF_NOFIGHT"),
+        (mag_core::constants::MF_GFX_INJURED, "MF_GFX_INJURED"),
+        (mag_core::constants::MF_GFX_INJURED1, "MF_GFX_INJURED1"),
+        (mag_core::constants::MF_GFX_INJURED2, "MF_GFX_INJURED2"),
+        (mag_core::constants::MF_GFX_TOMB, "MF_GFX_TOMB"),
+        (mag_core::constants::MF_GFX_TOMB1, "MF_GFX_TOMB1"),
+        (mag_core::constants::MF_GFX_DEATH, "MF_GFX_DEATH"),
+        (mag_core::constants::MF_GFX_DEATH1, "MF_GFX_DEATH1"),
+        (mag_core::constants::MF_GFX_EMAGIC, "MF_GFX_EMAGIC"),
+        (mag_core::constants::MF_GFX_EMAGIC1, "MF_GFX_EMAGIC1"),
+        (mag_core::constants::MF_GFX_GMAGIC, "MF_GFX_GMAGIC"),
+        (mag_core::constants::MF_GFX_GMAGIC1, "MF_GFX_GMAGIC1"),
+        (mag_core::constants::MF_GFX_CMAGIC, "MF_GFX_CMAGIC"),
+        (mag_core::constants::MF_GFX_CMAGIC1, "MF_GFX_CMAGIC1"),
+    ];
+    DEFS
 }
 
 const MIN_ZOOM: f32 = 0.25;
@@ -1482,6 +1830,13 @@ impl eframe::App for MapViewerApp {
             } else {
                 self.save_snapshot_as_dialog();
             }
+        }
+
+        // Undo shortcut (Cmd+Z on macOS, Ctrl+Z elsewhere).
+        let undo_shortcut = ctx.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Z));
+        if undo_shortcut {
+            self.undo();
+            ctx.request_repaint();
         }
 
         // Auto-poll map-reload status every ~2 s while a request is pending.
@@ -1673,6 +2028,17 @@ impl eframe::App for MapViewerApp {
                 {
                     self.hide_enabled = !self.hide_enabled;
                     ctx.request_repaint();
+                }
+
+                if ui
+                    .add_enabled(
+                        !self.undo_stack.is_empty(),
+                        egui::Button::new(format!("Undo ({})", self.undo_stack.len())),
+                    )
+                    .on_hover_text("Ctrl+Z / Cmd+Z")
+                    .clicked()
+                {
+                    self.undo();
                 }
 
                 if self.dirty {
@@ -1876,15 +2242,31 @@ impl eframe::App for MapViewerApp {
                             let preview_size = Vec2::new(64.0, 64.0);
                             self.ui_tile_preview_row(ui, ctx, sprite, fsprite, it, preview_size);
 
-                            if sprite != 0 && fsprite != 0 && ui.button("Clear fsprite").clicked() {
-                                let mut updated = self.map_tiles[idx];
-                                updated.fsprite = 0;
-                                if updated != self.map_tiles[idx] {
-                                    self.map_tiles[idx] = updated;
-                                    self.mark_tile_dirty(x, y);
-                                    ctx.request_repaint();
+                            ui.horizontal(|ui| {
+                                if sprite != 0 && ui.button("Clear sprite").clicked() {
+                                    let mut updated = self.map_tiles[idx];
+                                    updated.sprite = 0;
+                                    if updated != self.map_tiles[idx] {
+                                        let undo_snapshot = self.snapshot_tiles_for_undo(&[(x, y)]);
+                                        self.map_tiles[idx] = updated;
+                                        self.mark_tile_dirty(x, y);
+                                        self.push_undo(undo_snapshot);
+                                        ctx.request_repaint();
+                                    }
                                 }
-                            }
+
+                                if fsprite != 0 && ui.button("Clear fsprite").clicked() {
+                                    let mut updated = self.map_tiles[idx];
+                                    updated.fsprite = 0;
+                                    if updated != self.map_tiles[idx] {
+                                        let undo_snapshot = self.snapshot_tiles_for_undo(&[(x, y)]);
+                                        self.map_tiles[idx] = updated;
+                                        self.mark_tile_dirty(x, y);
+                                        self.push_undo(undo_snapshot);
+                                        ctx.request_repaint();
+                                    }
+                                }
+                            });
 
                             if it != 0 {
                                 let it_idx = it as usize;
@@ -1897,10 +2279,12 @@ impl eframe::App for MapViewerApp {
                                     ui.label("item sprite: (item data not loaded)");
                                     ui.label("item template: (item data not loaded)");
                                 }
-                                if ui.button("Clear item").clicked()
-                                    && self.clear_item_from_tile(x, y)
-                                {
-                                    ctx.request_repaint();
+                                if ui.button("Clear item").clicked() {
+                                    let undo_snapshot = self.snapshot_tiles_for_undo(&[(x, y)]);
+                                    if self.clear_item_from_tile(x, y) {
+                                        self.push_undo(undo_snapshot);
+                                        ctx.request_repaint();
+                                    }
                                 }
                             } else {
                                 ui.label("item sprite: N/A");
@@ -1911,38 +2295,7 @@ impl eframe::App for MapViewerApp {
                             ui.label("Map flags:");
                             let original_flags = flags;
 
-                            // Keep this list aligned with `core/src/constants.rs` map flags.
-                            let defs: &[(u64, &str)] = &[
-                                (u64::from(mag_core::constants::MF_MOVEBLOCK), "MF_MOVEBLOCK"),
-                                (
-                                    u64::from(mag_core::constants::MF_SIGHTBLOCK),
-                                    "MF_SIGHTBLOCK",
-                                ),
-                                (u64::from(mag_core::constants::MF_INDOORS), "MF_INDOORS"),
-                                (u64::from(mag_core::constants::MF_UWATER), "MF_UWATER"),
-                                (u64::from(mag_core::constants::MF_NOLAG), "MF_NOLAG"),
-                                (u64::from(mag_core::constants::MF_NOMONST), "MF_NOMONST"),
-                                (u64::from(mag_core::constants::MF_BANK), "MF_BANK"),
-                                (u64::from(mag_core::constants::MF_TAVERN), "MF_TAVERN"),
-                                (u64::from(mag_core::constants::MF_NOMAGIC), "MF_NOMAGIC"),
-                                (u64::from(mag_core::constants::MF_DEATHTRAP), "MF_DEATHTRAP"),
-                                (u64::from(mag_core::constants::MF_ARENA), "MF_ARENA"),
-                                (u64::from(mag_core::constants::MF_NOEXPIRE), "MF_NOEXPIRE"),
-                                (mag_core::constants::MF_NOFIGHT, "MF_NOFIGHT"),
-                                (mag_core::constants::MF_GFX_INJURED, "MF_GFX_INJURED"),
-                                (mag_core::constants::MF_GFX_INJURED1, "MF_GFX_INJURED1"),
-                                (mag_core::constants::MF_GFX_INJURED2, "MF_GFX_INJURED2"),
-                                (mag_core::constants::MF_GFX_TOMB, "MF_GFX_TOMB"),
-                                (mag_core::constants::MF_GFX_TOMB1, "MF_GFX_TOMB1"),
-                                (mag_core::constants::MF_GFX_DEATH, "MF_GFX_DEATH"),
-                                (mag_core::constants::MF_GFX_DEATH1, "MF_GFX_DEATH1"),
-                                (mag_core::constants::MF_GFX_EMAGIC, "MF_GFX_EMAGIC"),
-                                (mag_core::constants::MF_GFX_EMAGIC1, "MF_GFX_EMAGIC1"),
-                                (mag_core::constants::MF_GFX_GMAGIC, "MF_GFX_GMAGIC"),
-                                (mag_core::constants::MF_GFX_GMAGIC1, "MF_GFX_GMAGIC1"),
-                                (mag_core::constants::MF_GFX_CMAGIC, "MF_GFX_CMAGIC"),
-                                (mag_core::constants::MF_GFX_CMAGIC1, "MF_GFX_CMAGIC1"),
-                            ];
+                            let defs = map_flag_defs();
 
                             ui.add_enabled_ui(true, |ui| {
                                 egui::ScrollArea::vertical()
@@ -1976,8 +2329,10 @@ impl eframe::App for MapViewerApp {
                                 let mut updated = self.map_tiles[idx];
                                 updated.flags = flags;
                                 if updated != self.map_tiles[idx] {
+                                    let undo_snapshot = self.snapshot_tiles_for_undo(&[(x, y)]);
                                     self.map_tiles[idx] = updated;
                                     self.mark_tile_dirty(x, y);
+                                    self.push_undo(undo_snapshot);
                                     ctx.request_repaint();
                                 }
                             }
@@ -2022,20 +2377,22 @@ impl eframe::App for MapViewerApp {
                     };
 
                     let shift_held = ctx.input(|i| i.modifiers.shift);
-                    let changed = if shift_held {
+                    let coords: Vec<(usize, usize)> = if shift_held {
                         let start = self.line_anchor.unwrap_or((x, y));
-                        let mut changed = false;
-                        for (line_x, line_y) in line_tiles(start, (x, y)) {
-                            changed |= self.apply_palette_to_tile(line_x, line_y, entry);
-                        }
-                        self.line_anchor = Some((x, y));
-                        changed
+                        line_tiles(start, (x, y))
                     } else {
-                        self.line_anchor = None;
-                        self.apply_palette_to_tile(x, y, entry)
+                        vec![(x, y)]
                     };
 
+                    let undo_snapshot = self.snapshot_tiles_for_undo(&coords);
+                    let mut changed = false;
+                    for (line_x, line_y) in &coords {
+                        changed |= self.apply_palette_to_tile(*line_x, *line_y, entry);
+                    }
+                    self.line_anchor = if shift_held { Some((x, y)) } else { None };
+
                     if changed {
+                        self.push_undo(undo_snapshot);
                         ctx.request_repaint();
                     }
                 } else {
@@ -2335,8 +2692,130 @@ fn paint_sprite_dd(
 
 #[cfg(test)]
 mod tests {
-    use super::{dd_tile_center_screen_pos, line_tiles, map_point_to_tile};
+    use super::{
+        MapViewerApp, PaletteEntry, PaletteEntryKind, SpriteLayer, dd_tile_center_screen_pos,
+        line_tiles, map_point_to_tile, tile_index,
+    };
     use eframe::egui::Vec2;
+    use mag_core::constants::{USE_ACTIVE, USE_EMPTY};
+    use mag_core::types::Item;
+
+    /// Build a bare `MapViewerApp` with just enough map/item state for painting tests.
+    fn test_app(tile_count: usize, item_count: usize) -> MapViewerApp {
+        MapViewerApp {
+            map_tiles: vec![super::Map::default(); tile_count],
+            items: vec![Item::default(); item_count],
+            item_templates: vec![Item::default(); 4],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn apply_sprite_to_tile_writes_floor_layer() {
+        let mut app = test_app(4, 4);
+        let idx = tile_index(0, 0);
+        assert!(app.apply_sprite_to_tile(0, 0, 5, SpriteLayer::Floor));
+        assert_eq!(app.map_tiles[idx].sprite, 5);
+        assert_eq!(app.map_tiles[idx].fsprite, 0);
+    }
+
+    #[test]
+    fn apply_sprite_to_tile_writes_object_layer() {
+        let mut app = test_app(4, 4);
+        let idx = tile_index(0, 0);
+        assert!(app.apply_sprite_to_tile(0, 0, 7, SpriteLayer::Object));
+        assert_eq!(app.map_tiles[idx].fsprite, 7);
+        assert_eq!(app.map_tiles[idx].sprite, 0);
+    }
+
+    #[test]
+    fn apply_palette_to_tile_dispatches_by_kind() {
+        let mut app = test_app(4, 4);
+        let idx = tile_index(0, 0);
+
+        let floor = PaletteEntry {
+            kind: PaletteEntryKind::Sprite {
+                sprite: 3,
+                layer: SpriteLayer::Floor,
+            },
+        };
+        assert!(app.apply_palette_to_tile(0, 0, floor));
+        assert_eq!(app.map_tiles[idx].sprite, 3);
+
+        let set_flags = PaletteEntry {
+            kind: PaletteEntryKind::Flags {
+                mask: 0b101,
+                clear: false,
+            },
+        };
+        assert!(app.apply_palette_to_tile(0, 0, set_flags));
+        assert_eq!(app.map_tiles[idx].flags, 0b101);
+
+        let clear_flags = PaletteEntry {
+            kind: PaletteEntryKind::Flags {
+                mask: 0b001,
+                clear: true,
+            },
+        };
+        assert!(app.apply_palette_to_tile(0, 0, clear_flags));
+        assert_eq!(app.map_tiles[idx].flags, 0b100);
+    }
+
+    #[test]
+    fn place_item_template_locally_replaces_existing_item_instead_of_erroring() {
+        let mut app = test_app(4, 10);
+        app.item_templates[1].used = USE_ACTIVE;
+
+        let idx = tile_index(0, 0);
+        app.items[5].used = USE_ACTIVE;
+        app.map_tiles[idx].it = 5;
+
+        assert!(app.place_item_template_locally(0, 0, 1));
+
+        // Old slot is freed rather than the placement erroring out.
+        assert_eq!(app.items[5].used, USE_EMPTY);
+
+        let new_it = app.map_tiles[idx].it as usize;
+        assert_ne!(new_it, 5);
+        assert_eq!(app.items[new_it].temp, 1);
+    }
+
+    #[test]
+    fn undo_reverts_sprite_paint_and_item_placement() {
+        let mut app = test_app(4, 10);
+        app.item_templates[1].used = USE_ACTIVE;
+        let idx = tile_index(0, 0);
+
+        let snap = app.snapshot_tiles_for_undo(&[(0, 0)]);
+        assert!(app.apply_sprite_to_tile(0, 0, 9, SpriteLayer::Floor));
+        app.push_undo(snap);
+        assert_eq!(app.map_tiles[idx].sprite, 9);
+
+        app.undo();
+        assert_eq!(app.map_tiles[idx].sprite, 0);
+        assert!(app.undo_stack.is_empty());
+
+        let snap = app.snapshot_tiles_for_undo(&[(0, 0)]);
+        assert!(app.place_item_template_locally(0, 0, 1));
+        app.push_undo(snap);
+        let placed_it = app.map_tiles[idx].it as usize;
+        assert_ne!(placed_it, 0);
+
+        app.undo();
+        assert_eq!(app.map_tiles[idx].it, 0);
+        assert_eq!(app.items[placed_it].used, USE_EMPTY);
+    }
+
+    #[test]
+    fn undo_history_is_capped_at_max_undo_history() {
+        let mut app = test_app(4, 4);
+        for sprite in 1..=(super::MAX_UNDO_HISTORY as u16 + 5) {
+            let snap = app.snapshot_tiles_for_undo(&[(0, 0)]);
+            app.apply_sprite_to_tile(0, 0, sprite, SpriteLayer::Floor);
+            app.push_undo(snap);
+        }
+        assert_eq!(app.undo_stack.len(), super::MAX_UNDO_HISTORY);
+    }
 
     #[test]
     fn line_tiles_single_point() {

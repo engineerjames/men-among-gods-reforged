@@ -112,12 +112,7 @@ fn place_map_item_from_template(
 
     let map_index = x + y * SERVER_MAPX as usize;
     let tile = gs.map[map_index];
-    if tile.it != 0 {
-        return Err(format!(
-            "tile ({x},{y}) already has item instance {}",
-            tile.it
-        ));
-    }
+    let replaced_item_id = if tile.it != 0 { Some(tile.it) } else { None };
     if tile.ch != 0 || tile.to_ch != 0 {
         return Err(format!("tile ({x},{y}) is occupied by a character"));
     }
@@ -126,6 +121,11 @@ fn place_map_item_from_template(
     }
     if tile.fsprite != 0 {
         return Err(format!("tile ({x},{y}) has a foreground sprite"));
+    }
+
+    // Placing over an existing item replaces it rather than erroring.
+    if replaced_item_id.is_some() {
+        free_map_item(gs, x, y);
     }
 
     let Some(item_id) = God::create_item(gs, template_id) else {
@@ -140,10 +140,37 @@ fn place_map_item_from_template(
         ));
     }
 
-    Ok(format!(
-        "placed template {} at ({}, {}) as item {}",
-        template_id, x, y, item_id
-    ))
+    Ok(match replaced_item_id {
+        Some(old_id) => format!(
+            "replaced item {} with template {} at ({}, {}) as item {}",
+            old_id, template_id, x, y, item_id
+        ),
+        None => format!(
+            "placed template {} at ({}, {}) as item {}",
+            template_id, x, y, item_id
+        ),
+    })
+}
+
+/// Free the runtime item slot referenced by a tile's map item, if any.
+///
+/// No-op when the tile has no item. Also clears the tile's `it` field and
+/// removes lights sourced from the freed item.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `x` - Tile X coordinate.
+/// * `y` - Tile Y coordinate.
+fn free_map_item(gs: &mut GameState, x: usize, y: usize) {
+    let map_index = x + y * SERVER_MAPX as usize;
+    let item_id = gs.map[map_index].it as usize;
+    if item_id == 0 || item_id >= gs.items.len() {
+        return;
+    }
+    gs.remove_lights(x as i32, y as i32);
+    gs.map[map_index].it = 0;
+    gs.items[item_id] = core::types::Item::default();
 }
 
 /// Clear one map item and free its runtime item slot.
@@ -175,9 +202,7 @@ fn clear_map_item(gs: &mut GameState, x: usize, y: usize) -> Result<String, Stri
         ));
     }
 
-    gs.remove_lights(x as i32, y as i32);
-    gs.map[map_index].it = 0;
-    gs.items[item_id] = core::types::Item::default();
+    free_map_item(gs, x, y);
 
     Ok(format!("cleared item {} from ({}, {})", item_id, x, y))
 }
@@ -1452,4 +1477,57 @@ pub fn populate(gs: &mut GameState) {
     }
 
     log::info!("World populated");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{clear_map_item, place_map_item_from_template};
+    use crate::test_helpers::with_test_gs;
+    use core::constants::{SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+
+    #[test]
+    fn place_map_item_from_template_replaces_existing_item_instead_of_erroring() {
+        with_test_gs(|gs| {
+            let template_id = 900;
+            gs.item_templates[template_id].used = USE_ACTIVE;
+
+            let (x, y) = (50, 60);
+            place_map_item_from_template(gs, x, y, template_id).expect("first placement");
+
+            let map_index = x + y * SERVER_MAPX as usize;
+            let old_item_id = gs.map[map_index].it as usize;
+            assert_ne!(old_item_id, 0);
+
+            let message = place_map_item_from_template(gs, x, y, template_id)
+                .expect("placing over an occupied tile should replace, not error");
+            assert!(message.contains("replaced"));
+
+            // The tile now references exactly one, freshly-created item instance
+            // (the allocator may or may not reuse the freed slot number).
+            let new_item_id = gs.map[map_index].it as usize;
+            assert_ne!(new_item_id, 0);
+            assert_eq!(gs.items[new_item_id].used, USE_ACTIVE);
+            assert_eq!(gs.items[new_item_id].temp, template_id as u16);
+        });
+    }
+
+    #[test]
+    fn clear_map_item_frees_the_item_slot() {
+        with_test_gs(|gs| {
+            let template_id = 900;
+            gs.item_templates[template_id].used = USE_ACTIVE;
+
+            let (x, y) = (20, 30);
+            place_map_item_from_template(gs, x, y, template_id).expect("placement");
+
+            let map_index = x + y * SERVER_MAPX as usize;
+            let item_id = gs.map[map_index].it as usize;
+            assert_ne!(item_id, 0);
+
+            clear_map_item(gs, x, y).expect("clear");
+
+            assert_eq!(gs.map[map_index].it, 0);
+            assert_eq!(gs.items[item_id].used, USE_EMPTY);
+        });
+    }
 }
