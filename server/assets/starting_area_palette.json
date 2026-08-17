@@ -1,0 +1,62 @@
+[
+  {
+    "kind": {
+      "Sprite": {
+        "sprite": 1158,
+        "layer": "Floor"
+      }
+    }
+  },
+  {
+    "kind": {
+      "Sprite": {
+        "sprite": 1156,
+        "layer": "Object"
+      }
+    }
+  },
+  {
+    "kind": {
+      "ItemTemplate": 741
+    }
+  },
+  {
+    "kind": {
+      "Sprite": {
+        "sprite": 1160,
+        "layer": "Object"
+      }
+    }
+  },
+  {
+    "kind": {
+      "Sprite": {
+        "sprite": 551,
+        "layer": "Floor"
+      }
+    }
+  },
+  {
+    "kind": {
+      "Sprite": {
+        "sprite": 554,
+        "layer": "Floor"
+      }
+    }
+  },
+  {
+    "kind": {
+      "ItemTemplate": 16
+    }
+  },
+  {
+    "kind": {
+      "ItemTemplate": 17
+    }
+  },
+  {
+    "kind": {
+      "ItemTemplate": 45
+    }
+  }
+]
