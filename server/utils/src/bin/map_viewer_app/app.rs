@@ -2702,11 +2702,12 @@ mod tests {
 
     /// Build a bare `MapViewerApp` with just enough map/item state for painting tests.
     fn test_app(tile_count: usize, item_count: usize) -> MapViewerApp {
-        let mut app = MapViewerApp::default();
-        app.map_tiles = vec![super::Map::default(); tile_count];
-        app.items = vec![Item::default(); item_count];
-        app.item_templates = vec![Item::default(); 4];
-        app
+        MapViewerApp {
+            map_tiles: vec![super::Map::default(); tile_count],
+            items: vec![Item::default(); item_count],
+            item_templates: vec![Item::default(); 4],
+            ..Default::default()
+        }
     }
 
     #[test]
