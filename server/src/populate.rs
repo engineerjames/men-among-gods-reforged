@@ -1478,3 +1478,56 @@ pub fn populate(gs: &mut GameState) {
 
     log::info!("World populated");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{clear_map_item, place_map_item_from_template};
+    use crate::test_helpers::with_test_gs;
+    use core::constants::{SERVER_MAPX, USE_ACTIVE, USE_EMPTY};
+
+    #[test]
+    fn place_map_item_from_template_replaces_existing_item_instead_of_erroring() {
+        with_test_gs(|gs| {
+            let template_id = 900;
+            gs.item_templates[template_id].used = USE_ACTIVE;
+
+            let (x, y) = (50, 60);
+            place_map_item_from_template(gs, x, y, template_id).expect("first placement");
+
+            let map_index = x + y * SERVER_MAPX as usize;
+            let old_item_id = gs.map[map_index].it as usize;
+            assert_ne!(old_item_id, 0);
+
+            let message = place_map_item_from_template(gs, x, y, template_id)
+                .expect("placing over an occupied tile should replace, not error");
+            assert!(message.contains("replaced"));
+
+            // The tile now references exactly one, freshly-created item instance
+            // (the allocator may or may not reuse the freed slot number).
+            let new_item_id = gs.map[map_index].it as usize;
+            assert_ne!(new_item_id, 0);
+            assert_eq!(gs.items[new_item_id].used, USE_ACTIVE);
+            assert_eq!(gs.items[new_item_id].temp, template_id as u16);
+        });
+    }
+
+    #[test]
+    fn clear_map_item_frees_the_item_slot() {
+        with_test_gs(|gs| {
+            let template_id = 900;
+            gs.item_templates[template_id].used = USE_ACTIVE;
+
+            let (x, y) = (20, 30);
+            place_map_item_from_template(gs, x, y, template_id).expect("placement");
+
+            let map_index = x + y * SERVER_MAPX as usize;
+            let item_id = gs.map[map_index].it as usize;
+            assert_ne!(item_id, 0);
+
+            clear_map_item(gs, x, y).expect("clear");
+
+            assert_eq!(gs.map[map_index].it, 0);
+            assert_eq!(gs.items[item_id].used, USE_EMPTY);
+        });
+    }
+}

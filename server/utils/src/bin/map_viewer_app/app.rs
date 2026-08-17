@@ -2692,8 +2692,129 @@ fn paint_sprite_dd(
 
 #[cfg(test)]
 mod tests {
-    use super::{dd_tile_center_screen_pos, line_tiles, map_point_to_tile};
+    use super::{
+        MapViewerApp, PaletteEntry, PaletteEntryKind, SpriteLayer, dd_tile_center_screen_pos,
+        line_tiles, map_point_to_tile, tile_index,
+    };
     use eframe::egui::Vec2;
+    use mag_core::constants::{USE_ACTIVE, USE_EMPTY};
+    use mag_core::types::Item;
+
+    /// Build a bare `MapViewerApp` with just enough map/item state for painting tests.
+    fn test_app(tile_count: usize, item_count: usize) -> MapViewerApp {
+        let mut app = MapViewerApp::default();
+        app.map_tiles = vec![super::Map::default(); tile_count];
+        app.items = vec![Item::default(); item_count];
+        app.item_templates = vec![Item::default(); 4];
+        app
+    }
+
+    #[test]
+    fn apply_sprite_to_tile_writes_floor_layer() {
+        let mut app = test_app(4, 4);
+        let idx = tile_index(0, 0);
+        assert!(app.apply_sprite_to_tile(0, 0, 5, SpriteLayer::Floor));
+        assert_eq!(app.map_tiles[idx].sprite, 5);
+        assert_eq!(app.map_tiles[idx].fsprite, 0);
+    }
+
+    #[test]
+    fn apply_sprite_to_tile_writes_object_layer() {
+        let mut app = test_app(4, 4);
+        let idx = tile_index(0, 0);
+        assert!(app.apply_sprite_to_tile(0, 0, 7, SpriteLayer::Object));
+        assert_eq!(app.map_tiles[idx].fsprite, 7);
+        assert_eq!(app.map_tiles[idx].sprite, 0);
+    }
+
+    #[test]
+    fn apply_palette_to_tile_dispatches_by_kind() {
+        let mut app = test_app(4, 4);
+        let idx = tile_index(0, 0);
+
+        let floor = PaletteEntry {
+            kind: PaletteEntryKind::Sprite {
+                sprite: 3,
+                layer: SpriteLayer::Floor,
+            },
+        };
+        assert!(app.apply_palette_to_tile(0, 0, floor));
+        assert_eq!(app.map_tiles[idx].sprite, 3);
+
+        let set_flags = PaletteEntry {
+            kind: PaletteEntryKind::Flags {
+                mask: 0b101,
+                clear: false,
+            },
+        };
+        assert!(app.apply_palette_to_tile(0, 0, set_flags));
+        assert_eq!(app.map_tiles[idx].flags, 0b101);
+
+        let clear_flags = PaletteEntry {
+            kind: PaletteEntryKind::Flags {
+                mask: 0b001,
+                clear: true,
+            },
+        };
+        assert!(app.apply_palette_to_tile(0, 0, clear_flags));
+        assert_eq!(app.map_tiles[idx].flags, 0b100);
+    }
+
+    #[test]
+    fn place_item_template_locally_replaces_existing_item_instead_of_erroring() {
+        let mut app = test_app(4, 10);
+        app.item_templates[1].used = USE_ACTIVE;
+
+        let idx = tile_index(0, 0);
+        app.items[5].used = USE_ACTIVE;
+        app.map_tiles[idx].it = 5;
+
+        assert!(app.place_item_template_locally(0, 0, 1));
+
+        // Old slot is freed rather than the placement erroring out.
+        assert_eq!(app.items[5].used, USE_EMPTY);
+
+        let new_it = app.map_tiles[idx].it as usize;
+        assert_ne!(new_it, 5);
+        assert_eq!(app.items[new_it].temp, 1);
+    }
+
+    #[test]
+    fn undo_reverts_sprite_paint_and_item_placement() {
+        let mut app = test_app(4, 10);
+        app.item_templates[1].used = USE_ACTIVE;
+        let idx = tile_index(0, 0);
+
+        let snap = app.snapshot_tiles_for_undo(&[(0, 0)]);
+        assert!(app.apply_sprite_to_tile(0, 0, 9, SpriteLayer::Floor));
+        app.push_undo(snap);
+        assert_eq!(app.map_tiles[idx].sprite, 9);
+
+        app.undo();
+        assert_eq!(app.map_tiles[idx].sprite, 0);
+        assert!(app.undo_stack.is_empty());
+
+        let snap = app.snapshot_tiles_for_undo(&[(0, 0)]);
+        assert!(app.place_item_template_locally(0, 0, 1));
+        app.push_undo(snap);
+        let placed_it = app.map_tiles[idx].it as usize;
+        assert_ne!(placed_it, 0);
+
+        app.undo();
+        assert_eq!(app.map_tiles[idx].it, 0);
+        assert_eq!(app.items[placed_it].used, USE_EMPTY);
+    }
+
+    #[test]
+    fn undo_history_is_capped_at_max_undo_history() {
+        let mut app = test_app(4, 4);
+        for sprite in 1..=(super::MAX_UNDO_HISTORY as u16 + 5) {
+            let snap = app.snapshot_tiles_for_undo(&[(0, 0)]);
+            app.apply_sprite_to_tile(0, 0, sprite, SpriteLayer::Floor);
+            app.push_undo(snap);
+        }
+        assert_eq!(app.undo_stack.len(), super::MAX_UNDO_HISTORY);
+    }
 
     #[test]
     fn line_tiles_single_point() {
