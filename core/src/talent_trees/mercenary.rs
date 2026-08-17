@@ -317,11 +317,12 @@ pub static MERCENARY_TREE: TalentTree = TalentTree {
         TalentNode {
             slot: CONTAGION,
             name: "Contagion",
-            description: "Spreads parasitic damage to nearby enemies.",
+            description: "Replaces Curse, applying both Curse and a virulent infection.",
             cost: 1,
             prereqs: &[IMMUN_RESIST_BOOST_2],
-            effect: TalentEffect::GrantSkill {
-                skill: Skill::Contagion,
+            effect: TalentEffect::ReplaceSkill {
+                from: Skill::Curse,
+                to: Skill::Contagion,
                 profile: TalentSkillProfile::DEFAULT_MERC,
             },
         },

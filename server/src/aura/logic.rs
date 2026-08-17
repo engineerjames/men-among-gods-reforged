@@ -21,6 +21,7 @@ use core::types::FontColor;
 /// * `id` - Aura template to activate.
 pub fn add_aura(gs: &mut GameState, cn: usize, id: AuraId) {
     if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::error!("add_aura: invalid cn {}", cn);
         return;
     }
     let template = aura_template(id);
@@ -45,6 +46,7 @@ pub fn add_aura(gs: &mut GameState, cn: usize, id: AuraId) {
 /// * `cn` - Character index to stop emitting.
 pub fn remove_aura(gs: &mut GameState, cn: usize) {
     if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::error!("remove_aura: invalid cn {}", cn);
         return;
     }
     gs.aura_states.remove(&cn);
@@ -59,6 +61,7 @@ pub fn remove_aura(gs: &mut GameState, cn: usize) {
 /// * `id` - Aura type to look for.
 pub fn has_aura(gs: &GameState, cn: usize, id: AuraId) -> bool {
     if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::error!("has_aura: invalid cn {}", cn);
         return false;
     }
     gs.aura_states.get(&cn).is_some_and(|state| state.id == id)
@@ -75,6 +78,7 @@ pub fn has_aura(gs: &GameState, cn: usize, id: AuraId) -> bool {
 /// * `off_msg` - Message logged when the aura is dismissed.
 pub fn toggle_aura(gs: &mut GameState, cn: usize, id: AuraId, on_msg: &str, off_msg: &str) {
     if cn == 0 || cn >= core::constants::MAXCHARS {
+        log::error!("toggle_aura: invalid cn {}", cn);
         return;
     }
     if has_aura(gs, cn, id) {
