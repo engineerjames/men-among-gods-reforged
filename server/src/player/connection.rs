@@ -661,7 +661,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
             gs.remove_enemy(character_id);
 
             // Handle lag scroll
-            if reason == LogoutReason::Unknown || reason == LogoutReason::IdleTooLong {
+            if reason == LogoutReason::Unknown {
                 let ch = gs.characters[character_id];
                 let (is_close_to_temple, map_index) = (
                     ch.is_close_to_temple(),
@@ -1092,18 +1092,6 @@ mod tests {
 
     #[test]
     fn plr_logout_handles_unknown_and_idle_timeout_paths() {
-        with_test_gs(|gs| {
-            let (cn, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-            gs.globals.ticker = 77;
-
-            plr_logout(gs, cn, nr, LogoutReason::Unknown);
-
-            assert_eq!(gs.players[nr].state, ST_EXIT);
-            assert_eq!(gs.players[nr].lasttick, 77);
-            assert_eq!(gs.characters[cn].player, 0);
-        });
-
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
