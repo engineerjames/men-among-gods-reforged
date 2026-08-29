@@ -11,7 +11,7 @@ use core::{
     types::{Character, Map},
 };
 
-use server::keydb::{ban as keydb_ban, connection as keydb};
+use server::keydb::ban as keydb_ban;
 
 use crate::{
     area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,
@@ -19,44 +19,6 @@ use crate::{
 
 pub struct God {}
 impl God {
-    /// Sync selection metadata for an online player character back into KeyDB.
-    ///
-    /// # Arguments
-    ///
-    /// * `gs` - Active game state used to resolve the controlling player slot.
-    /// * `character_id` - Live gameplay character slot whose metadata should be mirrored.
-    fn sync_character_selection_metadata(gs: &GameState, character_id: usize) {
-        if !Character::is_sane_character(character_id) {
-            return;
-        }
-
-        let player_id = gs.characters[character_id].player;
-        if player_id <= 0 {
-            return;
-        }
-
-        let player_id = player_id as usize;
-        if player_id >= core::constants::MAXPLAYER {
-            return;
-        }
-
-        let api_character_id = gs.players[player_id].api_character_id;
-        if api_character_id == 0 {
-            return;
-        }
-
-        if let Err(err) =
-            keydb::sync_character_selection_metadata(api_character_id, &gs.characters[character_id])
-        {
-            log::warn!(
-                "Failed to sync selection metadata for live character {} (api id {}): {}",
-                character_id,
-                api_character_id,
-                err
-            );
-        }
-    }
-
     /// Drop a character near the target using an explicit game-state borrow.
     ///
     /// # Arguments
@@ -344,11 +306,55 @@ impl God {
 
         for (try_x, try_y) in positions_to_try.iter() {
             if Self::drop_char_fuzzy_large(gs, character_id, *try_x, *try_y, x, y) {
+                Self::move_companions_with_owner(gs, character_id);
                 return true;
             }
         }
 
         false
+    }
+
+    /// Brings a player's live Ghost Companion(s) along after `transfer_char`
+    /// relocates them.
+    ///
+    /// Covers both the base `CHD_COMPANION` slot and the `CHD_COMPANION2`
+    /// slot granted by the Kindred Spirit talent, so both companions follow
+    /// when a player recalls, steps on a portal/hole/ladder, uses a
+    /// teleport/lag scroll, is moved by `/goto`, or dies and is returned to
+    /// their temple.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `owner_id` - Character id that was just transferred.
+    fn move_companions_with_owner(gs: &mut GameState, owner_id: usize) {
+        if (gs.characters[owner_id].flags & CharacterFlags::Player.bits()) == 0 {
+            return;
+        }
+
+        let (x, y) = (
+            gs.characters[owner_id].x as usize,
+            gs.characters[owner_id].y as usize,
+        );
+
+        for slot in [
+            core::constants::CHD_COMPANION,
+            core::constants::CHD_COMPANION2,
+        ] {
+            let cc = gs.characters[owner_id].data[slot] as usize;
+            if cc == 0 || !Character::is_sane_character(cc) {
+                continue;
+            }
+            if gs.characters[cc].data[63] != owner_id as i32
+                || gs.characters[cc].temp != core::constants::CT_COMPANION as u16
+                || gs.characters[cc].used == core::constants::USE_EMPTY
+                || (gs.characters[cc].flags & CharacterFlags::Body.bits()) != 0
+                || (gs.characters[cc].x as usize == x && gs.characters[cc].y as usize == y)
+            {
+                continue;
+            }
+            Self::transfer_char(gs, cc, x, y);
+        }
     }
 
     /// Place a character near a tile using an explicit game-state borrow.
@@ -488,6 +494,11 @@ impl God {
         for i in 0..100_usize {
             character.data[i] = 0;
         }
+        // character_templates carry stale/garbage future3 values (never
+        // zeroed, previously harmless unused padding); a freshly created
+        // character must start with no pentagram/quest progress and no
+        // bogus Seyan'Du rune-swap cooldown.
+        character.future3 = [0; 12];
         character.attack_cn = 0;
         character.skill_nr = 0;
         character.goto_x = 0;
@@ -2118,23 +2129,23 @@ impl God {
 
                 let suffix: &str = match animal_type {
                     MagicArmorType::Lion => {
-                        item.attrib[core::constants::AT_BRAVE as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_BRAVE as usize][0] += 4 * mul;
                         " of the Lion"
                     }
                     MagicArmorType::Snake => {
-                        item.attrib[core::constants::AT_WILL as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_WILL as usize][0] += 4 * mul;
                         " of the Snake"
                     }
                     MagicArmorType::Owl => {
-                        item.attrib[core::constants::AT_INT as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_INT as usize][0] += 4 * mul;
                         " of the Owl"
                     }
                     MagicArmorType::Weasel => {
-                        item.attrib[core::constants::AT_AGIL as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_AGIL as usize][0] += 4 * mul;
                         " of the Weasel"
                     }
                     MagicArmorType::Bear => {
-                        item.attrib[core::constants::AT_STREN as usize][0] += 4 * mul as i8;
+                        item.attrib[core::constants::AT_STREN as usize][0] += 4 * mul;
                         " of the Bear"
                     }
                     MagicArmorType::Magic => {
@@ -2146,7 +2157,7 @@ impl God {
                         " of Life"
                     }
                     MagicArmorType::Defence => {
-                        item.armor[0] += 2 * mul as i8;
+                        item.armor[0] += (2 * mul) as i8;
                         " of Defence"
                     }
                 };
@@ -2296,8 +2307,13 @@ impl God {
         let mut co: usize = 0;
 
         if spec2.is_empty() {
-            // single-arg: treat spec1 as character number
-            co = spec1.parse::<usize>().unwrap_or(0);
+            // single-arg: a character number, or a character/player name
+            // resolved with the same lookup `goto` uses.
+            co = if spec1.chars().all(|c| c.is_ascii_digit()) {
+                spec1.parse::<usize>().unwrap_or(0)
+            } else {
+                gs.do_lookup_char(spec1).max(0) as usize
+            };
 
             if co == 0 || !Character::is_sane_character(co) || Self::invis(gs, cn, co) {
                 gs.do_character_log(cn, core::types::FontColor::Red, "No such character.\n");
@@ -2586,20 +2602,20 @@ impl God {
                 mirror.skill[0][0] = (i32::from(target_skill[skills::SK_WEAPON][0])
                     + bonus
                     + (i32::from(target_attrib[4][0]) - i32::from(target_attrib[0][0])) / 5)
-                    .clamp(0, 255) as u8;
+                    .clamp(0, 65535) as u16;
             } else if target_kindred & (traits::KIN_HARAKIM | traits::KIN_ARCHHARAKIM) != 0 {
                 // Dag-> hand2hand (wil,agi,int)
                 mirror.skill[0][0] = (i32::from(target_skill[skills::SK_WEAPON][0])
                     + bonus
                     + (i32::from(target_attrib[2][0]) - i32::from(target_attrib[4][0])) / 5)
-                    .clamp(0, 255) as u8;
+                    .clamp(0, 65535) as u16;
             } else if target_kindred
                 & (traits::KIN_MERCENARY | traits::KIN_SORCERER | traits::KIN_WARRIOR)
                 != 0
             {
                 // Swo-> hand2hand (wil,agi,str)
                 mirror.skill[0][0] =
-                    (i32::from(target_skill[skills::SK_WEAPON][0]) + bonus).clamp(0, 255) as u8;
+                    (i32::from(target_skill[skills::SK_WEAPON][0]) + bonus).clamp(0, 65535) as u16;
             }
 
             mirror.weapon = caster_weapon;
@@ -2972,6 +2988,8 @@ impl God {
             return;
         }
 
+        // We intentionally do not use the EXP bonuses here,
+        // as this is a direct admin command to adjust experience.
         gs.characters[co].points += value;
         gs.characters[co].points_tot += value;
 
@@ -3312,14 +3330,14 @@ impl God {
             return;
         }
 
-        let val = val.clamp(0, 127);
+        let val = val.clamp(0, 65535);
 
         let skill_name = core::skills::get_skill_name(n as usize);
 
         let target_name = gs.characters[co].get_name().to_owned();
         let target = &mut gs.characters[co];
-        target.skill[n as usize][0] = val as u8;
-        target.skill[n as usize][1] = val as u8;
+        target.skill[n as usize][0] = val as u16;
+        target.skill[n as usize][1] = val as u16;
         target.set_do_update_flags();
         gs.do_character_log(
             cn,
@@ -3589,6 +3607,12 @@ impl God {
         // First destroy all items
         Self::destroy_items(gs, co);
 
+        // A full race change rebuilds the character from scratch, so every
+        // talent effect, talent-granted skill and talent point is erased with
+        // no experience or point payback. Must run while `kindred` still
+        // names the *old* class so the right talent tree is consulted.
+        player::talent_trees::wipe_talents(gs, co);
+
         {
             let character = &mut gs.characters[co];
 
@@ -3623,6 +3647,13 @@ impl God {
             let old_status2 = character.status2;
             let old_data = character.data;
             let old_depot = character.depot;
+            // future3[0]/[1] are pentagram-solve/quest-completion progress,
+            // which must survive a race change; the rest of future3 (incl.
+            // the Seyan'Du rune slots) comes fresh from the template below,
+            // since character_templates carry stale/garbage values there
+            // (never zeroed, previously harmless unused padding).
+            let old_pentagram_solves = character.future3[0];
+            let old_quest_completion_bits = character.future3[1];
 
             // Replace character with template
             *character = template;
@@ -3648,8 +3679,8 @@ impl God {
             character.flags = old_flags;
 
             // Preserve purple kindred if they had it
-            if (old_kindred & 0x00000001) != 0 {
-                character.kindred |= 0x00000001; // KIN_PURPLE
+            if (old_kindred & traits::KIN_PURPLE as i32) != 0 {
+                character.kindred |= traits::KIN_PURPLE as i32;
                 character.temple_x = 558;
                 character.temple_y = 542;
             }
@@ -3702,6 +3733,13 @@ impl God {
             // Restore depot
             character.depot = old_depot;
 
+            character.future3[0] = old_pentagram_solves;
+            character.future3[1] = old_quest_completion_bits;
+            // Reset the Seyan'Du rune loadout so a fresh class never starts
+            // out with a bogus swap cooldown inherited from template garbage.
+            character.future3[3] = 0;
+            character.future3[4] = 0;
+
             character.set_do_update_flags();
 
             log::info!(
@@ -3712,7 +3750,17 @@ impl God {
         }
 
         gs.do_update_char(co);
-        Self::sync_character_selection_metadata(gs, co);
+
+        // The talent snapshot is otherwise only pushed on login and rank-up,
+        // so without this the client would keep rendering the talents the
+        // character had before the rebuild.
+        let player_id = gs.characters[co].player as usize;
+        if player_id > 0 && player_id < gs.players.len() && gs.players[player_id].usnr == co {
+            crate::player::commands::send_set_char_talents(gs, player_id);
+            crate::player::commands::send_set_char_rune_state(gs, player_id);
+        }
+
+        gs.sync_character_selection_metadata(co);
     }
 
     /// Save character `co` to persistent storage.
@@ -4262,22 +4310,17 @@ impl God {
                 character.attrib[n][3] = template.attrib[n][3];
             }
 
-            for n in 0..core::skills::MAX_SKILLS {
-                if character.skill[n][0] == 0 && template.skill[n][0] != 0 {
-                    character.skill[n][0] = template.skill[n][0];
-                    log::info!("added skill {} to {}", n, character.get_name());
-                }
-                character.skill[n][1] = template.skill[n][1];
-                character.skill[n][2] = template.skill[n][2];
-                character.skill[n][3] = template.skill[n][3];
-            }
+            // Must run after `kindred` is updated so the talent tree of the
+            // new class is consulted; talent-owned skill rows are preserved
+            // instead of being zeroed by the template.
+            player::talent_trees::apply_template_skills(character, &template.skill, false);
 
             character.data[45] = 0;
             character.set_do_update_flags();
         }
 
         gs.do_check_new_level(cn);
-        Self::sync_character_selection_metadata(gs, cn);
+        gs.sync_character_selection_metadata(cn);
     }
 
     /// Force a target to say text as if they had typed it.
@@ -5040,7 +5083,7 @@ impl God {
         } else {
             target_arg
         };
-        let flags = core::weather::WEATHER_FLAG_OVERRIDE;
+        let flags = core::weather::WeatherFlags::Override.bits();
 
         let mut targets: Vec<usize> = Vec::new();
         match target {
@@ -5176,6 +5219,110 @@ mod tests {
             gs.characters[cn].y = 100;
 
             let _ = God::transfer_char(gs, cn, 1, 100);
+        });
+    }
+
+    /// Regression test: `character_templates` loaded from a world snapshot
+    /// carry stale/garbage `future3` values (never zeroed, previously
+    /// harmless unused padding). A freshly created character must not
+    /// inherit that garbage as a bogus Seyan'Du rune-swap cooldown or
+    /// phantom pentagram/quest progress.
+    #[test]
+    fn create_char_zeroes_template_future3_garbage() {
+        with_test_gs(|gs| {
+            let template_id = 900;
+            gs.character_templates[template_id] = core::types::Character::default();
+            gs.character_templates[template_id].used = core::constants::USE_ACTIVE;
+            gs.character_templates[template_id].future3 = [
+                83_886_080,
+                67_108_864,
+                50_331_648,
+                2_113_929_216,
+                2_113_932_801,
+                2_113_932_801,
+                318_770_689,
+                318_767_104,
+                67_108_864,
+                16_777_216,
+                16_777_216,
+                0,
+            ];
+
+            let cn = God::create_char(gs, template_id, false).expect("create_char") as usize;
+
+            assert_eq!(gs.characters[cn].future3, [0; 12]);
+        });
+    }
+
+    /// Sets up a companion character at `cc` owned by `owner`, filling in both
+    /// the `CHD_COMPANION`/`CHD_COMPANION2` slot on the owner and the
+    /// back-reference (`data[63]`) on the companion.
+    fn make_companion(gs: &mut super::GameState, owner: usize, cc: usize, slot: usize) {
+        use core::constants::{CT_COMPANION, USE_ACTIVE};
+
+        let (owner_x, owner_y) = (gs.characters[owner].x, gs.characters[owner].y);
+        let ch = &mut gs.characters[cc];
+        *ch = core::types::Character::default();
+        ch.used = USE_ACTIVE;
+        ch.temp = CT_COMPANION as u16;
+        ch.x = owner_x;
+        ch.y = owner_y;
+        ch.data[63] = owner as i32;
+
+        gs.characters[owner].data[slot] = cc as i32;
+    }
+
+    #[test]
+    fn transfer_char_brings_both_ghost_companions_along() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 10;
+
+            make_companion(gs, cn, 2, core::constants::CHD_COMPANION);
+            make_companion(gs, cn, 3, core::constants::CHD_COMPANION2);
+
+            assert!(God::transfer_char(gs, cn, 50, 60));
+
+            let (owner_x, owner_y) = (
+                i32::from(gs.characters[cn].x),
+                i32::from(gs.characters[cn].y),
+            );
+
+            for &cc in &[2usize, 3usize] {
+                let (cc_x, cc_y) = (
+                    i32::from(gs.characters[cc].x),
+                    i32::from(gs.characters[cc].y),
+                );
+                assert!(
+                    (cc_x - owner_x).abs() <= 3 && (cc_y - owner_y).abs() <= 3,
+                    "companion {} at ({}, {}) not near owner at ({}, {})",
+                    cc,
+                    cc_x,
+                    cc_y,
+                    owner_x,
+                    owner_y
+                );
+            }
+        });
+    }
+
+    #[test]
+    fn transfer_char_does_not_move_companion_when_transferring_the_companion_itself() {
+        with_test_gs(|gs| {
+            let (cn, _) = add_test_player(gs);
+            gs.characters[cn].x = 10;
+            gs.characters[cn].y = 10;
+
+            make_companion(gs, cn, 2, core::constants::CHD_COMPANION);
+
+            // Transferring the companion directly must not recurse back into
+            // moving the owner (companions never own companions).
+            assert!(God::transfer_char(gs, 2, 200, 200));
+            assert_ne!(
+                (gs.characters[cn].x, gs.characters[cn].y),
+                (gs.characters[2].x, gs.characters[2].y)
+            );
         });
     }
 }

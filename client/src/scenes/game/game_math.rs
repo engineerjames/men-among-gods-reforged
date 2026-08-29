@@ -1,6 +1,7 @@
 use mag_core::constants::{INVIS, TILEX, TILEY};
 
 use crate::player_state::PlayerState;
+use crate::types::map::SUBPIXEL_UNIT;
 
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene, MAP_ORIGIN_X, MAP_ORIGIN_Y};
 
@@ -23,27 +24,42 @@ impl GameScene {
     /// Computes the screen-space origin of the ground diamond for a given tile,
     /// accounting for the camera offset.
     ///
+    /// # Arguments
+    /// * `tile_x` - Tile column in the visible grid.
+    /// * `tile_y` - Tile row in the visible grid.
+    /// * `xoff_sub` - Combined horizontal camera/sprite offset in [`SUBPIXEL_UNIT`] units.
+    /// * `yoff_sub` - Combined vertical camera/sprite offset in [`SUBPIXEL_UNIT`] units.
+    ///
     /// # Returns
     /// `(cx, cy)` in logical screen coordinates.
+    ///
+    /// The sub-pixel offsets are floored here — once, on the already-combined
+    /// camera and sprite offset — so that two sprites a constant sub-pixel
+    /// distance apart never alternate between two pixel positions.
     pub(super) fn tile_ground_diamond_origin(
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
+        xoff_sub: i32,
+        yoff_sub: i32,
     ) -> (i32, i32) {
         let xpos = (tile_x as i32) * FLOOR_TILE_WIDTH;
         let ypos = (tile_y as i32) * FLOOR_TILE_WIDTH;
-        let cx = xpos / 2 + ypos / 2 + FLOOR_TILE_WIDTH + MAP_ORIGIN_X + cam_xoff;
-        let cy = xpos / 4 - ypos / 4 + MAP_ORIGIN_Y + cam_yoff;
+        let cx = xpos / 2
+            + ypos / 2
+            + FLOOR_TILE_WIDTH
+            + MAP_ORIGIN_X
+            + xoff_sub.div_euclid(SUBPIXEL_UNIT);
+        let cy = xpos / 4 - ypos / 4 + MAP_ORIGIN_Y + yoff_sub.div_euclid(SUBPIXEL_UNIT);
         (cx, cy)
     }
 
-    /// Returns the camera pixel offsets derived from the center tile's
-    /// `obj_xoff` / `obj_yoff` (smooth scrolling between tiles).
+    /// Returns the camera offsets, in [`SUBPIXEL_UNIT`] units, derived from the
+    /// center tile's `obj_xoff_sub` / `obj_yoff_sub` (smooth scrolling between
+    /// tiles).
     pub(super) fn camera_offsets(ps: &PlayerState) -> (i32, i32) {
         let map = ps.map();
         if let Some(center) = map.tile_at_xy(TILEX / 2, TILEY / 2) {
-            (-center.obj_xoff, -center.obj_yoff)
+            (-center.obj_xoff_sub, -center.obj_yoff_sub)
         } else {
             (0, 0)
         }
@@ -52,19 +68,26 @@ impl GameScene {
     /// Converts a screen pixel coordinate to the map tile `(x, y)` it lies on,
     /// using the isometric diamond geometry.
     ///
+    /// # Arguments
+    /// * `screen_x` - Logical screen X coordinate.
+    /// * `screen_y` - Logical screen Y coordinate.
+    /// * `cam_xoff_sub` - Camera X offset in [`SUBPIXEL_UNIT`] units.
+    /// * `cam_yoff_sub` - Camera Y offset in [`SUBPIXEL_UNIT`] units.
+    ///
     /// # Returns
     /// `Some((mx, my))` if a valid tile is found, `None` otherwise.
     pub(super) fn screen_to_map_tile(
         screen_x: i32,
         screen_y: i32,
-        cam_xoff: i32,
-        cam_yoff: i32,
+        cam_xoff_sub: i32,
+        cam_yoff_sub: i32,
     ) -> Option<(usize, usize)> {
         let mut best: Option<(usize, usize, i32)> = None;
 
         for my in 0..TILEY {
             for mx in 0..TILEX {
-                let (cx, cy_top) = Self::tile_ground_diamond_origin(mx, my, cam_xoff, cam_yoff);
+                let (cx, cy_top) =
+                    Self::tile_ground_diamond_origin(mx, my, cam_xoff_sub, cam_yoff_sub);
                 let dx = (screen_x - cx).abs();
                 let dy = (screen_y - (cy_top + FLOOR_TILE_HEIGHT / 2)).abs();
 
@@ -85,13 +108,22 @@ impl GameScene {
 
     /// Returns `true` if the screen coordinate falls within the map interaction
     /// area (the isometric viewport, excluding UI panels).
+    ///
+    /// # Arguments
+    /// * `screen_x` - Logical screen X coordinate.
+    /// * `screen_y` - Logical screen Y coordinate.
+    /// * `cam_xoff_sub` - Camera X offset in [`SUBPIXEL_UNIT`] units.
+    /// * `cam_yoff_sub` - Camera Y offset in [`SUBPIXEL_UNIT`] units.
+    ///
+    /// # Returns
+    /// * `true` when the coordinate maps to a visible tile.
     pub(super) fn cursor_in_map_interaction_area(
         screen_x: i32,
         screen_y: i32,
-        cam_xoff: i32,
-        cam_yoff: i32,
+        cam_xoff_sub: i32,
+        cam_yoff_sub: i32,
     ) -> bool {
-        Self::screen_to_map_tile(screen_x, screen_y, cam_xoff, cam_yoff).is_some()
+        Self::screen_to_map_tile(screen_x, screen_y, cam_xoff_sub, cam_yoff_sub).is_some()
     }
 
     /// Scans visible map tiles for a character whose name is not yet known,
@@ -230,9 +262,41 @@ mod tests {
 
     #[test]
     fn diamond_origin_with_camera_offset() {
-        let (cx, cy) = GameScene::tile_ground_diamond_origin(0, 0, 10, -5);
+        let (cx, cy) =
+            GameScene::tile_ground_diamond_origin(0, 0, 10 * SUBPIXEL_UNIT, -5 * SUBPIXEL_UNIT);
         assert_eq!(cx, FLOOR_TILE_WIDTH + MAP_ORIGIN_X + 10);
         assert_eq!(cy, MAP_ORIGIN_Y - 5);
+    }
+
+    #[test]
+    fn diamond_origin_floors_sub_pixel_offsets_downward() {
+        let base = GameScene::tile_ground_diamond_origin(0, 0, 0, 0);
+
+        // Fractions below a whole pixel must not round up, in either direction,
+        // otherwise sprites a constant sub-pixel distance apart alternate
+        // between two pixel positions from frame to frame.
+        let up = GameScene::tile_ground_diamond_origin(0, 0, SUBPIXEL_UNIT - 1, SUBPIXEL_UNIT - 1);
+        assert_eq!(up, base);
+
+        let down = GameScene::tile_ground_diamond_origin(0, 0, -1, -1);
+        assert_eq!(down, (base.0 - 1, base.1 - 1));
+    }
+
+    #[test]
+    fn diamond_origin_rounds_combined_offset_once() {
+        // Two sprites two thirds of a pixel apart must keep exactly that gap on
+        // screen at every camera sub-position within the pixel.
+        let gap = SUBPIXEL_UNIT * 2 / 3;
+        for cam in 0..SUBPIXEL_UNIT {
+            let a = GameScene::tile_ground_diamond_origin(0, 0, cam, 0).0;
+            let b = GameScene::tile_ground_diamond_origin(0, 0, cam + gap, 0).0;
+            assert!(
+                b - a <= 1,
+                "sub-pixel gap widened to {} px at cam={}",
+                b - a,
+                cam
+            );
+        }
     }
 
     #[test]

@@ -36,13 +36,13 @@ pub struct Item {
     // modifier [1] applies when it is active
     // modifier [2] is not a modifier but the minimum value that attibute/skill must have to wear or use
     // the item
-    pub attrib: [[i8; 3]; 5], // 337
+    pub attrib: [[i16; 3]; 5], // 347
 
-    pub hp: [i16; 3],   // 343
-    pub end: [i16; 3],  // 349
-    pub mana: [i16; 3], // 355
+    pub hp: [i16; 3],   // 353
+    pub end: [i16; 3],  // 359
+    pub mana: [i16; 3], // 365
 
-    pub skill: [[i8; 3]; MAX_SKILLS], // 505
+    pub skill: [[i16; 3]; MAX_SKILLS], // 865
 
     pub armor: [i8; 2],  // 506
     pub weapon: [i8; 2], // 507

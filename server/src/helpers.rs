@@ -1,8 +1,9 @@
 use core::{
     constants::{
-        AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, ATTACK_RANGE, CharacterFlags, DX_DOWN,
-        DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN, DX_RIGHTUP, DX_UP, GROUP_RANGE,
-        MAXCHARS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE, USE_EMPTY,
+        AT_AGIL, AT_BRAVE, AT_INT, AT_STREN, AT_WILL, ATTACK_RANGE, CHD_MASTER, CT_COMPANION,
+        CharacterFlags, DX_DOWN, DX_LEFT, DX_LEFTDOWN, DX_LEFTUP, DX_RIGHT, DX_RIGHTDOWN,
+        DX_RIGHTUP, DX_UP, GROUP_RANGE, MAXCHARS, SERVER_MAPX, SERVER_MAPY, TICKS, USE_ACTIVE,
+        USE_EMPTY,
     },
     skills::{self, SkillIndex},
     string_operations::c_string_to_str,
@@ -127,7 +128,7 @@ pub fn write_c_string(buf: &mut [u8], s: &str) {
 ///
 /// * `skill` - Mutable character skill array to normalize.
 pub(crate) fn sync_weapon_skill(
-    skill: &mut [[u8; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS],
+    skill: &mut [[u16; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS],
 ) {
     let base_idx = SkillIndex::BaseValue as usize;
     let preset_idx = SkillIndex::PresetModifier as usize;
@@ -169,7 +170,7 @@ pub(crate) fn sync_weapon_skill(
 /// # Returns
 ///
 /// * The maximum requirement from `Weapon Skill` or any retired weapon slot.
-pub(crate) fn item_weapon_requirement(skill: &[[i8; 3]; skills::MAX_SKILLS]) -> i8 {
+pub(crate) fn item_weapon_requirement(skill: &[[i16; 3]; skills::MAX_SKILLS]) -> i16 {
     let mut requirement = skill[skills::SK_WEAPON][2];
 
     for legacy in skills::LEGACY_WEAPON_SKILLS {
@@ -196,7 +197,7 @@ pub(crate) fn item_weapon_requirement(skill: &[[i8; 3]; skills::MAX_SKILLS]) -> 
 /// * Panics when `modifier_idx` is outside the source skill modifier columns.
 pub(crate) fn add_canonical_skill_bonuses(
     skill_bonus: &mut [i32; skills::MAX_SKILLS],
-    skill: &[[i8; 3]; skills::MAX_SKILLS],
+    skill: &[[i16; 3]; skills::MAX_SKILLS],
     modifier_idx: usize,
 ) {
     for skill_idx in 0..skills::MAX_SKILLS {
@@ -212,7 +213,10 @@ pub(crate) fn add_canonical_skill_bonuses(
 
 // TODO: Clean this up by updating the item templates once changes have settled.
 /// Returns the single effective weapon bonus encoded on one item source.
-fn collapsed_weapon_skill_bonus(skill: &[[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) -> i32 {
+fn collapsed_weapon_skill_bonus(
+    skill: &[[i16; 3]; skills::MAX_SKILLS],
+    modifier_idx: usize,
+) -> i32 {
     let mut strongest_bonus = 0i32;
     let mut strongest_penalty = 0i32;
 
@@ -325,7 +329,8 @@ pub(crate) fn skill_aoe_tiles(center_x: i32, center_y: i32, base: i32) -> Vec<(i
 /// # Returns
 ///
 /// * Character ids occupying affected tiles, excluding bodies and unused slots.
-///   When `viewer` is `Some`, only currently visible targets are returned.
+///   When `viewer` is `Some`, only currently visible targets are returned, and
+///   `viewer`'s own ghost companion(s) are always excluded.
 pub(crate) fn skill_aoe_targets(
     gs: &mut GameState,
     viewer: Option<usize>,
@@ -347,10 +352,16 @@ pub(crate) fn skill_aoe_targets(
         if (gs.characters[target].flags & CharacterFlags::Body.bits()) != 0 {
             continue;
         }
-        if let Some(viewer) = viewer
-            && gs.do_char_can_see(viewer, target) == 0
-        {
-            continue;
+        if let Some(viewer) = viewer {
+            // Never let a caster's own ghost companion(s) get caught in their AoE splash.
+            if i32::from(gs.characters[target].temp) == CT_COMPANION
+                && gs.characters[target].data[CHD_MASTER] == viewer as i32
+            {
+                continue;
+            }
+            if gs.do_char_can_see(viewer, target) == 0 {
+                continue;
+            }
         }
         targets.push(target);
     }
@@ -395,23 +406,23 @@ pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
 
     let suffix: &str = match random_mod_usize(8) {
         0 => {
-            item.attrib[AT_BRAVE as usize][0] += 4 * mul as i8;
+            item.attrib[AT_BRAVE as usize][0] += 4 * mul;
             " of the Lion"
         }
         1 => {
-            item.attrib[AT_WILL as usize][0] += 4 * mul as i8;
+            item.attrib[AT_WILL as usize][0] += 4 * mul;
             " of the Snake"
         }
         2 => {
-            item.attrib[AT_INT as usize][0] += 4 * mul as i8;
+            item.attrib[AT_INT as usize][0] += 4 * mul;
             " of the Owl"
         }
         3 => {
-            item.attrib[AT_AGIL as usize][0] += 4 * mul as i8;
+            item.attrib[AT_AGIL as usize][0] += 4 * mul;
             " of the Weasel"
         }
         4 => {
-            item.attrib[AT_STREN as usize][0] += 4 * mul as i8;
+            item.attrib[AT_STREN as usize][0] += 4 * mul;
             " of the Bear"
         }
         5 => {
@@ -423,7 +434,7 @@ pub fn create_special_item(gs: &mut GameState, temp: usize) -> Option<usize> {
             " of Life"
         }
         7 => {
-            item.armor[0] += 2 * mul as i8;
+            item.armor[0] += (2 * mul) as i8;
             " of Defence"
         }
         _ => "",
@@ -599,7 +610,8 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
 ///
 /// Port of the `npc_class[]` lookup from the original server. Returns a
 /// human-friendly string for `nr`, or a short error message when out of
-/// bounds.
+/// bounds. Thin wrapper around [`core::monster_classes::get_class_name`]
+/// (the shared source of truth, also used by the client's Journal panel).
 ///
 /// # Arguments
 /// * `nr` - Numeric monster class identifier
@@ -608,94 +620,7 @@ pub fn use_labtransfer(gs: &mut GameState, cn: usize, nr: i32, exp: i32) -> bool
 ///
 /// * Value returned by `get_class_name`.
 pub fn get_class_name(nr: i32) -> &'static str {
-    // List from C++ npc_class[]
-    const NPC_CLASS: [&str; 77] = [
-        "",
-        "Weak Thief",
-        "Thief",
-        "Ghost",
-        "Weak Skeleton",
-        "Strong Skeleton",
-        "Skeleton",
-        "Outlaw",
-        "Grolm Fighter",
-        "Grolm Warrior",
-        "Grolm Knight",
-        "Lizard Youngster",
-        "Lizard Youth",
-        "Lizard Worker",
-        "Lizard Fighter",
-        "Lizard Warrior",
-        "Lizard Mage",
-        "Ratling",
-        "Ratling Fighter",
-        "Ratling Warrior",
-        "Ratling Knight",
-        "Ratling Baron",
-        "Ratling Count",
-        "Ratling Duke",
-        "Ratling Prince",
-        "Ratling King",
-        "Spellcaster",
-        "Knight",
-        "Weak Golem",
-        "Captain Gargoyle",
-        "Undead",
-        "Very Strong Ice Gargoyle",
-        "Strong Outlaw",
-        "Private Grolm",
-        "PFC Grolm",
-        "Lance Corp Grolm",
-        "Corporal Grolm",
-        "Sergeant Grolm",
-        "Staff Sergeant Grolm",
-        "Master Sergeant Grolm",
-        "First Sergeant Grolm",
-        "Sergeant Major Grolm",
-        "2nd Lieutenant Grolm",
-        "1st Lieutenant Grolm",
-        "Major Gargoyle",
-        "Lt. Colonel Gargoyle",
-        "Colonel Gargoyle",
-        "Brig. General Gargoyle",
-        "Major General Gargoyle",
-        "Lieutenant Gargoyle",
-        "Weak Spider",
-        "Spider",
-        "Strong Spider",
-        "Very Strong Outlaw",
-        "Lizard Knight",
-        "Lizard Archmage",
-        "Undead Lord",
-        "Undead King",
-        "Very Weak Ice Gargoyle",
-        "Strong Golem",
-        "Strong Ghost",
-        "Shiva",
-        "Flame",
-        "Weak Ice Gargoyle",
-        "Ice Gargoyle",
-        "Strong Ice Gargoyle",
-        "Greenling",
-        "Greenling Fighter",
-        "Greenling Warrior",
-        "Greenling Knight",
-        "Greenling Baron",
-        "Greenling Count",
-        "Greenling Duke",
-        "Greenling Prince",
-        "Greenling King",
-        "Strong Thief",
-        "Major Grolm",
-    ];
-    if nr < 0 {
-        return "err... nothing";
-    }
-    let nr = nr as usize;
-    if nr >= NPC_CLASS.len() {
-        return "umm... whatzit";
-    }
-    NPC_CLASS[nr]
+    core::monster_classes::get_class_name(nr)
 }
 
 /// Returns true if the class was already marked as killed, false if this is the first kill. Side effect: sets the bit for this class.
@@ -1335,7 +1260,7 @@ mod tests {
 
     #[test]
     fn sync_weapon_skill_promotes_legacy_maximums() {
-        let mut skill = [[0u8; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS];
+        let mut skill = [[0u16; SkillIndex::MaxIndex as usize]; skills::MAX_SKILLS];
         skill[skills::SK_SWORD][SkillIndex::BaseValue as usize] = 5;
         skill[skills::SK_SWORD][SkillIndex::MaxValue as usize] = 20;
         skill[skills::SK_SWORD][SkillIndex::RaiseDifficulty as usize] = 4;
@@ -1355,7 +1280,7 @@ mod tests {
 
     #[test]
     fn item_weapon_requirement_uses_highest_legacy_requirement() {
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_WEAPON][2] = 3;
         skill[skills::SK_DAGGER][2] = 5;
         skill[skills::SK_STAFF][2] = 7;
@@ -1366,7 +1291,7 @@ mod tests {
     #[test]
     fn add_canonical_skill_bonuses_collapses_legacy_weapon_slots() {
         let mut skill_bonus = [0i32; skills::MAX_SKILLS];
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_WEAPON][0] = 8;
         skill[skills::SK_HAND][0] = 10;
         skill[skills::SK_DAGGER][0] = 10;
@@ -1383,7 +1308,7 @@ mod tests {
     #[test]
     fn add_canonical_skill_bonuses_preserves_non_weapon_bonuses() {
         let mut skill_bonus = [0i32; skills::MAX_SKILLS];
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_STEALTH][0] = 4;
         skill[skills::SK_REPAIR][0] = 6;
 
@@ -1397,7 +1322,7 @@ mod tests {
     #[test]
     fn add_canonical_skill_bonuses_collapses_weapon_penalties() {
         let mut skill_bonus = [0i32; skills::MAX_SKILLS];
-        let mut skill = [[0i8; 3]; skills::MAX_SKILLS];
+        let mut skill = [[0i16; 3]; skills::MAX_SKILLS];
         skill[skills::SK_HAND][1] = -5;
         skill[skills::SK_DAGGER][1] = -10;
         skill[skills::SK_TWOHAND][1] = -7;
@@ -1488,6 +1413,48 @@ mod tests {
             .expect("spawn visibility regression test")
             .join()
             .expect("run visibility regression test");
+    }
+
+    #[test]
+    fn skill_aoe_targets_excludes_viewers_own_companion() {
+        std::thread::Builder::new()
+            .name("skill_aoe_targets_companion".to_owned())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let mut gs = GameState::new();
+                let caster = 1;
+                let own_companion = 2;
+                let stranger = 3;
+
+                gs.characters[caster].used = USE_ACTIVE;
+                gs.characters[caster].x = 10;
+                gs.characters[caster].y = 10;
+                gs.characters[caster].flags = CharacterFlags::Infrared.bits();
+
+                gs.characters[own_companion].used = USE_ACTIVE;
+                gs.characters[own_companion].x = 11;
+                gs.characters[own_companion].y = 10;
+                gs.characters[own_companion].temp = CT_COMPANION as u16;
+                gs.characters[own_companion].data[CHD_MASTER] = caster as i32;
+
+                gs.characters[stranger].used = USE_ACTIVE;
+                gs.characters[stranger].x = 12;
+                gs.characters[stranger].y = 10;
+                gs.characters[stranger].temp = CT_COMPANION as u16;
+                gs.characters[stranger].data[CHD_MASTER] = 99;
+
+                gs.map[11 + 10 * SERVER_MAPX as usize].ch = own_companion as u32;
+                gs.map[12 + 10 * SERVER_MAPX as usize].ch = stranger as u32;
+
+                assert_eq!(
+                    skill_aoe_targets(&mut gs, Some(caster), 10, 10, 7),
+                    vec![stranger],
+                    "the caster's own ghost companion must never be a splash target"
+                );
+            })
+            .expect("spawn companion-exclusion regression test")
+            .join()
+            .expect("run companion-exclusion regression test");
     }
 
     #[test]

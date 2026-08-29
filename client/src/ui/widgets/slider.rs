@@ -37,6 +37,9 @@ pub struct Slider {
     hover_alpha: u8,
     /// Whether the slider is in active controller-adjust mode.
     active: bool,
+    /// Whether the slider accepts user input. When disabled, the widget
+    /// renders dimmed and ignores mouse/controller events.
+    enabled: bool,
 }
 
 impl Slider {
@@ -67,6 +70,7 @@ impl Slider {
             changed: false,
             hover_alpha: 48,
             active: false,
+            enabled: true,
         }
     }
 
@@ -141,6 +145,32 @@ impl Slider {
         self.active = active;
     }
 
+    /// Enables or disables user interaction.
+    ///
+    /// A disabled slider renders dimmed and does not react to mouse or
+    /// controller input. Existing value is preserved.
+    ///
+    /// # Arguments
+    ///
+    /// * `enabled` - `true` to accept input, `false` to disable.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        if !enabled {
+            self.hovered = false;
+            self.dragging = false;
+            self.active = false;
+        }
+    }
+
+    /// Returns whether the slider currently accepts user input.
+    ///
+    /// # Returns
+    ///
+    /// * `true` if the slider is enabled.
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     /// Returns the track region (the clickable bar area), expressed as
     /// `(x_start, x_end, y_center)` in absolute coordinates.
     fn track_geometry(&self) -> (i32, i32, i32) {
@@ -173,6 +203,9 @@ impl Widget for Slider {
     }
 
     fn handle_event(&mut self, event: &UiEvent) -> EventResponse {
+        if !self.enabled {
+            return EventResponse::Ignored;
+        }
         match event {
             UiEvent::MouseMove { x, y } => {
                 self.hovered = self.bounds.contains_point(*x, *y);
@@ -230,6 +263,8 @@ impl Widget for Slider {
         let (track_x_start, track_x_end, track_y_center) = self.track_geometry();
         let track_w = (track_x_end - track_x_start).max(1) as u32;
 
+        let dim = !self.enabled;
+
         // Label text (left side)
         let label_y =
             self.bounds.y + (self.bounds.height as i32 - font_cache::BITMAP_GLYPH_H as i32) / 2;
@@ -240,7 +275,11 @@ impl Widget for Slider {
             &self.label,
             self.bounds.x,
             label_y,
-            font_cache::TextStyle::PLAIN,
+            if dim {
+                font_cache::TextStyle::faded(120)
+            } else {
+                font_cache::TextStyle::PLAIN
+            },
         )?;
 
         // Track bar (centered vertically)
@@ -251,7 +290,11 @@ impl Widget for Slider {
             TRACK_H,
         );
         ctx.canvas.set_blend_mode(BlendMode::Blend);
-        ctx.canvas.set_draw_color(Color::RGBA(100, 100, 120, 200));
+        ctx.canvas.set_draw_color(if dim {
+            Color::RGBA(70, 70, 80, 120)
+        } else {
+            Color::RGBA(100, 100, 120, 200)
+        });
         ctx.canvas.fill_rect(track_rect)?;
 
         // Thumb handle
@@ -264,9 +307,17 @@ impl Widget for Slider {
         let thumb_y = track_y_center - (THUMB_H as i32 / 2);
         let thumb_rect = sdl2::rect::Rect::new(thumb_x, thumb_y, THUMB_W, THUMB_H);
 
-        ctx.canvas.set_draw_color(Color::RGBA(200, 210, 230, 240));
+        ctx.canvas.set_draw_color(if dim {
+            Color::RGBA(130, 135, 145, 120)
+        } else {
+            Color::RGBA(200, 210, 230, 240)
+        });
         ctx.canvas.fill_rect(thumb_rect)?;
-        ctx.canvas.set_draw_color(Color::RGBA(140, 140, 160, 240));
+        ctx.canvas.set_draw_color(if dim {
+            Color::RGBA(100, 100, 110, 120)
+        } else {
+            Color::RGBA(140, 140, 160, 240)
+        });
         ctx.canvas.draw_rect(thumb_rect)?;
 
         // Value text (right side, as percentage)
@@ -281,7 +332,11 @@ impl Widget for Slider {
             &value_text,
             value_x,
             value_y,
-            font_cache::TextStyle::PLAIN,
+            if dim {
+                font_cache::TextStyle::faded(120)
+            } else {
+                font_cache::TextStyle::PLAIN
+            },
         )?;
 
         // Hover highlight
@@ -399,5 +454,37 @@ mod tests {
         });
         assert!(s.was_changed());
         assert!(!s.was_changed());
+    }
+
+    #[test]
+    fn disabled_slider_ignores_input() {
+        let mut s = Slider::new(Bounds::new(0, 0, 200, 16), "Vol", 0.0, 1.0, 0.0, 0);
+        s.set_enabled(false);
+        assert!(!s.is_enabled());
+        let resp = s.handle_event(&UiEvent::MouseClick {
+            x: 100,
+            y: 8,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Ignored);
+        assert!(!s.was_changed());
+        assert!((s.value()).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn re_enabled_slider_accepts_input_again() {
+        let mut s = Slider::new(Bounds::new(0, 0, 200, 16), "Vol", 0.0, 1.0, 0.0, 0);
+        s.set_enabled(false);
+        s.set_enabled(true);
+        assert!(s.is_enabled());
+        let resp = s.handle_event(&UiEvent::MouseClick {
+            x: 100,
+            y: 8,
+            button: MouseButton::Left,
+            modifiers: KeyModifiers::default(),
+        });
+        assert_eq!(resp, EventResponse::Consumed);
+        assert!(s.was_changed());
     }
 }

@@ -13,6 +13,35 @@ pub fn get_api_base_url() -> String {
         .unwrap_or_else(|| get_server_url() + ":5554")
 }
 
+/// Builds an API base URL from a raw server IP or hostname.
+///
+/// Accepts values already prefixed with `https://` (trailing slash and port
+/// are normalized) or bare hostnames/IPs, to which `:5554` is appended.
+/// Rejects `http://` because the client requires TLS.
+///
+/// # Arguments
+/// * `host` - Server IP/hostname, with or without `https://` scheme.
+///
+/// # Returns
+/// * `Some(url)` when the input is valid.
+/// * `None` when the input uses `http://` or is empty.
+pub fn build_api_base_url(host: &str) -> Option<String> {
+    let host = host.trim();
+    if host.is_empty() {
+        return None;
+    }
+
+    if let Some(rest) = host.strip_prefix("https://") {
+        return Some(format!("https://{}", rest.trim_end_matches('/')));
+    }
+
+    if host.starts_with("http://") {
+        return None;
+    }
+
+    Some(format!("https://{}:5554", host))
+}
+
 /// Extracts the hostname from an API base URL.
 ///
 /// # Arguments

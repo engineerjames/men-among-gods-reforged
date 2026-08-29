@@ -26,6 +26,7 @@ use tick_scheduler::LegacyTickScheduler;
 
 use std::collections::{HashSet, VecDeque};
 use std::io::Write;
+use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -37,9 +38,12 @@ use sdl2::{event::Event, keyboard::Keycode, pixels::Color, render::Canvas, video
 
 use mag_core::{
     client_commands::ClientCommand,
-    constants::{TILEX, TILEY},
-    ranks,
-    skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex},
+    constants::{MF_INDOORS, TILEX, TILEY},
+    ranks, skills,
+    skills::{
+        SK_BLAST, SK_CONTAGION, SK_CURSE, SK_ICE_STUN, SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_STUN,
+        SK_THUNDEROUS_FURY, SK_WARCRY, SkillIndex,
+    },
     types::api::NetworkTestSummary,
 };
 
@@ -52,13 +56,16 @@ use crate::{
     preferences::{self, CharacterIdentity},
     scenes::scene::{Scene, SceneType},
     state::{AppState, DisplayCommand},
-    types::mouse::{ExtraMouseButton, MouseModifier},
+    types::mouse::{
+        ExtraMouseButton, FIRST_HIGH_RAW_BUTTON_INDEX, LAST_HIGH_RAW_BUTTON_INDEX, MouseModifier,
+    },
     ui::{
         self, RenderContext,
         forms::cert_dialog::CertDialog,
         hud::button_bar::HudButtonBar,
         hud::chat_box::ChatBox,
         hud::inventory_panel::InventoryPanel,
+        hud::journal_panel::{JOURNAL_PANEL_H, JOURNAL_PANEL_W, JournalPanel},
         hud::look_panel::LookPanel,
         hud::minimap_widget::MinimapWidget,
         hud::mode_button::ModeButton,
@@ -67,7 +74,7 @@ use crate::{
         hud::skill_bar::{SkillBar, TOP_CELL_POSITIONS},
         hud::skill_picker_popup::SkillPickerPopup,
         hud::skills_panel::SkillsPanel,
-        hud::talent_panel::TalentPanel,
+        hud::talent_panel::{TALENT_PANEL_H, TALENT_PANEL_W, TalentPanel},
         hud::weapon_armor_panel::WeaponArmorPanel,
         style::Padding,
         visuals::rank_progress_line::RankProgressLine,
@@ -371,6 +378,10 @@ const HUD_BTN_SPACING: u32 = 40;
 // ---- Skill bar ---- //
 /// Width of each togglable HUD panel.
 const HUD_PANEL_W: u32 = 300;
+/// Wider width for the skills panel (extra room for base values).
+const SKILLS_PANEL_W: u32 = 340;
+/// Taller height for the skills panel (extra room for column headers).
+const SKILLS_PANEL_H: u32 = 264;
 /// Height of each togglable HUD panel.
 const HUD_PANEL_H: u32 = 250;
 /// Wider width for the inventory panel (two grids + scrollbar + gap).
@@ -435,7 +446,16 @@ const HELPER_TEXT_CURSOR_GAP_Y: i32 = 16;
 /// Vertical gap used when the helper text is flipped to sit above the cursor.
 const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
 
-/// Rewrite saved Blast/Lava Blast bindings to match the currently learned skill.
+/// Skill pairs where a talent replaces a base skill with an upgraded version.
+const REPLACEMENT_SKILL_PAIRS: [(usize, usize); 5] = [
+    (SK_BLAST, SK_LAVA_BLAST),
+    (SK_CURSE, SK_CONTAGION),
+    (SK_STUN, SK_ICE_STUN),
+    (SK_WARCRY, SK_THUNDEROUS_FURY),
+    (SK_WARCRY, SK_INNER_STRENGTH),
+];
+
+/// Rewrite saved keybinds for talent-replaced skills to match what is learned.
 ///
 /// # Arguments
 ///
@@ -446,30 +466,34 @@ const HELPER_TEXT_CURSOR_FLIP_GAP_Y: i32 = 4;
 /// # Returns
 ///
 /// * `true` if any saved keybind was changed.
-fn normalize_lava_blast_keybind_arrays(
+fn normalize_replacement_skill_keybind_arrays(
     primary: &mut [Option<usize>],
     secondary: &mut [Option<usize>],
-    skills: &[[u8; SkillIndex::MaxIndex as usize]],
+    skills: &[[u16; SkillIndex::MaxIndex as usize]],
 ) -> bool {
-    let blast_learned = skills[SK_BLAST][SkillIndex::BaseValue as usize] > 0;
-    let lava_blast_learned = skills[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] > 0;
-    let replacement = match (blast_learned, lava_blast_learned) {
-        (false, true) => Some((SK_BLAST, SK_LAVA_BLAST)),
-        (true, false) => Some((SK_LAVA_BLAST, SK_BLAST)),
-        _ => None,
-    };
-
-    let Some((from, to)) = replacement else {
-        return false;
-    };
-
     let mut changed = false;
-    for slot in primary.iter_mut().chain(secondary.iter_mut()) {
-        if *slot == Some(from) {
-            *slot = Some(to);
-            changed = true;
+
+    for (base, replacement) in REPLACEMENT_SKILL_PAIRS {
+        let base_learned = skills[base][SkillIndex::BaseValue as usize] > 0;
+        let replacement_learned = skills[replacement][SkillIndex::BaseValue as usize] > 0;
+        let rewrite = match (base_learned, replacement_learned) {
+            (false, true) => Some((base, replacement)),
+            (true, false) => Some((replacement, base)),
+            _ => None,
+        };
+
+        let Some((from, to)) = rewrite else {
+            continue;
+        };
+
+        for slot in primary.iter_mut().chain(secondary.iter_mut()) {
+            if *slot == Some(from) {
+                *slot = Some(to);
+                changed = true;
+            }
         }
     }
+
     changed
 }
 
@@ -548,41 +572,6 @@ const VITALITY_BARS_Y: i32 = TARGET_HEIGHT_INT as i32 - 42;
 // GameScene struct
 // ---------------------------------------------------------------------------
 
-/// Resolves the world-tile destination for the currently focused quest's
-/// active step.
-///
-/// Falls back to the cached NPC quest-giver position for
-/// `ReturnToQuestGiver` steps or whenever the static quest definition is
-/// missing or the step index is out of range.
-///
-/// # Arguments
-///
-/// * `template_id`     - NPC template ID of the focused quest.
-/// * `step_idx`        - Server-reported active step index within the quest's
-///   walkthrough.
-/// * `npc_pos_fallback` - World tile position of the NPC quest giver, used as
-///   a fallback when no `FixedLocation` step applies.
-///
-/// # Returns
-///
-/// * `Some((x, y))` when a destination tile can be resolved, or `None` when
-///   no fallback NPC position is known and no `FixedLocation` step applies.
-fn active_quest_destination(
-    template_id: u16,
-    step_idx: usize,
-    npc_pos_fallback: Option<(u16, u16)>,
-) -> Option<(u16, u16)> {
-    if let Some(def) = mag_core::quest_defs::find_quest_def(template_id)
-        && let Some(step) = def.steps.get(step_idx)
-    {
-        return match step {
-            mag_core::quest_defs::QuestStep::FixedLocation { x, y, .. } => Some((*x, *y)),
-            mag_core::quest_defs::QuestStep::ReturnToQuestGiver { .. } => npc_pos_fallback,
-        };
-    }
-    npc_pos_fallback
-}
-
 /// The primary in-game scene.
 ///
 /// Holds all transient gameplay state: input buffer, modifier-key flags,
@@ -596,7 +585,7 @@ pub struct GameScene {
     pub(super) rank_progress_line: RankProgressLine,
     pub(super) skills_panel: SkillsPanel,
     pub(super) talent_panel: TalentPanel,
-    pub(super) quest_log_panel: crate::ui::hud::quest_log_panel::QuestLogPanel,
+    pub(super) journal_panel: JournalPanel,
     pub(super) inventory_panel: InventoryPanel,
     pub(super) settings_panel: SettingsPanel,
     pub(super) minimap_widget: MinimapWidget,
@@ -619,6 +608,10 @@ pub struct GameScene {
     pub(super) mouse_ctrl_held: bool,
     /// Whether a mouse side button currently contributes Shift behavior.
     pub(super) mouse_shift_held: bool,
+    /// Whether a mouse side button currently contributes Alt behavior.
+    pub(super) mouse_alt_held: bool,
+    /// Last polled SDL button-state bitmask for raw button indices 6 and above.
+    pub(super) high_mouse_button_state: u32,
     /// Whether the controller's left bumper (LB) is held.
     pub(super) lb_held: bool,
     /// Whether the controller's right bumper (RB) is held.
@@ -710,18 +703,18 @@ pub struct GameScene {
 }
 
 impl GameScene {
-    /// Rewrite saved Blast/Lava Blast bindings to the currently learned replacement.
+    /// Rewrite saved keybinds for talent-replaced skills to what is learned.
     ///
     /// # Arguments
     ///
     /// * `app_state` - Mutable application state containing active character settings.
     /// * `skills` - Latest skill rows received from the server.
-    fn normalize_lava_blast_keybinds(
+    fn normalize_replacement_skill_keybinds(
         &self,
         app_state: &mut AppState<'_>,
-        skills: &[[u8; SkillIndex::MaxIndex as usize]],
+        skills: &[[u16; SkillIndex::MaxIndex as usize]],
     ) {
-        if normalize_lava_blast_keybind_arrays(
+        if normalize_replacement_skill_keybind_arrays(
             &mut app_state.settings.character.skill_keybinds,
             &mut app_state.settings.character.skill_keybinds_secondary,
             skills,
@@ -779,7 +772,12 @@ impl GameScene {
                 4,
             ),
             skills_panel: SkillsPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                Bounds::new(
+                    HUD_ARC_CENTER_X - SKILLS_PANEL_W as i32 / 2,
+                    panel_bottom - SKILLS_PANEL_H as i32,
+                    SKILLS_PANEL_W,
+                    SKILLS_PANEL_H,
+                ),
                 HUD_PANEL_BG,
             ),
             inventory_panel: InventoryPanel::new(
@@ -801,11 +799,24 @@ impl GameScene {
                 HUD_PANEL_BG,
             ),
             talent_panel: TalentPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+                {
+                    let (tx, ty) = crate::ui::widgets::title_bar::clamp_to_viewport(
+                        panel_x,
+                        panel_y,
+                        TALENT_PANEL_W,
+                        TALENT_PANEL_H,
+                    );
+                    Bounds::new(tx, ty, TALENT_PANEL_W, TALENT_PANEL_H)
+                },
                 HUD_PANEL_BG,
             ),
-            quest_log_panel: crate::ui::hud::quest_log_panel::QuestLogPanel::new(
-                Bounds::new(panel_x, panel_y, HUD_PANEL_W, HUD_PANEL_H),
+            journal_panel: JournalPanel::new(
+                Bounds::new(
+                    (TARGET_WIDTH_INT as i32 - JOURNAL_PANEL_W as i32) / 2,
+                    (TARGET_HEIGHT_INT as i32 - JOURNAL_PANEL_H as i32) / 2,
+                    JOURNAL_PANEL_W,
+                    JOURNAL_PANEL_H,
+                ),
                 HUD_PANEL_BG,
             ),
             minimap_widget: MinimapWidget::new(MINIMAP_BTN_CX, MINIMAP_BTN_CY, MINIMAP_BTN_RADIUS),
@@ -835,6 +846,8 @@ impl GameScene {
             alt_held: false,
             mouse_ctrl_held: false,
             mouse_shift_held: false,
+            mouse_alt_held: false,
+            high_mouse_button_state: 0,
             lb_held: false,
             rb_held: false,
             lt_held: false,
@@ -897,12 +910,26 @@ impl GameScene {
     ///
     /// Priority matches expected gameplay behavior:
     /// 1) Explicitly selected character (Alt+click), unless that character is ourselves
-    /// 2) Current attack target (`attack_cn`)
-    /// 3) No target (0)
-    pub(super) fn default_skill_target(ps: &PlayerState) -> u32 {
+    /// 2) For hostile skills only, the current attack target (`attack_cn`)
+    /// 3) No target (0), which the server resolves to the caster for friendly
+    ///    spells and to an engaged attacker for hostile ones
+    ///
+    /// # Arguments
+    ///
+    /// * `ps` - Current player state.
+    /// * `skill_nr` - Skill about to be cast.
+    ///
+    /// # Returns
+    ///
+    /// The character number to send as the skill target, or `0` for none.
+    pub(super) fn default_skill_target(ps: &PlayerState, skill_nr: u32) -> u32 {
         let selected = u32::from(ps.selected_char());
         if selected != 0 && selected != Self::own_ch_nr(ps) {
             return selected;
+        }
+
+        if !skills::is_hostile_skill(skill_nr as usize) {
+            return 0;
         }
 
         ps.character_info().attack_cn.max(0) as u32
@@ -930,6 +957,7 @@ impl GameScene {
             shadows_enabled: app_state.settings.shadows_enabled,
             spell_effects_enabled: app_state.settings.spell_effects_enabled,
             weather_enabled: app_state.settings.weather_enabled,
+            weather_intensity: app_state.settings.weather_intensity,
             show_names: app_state.settings.show_names,
             show_health_pct: app_state.settings.show_proz,
             hide_walls: app_state.settings.hide,
@@ -973,6 +1001,15 @@ impl GameScene {
         self.shift_held || self.mouse_shift_held
     }
 
+    /// Returns whether Alt-like behavior is currently active.
+    ///
+    /// # Returns
+    ///
+    /// * `true` when physical Alt state or a mouse binding is held.
+    pub(super) fn effective_alt_held(&self) -> bool {
+        self.alt_held || self.mouse_alt_held
+    }
+
     /// Builds the current effective modifier set for UI events.
     ///
     /// # Returns
@@ -982,14 +1019,16 @@ impl GameScene {
         KeyModifiers {
             ctrl: self.effective_ctrl_held(),
             shift: self.effective_shift_held(),
-            alt: self.alt_held,
+            alt: self.effective_alt_held(),
         }
     }
 
     /// Applies a raw extra mouse-button event to mouse-derived modifier state.
     ///
-    /// Returns `true` when the event was Mouse 4/Mouse 5 and should be
-    /// consumed before normal widget/world click handling.
+    /// Returns `true` when the button is bound (or is being captured by the
+    /// mouse settings panel) and should be consumed before normal widget/world
+    /// click handling. Unbound buttons fall through so they keep their regular
+    /// UI behavior.
     ///
     /// # Arguments
     ///
@@ -1006,12 +1045,16 @@ impl GameScene {
         button: ExtraMouseButton,
         pressed: bool,
     ) -> (bool, Option<SceneType>) {
-        if pressed && self.settings_panel.is_mouse_modifier_listening() {
-            self.settings_panel.capture_mouse_modifier_button(button);
-            self.mouse_ctrl_held = false;
-            self.mouse_shift_held = false;
-            let scene_change = self.process_settings_panel_actions(app_state);
-            return (true, scene_change);
+        if self.settings_panel.is_mouse_modifier_listening() {
+            if pressed {
+                self.settings_panel.capture_mouse_modifier_button(button);
+                self.mouse_ctrl_held = false;
+                self.mouse_shift_held = false;
+                self.mouse_alt_held = false;
+                let scene_change = self.process_settings_panel_actions(app_state);
+                return (true, scene_change);
+            }
+            return (true, None);
         }
 
         match app_state
@@ -1022,10 +1065,61 @@ impl GameScene {
         {
             Some(MouseModifier::Ctrl) => self.mouse_ctrl_held = pressed,
             Some(MouseModifier::Shift) => self.mouse_shift_held = pressed,
-            None => {}
+            Some(MouseModifier::Alt) => self.mouse_alt_held = pressed,
+            None => return (false, None),
         }
 
         (true, None)
+    }
+
+    /// Polls SDL's raw mouse button state for buttons the SDL2 event wrapper
+    /// cannot identify (raw indices 6 and above) and turns state changes into
+    /// modifier updates.
+    ///
+    /// SDL reports those buttons as `MouseButton::Unknown` in events, so the
+    /// raw button bitmask is the only way to tell them apart. Buttons 1..=5 are
+    /// intentionally skipped here because they already arrive as events.
+    ///
+    /// # Arguments
+    ///
+    /// * `app_state` - Shared application state.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(SceneType)` if handling the press requested a scene change.
+    fn poll_high_index_mouse_buttons(&mut self, app_state: &mut AppState<'_>) -> Option<SceneType> {
+        const HIGH_BUTTON_MASK: u32 = {
+            let mut mask = 0u32;
+            let mut index = FIRST_HIGH_RAW_BUTTON_INDEX;
+            while index <= LAST_HIGH_RAW_BUTTON_INDEX {
+                mask |= 1u32 << (index - 1);
+                index += 1;
+            }
+            mask
+        };
+
+        let state = unsafe { sdl2::sys::SDL_GetMouseState(ptr::null_mut(), ptr::null_mut()) }
+            & HIGH_BUTTON_MASK;
+        let changed = state ^ self.high_mouse_button_state;
+        self.high_mouse_button_state = state;
+        if changed == 0 {
+            return None;
+        }
+
+        let mut scene_change = None;
+        for index in FIRST_HIGH_RAW_BUTTON_INDEX..=LAST_HIGH_RAW_BUTTON_INDEX {
+            let mask = 1u32 << (index - 1);
+            if changed & mask == 0 {
+                continue;
+            }
+            if let Some(button) = ExtraMouseButton::from_raw_index(index) {
+                let (_, sc) =
+                    self.handle_extra_mouse_button_event(app_state, button, state & mask != 0);
+                scene_change = scene_change.or(sc);
+            }
+        }
+
+        scene_change
     }
 
     /// Drain pending `WidgetAction`s from the settings panel and apply
@@ -1057,6 +1151,10 @@ impl GameScene {
                 }
                 WidgetAction::SetWeather(v) => {
                     app_state.settings.weather_enabled = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetWeatherIntensity(v) => {
+                    app_state.settings.weather_intensity = v.clamp(0.0, 1.0);
                     profile_changed = true;
                 }
                 WidgetAction::SetShowNames(v) => {
@@ -1163,6 +1261,7 @@ impl GameScene {
                         .set(modifier, button);
                     self.mouse_ctrl_held = false;
                     self.mouse_shift_held = false;
+                    self.mouse_alt_held = false;
                     profile_changed = true;
                 }
                 WidgetAction::TogglePanel(_) => {
@@ -1654,9 +1753,11 @@ impl GameScene {
         if self.skills_panel.is_visible() && self.skills_panel.bounds().contains_point(mx, my) {
             return true;
         }
+        if self.talent_panel.is_visible() && self.talent_panel.bounds().contains_point(mx, my) {
+            return true;
+        }
 
-        if self.quest_log_panel.is_visible() && self.quest_log_panel.bounds().contains_point(mx, my)
-        {
+        if self.journal_panel.is_visible() && self.journal_panel.bounds().contains_point(mx, my) {
             return true;
         }
 
@@ -1675,8 +1776,8 @@ impl GameScene {
             || (self.settings_panel.is_visible()
                 && self.settings_panel.bounds().contains_point(mx, my))
             || (self.talent_panel.is_visible() && self.talent_panel.bounds().contains_point(mx, my))
-            || (self.quest_log_panel.is_visible()
-                && self.quest_log_panel.bounds().contains_point(mx, my))
+            || (self.journal_panel.is_visible()
+                && self.journal_panel.bounds().contains_point(mx, my))
             || (self.shop_panel.is_visible() && self.shop_panel.bounds().contains_point(mx, my))
             || (self.skill_picker.is_visible() && self.skill_picker.bounds().contains_point(mx, my))
     }
@@ -1997,6 +2098,8 @@ impl Scene for GameScene {
         self.alt_held = false;
         self.mouse_ctrl_held = false;
         self.mouse_shift_held = false;
+        self.mouse_alt_held = false;
+        self.high_mouse_button_state = 0;
         self.lb_held = false;
         self.rb_held = false;
         self.skill_scroll = 0;
@@ -2124,10 +2227,6 @@ impl Scene for GameScene {
             if self.skills_panel.is_visible() {
                 self.skills_panel.toggle();
                 self.skills_panel.clear_controller_focus();
-            }
-
-            if self.quest_log_panel.is_visible() {
-                self.quest_log_panel.toggle();
             }
 
             if self.minimap_widget.is_visible() {
@@ -2293,11 +2392,15 @@ impl Scene for GameScene {
     ///
     /// `Some(SceneType)` if a disconnect or exit was signalled, otherwise `None`.
     fn update(&mut self, app_state: &mut AppState<'_>, dt: Duration) -> Option<SceneType> {
+        if let Some(scene) = self.poll_high_index_mouse_buttons(app_state) {
+            return Some(scene);
+        }
         self.chat_box.update(dt);
         self.weapon_armor_panel.update(dt);
         self.skills_panel.update(dt);
         self.inventory_panel.update(dt);
         self.settings_panel.update(dt);
+        self.talent_panel.update(dt);
         // Keep read-only settings panel values current each frame.
         if self.settings_panel.is_visible() {
             let rtt = app_state.network.as_ref().and_then(|net| net.last_rtt_ms);
@@ -2479,9 +2582,13 @@ impl Scene for GameScene {
         }
 
         let mut scene = self.process_network_events(app_state);
+        let mut animation_started = false;
         if scene.is_none() {
             if let Some(batch) = self.pending_tick_batches.pop_front() {
                 self.apply_server_tick_batch(app_state, batch);
+                if let Some(ps) = app_state.player_state.as_mut() {
+                    animation_started = ps.map_mut().take_animation_started();
+                }
             }
             if let Some(ps) = app_state.player_state.as_mut()
                 && ps.take_exit_requested_reason().is_some()
@@ -2489,9 +2596,11 @@ impl Scene for GameScene {
                 scene = Some(SceneType::CharacterSelection);
             }
         }
-        self.frame_presentation = self
-            .tick_scheduler
-            .complete_iteration(Instant::now(), self.pending_tick_batches.len());
+        self.frame_presentation = self.tick_scheduler.complete_iteration(
+            Instant::now(),
+            self.pending_tick_batches.len(),
+            animation_started,
+        );
         if scene.is_none() {
             if let Some(ps) = app_state.player_state.as_mut()
                 && !Self::is_selected_visible(ps)
@@ -2538,7 +2647,7 @@ impl Scene for GameScene {
             .as_ref()
             .map(|ps| ps.character_info().skill)
         {
-            self.normalize_lava_blast_keybinds(app_state, &skills);
+            self.normalize_replacement_skill_keybinds(app_state, &skills);
         }
 
         self.perf_profiler.begin_frame();
@@ -2564,9 +2673,19 @@ impl Scene for GameScene {
         // Advance weather state up-front so its shake offset is available to
         // the world camera below. Rendering the weather overlay still happens
         // *after* the world pass so particles/tints layer on top.
+        self.weather
+            .set_intensity_scale(settings.weather_intensity.clamp(0.0, 1.0));
         if settings.weather_enabled {
-            self.weather
-                .update_auto(TARGET_WIDTH_INT as i32, TARGET_HEIGHT_INT as i32);
+            let is_indoors = ps
+                .map()
+                .tile_at_xy(TILEX / 2, TILEY / 2)
+                .map(|t| (t.flags2 & MF_INDOORS) != 0)
+                .unwrap_or(false);
+            self.weather.update_auto(
+                TARGET_WIDTH_INT as i32,
+                TARGET_HEIGHT_INT as i32,
+                is_indoors,
+            );
         } else {
             // Pause (not reset) so re-enabling resumes the same effect; the
             // server only re-sends when the resolved state changes.
@@ -2648,9 +2767,16 @@ impl Scene for GameScene {
                 });
                 self.talent_panel
                     .sync_state(*ps.talents(), class_from_kindred(ci.kindred));
+                let (active_rune, rune_cooldown_remaining_ticks) = ps.rune_state();
+                self.talent_panel
+                    .sync_rune_state(active_rune, rune_cooldown_remaining_ticks);
                 self.hud_buttons.set_talent_points_badge(
                     mag_core::talent_trees::available_talent_points(ps.talents()),
                 );
+                use crate::ui::hud::journal_panel::JournalPanelData;
+                self.journal_panel.update_data(JournalPanelData {
+                    completion: *ps.completion(),
+                });
                 use crate::ui::hud::inventory_panel::InventoryPanelData;
                 self.inventory_panel.update_data(InventoryPanelData {
                     items: ci.item,
@@ -2690,98 +2816,6 @@ impl Scene for GameScene {
                     self.minimap_widget
                         .update_viewport(&self.minimap_xmap, cx, cy);
                 }
-
-                // --- Quest log panel data + minimap quest markers ---
-                {
-                    use crate::ui::hud::quest_log_panel::{
-                        QuestEntryDisplay, QuestLogPanelData, QuestTitle,
-                    };
-                    let catalog = ps.quest_catalog();
-                    let counts = ps.quest_completion_counts();
-                    let active_template = ps.active_quest_template_id();
-                    let active_step_idx = ps.active_quest_step_idx() as usize;
-                    let active_npc_pos = ps.active_quest_npc_pos();
-
-                    let mut display_entries: Vec<QuestEntryDisplay> = Vec::new();
-                    for (idx, entry) in catalog.iter().enumerate() {
-                        let count = counts.get(idx).copied().unwrap_or(-1);
-                        // Skip quests the player has not yet discovered
-                        // (server uses -1 sentinel until the player gets
-                        // close enough for the NPC to sight them).
-                        if count < 0 {
-                            continue;
-                        }
-                        // Decide how many "open" stage rows to emit for this NPC.
-                        let stage_rows: u8 = if entry.repeatable {
-                            1
-                        } else {
-                            let stages = entry.stages.max(1);
-                            (0..stages).filter(|s| count <= i16::from(*s)).count() as u8
-                        };
-                        if stage_rows == 0 {
-                            continue;
-                        }
-                        let (title, description, steps) =
-                            match mag_core::quest_defs::find_quest_def(entry.template_id) {
-                                Some(def) => {
-                                    let steps_str: Vec<String> = def
-                                        .steps
-                                        .iter()
-                                        .map(|s| {
-                                            match s {
-                                            mag_core::quest_defs::QuestStep::FixedLocation {
-                                                x,
-                                                y,
-                                                desc,
-                                            } => format!("• {desc} ({x},{y})"),
-                                            mag_core::quest_defs::QuestStep::ReturnToQuestGiver {
-                                                desc,
-                                            } => format!("• {desc}"),
-                                        }
-                                        })
-                                        .collect();
-                                    (
-                                        QuestTitle::Plain(def.title.to_owned()),
-                                        def.description.to_owned(),
-                                        steps_str,
-                                    )
-                                }
-                                None => (
-                                    QuestTitle::BringItemToNpc {
-                                        item_name: entry.item_name.clone(),
-                                        npc_name: entry.npc_name.clone(),
-                                    },
-                                    String::new(),
-                                    Vec::new(),
-                                ),
-                            };
-                        for _ in 0..stage_rows {
-                            display_entries.push(QuestEntryDisplay {
-                                template_id: entry.template_id,
-                                title: title.clone(),
-                                description: description.clone(),
-                                steps: steps.clone(),
-                                npc_x: entry.npc_x,
-                                npc_y: entry.npc_y,
-                            });
-                        }
-                    }
-
-                    self.quest_log_panel.update_data(QuestLogPanelData {
-                        entries: display_entries,
-                        active_template_id: active_template,
-                    });
-
-                    // Minimap markers: every quest giver in the catalog.
-                    let givers: Vec<(u16, u16)> =
-                        catalog.iter().map(|e| (e.npc_x, e.npc_y)).collect();
-                    let active_marker = if active_template == 0 {
-                        None
-                    } else {
-                        active_quest_destination(active_template, active_step_idx, active_npc_pos)
-                    };
-                    self.minimap_widget.set_quest_markers(givers, active_marker);
-                }
             }
             let mut ctx = RenderContext {
                 canvas,
@@ -2808,14 +2842,17 @@ impl Scene for GameScene {
             self.skills_panel.render(&mut ctx)?;
             self.inventory_panel.render(&mut ctx)?;
             self.settings_panel.render(&mut ctx)?;
-            self.talent_panel.render(&mut ctx)?;
-            self.quest_log_panel.render(&mut ctx)?;
             self.hud_buttons.render(&mut ctx)?;
             self.minimap_widget.render(&mut ctx)?;
             self.mode_button.render(&mut ctx)?;
             self.skill_bar.render(&mut ctx)?;
             self.weapon_armor_panel.render(&mut ctx)?;
             self.rank_progress_line.render(&mut ctx)?;
+            // The talent panel is taller than the other HUD panels and
+            // overlaps the skill bar, so it is drawn after the legacy HUD
+            // chrome to keep its description box visible.
+            self.talent_panel.render(&mut ctx)?;
+            self.journal_panel.render(&mut ctx)?;
             self.skill_picker.render(&mut ctx)?;
         }
         self.perf_profiler.end_sample(PerfLabel::DrawHudPanels);
@@ -2922,16 +2959,18 @@ mod tests {
         NETWORK_TEST_CLIENT_PAYLOAD_BYTES, base64_encoded_len, build_network_test_client_payload,
         classify_network_quality, compress_log_for_upload, estimate_jitter_ms, helper_text_origin,
         network_test_server_payload_bytes, newest_log_slice_for_upload,
-        normalize_lava_blast_keybind_arrays,
+        normalize_replacement_skill_keybind_arrays,
     };
     use flate2::read::GzDecoder;
-    use mag_core::skills::{SK_BLAST, SK_LAVA_BLAST, SkillIndex};
+    use mag_core::skills::{
+        SK_BLAST, SK_CONTAGION, SK_CURSE, SK_ICE_STUN, SK_LAVA_BLAST, SK_STUN, SkillIndex,
+    };
     use std::io::Read;
 
     const SCREEN_W: i32 = 800;
     const SCREEN_H: i32 = 600;
 
-    fn empty_skill_rows() -> [[u8; SkillIndex::MaxIndex as usize]; 100] {
+    fn empty_skill_rows() -> [[u16; SkillIndex::MaxIndex as usize]; 100] {
         [[0; SkillIndex::MaxIndex as usize]; 100]
     }
 
@@ -3010,7 +3049,8 @@ mod tests {
         let mut skills = empty_skill_rows();
         skills[SK_LAVA_BLAST][SkillIndex::BaseValue as usize] = 4;
 
-        let changed = normalize_lava_blast_keybind_arrays(&mut primary, &mut secondary, &skills);
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
 
         assert!(changed);
         assert_eq!(primary[0], Some(SK_LAVA_BLAST));
@@ -3026,11 +3066,63 @@ mod tests {
         let mut skills = empty_skill_rows();
         skills[SK_BLAST][SkillIndex::BaseValue as usize] = 4;
 
-        let changed = normalize_lava_blast_keybind_arrays(&mut primary, &mut secondary, &skills);
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
 
         assert!(changed);
         assert_eq!(primary[0], Some(SK_BLAST));
         assert_eq!(secondary[1], Some(SK_BLAST));
+    }
+
+    #[test]
+    fn contagion_keybind_normalization_rewrites_curse_when_replacement_is_learned() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[0] = Some(SK_CURSE);
+        secondary[1] = Some(SK_CURSE);
+        let mut skills = empty_skill_rows();
+        skills[SK_CONTAGION][SkillIndex::BaseValue as usize] = 4;
+
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[0], Some(SK_CONTAGION));
+        assert_eq!(secondary[1], Some(SK_CONTAGION));
+    }
+
+    #[test]
+    fn contagion_keybind_normalization_rewrites_back_after_reset() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[0] = Some(SK_CONTAGION);
+        secondary[1] = Some(SK_CONTAGION);
+        let mut skills = empty_skill_rows();
+        skills[SK_CURSE][SkillIndex::BaseValue as usize] = 4;
+
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[0], Some(SK_CURSE));
+        assert_eq!(secondary[1], Some(SK_CURSE));
+    }
+
+    #[test]
+    fn ice_stun_keybind_normalization_rewrites_stun_when_replacement_is_learned() {
+        let mut primary = [None; 10];
+        let mut secondary = [None; 10];
+        primary[2] = Some(SK_STUN);
+        secondary[3] = Some(SK_STUN);
+        let mut skills = empty_skill_rows();
+        skills[SK_ICE_STUN][SkillIndex::BaseValue as usize] = 4;
+
+        let changed =
+            normalize_replacement_skill_keybind_arrays(&mut primary, &mut secondary, &skills);
+
+        assert!(changed);
+        assert_eq!(primary[2], Some(SK_ICE_STUN));
+        assert_eq!(secondary[3], Some(SK_ICE_STUN));
     }
 
     #[test]

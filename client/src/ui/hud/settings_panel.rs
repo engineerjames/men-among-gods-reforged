@@ -59,6 +59,8 @@ pub const SETTINGS_PANEL_H: u32 = (Y_RETURN_BTN + BTN_H as i32 + 8) as u32;
 // ---------------------------------------------------------------------------
 
 const DS_ROW_H: i32 = 14;
+/// Controller adjustment step for the weather-intensity slider.
+const WEATHER_INTENSITY_STEP: f32 = 0.05;
 const DS_Y_SHADOWS: i32 = TITLE_BAR_H + 8;
 const DS_Y_SPELL_FX: i32 = DS_Y_SHADOWS + DS_ROW_H;
 const DS_Y_NAMES: i32 = DS_Y_SPELL_FX + DS_ROW_H;
@@ -81,6 +83,8 @@ const DS_DROPDOWN_LIST_ROOM: i32 = 8;
 const DS_PANEL_H: u32 =
     (DS_Y_SPRITE_UPSCALER + DS_DROPDOWN_PITCH + 10 + BTN_H as i32 + 8 + DS_DROPDOWN_LIST_ROOM)
         as u32;
+const DS_Y_WEATHER_INTENSITY: i32 = DS_Y_WEATHER + DS_ROW_H;
+const DS_PANEL_H: u32 = (DS_Y_WEATHER_INTENSITY + DS_ROW_H + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Diagnostics sub-panel
@@ -274,12 +278,17 @@ struct DisplaySettingsSubPanel {
     drp_render_scale: Dropdown,
     drp_output_filter: Dropdown,
     drp_sprite_upscaler: Dropdown,
+    sld_weather_intensity: Slider,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
+    /// Whether the weather-intensity slider is currently being adjusted
+    /// via controller navigation.
+    weather_adjusting: bool,
     /// Controller focus index. 0=Shadows, 1=SpellEffects, 2=ShowNames,
     /// 3=ShowHealth, 4=HelperText, 5=HideWalls, 6=DisplayMode,
     /// 7=PixelPerfect, 8=VSync, 9=Weather, 10=RenderScale, 11=OutputFilter,
     /// 12=SpriteUpscaler, 13=Close.
+    /// 7=PixelPerfect, 8=VSync, 9=Weather, 10=WeatherIntensity, 11=Close.
     controller_focused: Option<usize>,
 }
 
@@ -351,7 +360,15 @@ impl DisplaySettingsSubPanel {
             ),
             chk_weather: Checkbox::new(
                 Bounds::new(x, origin_y + DS_Y_WEATHER, w, DS_ROW_H as u32),
-                "Enable Particle Effects",
+                "Enable Weather Effects",
+                0,
+            ),
+            sld_weather_intensity: Slider::new(
+                Bounds::new(x, origin_y + DS_Y_WEATHER_INTENSITY, w, DS_ROW_H as u32),
+                "Weather Intensity",
+                0.0,
+                1.0,
+                1.0,
                 0,
             ),
             drp_render_scale: Dropdown::new(
@@ -377,6 +394,7 @@ impl DisplaySettingsSubPanel {
                 .with_border(btn_border()),
             pending_actions: Vec::new(),
             controller_focused: None,
+            weather_adjusting: false,
         }
     }
 
@@ -400,6 +418,10 @@ impl DisplaySettingsSubPanel {
         self.drp_output_filter.set_hovered(f == Some(11));
         self.drp_sprite_upscaler.set_hovered(f == Some(12));
         self.btn_close.set_hovered(f == Some(13));
+        self.sld_weather_intensity.set_hovered(f == Some(10));
+        self.sld_weather_intensity
+            .set_active(f == Some(10) && self.weather_adjusting);
+        self.btn_close.set_hovered(f == Some(11));
     }
 
     /// Loads widget values from the data snapshot.
@@ -419,6 +441,8 @@ impl DisplaySettingsSubPanel {
             .set_checked(data.pixel_perfect_scaling);
         self.chk_vsync.set_checked(data.vsync_enabled);
         self.chk_weather.set_checked(data.weather_enabled);
+        self.sld_weather_intensity.set_value(data.weather_intensity);
+        self.sld_weather_intensity.set_enabled(data.weather_enabled);
 
         let mode_idx = DisplayMode::ALL
             .iter()
@@ -490,8 +514,14 @@ impl DisplaySettingsSubPanel {
                 .push(WidgetAction::SetVSync(self.chk_vsync.is_checked()));
         }
         if self.chk_weather.was_toggled() {
-            self.pending_actions
-                .push(WidgetAction::SetWeather(self.chk_weather.is_checked()));
+            let enabled = self.chk_weather.is_checked();
+            self.sld_weather_intensity.set_enabled(enabled);
+            self.pending_actions.push(WidgetAction::SetWeather(enabled));
+        }
+        if self.sld_weather_intensity.was_changed() {
+            self.pending_actions.push(WidgetAction::SetWeatherIntensity(
+                self.sld_weather_intensity.value(),
+            ));
         }
         if self.drp_render_scale.was_changed() {
             let scale = RenderScale::ALL[self.drp_render_scale.selected_index()];
@@ -529,6 +559,7 @@ impl DisplaySettingsSubPanel {
         shift(&mut self.drp_render_scale, dx, dy);
         shift(&mut self.drp_output_filter, dx, dy);
         shift(&mut self.drp_sprite_upscaler, dx, dy);
+        shift(&mut self.sld_weather_intensity, dx, dy);
         shift(&mut self.btn_close, dx, dy);
     }
 
@@ -556,20 +587,31 @@ impl DisplaySettingsSubPanel {
         // Controller navigation.
         match event {
             UiEvent::NavNext => {
-                self.controller_focused = Some(match self.controller_focused {
-                    None => 0,
-                    Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
-                });
-                self.apply_controller_focus();
+                if self.weather_adjusting {
+                    self.sld_weather_intensity.adjust_by(WEATHER_INTENSITY_STEP);
+                    self.collect_child_actions();
+                } else {
+                    self.controller_focused = Some(match self.controller_focused {
+                        None => 0,
+                        Some(i) => (i + 1) % Self::FOCUSABLE_COUNT,
+                    });
+                    self.apply_controller_focus();
+                }
                 return EventResponse::Consumed;
             }
             UiEvent::NavPrev => {
-                self.controller_focused = Some(match self.controller_focused {
-                    None => Self::FOCUSABLE_COUNT - 1,
-                    Some(0) => Self::FOCUSABLE_COUNT - 1,
-                    Some(i) => i - 1,
-                });
-                self.apply_controller_focus();
+                if self.weather_adjusting {
+                    self.sld_weather_intensity
+                        .adjust_by(-WEATHER_INTENSITY_STEP);
+                    self.collect_child_actions();
+                } else {
+                    self.controller_focused = Some(match self.controller_focused {
+                        None => Self::FOCUSABLE_COUNT - 1,
+                        Some(0) => Self::FOCUSABLE_COUNT - 1,
+                        Some(i) => i - 1,
+                    });
+                    self.apply_controller_focus();
+                }
                 return EventResponse::Consumed;
             }
             UiEvent::NavConfirm => {
@@ -627,6 +669,7 @@ impl DisplaySettingsSubPanel {
                     Some(9) => {
                         let v = !self.chk_weather.is_checked();
                         self.chk_weather.set_checked(v);
+                        self.sld_weather_intensity.set_enabled(v);
                         self.pending_actions.push(WidgetAction::SetWeather(v));
                     }
                     Some(10) => {
@@ -651,20 +694,33 @@ impl DisplaySettingsSubPanel {
                             .push(WidgetAction::SetSpriteUpscaler(SpriteUpscaler::ALL[next]));
                     }
                     Some(13) => {
+                        // Enter weather-intensity adjust mode if enabled.
+                        if self.sld_weather_intensity.is_enabled() {
+                            self.weather_adjusting = true;
+                        }
+                    }
+                    Some(11) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
                     _ => {}
                 }
+                self.apply_controller_focus();
                 return EventResponse::Consumed;
             }
             UiEvent::NavBack => {
-                self.visible = false;
-                self.controller_focused = None;
+                if self.weather_adjusting {
+                    self.weather_adjusting = false;
+                    self.apply_controller_focus();
+                } else {
+                    self.visible = false;
+                    self.controller_focused = None;
+                }
                 return EventResponse::Consumed;
             }
             UiEvent::MouseMove { .. } if self.controller_focused.is_some() => {
                 self.controller_focused = None;
+                self.weather_adjusting = false;
                 self.apply_controller_focus();
             }
             _ => {}
@@ -731,6 +787,7 @@ impl DisplaySettingsSubPanel {
             } else {
                 EventResponse::Ignored
             },
+            self.sld_weather_intensity.handle_event(event),
         ];
 
         self.collect_child_actions();
@@ -768,6 +825,7 @@ impl DisplaySettingsSubPanel {
         self.chk_pixel_perfect.render(ctx)?;
         self.chk_vsync.render(ctx)?;
         self.chk_weather.render(ctx)?;
+        self.sld_weather_intensity.render(ctx)?;
         self.btn_close.render(ctx)?;
 
         // Dropdowns last so an expanded list overlays everything else. Within
@@ -1781,11 +1839,11 @@ impl ControllerBindingsSubPanel {
 // MouseSettingsSubPanel
 // ===========================================================================
 
-/// Sub-panel for mouse side-button modifier bindings.
+/// Sub-panel for mouse button modifier bindings.
 ///
 /// Displays one row for each supported modifier target. Clicking a binding
-/// button enters listening mode; the owning scene captures the next Mouse 4
-/// or Mouse 5 press from raw SDL events and forwards it here.
+/// button enters listening mode; the owning scene captures the next extra
+/// mouse-button press from raw SDL events and forwards it here.
 struct MouseSettingsSubPanel {
     bounds: Bounds,
     visible: bool,
@@ -1796,8 +1854,8 @@ struct MouseSettingsSubPanel {
     bindings: MouseModifierBindings,
     btn_close: RectButton,
     pending_actions: Vec<WidgetAction>,
-    /// Controller focus index. 0..1 = modifier binding buttons,
-    /// 2..3 = clear buttons, 4 = Close.
+    /// Controller focus index. 0..2 = modifier binding buttons,
+    /// 3..5 = clear buttons, 6 = Close.
     controller_focused: Option<usize>,
     lbl_hint: Label,
     lbl_hint2: Label,
@@ -1858,13 +1916,13 @@ impl MouseSettingsSubPanel {
             pending_actions: Vec::new(),
             controller_focused: None,
             lbl_hint: Label::new(
-                "Bind Mouse 4 or Mouse 5 to",
+                "Bind any extra mouse button to",
                 0,
                 label_x,
                 origin_y + MS_Y_HINT,
             ),
             lbl_hint2: Label::new(
-                "temporarily act like Ctrl/Shift",
+                "act as Ctrl/Shift/Alt while held",
                 0,
                 label_x,
                 origin_y + MS_Y_HINT2,
@@ -1946,7 +2004,7 @@ impl MouseSettingsSubPanel {
         }
     }
 
-    /// Returns `true` if the panel is waiting for a Mouse 4/5 press.
+    /// Returns `true` if the panel is waiting for an extra mouse-button press.
     ///
     /// # Returns
     ///
@@ -2169,6 +2227,8 @@ pub struct SettingsPanelData {
     pub spell_effects_enabled: bool,
     /// Whether weather / ambient particle effects are rendered.
     pub weather_enabled: bool,
+    /// Weather intensity multiplier (0.0 = off, 1.0 = full server intensity).
+    pub weather_intensity: f32,
     /// Whether overhead player names are shown.
     pub show_names: bool,
     /// Whether overhead health percentages are shown.
@@ -2203,7 +2263,7 @@ pub struct SettingsPanelData {
     pub key_bindings: KeyBindings,
     /// Current controller button bindings for skill-bar slots.
     pub controller_bindings: ControllerBindings,
-    /// Current mouse side-button modifier bindings.
+    /// Current mouse button modifier bindings.
     pub mouse_modifier_bindings: MouseModifierBindings,
 }
 
@@ -2478,7 +2538,7 @@ impl SettingsPanel {
     }
 
     /// Returns `true` if the mouse settings sub-panel is currently waiting
-    /// for a Mouse 4/Mouse 5 press to complete a binding assignment.
+    /// for an extra mouse-button press to complete a binding assignment.
     ///
     /// # Returns
     ///
@@ -2941,6 +3001,7 @@ mod tests {
             shadows_enabled: true,
             spell_effects_enabled: false,
             weather_enabled: true,
+            weather_intensity: 0.75,
             show_names: true,
             show_health_pct: true,
             hide_walls: false,

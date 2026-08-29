@@ -265,21 +265,6 @@ pub fn plr_map_set(gs: &mut GameState, cn: usize) {
     );
 }
 
-/// Clear the saved small map for all players to force a full resend
-/// TODO: Do we need this for any reason?
-///
-/// # Arguments
-///
-/// * `gs` - Active game state used by this function.
-#[allow(dead_code)]
-pub fn plr_clear_map(gs: &mut GameState) {
-    for n in 1..gs.players.len() {
-        gs.players[n].smap = std::array::from_fn(|_| CMap::default());
-        gs.players[n].vx = 0; // force do_all in map generation
-        gs.players[n].last_dlight = -1;
-    }
-}
-
 /// Choose and dispatch the appropriate map update implementation.
 ///
 /// Decides between the full (`plr_getmap_complete`) or fast (`plr_getmap_fast`)
@@ -481,7 +466,12 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].flags |= INFRARED;
                 }
 
-                smap[n].flags2 = 0;
+                // Low 32 bits of the raw map flags (MF_MOVEBLOCK, MF_INDOORS,
+                // MF_TAVERN, etc.) forwarded verbatim so the client can key
+                // rendering/effects off them; GFX_* bits (>=32) are dropped by
+                // the truncation and are already surfaced via `smap[n].flags`
+                // above.
+                smap[n].flags2 = map_flags as u32;
 
                 let rel_x = x - current_x + core::constants::VISI_CENTER;
                 let rel_y = y - current_y + core::constants::VISI_CENTER;
@@ -562,6 +552,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].ch_status = char_co.status as u8;
                     smap[n].ch_status2 = char_co.status2 as u8;
                     smap[n].ch_speed = char_co.speed as u8;
+                    smap[n].ch_aspeed = char_co.future3[2] as u8;
                     smap[n].ch_nr = co as u16;
                     smap[n].ch_id = helpers::char_id(&char_co) as u16;
 
@@ -587,6 +578,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                     smap[n].ch_status = 0;
                     smap[n].ch_status2 = 0;
                     smap[n].ch_speed = 0;
+                    smap[n].ch_aspeed = 0;
                     smap[n].ch_nr = 0;
                     smap[n].ch_id = 0;
                     smap[n].ch_proz = 0;
@@ -936,6 +928,7 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
             }
 
             if cmap.ch_speed != smap.ch_speed
+                || cmap.ch_aspeed != smap.ch_aspeed
                 || cmap.ch_nr != smap.ch_nr
                 || cmap.ch_id != smap.ch_id
             {
@@ -949,6 +942,8 @@ pub fn plr_change_map(gs: &mut GameState, nr: usize) {
                 buf[p + 1] = id_bytes[1];
                 p += 2;
                 buf[p] = smap.ch_speed;
+                p += 1;
+                buf[p] = smap.ch_aspeed;
                 p += 1;
             }
 
@@ -1190,20 +1185,6 @@ mod tests {
     }
 
     #[test]
-    fn plr_clear_map_resets_cached_tiles_and_view_origin() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            gs.players[nr].vx = 123;
-            gs.players[nr].smap[0] = make_tile(42, 3);
-
-            plr_clear_map(gs);
-
-            assert_eq!(gs.players[nr].vx, 0);
-            assert_eq!(gs.players[nr].smap[0], CMap::default());
-        });
-    }
-
-    #[test]
     fn plr_getmap_and_complete_populate_visible_tiles() {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
@@ -1231,6 +1212,28 @@ mod tests {
             assert_eq!(tile.it_sprite, 77);
             assert_eq!(gs.players[nr].vx, gs.see_map[cn].x);
             assert_eq!(gs.players[nr].vy, gs.see_map[cn].y);
+        });
+    }
+
+    #[test]
+    fn plr_getmap_forwards_raw_map_flags_into_flags2() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let x = i32::from(gs.characters[cn].x);
+            let y = i32::from(gs.characters[cn].y);
+            let tile = map_index(x as i16, y as i16);
+            gs.map[tile] = Map {
+                ch: cn as u32,
+                flags: u64::from(core::constants::MF_INDOORS | MF_TAVERN),
+                ..Map::default()
+            };
+
+            plr_getmap(gs, nr);
+
+            let sm_idx = small_map_index(gs, cn, x, y);
+            let tile = gs.players[nr].smap[sm_idx];
+            assert_ne!(tile.flags2 & core::constants::MF_INDOORS, 0);
+            assert_ne!(tile.flags2 & MF_TAVERN, 0);
         });
     }
 
@@ -1276,6 +1279,53 @@ mod tests {
             plr_getmap(gs, nr);
 
             assert_ne!(gs.players[nr].smap[sm_idx].flags & INVIS, 0);
+        });
+    }
+
+    /// Regression test for the "black map until first move" login bug.
+    ///
+    /// A freshly-created character has an all-zero `skill` array until
+    /// `GameState::really_update_char` populates the derived
+    /// `skill[SK_PERCEPT][5]` value. `do_character_calculate_light`
+    /// multiplies ambient light by that value, so without the recompute
+    /// every tile except the character's own reads as unlit and gets
+    /// flagged `INVIS`, even in broad daylight. `plr_login` must call
+    /// `really_update_char` synchronously (before the first `plr_getmap`
+    /// runs later in the same tick) to avoid this.
+    #[test]
+    fn plr_getmap_needs_stats_recomputed_before_first_view_is_correct() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            let static_x = i32::from(gs.characters[cn].x) + 1;
+            let static_y = i32::from(gs.characters[cn].y);
+            let static_tile = map_index(static_x as i16, static_y as i16);
+            gs.map[static_tile].sprite = 321;
+            gs.globals.dlight = 65;
+
+            // Simulate a brand-new character: skill array is all zero, so
+            // `really_update_char` has never run for this character yet.
+            assert_eq!(gs.characters[cn].skill[core::skills::SK_PERCEPT][5], 0);
+
+            plr_getmap(gs, nr);
+            let sm_idx = small_map_index(gs, cn, static_x, static_y);
+            assert_ne!(
+                gs.players[nr].smap[sm_idx].flags & INVIS,
+                0,
+                "tile should (incorrectly) read as invisible before stats are recomputed"
+            );
+
+            // `plr_login` now calls this synchronously; simulate that fix
+            // and force a fresh view build (matching a new connection's
+            // sentinel `last_dlight = -1`).
+            gs.really_update_char(cn);
+            gs.players[nr].last_dlight = -1;
+            plr_getmap(gs, nr);
+
+            assert_eq!(
+                gs.players[nr].smap[sm_idx].flags & INVIS,
+                0,
+                "tile should be visible once derived stats are populated"
+            );
         });
     }
 

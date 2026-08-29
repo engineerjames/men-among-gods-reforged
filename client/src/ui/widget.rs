@@ -239,8 +239,8 @@ pub enum HudPanel {
     KeyBindings,
     /// Class talent tree.
     Talents,
-    /// Quest log overlay listing NPC quest givers.
-    QuestLog,
+    /// In-game Journal / Guidebook overlay.
+    Journal,
 }
 
 /// A side-effect that a widget wants the owning scene to perform.
@@ -333,6 +333,8 @@ pub enum WidgetAction {
     SetSpellEffects(bool),
     /// Toggle weather / ambient particle effects.
     SetWeather(bool),
+    /// Set the weather intensity multiplier (0.0 = off, 1.0 = full).
+    SetWeatherIntensity(f32),
     /// Toggle overhead player name display.
     SetShowNames(bool),
     /// Toggle overhead health percentage display.
@@ -389,13 +391,12 @@ pub enum WidgetAction {
     ///
     /// Mapped to `ClientCommand::new_reset_talents()` by the scene.
     ResetTalents,
-    /// Focus the quest given by NPC `npc_template_id` (`0` clears focus).
+    /// Set the active Seyan'Du rune.
     ///
-    /// Mapped to `ClientCommand::new_set_active_quest(npc_template_id)` by
-    /// the scene, which forwards it through the network layer.
-    SetActiveQuest {
-        /// NPC template ID of the quest giver to focus.
-        npc_template_id: u16,
+    /// Mapped to `ClientCommand::new_set_active_rune(rune_idx)` by the scene.
+    SetActiveRune {
+        /// Rune slot index (`0..=3`).
+        rune_idx: u8,
     },
 }
 

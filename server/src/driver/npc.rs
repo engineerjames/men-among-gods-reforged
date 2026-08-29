@@ -340,7 +340,7 @@ pub fn npc_gotattack(gs: &mut GameState, cn: usize, co: usize, _dam: i32) -> boo
         && (gs.characters[co].flags & CharacterFlags::Player.bits()) != 0
         && gs.characters[cn].alignment == 10000
         && (gs.characters[cn].get_name() != "Peacekeeper"
-            || gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5] * 500))
+            || gs.characters[cn].a_hp < i32::from(gs.characters[cn].hp[5]) * 500)
         && gs.characters[cn].data[70] < ticker
     {
         gs.do_sayx(cn, "Skua! Protect the innocent! Send me a Peacekeeper!");
@@ -840,6 +840,23 @@ pub fn npc_seemiss(gs: &mut GameState, cn: usize, cc: usize, co: usize) -> bool 
     false
 }
 
+/// Records quest completion for player `co` when NPC `cn` accepts a
+/// quest-item turn-in. Looks up the NPC's template in the hand-authored
+/// quest catalog and, if found, sets the matching bit in the player's
+/// `future3[1]` bitset and resends the Journal completion snapshot.
+///
+/// # Arguments
+///
+/// * `gs` - Active game state.
+/// * `cn` - NPC character index that accepted the turn-in.
+/// * `co` - Player character index completing the quest.
+fn record_quest_completion(gs: &mut GameState, cn: usize, co: usize) {
+    if let Some(quest) = crate::quest_completion::find_by_npc_temp(gs.characters[cn].temp) {
+        gs.characters[co].future3[1] |= 1 << quest.id;
+        crate::player::commands::resend_completion_data_for_character(gs, co);
+    }
+}
+
 /// Handles the legacy `npc_give` NPC driver hook.
 ///
 /// # Arguments
@@ -869,10 +886,6 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
 
     // Item given and matches what NPC wants
     if in_item != 0 && i32::from(gs.items[in_item].temp) == gs.characters[cn].data[49] {
-        // Record completion for the player; safe to call even when no
-        // catalog index matches (no-op in that case).
-        let npc_temp = gs.characters[cn].temp;
-        crate::player::quest_log::record_turn_in(gs, co, npc_temp);
         // Black candle special-case
         if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
             gs.characters[co].data[43] += 1;
@@ -910,6 +923,9 @@ pub fn npc_give(gs: &mut GameState, cn: usize, co: usize, in_item: usize, money:
                 ),
             );
         }
+
+        // Journal "Quests Completable" tracking.
+        record_quest_completion(gs, cn, co);
 
         // Quest-requested items: teach skill / give exp
         let nr = gs.characters[cn].data[50];
@@ -1098,14 +1114,6 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
         return false;
     }
 
-    // Record completion for the player; safe to call even when no catalog
-    // index matches (no-op in that case). We record on the early "would
-    // accept" decision rather than per-branch to mirror the original
-    // `npc_give` semantics (which records once even when the
-    // teach-skill branch is short-circuited by "already knows skill").
-    let npc_temp = gs.characters[cn].temp;
-    crate::player::quest_log::record_turn_in(gs, co, npc_temp);
-
     // Black candle special-case (repeatable).
     if gs.characters[cn].data[49] == 740 && gs.characters[cn].temp == 518 {
         gs.characters[co].data[43] += 1;
@@ -1129,8 +1137,12 @@ pub fn npc_sight_turn_in(gs: &mut GameState, cn: usize, co: usize, in_item: usiz
                 gs.characters[co].get_name()
             ),
         );
+        record_quest_completion(gs, cn, co);
         return true;
     }
+
+    // Journal "Quests Completable" tracking for non-black-candle accepted items.
+    record_quest_completion(gs, cn, co);
 
     // Teach-skill branch.
     let nr = gs.characters[cn].data[50];
@@ -1677,7 +1689,9 @@ pub fn npc_spell_preconditions_met(cn: &Character, co: &Character, spell: usize)
     if co.flags & CharacterFlags::Stoned.bits() != 0 {
         return false;
     }
-    if spell == skills::SK_BLAST && (i16::from(cn.skill[skills::SK_BLAST][5]) - co.armor) < 10 {
+    if spell == skills::SK_BLAST
+        && (i32::from(cn.skill[skills::SK_BLAST][5]) - i32::from(co.armor)) < 10
+    {
         return false;
     }
     if spell == skills::SK_CURSE
@@ -1980,15 +1994,19 @@ pub fn npc_driver_high(gs: &mut GameState, cn: usize) -> bool {
     {
         let temp = gs.characters[cn].temp;
         let data64 = gs.characters[cn].data[64];
-        if temp == CT_COMPANION as u16 && data64 == 0 {
+        let is_body = gs.characters[cn].flags & CharacterFlags::Body.bits() != 0;
+        if temp == CT_COMPANION as u16 && data64 == 0 && !is_body {
             let co = gs.characters[cn].data[CHD_MASTER];
             let master_ok = {
                 let co_usize = co as usize;
                 if co_usize >= gs.characters.len() {
                     false
                 } else {
+                    // Kindred Spirit lets a master keep two companions at once,
+                    // tracked in separate slots; either one is a valid link.
                     gs.characters[co_usize].used != USE_EMPTY
-                        && gs.characters[co_usize].data[64] == cn as i32
+                        && (gs.characters[co_usize].data[CHD_COMPANION] == cn as i32
+                            || gs.characters[co_usize].data[CHD_COMPANION2] == cn as i32)
                 }
             };
             if !master_ok {
@@ -2619,9 +2637,8 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
             let mut y = 0;
 
             for attempt in 0..5 {
-                // TODO: Call RANDOM function (doesn't exist yet, use placeholder)
-                x = i32::from(ch_x) - 5 + (ticker % 11); // RANDOM(11)
-                y = i32::from(ch_y) - 5 + ((ticker / 11) % 11); // RANDOM(11)
+                x = i32::from(ch_x) - 5 + helpers::random_mod_i32(11);
+                y = i32::from(ch_y) - 5 + helpers::random_mod_i32(11);
 
                 if !(1..SERVER_MAPX).contains(&x) || !(1..=SERVER_MAPX).contains(&y) {
                     panic = attempt + 1;
@@ -2715,49 +2732,48 @@ pub fn npc_driver_low(gs: &mut GameState, cn: usize) {
         }
 
         if i32::from(ch_dir) != data_30 {
-            {
-                gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
+            gs.characters[cn].misc_action = core::constants::DR_TURN as u16;
 
-                // Turn toward an adjacent tile based on desired direction.
-                // (misc_target1/misc_target2 are coordinates, not the direction value.)
-                let mut target_x = x;
-                let mut target_y = y;
+            // Turn toward an adjacent tile based on desired direction.
+            // (misc_target1/misc_target2 are coordinates, not the direction value.)
+            let mut target_x = x;
+            let mut target_y = y;
 
-                match data_30 {
-                    d if d == i32::from(DX_UP) => target_y -= 1,
-                    d if d == i32::from(DX_DOWN) => target_y += 1,
-                    d if d == i32::from(DX_LEFT) => target_x -= 1,
-                    d if d == i32::from(DX_RIGHT) => target_x += 1,
-                    d if d == i32::from(DX_LEFTUP) => {
-                        target_x -= 1;
-                        target_y -= 1;
-                    }
-                    d if d == i32::from(DX_LEFTDOWN) => {
-                        target_x -= 1;
-                        target_y += 1;
-                    }
-                    d if d == i32::from(DX_RIGHTUP) => {
-                        target_x += 1;
-                        target_y -= 1;
-                    }
-                    d if d == i32::from(DX_RIGHTDOWN) => {
-                        target_x += 1;
-                        target_y += 1;
-                    }
-                    _ => {
-                        gs.characters[cn].misc_action = DR_IDLE as u16;
-                        return;
-                    }
+            match data_30 {
+                d if d == i32::from(DX_UP) => target_y -= 1,
+                d if d == i32::from(DX_DOWN) => target_y += 1,
+                d if d == i32::from(DX_LEFT) => target_x -= 1,
+                d if d == i32::from(DX_RIGHT) => target_x += 1,
+                d if d == i32::from(DX_LEFTUP) => {
+                    target_x -= 1;
+                    target_y -= 1;
                 }
-
-                if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
-                    gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
+                d if d == i32::from(DX_LEFTDOWN) => {
+                    target_x -= 1;
+                    target_y += 1;
+                }
+                d if d == i32::from(DX_RIGHTUP) => {
+                    target_x += 1;
+                    target_y -= 1;
+                }
+                d if d == i32::from(DX_RIGHTDOWN) => {
+                    target_x += 1;
+                    target_y += 1;
+                }
+                _ => {
+                    gs.characters[cn].misc_action = DR_IDLE as u16;
                     return;
                 }
-
-                gs.characters[cn].misc_target1 = target_x as u16;
-                gs.characters[cn].misc_target2 = target_y as u16;
             }
+
+            if !(0..SERVER_MAPX).contains(&target_x) || !(0..SERVER_MAPY).contains(&target_y) {
+                gs.characters[cn].misc_action = core::constants::DR_IDLE as u16;
+                return;
+            }
+
+            gs.characters[cn].misc_target1 = target_x as u16;
+            gs.characters[cn].misc_target2 = target_y as u16;
+
             return;
         }
     }
@@ -2930,14 +2946,14 @@ pub fn npc_check_placement(gs: &GameState, in_idx: usize, n: usize) -> bool {
 pub fn npc_can_wear_item(ch: &Character, it: &core::types::Item) -> bool {
     // Check attribute requirements
     for m in 0..5 {
-        if it.attrib[m][2] > ch.attrib[m][0] as i8 {
+        if it.attrib[m][2] > ch.attrib[m][0] as i16 {
             return false;
         }
     }
 
     // Check skill requirements
     for m in 0..core::skills::MAX_SKILLS {
-        if it.skill[m][2] > ch.skill[m][0] as i8 {
+        if it.skill[m][2] > ch.skill[m][0] as i16 {
             return false;
         }
     }
@@ -3687,19 +3703,6 @@ pub fn npc_see(gs: &mut GameState, cn: usize, co: usize) -> bool {
     // 4. NPC wants an item that the player is carrying
     let in_talk_range = gs.do_char_can_see(co, cn) != 0 && helpers::get_distance(gs, cn, co) < 3.5;
 
-    // Quest discovery: same sight/distance gate as auto turn-in, but
-    // independent of the player carrying any item. The NPC only needs to
-    // be a quest giver (data[49] != 0) and the observer must be a
-    // player/usurp. Flips `Character::future2[idx]` from -1 to 0 and
-    // emits a SV_SETQUESTCOMPLETION delta when discovery fires.
-    if in_talk_range
-        && gs.characters[cn].data[49] != 0
-        && (co_flags & (CharacterFlags::Player.bits() | CharacterFlags::Usurp.bits())) != 0
-    {
-        let npc_temp = gs.characters[cn].temp;
-        crate::player::quest_log::record_discovery(gs, co, npc_temp);
-    }
-
     if in_talk_range && npc_scan_player_items(gs, cn, co) {
         return true;
     }
@@ -4000,6 +4003,73 @@ mod tests {
             assert_eq!(gs.characters[player].skill[skills::SK_BLESS][0], 1);
             assert_eq!(gs.items[item_id].used, USE_EMPTY);
             assert!(!gs.characters[player].item.contains(&(item_id as u32)));
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_sets_quest_completion_bit() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Trainer");
+            gs.characters[npc].temp = 107; // Cirrus / Bless quest
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+
+            setup_item(gs, item_id, 500, "Quest Relic", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(npc_sight_turn_in(gs, npc, player, item_id));
+            assert!((gs.characters[player].future3[1] >> 7) & 1 != 0);
+        });
+    }
+
+    #[test]
+    fn sight_turn_in_black_candle_sets_quest_completion_bit() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Cityguard");
+            gs.characters[npc].temp = 518;
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 740;
+
+            setup_item(gs, item_id, 740, "Black Candle", player);
+            gs.characters[player].item[0] = item_id as u32;
+
+            assert!(npc_sight_turn_in(gs, npc, player, item_id));
+            assert!(gs.characters[player].future3[1] & 1 != 0);
+        });
+    }
+
+    #[test]
+    fn npc_give_sets_quest_completion_bit() {
+        with_test_gs(|gs| {
+            let npc = 1;
+            let player = 2;
+            let item_id = 3;
+
+            setup_npc(gs, npc, "Trainer");
+            gs.characters[npc].temp = 107; // Cirrus / Bless quest
+            setup_player(gs, player, "Hero");
+            gs.characters[npc].data[49] = 500;
+            gs.characters[npc].data[50] = skills::SK_BLESS as i32;
+
+            // npc_give expects the item to already be in the NPC's inventory
+            // (as do_give placed it there), not in the player's inventory.
+            setup_item(gs, item_id, 500, "Quest Relic", npc);
+            gs.characters[npc].item[0] = item_id as u32;
+
+            // The legacy npc_give hook returns false for most successful
+            // skill-teach paths, but the side effect we care about is the
+            // quest-completion bit being recorded.
+            npc_give(gs, npc, player, item_id, 0);
+            assert!((gs.characters[player].future3[1] >> 7) & 1 != 0);
         });
     }
 

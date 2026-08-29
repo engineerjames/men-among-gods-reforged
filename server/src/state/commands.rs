@@ -342,6 +342,56 @@ fn format_talent_bonus_lines(bonuses: &TalentStatBonuses) -> Vec<String> {
         lines.push(format!("  Endurance: {:+}", bonuses.end_flat));
     }
 
+    if bonuses.hp_regen_percent != 0 {
+        lines.push(format!("  HP regen: {:+}%", bonuses.hp_regen_percent));
+    }
+
+    if bonuses.end_regen_percent != 0 {
+        lines.push(format!(
+            "  Endurance regen: {:+}%",
+            bonuses.end_regen_percent
+        ));
+    }
+
+    if bonuses.mana_regen_percent != 0 {
+        lines.push(format!("  Mana regen: {:+}%", bonuses.mana_regen_percent));
+    }
+
+    if bonuses.spell_penetration_percent != 0 {
+        lines.push(format!(
+            "  Spell penetration: {:+}%",
+            bonuses.spell_penetration_percent
+        ));
+    }
+
+    if bonuses.crit_chance_percent != 0 {
+        lines.push(format!(
+            "  Critical strike chance: {:+}%",
+            bonuses.crit_chance_percent
+        ));
+    }
+
+    if bonuses.crit_damage_percent != 0 {
+        lines.push(format!(
+            "  Critical strike damage: {:+}%",
+            bonuses.crit_damage_percent
+        ));
+    }
+
+    if bonuses.movement_speed_percent != 0 {
+        lines.push(format!(
+            "  Movement speed: {:+}%",
+            bonuses.movement_speed_percent
+        ));
+    }
+
+    if bonuses.attack_speed_percent != 0 {
+        lines.push(format!(
+            "  Attack speed: {:+}%",
+            bonuses.attack_speed_percent
+        ));
+    }
+
     lines
 }
 
@@ -1464,6 +1514,24 @@ impl GameState {
                 God::raise_char(self, cn, arg_get(1), arg_get(2));
                 return;
             }
+            Some("raise") if f_p && self.playtest_mode => {
+                log::debug!("Processing playtest raise command for {}", cn);
+                let amount_arg = arg_get(1);
+                if amount_arg.is_empty() {
+                    self.do_character_log(cn, FontColor::Red, "Usage: /raise <exp_amount>\n");
+                    return;
+                }
+                if !arg_get(2).is_empty() {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        "In playtest mode /raise only accepts a single amount for your own character.\n",
+                    );
+                    return;
+                }
+                God::raise_char(self, cn, amount_arg, "");
+                return;
+            }
             Some("recall") if f_giu => {
                 log::debug!("Processing recall command for {}", cn);
                 God::goto(self, cn, cn, "512", "512");
@@ -1978,6 +2046,8 @@ mod tests {
         bonuses.hp_flat = 12;
         bonuses.mana_flat = -3;
         bonuses.end_flat = 8;
+        bonuses.movement_speed_percent = 15;
+        bonuses.attack_speed_percent = -5;
 
         assert_eq!(
             format_talent_bonus_lines(&bonuses),
@@ -1990,6 +2060,8 @@ mod tests {
                 "  HP: +12".to_owned(),
                 "  Mana: -3".to_owned(),
                 "  Endurance: +8".to_owned(),
+                "  Movement speed: +15%".to_owned(),
+                "  Attack speed: -5%".to_owned(),
             ]
         );
     }
@@ -2067,6 +2139,57 @@ mod tests {
                 target as i32
             );
             assert!(logged_text(gs, nr).contains("Numeric Friend is now allowed"));
+        });
+    }
+
+    #[test]
+    fn raise_command_in_playtest_mode_applies_to_self() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.playtest_mode = true;
+            gs.characters[cn].points = 50;
+            gs.characters[cn].points_tot = 50;
+
+            gs.do_command(cn, "raise 100");
+
+            assert_eq!(gs.characters[cn].points, 150);
+            assert_eq!(gs.characters[cn].points_tot, 150);
+            assert!(logged_text(gs, nr).contains("experience points"));
+        });
+    }
+
+    #[test]
+    fn raise_command_in_playtest_mode_rejects_extra_arguments() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.playtest_mode = true;
+            gs.characters[cn].points = 50;
+            gs.characters[cn].points_tot = 50;
+
+            gs.do_command(cn, "raise Tester 100");
+
+            assert_eq!(gs.characters[cn].points, 50);
+            assert_eq!(gs.characters[cn].points_tot, 50);
+            assert!(logged_text(gs, nr).contains("only accepts a single amount"));
+        });
+    }
+
+    #[test]
+    fn raise_command_ignored_by_players_outside_playtest_mode() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.playtest_mode = false;
+            gs.characters[cn].points = 50;
+            gs.characters[cn].points_tot = 50;
+
+            gs.do_command(cn, "raise 100");
+
+            assert_eq!(gs.characters[cn].points, 50);
+            assert_eq!(gs.characters[cn].points_tot, 50);
+            assert!(logged_text(gs, nr).contains("Unknown command"));
         });
     }
 

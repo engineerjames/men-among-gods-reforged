@@ -14,6 +14,15 @@ function Assert-FileExists {
   }
 }
 
+function Assert-DirNonEmpty {
+  param([Parameter(Mandatory=$true)][string]$Path)
+
+  if (-not (Test-Path -LiteralPath $Path -PathType Container) -or
+      -not (Get-ChildItem -LiteralPath $Path -File -Recurse -ErrorAction SilentlyContinue)) {
+    throw "Missing or empty required directory: $Path"
+  }
+}
+
 function Copy-RequiredFile {
   param(
     [Parameter(Mandatory=$true)][string]$Source,
@@ -48,6 +57,7 @@ Copy-RequiredFile -Source 'target/release/world-snapshot.exe' -Destination (Join
 Copy-RequiredFile -Source 'server/assets/world_seed.wsnap' -Destination (Join-Path $serverPackageDir 'assets/world_seed.wsnap')
 
 Copy-Item -Recurse -Force 'client/assets/*' (Join-Path $clientPackageDir 'assets/')
+Assert-DirNonEmpty (Join-Path $clientPackageDir 'assets/journal')
 Copy-RequiredFile -Source 'target/release/men-among-gods-client.exe' -Destination (Join-Path $clientPackageDir 'men-among-gods-client.exe')
 
 Compress-Archive -Force -Path $serverPackageDir -DestinationPath "dist/$serverDir.zip"

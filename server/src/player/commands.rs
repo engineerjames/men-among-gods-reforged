@@ -56,7 +56,7 @@ pub fn plr_cmd_stat(gs: &mut GameState, _nr: usize) {
     let v = u16::from_le_bytes([gs.players[_nr].inbuf[3], gs.players[_nr].inbuf[4]]) as usize;
 
     // sanity checks
-    if n > 107 || v > 99 {
+    if n > 107 || v > 250 {
         return;
     }
 
@@ -1786,6 +1786,93 @@ pub fn send_set_char_talents(gs: &mut GameState, nr: usize) {
     network_manager::xsend(gs, nr, &buf, 26);
 }
 
+/// Send the active Seyan'Du rune and remaining swap cooldown for `nr`'s character.
+///
+/// Wire format: 1-byte opcode (`SetCharRuneState = 78`) + active rune index
+/// (1 byte) + cooldown remaining in ticks (u16 LE) -- 4 bytes total.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `nr` - Player slot index.
+pub fn send_set_char_rune_state(gs: &mut GameState, nr: usize) {
+    let cn = gs.players[nr].usnr;
+    let (active_rune, cooldown_remaining_ticks) = crate::player::seyan_runes::rune_state(gs, cn);
+    let mut buf: [u8; 4] = [0; 4];
+    buf[0] = ServerCommandType::SetCharRuneState as u8;
+    buf[1] = active_rune;
+    buf[2..4].copy_from_slice(&cooldown_remaining_ticks.to_le_bytes());
+    network_manager::xsend(gs, nr, &buf, 4);
+}
+
+/// Send the full Journal completion-data snapshot for `nr`'s character.
+///
+/// Wire format: 1-byte opcode (`SetCompletionData = 77`) followed by
+/// `labyrinth_progress` (1 byte), `pentagram_solves` (u32 LE), 4x
+/// `first_kill_bits` (u32 LE each), 4x `explorer_point_bits` (u32 LE each),
+/// and `quest_completion_bits` (u32 LE) -- 42 bytes total. Always sent as a
+/// full snapshot (no delta mode); see `core::server_commands::ServerCommandType::SetCompletionData`.
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `nr` - Player slot index.
+pub fn send_set_completion_data(gs: &mut GameState, nr: usize) {
+    let cn = gs.players[nr].usnr;
+    let ch = &gs.characters[cn];
+
+    let labyrinth_progress = ch.data[20].clamp(0, i32::from(u8::MAX)) as u8;
+    let pentagram_solves = ch.future3[0].max(0) as u32;
+    let first_kill_bits = [
+        ch.data[60] as u32,
+        ch.data[61] as u32,
+        ch.data[62] as u32,
+        ch.data[63] as u32,
+    ];
+    let explorer_point_bits = [
+        ch.data[46] as u32,
+        ch.data[47] as u32,
+        ch.data[48] as u32,
+        ch.data[49] as u32,
+    ];
+    let quest_completion_bits = ch.future3[1] as u32;
+
+    let mut buf: [u8; 42] = [0; 42];
+    buf[0] = ServerCommandType::SetCompletionData as u8;
+    buf[1] = labyrinth_progress;
+    buf[2..6].copy_from_slice(&pentagram_solves.to_le_bytes());
+    buf[6..10].copy_from_slice(&first_kill_bits[0].to_le_bytes());
+    buf[10..14].copy_from_slice(&first_kill_bits[1].to_le_bytes());
+    buf[14..18].copy_from_slice(&first_kill_bits[2].to_le_bytes());
+    buf[18..22].copy_from_slice(&first_kill_bits[3].to_le_bytes());
+    buf[22..26].copy_from_slice(&explorer_point_bits[0].to_le_bytes());
+    buf[26..30].copy_from_slice(&explorer_point_bits[1].to_le_bytes());
+    buf[30..34].copy_from_slice(&explorer_point_bits[2].to_le_bytes());
+    buf[34..38].copy_from_slice(&explorer_point_bits[3].to_le_bytes());
+    buf[38..42].copy_from_slice(&quest_completion_bits.to_le_bytes());
+    network_manager::xsend(gs, nr, &buf, 42);
+}
+
+/// Resends the Journal completion-data snapshot for character `cn`, if `cn`
+/// is a currently-connected player. No-op for NPCs or disconnected
+/// characters.
+///
+/// Call this after any change to the completion-tracked state: labyrinth
+/// progress (`data[20]`), pentagram solve count (`future3[0]`), first-kill
+/// bits (`data[60..=63]`), explorer-point bits (`data[46..=49]`), or quest
+/// completion bits (`future3[1]`).
+///
+/// # Arguments
+///
+/// * `gs` - Mutable game state.
+/// * `cn` - Character index whose completion state just changed.
+pub fn resend_completion_data_for_character(gs: &mut GameState, cn: usize) {
+    let player_id = gs.characters[cn].player as usize;
+    if player_id > 0 && player_id < gs.players.len() && gs.players[player_id].usnr == cn {
+        send_set_completion_data(gs, player_id);
+    }
+}
+
 /// Handle the `CmdLearnTalent` packet.
 ///
 /// Parses the packed talent slot from `inbuf[1..3]`, calls
@@ -1861,6 +1948,40 @@ pub fn plr_cmd_reset_talents(gs: &mut GameState, nr: usize) {
         cn
     );
     send_set_char_talents(gs, nr);
+}
+
+/// Handle the `CmdSetActiveRune` packet.
+///
+/// Parses the requested rune slot from `inbuf[1]`, calls
+/// [`crate::player::seyan_runes::set_active_rune`], and resyncs the
+/// authoritative rune state to the client either way.
+///
+/// # Arguments
+///
+/// * `nr` - Player slot index issuing the command.
+pub fn plr_cmd_set_active_rune(gs: &mut GameState, nr: usize) {
+    let rune_idx = gs.players[nr].inbuf[1];
+    let cn = gs.players[nr].usnr;
+    match crate::player::seyan_runes::set_active_rune(gs, cn, rune_idx) {
+        Ok(()) => {
+            log::info!(
+                "Player {} (cn={}) activated rune {}",
+                c_string_to_str(&gs.characters[cn].name),
+                cn,
+                rune_idx
+            );
+        }
+        Err(reason) => {
+            log::warn!(
+                "Player {} (cn={}) failed to activate rune {}: {}",
+                c_string_to_str(&gs.characters[cn].name),
+                cn,
+                rune_idx,
+                reason
+            );
+        }
+    }
+    send_set_char_rune_state(gs, nr);
 }
 
 #[cfg(test)]

@@ -1,11 +1,11 @@
 pub mod button_bar;
 pub mod chat_box;
 pub mod inventory_panel;
+pub mod journal_panel;
 pub mod keybindings_panel;
 pub mod look_panel;
 pub mod minimap_widget;
 pub mod mode_button;
-pub mod quest_log_panel;
 pub mod settings_panel;
 pub mod shop_panel;
 pub mod skill_bar;

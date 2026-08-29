@@ -34,7 +34,9 @@
 //!   `depot`, `depot_cost`, `depot_sold`, `luck`
 //! * Identity timestamps managed by the server: `creation_date`
 //! * Talent progression: `future1`
-//! * Reserved padding: `unused`, `future2`, `future3`
+//! * Reserved padding: `unused`, `future2`, `future3` (`future3[2]` is a
+//!   recomputed-every-stats-pass cache of the talent-derived attack/action
+//!   speed row, parallel to `speed`; see `really_update_char`)
 //!
 //! The watcher overwrites only the patch fields when applying, so the
 //! tick thread keeps full ownership of placement, combat, and per-character
@@ -223,7 +225,7 @@ pub struct CharacterPatch {
     /// Template index this slot was created from.
     pub temp: u16,
     /// Per-attribute base values (`[base, mod, max?]` per skill axis).
-    pub attrib: [[u8; SKILL_AXIS]; 5],
+    pub attrib: [[u16; SKILL_AXIS]; 5],
     /// Base HP per skill axis.
     pub hp: [u16; SKILL_AXIS],
     /// Base endurance per skill axis.
@@ -231,7 +233,7 @@ pub struct CharacterPatch {
     /// Base mana per skill axis.
     pub mana: [u16; SKILL_AXIS],
     /// Base skill values, `[base, mod, max?]` per skill axis.
-    pub skill: [[u8; SKILL_AXIS]; MAX_SKILLS],
+    pub skill: [[u16; SKILL_AXIS]; MAX_SKILLS],
     /// Weapon proficiency bonus.
     pub weapon_bonus: u8,
     /// Armor proficiency bonus.

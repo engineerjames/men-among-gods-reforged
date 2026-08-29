@@ -3,7 +3,8 @@ use core::constants::{
 };
 use core::ranks;
 use core::talent_trees::{
-    available_talent_points, grant_talent_points, talent_stat_bonuses, total_points_spent,
+    TalentStatBonuses, available_talent_points, grant_talent_points, talent_stat_bonuses,
+    total_points_spent,
 };
 use core::types::FontColor;
 use core::{skills, traits};
@@ -13,7 +14,57 @@ use crate::game_state::GameState;
 use crate::god::God;
 use crate::{driver, helpers, points};
 
+/// Maximum final value for a character attribute or skill.
+///
+/// Unrelated to `Global.cap`, which gates the player login queue.
+const MAX_ATTRIB_SKILL_VALUE: i32 = 500;
+
 impl GameState {
+    /// Heals a ghost companion's owner from damage dealt while Revenant Conduit is active.
+    ///
+    /// The conduit marker stores the ghost-skill boost percentage. Its healing
+    /// percentage is one third of that value, scaling from 10% to 50% across
+    /// the existing +30% to +150% conduit tiers.
+    ///
+    /// # Arguments
+    ///
+    /// * `attacker` - Character index that dealt the damage.
+    /// * `damage` - Post-mitigation damage in internal thousandths-of-HP units.
+    fn apply_revenant_conduit_heal(&mut self, attacker: usize, damage: i32) {
+        if damage <= 0 || self.characters[attacker].temp != core::constants::CT_COMPANION as u16 {
+            return;
+        }
+
+        let owner = self.characters[attacker].data[63] as usize;
+        if owner == 0
+            || !core::types::Character::is_sane_character(owner)
+            || self.characters[owner].used != core::constants::USE_ACTIVE
+            || (self.characters[owner].flags & CharacterFlags::Player.bits()) == 0
+        {
+            return;
+        }
+
+        let conduit_boost = self.characters[owner].spell[..20]
+            .iter()
+            .map(|&spell| spell as usize)
+            .find(|&item| {
+                item != 0
+                    && self.items[item].used == core::constants::USE_ACTIVE
+                    && self.items[item].active > 0
+                    && self.items[item].temp == skills::SK_REVENANT_CONDUIT2 as u16
+            })
+            .map(|item| self.items[item].power as i32)
+            .unwrap_or(0);
+        let heal_percent = (conduit_boost / 3).clamp(0, 50);
+        if heal_percent == 0 {
+            return;
+        }
+
+        let heal = damage.saturating_mul(heal_percent) / 100;
+        let max_hp = i32::from(self.characters[owner].hp[5]) * 1000;
+        self.characters[owner].a_hp = self.characters[owner].a_hp.saturating_add(heal).min(max_hp);
+    }
+
     /// Helper function to check if character wears a specific item
     /// Port of part of `really_update_char`
     pub(crate) fn char_wears_item(&mut self, cn: usize, item_template: u16) -> bool {
@@ -248,12 +299,23 @@ impl GameState {
             }
         }
 
-        let talent_bonuses = talent_stat_bonuses(
-            self.characters[cn].kindred,
-            &self.characters[cn].future1,
-            &self.characters[cn].attrib,
-            &self.characters[cn].skill,
-        );
+        // Only resolve talent bonuses for characters whose kindred actually names a
+        // class (or the monster catch-all); companions and other NPCs can carry a
+        // kindred with no class bits set, which would otherwise make `Class::from`
+        // log a spurious error + backtrace.
+        let kindred = self.characters[cn].kindred;
+        let has_known_kindred = core::traits::class_from_kindred(kindred).is_some()
+            || (kindred as u32) & core::traits::KIN_MONSTER != 0;
+        let talent_bonuses = if has_known_kindred {
+            talent_stat_bonuses(
+                kindred,
+                &self.characters[cn].future1,
+                &self.characters[cn].attrib,
+                &self.characters[cn].skill,
+            )
+        } else {
+            TalentStatBonuses::default()
+        };
         for (z, bonus) in attrib_bonus.iter_mut().enumerate() {
             *bonus += talent_bonuses.attrib[z];
         }
@@ -264,34 +326,46 @@ impl GameState {
         mana_bonus += talent_bonuses.mana_flat;
         end_bonus += talent_bonuses.end_flat;
 
+        // Cache the percent-shaped bonuses that are consumed outside this
+        // function (regen, spell penetration, crit) instead of recomputing
+        // `talent_stat_bonuses` on every regen tick or attack roll.
+        self.talent_runtime[cn] = crate::game_state::TalentRuntimeBonuses {
+            hp_regen_percent: talent_bonuses.hp_regen_percent,
+            end_regen_percent: talent_bonuses.end_regen_percent,
+            mana_regen_percent: talent_bonuses.mana_regen_percent,
+            spell_penetration_percent: talent_bonuses.spell_penetration_percent,
+            crit_chance_percent: talent_bonuses.crit_chance_percent,
+            crit_damage_percent: talent_bonuses.crit_damage_percent,
+        };
+
         // Calculate final attributes
         for (z, &bonus) in attrib_bonus.iter().enumerate().take(5) {
             let mut final_attrib = i32::from(self.characters[cn].attrib[z][0])
                 + i32::from(self.characters[cn].attrib[z][1])
                 + bonus;
 
-            final_attrib = final_attrib.clamp(1, 250);
-            self.characters[cn].attrib[z][5] = final_attrib as u8;
+            final_attrib = final_attrib.clamp(1, MAX_ATTRIB_SKILL_VALUE);
+            self.characters[cn].attrib[z][5] = final_attrib as u16;
         }
 
         // Calculate final HP
         let mut final_hp =
             i32::from(self.characters[cn].hp[0]) + i32::from(self.characters[cn].hp[1]) + hp_bonus;
-        final_hp = final_hp.clamp(10, 999);
+        final_hp = final_hp.clamp(10, 9999);
         self.characters[cn].hp[5] = final_hp as u16;
 
         // Calculate final endurance
         let mut final_end = i32::from(self.characters[cn].end[0])
             + i32::from(self.characters[cn].end[1])
             + end_bonus;
-        final_end = final_end.clamp(10, 999);
+        final_end = final_end.clamp(10, 9999);
         self.characters[cn].end[5] = final_end as u16;
 
         // Calculate final mana
         let mut final_mana = i32::from(self.characters[cn].mana[0])
             + i32::from(self.characters[cn].mana[1])
             + mana_bonus;
-        final_mana = final_mana.clamp(10, 999);
+        final_mana = final_mana.clamp(10, 9999);
         self.characters[cn].mana[5] = final_mana as u16;
 
         // Handle infrared vision
@@ -334,8 +408,8 @@ impl GameState {
                 + i32::from(self.characters[cn].attrib[attrs[2]][5]))
                 / 5;
             final_skill += attrib_contribution;
-            final_skill = final_skill.clamp(1, 250);
-            self.characters[cn].skill[z][5] = final_skill as u8;
+            final_skill = final_skill.clamp(1, MAX_ATTRIB_SKILL_VALUE);
+            self.characters[cn].skill[z][5] = final_skill as u16;
         }
 
         // Apply talent-derived armor/weapon percent bonuses to the aggregated
@@ -366,7 +440,7 @@ impl GameState {
         self.characters[cn].light = light as u8;
 
         // Calculate speed based on mode
-        let mut speed_calc = 10i32;
+        let mut base_speed_calc = 10i32;
         let mode = self.characters[cn].mode;
         let agil = i32::from(self.characters[cn].attrib[core::constants::AT_AGIL as usize][5]);
         let stren = i32::from(self.characters[cn].attrib[core::constants::AT_STREN as usize][5]);
@@ -374,19 +448,33 @@ impl GameState {
 
         if mode == 0 {
             // Sneak mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 12;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 12;
         } else if mode == 1 {
             // Normal mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 14;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 14;
         } else if mode == 2 {
             // Fast mode
-            speed_calc = (agil + stren) / 50 + speed_mod + 16;
+            base_speed_calc = (agil + stren) / 50 + speed_mod + 16;
         }
 
-        self.characters[cn].speed = 20 - speed_calc as i16;
+        // Movement speed and attack/action speed are independently derived from the
+        // same baseline so a talent bonus to one never affects the other.
+        let movement_speed_calc = base_speed_calc
+            + (base_speed_calc as f32 * (talent_bonuses.movement_speed_percent as f32 / 100.0))
+                .round() as i32;
+        let action_speed_calc = base_speed_calc
+            + (base_speed_calc as f32 * (talent_bonuses.attack_speed_percent as f32 / 100.0))
+                .round() as i32;
+
+        self.characters[cn].speed = 20 - movement_speed_calc as i16;
         self.characters[cn].speed = self.characters[cn]
             .speed
             .clamp(MIN_SPEEDTAB_INDEX as i16, MAX_SPEEDTAB_SPEED_INDEX as i16);
+
+        // `future3[2]` is a recomputed-every-pass cache of the attack/action speed
+        // row (parallel to `speed` but gating `plr_act`'s misc/attack states only).
+        self.characters[cn].future3[2] = (20 - action_speed_calc)
+            .clamp(MIN_SPEEDTAB_INDEX as i32, MAX_SPEEDTAB_SPEED_INDEX as i32);
 
         // Cap current stats at their maximums
         if self.characters[cn].a_hp > i32::from(self.characters[cn].hp[5]) * 1000 {
@@ -491,23 +579,29 @@ impl GameState {
             match base_status {
                 // Standing/idle states - regenerate normally
                 0..=7 => {
+                    let end_pct = self.talent_runtime[cn].end_regen_percent;
+                    let hp_pct = self.talent_runtime[cn].hp_regen_percent;
+                    let mana_pct = self.talent_runtime[cn].mana_regen_percent;
+
                     if !noend {
-                        self.characters[cn].a_end += scale(moonmult * 4);
+                        let mut end_gain = scale(moonmult * 4);
 
                         // Add bonus from Rest skill
                         if self.characters[cn].skill[skills::SK_REST][0] != 0 {
-                            self.characters[cn].a_end += scale(
+                            end_gain += scale(
                                 i32::from(self.characters[cn].skill[skills::SK_REST][5]) * moonmult
                                     / 30,
                             );
                         }
+
+                        self.characters[cn].a_end += end_gain * (100 + end_pct) / 100;
                     }
 
                     if !nohp {
                         hp_regen = true;
-                        self.characters[cn].a_hp += scale(moonmult * 2);
+                        let mut hp_gain = scale(moonmult * 2);
                         // C original: gothp += moonmult (tracks half the HP regen increment)
-                        gothp += scale(moonmult);
+                        let mut gothp_gain = scale(moonmult);
 
                         // Add bonus from Regen skill
                         if self.characters[cn].skill[skills::SK_REGEN][0] != 0 {
@@ -516,9 +610,13 @@ impl GameState {
                                     * moonmult
                                     / 30,
                             );
-                            self.characters[cn].a_hp += regen_bonus;
-                            gothp += regen_bonus;
+                            hp_gain += regen_bonus;
+                            gothp_gain += regen_bonus;
                         }
+
+                        let hp_mult = 100 + hp_pct;
+                        self.characters[cn].a_hp += hp_gain * hp_mult / 100;
+                        gothp += gothp_gain * hp_mult / 100;
                     }
 
                     if !nomana {
@@ -526,12 +624,13 @@ impl GameState {
 
                         if has_medit {
                             mana_regen = true;
-                            self.characters[cn].a_mana += scale(moonmult);
-                            self.characters[cn].a_mana += scale(
+                            let mut mana_gain = scale(moonmult);
+                            mana_gain += scale(
                                 i32::from(self.characters[cn].skill[skills::SK_MEDIT][5])
                                     * moonmult
                                     / 30,
                             );
+                            self.characters[cn].a_mana += mana_gain * (100 + mana_pct) / 100;
                         }
                     }
                 }
@@ -743,7 +842,7 @@ impl GameState {
                     self.items[spell_item as usize].active -= 1;
                 }
 
-                let active = self.items[spell_item as usize].active;
+                let mut active = self.items[spell_item as usize].active;
 
                 // Warn when spell is about to run out
                 if active == core::constants::TICKS as u32 * 30 {
@@ -829,7 +928,7 @@ impl GameState {
                     // Tick once per second of real time.
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let base_dam = (power / 4).max(1);
+                        let base_dam = ((power * 3) / 4).max(1);
                         let dam = match item_temp {
                             temp if temp == skills::SK_CONTAGION as u16 => base_dam * 2,
                             temp if temp == skills::SK_LAVA_BLAST as u16 => (base_dam / 2).max(1),
@@ -862,7 +961,13 @@ impl GameState {
                                 FontColor::Red,
                                 &format!("The {} killed you!\n", spell_name),
                             );
+                            // A lethal DoT tick still credits the caster with the
+                            // kill experience they would have earned in melee.
+                            let payout = self.kill_exp_payout(caster, cn);
                             self.do_character_killed(cn, caster, false);
+                            if let Some((exp, rank)) = payout {
+                                self.do_give_exp(caster, exp, 1, rank);
+                            }
                             return;
                         }
                     }
@@ -877,7 +982,7 @@ impl GameState {
                     let power = item.power as i32;
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let heal = (power / 4).max(1) * 1000;
+                        let heal = ((power * 3) / 4).max(1) * 1000;
                         self.characters[cn].a_hp += heal;
                         let max_hp = i32::from(self.characters[cn].hp[5]) * 1000;
                         if self.characters[cn].a_hp > max_hp {
@@ -895,11 +1000,12 @@ impl GameState {
                     let active_i = active as i32;
                     let elapsed = duration - active_i;
                     if elapsed > 0 && elapsed % core::constants::TICKS == 0 {
-                        let drain = 2 * 1000;
+                        let drain = 1000;
                         self.characters[cn].a_end -= drain;
                         if self.characters[cn].a_end <= 0 {
                             self.characters[cn].a_end = 0;
                             self.items[spell_item as usize].active = 0;
+                            active = 0;
                         }
                     }
                 }
@@ -957,6 +1063,10 @@ impl GameState {
                             FontColor::Red,
                             &format!("{} ran out.\n", spell_name),
                         );
+                    }
+
+                    if item_temp == skills::SK_REVENANT_CONDUIT2 as u16 {
+                        driver::skill::restat_owned_companions(self, cn);
                     }
 
                     // Remove spell
@@ -1338,12 +1448,96 @@ impl GameState {
 
             self.do_update_char(cn);
 
+            // Push the new rank to the API-side character record right away so
+            // the character-selection screen shows the correct rank sigil
+            // instead of whatever rank was current at the last login.
+            self.sync_character_selection_metadata(cn);
+
             let player_id = self.characters[cn].player as usize;
             if player_id > 0 && player_id < self.players.len() && self.players[player_id].usnr == cn
             {
                 crate::player::commands::send_set_char_talents(self, player_id);
+                crate::player::commands::send_set_char_rune_state(self, player_id);
             }
         }
+    }
+
+    /// Computes the experience payout owed to `killer` for slaying `victim`.
+    ///
+    /// Must be called *before* [`GameState::do_character_killed`] because the
+    /// payout depends on the victim's pre-death state. Used by melee/spell
+    /// kills and by damage-over-time effects that finish a target off.
+    ///
+    /// # Arguments
+    ///
+    /// * `killer` - Character credited with the kill (`0` when there is none).
+    /// * `victim` - Character that is about to die.
+    ///
+    /// # Returns
+    ///
+    /// * `Some((exp, rank))` to hand to [`GameState::do_give_exp`], or `None`
+    ///   when the kill pays nothing (self kills, players, companions, arena
+    ///   duels, or a follower killing its owner's target).
+    pub(crate) fn kill_exp_payout(&mut self, killer: usize, victim: usize) -> Option<(i32, i32)> {
+        if killer == 0
+            || killer == victim
+            || !core::types::Character::is_sane_character(killer)
+            || !core::types::Character::is_sane_character(victim)
+        {
+            return None;
+        }
+
+        // A follower gets nothing for finishing off its owner's target.
+        if (self.characters[killer].flags & CharacterFlags::Player.bits()) == 0
+            && self.characters[killer].data[63] == victim as i32
+        {
+            return None;
+        }
+        // Killing players or (non-thrall) companions never pays out.
+        if (self.characters[victim].flags & CharacterFlags::Player.bits()) != 0 {
+            return None;
+        }
+        if self.characters[victim].temp == core::constants::CT_COMPANION as u16
+            && (self.characters[victim].flags & CharacterFlags::Thrall.bits()) == 0
+        {
+            return None;
+        }
+
+        // Combined map flags for arena checks (C includes both co/cn positions).
+        let victim_idx = (i32::from(self.characters[victim].x)
+            + i32::from(self.characters[victim].y) * core::constants::SERVER_MAPX)
+            as usize;
+        let killer_idx = (i32::from(self.characters[killer].x)
+            + i32::from(self.characters[killer].y) * core::constants::SERVER_MAPX)
+            as usize;
+        let mf_flags = self.map[victim_idx].flags | self.map[killer_idx].flags;
+        if (mf_flags & u64::from(core::constants::MF_ARENA)) != 0 {
+            return None;
+        }
+
+        let mut exp = self.do_char_score(victim);
+        let rank = core::ranks::points2rank(self.characters[victim].points_tot as u32) as i32;
+
+        // Buffed victims are worth more, unless they meditate.
+        let has_medit = self.characters[victim].skill[skills::SK_MEDIT][0] != 0;
+        if !has_medit {
+            let spells = self.characters[victim].spell;
+            for &spell_ref in &spells[..20] {
+                let in_idx = spell_ref as usize;
+                if in_idx == 0 {
+                    continue;
+                }
+                let item_temp = self.items[in_idx].temp;
+                if item_temp == skills::SK_PROTECT as u16
+                    || item_temp == skills::SK_ENHANCE as u16
+                    || item_temp == skills::SK_BLESS as u16
+                {
+                    exp += exp / 5;
+                }
+            }
+        }
+
+        Some((exp, rank))
     }
 
     /// Port of `do_hurt(cn, co, dam, type)` from `svr_do.cpp`.
@@ -1692,8 +1886,11 @@ impl GameState {
             return dam / 1000;
         }
 
-        // Subtract hp
+        // Subtract HP and let an active Revenant Conduit return part of a
+        // ghost companion's actual post-mitigation damage to its owner.
+        let applied_damage = dam.min(self.characters[co].a_hp.max(0));
         self.characters[co].a_hp -= dam;
+        self.apply_revenant_conduit_heal(cn, applied_damage);
 
         // Warn about low HP
         let cur_hp = self.characters[co].a_hp;
@@ -1762,38 +1959,16 @@ impl GameState {
             );
 
             // Score and EXP handing (defer to helpers/stubs)
-            if type_hurt != 2
-                && cn != 0
-                && (mf_flags & u64::from(core::constants::MF_ARENA)) == 0
-                && noexp == 0
-            {
-                let tmp = self.do_char_score(co);
-                let rank = core::ranks::points2rank(self.characters[co].points_tot as u32) as i32;
-                let mut tmp = tmp;
-                let has_medit = self.characters[co].skill[skills::SK_MEDIT][0] != 0;
-                if !has_medit {
-                    let spells = self.characters[co].spell;
-                    for &spell_ref in &spells[..20] {
-                        let in_idx = spell_ref as usize;
-                        if in_idx == 0 {
-                            continue;
-                        }
-                        let item_temp = self.items[in_idx].temp;
-                        if item_temp == skills::SK_PROTECT as u16
-                            || item_temp == skills::SK_ENHANCE as u16
-                            || item_temp == skills::SK_BLESS as u16
-                        {
-                            tmp += tmp / 5;
-                        }
-                    }
-                }
-
-                self.do_character_killed(co, cn, false);
-                if type_hurt != 2 && cn != 0 && cn != co {
-                    self.do_give_exp(cn, tmp, 1, rank);
-                }
+            let payout = if type_hurt != 2 {
+                self.kill_exp_payout(cn, co)
             } else {
-                self.do_character_killed(co, cn, false);
+                None
+            };
+
+            self.do_character_killed(co, cn, false);
+
+            if let Some((exp, rank)) = payout {
+                self.do_give_exp(cn, exp, 1, rank);
             }
 
             self.characters[cn].cerrno = core::constants::ERR_SUCCESS as u16;
@@ -1845,7 +2020,81 @@ mod tests {
             / 5
     }
 
-    fn set_legacy_weapon_bonuses(skill: &mut [[i8; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
+    fn add_revenant_conduit_marker(gs: &mut GameState, owner: usize, boost_percent: u32) {
+        let item_idx = 10;
+        gs.items[item_idx] = core::types::Item::default();
+        gs.items[item_idx].used = USE_ACTIVE;
+        gs.items[item_idx].active = 100;
+        gs.items[item_idx].temp = skills::SK_REVENANT_CONDUIT2 as u16;
+        gs.items[item_idx].power = boost_percent;
+        gs.characters[owner].spell[0] = item_idx as u32;
+    }
+
+    #[test]
+    fn revenant_conduit_heals_owner_by_scaled_damage_percentage() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            let companion = owner + 1;
+            gs.characters[companion] = core::types::Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].hp[5] = 100;
+            gs.characters[owner].a_hp = 10_000;
+
+            add_revenant_conduit_marker(gs, owner, 30);
+            gs.apply_revenant_conduit_heal(companion, 20_000);
+            assert_eq!(gs.characters[owner].a_hp, 12_000);
+
+            gs.items[10].power = 150;
+            gs.apply_revenant_conduit_heal(companion, 20_000);
+            assert_eq!(gs.characters[owner].a_hp, 22_000);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_heal_requires_active_marker_and_caps_at_max_hp() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            let companion = owner + 1;
+            gs.characters[companion] = core::types::Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].hp[5] = 100;
+            gs.characters[owner].a_hp = 90_000;
+
+            gs.apply_revenant_conduit_heal(companion, 20_000);
+            assert_eq!(gs.characters[owner].a_hp, 90_000);
+
+            add_revenant_conduit_marker(gs, owner, 150);
+            gs.apply_revenant_conduit_heal(companion, 40_000);
+            assert_eq!(gs.characters[owner].a_hp, 100_000);
+
+            gs.items[10].active = 0;
+            gs.characters[owner].a_hp = 50_000;
+            gs.apply_revenant_conduit_heal(companion, 40_000);
+            assert_eq!(gs.characters[owner].a_hp, 50_000);
+        });
+    }
+
+    #[test]
+    fn revenant_conduit_closes_immediately_when_endurance_runs_out() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+            add_revenant_conduit_marker(gs, owner, 30);
+            gs.items[10].duration = (core::constants::TICKS * 2) as u32;
+            gs.items[10].active = (core::constants::TICKS + 1) as u32;
+            gs.characters[owner].a_end = 1;
+
+            gs.do_regenerate(owner);
+
+            assert_eq!(gs.characters[owner].spell[0], 0);
+            assert_eq!(gs.items[10].used, core::constants::USE_EMPTY);
+        });
+    }
+
+    fn set_legacy_weapon_bonuses(skill: &mut [[i16; 3]; skills::MAX_SKILLS], modifier_idx: usize) {
         skill[skills::SK_HAND][modifier_idx] = 10;
         skill[skills::SK_DAGGER][modifier_idx] = 10;
         skill[skills::SK_TWOHAND][modifier_idx] = 10;
@@ -2072,6 +2321,76 @@ mod tests {
 
             assert_eq!(gs.characters[cn].future1[0], 2);
             assert_eq!(gs.characters[cn].data[45], 3);
+        });
+    }
+
+    #[test]
+    fn regen_percent_talent_doubles_mana_gain_when_medit_known() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].skill[skills::SK_MEDIT][SkillIndex::BaseValue as usize] = 1;
+            gs.characters[cn].mana[SkillIndex::TotalValue as usize] = 50;
+            gs.characters[cn].status = 0;
+
+            gs.do_regenerate(cn);
+            let baseline_mana = gs.characters[cn].a_mana;
+            assert!(baseline_mana > 0, "expected some baseline mana regen");
+
+            gs.characters[cn].a_mana = 0;
+            gs.talent_runtime[cn].mana_regen_percent = 100;
+            gs.do_regenerate(cn);
+
+            assert_eq!(gs.characters[cn].a_mana, baseline_mana * 2);
+        });
+    }
+
+    #[test]
+    fn attack_speed_talent_changes_action_speed_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_SEYAN_DU as i32;
+
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            // Seyan'Du "Fleet Hands" (layer 2, mask 0b10): AttackSpeedPercent { percent: 10 }.
+            gs.characters[cn].future1[2] |= 0b0000_0010;
+            gs.really_update_char(cn);
+
+            assert_eq!(
+                gs.characters[cn].speed, baseline_speed,
+                "attack speed talent must not change movement speed"
+            );
+            assert!(
+                gs.characters[cn].future3[2] < baseline_action_speed,
+                "attack speed row must decrease (faster) when the talent is learned"
+            );
+        });
+    }
+
+    #[test]
+    fn movement_speed_talent_changes_movement_speed_only() {
+        with_test_gs(|gs| {
+            let (cn, _nr) = add_test_player(gs);
+            gs.characters[cn].kindred = traits::KIN_SEYAN_DU as i32;
+
+            gs.really_update_char(cn);
+            let baseline_speed = gs.characters[cn].speed;
+            let baseline_action_speed = gs.characters[cn].future3[2];
+
+            // Seyan'Du "Windstep" (layer 4, mask 0b1): MovementSpeedPercent { percent: 15 }.
+            gs.characters[cn].future1[4] |= 0b0000_0001;
+            gs.really_update_char(cn);
+
+            assert!(
+                gs.characters[cn].speed < baseline_speed,
+                "movement speed row must decrease (faster) when the talent is learned"
+            );
+            assert_eq!(
+                gs.characters[cn].future3[2], baseline_action_speed,
+                "movement speed talent must not change attack speed"
+            );
         });
     }
 }

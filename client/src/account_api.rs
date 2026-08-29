@@ -11,7 +11,7 @@ use crate::cert_trust;
 
 pub use mag_core::types::api::CharacterSummary;
 use mag_core::types::api::{
-    CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
+    CharacterErrorResponse, CreateAccountRequest, CreateAccountResponse, CreateCharacterRequest,
     CreateGameLoginTicketRequest, CreateGameLoginTicketResponse, GetCharactersResponse,
     LoginRequest, LoginResponse, NetworkTestProbeRequest, NetworkTestProbeResponse,
     NetworkTestSummary, NetworkTestSummaryRequest, NetworkTestSummaryResponse,
@@ -208,6 +208,20 @@ pub fn create_character(
             .json()
             .map_err(|err| format!("Failed to parse character creation response: {err}"))?;
         return Ok(body);
+    }
+
+    // The API reports the exact validation failure (name/description rules, class
+    // restrictions, character limit) in the error envelope. Prefer it over the
+    // generic status-code text so players know what to fix.
+    let api_error = resp
+        .json::<CharacterErrorResponse>()
+        .ok()
+        .map(|body| body.error)
+        .map(|error| error.trim().to_owned())
+        .filter(|error| !error.is_empty());
+
+    if let Some(error) = api_error {
+        return Err(error);
     }
 
     let message = match status {

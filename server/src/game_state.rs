@@ -17,6 +17,28 @@ pub struct ElementSwitchState {
     pub expires_at_tick: i32,
 }
 
+/// Cached talent-derived percent bonuses that are too expensive to recompute
+/// every tick from the packed talent bits (unlike the attribute/skill/armor
+/// bonuses, which are cheap and recomputed directly in `really_update_char`).
+///
+/// Refreshed once per `really_update_char` call and read by `do_regenerate`,
+/// spell resistance checks, and physical attack rolls.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TalentRuntimeBonuses {
+    /// HP regeneration rate bonus from talents, in percent.
+    pub hp_regen_percent: i32,
+    /// Endurance regeneration rate bonus from talents, in percent.
+    pub end_regen_percent: i32,
+    /// Mana regeneration rate bonus from talents, in percent.
+    pub mana_regen_percent: i32,
+    /// Spell penetration bonus from talents, in percent.
+    pub spell_penetration_percent: i32,
+    /// Critical strike chance from talents, out of 100.
+    pub crit_chance_percent: i32,
+    /// Critical strike damage multiplier from talents, in percent.
+    pub crit_damage_percent: i32,
+}
+
 /// Unified game state container for all server-side world data.
 ///
 /// `GameState` consolidates data previously spread across three global
@@ -117,8 +139,17 @@ pub struct GameState {
 
     /// Runtime-only landed primary-hit counters for talent passives.
     pub talent_primary_hit_counts: Vec<u8>,
+    /// Runtime-only cache of talent-derived regen/penetration/crit percent
+    /// bonuses, refreshed by `really_update_char`.
+    pub talent_runtime: Vec<TalentRuntimeBonuses>,
     /// Runtime-only last-element state for the Harakim Element Switching passive.
     pub element_switch_states: HashMap<usize, ElementSwitchState>,
+    /// Runtime-only per-area weather state, parallel to
+    /// `core::weather_areas::AREA_WEATHER_PROFILES`.
+    pub area_weather: Vec<crate::state::weather::AreaWeatherRuntime>,
+
+    /// Runtime-only active aura sources keyed by character index.
+    pub aura_states: HashMap<usize, crate::aura::AuraState>,
 
     // -- Labyrinth 9 --
     pub lab9: crate::lab9::Labyrinth9,
@@ -147,6 +178,7 @@ pub struct GameState {
 
 impl GameState {
     const TIMER_MIGRATION_KEY: &'static str = "game:meta:timers_migrated_v1";
+    const COMPLETION_SCRATCH_MIGRATION_KEY: &'static str = "game:meta:completion_future3_reset_v1";
 
     /// Normalize MOTD text for safe client display.
     ///
@@ -220,7 +252,13 @@ impl GameState {
             is_monster: false,
             penta_needed: 5,
             talent_primary_hit_counts: vec![0; core::constants::MAXCHARS],
+            talent_runtime: vec![TalentRuntimeBonuses::default(); core::constants::MAXCHARS],
             element_switch_states: HashMap::new(),
+            area_weather: vec![
+                crate::state::weather::AreaWeatherRuntime::default();
+                core::weather_areas::AREA_WEATHER_PROFILES.len()
+            ],
+            aura_states: HashMap::new(),
             // Labyrinth 9
             lab9: crate::lab9::Labyrinth9::new(),
             // Pathfinding
@@ -295,6 +333,7 @@ impl GameState {
         let mut data = store::load_all(&mut con)?;
 
         self.migrate_legacy_timer_data_once(&mut con, &mut data)?;
+        self.migrate_completion_scratch_once(&mut con, &mut data)?;
 
         self.map = data.map;
         self.items = data.items;
@@ -362,6 +401,84 @@ impl GameState {
         );
 
         Ok(())
+    }
+
+    /// Performs a one-time migration that zeroes `Character::future3[0]` and
+    /// `future3[1]`, the two slots newly repurposed for Journal completion
+    /// tracking (pentagram solve count / quest completion bitset).
+    ///
+    /// `future3` was undocumented legacy expansion space in the original C
+    /// server and was never guaranteed to contain zeroed bytes for
+    /// already-persisted characters, so existing saves can carry meaningless
+    /// leftover values in these slots. This migration clears them exactly
+    /// once so completion tracking starts from a known-good baseline.
+    ///
+    /// # Arguments
+    ///
+    /// * `con` - Open KeyDB connection used to read/write migration marker.
+    /// * `data` - Loaded snapshot data that may need scratch-slot clearing.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` if migration is complete or already applied.
+    /// * `Err(String)` if marker read/write fails.
+    fn migrate_completion_scratch_once(
+        &self,
+        con: &mut redis::Connection,
+        data: &mut store::GameData,
+    ) -> Result<(), String> {
+        let already_migrated: bool =
+            con.exists(Self::COMPLETION_SCRATCH_MIGRATION_KEY)
+                .map_err(|e| {
+                    format!(
+                        "KeyDB EXISTS {}: {e}",
+                        Self::COMPLETION_SCRATCH_MIGRATION_KEY
+                    )
+                })?;
+
+        if already_migrated {
+            return Ok(());
+        }
+
+        let changed = Self::clear_completion_scratch_slots(&mut data.characters);
+
+        con.set::<_, _, ()>(Self::COMPLETION_SCRATCH_MIGRATION_KEY, 1)
+            .map_err(|e| format!("KeyDB SET {}: {e}", Self::COMPLETION_SCRATCH_MIGRATION_KEY))?;
+
+        log::info!(
+            "Applied completion-scratch migration v1: cleared future3[0..2] on {} characters",
+            changed
+        );
+
+        Ok(())
+    }
+
+    /// Zeroes `future3[0]` and `future3[1]` on every non-empty character that
+    /// has a nonzero value in either slot.
+    ///
+    /// # Arguments
+    ///
+    /// * `characters` - Character slots to clear in-place.
+    ///
+    /// # Returns
+    ///
+    /// * Number of characters that had a nonzero value cleared.
+    pub(crate) fn clear_completion_scratch_slots(
+        characters: &mut [core::types::Character],
+    ) -> usize {
+        let mut changed = 0usize;
+        for character in characters.iter_mut() {
+            if character.used == USE_EMPTY {
+                continue;
+            }
+            for i in 0..character.future3.len() {
+                if character.future3[i] != 0 {
+                    character.future3[i] = 0;
+                    changed += 1;
+                }
+            }
+        }
+        changed
     }
 
     /// Normalizes runtime item timers that represent active countdown-based spell effects.
@@ -486,6 +603,52 @@ impl GameState {
         )
     }
 
+    /// Mirror an online character's selection metadata into its API-side record.
+    ///
+    /// The character-selection screen renders class, sex, portrait sprite, and
+    /// rank sigil from the `character:{id}` hash owned by the API service, but
+    /// gameplay holds the authoritative values. They therefore have to be pushed
+    /// back whenever they change (rank-up, class rebuild) and again on
+    /// logout/shutdown, otherwise the selection screen keeps showing a stale rank.
+    ///
+    /// Failures are logged and swallowed: selection metadata is cosmetic and must
+    /// never break the tick loop or a logout.
+    ///
+    /// # Arguments
+    ///
+    /// * `cn` - Live gameplay character slot whose metadata should be mirrored.
+    pub(crate) fn sync_character_selection_metadata(&self, cn: usize) {
+        if !core::types::Character::is_sane_character(cn) {
+            return;
+        }
+
+        let player_id = self.characters[cn].player;
+        if player_id <= 0 {
+            return;
+        }
+
+        let player_id = player_id as usize;
+        if player_id >= core::constants::MAXPLAYER || player_id >= self.players.len() {
+            return;
+        }
+
+        let api_character_id = self.players[player_id].api_character_id;
+        if api_character_id == 0 {
+            return;
+        }
+
+        if let Err(err) =
+            keydb::sync_character_selection_metadata(api_character_id, &self.characters[cn])
+        {
+            log::warn!(
+                "Failed to sync selection metadata for live character {} (api id {}): {}",
+                cn,
+                api_character_id,
+                err
+            );
+        }
+    }
+
     /// Perform a clean shutdown of the game state by clearing the dirty flag
     /// and saving all data to KeyDB.
     pub fn shutdown(&mut self) {
@@ -596,5 +759,30 @@ mod tests {
         assert_eq!(changed, 1);
         assert_eq!(templates[1].duration, 360);
         assert_eq!(templates[2].duration, 180);
+    }
+
+    #[test]
+    fn clear_completion_scratch_slots_zeroes_nonzero_used_characters_only() {
+        let mut characters = vec![core::types::Character::default(); 3];
+
+        characters[0].used = core::constants::USE_ACTIVE;
+        characters[0].future3[0] = 83_886_080;
+        characters[0].future3[1] = 42;
+
+        // Empty slot with garbage should be left untouched (nothing to migrate).
+        characters[1].future3[0] = 7;
+
+        // Used but already-zeroed character should not be counted as changed.
+        characters[2].used = core::constants::USE_ACTIVE;
+
+        let changed = GameState::clear_completion_scratch_slots(&mut characters);
+
+        // The helper returns the number of cleared *slots*, not characters.
+        // Character 0 has both future3[0] and future3[1] non-zero.
+        assert_eq!(changed, 2);
+        assert_eq!(characters[0].future3[0], 0);
+        assert_eq!(characters[0].future3[1], 0);
+        assert_eq!(characters[1].future3[0], 7);
+        assert_eq!(characters[2].future3[0], 0);
     }
 }

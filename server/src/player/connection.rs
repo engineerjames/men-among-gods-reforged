@@ -173,6 +173,12 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     // send initial talent-tree snapshot so the client can render the
     // talent panel immediately after login.
     crate::player::commands::send_set_char_talents(gs, nr);
+    crate::player::commands::send_set_char_rune_state(gs, nr);
+
+    // send initial Journal completion-data snapshot so the client can
+    // render labyrinth/pentagram/first-kill/explorer-point/quest checklists
+    // immediately after login.
+    crate::player::commands::send_set_completion_data(gs, nr);
 
     // mark active and set login date, addr, add net history
     let now = std::time::SystemTime::now()
@@ -235,6 +241,18 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
 
     // update client about char
     gs.do_update_char(cn);
+
+    // Recompute derived stats (skills, attributes, light emission, etc.)
+    // synchronously so the very first `plr_getmap_complete` call later this
+    // same tick sees fully-populated values. Without this, effective
+    // perception (`skill[SK_PERCEPT][5]`) stays at its zeroed default until
+    // the deferred `CharacterFlags::Update` processing runs in the
+    // "character.main_tick" pass — which happens *after* map/visibility data
+    // is already sent for this tick. That made every tile except the
+    // character's own appear pitch black (`do_character_calculate_light`
+    // multiplies by the not-yet-computed perception skill) until the next
+    // recompute was triggered by movement.
+    gs.really_update_char(cn);
 
     log::info!("Login successful");
 
@@ -502,6 +520,9 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
     };
     let valid_character = character_id > 0 && character_id < core::constants::MAXCHARS;
 
+    // Remove any active aura source so it stops pulsing after logout.
+    crate::aura::logic::remove_aura(gs, character_id);
+
     if valid_character && reason != LogoutReason::Shutdown {
         let character_name = gs.characters[character_id].get_name().to_owned();
         log::debug!(
@@ -570,7 +591,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
                     damage_message.as_str(),
                 );
 
-                gs.characters[character_id].a_hp -= i32::from(hp5 * 800);
+                gs.characters[character_id].a_hp -= i32::from(hp5) * 800;
                 let a_hp = gs.characters[character_id].a_hp;
 
                 if a_hp < 500 {
@@ -640,10 +661,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
             gs.remove_enemy(character_id);
 
             // Handle lag scroll
-            if reason == LogoutReason::IdleTooLong
-                || reason == LogoutReason::Shutdown
-                || reason == LogoutReason::Unknown
-            {
+            if reason == LogoutReason::Unknown {
                 let ch = gs.characters[character_id];
                 let (is_close_to_temple, map_index) = (
                     ch.is_close_to_temple(),
@@ -658,7 +676,7 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
 
                 if should_give {
                     log::info!(
-                        "Giving lag scroll to character '{}' for idle/logout too long.",
+                        "Giving lag scroll to character '{}' after an unexpected disconnect.",
                         gs.characters[character_id].get_name(),
                     );
 
@@ -681,6 +699,13 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
                     }
                 }
             }
+
+            // Mirror the final gameplay state (rank sigil, sprite, class/sex)
+            // into the API-side character record before the character slot is
+            // reset. This must happen before `character.player` is cleared and
+            // before `player_exit` drops `api_character_id`, and it also covers
+            // the server-shutdown path, which logs every player out.
+            gs.sync_character_selection_metadata(character_id);
 
             // Reset character state
             {
@@ -1070,18 +1095,6 @@ mod tests {
         with_test_gs(|gs| {
             let (cn, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
-            gs.globals.ticker = 77;
-
-            plr_logout(gs, cn, nr, LogoutReason::Unknown);
-
-            assert_eq!(gs.players[nr].state, ST_EXIT);
-            assert_eq!(gs.players[nr].lasttick, 77);
-            assert_eq!(gs.characters[cn].player, 0);
-        });
-
-        with_test_gs(|gs| {
-            let (cn, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
             gs.globals.ticker = 1234;
             gs.item_templates[core::constants::IT_LAGSCROLL as usize].used = USE_ACTIVE;
             setup_existing_character(gs, cn, nr as i32, USE_ACTIVE, "Laggy");
@@ -1094,7 +1107,46 @@ mod tests {
 
             assert_eq!(gs.players[nr].state, ST_EXIT);
             assert_eq!(gs.characters[cn].used, USE_NONACTIVE);
+            assert!(!gs.characters[cn].item.iter().any(|&item| item != 0
+                && gs.items[item as usize].temp == core::constants::IT_LAGSCROLL as u16));
+        });
+    }
+
+    #[test]
+    fn unexpected_disconnect_gives_lag_scroll() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.globals.ticker = 1234;
+            gs.item_templates[core::constants::IT_LAGSCROLL as usize].used = USE_ACTIVE;
+            setup_existing_character(gs, cn, nr as i32, USE_ACTIVE, "Laggy");
+            gs.characters[cn].flags = CharacterFlags::Player.bits();
+            gs.characters[cn].temple_x = 0;
+            gs.characters[cn].temple_y = 0;
+
+            plr_logout(gs, cn, nr, LogoutReason::Unknown);
+
             assert!(gs.characters[cn].item.iter().any(|&item| item != 0
+                && gs.items[item as usize].temp == core::constants::IT_LAGSCROLL as u16));
+        });
+    }
+
+    #[test]
+    fn explicit_exit_does_not_give_lag_scroll() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            attach_test_socket(gs, nr);
+            gs.item_templates[core::constants::IT_LAGSCROLL as usize].used = USE_ACTIVE;
+            setup_existing_character(gs, cn, nr as i32, USE_ACTIVE, "Quitter");
+            gs.characters[cn].flags = CharacterFlags::Player.bits();
+            gs.characters[cn].temple_x = 0;
+            gs.characters[cn].temple_y = 0;
+            gs.characters[cn].hp[5] = 100;
+            gs.characters[cn].a_hp = 100_000;
+
+            plr_logout(gs, cn, nr, LogoutReason::Exit);
+
+            assert!(!gs.characters[cn].item.iter().any(|&item| item != 0
                 && gs.items[item as usize].temp == core::constants::IT_LAGSCROLL as u16));
         });
     }

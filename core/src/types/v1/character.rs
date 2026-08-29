@@ -182,7 +182,7 @@ impl From<Character> for super::super::Character {
             tavern_x: v1.tavern_x,
             tavern_y: v1.tavern_y,
             temp: v1.temp,
-            attrib: v1.attrib,
+            attrib: v1.attrib.map(|row| row.map(u16::from)),
             hp: v1.hp,
             end: v1.end,
             mana: v1.mana,
@@ -264,7 +264,7 @@ impl From<Character> for super::super::Character {
         // Copy first V1_MAX_SKILLS rows of the skill matrix; remainder
         // stays zero-initialized (newly added skill slots).
         for n in 0..V1_MAX_SKILLS {
-            out.skill[n] = v1.skill[n];
+            out.skill[n] = v1.skill[n].map(u16::from);
         }
         out
     }

@@ -1,4 +1,5 @@
 mod area;
+mod aura;
 mod driver;
 mod effect;
 mod game_state;
@@ -16,6 +17,7 @@ mod path_finding;
 mod player;
 mod points;
 mod populate;
+mod quest_completion;
 mod server;
 mod state;
 mod talk;

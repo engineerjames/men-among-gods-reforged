@@ -2,12 +2,16 @@ use sdl2::{pixels::Color, render::Canvas, video::Window};
 
 use mag_core::constants::{
     CMAGIC, DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, EMAGIC, GMAGIC, INJURED, INJURED1,
-    INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, MF_ARENA, MF_BANK, MF_DEATHTRAP, MF_INDOORS,
-    MF_MOVEBLOCK, MF_NOEXPIRE, MF_NOLAG, MF_NOMAGIC, MF_NOMONST, MF_SIGHTBLOCK, MF_TAVERN,
-    MF_UWATER, SPR_EMPTY, TILEX, TILEY, TOMB,
+    INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, SPR_EMPTY, TILEX, TILEY, TOMB,
 };
 
+<<<<<<< HEAD
 use crate::{constants, font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
+=======
+use crate::{
+    font_cache, gfx_cache::GraphicsCache, player_state::PlayerState, types::map::SUBPIXEL_UNIT,
+};
+>>>>>>> origin/main
 
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
@@ -39,6 +43,7 @@ impl GameScene {
     const LEFFECT: i32 = 120;
 
     /// Draw a single world sprite at `(tile_x, tile_y)` with camera and sub-tile offsets.
+    /// Camera and sprite offsets are in [`SUBPIXEL_UNIT`] units.
     /// Applies darkness modulation from the tile `light` value.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_world_sprite(
@@ -47,10 +52,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff_sub: i32,
+        cam_yoff_sub: i32,
+        xoff_sub: i32,
+        yoff_sub: i32,
         light: u8,
     ) -> Result<(), String> {
         if sprite_id <= 0 {
@@ -89,6 +94,7 @@ impl GameScene {
     }
 
     /// Draw a sprite with an additive highlight (used for hover effects).
+    /// Camera and sprite offsets are in [`SUBPIXEL_UNIT`] units.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_world_sprite_highlight(
         canvas: &mut Canvas<Window>,
@@ -96,10 +102,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff_sub: i32,
+        cam_yoff_sub: i32,
+        xoff_sub: i32,
+        yoff_sub: i32,
         alpha: u8,
     ) -> Result<(), String> {
         if sprite_id <= 0 || sprite_id as u16 == SPR_EMPTY {
@@ -124,6 +130,7 @@ impl GameScene {
     }
 
     /// Draw a sprite highlight with a custom additive tint color.
+    /// Camera and sprite offsets are in [`SUBPIXEL_UNIT`] units.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_world_sprite_tinted_highlight(
         canvas: &mut Canvas<Window>,
@@ -131,10 +138,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff_sub: i32,
+        cam_yoff_sub: i32,
+        xoff_sub: i32,
+        yoff_sub: i32,
         alpha: u8,
         tint: Color,
     ) -> Result<(), String> {
@@ -163,6 +170,7 @@ impl GameScene {
 
     /// Draw a darkened, vertically-flattened shadow beneath a character sprite.
     /// Ported from dd_shadow() in the original dd.c.
+    /// Camera and sprite offsets are in [`SUBPIXEL_UNIT`] units.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_shadow(
         canvas: &mut Canvas<Window>,
@@ -170,10 +178,10 @@ impl GameScene {
         sprite_id: i32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff_sub: i32,
+        cam_yoff_sub: i32,
+        xoff_sub: i32,
+        yoff_sub: i32,
     ) -> Result<(), String> {
         if sprite_id <= 0 {
             return Ok(());
@@ -226,6 +234,7 @@ impl GameScene {
     ///
     /// `alpha_mask`: bitmask of active channels (bit0=R/electric, bit1=G/green, bit2=B/cold).
     /// `strength`: intensity divider (higher = weaker glow), extracted from flag bits.
+    /// Camera and sprite offsets are in [`SUBPIXEL_UNIT`] units.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_magic_effect(
         canvas: &mut Canvas<Window>,
@@ -233,14 +242,18 @@ impl GameScene {
         strength: u32,
         tile_x: usize,
         tile_y: usize,
-        cam_xoff: i32,
-        cam_yoff: i32,
-        xoff: i32,
-        yoff: i32,
+        cam_xoff_sub: i32,
+        cam_yoff_sub: i32,
+        xoff_sub: i32,
+        yoff_sub: i32,
     ) -> Result<(), String> {
         // Isometric projection for a 2×2 tile area (64×64 pixels), matching dd_alphaeffect_magic.
-        let (ground_x, ground_y) =
-            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(
+            tile_x,
+            tile_y,
+            cam_xoff_sub + xoff_sub,
+            cam_yoff_sub + yoff_sub,
+        );
         let rx = ground_x - FLOOR_TILE_WIDTH;
         let ry = ground_y - (FLOOR_TILE_WIDTH + FLOOR_TILE_HEIGHT);
 
@@ -331,7 +344,7 @@ impl GameScene {
             return None;
         }
 
-        if self.effective_ctrl_held() || self.alt_held {
+        if self.effective_ctrl_held() || self.effective_alt_held() {
             let (sx, sy) = Self::nearest_tile_with_flag(ps, mx, my, ISCHAR)?;
             if !(3..=TILEX - 7).contains(&sx) || !(7..=TILEY - 3).contains(&sy) {
                 return None;
@@ -439,7 +452,7 @@ impl GameScene {
         let citem = ps.character_info().citem;
         let has_item = citem > 0;
 
-        if self.alt_held && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
+        if self.effective_alt_held() && Self::nearest_tile_with_flag(ps, mx, my, ISCHAR).is_some() {
             return Some("LOOK");
         }
 
@@ -492,8 +505,8 @@ impl GameScene {
         let map = ps.map();
         let ci = ps.character_info();
         let (cam_xoff_base, cam_yoff_base) = Self::camera_offsets(ps);
-        let cam_xoff = cam_xoff_base + camera_shake.0;
-        let cam_yoff = cam_yoff_base + camera_shake.1;
+        let cam_xoff = cam_xoff_base + camera_shake.0 * SUBPIXEL_UNIT;
+        let cam_yoff = cam_yoff_base + camera_shake.1 * SUBPIXEL_UNIT;
         let hover_highlight = self.resolve_hover_highlight(ps);
 
         // Pass 1: Background / terrain sprites (legacy eng_display order: y descending).
@@ -565,10 +578,8 @@ impl GameScene {
                     continue;
                 }
 
-                let (ground_x, ground_y) =
-                    Self::tile_ground_diamond_origin(x, y, cam_xoff, cam_yoff);
-                let ch_xoff = tile.obj_xoff;
-                let ch_yoff = tile.obj_yoff;
+                let ch_xoff = tile.obj_xoff_sub;
+                let ch_yoff = tile.obj_yoff_sub;
 
                 let mut obj = tile.obj1;
                 if obj > 0 {
@@ -645,7 +656,7 @@ impl GameScene {
                         cam_xoff,
                         cam_yoff,
                         ch_xoff,
-                        ch_yoff + 4,
+                        ch_yoff + 4 * SUBPIXEL_UNIT,
                     )?;
                 }
 
@@ -739,9 +750,18 @@ impl GameScene {
                     if !text.is_empty() {
                         // dd_gputtext formula (ported from engine.c + nameplates.rs):
                         // horizontally centered, shifted 64px up relative to sprite origin.
+                        // The character offset is folded into the camera offset so the
+                        // nameplate is rounded to whole pixels exactly once, in lockstep
+                        // with the character sprite it labels.
+                        let (np_ground_x, np_ground_y) = Self::tile_ground_diamond_origin(
+                            x,
+                            y,
+                            cam_xoff + ch_xoff,
+                            cam_yoff + ch_yoff,
+                        );
                         let text_len = text.len() as i32;
-                        let np_rx = ground_x - (text_len * 5 / 2) + ch_xoff;
-                        let np_ry = ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y + ch_yoff;
+                        let np_rx = np_ground_x - (text_len * 5 / 2);
+                        let np_ry = np_ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y;
                         font_cache::draw_text(
                             canvas,
                             gfx,
@@ -776,72 +796,6 @@ impl GameScene {
                 {
                     Self::draw_world_sprite(
                         canvas, gfx, 45, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-
-                if (tile.flags2 & MF_MOVEBLOCK) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 55, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_SIGHTBLOCK) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 84, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_INDOORS) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 56, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_UWATER) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 75, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOMONST) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 59, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_BANK) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 60, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_TAVERN) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 61, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOMAGIC) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 62, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_DEATHTRAP) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 73, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOLAG) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 57, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_ARENA) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 76, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & MF_NOEXPIRE) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 82, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
-                    )?;
-                }
-                if (tile.flags2 & 0x8000_0000) != 0 {
-                    Self::draw_world_sprite(
-                        canvas, gfx, 72, x, y, cam_xoff, cam_yoff, 0, 0, tile.light,
                     )?;
                 }
 

@@ -16,7 +16,6 @@ struct Destination {
 }
 
 #[derive(Clone, Copy)]
-#[allow(dead_code)] // TODO: Check usage and remove if unnecessary
 struct Riddle {
     question: &'static str,
     answer_1: &'static str,
@@ -989,8 +988,6 @@ fn lab9_check_door(gs: &mut GameState, bankno: i32) -> bool {
 }
 
 fn lab9_reset_bank(gs: &mut GameState, bankno: i32, closedoor: bool) {
-    log::info!("lab9: reset bank #{}", bankno);
-
     if bankno < 1 || bankno > core::constants::BANKS as i32 {
         log::error!("lab9_reset_bank(): panic: bad bank number {}!!", bankno);
         return;

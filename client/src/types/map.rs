@@ -1,3 +1,13 @@
+/// Number of fixed-point units per screen pixel used by the sub-tile movement
+/// offsets (`obj_xoff_sub` / `obj_yoff_sub`).
+///
+/// Movement interpolation is computed in this finer unit and only rounded down
+/// to whole pixels once, when the final screen position of a sprite is derived.
+/// Rounding each character's offset independently would make two characters
+/// that are a constant sub-pixel distance apart alternate between two pixel
+/// positions every frame.
+pub const SUBPIXEL_UNIT: i32 = 256;
+
 /// A single tile in the visible map grid, matching the original C `cmap`
 /// struct (64 bytes).
 ///
@@ -17,6 +27,7 @@ pub struct CMapTile {
     pub ch_status: u8,
     pub ch_stat_off: u8,
     pub ch_speed: u8,
+    pub ch_aspeed: u8,
     pub ch_nr: u16,
     pub ch_id: u16,
     pub ch_proz: u8,
@@ -26,10 +37,17 @@ pub struct CMapTile {
     pub obj1: i32,
     pub obj2: i32,
 
-    pub obj_xoff: i32,
-    pub obj_yoff: i32,
+    /// Horizontal sub-tile movement offset in [`SUBPIXEL_UNIT`] units.
+    pub obj_xoff_sub: i32,
+    /// Vertical sub-tile movement offset in [`SUBPIXEL_UNIT`] units.
+    pub obj_yoff_sub: i32,
     pub ovl_xoff: i32,
     pub ovl_yoff: i32,
 
     pub idle_ani: i32,
+    /// Whether the next movement render must capture cadence time from before
+    /// the current movement action began.
+    pub movement_start_pending: bool,
+    /// Number of cadence ticks inferred before the current movement began.
+    pub movement_start_lead_ticks: u8,
 }

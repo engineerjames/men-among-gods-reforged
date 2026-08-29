@@ -6,11 +6,11 @@
 //! the popup hides it without binding anything.
 
 use mag_core::skills::{
-    SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONTAGION, SK_CURSE, SK_DELIVER_DEATH, SK_DISARM,
-    SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL, SK_IDENT, SK_INNER_STRENGTH,
-    SK_LAVA_BLAST, SK_LIGHT, SK_MSHIELD, SK_PARASITE, SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL,
-    SK_REPAIR, SK_REVENANT_CONDUIT, SK_SEEING_RED, SK_STUN, SK_SUNS_BLESSING, SK_THUNDEROUS_FURY,
-    SK_WARCRY, SK_WIMPY,
+    SK_AURA_CURSE, SK_AURA_WAR_BANNER, SK_BLADE_DANCE, SK_BLAST, SK_BLESS, SK_CONTAGION, SK_CURSE,
+    SK_DELIVER_DEATH, SK_DISARM, SK_DISPEL, SK_DISTRACT, SK_ENHANCE, SK_GASH, SK_GHOST, SK_HEAL,
+    SK_ICE_STUN, SK_IDENT, SK_INNER_STRENGTH, SK_LAVA_BLAST, SK_LIGHT, SK_MSHIELD, SK_PARASITE,
+    SK_PROTECT, SK_RAINS_OF_RENEWAL, SK_RECALL, SK_REPAIR, SK_REVENANT_CONDUIT, SK_SEEING_RED,
+    SK_SOUL_REFLECTION, SK_STUN, SK_SUNS_BLESSING, SK_THUNDEROUS_FURY, SK_WARCRY, SK_WIMPY,
 };
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
@@ -76,6 +76,7 @@ pub const BINDABLE_SKILLS: &[usize] = &[
     SK_PROTECT,
     SK_ENHANCE,
     SK_STUN,
+    SK_ICE_STUN,
     SK_CURSE,
     SK_BLESS,
     SK_IDENT,
@@ -98,6 +99,9 @@ pub const BINDABLE_SKILLS: &[usize] = &[
     SK_SEEING_RED,
     SK_THUNDEROUS_FURY,
     SK_INNER_STRENGTH,
+    SK_AURA_CURSE,
+    SK_AURA_WAR_BANNER,
+    SK_SOUL_REFLECTION,
 ];
 
 // ---------------------------------------------------------------------------
@@ -193,7 +197,7 @@ impl SkillPickerPopup {
     /// * `anchor_y` - Desired top-edge Y position (clamped to screen).
     /// * `player_skills` - The player's skill array from `character_info().skill`.
     ///   Only entries where `player_skills[skill_nr][0] > 0` are displayed.
-    pub fn show(&mut self, slot: u8, anchor_x: i32, anchor_y: i32, player_skills: &[[u8; 6]]) {
+    pub fn show(&mut self, slot: u8, anchor_x: i32, anchor_y: i32, player_skills: &[[u16; 6]]) {
         self.visible = true;
         self.target_slot = slot;
         self.scroll_offset = 0;
@@ -538,8 +542,8 @@ mod tests {
     use super::*;
 
     /// Returns a skill array with every skill at level 1 (all learned).
-    fn all_skills_learned() -> [[u8; 6]; 100] {
-        [[1u8, 0, 0, 0, 0, 0]; 100]
+    fn all_skills_learned() -> [[u16; 6]; 100] {
+        [[1u16, 0, 0, 0, 0, 0]; 100]
     }
 
     #[test]
@@ -642,7 +646,7 @@ mod tests {
     #[test]
     fn show_filters_unlearned_skills() {
         let mut popup = SkillPickerPopup::new();
-        let mut skills = [[0u8; 6]; 100];
+        let mut skills = [[0u16; 6]; 100];
         skills[SK_BLAST][0] = 5;
         skills[SK_LAVA_BLAST][0] = 4;
         popup.show(0, 0, 0, &skills);
@@ -650,7 +654,7 @@ mod tests {
         assert_eq!(popup.entries[0].skill_nr, SK_BLAST);
         assert_eq!(popup.entries[1].skill_nr, SK_LAVA_BLAST);
         // Show with no learned skills — popup should have no entries.
-        popup.show(0, 0, 0, &[[0u8; 6]; 100]);
+        popup.show(0, 0, 0, &[[0u16; 6]; 100]);
         assert!(popup.entries.is_empty());
     }
 

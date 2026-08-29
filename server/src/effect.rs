@@ -18,6 +18,9 @@ impl EffectManager {
     const EFFECT_DEATH_MIST_MIDPOINT: u32 = 18; // Midpoint at frame 9 * 2
     const EFFECT_TOMBSTONE_DURATION: u32 = 58; // 29 frames * 2 ticks per frame
     const EFFECT_MAGIC_DURATION: u32 = 16; // 8 frames * 2 ticks per frame
+    /// Maximum number of times a blocked respawn slot (type 8/10) may
+    /// reschedule itself before it is abandoned instead of retried forever.
+    const MAX_RESPAWN_RETRIES: u32 = 20;
 
     /// Port of `can_drop(int m)` from `svr_effect.cpp`
     /// Checks if an item can be dropped at the given map index
@@ -141,37 +144,57 @@ impl EffectManager {
             gs.map[map_index].flags |= u64::from(duration / 2) << 40;
 
             if duration == Self::EFFECT_DEATH_MIST_MIDPOINT && co != 0 {
-                player::map::plr_map_remove(gs, co);
-
-                let m = Self::find_drop_position(gs, map_index);
-
-                if m == 0 {
-                    let temp = gs.characters[co].temp as usize;
-
-                    log::info!("Character {} could not drop grave", co);
-
-                    God::destroy_items(gs, co);
-
-                    gs.characters[co].used = USE_EMPTY;
-
-                    let flags = gs.characters[co].flags;
-                    if (flags & CharacterFlags::Respawn.bits()) != 0 {
-                        let tx = i32::from(gs.character_templates[temp].x);
-                        let ty = i32::from(gs.character_templates[temp].y);
-                        Self::fx_add_effect(
-                            gs,
-                            2,
-                            (TICKS as u32 * 60 * 5 + helpers::random_mod(TICKS as u32 * 60 * 10))
-                                as i32,
-                            tx,
-                            ty,
-                            temp as i32,
-                        );
-                    }
-                } else {
-                    Self::handle_grave_creation(gs, m, co, killer);
-                }
+                Self::finalize_death_mist(gs, map_index, co, killer);
             }
+        }
+    }
+
+    /// Removes a corpse from the map and either drops its grave or destroys it in place.
+    ///
+    /// Also used as an immediate fallback when the type-3 death-mist effect
+    /// itself fails to allocate, so a killed NPC's corpse never sits on the
+    /// map forever waiting on an effect slot that was never created.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `map_index` - Flat map index where the corpse died.
+    /// * `co` - Corpse character id.
+    /// * `killer` - Killer character id, or `0` if unknown.
+    pub(crate) fn finalize_death_mist(
+        gs: &mut GameState,
+        map_index: usize,
+        co: usize,
+        killer: i32,
+    ) {
+        player::map::plr_map_remove(gs, co);
+
+        let m = Self::find_drop_position(gs, map_index);
+
+        if m == 0 {
+            let temp = gs.characters[co].temp as usize;
+
+            log::info!("Character {} could not drop grave", co);
+
+            God::destroy_items(gs, co);
+
+            gs.characters[co].used = USE_EMPTY;
+
+            let flags = gs.characters[co].flags;
+            if (flags & CharacterFlags::Respawn.bits()) != 0 {
+                let tx = i32::from(gs.character_templates[temp].x);
+                let ty = i32::from(gs.character_templates[temp].y);
+                Self::fx_add_effect(
+                    gs,
+                    2,
+                    (TICKS as u32 * 60 * 5 + helpers::random_mod(TICKS as u32 * 60 * 10)) as i32,
+                    tx,
+                    ty,
+                    temp as i32,
+                );
+            }
+        } else {
+            Self::handle_grave_creation(gs, m, co, killer);
         }
     }
 
@@ -197,58 +220,81 @@ impl EffectManager {
             let in_id = God::create_item(gs, 170);
             if let Some(in_id) = in_id {
                 gs.items[in_id].data[0] = co as u32;
-
-                let char_data99 = gs.characters[co].data[99];
-                if char_data99 != 0 {
-                    gs.items[in_id].max_age[0] *= 4;
-                }
-
-                let description_string = {
-                    let day_suffix = match gs.globals.mdday {
-                        1 => "st",
-                        2 => "nd",
-                        3 => "rd",
-                        _ => "th",
-                    };
-
-                    let killer_name = if killer != 0 {
-                        c_string_to_str(&gs.characters[killer].reference).to_owned()
-                    } else {
-                        "unknown causes".to_owned()
-                    };
-
-                    let character_name = c_string_to_str(&gs.characters[co].reference).to_owned();
-
-                    format!(
-                        "Here rests {}, killed by {} on the {}{} day of the Year {}.",
-                        character_name,
-                        killer_name,
-                        gs.globals.mdday,
-                        day_suffix,
-                        gs.globals.mdyear
-                    )
-                };
-
-                let mut desc_bytes = [0u8; 200];
-                let bytes_to_copy = description_string.len().min(199);
-                desc_bytes[..bytes_to_copy]
-                    .copy_from_slice(&description_string.as_bytes()[..bytes_to_copy]);
-                gs.items[in_id].description = desc_bytes;
-
-                God::drop_item(gs, in_id, drop_x, drop_y);
-
-                let item_x = gs.items[in_id].x;
-                let item_y = gs.items[in_id].y;
-                gs.characters[co].x = item_x as i16;
-                gs.characters[co].y = item_y as i16;
-
-                log::info!("Grave done for character {}", co);
+                Self::finalize_tombstone_item(gs, in_id, co, killer, drop_x, drop_y);
+            } else {
+                log::warn!(
+                    "handle_effect_type_4: item table full, could not create tombstone for corpse {}; destroying items instead",
+                    co
+                );
+                Self::finalize_corpse_without_grave(gs, co);
             }
         } else {
             gs.map[map_index].flags &= !MF_GFX_TOMB;
             gs.map[map_index].flags |= u64::from(duration / 2) << 35;
         }
     }
+
+    /// Finishes populating and dropping the tombstone item for a finalized corpse.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `in_id` - Newly created tombstone item id.
+    /// * `co` - Corpse character id.
+    /// * `killer` - Killer character id, or `0` if unknown.
+    /// * `drop_x` - Map x coordinate to drop the tombstone at.
+    /// * `drop_y` - Map y coordinate to drop the tombstone at.
+    fn finalize_tombstone_item(
+        gs: &mut GameState,
+        in_id: usize,
+        co: usize,
+        killer: usize,
+        drop_x: usize,
+        drop_y: usize,
+    ) {
+        let char_data99 = gs.characters[co].data[99];
+        if char_data99 != 0 {
+            gs.items[in_id].max_age[0] *= 4;
+        }
+
+        let description_string = {
+            let day_suffix = match gs.globals.mdday {
+                1 => "st",
+                2 => "nd",
+                3 => "rd",
+                _ => "th",
+            };
+
+            let killer_name = if killer != 0 {
+                c_string_to_str(&gs.characters[killer].reference).to_owned()
+            } else {
+                "unknown causes".to_owned()
+            };
+
+            let character_name = c_string_to_str(&gs.characters[co].reference).to_owned();
+
+            format!(
+                "Here rests {}, killed by {} on the {}{} day of the Year {}.",
+                character_name, killer_name, gs.globals.mdday, day_suffix, gs.globals.mdyear
+            )
+        };
+
+        let mut desc_bytes = [0u8; 200];
+        let bytes_to_copy = description_string.len().min(199);
+        desc_bytes[..bytes_to_copy]
+            .copy_from_slice(&description_string.as_bytes()[..bytes_to_copy]);
+        gs.items[in_id].description = desc_bytes;
+
+        God::drop_item(gs, in_id, drop_x, drop_y);
+
+        let item_x = gs.items[in_id].x;
+        let item_y = gs.items[in_id].y;
+        gs.characters[co].x = item_x as i16;
+        gs.characters[co].y = item_y as i16;
+
+        log::info!("Grave done for character {}", co);
+    }
+
     /// Type 5: Evil magic
     /// Handle effect type 5: evil magic animation
     ///
@@ -345,10 +391,28 @@ impl EffectManager {
                         & CharacterFlags::Respawn.bits())
                         != 0;
 
-                    if respawn_flag {
+                    // `data[3]` tracks how many times this slot has been rescheduled
+                    // (type 8 -> 2 -> 8 ...) because the spawn tile stayed blocked.
+                    // Without a cap, a permanently-blocked tile holds this effect
+                    // slot forever.
+                    let retry_count = gs.effects[n].data[3] + 1;
+
+                    if respawn_flag && retry_count <= Self::MAX_RESPAWN_RETRIES {
+                        gs.effects[n].data[3] = retry_count;
                         gs.effects[n].effect_type = 2;
                         gs.effects[n].duration = (TICKS * 60 * 5) as u32;
                         gs.map[map_index].flags &= !MF_GFX_DEATH;
+                    } else {
+                        if respawn_flag {
+                            log::warn!(
+                                "handle_effect_type_8: giving up on respawn for template {} at ({},{}) after {} retries; tile stayed blocked",
+                                char_template_idx,
+                                gs.effects[n].data[0],
+                                gs.effects[n].data[1],
+                                retry_count - 1,
+                            );
+                        }
+                        gs.effects[n].used = USE_EMPTY;
                     }
                 }
             }
@@ -378,12 +442,19 @@ impl EffectManager {
             gs.map[map_index].it = 0;
 
             let spawn_template = gs.effects[n].data[1];
-            if spawn_template != 0
-                && let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false)
-            {
-                God::drop_char(gs, cn, x as usize, y as usize);
-                gs.characters[cn].dir = DX_RIGHTUP;
-                player::commands::plr_reset_status(gs, cn);
+            if spawn_template != 0 {
+                if let Some(cn) = populate::pop_create_char(gs, spawn_template as usize, false) {
+                    God::drop_char(gs, cn, x as usize, y as usize);
+                    gs.characters[cn].dir = DX_RIGHTUP;
+                    player::commands::plr_reset_status(gs, cn);
+                } else {
+                    log::warn!(
+                        "handle_effect_type_9: failed to spawn monster (template {}) at ({},{})",
+                        spawn_template,
+                        x,
+                        y
+                    );
+                }
             }
 
             gs.effects[n].used = USE_EMPTY;
@@ -405,9 +476,25 @@ impl EffectManager {
             let drop_y = gs.effects[n].data[1] as usize;
             let map_index = drop_x + drop_y * SERVER_MAPX as usize;
             let item_template = gs.effects[n].data[2] as usize;
+            // `data[3]` tracks retries so a permanently-blocked/beamed tile
+            // (or a full item table) doesn't hold this slot forever.
+            let retry_count = gs.effects[n].data[3];
+
+            if retry_count >= Self::MAX_RESPAWN_RETRIES {
+                log::warn!(
+                    "handle_effect_type_10: giving up on object respawn (template {}) at ({},{}) after {} retries",
+                    item_template,
+                    drop_x,
+                    drop_y,
+                    retry_count,
+                );
+                gs.effects[n].used = USE_EMPTY;
+                return;
+            }
 
             // Check if object isn't allowed to respawn (supporting beams for mine)
             if Self::check_surrounding_beams(gs, map_index) {
+                gs.effects[n].data[3] = retry_count + 1;
                 gs.effects[n].duration = (TICKS * 60 * 15) as u32;
                 return;
             }
@@ -421,6 +508,7 @@ impl EffectManager {
                 let drop_success = God::drop_item(gs, in_id, drop_x, drop_y);
 
                 if !drop_success {
+                    gs.effects[n].data[3] = retry_count + 1;
                     gs.effects[n].duration = (TICKS * 60) as u32;
                     gs.items[in_id].used = USE_EMPTY;
                     gs.map[map_index].it = in2;
@@ -431,6 +519,17 @@ impl EffectManager {
                     }
                     gs.reset_go(drop_x as i32, drop_y as i32);
                 }
+            } else {
+                log::warn!(
+                    "handle_effect_type_10: item table full, could not respawn object (template {}) at ({},{}); retry {}",
+                    item_template,
+                    drop_x,
+                    drop_y,
+                    retry_count + 1,
+                );
+                gs.effects[n].data[3] = retry_count + 1;
+                gs.effects[n].duration = (TICKS * 60) as u32;
+                gs.map[map_index].it = in2;
             }
         }
     }
@@ -588,8 +687,6 @@ impl EffectManager {
         let has_gold = ch.gold != 0;
 
         if has_items || has_gold {
-            gs.map[map_index].flags |= u64::from(MF_MOVEBLOCK);
-
             let fn_idx = Self::fx_add_effect(
                 gs,
                 4,
@@ -600,47 +697,68 @@ impl EffectManager {
             );
 
             if let Some(fn_idx) = fn_idx {
+                // Only block the tile once the tombstone effect that will
+                // eventually clear it has actually been scheduled.
+                gs.map[map_index].flags |= u64::from(MF_MOVEBLOCK);
                 gs.effects[fn_idx].data[3] = killer_cn as u32;
+            } else {
+                log::warn!(
+                    "handle_grave_creation: effect table full, could not schedule tombstone for corpse {}; destroying items instead",
+                    co
+                );
+                Self::finalize_corpse_without_grave(gs, co);
             }
         } else {
-            let temp = gs.characters[co].temp as usize;
+            Self::finalize_corpse_without_grave(gs, co);
+        }
+    }
 
-            God::destroy_items(gs, co);
+    /// Destroys a corpse's items and either frees or reschedules its respawn.
+    ///
+    /// Used both when a corpse has nothing worth a grave, and as the
+    /// fallback when a grave/tombstone effect fails to schedule.
+    ///
+    /// # Arguments
+    ///
+    /// * `gs` - Active game state used by this function.
+    /// * `co` - Corpse character id.
+    fn finalize_corpse_without_grave(gs: &mut GameState, co: usize) {
+        let temp = gs.characters[co].temp as usize;
 
-            gs.characters[co].used = USE_EMPTY;
+        God::destroy_items(gs, co);
 
-            let co_flags = gs.characters[co].flags;
-            let co_name = gs.characters[co].get_name().to_owned();
+        gs.characters[co].used = USE_EMPTY;
 
-            if temp != 0 && (co_flags & CharacterFlags::Respawn.bits()) != 0 {
-                let tx = i32::from(gs.character_templates[temp].x);
-                let ty = i32::from(gs.character_templates[temp].y);
+        let co_flags = gs.characters[co].flags;
+        let co_name = gs.characters[co].get_name().to_owned();
 
-                if temp == 189 || temp == 561 {
-                    Self::fx_add_effect(
-                        gs,
-                        2,
-                        (TICKS as u32 * 60 * 20 + helpers::random_mod(TICKS as u32 * 60 * 5))
-                            as i32,
-                        tx,
-                        ty,
-                        temp as i32,
-                    );
-                } else {
-                    Self::fx_add_effect(
-                        gs,
-                        2,
-                        (TICKS as u32 * 60 * 4 + helpers::random_mod(TICKS as u32 * 60)) as i32,
-                        tx,
-                        ty,
-                        temp as i32,
-                    );
-                }
+        if temp != 0 && (co_flags & CharacterFlags::Respawn.bits()) != 0 {
+            let tx = i32::from(gs.character_templates[temp].x);
+            let ty = i32::from(gs.character_templates[temp].y);
 
-                log::info!("Respawn {} ({}): YES", co, co_name);
+            if temp == 189 || temp == 561 {
+                Self::fx_add_effect(
+                    gs,
+                    2,
+                    (TICKS as u32 * 60 * 20 + helpers::random_mod(TICKS as u32 * 60 * 5)) as i32,
+                    tx,
+                    ty,
+                    temp as i32,
+                );
             } else {
-                log::info!("Respawn {} ({}): NO", co, co_name);
+                Self::fx_add_effect(
+                    gs,
+                    2,
+                    (TICKS as u32 * 60 * 4 + helpers::random_mod(TICKS as u32 * 60)) as i32,
+                    tx,
+                    ty,
+                    temp as i32,
+                );
             }
+
+            log::info!("Respawn {} ({}): YES", co, co_name);
+        } else {
+            log::info!("Respawn {} ({}): NO", co, co_name);
         }
     }
 
@@ -695,6 +813,7 @@ impl EffectManager {
 mod tests {
     use super::*;
     use crate::test_helpers::with_test_gs;
+    use core::constants::MAXITEM;
 
     #[test]
     fn visual_only_death_mist_skips_grave_creation_and_clears_at_expiry() {
@@ -750,6 +869,101 @@ mod tests {
             assert!(gs.effects.iter().any(|effect| {
                 effect.used == USE_ACTIVE && effect.effect_type == 4 && effect.data[2] == co as u32
             }));
+        });
+    }
+
+    /// Regression test: `handle_grave_creation` used to flip `MF_MOVEBLOCK`
+    /// before checking whether the tombstone effect actually got scheduled,
+    /// so an exhausted effect table left the tile permanently blocked.
+    #[test]
+    fn grave_creation_cleans_up_corpse_when_effect_table_is_full() {
+        with_test_gs(|gs| {
+            let co = 2;
+            let x = 10;
+            let y = 10;
+            let map_index = x + y * SERVER_MAPX as usize;
+            gs.characters[co].used = USE_ACTIVE;
+            gs.characters[co].gold = 100; // would normally warrant a grave
+
+            for effect in &mut gs.effects[1..MAXEFFECT] {
+                effect.used = USE_ACTIVE;
+            }
+
+            EffectManager::handle_grave_creation(gs, map_index, co, 0);
+
+            assert_eq!(gs.map[map_index].flags & u64::from(MF_MOVEBLOCK), 0);
+            assert_eq!(gs.characters[co].used, USE_EMPTY);
+        });
+    }
+
+    /// Regression test: `handle_effect_type_4` used to leave the corpse
+    /// character `used == USE_ACTIVE` forever when the item table was full,
+    /// since there was no `else` branch on `God::create_item` failure.
+    #[test]
+    fn tombstone_finalize_cleans_up_corpse_when_item_table_is_full() {
+        with_test_gs(|gs| {
+            let co = 2;
+            let x = 10;
+            let y = 10;
+            gs.characters[co].used = USE_ACTIVE;
+            gs.characters[co].flags = CharacterFlags::Body.bits();
+            gs.characters[co].x = x as i16;
+            gs.characters[co].y = y as i16;
+
+            for item in &mut gs.items[1..MAXITEM] {
+                item.used = USE_ACTIVE;
+            }
+
+            let effect_id = EffectManager::fx_add_effect(gs, 4, 0, x, y, co as i32)
+                .expect("tombstone effect slot");
+            gs.effects[effect_id].duration = EffectManager::EFFECT_TOMBSTONE_DURATION - 1;
+
+            EffectManager::handle_effect_type_4(gs, effect_id);
+
+            assert_eq!(gs.effects[effect_id].used, USE_EMPTY);
+            assert_eq!(gs.characters[co].used, USE_EMPTY);
+        });
+    }
+
+    /// Regression test: the type-8 respawn mist used to reschedule itself
+    /// (type 8 -> 2 -> 8 ...) forever when the spawn tile stayed blocked,
+    /// holding its effect slot indefinitely.
+    #[test]
+    fn respawn_mist_gives_up_after_max_retries_when_tile_stays_blocked() {
+        with_test_gs(|gs| {
+            let template_idx = 5;
+            gs.character_templates[template_idx].flags = CharacterFlags::Respawn.bits();
+
+            // Force `pop_create_char` to fail every time (no free character slot).
+            for character in &mut gs.characters[1..core::constants::MAXCHARS] {
+                character.used = USE_ACTIVE;
+            }
+
+            let effect_id = EffectManager::fx_add_effect(gs, 8, 0, 10, 10, template_idx as i32)
+                .expect("respawn mist effect slot");
+            gs.effects[effect_id].data[3] = EffectManager::MAX_RESPAWN_RETRIES;
+            gs.effects[effect_id].duration = EffectManager::EFFECT_DEATH_MIST_MIDPOINT - 1;
+
+            EffectManager::handle_effect_type_8(gs, effect_id);
+
+            assert_eq!(gs.effects[effect_id].used, USE_EMPTY);
+        });
+    }
+
+    /// Regression test: the type-10 object respawn used to reschedule
+    /// itself forever (beam-blocked tile, or a full item table retried every
+    /// tick) instead of giving up after enough retries.
+    #[test]
+    fn respawn_object_gives_up_after_max_retries() {
+        with_test_gs(|gs| {
+            let effect_id = EffectManager::fx_add_effect(gs, 10, 0, 10, 10, 999)
+                .expect("respawn object effect slot");
+            gs.effects[effect_id].data[3] = EffectManager::MAX_RESPAWN_RETRIES;
+            gs.effects[effect_id].duration = 0;
+
+            EffectManager::handle_effect_type_10(gs, effect_id);
+
+            assert_eq!(gs.effects[effect_id].used, USE_EMPTY);
         });
     }
 }

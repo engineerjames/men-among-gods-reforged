@@ -53,9 +53,13 @@ impl Ord for Node {
 }
 
 /// Tracks bad target locations that have recently failed pathfinding
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct BadTarget {
     tick: u32,
+    /// Movement ruleset (`mapblock`) the failure was recorded under, so a
+    /// failure for one caller's ruleset (e.g. monster-only `MF_NOMONST`)
+    /// doesn't spuriously deny a different caller's request to the same tile.
+    mapblock: u64,
 }
 
 /// Pathfinder state
@@ -93,7 +97,7 @@ impl PathFinder {
             open_set: BinaryHeap::with_capacity(MAX_NODES),
             visited: vec![false; MAX_NODES],
             touched_visited: Vec::with_capacity(MAX_NODES),
-            bad_targets: vec![BadTarget { tick: 0 }; map_size],
+            bad_targets: vec![BadTarget::default(); map_size],
             failed: false,
         }
     }
@@ -118,16 +122,20 @@ impl PathFinder {
         self.failed = false;
     }
 
-    /// Check if a target location is marked as bad
-    fn is_bad_target(&self, x: i16, y: i16, current_tick: u32) -> bool {
+    /// Check if a target location is marked as bad for the given movement ruleset
+    fn is_bad_target(&self, x: i16, y: i16, mapblock: u64, current_tick: u32) -> bool {
         let idx = (i32::from(x) + i32::from(y) * SERVER_MAPX) as usize;
-        self.bad_targets[idx].tick > current_tick
+        let entry = &self.bad_targets[idx];
+        entry.tick > current_tick && entry.mapblock == mapblock
     }
 
-    /// Mark a target location as bad
-    fn add_bad_target(&mut self, x: i16, y: i16, current_tick: u32) {
+    /// Mark a target location as bad for the given movement ruleset
+    fn add_bad_target(&mut self, x: i16, y: i16, mapblock: u64, current_tick: u32) {
         let idx = (i32::from(x) + i32::from(y) * SERVER_MAPX) as usize;
-        self.bad_targets[idx].tick = current_tick + 1;
+        self.bad_targets[idx] = BadTarget {
+            tick: current_tick + 1,
+            mapblock,
+        };
     }
 
     /// Calculate heuristic cost from (fx, fy) to target
@@ -610,11 +618,6 @@ impl PathFinder {
             return None;
         }
 
-        // Check if target is marked as bad
-        if self.is_bad_target(x1, y1, current_tick) {
-            return None;
-        }
-
         // Determine movement blocking flags
         let mapblock = if (character.kindred as u32 & traits::KIN_MONSTER) != 0
             && (character.flags & (CharacterFlags::Usurp.bits() | CharacterFlags::Thrall.bits()))
@@ -633,6 +636,11 @@ impl PathFinder {
         } else {
             mapblock
         };
+
+        // Check if target is marked as bad (scoped to this caller's movement ruleset)
+        if self.is_bad_target(x1, y1, mapblock, current_tick) {
+            return None;
+        }
 
         // Check if target is passable (for exact target mode)
         if flag == 0 {
@@ -684,7 +692,7 @@ impl PathFinder {
 
         // Mark as bad target if failed
         if result.is_none() {
-            self.add_bad_target(x1, y1, current_tick);
+            self.add_bad_target(x1, y1, mapblock, current_tick);
         }
 
         result
@@ -837,5 +845,48 @@ mod tests {
         // the character's own edge-of-map position without requiring the
         // exact target tile to be independently validated/passable.
         let _ = pf.find_path(&character, &map, &items, 0, edge_x, edge_y, 1, 0, 0);
+    }
+
+    /// Regression test: `bad_targets` used to be keyed only by `(x, y)`, so a
+    /// failure recorded under one caller's movement ruleset (e.g. a
+    /// monster blocked by `MF_NOMONST`) spuriously denied a differently-ruled
+    /// caller's request (e.g. a player, unaffected by `MF_NOMONST`) to the
+    /// same tile for the rest of that tick.
+    #[test]
+    fn bad_target_cache_does_not_leak_across_different_movement_rulesets() {
+        let mut map = vec![core::types::Map::default(); (SERVER_MAPX * SERVER_MAPY) as usize];
+        let items = vec![core::types::Item::default(); core::constants::MAXITEM];
+
+        let tx = 20i16;
+        let ty = 20i16;
+        let target_idx = (i32::from(tx) + i32::from(ty) * SERVER_MAPX) as usize;
+        map[target_idx].flags = u64::from(MF_NOMONST);
+
+        let monster = core::types::Character {
+            x: tx - 1,
+            y: ty,
+            kindred: traits::KIN_MONSTER as i32,
+            ..Default::default()
+        };
+
+        let mut pf = PathFinder::new();
+        let monster_result = pf.find_path(&monster, &map, &items, 0, tx, ty, 0, 0, 0);
+        assert!(
+            monster_result.is_none(),
+            "monster should be blocked by MF_NOMONST"
+        );
+
+        let player = core::types::Character {
+            x: tx - 1,
+            y: ty,
+            flags: CharacterFlags::Player.bits(),
+            ..Default::default()
+        };
+
+        let player_result = pf.find_path(&player, &map, &items, 0, tx, ty, 0, 0, 0);
+        assert!(
+            player_result.is_some(),
+            "player's path request must not be poisoned by the monster's unrelated MF_NOMONST failure"
+        );
     }
 }

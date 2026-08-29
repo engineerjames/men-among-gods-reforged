@@ -126,6 +126,41 @@ impl Rank {
                 | Self::Warlord
         )
     }
+
+    /// Returns the rank corresponding to the given total points.
+    pub fn from_points(points: u32) -> Self {
+        Self::from_index(points2rank(points) as usize)
+    }
+
+    /// Returns the experience-point bonus multiplier for this rank.
+    pub const fn exp_bonus(self) -> f32 {
+        match self {
+            Self::Private => 1.0,
+            Self::PrivateFirstClass => 5.0,
+            Self::LanceCorporal => 4.5,
+            Self::Corporal => 4.5,
+            Self::Sergeant => 4.0,
+            Self::StaffSergeant => 3.5,
+            Self::MasterSergeant => 3.5,
+            Self::FirstSergeant => 3.0,
+            Self::SergeantMajor => 3.0,
+            Self::SecondLieutenant => 2.5,
+            Self::FirstLieutenant => 2.5,
+            Self::Captain => 2.0,
+            Self::Major => 2.0,
+            Self::LieutenantColonel => 1.5,
+            Self::Colonel => 1.5,
+            Self::BrigadierGeneral => 1.0,
+            Self::MajorGeneral => 1.0,
+            Self::LieutenantGeneral => 1.0,
+            Self::General => 1.0,
+            Self::FieldMarshal => 1.0,
+            Self::Knight => 1.0,
+            Self::Baron => 1.0,
+            Self::Earl => 1.0,
+            Self::Warlord => 1.0,
+        }
+    }
 }
 
 /// Full rank names matching `WHO_RANK_NAME` indices.
@@ -148,6 +183,34 @@ const RANK_NAMES: [&str; TOTAL_RANKS] = [
     "Brigadier General",
     "Major General",
     "Lieutenant General",
+    "General",
+    "Field Marshal",
+    "Knight",
+    "Baron",
+    "Earl",
+    "Warlord",
+];
+
+/// Shortened rank names matching `WHO_RANK_NAME` indices.
+const RANK_NAMES_SHORTENED: [&str; TOTAL_RANKS] = [
+    "Private",
+    "PFC",
+    "Lance Corp.",
+    "Corporal",
+    "Sergeant",
+    "Staff Serg.",
+    "Master Serg.",
+    "First Serg.",
+    "Serg. Major",
+    "Second Lieut.",
+    "First Lieut.",
+    "Captain",
+    "Major",
+    "Lieut. Colonel",
+    "Colonel",
+    "Brig. General",
+    "Major General",
+    "Lieut. General",
     "General",
     "Field Marshal",
     "Knight",
@@ -179,6 +242,39 @@ pub fn rank_name(points: u32) -> &'static str {
 /// * A static reference to all 24 rank names.
 pub fn ranks() -> &'static [&'static str; TOTAL_RANKS] {
     &RANK_NAMES
+}
+
+/// Returns the shortened rank display name for the given total points.
+///
+/// Unlike [`rank_name_shortened`], this returns the readable abbreviation
+/// (e.g. `"Lance Corp."`) rather than the compact `who` code.
+///
+/// # Arguments
+///
+/// * `points` - Total experience points.
+///
+/// # Returns
+///
+/// * The shortened rank display name.
+pub fn rank_short_name(points: u32) -> &'static str {
+    let idx = points2rank(points).clamp(0, TOTAL_RANKS as u32 - 1) as usize;
+    RANK_NAMES_SHORTENED[idx]
+}
+
+/// Returns the shortened rank display name for the given rank index.
+///
+/// Clamps out-of-range indices to the nearest valid rank.
+///
+/// # Arguments
+///
+/// * `rank_idx` - Rank index (0-based).
+///
+/// # Returns
+///
+/// * The shortened rank display name.
+pub fn rank_short_name_by_index(rank_idx: usize) -> &'static str {
+    let idx = rank_idx.clamp(0, TOTAL_RANKS - 1);
+    RANK_NAMES_SHORTENED[idx]
 }
 
 /// Returns the shortened rank abbreviation for the given total points.
@@ -216,6 +312,26 @@ const WHO_RANK_NAME: [&str; TOTAL_RANKS] = [
 pub fn rank_name_by_index(rank_idx: usize) -> &'static str {
     let idx = rank_idx.clamp(0, TOTAL_RANKS - 1);
     RANK_NAMES[idx]
+}
+
+/// Returns the rank that awards the talent point for a tree layer.
+///
+/// Talent layers are one-based and correspond in order to the twelve ranks
+/// whose promotion awards a talent point.
+///
+/// # Arguments
+///
+/// * `layer` - One-based talent-tree layer in `1..=12`.
+///
+/// # Returns
+///
+/// * The rank associated with the layer, or `None` for an invalid layer.
+pub const fn talent_rank_for_layer(layer: u8) -> Option<Rank> {
+    if layer == 0 || layer > 12 {
+        return None;
+    }
+
+    Some(Rank::from_index(layer as usize * 2 - 1))
 }
 
 /// Counts talent points awarded when advancing between rank indices.
@@ -323,7 +439,8 @@ pub fn rank_progress(points: u32) -> f64 {
 mod tests {
     use super::{
         RANK_NAMES, RANK_THRESHOLDS, Rank, TOTAL_RANKS, points2rank, rank_name, rank_name_by_index,
-        rank_name_shortened, rank_progress, ranks, talent_points_awarded_between,
+        rank_name_shortened, rank_progress, rank_short_name, rank_short_name_by_index, ranks,
+        talent_points_awarded_between, talent_rank_for_layer,
     };
 
     #[test]
@@ -408,6 +525,21 @@ mod tests {
     }
 
     #[test]
+    fn rank_short_name_matches_known_values() {
+        assert_eq!(rank_short_name(0), "Private");
+        assert_eq!(rank_short_name(50), "PFC");
+        assert_eq!(rank_short_name(u32::MAX), "Warlord");
+    }
+
+    #[test]
+    fn rank_short_name_by_index_clamps_out_of_range() {
+        assert_eq!(rank_short_name_by_index(0), "Private");
+        assert_eq!(rank_short_name_by_index(2), "Lance Corp.");
+        assert_eq!(rank_short_name_by_index(23), "Warlord");
+        assert_eq!(rank_short_name_by_index(999), "Warlord");
+    }
+
+    #[test]
     fn rank_from_index_clamps_to_warlord() {
         assert_eq!(Rank::from_index(0), Rank::Private);
         assert_eq!(Rank::from_index(1), Rank::PrivateFirstClass);
@@ -438,6 +570,37 @@ mod tests {
                 Rank::Warlord.index(),
             ]
         );
+    }
+
+    #[test]
+    fn talent_layers_map_to_talent_point_ranks() {
+        let expected = [
+            Rank::PrivateFirstClass,
+            Rank::Corporal,
+            Rank::StaffSergeant,
+            Rank::FirstSergeant,
+            Rank::SecondLieutenant,
+            Rank::Captain,
+            Rank::LieutenantColonel,
+            Rank::BrigadierGeneral,
+            Rank::LieutenantGeneral,
+            Rank::FieldMarshal,
+            Rank::Baron,
+            Rank::Warlord,
+        ];
+
+        for (index, expected_rank) in expected.into_iter().enumerate() {
+            let rank = talent_rank_for_layer(index as u8 + 1);
+            assert_eq!(rank, Some(expected_rank));
+            assert!(rank.is_some_and(Rank::awards_talent_point));
+        }
+    }
+
+    #[test]
+    fn talent_rank_rejects_invalid_layers() {
+        assert_eq!(talent_rank_for_layer(0), None);
+        assert_eq!(talent_rank_for_layer(13), None);
+        assert_eq!(talent_rank_for_layer(u8::MAX), None);
     }
 
     #[test]

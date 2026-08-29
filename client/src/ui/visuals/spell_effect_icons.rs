@@ -120,13 +120,24 @@ fn spell_meta(skill_nr: i16, sprite: i16) -> Option<SpellEffectMeta> {
         | skills::SK_SEEING_RED
         | skills::SK_INNER_STRENGTH
         | skills::SK_REVENANT_CONDUIT2
-        | skills::SK_SPECTRAL_PACT2 => SpellEffectKind::Positive,
+        | skills::SK_SPECTRAL_PACT2
+        | skills::SK_GASH
+        | skills::SK_DELIVER_DEATH
+        | skills::SK_BLADE_DANCE
+        | skills::SK_THUNDEROUS_FURY
+        | skills::SK_AURA_WAR_BANNER
+        | skills::SK_SOUL_REFLECTION => SpellEffectKind::Positive,
         skills::SK_CURSE
         | skills::SK_STUN
         | skills::SK_WIMPY
         | skills::SK_ANGUISH_LAVA
         | skills::SK_ANGUISH_EARTH
-        | skills::SK_ANGUISH_ICE => SpellEffectKind::Negative,
+        | skills::SK_ANGUISH_ICE
+        | skills::SK_PARASITE
+        | skills::SK_CONTAGION
+        | skills::SK_DISTRACT
+        | skills::SK_ICE_STUN
+        | skills::SK_AURA_CURSE => SpellEffectKind::Negative,
         // Eye potions and Potion of Golem are positive buffs.
         254 | 449 => SpellEffectKind::Positive,
         _ => return None,
@@ -716,6 +727,83 @@ mod tests {
                 .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
             assert_eq!(meta.kind, SpellEffectKind::Positive, "{name} kind");
             assert_eq!(meta.icon.name, name, "{name} icon");
+        }
+    }
+
+    #[test]
+    fn cooldown_markers_render_as_positive_and_debuffs_as_negative() {
+        let positive_cases = [
+            (skills::SK_GASH as i16, "Gash"),
+            (skills::SK_DELIVER_DEATH as i16, "Deliver Death"),
+            (skills::SK_BLADE_DANCE as i16, "Blade Dance"),
+            (skills::SK_THUNDEROUS_FURY as i16, "Thunderous Fury"),
+        ];
+        for (temp, name) in positive_cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, SpellEffectKind::Positive, "{name} kind");
+        }
+
+        let negative_cases = [
+            (skills::SK_PARASITE as i16, "Parasite"),
+            (skills::SK_CONTAGION as i16, "Contagion"),
+            (skills::SK_DISTRACT as i16, "Distract"),
+        ];
+        for (temp, name) in negative_cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, SpellEffectKind::Negative, "{name} kind");
+        }
+    }
+
+    /// Regression test: `SK_AURA_WAR_BANNER`, `SK_AURA_CURSE`, `SK_ICE_STUN`,
+    /// and `SK_SOUL_REFLECTION` all have entries in
+    /// `active_spell_effect_icon_meta` but were missing from `spell_meta`'s
+    /// `kind` match, so they silently fell through to `_ => return None` and
+    /// never rendered an icon at all.
+    #[test]
+    fn aura_and_ice_stun_and_soul_reflection_render_icons() {
+        let cases = [
+            (
+                skills::SK_AURA_WAR_BANNER as i16,
+                "War Banner",
+                SpellEffectKind::Positive,
+            ),
+            (
+                skills::SK_AURA_CURSE as i16,
+                "Aura of Despair",
+                SpellEffectKind::Negative,
+            ),
+            (
+                skills::SK_ICE_STUN as i16,
+                "Ice Stun",
+                SpellEffectKind::Negative,
+            ),
+            (
+                skills::SK_SOUL_REFLECTION as i16,
+                "Soul Reflection",
+                SpellEffectKind::Positive,
+            ),
+        ];
+        for (temp, name, kind) in cases {
+            let meta = spell_meta(temp, 1)
+                .unwrap_or_else(|| panic!("expected spell_meta for {name} (temp {temp})"));
+            assert_eq!(meta.kind, kind, "{name} kind");
+        }
+    }
+
+    /// Every skill with `active_spell_effect_icon_meta` metadata must also be
+    /// classified by `spell_meta`'s `kind` match, or its icon silently never
+    /// renders. Guards against the two matches drifting out of sync again.
+    #[test]
+    fn every_active_effect_meta_has_a_kind_classification() {
+        for skill_nr in 0..400usize {
+            if active_spell_effect_icon_meta(skill_nr, 1).is_some() {
+                assert!(
+                    spell_meta(skill_nr as i16, 1).is_some(),
+                    "skill_nr {skill_nr} has icon meta but no kind classification in spell_meta"
+                );
+            }
         }
     }
 

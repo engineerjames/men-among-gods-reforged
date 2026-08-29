@@ -12,6 +12,7 @@ pub mod frame_buffer;
 pub mod game_map;
 pub mod gfx_cache;
 pub mod hosts;
+pub mod journal;
 pub mod legacy_engine;
 pub mod network;
 pub mod platform;

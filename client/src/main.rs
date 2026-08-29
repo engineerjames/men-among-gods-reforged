@@ -1,6 +1,7 @@
 use std::process;
 use std::time::{Duration, Instant};
 
+use sdl2::event::WindowEvent;
 use sdl2::gfx::framerate::FPSManager;
 use sdl2::image::InitFlag;
 use sdl2::mixer::{AUDIO_S16LSB, DEFAULT_CHANNELS};
@@ -234,6 +235,7 @@ fn main() -> Result<(), String> {
 
     let mut scene_manager = scenes::scene::SceneManager::new();
     let mut last_frame = Instant::now();
+    let mut pixel_perfect_resize_deadline = None;
 
     // Log info about the monitor, graphics card, etc.
     if let Ok(video_subsystem) = sdl_context.video() {
@@ -276,6 +278,20 @@ fn main() -> Result<(), String> {
         for event in event_pump.poll_iter() {
             if let sdl2::event::Event::Quit { .. } = event {
                 scene_manager.request_scene_change(SceneType::Exit, &mut app_state);
+            }
+
+            if matches!(
+                event,
+                sdl2::event::Event::Window {
+                    win_event: WindowEvent::Resized(_, _) | WindowEvent::SizeChanged(_, _),
+                    ..
+                }
+            ) && should_fit_pixel_perfect_window(
+                app_state.settings.display_mode,
+                app_state.settings.pixel_perfect_scaling,
+                window_occupies_display(canvas.window()),
+            ) {
+                pixel_perfect_resize_deadline = Some(Instant::now() + Duration::from_millis(200));
             }
 
             // --- Controller input mode detection --------------------------
@@ -348,6 +364,13 @@ fn main() -> Result<(), String> {
             }
         }
 
+        if pixel_perfect_resize_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            if !window_occupies_display(canvas.window()) {
+                fit_pixel_perfect_window(&mut canvas);
+            }
+            pixel_perfect_resize_deadline = None;
+        }
+
         // --- Toggle system cursor visibility on controller mode changes ---
         if app_state.controller_active != prev_controller_active {
             sdl_context
@@ -371,10 +394,24 @@ fn main() -> Result<(), String> {
                         );
                     }
                     app_state.settings.display_mode = applied_mode;
+                    if should_fit_pixel_perfect_window(
+                        applied_mode,
+                        app_state.settings.pixel_perfect_scaling,
+                        window_occupies_display(canvas.window()),
+                    ) {
+                        fit_pixel_perfect_window(&mut canvas);
+                    }
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetPixelPerfectScaling(enabled) => {
                     app_state.settings.pixel_perfect_scaling = enabled;
+                    if should_fit_pixel_perfect_window(
+                        app_state.settings.display_mode,
+                        enabled,
+                        window_occupies_display(canvas.window()),
+                    ) {
+                        fit_pixel_perfect_window(&mut canvas);
+                    }
                     save_global_display_settings(&app_state);
                 }
                 DisplayCommand::SetVSync(enabled) => {
@@ -561,6 +598,71 @@ fn apply_render_scale(app_state: &mut AppState<'_>, factor: u32) {
         .set_sprite_scaling(factor, app_state.settings.sprite_upscaler);
 }
 
+/// Returns whether windowed pixel-perfect fitting is appropriate for the
+/// current display state.
+///
+/// # Arguments
+///
+/// * `display_mode` - Display mode selected in game settings.
+/// * `pixel_perfect_scaling` - Whether integer scaling is enabled.
+/// * `window_occupies_display` - Whether the OS has maximized or fullscreened
+///   the window independently of the in-game display setting.
+///
+/// # Returns
+///
+/// * `true` only for ordinary, non-maximized pixel-perfect windows.
+fn should_fit_pixel_perfect_window(
+    display_mode: DisplayMode,
+    pixel_perfect_scaling: bool,
+    window_occupies_display: bool,
+) -> bool {
+    display_mode == DisplayMode::Windowed && pixel_perfect_scaling && !window_occupies_display
+}
+
+/// Returns whether SDL currently considers a window maximized or fullscreen.
+///
+/// # Arguments
+///
+/// * `window` - SDL window whose live native state should be inspected.
+///
+/// # Returns
+///
+/// * `true` when fitting the window size would interfere with an OS-managed
+///   maximized or fullscreen state.
+fn window_occupies_display(window: &sdl2::video::Window) -> bool {
+    window.is_maximized() || window.fullscreen_state() != FullscreenType::Off
+}
+
+/// Shrinks a windowed canvas to the largest exact integer-scaled viewport
+/// that fits in its current drawable area.
+///
+/// # Arguments
+///
+/// * `canvas` - SDL canvas whose window should be fitted.
+fn fit_pixel_perfect_window(canvas: &mut sdl2::render::Canvas<sdl2::video::Window>) {
+    let window = canvas.window();
+    let Some(fitted_size) = dpi_scaling::fitted_pixel_perfect_window_size(
+        window.size(),
+        window.drawable_size(),
+        (constants::TARGET_WIDTH_INT, constants::TARGET_HEIGHT_INT),
+    ) else {
+        return;
+    };
+
+    if fitted_size != window.size() {
+        log::info!(
+            "Fitting pixel-perfect window from {}x{} to {}x{}",
+            window.size().0,
+            window.size().1,
+            fitted_size.0,
+            fitted_size.1
+        );
+        if let Err(error) = canvas.window_mut().set_size(fitted_size.0, fitted_size.1) {
+            log::warn!("Failed to fit pixel-perfect window: {error}");
+        }
+    }
+}
+
 /// Maps [`DisplayMode`] to the SDL2 fullscreen type and applies it.
 fn apply_display_mode(
     canvas: &mut sdl2::render::Canvas<sdl2::video::Window>,
@@ -662,5 +764,42 @@ fn apply_vsync(
 fn save_global_display_settings(app_state: &AppState<'_>) {
     if let Err(e) = preferences::save_global_settings(&app_state.settings) {
         log::error!("Failed to persist display settings: {e}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DisplayMode, should_fit_pixel_perfect_window};
+
+    #[test]
+    fn ordinary_pixel_perfect_window_is_fitted() {
+        assert!(should_fit_pixel_perfect_window(
+            DisplayMode::Windowed,
+            true,
+            false
+        ));
+    }
+
+    #[test]
+    fn maximized_window_is_not_fitted() {
+        assert!(!should_fit_pixel_perfect_window(
+            DisplayMode::Windowed,
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn fullscreen_and_continuous_scaling_are_not_fitted() {
+        assert!(!should_fit_pixel_perfect_window(
+            DisplayMode::Fullscreen,
+            true,
+            false
+        ));
+        assert!(!should_fit_pixel_perfect_window(
+            DisplayMode::Windowed,
+            false,
+            false
+        ));
     }
 }

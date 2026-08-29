@@ -11,7 +11,8 @@ pub struct CMap {
     pub ch_sprite: i16, // basic sprite of character
     pub ch_status2: u8,
     pub ch_status: u8, // what the character is doing, animation-wise
-    pub ch_speed: u8,  // speed of animation
+    pub ch_speed: u8,  // speed of animation (movement/turn frames)
+    pub ch_aspeed: u8, // speed of attack/misc-action animation
     pub ch_nr: u16,
     pub ch_id: u16,
     pub ch_proz: u8, // health in percent

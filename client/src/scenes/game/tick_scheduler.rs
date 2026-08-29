@@ -51,6 +51,7 @@ impl LegacyTickScheduler {
     ///
     /// * `now` - Time after network application and simulation work.
     /// * `remaining_queue_depth` - Complete tick batches still queued.
+    /// * `animation_started` - Whether this tick began a character animation.
     ///
     /// # Returns
     ///
@@ -59,9 +60,11 @@ impl LegacyTickScheduler {
         &mut self,
         now: Instant,
         remaining_queue_depth: usize,
+        animation_started: bool,
     ) -> FramePresentation {
         let deadline = self.next_deadline;
-        let should_present = now < deadline || self.consecutive_skips > MAX_CONSECUTIVE_SKIPS;
+        let should_present =
+            animation_started || now < deadline || self.consecutive_skips > MAX_CONSECUTIVE_SKIPS;
 
         let presentation = if should_present {
             self.consecutive_skips = 0;
@@ -120,11 +123,11 @@ mod tests {
         let mut scheduler = LegacyTickScheduler::new(start);
 
         assert_eq!(
-            scheduler.complete_iteration(start, 0),
+            scheduler.complete_iteration(start, 0, false),
             FramePresentation::Skip
         );
         assert_eq!(
-            scheduler.complete_iteration(start, 0),
+            scheduler.complete_iteration(start, 0, false),
             FramePresentation::PresentAt(start + interval_for_queue_depth(0))
         );
     }
@@ -137,12 +140,28 @@ mod tests {
 
         for _ in 0..=MAX_CONSECUTIVE_SKIPS {
             assert_eq!(
-                scheduler.complete_iteration(late, 0),
+                scheduler.complete_iteration(late, 0, false),
                 FramePresentation::Skip
             );
         }
         assert!(matches!(
-            scheduler.complete_iteration(late, 0),
+            scheduler.complete_iteration(late, 0, false),
+            FramePresentation::PresentAt(_)
+        ));
+    }
+
+    #[test]
+    fn animation_start_forces_presentation_while_late() {
+        let start = Instant::now();
+        let mut scheduler = LegacyTickScheduler::new(start);
+        let late = start + Duration::from_secs(1);
+
+        assert_eq!(
+            scheduler.complete_iteration(late, 16, false),
+            FramePresentation::Skip
+        );
+        assert!(matches!(
+            scheduler.complete_iteration(late, 16, true),
             FramePresentation::PresentAt(_)
         ));
     }

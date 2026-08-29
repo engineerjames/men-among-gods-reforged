@@ -393,12 +393,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc actions: 160..166 increment, 167 execute misc then doact
         160..=166 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         167 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 160;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -407,12 +407,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc down 168..174 then 175
         168..=174 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         175 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 168;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -421,12 +421,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc left 176..182 then 183
         176..=182 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         183 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 176;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -435,12 +435,12 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 
         // misc right 184..190 then 191
         184..=190 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status += 1;
             }
         }
         191 => {
-            if speedo(gs, cn) != 0 {
+            if speedo_action(gs, cn) != 0 {
                 gs.characters[cn].status = 184;
                 plr_misc(gs, cn);
                 plr_doact(gs, cn);
@@ -472,6 +472,25 @@ pub fn plr_act(gs: &mut GameState, cn: usize) {
 /// * Value returned by `speedo`.
 pub fn speedo(gs: &mut GameState, n: usize) -> i32 {
     let speed = (gs.characters[n].speed as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
+    let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
+    i32::from(SPEEDTAB[speed][ctick])
+}
+
+/// Fast helper to compute the per-tick attack/action index for a character.
+///
+/// Mirrors [`speedo`] but reads the independently-derived attack/action
+/// speed row cached in `future3[2]` (see `really_update_char`) instead of
+/// `speed`, so talent bonuses to one never advance the other.
+///
+/// # Arguments
+/// * `n` - Character index
+///
+/// # Returns
+///
+/// * Value returned by the attack/action speed table lookup.
+pub fn speedo_action(gs: &mut GameState, n: usize) -> i32 {
+    let speed =
+        (gs.characters[n].future3[2] as usize).min(core::constants::MAX_SPEEDTAB_SPEED_INDEX);
     let ctick = gs.globals.ticker as usize % core::constants::CTICK_CYCLE_LEN;
     i32::from(SPEEDTAB[speed][ctick])
 }
@@ -568,14 +587,6 @@ pub fn plr_change(gs: &mut GameState, nr: usize) {
 
     // Send target updates
     plr_change_target(gs, nr, cn);
-
-    // Send the one-shot quest catalog + full completion snapshot on the
-    // first tick after login finalisation.
-    if !gs.players[nr].sent_quest_init {
-        crate::player::quest_log::plr_send_quest_catalog(gs, nr);
-        crate::player::quest_log::plr_send_quest_completion_full(gs, nr);
-        gs.players[nr].sent_quest_init = true;
-    }
 }
 
 /// Send full stats update to player
@@ -622,18 +633,22 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         gs.players[nr].cpl.mode = i32::from(mode);
     }
 
-    // attribs (5 x 6 bytes)
+    // attribs (5 x 6 u16 values)
     for a in 0..5usize {
         let chv = gs.characters[cn].attrib[a];
         let changed = gs.players[nr].cpl.attrib[a] != chv;
         if changed {
-            let bytes = gs.characters[cn].attrib[a];
-            let mut buf: [u8; 8] = [0; 8];
+            let arr = gs.characters[cn].attrib[a];
+            let mut buf: [u8; 14] = [0; 14];
             buf[0] = ServerCommandType::SetCharAttrib as u8;
             buf[1] = a as u8;
-            buf[2..8].copy_from_slice(&bytes);
-            network_manager::xsend(gs, nr, &buf, 8);
-            gs.players[nr].cpl.attrib[a] = bytes;
+            for (i, &v) in arr.iter().enumerate() {
+                let off = 2 + i * 2;
+                buf[off] = (v & 0xff) as u8;
+                buf[off + 1] = (v >> 8) as u8;
+            }
+            network_manager::xsend(gs, nr, &buf, 14);
+            gs.players[nr].cpl.attrib[a] = arr;
         }
     }
 
@@ -680,13 +695,17 @@ fn plr_change_stats(gs: &mut GameState, nr: usize, cn: usize, _ticker: i32) {
         let chv = gs.characters[cn].skill[s];
         let changed = gs.players[nr].cpl.skill[s] != chv;
         if changed {
-            let bytes = gs.characters[cn].skill[s];
-            let mut buf: [u8; 8] = [0; 8];
+            let arr = gs.characters[cn].skill[s];
+            let mut buf: [u8; 14] = [0; 14];
             buf[0] = ServerCommandType::SetCharSkill as u8;
             buf[1] = s as u8;
-            buf[2..8].copy_from_slice(&bytes);
-            network_manager::xsend(gs, nr, &buf, 8);
-            gs.players[nr].cpl.skill[s] = bytes;
+            for (i, &v) in arr.iter().enumerate() {
+                let off = 2 + i * 2;
+                buf[off] = (v & 0xff) as u8;
+                buf[off + 1] = (v >> 8) as u8;
+            }
+            network_manager::xsend(gs, nr, &buf, 14);
+            gs.players[nr].cpl.skill[s] = arr;
         }
     }
 

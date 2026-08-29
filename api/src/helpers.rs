@@ -204,6 +204,15 @@ pub(crate) fn default_character_description(name: &str) -> String {
     )
 }
 
+/// Validates a character description against the legacy-compatible content rules.
+///
+/// # Arguments
+/// * `name` - Canonical character name the description belongs to.
+/// * `description` - Raw user-provided description.
+///
+/// # Returns
+/// * `Ok(())` when the description satisfies every rule.
+/// * `Err(String)` with a user-facing explanation of the specific rule that failed.
 pub(crate) fn validate_character_description(name: &str, description: &str) -> Result<(), String> {
     let name = name.trim();
     let description = description.trim();
@@ -213,31 +222,39 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
     }
 
     if description.len() < 10 {
-        return Err("Description must be at least 10 characters".to_owned());
+        return Err(format!(
+            "Description must be at least 10 characters (currently {})",
+            description.len()
+        ));
     }
 
     if description.len() > MAX_DESCRIPTION_LEN {
         return Err(format!(
-            "Description must be at most {} characters",
-            MAX_DESCRIPTION_LEN
+            "Description must be at most {} characters (currently {})",
+            MAX_DESCRIPTION_LEN,
+            description.len()
         ));
     }
 
-    if !description
-        .as_bytes()
-        .iter()
-        .copied()
-        .all(|b| (32..=126).contains(&b))
+    if let Some(offending) = description
+        .chars()
+        .find(|c| !(32..=126).contains(&(*c as u32)))
     {
-        return Err("Description must be ASCII-only (printable characters)".to_owned());
+        return Err(format!(
+            "Description may only use printable ASCII characters; remove '{}'",
+            offending.escape_debug()
+        ));
     }
 
     if description.contains('"') {
-        return Err("Description must not contain double quotes".to_owned());
+        return Err("Description must not contain double quotes (\")".to_owned());
     }
 
     if !description.contains(name) {
-        return Err("Description must contain the character name".to_owned());
+        return Err(format!(
+            "Description must contain the character name \"{}\" exactly as spelled",
+            name
+        ));
     }
 
     Ok(())
@@ -246,9 +263,10 @@ pub(crate) fn validate_character_description(name: &str, description: &str) -> R
 #[cfg(test)]
 mod tests {
     use super::{
-        default_character_description, get_token_from_headers, is_valid_email_regex,
-        is_valid_password, is_valid_reset_code, is_valid_username, normalize_character_name,
-        validate_character_description, validate_character_name_bad_patterns,
+        MAX_DESCRIPTION_LEN, default_character_description, get_token_from_headers,
+        is_valid_email_regex, is_valid_password, is_valid_reset_code, is_valid_username,
+        normalize_character_name, validate_character_description,
+        validate_character_name_bad_patterns,
     };
     use jsonwebtoken::{EncodingKey, Header};
     use mag_core::types::JwtClaims;
@@ -463,6 +481,33 @@ mod tests {
         let name = "TestHero";
         let desc = default_character_description(name);
         assert!(validate_character_description(name, &desc).is_ok());
+    }
+
+    #[test]
+    fn description_validation_reports_specific_reasons() {
+        let name = "TestHero";
+
+        let too_short = validate_character_description(name, "TestHero").unwrap_err();
+        assert!(too_short.contains("at least 10 characters"), "{too_short}");
+
+        let too_long =
+            validate_character_description(name, &format!("TestHero {}", "a".repeat(300)))
+                .unwrap_err();
+        assert!(
+            too_long.contains(&format!("at most {} characters", MAX_DESCRIPTION_LEN)),
+            "{too_long}"
+        );
+
+        let non_ascii = validate_character_description(name, "TestHero is brave ☃").unwrap_err();
+        assert!(non_ascii.contains("printable ASCII"), "{non_ascii}");
+
+        let quoted =
+            validate_character_description(name, "TestHero says \"hello\" often.").unwrap_err();
+        assert!(quoted.contains("double quotes"), "{quoted}");
+
+        let missing_name =
+            validate_character_description(name, "A brave warrior who travels.").unwrap_err();
+        assert!(missing_name.contains("TestHero"), "{missing_name}");
     }
 
     #[test]

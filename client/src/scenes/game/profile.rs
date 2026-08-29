@@ -10,12 +10,12 @@ use super::GameScene;
 impl GameScene {
     /// Returns the default top-left position for the skills and settings panels.
     fn default_hud_panel_position() -> (i32, i32) {
-        let x = super::HUD_ARC_CENTER_X - super::HUD_PANEL_W as i32 / 2;
+        let x = super::HUD_ARC_CENTER_X - super::SKILLS_PANEL_W as i32 / 2;
         let panel_bottom = super::HUD_ARC_CENTER_Y
             - super::HUD_ARC_RADIUS as i32
             - super::HUD_BUTTON_RADIUS as i32
             - 20;
-        let y = panel_bottom - super::HUD_PANEL_H as i32;
+        let y = panel_bottom - super::SKILLS_PANEL_H as i32;
         (x, y)
     }
 

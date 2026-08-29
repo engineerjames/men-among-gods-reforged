@@ -108,8 +108,12 @@ impl GameState {
             0,
         );
 
-        // Contagion: if the dying character was infected, the disease leaps
-        // to adjacent enemies sharing the caster's faction enmity.
+        // Remove any active aura source so it stops pulsing after death.
+        crate::aura::logic::remove_aura(self, character_id);
+
+        // Contagion / Parasite: if the dying character was infected, the
+        // infestation leaps to adjacent enemies sharing the caster's faction
+        // enmity.
         self.spread_contagion_on_death(character_id);
 
         // Ice Stun: if the dying character was marked by empowered stun,
@@ -179,6 +183,13 @@ impl GameState {
                 self.characters[cc].data[64] = 0;
             }
             self.characters[character_id].data[63] = 0;
+
+            // Once the owner has no other live companion, drop Revenant
+            // Conduit/Spectral Pact so a fresh companion can't be boosted by
+            // a stale buff from a companion that no longer exists.
+            if Character::is_sane_character(cc) {
+                crate::driver::clear_companion_dependent_buffs_if_none_left(self, cc);
+            }
         }
 
         // A player killed someone or something
@@ -300,6 +311,9 @@ impl GameState {
                             );
                             let score = self.do_char_score(character_id) * 25;
                             self.do_give_exp(killer_id, score, 0, -1);
+                            crate::player::commands::resend_completion_data_for_character(
+                                self, killer_id,
+                            );
                         }
                     }
                 }
@@ -429,6 +443,17 @@ impl GameState {
         // Set data[3] = killer_id for the effect, if possible
         if let Some(fn_idx) = fn_idx {
             self.effects[fn_idx].data[3] = killer_id as u32;
+        } else if corpse_id != 0 {
+            // Effect table was full: finalize the corpse immediately instead of
+            // leaving it stuck on the map forever with no mist/grave effect
+            // ever scheduled to clean it up.
+            log::warn!(
+                "do_character_killed: effect table full, could not schedule death mist for corpse {}; finalizing immediately",
+                corpse_id
+            );
+            let map_index =
+                (i32::from(co_x) + i32::from(co_y) * core::constants::SERVER_MAPX) as usize;
+            EffectManager::finalize_death_mist(self, map_index, corpse_id, killer_id as i32);
         }
     }
 
@@ -682,11 +707,11 @@ impl GameState {
         self.use_labtransfer2(cn, co);
     }
 
-    /// On-death helper for the Contagion DoT. If the dying character carries
-    /// an active Contagion spell-item, this spreads a fresh Contagion to up
-    /// to four adjacent enemies (8-neighborhood). Each spread carries the
-    /// original caster's identity so lifesteal continues to feed the source
-    /// of the infection.
+    /// On-death helper for the Parasite-family DoTs. If the dying character
+    /// carries an active Parasite and/or Contagion spell-item, each of them
+    /// spreads a fresh infection to up to four adjacent enemies
+    /// (8-neighborhood). Each spread carries the original caster's identity so
+    /// lifesteal continues to feed the source of the infection.
     ///
     /// # Arguments
     ///
@@ -695,76 +720,88 @@ impl GameState {
         if !Character::is_sane_character(dying) {
             return;
         }
-        // Find an active Contagion DoT on the dying character.
-        let mut contagion_caster: i32 = -1;
-        let mut contagion_power: i32 = 0;
+        // Collect the active Parasite-family DoTs on the dying character. A host
+        // carrying both spreads both, so at most one entry per spell type is
+        // gathered here.
+        let mut dots: Vec<(u16, usize, i32)> = Vec::with_capacity(2);
         for n in 0..20 {
             let in_idx = self.characters[dying].spell[n] as usize;
             if in_idx == 0 {
                 continue;
             }
-            if self.items[in_idx].temp == skills::SK_CONTAGION as u16
-                && self.items[in_idx].active > 0
+            let temp = self.items[in_idx].temp;
+            if (temp != skills::SK_CONTAGION as u16 && temp != skills::SK_PARASITE as u16)
+                || self.items[in_idx].active == 0
             {
-                contagion_caster = self.items[in_idx].data[0] as i32;
-                contagion_power = self.items[in_idx].power as i32;
-                break;
+                continue;
             }
+            if dots.iter().any(|&(seen, _, _)| seen == temp) {
+                continue;
+            }
+            let caster = self.items[in_idx].data[0] as usize;
+            if !Character::is_sane_character(caster) {
+                continue;
+            }
+            dots.push((temp, caster, self.items[in_idx].power as i32));
         }
-        if contagion_caster < 0 {
-            return;
-        }
-        let caster = contagion_caster as usize;
-        if !Character::is_sane_character(caster) {
+        if dots.is_empty() {
             return;
         }
 
         let dx0 = i32::from(self.characters[dying].x);
         let dy0 = i32::from(self.characters[dying].y);
-        let mut spread = 0;
-        for dy in -1..=1i32 {
-            for dx in -1..=1i32 {
-                if dx == 0 && dy == 0 {
-                    continue;
-                }
-                let nx = dx0 + dx;
-                let ny = dy0 + dy;
-                if nx < 0
-                    || ny < 0
-                    || nx >= core::constants::SERVER_MAPX
-                    || ny >= core::constants::SERVER_MAPY
-                {
-                    continue;
-                }
-                let m = (nx + ny * core::constants::SERVER_MAPX) as usize;
-                let neighbor = self.map[m].ch as usize;
-                if neighbor == 0 || neighbor == caster {
-                    continue;
-                }
-                if !Character::is_sane_character(neighbor) {
-                    continue;
-                }
-                if !self.may_attack_msg(caster, neighbor, false) {
-                    continue;
-                }
-                if crate::driver::skill::apply_parasitic_dot(
-                    self,
-                    caster,
-                    neighbor,
-                    contagion_power,
-                    skills::SK_CONTAGION as u16,
+
+        for (dot_temp, caster, dot_power) in dots {
+            let is_contagion = dot_temp == skills::SK_CONTAGION as u16;
+            let (duration, spell_name, spread_message) = if is_contagion {
+                (
                     core::constants::TICKS * 60 * 8,
-                    b"Contagion",
-                ) {
-                    spread += 1;
-                    self.do_character_log(
-                        neighbor,
-                        FontColor::Green,
-                        "The contagion spreads to you!\n",
-                    );
-                }
-                if spread >= 4 {
-                    return;
+                    &b"Contagion"[..],
+                    "The contagion spreads to you!\n",
+                )
+            } else {
+                (
+                    core::constants::TICKS * 8,
+                    &b"Parasite"[..],
+                    "The parasites burrow into you!\n",
+                )
+            };
+
+            let mut spread = 0;
+            'spread: for dy in -1..=1i32 {
+                for dx in -1..=1i32 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let nx = dx0 + dx;
+                    let ny = dy0 + dy;
+                    if nx < 0
+                        || ny < 0
+                        || nx >= core::constants::SERVER_MAPX
+                        || ny >= core::constants::SERVER_MAPY
+                    {
+                        continue;
+                    }
+                    let m = (nx + ny * core::constants::SERVER_MAPX) as usize;
+                    let neighbor = self.map[m].ch as usize;
+                    if neighbor == 0 || neighbor == caster {
+                        continue;
+                    }
+                    if !Character::is_sane_character(neighbor) {
+                        continue;
+                    }
+                    if !self.may_attack_msg(caster, neighbor, false) {
+                        continue;
+                    }
+                    if crate::driver::skill::apply_parasitic_dot(
+                        self, caster, neighbor, dot_power, dot_temp, duration, spell_name,
+                    ) {
+                        spread += 1;
+                        self.do_character_log(neighbor, FontColor::Green, spread_message);
+                    }
+                    if spread >= 4 {
+                        break 'spread;
+                    }
                 }
             }
         }
@@ -805,13 +842,13 @@ impl GameState {
         }
 
         self.items[marker_idx].active = 0;
-        if helpers::random_mod(100) >= 25 {
+        if helpers::random_mod(100) >= 75 {
             return;
         }
 
         let dx0 = i32::from(self.characters[dying].x);
         let dy0 = i32::from(self.characters[dying].y);
-        let damage = (power / 2).max(1);
+        let damage = ((power * 3) / 2).max(1);
         let damage_unit = damage * 1000;
 
         for dy in -1..=1i32 {
@@ -873,6 +910,7 @@ impl GameState {
 mod tests {
     use super::*;
     use crate::test_helpers::{add_test_player, with_test_gs};
+    use core::constants::MAXEFFECT;
     use core::constants::{MAXCHARS, MF_ARENA, USE_ACTIVE};
 
     fn prepare_player_death(gs: &mut GameState) -> usize {
@@ -1018,6 +1056,69 @@ mod tests {
             assert_eq!(gs.characters[cn].gold, 750);
             assert_eq!(gs.characters[cn].item[0], 41);
             assert_eq!(gs.characters[cn].a_hp, 10_000);
+        });
+    }
+
+    /// Regression test: `do_character_killed` used to silently leave a
+    /// killed NPC's corpse stuck on the map forever (`map[].ch` never
+    /// cleared) when the effect table was full and the type-3 death-mist
+    /// effect couldn't be scheduled.
+    #[test]
+    fn npc_death_finalizes_corpse_immediately_when_effect_table_is_full() {
+        with_test_gs(|gs| {
+            let co = 2;
+            let x = 10i16;
+            let y = 10i16;
+            gs.characters[co].used = USE_ACTIVE;
+            gs.characters[co].x = x;
+            gs.characters[co].y = y;
+            gs.characters[co].tox = x;
+            gs.characters[co].toy = y;
+            let map_index = x as usize + y as usize * core::constants::SERVER_MAPX as usize;
+            gs.map[map_index].ch = co as u32;
+
+            for effect in &mut gs.effects[1..MAXEFFECT] {
+                effect.used = USE_ACTIVE;
+            }
+
+            gs.do_character_killed(co, 0, false);
+
+            assert_eq!(gs.map[map_index].ch, 0);
+        });
+    }
+
+    /// Regression test: killing a player's Ghost Companion used to leave a
+    /// Revenant Conduit buff active, letting the effective Ghost Companion
+    /// skill stay boosted for the next summoned companion.
+    #[test]
+    fn companion_death_clears_owners_revenant_conduit() {
+        with_test_gs(|gs| {
+            let (owner, _nr) = add_test_player(gs);
+
+            let in_idx = 10;
+            gs.items[in_idx] = core::types::Item::default();
+            gs.items[in_idx].used = USE_ACTIVE;
+            gs.items[in_idx].temp = skills::SK_REVENANT_CONDUIT2 as u16;
+            gs.items[in_idx].active = 100;
+            gs.items[in_idx].duration = 100;
+            gs.characters[owner].spell[0] = in_idx as u32;
+
+            let companion = 3;
+            gs.characters[companion] = Character::default();
+            gs.characters[companion].used = USE_ACTIVE;
+            gs.characters[companion].temp = core::constants::CT_COMPANION as u16;
+            gs.characters[companion].data[63] = owner as i32;
+            gs.characters[owner].data[64] = companion as i32;
+            let map_index = 10 + 10 * core::constants::SERVER_MAPX as usize;
+            gs.characters[companion].x = 10;
+            gs.characters[companion].y = 10;
+            gs.map[map_index].ch = companion as u32;
+
+            gs.do_character_killed(companion, 0, false);
+
+            assert_eq!(gs.characters[owner].data[64], 0);
+            assert_eq!(gs.items[in_idx].used, USE_EMPTY);
+            assert_eq!(gs.characters[owner].spell[0], 0);
         });
     }
 }

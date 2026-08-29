@@ -1,4 +1,3 @@
-use crate::quest_defs::{MAX_QUEST_CATALOG, QuestCatalogEntry};
 use crate::string_operations::c_string_to_str;
 
 /// Opcode values for incoming server commands.
@@ -80,21 +79,19 @@ pub enum ServerCommandType {
     /// (u16 LE) + tint_r (1) + tint_g (1) + tint_b (1) + tint_a (1) + flags
     /// (1) = **10 bytes total**. See [`crate::weather::WeatherKind`].
     SetWeather = 76,
-    /// One-shot snapshot of the entire static quest catalog.
+    /// Full snapshot of the character's Journal completion state.
     ///
-    /// Wire format: opcode (1) + count (1) + count × entry
-    /// ([`QUEST_CATALOG_ENTRY_LEN`] bytes) padded to
-    /// [`QUEST_CATALOG_PACKET_LEN`]. Sent exactly once per session right
-    /// after login.
-    SetQuestCatalog = 100,
-    /// Per-player quest completion counter update.
+    /// Wire format: opcode (1) + labyrinth_progress (1) + pentagram_solves
+    /// (u32 LE) + first_kill_bits (4x u32 LE) + explorer_point_bits (4x u32
+    /// LE) + quest_completion_bits (u32 LE) = **42 bytes total**. Always
+    /// sent as a full snapshot (no delta mode) since the payload is small.
+    SetCompletionData = 77,
+    /// Active Seyan'Du rune and remaining swap cooldown.
     ///
-    /// Wire format starts with `opcode (1) + mode (1)` where `mode == 0`
-    /// indicates a full 49 × i16 snapshot (`QUEST_COMPLETION_FULL_LEN`
-    /// bytes) and `mode == 1` indicates a single-entry delta
-    /// (`opcode + mode + idx (u8) + count (i16 LE)` =
-    /// `QUEST_COMPLETION_DELTA_LEN` bytes).
-    SetQuestCompletion = 101,
+    /// Wire format: opcode (1) + active_rune (1, `0..=3`, see
+    /// `core::seyan_runes::SeyanRune`) + cooldown_remaining_ticks (u16 LE)
+    /// = **4 bytes total**.
+    SetCharRuneState = 78,
     SetMap = 128,
 }
 
@@ -153,7 +150,7 @@ fn sv_setmap_len(bytes: &[u8], off: u8, lastn: &mut i32) -> Result<usize, String
         p += 4;
     }
     if flags & 64 != 0 {
-        p += 5;
+        p += 6;
     }
     if flags & 128 != 0 {
         p += 1;
@@ -204,8 +201,8 @@ impl ServerCommandType {
 
         let len = match parsed_op {
             ServerCommandType::SetCharMode => 2,
-            ServerCommandType::SetCharAttrib => 8,
-            ServerCommandType::SetCharSkill => 8,
+            ServerCommandType::SetCharAttrib => 14,
+            ServerCommandType::SetCharSkill => 14,
             ServerCommandType::SetCharHp => 13,
             ServerCommandType::SetCharEndur => 13,
             ServerCommandType::SetCharMana => 13,
@@ -214,22 +211,9 @@ impl ServerCommandType {
             ServerCommandType::SetCharAMana => 3,
             ServerCommandType::SetCharDir => 2,
             ServerCommandType::SetCharTalents => 26,
+            ServerCommandType::SetCharRuneState => 4,
             ServerCommandType::SetWeather => 10,
-            ServerCommandType::SetQuestCatalog => QUEST_CATALOG_PACKET_LEN,
-            ServerCommandType::SetQuestCompletion => {
-                if bytes.len() < 2 {
-                    return Err("SV_SETQUESTCOMPLETION truncated (need mode byte)".to_owned());
-                }
-                match bytes[1] {
-                    0 => QUEST_COMPLETION_FULL_LEN,
-                    1 => QUEST_COMPLETION_DELTA_LEN,
-                    other => {
-                        return Err(format!(
-                            "SV_SETQUESTCOMPLETION has unknown mode byte {other}"
-                        ));
-                    }
-                }
-            }
+            ServerCommandType::SetCompletionData => 42,
             ServerCommandType::SetCharPts => 13,
             ServerCommandType::SetCharGold => 13,
             ServerCommandType::SetCharItem => 9,
@@ -340,8 +324,8 @@ impl From<u8> for ServerCommandType {
             74 => ServerCommandType::Pong,
             75 => ServerCommandType::SetCharTalents,
             76 => ServerCommandType::SetWeather,
-            100 => ServerCommandType::SetQuestCatalog,
-            101 => ServerCommandType::SetQuestCompletion,
+            77 => ServerCommandType::SetCompletionData,
+            78 => ServerCommandType::SetCharRuneState,
             128 => ServerCommandType::SetMap,
             _ => {
                 log::error!("Unknown server command opcode: {value}");
@@ -351,57 +335,12 @@ impl From<u8> for ServerCommandType {
     }
 }
 
-/// Maximum NPC name length carried in a [`QuestCatalogEntry`] on the wire
-/// (NUL-padded).
-pub const QUEST_CATALOG_NPC_NAME_LEN: usize = 16;
-
-/// Maximum item name length carried in a [`QuestCatalogEntry`] on the wire
-/// (NUL-padded).
-pub const QUEST_CATALOG_ITEM_NAME_LEN: usize = 24;
-
-/// On-wire size of a single quest catalog entry inside `SetQuestCatalog`.
-///
-/// Layout: `template_id (u16) + item_template_id (u16) + npc_x (u16) +
-/// npc_y (u16) + stages (u8) + repeatable (u8) + npc_name ([u8; 16]) +
-/// item_name ([u8; 24])` = 50 bytes.
-pub const QUEST_CATALOG_ENTRY_LEN: usize =
-    2 + 2 + 2 + 2 + 1 + 1 + QUEST_CATALOG_NPC_NAME_LEN + QUEST_CATALOG_ITEM_NAME_LEN;
-
-/// Total `SetQuestCatalog` packet size in bytes (fixed regardless of how
-/// many entries are populated; remainder is zero padding).
-pub const QUEST_CATALOG_PACKET_LEN: usize = 2 + MAX_QUEST_CATALOG * QUEST_CATALOG_ENTRY_LEN;
-
-/// Total `SetQuestCompletion` packet size in bytes when carrying a full
-/// snapshot: opcode (1) + mode (1) + 49 × i16 = 100 bytes.
-pub const QUEST_COMPLETION_FULL_LEN: usize = 2 + MAX_QUEST_CATALOG * 2;
-
-/// Total `SetQuestCompletion` packet size in bytes when carrying a single
-/// delta: opcode (1) + mode (1) + idx (u8) + count (i16 LE) = 5 bytes.
-pub const QUEST_COMPLETION_DELTA_LEN: usize = 2 + 1 + 2;
-
-/// Parsed payload of a [`ServerCommandType::SetQuestCompletion`] packet.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum QuestCompletionPayload {
-    /// Full snapshot of all 49 per-quest completion counters in catalog
-    /// order. Sent once per session at login.
-    Full([i16; MAX_QUEST_CATALOG]),
-    /// Single-entry delta. Sent whenever the server bumps a counter as a
-    /// result of a quest turn-in.
-    Delta {
-        /// Catalog index whose counter changed.
-        idx: u8,
-        /// New absolute counter value after the bump.
-        count: i16,
-    },
-}
-
 /// Parsed payload variants for each [`ServerCommandType`].
 #[derive(Debug)]
 pub enum ServerCommandData {
     Empty,
     Pong {
         seq: u32,
-        #[allow(dead_code)]
         client_time_ms: u32,
     },
     SetMap {
@@ -419,6 +358,7 @@ pub enum ServerCommandData {
         ch_nr: Option<u16>,
         ch_id: Option<u16>,
         ch_speed: Option<u8>,
+        ch_aspeed: Option<u8>,
         ch_proz: Option<u8>,
     },
     SetMap3 {
@@ -434,7 +374,6 @@ pub enum ServerCommandData {
     },
     SetCharName3 {
         chunk: String,
-        #[allow(dead_code)]
         race: u32,
     },
     SetCharMode {
@@ -442,11 +381,11 @@ pub enum ServerCommandData {
     },
     SetCharAttrib {
         index: u8,
-        values: [u8; 6],
+        values: [u16; 6],
     },
     SetCharSkill {
         index: u8,
-        values: [u8; 6],
+        values: [u16; 6],
     },
     SetCharHp {
         values: [u16; 6],
@@ -475,6 +414,11 @@ pub enum ServerCommandData {
     /// per-layer bit fields (8 nodes per byte).
     SetCharTalents {
         values: [u8; 25],
+    },
+    /// Active Seyan'Du rune and remaining swap cooldown.
+    SetCharRuneState {
+        active_rune: u8,
+        cooldown_remaining_ticks: u16,
     },
     SetCharPts {
         points: u32,
@@ -587,18 +531,15 @@ pub enum ServerCommandData {
         tint: [u8; 4],
         flags: u8,
     },
-    /// One-shot snapshot of the static quest catalog (sent once per
-    /// session at login).
-    SetQuestCatalog {
-        /// Catalog entries in stable order; index is the key into
-        /// per-player completion vectors.
-        entries: Vec<QuestCatalogEntry>,
+    /// Full snapshot of Journal completion state. See
+    /// [`ServerCommandType::SetCompletionData`] for the wire layout.
+    SetCompletionData {
+        labyrinth_progress: u8,
+        pentagram_solves: u32,
+        first_kill_bits: [u32; 4],
+        explorer_point_bits: [u32; 4],
+        quest_completion_bits: u32,
     },
-    /// Per-player quest completion counter update.
-    ///
-    /// Either a `Full` snapshot of all 49 counters (sent at login) or a
-    /// `Delta` update for a single catalog index (sent on turn-in).
-    SetQuestCompletion(QuestCompletionPayload),
     Load {
         load: u32,
     },
@@ -695,6 +636,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
         let mut ch_nr = None;
         let mut ch_id = None;
         let mut ch_speed = None;
+        let mut ch_aspeed = None;
         let mut ch_proz = None;
 
         if (flags & 1) != 0 {
@@ -732,6 +674,8 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             p += 2;
             ch_speed = Some(*bytes.get(p)?);
             p += 1;
+            ch_aspeed = Some(*bytes.get(p)?);
+            p += 1;
         }
         if (flags & 128) != 0 {
             ch_proz = Some(*bytes.get(p)?);
@@ -754,6 +698,7 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 ch_nr,
                 ch_id,
                 ch_speed,
+                ch_aspeed,
                 ch_proz,
             },
         ));
@@ -790,14 +735,28 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
             ServerCommandType::SetCharAttrib,
             ServerCommandData::SetCharAttrib {
                 index: *bytes.get(1)?,
-                values: bytes.get(2..8)?.try_into().ok()?,
+                values: [
+                    read_u16(bytes, 2)?,
+                    read_u16(bytes, 4)?,
+                    read_u16(bytes, 6)?,
+                    read_u16(bytes, 8)?,
+                    read_u16(bytes, 10)?,
+                    read_u16(bytes, 12)?,
+                ],
             },
         )),
         8 => Some((
             ServerCommandType::SetCharSkill,
             ServerCommandData::SetCharSkill {
                 index: *bytes.get(1)?,
-                values: bytes.get(2..8)?.try_into().ok()?,
+                values: [
+                    read_u16(bytes, 2)?,
+                    read_u16(bytes, 4)?,
+                    read_u16(bytes, 6)?,
+                    read_u16(bytes, 8)?,
+                    read_u16(bytes, 10)?,
+                    read_u16(bytes, 12)?,
+                ],
             },
         )),
         12 => Some((
@@ -1204,69 +1163,33 @@ fn from_bytes(bytes: &[u8]) -> Option<(ServerCommandType, ServerCommandData)> {
                 flags: *bytes.get(9)?,
             },
         )),
-        100 => {
-            let count = (*bytes.get(1)?).min(MAX_QUEST_CATALOG as u8) as usize;
-            let mut entries = Vec::with_capacity(count);
-            for i in 0..count {
-                let off = 2 + i * QUEST_CATALOG_ENTRY_LEN;
-                let template_id = read_u16(bytes, off)?;
-                let item_template_id = read_u16(bytes, off + 2)?;
-                let npc_x = read_u16(bytes, off + 4)?;
-                let npc_y = read_u16(bytes, off + 6)?;
-                let stages = *bytes.get(off + 8)?;
-                let repeatable = *bytes.get(off + 9)? != 0;
-                let npc_name_slice = bytes.get(off + 10..off + 10 + QUEST_CATALOG_NPC_NAME_LEN)?;
-                let item_name_slice = bytes.get(
-                    off + 10 + QUEST_CATALOG_NPC_NAME_LEN
-                        ..off + 10 + QUEST_CATALOG_NPC_NAME_LEN + QUEST_CATALOG_ITEM_NAME_LEN,
-                )?;
-                entries.push(QuestCatalogEntry {
-                    template_id,
-                    item_template_id,
-                    npc_x,
-                    npc_y,
-                    stages,
-                    repeatable,
-                    npc_name: c_string_to_str(npc_name_slice).to_owned(),
-                    item_name: c_string_to_str(item_name_slice).to_owned(),
-                });
-            }
-            Some((
-                ServerCommandType::SetQuestCatalog,
-                ServerCommandData::SetQuestCatalog { entries },
-            ))
-        }
-        101 => {
-            let mode = *bytes.get(1)?;
-            match mode {
-                0 => {
-                    let mut counts = [0i16; MAX_QUEST_CATALOG];
-                    for (i, slot) in counts.iter_mut().enumerate() {
-                        let off = 2 + i * 2;
-                        let lo = *bytes.get(off)?;
-                        let hi = *bytes.get(off + 1)?;
-                        *slot = i16::from_le_bytes([lo, hi]);
-                    }
-                    Some((
-                        ServerCommandType::SetQuestCompletion,
-                        ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Full(counts)),
-                    ))
-                }
-                1 => {
-                    let idx = *bytes.get(2)?;
-                    let lo = *bytes.get(3)?;
-                    let hi = *bytes.get(4)?;
-                    Some((
-                        ServerCommandType::SetQuestCompletion,
-                        ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Delta {
-                            idx,
-                            count: i16::from_le_bytes([lo, hi]),
-                        }),
-                    ))
-                }
-                _ => None,
-            }
-        }
+        77 => Some((
+            ServerCommandType::SetCompletionData,
+            ServerCommandData::SetCompletionData {
+                labyrinth_progress: *bytes.get(1)?,
+                pentagram_solves: read_u32(bytes, 2)?,
+                first_kill_bits: [
+                    read_u32(bytes, 6)?,
+                    read_u32(bytes, 10)?,
+                    read_u32(bytes, 14)?,
+                    read_u32(bytes, 18)?,
+                ],
+                explorer_point_bits: [
+                    read_u32(bytes, 22)?,
+                    read_u32(bytes, 26)?,
+                    read_u32(bytes, 30)?,
+                    read_u32(bytes, 34)?,
+                ],
+                quest_completion_bits: read_u32(bytes, 38)?,
+            },
+        )),
+        78 => Some((
+            ServerCommandType::SetCharRuneState,
+            ServerCommandData::SetCharRuneState {
+                active_rune: *bytes.get(1)?,
+                cooldown_remaining_ticks: read_u16(bytes, 2)?,
+            },
+        )),
         _ => None,
     }
 }
@@ -1514,166 +1437,90 @@ mod tests {
         assert_eq!(ServerCommandType::from(76), ServerCommandType::SetWeather);
     }
 
-    // -- SV_SETQUESTCATALOG (opcode 100) --
-
-    /// Encode a quest-catalog packet identically to the server's helper.
-    fn encode_quest_catalog(entries: &[QuestCatalogEntry]) -> [u8; QUEST_CATALOG_PACKET_LEN] {
-        let mut buf = [0u8; QUEST_CATALOG_PACKET_LEN];
-        buf[0] = ServerCommandType::SetQuestCatalog as u8;
-        let count = entries.len().min(MAX_QUEST_CATALOG) as u8;
-        buf[1] = count;
-        for (i, e) in entries.iter().take(MAX_QUEST_CATALOG).enumerate() {
-            let off = 2 + i * QUEST_CATALOG_ENTRY_LEN;
-            buf[off..off + 2].copy_from_slice(&e.template_id.to_le_bytes());
-            buf[off + 2..off + 4].copy_from_slice(&e.item_template_id.to_le_bytes());
-            buf[off + 4..off + 6].copy_from_slice(&e.npc_x.to_le_bytes());
-            buf[off + 6..off + 8].copy_from_slice(&e.npc_y.to_le_bytes());
-            buf[off + 8] = e.stages;
-            buf[off + 9] = u8::from(e.repeatable);
-            let npc_bytes = e.npc_name.as_bytes();
-            let n = npc_bytes.len().min(QUEST_CATALOG_NPC_NAME_LEN - 1);
-            buf[off + 10..off + 10 + n].copy_from_slice(&npc_bytes[..n]);
-            let item_bytes = e.item_name.as_bytes();
-            let m = item_bytes.len().min(QUEST_CATALOG_ITEM_NAME_LEN - 1);
-            let item_off = off + 10 + QUEST_CATALOG_NPC_NAME_LEN;
-            buf[item_off..item_off + m].copy_from_slice(&item_bytes[..m]);
-        }
-        buf
-    }
-
-    fn make_catalog_entry(template_id: u16, item_template_id: u16) -> QuestCatalogEntry {
-        QuestCatalogEntry {
-            template_id,
-            item_template_id,
-            npc_x: template_id,
-            npc_y: template_id.wrapping_add(1),
-            stages: 1,
-            repeatable: false,
-            npc_name: format!("npc{template_id}"),
-            item_name: format!("item{item_template_id}"),
-        }
-    }
+    // -- SV_COMPLETIONDATA (opcode 77) --
 
     #[test]
-    fn set_quest_catalog_opcode_decodes_from_u8() {
-        assert_eq!(
-            ServerCommandType::from(100),
-            ServerCommandType::SetQuestCatalog
-        );
-    }
+    fn parse_set_completion_data_roundtrip() {
+        let mut pkt = [0u8; 42];
+        pkt[0] = 77;
+        pkt[1] = 7; // labyrinth_progress
+        pkt[2..6].copy_from_slice(&42u32.to_le_bytes()); // pentagram_solves
+        pkt[6..10].copy_from_slice(&1u32.to_le_bytes());
+        pkt[10..14].copy_from_slice(&2u32.to_le_bytes());
+        pkt[14..18].copy_from_slice(&3u32.to_le_bytes());
+        pkt[18..22].copy_from_slice(&4u32.to_le_bytes()); // first_kill_bits
+        pkt[22..26].copy_from_slice(&5u32.to_le_bytes());
+        pkt[26..30].copy_from_slice(&6u32.to_le_bytes());
+        pkt[30..34].copy_from_slice(&7u32.to_le_bytes());
+        pkt[34..38].copy_from_slice(&8u32.to_le_bytes()); // explorer_point_bits
+        pkt[38..42].copy_from_slice(&9u32.to_le_bytes()); // quest_completion_bits
 
-    #[test]
-    fn set_quest_catalog_expected_length_matches_constant() {
-        let buf = encode_quest_catalog(&[]);
-        let mut last_n = 0i32;
-        let len = ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap();
-        assert_eq!(len, QUEST_CATALOG_PACKET_LEN);
-    }
-
-    #[test]
-    fn set_quest_catalog_roundtrip_empty() {
-        let buf = encode_quest_catalog(&[]);
-        let cmd = ServerCommand::from_bytes(&buf).unwrap();
-        assert_eq!(cmd.header, ServerCommandType::SetQuestCatalog);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_eq!(cmd.header, ServerCommandType::SetCompletionData);
         match cmd.structured_data {
-            ServerCommandData::SetQuestCatalog { entries } => assert!(entries.is_empty()),
-            _ => panic!("expected SetQuestCatalog variant"),
-        }
-    }
-
-    #[test]
-    fn set_quest_catalog_roundtrip_one_entry() {
-        let entries = vec![QuestCatalogEntry {
-            template_id: 42,
-            item_template_id: 7,
-            npc_x: 100,
-            npc_y: 200,
-            stages: 2,
-            repeatable: true,
-            npc_name: "Seyan".into(),
-            item_name: "Stunning gem".into(),
-        }];
-        let buf = encode_quest_catalog(&entries);
-        let cmd = ServerCommand::from_bytes(&buf).unwrap();
-        match cmd.structured_data {
-            ServerCommandData::SetQuestCatalog { entries: out } => assert_eq!(out, entries),
-            _ => panic!("expected SetQuestCatalog variant"),
-        }
-    }
-
-    #[test]
-    fn set_quest_catalog_roundtrip_full() {
-        let entries: Vec<_> = (0..MAX_QUEST_CATALOG as u16)
-            .map(|i| make_catalog_entry(i + 1, i + 100))
-            .collect();
-        let buf = encode_quest_catalog(&entries);
-        let cmd = ServerCommand::from_bytes(&buf).unwrap();
-        match cmd.structured_data {
-            ServerCommandData::SetQuestCatalog { entries: out } => assert_eq!(out, entries),
-            _ => panic!("expected SetQuestCatalog variant"),
-        }
-    }
-
-    // -- SV_SETQUESTCOMPLETION (opcode 101) --
-
-    fn encode_quest_completion_full(
-        counts: &[i16; MAX_QUEST_CATALOG],
-    ) -> [u8; QUEST_COMPLETION_FULL_LEN] {
-        let mut buf = [0u8; QUEST_COMPLETION_FULL_LEN];
-        buf[0] = ServerCommandType::SetQuestCompletion as u8;
-        buf[1] = 0;
-        for (i, c) in counts.iter().enumerate() {
-            let off = 2 + i * 2;
-            buf[off..off + 2].copy_from_slice(&c.to_le_bytes());
-        }
-        buf
-    }
-
-    fn encode_quest_completion_delta(idx: u8, count: i16) -> [u8; QUEST_COMPLETION_DELTA_LEN] {
-        let mut buf = [0u8; QUEST_COMPLETION_DELTA_LEN];
-        buf[0] = ServerCommandType::SetQuestCompletion as u8;
-        buf[1] = 1;
-        buf[2] = idx;
-        buf[3..5].copy_from_slice(&count.to_le_bytes());
-        buf
-    }
-
-    #[test]
-    fn set_quest_completion_full_roundtrip() {
-        let mut counts = [0i16; MAX_QUEST_CATALOG];
-        for (i, c) in counts.iter_mut().enumerate() {
-            *c = (i as i16) - 10;
-        }
-        let buf = encode_quest_completion_full(&counts);
-        let mut last_n = 0i32;
-        assert_eq!(
-            ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap(),
-            QUEST_COMPLETION_FULL_LEN
-        );
-        let cmd = ServerCommand::from_bytes(&buf).unwrap();
-        match cmd.structured_data {
-            ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Full(out)) => {
-                assert_eq!(out, counts);
+            ServerCommandData::SetCompletionData {
+                labyrinth_progress,
+                pentagram_solves,
+                first_kill_bits,
+                explorer_point_bits,
+                quest_completion_bits,
+            } => {
+                assert_eq!(labyrinth_progress, 7);
+                assert_eq!(pentagram_solves, 42);
+                assert_eq!(first_kill_bits, [1, 2, 3, 4]);
+                assert_eq!(explorer_point_bits, [5, 6, 7, 8]);
+                assert_eq!(quest_completion_bits, 9);
             }
-            _ => panic!("expected SetQuestCompletion(Full)"),
+            _ => panic!("Expected SetCompletionData variant"),
         }
     }
 
     #[test]
-    fn set_quest_completion_delta_roundtrip() {
-        let buf = encode_quest_completion_delta(7, 3);
+    fn set_completion_data_expected_length_is_42() {
+        let pkt = make_packet(77, &[0; 41]);
         let mut last_n = 0i32;
+        let len = ServerCommandType::get_expected_length(&pkt, &mut last_n).unwrap();
+        assert_eq!(len, 42);
+    }
+
+    #[test]
+    fn set_completion_data_opcode_decodes_from_u8() {
         assert_eq!(
-            ServerCommandType::get_expected_length(&buf, &mut last_n).unwrap(),
-            QUEST_COMPLETION_DELTA_LEN
+            ServerCommandType::from(77),
+            ServerCommandType::SetCompletionData
         );
-        let cmd = ServerCommand::from_bytes(&buf).unwrap();
+    }
+
+    #[test]
+    fn set_char_rune_state_roundtrip() {
+        let pkt = make_packet(78, &[2, 0x34, 0x12]);
+        let cmd = ServerCommand::from_bytes(&pkt).unwrap();
+        assert_eq!(cmd.header, ServerCommandType::SetCharRuneState);
         match cmd.structured_data {
-            ServerCommandData::SetQuestCompletion(QuestCompletionPayload::Delta { idx, count }) => {
-                assert_eq!(idx, 7);
-                assert_eq!(count, 3);
+            ServerCommandData::SetCharRuneState {
+                active_rune,
+                cooldown_remaining_ticks,
+            } => {
+                assert_eq!(active_rune, 2);
+                assert_eq!(cooldown_remaining_ticks, 0x1234);
             }
-            _ => panic!("expected SetQuestCompletion(Delta)"),
+            _ => panic!("Expected SetCharRuneState variant"),
         }
+    }
+
+    #[test]
+    fn set_char_rune_state_expected_length_is_4() {
+        let pkt = make_packet(78, &[0; 3]);
+        let mut last_n = 0i32;
+        let len = ServerCommandType::get_expected_length(&pkt, &mut last_n).unwrap();
+        assert_eq!(len, 4);
+    }
+
+    #[test]
+    fn set_char_rune_state_opcode_decodes_from_u8() {
+        assert_eq!(
+            ServerCommandType::from(78),
+            ServerCommandType::SetCharRuneState
+        );
     }
 }

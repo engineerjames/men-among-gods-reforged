@@ -24,7 +24,6 @@ use core::{skills, types::Character};
 /// # Returns
 ///
 /// * The computed total experience points.
-#[allow(dead_code)] // Used by server-utils via the lib target (server::points::calculate_points_tot)
 pub fn calculate_points_tot(character: &Character) -> i32 {
     let mut points = 0;
 

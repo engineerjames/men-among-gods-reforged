@@ -718,7 +718,6 @@ pub fn save_globals(con: &mut Connection, globals: &core::types::Global) -> Resu
 /// # Returns
 ///
 /// * `Ok(())` on success, or an `Err` describing the failure.
-#[allow(dead_code)] // Kept for maintenance/seeding utilities.
 pub fn save_text_data(
     con: &mut Connection,
     bad_names: &[String],
@@ -752,7 +751,6 @@ pub fn save_text_data(
 /// # Returns
 ///
 /// * `Ok(())` on success, or an `Err` describing the failure.
-#[allow(dead_code)] // Used by library consumers (server-utils crate).
 pub fn save_character_templates(
     con: &mut Connection,
     character_templates: &[core::types::Character],
@@ -780,7 +778,6 @@ pub fn save_character_templates(
 /// # Returns
 ///
 /// * `Ok(())` on success, or an `Err` describing the failure.
-#[allow(dead_code)] // Used by library consumers (server-utils crate).
 pub fn save_item_templates(
     con: &mut Connection,
     item_templates: &[core::types::Item],
