@@ -84,7 +84,6 @@ const DS_PANEL_H: u32 =
     (DS_Y_SPRITE_UPSCALER + DS_DROPDOWN_PITCH + 10 + BTN_H as i32 + 8 + DS_DROPDOWN_LIST_ROOM)
         as u32;
 const DS_Y_WEATHER_INTENSITY: i32 = DS_Y_WEATHER + DS_ROW_H;
-const DS_PANEL_H: u32 = (DS_Y_WEATHER_INTENSITY + DS_ROW_H + 10 + BTN_H as i32 + 8) as u32;
 
 // ---------------------------------------------------------------------------
 // Layout constants — Diagnostics sub-panel
@@ -698,10 +697,6 @@ impl DisplaySettingsSubPanel {
                         if self.sld_weather_intensity.is_enabled() {
                             self.weather_adjusting = true;
                         }
-                    }
-                    Some(11) => {
-                        self.visible = false;
-                        self.controller_focused = None;
                     }
                     _ => {}
                 }

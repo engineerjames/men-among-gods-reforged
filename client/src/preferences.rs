@@ -1051,6 +1051,8 @@ mod tests {
         assert_eq!(RenderScale::from_factor(0), RenderScale::X1);
         assert_eq!(RenderScale::from_factor(99), RenderScale::X3);
     }
+
+    #[test]
     fn weather_intensity_default_is_one() {
         let settings = Settings::default();
         assert!((settings.weather_intensity - 1.0).abs() < f32::EPSILON);

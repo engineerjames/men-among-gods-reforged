@@ -5,13 +5,10 @@ use mag_core::constants::{
     INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, SPR_EMPTY, TILEX, TILEY, TOMB,
 };
 
-<<<<<<< HEAD
-use crate::{constants, font_cache, gfx_cache::GraphicsCache, player_state::PlayerState};
-=======
 use crate::{
-    font_cache, gfx_cache::GraphicsCache, player_state::PlayerState, types::map::SUBPIXEL_UNIT,
+    constants, font_cache, gfx_cache::GraphicsCache, player_state::PlayerState,
+    types::map::SUBPIXEL_UNIT,
 };
->>>>>>> origin/main
 
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
@@ -66,10 +63,15 @@ impl GameScene {
         // is physically larger but must still occupy the same tile footprint.
         let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let xs = lw as i32 / 32;
-        let ys = lh as i32 / 32;
-        let (ground_x, ground_y) =
-            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(
+            tile_x,
+            tile_y,
+            cam_xoff_sub + xoff_sub,
+            cam_yoff_sub + yoff_sub,
+        );
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
         let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
@@ -114,10 +116,15 @@ impl GameScene {
 
         let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let xs = lw as i32 / 32;
-        let ys = lh as i32 / 32;
-        let (ground_x, ground_y) =
-            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(
+            tile_x,
+            tile_y,
+            cam_xoff_sub + xoff_sub,
+            cam_yoff_sub + yoff_sub,
+        );
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
         let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
@@ -151,10 +158,15 @@ impl GameScene {
 
         let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let xs = lw as i32 / 32;
-        let ys = lh as i32 / 32;
-        let (ground_x, ground_y) =
-            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(
+            tile_x,
+            tile_y,
+            cam_xoff_sub + xoff_sub,
+            cam_yoff_sub + yoff_sub,
+        );
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
         let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
@@ -195,10 +207,15 @@ impl GameScene {
 
         let (lw, lh) = gfx.logical_texture_size(sprite_id as usize);
         let texture = gfx.get_texture(sprite_id as usize);
-        let xs = lw as i32 / 32;
-        let ys = lh as i32 / 32;
-        let (ground_x, ground_y) =
-            Self::tile_ground_diamond_origin(tile_x, tile_y, cam_xoff + xoff, cam_yoff + yoff);
+        let q = texture.query();
+        let xs = q.width as i32 / 32;
+        let ys = q.height as i32 / 32;
+        let (ground_x, ground_y) = Self::tile_ground_diamond_origin(
+            tile_x,
+            tile_y,
+            cam_xoff_sub + xoff_sub,
+            cam_yoff_sub + yoff_sub,
+        );
         let rx = ground_x - xs * (FLOOR_TILE_WIDTH / 2);
         let ry = ground_y + FLOOR_TILE_HEIGHT - ys * 32;
 
