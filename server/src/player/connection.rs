@@ -1,5 +1,4 @@
 use core::{
-    ban_store::BanTarget,
     constants::CharacterFlags,
     logout_reasons::LogoutReason,
     server_commands::ServerCommandType,
@@ -9,7 +8,7 @@ use core::{
     types::{CharacterSummary, Sex, api::GameLoginTicketMetadata},
 };
 
-use server::keydb::connection as keydb;
+use server::keydb::tick_worker::LoginFailureKind;
 
 use crate::{game_state::GameState, god::God, network_manager};
 
@@ -21,22 +20,33 @@ use crate::{game_state::GameState, god::God, network_manager};
 /// * `gs` - Active game state used by this function.
 /// * `nr` - Numeric identifier used by this function.
 pub fn plr_login(gs: &mut GameState, nr: usize) {
-    let login_ticket = gs.players[nr].login_ticket;
-    if login_ticket == 0 {
-        log::warn!("Login attempt without API ticket; rejecting");
-        plr_logout(gs, 0, nr, LogoutReason::ParamsInvalid);
-        return;
-    }
+    let Some(failure) = gs.players[nr].login_failure.take() else {
+        if gs.players[nr].login_resolution.is_none() {
+            return;
+        }
+        return plr_login_with_resolution(gs, nr);
+    };
 
-    let login_ticket_data =
-        match consume_api_login_ticket(login_ticket, keydb::consume_login_ticket) {
-            Ok(login_ticket_data) => login_ticket_data,
-            Err(reason) => {
-                log::warn!("API login ticket denied: {:?}", reason);
-                plr_logout(gs, 0, nr, reason);
-                return;
-            }
-        };
+    let reason = match failure.kind {
+        LoginFailureKind::Banned => LogoutReason::Kicked,
+        LoginFailureKind::TicketMissing | LoginFailureKind::CharacterMissing => {
+            LogoutReason::PasswordIncorrect
+        }
+        LoginFailureKind::KeyDb => LogoutReason::Failure,
+    };
+    log::warn!("API login denied: {}", failure.message);
+    plr_logout(gs, 0, nr, reason);
+}
+
+fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
+    let Some(resolution) = gs.players[nr].login_resolution.take() else {
+        return;
+    };
+    let login_ticket_data = resolution.ticket;
+    let character = resolution.character;
+    let mut message_of_the_day = resolution
+        .motd
+        .unwrap_or_else(|| gs.message_of_the_day.clone());
 
     gs.players[nr].version = login_ticket_data.client_version as i32;
     gs.players[nr].race = login_ticket_data.race;
@@ -51,8 +61,8 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
         return;
     }
 
-    let cn = match resolve_api_login_character(gs, nr, login_ticket_data.character_id) {
-        Ok(cn) => cn,
+    let (cn, is_brand_new_character) = match apply_api_login_character_record(gs, &character) {
+        Ok(value) => value,
         Err(reason) => {
             log::warn!("API login denied: {:?}", reason);
             plr_logout(gs, 0, nr, reason);
@@ -62,6 +72,8 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
 
     gs.players[nr].usnr = cn;
     gs.players[nr].login_ticket = 0;
+    gs.players[nr].login_needs_server_id = is_brand_new_character;
+    gs.players[nr].login_persistence_queued = false;
 
     // get character number requested by player
     let cn = gs.players[nr].usnr;
@@ -116,11 +128,6 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     if is_kicked {
         log::warn!("Login as {} denied (kicked)", cn);
         gs.characters[cn].flags &= !CharacterFlags::Kicked.bits();
-        plr_logout(gs, 0, nr, LogoutReason::Kicked);
-        return;
-    }
-
-    if login_target_is_banned(gs, nr, cn) {
         plr_logout(gs, 0, nr, LogoutReason::Kicked);
         return;
     }
@@ -261,7 +268,6 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     let intro2 = "May your visit here be... interesting.\n";
     let intro3 = "\n";
     let intro4 = "Use #help (or /help) to get a listing of the text commands.\n";
-    let mut message_of_the_day = gs.latest_message_of_the_day();
     if !message_of_the_day.is_empty() && !message_of_the_day.ends_with('\n') {
         message_of_the_day.push('\n');
     }
@@ -294,62 +300,7 @@ pub fn plr_login(gs: &mut GameState, nr: usize) {
     gs.do_announce(cn, 0, &format!("{} entered the game.\n", name));
 }
 
-fn login_target_is_banned(gs: &GameState, nr: usize, cn: usize) -> bool {
-    let checks = [
-        BanTarget::Account {
-            account_id: gs.players[nr].api_account_id,
-        },
-        BanTarget::Character {
-            character_id: gs.players[nr].api_character_id,
-        },
-        BanTarget::Ipv4 {
-            address: gs.players[nr].addr,
-        },
-    ];
-
-    for target in checks {
-        match server::keydb::ban::target_is_banned(&target) {
-            Ok(true) => {
-                log::info!(
-                    "login for character {} denied by {} ban {}",
-                    cn,
-                    target.scope(),
-                    target.value()
-                );
-                return true;
-            }
-            Ok(false) => {}
-            Err(error) => {
-                log::warn!(
-                    "login for character {} denied because ban lookup failed for {} {}: {}",
-                    cn,
-                    target.scope(),
-                    target.value(),
-                    error
-                );
-                return true;
-            }
-        }
-    }
-
-    false
-}
-
-fn resolve_api_login_character(
-    gs: &mut GameState,
-    nr: usize,
-    character_id: u64,
-) -> Result<usize, LogoutReason> {
-    resolve_api_login_character_with_ops(
-        gs,
-        nr,
-        character_id,
-        keydb::load_character,
-        keydb::set_character_server_id,
-        keydb::sync_character_selection_metadata,
-    )
-}
-
+#[cfg(test)]
 fn consume_api_login_ticket<ConsumeTicket>(
     login_ticket: u64,
     mut consume_ticket: ConsumeTicket,
@@ -370,6 +321,7 @@ where
     }
 }
 
+#[cfg(test)]
 fn resolve_api_login_character_with_ops<LoadCharacter, SetServerId, SyncMetadata>(
     gs: &mut GameState,
     nr: usize,
@@ -797,6 +749,13 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
 
     gs.players[player_id].state = core::constants::ST_EXIT;
     gs.players[player_id].lasttick = ticker;
+    gs.players[player_id].login_session_generation = gs.players[player_id]
+        .login_session_generation
+        .wrapping_add(1);
+    gs.players[player_id].login_request_id = None;
+    gs.players[player_id].login_deadline_tick = 0;
+    gs.players[player_id].login_resolution = None;
+    gs.players[player_id].login_failure = None;
     gs.players[player_id].api_account_id = 0;
     gs.players[player_id].api_character_id = 0;
 
@@ -844,6 +803,14 @@ pub fn plr_api_login(gs: &mut GameState, nr: usize) {
     gs.players[nr].state = core::constants::ST_LOGIN;
     gs.players[nr].lasttick = ticker;
     gs.players[nr].login_ticket = ticket;
+    gs.players[nr].login_session_generation =
+        gs.players[nr].login_session_generation.wrapping_add(1);
+    gs.players[nr].login_request_id = None;
+    gs.players[nr].login_deadline_tick = 0;
+    gs.players[nr].login_resolution = None;
+    gs.players[nr].login_failure = None;
+    gs.players[nr].login_persistence_queued = true;
+    gs.players[nr].login_needs_server_id = false;
     gs.players[nr].usnr = 0;
     gs.players[nr].api_account_id = 0;
     gs.players[nr].api_character_id = 0;

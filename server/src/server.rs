@@ -21,10 +21,14 @@ use crate::{driver, player, populate};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use server::keydb::background_saver::{self, BackgroundSaver, SaveJob};
+use server::keydb::tick_worker::{
+    LoginFailure, LoginFailureKind, LoginRequest, TickKeyDbEvent, TickKeyDbWorker,
+};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 const GAME_SERVER_PORT: u16 = 5555;
 const GAME_LISTEN_BACKLOG: i32 = 5;
+const LOGIN_RESOLUTION_TIMEOUT_TICKS: u32 = (core::constants::TICKS * 5) as u32;
 
 /// Creates the game listener with socket options matching the legacy server.
 ///
@@ -157,6 +161,12 @@ pub struct Server {
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
+
+    /// Background worker for KeyDB requests initiated by the tick loop.
+    tick_keydb_worker: Option<TickKeyDbWorker>,
+
+    /// Monotonically increasing identifier for tick-loop KeyDB requests.
+    next_keydb_request_id: u64,
 }
 
 impl Server {
@@ -183,6 +193,8 @@ impl Server {
             world_action_watcher: None,
             ban_action_watcher: None,
             save_tick_counter: 0,
+            tick_keydb_worker: None,
+            next_keydb_request_id: 0,
         }
     }
 
@@ -330,6 +342,11 @@ impl Server {
         // Always spawn the background KeyDB saver.
         log::info!("Starting background KeyDB saver thread...");
         self.background_saver = Some(background_saver::spawn());
+
+        // Keep blocking login resolution and other tick-originated KeyDB work
+        // off the game loop thread.
+        log::info!("Starting tick-loop KeyDB worker thread...");
+        self.tick_keydb_worker = Some(TickKeyDbWorker::spawn());
 
         // Spawn the admin template-reload watcher (no-op when disabled).
         self.template_reload_watcher =
@@ -551,6 +568,10 @@ impl Server {
             }
         });
 
+        // Resolve worker results before advancing login state so a completed
+        // login can be applied during this tick without another KeyDB call.
+        self.drain_tick_keydb_events(gs);
+
         // Do login stuff for players not in normal state
         core::measure!("player.tick_login_state", {
             for n in 1..gs.players.len() {
@@ -562,8 +583,13 @@ impl Server {
                 }
 
                 player::tick::plr_state(gs, n);
+                if gs.players[n].state == core::constants::ST_LOGIN {
+                    self.process_pending_login(gs, n);
+                }
             }
         });
+
+        self.queue_login_persistence(gs);
 
         // Send changes to players in normal state
         core::measure!("player.send_normal_state_updates", {
@@ -705,6 +731,154 @@ impl Server {
         core::measure!(crate::aura::logic::tick_auras(gs, ticker));
 
         core::measure!(self.global_tick(gs));
+    }
+
+    /// Drain completed KeyDB worker events without waiting for the worker.
+    ///
+    /// Login results are accepted only when the player slot still represents
+    /// the request's session. This prevents a late result from affecting a
+    /// connection that reused the same slot.
+    fn drain_tick_keydb_events(&self, gs: &mut GameState) {
+        let Some(worker) = self.tick_keydb_worker.as_ref() else {
+            return;
+        };
+
+        while let Some(event) = worker.try_recv() {
+            match event {
+                TickKeyDbEvent::LoginResolved { request, result } => {
+                    let Some(player) = gs.players.get_mut(request.player_id) else {
+                        log::warn!(
+                            "Discarding login result {} for invalid player slot {}",
+                            request.request_id,
+                            request.player_id
+                        );
+                        continue;
+                    };
+
+                    let request_matches = player.sock.is_some()
+                        && player.state == core::constants::ST_LOGIN
+                        && player.login_session_generation == request.session_generation
+                        && player.login_request_id == Some(request.request_id);
+                    if !request_matches {
+                        log::warn!(
+                            "Discarding stale login result {} for player {}",
+                            request.request_id,
+                            request.player_id
+                        );
+                        continue;
+                    }
+
+                    player.login_request_id = None;
+                    player.login_deadline_tick = 0;
+                    match result {
+                        Ok(resolution) => player.login_resolution = Some(resolution),
+                        Err(failure) => player.login_failure = Some(failure),
+                    }
+                }
+                TickKeyDbEvent::WriteCompleted { operation, result } => {
+                    if let Err(error) = result {
+                        log::warn!("Asynchronous KeyDB {} failed: {}", operation, error);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Submit one pending login to the KeyDB worker or expire it locally.
+    fn process_pending_login(&mut self, gs: &mut GameState, player_id: usize) {
+        let ticker = gs.globals.ticker as u32;
+        let player = &mut gs.players[player_id];
+
+        if player.login_request_id.is_some() {
+            let deadline_reached = ticker.wrapping_sub(player.login_deadline_tick) < (u32::MAX / 2);
+            if deadline_reached {
+                log::warn!("Login resolution timed out for player {}", player_id);
+                player.login_request_id = None;
+                player.login_resolution = None;
+                player.login_failure = None;
+                player::connection::plr_logout(gs, 0, player_id, LogoutReason::Failure);
+            }
+            return;
+        }
+
+        if player.login_resolution.is_some() || player.login_failure.is_some() {
+            return;
+        }
+
+        let Some(worker) = self.tick_keydb_worker.as_ref() else {
+            player.login_failure = Some(LoginFailure {
+                kind: LoginFailureKind::KeyDb,
+                message: "tick-loop KeyDB worker is unavailable".to_owned(),
+            });
+            return;
+        };
+
+        if player.login_ticket == 0 {
+            player.login_failure = Some(LoginFailure {
+                kind: LoginFailureKind::TicketMissing,
+                message: "login attempt did not include an API ticket".to_owned(),
+            });
+            return;
+        }
+
+        self.next_keydb_request_id = self.next_keydb_request_id.wrapping_add(1);
+        let request = LoginRequest {
+            request_id: self.next_keydb_request_id,
+            player_id,
+            session_generation: player.login_session_generation,
+            ticket: player.login_ticket,
+            address: player.addr,
+        };
+        player.login_request_id = Some(request.request_id);
+        player.login_deadline_tick = ticker.wrapping_add(LOGIN_RESOLUTION_TIMEOUT_TICKS);
+
+        if worker.submit_login(request.clone()).is_err() {
+            player.login_request_id = None;
+            player.login_deadline_tick = 0;
+            player.login_failure = Some(LoginFailure {
+                kind: LoginFailureKind::KeyDb,
+                message: format!("failed to queue login request {}", request.request_id),
+            });
+        }
+    }
+
+    /// Queue post-login API metadata writes without waiting for KeyDB.
+    fn queue_login_persistence(&self, gs: &mut GameState) {
+        let Some(worker) = self.tick_keydb_worker.as_ref() else {
+            return;
+        };
+
+        for player_id in 1..gs.players.len() {
+            let player = &mut gs.players[player_id];
+            if player.state != core::constants::ST_NORMAL
+                || player.login_persistence_queued
+                || player.api_character_id == 0
+                || player.usnr == 0
+                || player.usnr >= gs.characters.len()
+            {
+                continue;
+            }
+
+            let character_id = player.api_character_id;
+            let server_id = player.usnr as u32;
+            let character = gs.characters[player.usnr];
+            if player.login_needs_server_id
+                && worker.submit_server_id(character_id, server_id).is_err()
+            {
+                log::warn!(
+                    "Failed to queue server_id persistence for API character {character_id}"
+                );
+            }
+            if worker
+                .submit_selection_metadata(character_id, character)
+                .is_err()
+            {
+                log::warn!(
+                    "Failed to queue selection metadata persistence for API character {character_id}"
+                );
+            }
+            player.login_persistence_queued = true;
+        }
     }
 
     /// Wake up one character in a round-robin fashion.
@@ -1849,6 +2023,10 @@ impl Server {
     ///
     /// Call this during server shutdown, after the game loop has exited.
     pub fn shutdown_background_saver(&mut self) {
+        if let Some(mut worker) = self.tick_keydb_worker.take() {
+            log::info!("Stopping tick-loop KeyDB worker...");
+            worker.shutdown();
+        }
         if let Some(mut watcher) = self.template_reload_watcher.take() {
             log::info!("Stopping template reload watcher...");
             watcher.shutdown();

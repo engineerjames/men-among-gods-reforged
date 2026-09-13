@@ -49,3 +49,6 @@ pub mod text_reload;
 
 /// KeyDB watcher for admin-issued world actions.
 pub mod world_action;
+
+/// Background worker for KeyDB operations initiated by the game tick loop.
+pub mod tick_worker;
