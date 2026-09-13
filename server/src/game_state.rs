@@ -61,6 +61,7 @@ pub struct TalentRuntimeBonuses {
 /// export or import the complete world state as a portable `.wsnap` file.
 use server::keydb::connection as keydb;
 use server::keydb::store;
+use server::keydb::tick_worker::{BanWriteRequest, TickKeyDbClient};
 
 /// The unified in-memory game state for the server.
 ///
@@ -174,6 +175,9 @@ pub struct GameState {
     /// Any player who types this string in chat is immediately granted all god-level flags.
     /// The server refuses to start if this field is empty (i.e. the env var was not provided).
     pub god_password: String,
+
+    /// Non-blocking KeyDB request sender installed by the server after startup.
+    tick_keydb_client: Option<TickKeyDbClient>,
 }
 
 impl GameState {
@@ -268,6 +272,7 @@ impl GameState {
             // Runtime mode flags
             playtest_mode: false,
             god_password: String::new(),
+            tick_keydb_client: None,
         }
     }
 
@@ -637,16 +642,54 @@ impl GameState {
             return;
         }
 
-        if let Err(err) =
-            keydb::sync_character_selection_metadata(api_character_id, &self.characters[cn])
+        let Some(client) = self.tick_keydb_client.as_ref() else {
+            log::warn!(
+                "Cannot queue selection metadata for live character {} (api id {}): KeyDB worker unavailable",
+                cn,
+                api_character_id
+            );
+            return;
+        };
+
+        if client
+            .submit_selection_metadata(api_character_id, self.characters[cn])
+            .is_err()
         {
             log::warn!(
-                "Failed to sync selection metadata for live character {} (api id {}): {}",
+                "Failed to queue selection metadata for live character {} (api id {})",
                 cn,
-                api_character_id,
-                err
+                api_character_id
             );
         }
+    }
+
+    /// Install the non-blocking KeyDB client used by gameplay persistence.
+    ///
+    /// # Arguments
+    ///
+    /// * `client` - Request sender owned by the server's KeyDB worker.
+    pub(crate) fn set_tick_keydb_client(&mut self, client: TickKeyDbClient) {
+        self.tick_keydb_client = Some(client);
+    }
+
+    /// Queue a durable ban operation without waiting for KeyDB.
+    ///
+    /// # Arguments
+    ///
+    /// * `request` - Ban operation and the issuing character context.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(())` when the worker accepted the request.
+    /// * `Err(request)` when the worker is unavailable.
+    pub(crate) fn submit_ban_write(
+        &self,
+        request: BanWriteRequest,
+    ) -> Result<(), Box<BanWriteRequest>> {
+        let Some(client) = self.tick_keydb_client.as_ref() else {
+            return Err(Box::new(request));
+        };
+        client.submit_ban_write(request)
     }
 
     /// Perform a clean shutdown of the game state by clearing the dirty flag

@@ -5,10 +5,12 @@ use core::constants::{CharacterFlags, TILEX, TILEY};
 use core::logout_reasons::LogoutReason;
 use core::stat_buffer::StatisticsBuffer;
 use core::types::Map;
+use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::io::{Read, Write};
 use std::net::{Ipv4Addr, Shutdown, SocketAddrV4, TcpListener};
 use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::effect::EffectManager;
@@ -20,11 +22,16 @@ use crate::types::server_player::ServerPlayer;
 use crate::{driver, player, populate};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
-use server::keydb::background_saver::{self, BackgroundSaver, SaveJob};
+use server::keydb::background_saver::{self, BackgroundSaver, SaveCompletion, SaveJob};
+use server::keydb::tick_worker::{
+    ActionStatusRequest, AdminReloadRequest, AdminReloadResult, AdminStatusKind, BanWriteAction,
+    BanWriteResult, LoginFailure, LoginFailureKind, LoginRequest, TickKeyDbEvent, TickKeyDbWorker,
+};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 
 const GAME_SERVER_PORT: u16 = 5555;
 const GAME_LISTEN_BACKLOG: i32 = 5;
+const LOGIN_RESOLUTION_TIMEOUT_TICKS: u32 = (core::constants::TICKS * 5) as u32;
 
 /// Creates the game listener with socket options matching the legacy server.
 ///
@@ -157,6 +164,19 @@ pub struct Server {
     /// Counter that drives the rotating save schedule (increments each tick
     /// when using KeyDB backend).
     save_tick_counter: u32,
+
+    /// Background worker for KeyDB requests initiated by the tick loop.
+    tick_keydb_worker: Option<TickKeyDbWorker>,
+
+    /// Monotonically increasing identifier for tick-loop KeyDB requests.
+    next_keydb_request_id: u64,
+
+    /// Completion channel for asynchronous world-action snapshots.
+    world_action_save_tx: Option<Sender<SaveCompletion>>,
+    world_action_save_rx: Option<Receiver<SaveCompletion>>,
+
+    /// World actions waiting for their snapshot save to complete.
+    pending_world_action_saves: HashMap<String, core::world_action_store::WorldActionRequest>,
 }
 
 impl Server {
@@ -183,6 +203,11 @@ impl Server {
             world_action_watcher: None,
             ban_action_watcher: None,
             save_tick_counter: 0,
+            tick_keydb_worker: None,
+            next_keydb_request_id: 0,
+            world_action_save_tx: None,
+            world_action_save_rx: None,
+            pending_world_action_saves: HashMap::new(),
         }
     }
 
@@ -258,6 +283,13 @@ impl Server {
         // Mark data as dirty so a crash before clean shutdown is detectable.
         gs.globals.set_dirty(true);
 
+        // Start the worker before startup logout so metadata cleanup also stays
+        // off the server thread.
+        log::info!("Starting tick-loop KeyDB worker thread...");
+        let tick_keydb_worker = TickKeyDbWorker::spawn();
+        gs.set_tick_keydb_client(tick_keydb_worker.client());
+        self.tick_keydb_worker = Some(tick_keydb_worker);
+
         // Log out all active characters (cleanup from previous run)
         for i in 0..core::constants::MAXCHARS {
             let should_logout = gs.characters[i].used == core::constants::USE_ACTIVE
@@ -330,6 +362,10 @@ impl Server {
         // Always spawn the background KeyDB saver.
         log::info!("Starting background KeyDB saver thread...");
         self.background_saver = Some(background_saver::spawn());
+
+        let (world_action_save_tx, world_action_save_rx) = mpsc::channel();
+        self.world_action_save_tx = Some(world_action_save_tx);
+        self.world_action_save_rx = Some(world_action_save_rx);
 
         // Spawn the admin template-reload watcher (no-op when disabled).
         self.template_reload_watcher =
@@ -551,6 +587,10 @@ impl Server {
             }
         });
 
+        // Resolve worker results before advancing login state so a completed
+        // login can be applied during this tick without another KeyDB call.
+        self.drain_tick_keydb_events(gs);
+
         // Do login stuff for players not in normal state
         core::measure!("player.tick_login_state", {
             for n in 1..gs.players.len() {
@@ -562,8 +602,13 @@ impl Server {
                 }
 
                 player::tick::plr_state(gs, n);
+                if gs.players[n].state == core::constants::ST_LOGIN {
+                    self.process_pending_login(gs, n);
+                }
             }
         });
+
+        self.queue_login_persistence(gs);
 
         // Send changes to players in normal state
         core::measure!("player.send_normal_state_updates", {
@@ -705,6 +750,293 @@ impl Server {
         core::measure!(crate::aura::logic::tick_auras(gs, ticker));
 
         core::measure!(self.global_tick(gs));
+    }
+
+    /// Drain completed KeyDB worker events without waiting for the worker.
+    ///
+    /// Login results are accepted only when the player slot still represents
+    /// the request's session. This prevents a late result from affecting a
+    /// connection that reused the same slot.
+    fn drain_tick_keydb_events(&mut self, gs: &mut GameState) {
+        let mut events = Vec::new();
+        if let Some(worker) = self.tick_keydb_worker.as_ref() {
+            while let Some(event) = worker.try_recv() {
+                events.push(event);
+            }
+        }
+
+        for event in events {
+            match event {
+                TickKeyDbEvent::LoginResolved { request, result } => {
+                    let Some(player) = gs.players.get_mut(request.player_id) else {
+                        log::warn!(
+                            "Discarding login result {} for invalid player slot {}",
+                            request.request_id,
+                            request.player_id
+                        );
+                        continue;
+                    };
+
+                    let request_matches = player.sock.is_some()
+                        && player.state == core::constants::ST_LOGIN
+                        && player.login_session_generation == request.session_generation
+                        && player.login_request_id == Some(request.request_id);
+                    if !request_matches {
+                        log::warn!(
+                            "Discarding stale login result {} for player {}",
+                            request.request_id,
+                            request.player_id
+                        );
+                        continue;
+                    }
+
+                    player.login_request_id = None;
+                    player.login_deadline_tick = 0;
+                    match result {
+                        Ok(resolution) => player.login_resolution = Some(resolution),
+                        Err(failure) => player.login_failure = Some(failure),
+                    }
+                }
+                TickKeyDbEvent::WriteCompleted { operation, result } => {
+                    if let Err(error) = result {
+                        log::warn!("Asynchronous KeyDB {} failed: {}", operation, error);
+                    }
+                }
+                TickKeyDbEvent::BanWriteCompleted { request, result } => {
+                    self.apply_ban_write_result(gs, request, result);
+                }
+                TickKeyDbEvent::AdminCompleted {
+                    operation,
+                    request_id,
+                    result,
+                } => {
+                    if operation == "admin status" {
+                        if let Err(error) = result {
+                            log::warn!(
+                                "KeyDB admin status write for {} failed: {}",
+                                request_id,
+                                error
+                            );
+                        }
+                        continue;
+                    }
+
+                    match result {
+                        Ok(Some(AdminReloadResult::Templates { items, characters })) => {
+                            if let Some(mut items) = items {
+                                let migrated =
+                                    GameState::normalize_legacy_spell_template_timers(&mut items);
+                                log::info!(
+                                    "template reload {}: swapped {} item templates (normalized {} spell timers)",
+                                    request_id,
+                                    items.len(),
+                                    migrated
+                                );
+                                gs.item_templates = items;
+                            }
+                            if let Some(characters) = characters {
+                                log::info!(
+                                    "template reload {}: swapped {} character templates",
+                                    request_id,
+                                    characters.len()
+                                );
+                                gs.character_templates = characters;
+                            }
+                            self.queue_admin_status(AdminStatusKind::Templates, request_id);
+                        }
+                        Ok(Some(AdminReloadResult::BadWords(bad_words))) => {
+                            log::info!(
+                                "text reload {}: swapped {} badwords",
+                                request_id,
+                                bad_words.len()
+                            );
+                            gs.bad_words = bad_words;
+                            self.queue_admin_status(AdminStatusKind::Text, request_id);
+                        }
+                        Ok(None) => {
+                            log::warn!("{} {} returned no data", operation, request_id);
+                        }
+                        Err(error) => {
+                            log::warn!("{} {} failed: {}", operation, request_id, error);
+                        }
+                    }
+                }
+                TickKeyDbEvent::ActionStatusCompleted { request_id, result } => {
+                    if let Err(error) = result {
+                        log::warn!(
+                            "KeyDB admin action status write for {} failed: {}",
+                            request_id,
+                            error
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn queue_admin_status(&self, kind: AdminStatusKind, request_id: String) {
+        let Some(worker) = self.tick_keydb_worker.as_ref() else {
+            log::warn!("Cannot queue admin status {request_id}: KeyDB worker unavailable");
+            return;
+        };
+        if worker
+            .submit_admin_status(kind, request_id.clone())
+            .is_err()
+        {
+            log::warn!("Failed to queue admin status {request_id}");
+        }
+    }
+
+    fn apply_ban_write_result(
+        &mut self,
+        gs: &mut GameState,
+        request: server::keydb::tick_worker::BanWriteRequest,
+        result: Result<BanWriteResult, String>,
+    ) {
+        let issuer = request.issuer_character;
+        let (target, message) = match (request.action, result) {
+            (BanWriteAction::Upsert(record), Ok(BanWriteResult::Upserted(_))) => {
+                let kicked = kick_matching_ban_target(gs, &record.target);
+                let target_value = match &record.target {
+                    BanTarget::Ipv4 { address } => Ipv4Addr::from(*address).to_string(),
+                    _ => record.target.value(),
+                };
+                let message = format!(
+                    "Added {} ban for {} ({} online session(s) kicked).\n",
+                    record.target.scope(),
+                    target_value,
+                    kicked
+                );
+                (record.target, message)
+            }
+            (BanWriteAction::Remove(target), Ok(BanWriteResult::Removed(true))) => (
+                target.clone(),
+                format!("Removed {} ban for {}.\n", target.scope(), target.value()),
+            ),
+            (BanWriteAction::Remove(target), Ok(BanWriteResult::Removed(false))) => (
+                target.clone(),
+                format!("No active {} ban for {}.\n", target.scope(), target.value()),
+            ),
+            (BanWriteAction::Upsert(record), Err(error)) => {
+                (record.target, format!("Failed to add ban: {}\n", error))
+            }
+            (BanWriteAction::Remove(target), Err(error)) => {
+                (target, format!("Failed to remove ban: {}\n", error))
+            }
+            (_, Ok(unexpected)) => {
+                log::error!("Unexpected durable ban result: {unexpected:?}");
+                return;
+            }
+        };
+
+        if issuer < gs.characters.len() && core::types::Character::is_sane_character(issuer) {
+            let color = if message.starts_with("Failed") {
+                core::types::FontColor::Red
+            } else if message.starts_with("No active") {
+                core::types::FontColor::Yellow
+            } else {
+                core::types::FontColor::Green
+            };
+            gs.do_character_log(issuer, color, &message);
+        } else {
+            log::info!(
+                "Durable ban result for {}: {}",
+                target.value(),
+                message.trim()
+            );
+        }
+    }
+
+    /// Submit one pending login to the KeyDB worker or expire it locally.
+    fn process_pending_login(&mut self, gs: &mut GameState, player_id: usize) {
+        let ticker = gs.globals.ticker as u32;
+        let player = &mut gs.players[player_id];
+
+        if player.login_request_id.is_some() {
+            let deadline_reached = ticker.wrapping_sub(player.login_deadline_tick) < (u32::MAX / 2);
+            if deadline_reached {
+                log::warn!("Login resolution timed out for player {}", player_id);
+                player.login_request_id = None;
+                player.login_resolution = None;
+                player.login_failure = None;
+                player::connection::plr_logout(gs, 0, player_id, LogoutReason::Failure);
+            }
+            return;
+        }
+
+        if player.login_resolution.is_some() || player.login_failure.is_some() {
+            return;
+        }
+
+        let Some(worker) = self.tick_keydb_worker.as_ref() else {
+            player.login_failure = Some(LoginFailure {
+                kind: LoginFailureKind::KeyDb,
+                message: "tick-loop KeyDB worker is unavailable".to_owned(),
+            });
+            return;
+        };
+
+        if player.login_ticket == 0 {
+            player.login_failure = Some(LoginFailure {
+                kind: LoginFailureKind::TicketMissing,
+                message: "login attempt did not include an API ticket".to_owned(),
+            });
+            return;
+        }
+
+        self.next_keydb_request_id = self.next_keydb_request_id.wrapping_add(1);
+        let request = LoginRequest {
+            request_id: self.next_keydb_request_id,
+            player_id,
+            session_generation: player.login_session_generation,
+            ticket: player.login_ticket,
+            address: player.addr,
+        };
+        player.login_request_id = Some(request.request_id);
+        player.login_deadline_tick = ticker.wrapping_add(LOGIN_RESOLUTION_TIMEOUT_TICKS);
+
+        if worker.submit_login(request.clone()).is_err() {
+            player.login_request_id = None;
+            player.login_deadline_tick = 0;
+            player.login_failure = Some(LoginFailure {
+                kind: LoginFailureKind::KeyDb,
+                message: format!("failed to queue login request {}", request.request_id),
+            });
+        }
+    }
+
+    /// Queue post-login API metadata writes without waiting for KeyDB.
+    fn queue_login_persistence(&self, gs: &mut GameState) {
+        let Some(worker) = self.tick_keydb_worker.as_ref() else {
+            return;
+        };
+
+        for player_id in 1..gs.players.len() {
+            let player = &mut gs.players[player_id];
+            if player.state != core::constants::ST_NORMAL
+                || player.login_persistence_queued
+                || player.api_character_id == 0
+                || player.usnr == 0
+                || player.usnr >= gs.characters.len()
+            {
+                continue;
+            }
+
+            let character_id = player.api_character_id;
+            let server_id = player.usnr as u32;
+            let character = gs.characters[player.usnr];
+            let server_id_queued = !player.login_needs_server_id
+                || worker.submit_server_id(character_id, server_id).is_ok();
+            let metadata_queued = worker
+                .submit_selection_metadata(character_id, character)
+                .is_ok();
+            if !server_id_queued || !metadata_queued {
+                log::warn!(
+                    "Failed to queue login persistence for API character {character_id}; will retry"
+                );
+            }
+            player.login_persistence_queued = server_id_queued && metadata_queued;
+        }
     }
 
     /// Wake up one character in a round-robin fashion.
@@ -1211,84 +1543,24 @@ impl Server {
     /// # Arguments
     ///
     /// * `gs` - Mutable game state whose template slices will be replaced.
-    pub fn drain_template_reloads(&mut self, gs: &mut GameState) {
+    pub fn drain_template_reloads(&mut self, _gs: &mut GameState) {
         let Some(watcher) = self.template_reload_watcher.as_ref() else {
             return;
         };
         while let Some(req) = watcher.try_recv() {
-            self.apply_template_reload(gs, req);
-        }
-    }
-
-    fn apply_template_reload(
-        &self,
-        gs: &mut GameState,
-        req: server::keydb::template_reload::ReloadRequest,
-    ) {
-        let mut con = match server::keydb::connection::connect() {
-            Ok(c) => c,
-            Err(e) => {
+            let Some(worker) = self.tick_keydb_worker.as_ref() else {
                 log::warn!(
-                    "template reload {}: keydb connect failed: {}",
-                    req.request_id,
-                    e
+                    "Dropping template reload {}: KeyDB worker unavailable",
+                    req.request_id
                 );
-                return;
+                continue;
+            };
+            if worker
+                .submit_admin_reload(AdminReloadRequest::Templates(req.clone()))
+                .is_err()
+            {
+                log::warn!("Failed to queue template reload {}", req.request_id);
             }
-        };
-
-        if req.reload_items {
-            match server::keydb::store::load_item_templates(&mut con) {
-                Ok(mut items) => {
-                    let migrated = GameState::normalize_legacy_spell_template_timers(&mut items);
-                    log::info!(
-                        "template reload {}: swapped {} item templates (normalized {} spell timers)",
-                        req.request_id,
-                        items.len(),
-                        migrated,
-                    );
-                    gs.item_templates = items;
-                }
-                Err(e) => {
-                    log::warn!(
-                        "template reload {}: load item templates failed: {}",
-                        req.request_id,
-                        e
-                    );
-                    return;
-                }
-            }
-        }
-
-        if req.reload_characters {
-            match server::keydb::store::load_character_templates(&mut con) {
-                Ok(chars) => {
-                    log::info!(
-                        "template reload {}: swapped {} character templates",
-                        req.request_id,
-                        chars.len()
-                    );
-                    gs.character_templates = chars;
-                }
-                Err(e) => {
-                    log::warn!(
-                        "template reload {}: load character templates failed: {}",
-                        req.request_id,
-                        e
-                    );
-                    return;
-                }
-            }
-        }
-
-        if let Err(e) =
-            server::keydb::template_reload::write_applied_status(&mut con, &req.request_id)
-        {
-            log::warn!(
-                "template reload {}: status write failed: {}",
-                req.request_id,
-                e
-            );
         }
     }
 
@@ -1300,61 +1572,24 @@ impl Server {
     /// # Arguments
     ///
     /// * `gs` - Mutable game state whose text-data fields will be replaced.
-    pub fn drain_text_reloads(&mut self, gs: &mut GameState) {
+    pub fn drain_text_reloads(&mut self, _gs: &mut GameState) {
         let Some(watcher) = self.text_reload_watcher.as_ref() else {
             return;
         };
         while let Some(req) = watcher.try_recv() {
-            self.apply_text_reload(gs, req);
-        }
-    }
-
-    fn apply_text_reload(
-        &self,
-        gs: &mut GameState,
-        req: server::keydb::text_reload::TextReloadRequest,
-    ) {
-        let mut con = match server::keydb::connection::connect() {
-            Ok(connection) => connection,
-            Err(error) => {
+            let Some(worker) = self.tick_keydb_worker.as_ref() else {
                 log::warn!(
-                    "text reload {}: keydb connect failed: {}",
-                    req.request_id,
-                    error
+                    "Dropping text reload {}: KeyDB worker unavailable",
+                    req.request_id
                 );
-                return;
+                continue;
+            };
+            if worker
+                .submit_admin_reload(AdminReloadRequest::Text(req.clone()))
+                .is_err()
+            {
+                log::warn!("Failed to queue text reload {}", req.request_id);
             }
-        };
-
-        if req.reload_badwords {
-            match server::keydb::store::load_bad_words(&mut con) {
-                Ok(bad_words) => {
-                    log::info!(
-                        "text reload {}: swapped {} badwords",
-                        req.request_id,
-                        bad_words.len()
-                    );
-                    gs.bad_words = bad_words;
-                }
-                Err(error) => {
-                    log::warn!(
-                        "text reload {}: load badwords failed: {}",
-                        req.request_id,
-                        error
-                    );
-                    return;
-                }
-            }
-        }
-
-        if let Err(error) =
-            server::keydb::text_reload::write_applied_status(&mut con, &req.request_id)
-        {
-            log::warn!(
-                "text reload {}: status write failed: {}",
-                req.request_id,
-                error
-            );
         }
     }
 
@@ -1400,23 +1635,8 @@ impl Server {
             return;
         }
 
-        let mut con = match server::keydb::connection::connect() {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("map patch reload: keydb connect failed: {}", e);
-                return;
-            }
-        };
         for request_id in completed_requests {
-            if let Err(e) = server::keydb::map_patch::write_applied_status(&mut con, &request_id) {
-                log::warn!(
-                    "map patch reload {}: status write failed: {}",
-                    request_id,
-                    e
-                );
-            } else {
-                log::info!("map patch reload {}: applied", request_id);
-            }
+            self.queue_admin_status(AdminStatusKind::MapPatch, request_id);
         }
     }
 
@@ -1496,23 +1716,8 @@ impl Server {
             return;
         }
 
-        let mut con = match server::keydb::connection::connect() {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("item patch reload: keydb connect failed: {}", e);
-                return;
-            }
-        };
         for request_id in completed_requests {
-            if let Err(e) = server::keydb::item_patch::write_applied_status(&mut con, &request_id) {
-                log::warn!(
-                    "item patch reload {}: status write failed: {}",
-                    request_id,
-                    e
-                );
-            } else {
-                log::info!("item patch reload {}: applied", request_id);
-            }
+            self.queue_admin_status(AdminStatusKind::ItemPatch, request_id);
         }
     }
 
@@ -1580,25 +1785,8 @@ impl Server {
             return;
         }
 
-        let mut con = match server::keydb::connection::connect() {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("character patch reload: keydb connect failed: {}", e);
-                return;
-            }
-        };
         for request_id in completed_requests {
-            if let Err(e) =
-                server::keydb::character_patch::write_applied_status(&mut con, &request_id)
-            {
-                log::warn!(
-                    "character patch reload {}: status write failed: {}",
-                    request_id,
-                    e
-                );
-            } else {
-                log::info!("character patch reload {}: applied", request_id);
-            }
+            self.queue_admin_status(AdminStatusKind::CharacterPatch, request_id);
         }
     }
 
@@ -1636,6 +1824,7 @@ impl Server {
     ///
     /// * `gs` - Mutable game state to mutate and persist.
     pub fn drain_world_actions(&mut self, gs: &mut GameState) {
+        self.drain_world_action_save_completions();
         let Some(watcher) = self.world_action_watcher.as_ref() else {
             return;
         };
@@ -1661,91 +1850,108 @@ impl Server {
             request.request_id,
             request.action.name()
         );
-
-        let mut status_connection = match server::keydb::connection::connect() {
-            Ok(connection) => Some(connection),
-            Err(error) => {
-                log::warn!(
-                    "world action {}: keydb connect for status failed: {}",
-                    request.request_id,
-                    error
-                );
-                None
-            }
-        };
-
-        if let Some(connection) = status_connection.as_mut()
-            && let Err(error) =
-                server::keydb::world_action::write_running_status(connection, &request)
-        {
-            log::warn!(
-                "world action {}: running status write failed: {}",
-                request.request_id,
-                error
-            );
-        }
-
-        if let Some(saver) = self.background_saver.as_ref()
-            && let Err(error) = saver.flush()
-        {
-            let message = format!("background saver flush failed: {}", error);
-            self.write_world_action_failure(status_connection.as_mut(), &request, &message);
-            return;
-        }
+        self.queue_action_status(ActionStatusRequest::WorldRunning(request.clone()));
 
         match populate::execute_world_action(gs, &request.action) {
             Ok(outcome) => {
                 gs.globals.set_dirty(true);
-                match gs.save() {
-                    Ok(()) => {
-                        let elapsed_ms = started.elapsed().as_millis();
-                        let message = format!("{} ({} ms)", outcome.message, elapsed_ms);
-                        if let Some(connection) = status_connection.as_mut()
-                            && let Err(error) = server::keydb::world_action::write_applied_status(
-                                connection, &request, &message,
-                            )
-                        {
-                            log::warn!(
-                                "world action {}: applied status write failed: {}",
-                                request.request_id,
-                                error
-                            );
-                        }
-                        log::info!("world action {} applied: {}", request.request_id, message);
-                    }
-                    Err(error) => {
-                        let message = format!("save after action failed: {}", error);
-                        self.write_world_action_failure(
-                            status_connection.as_mut(),
-                            &request,
-                            &message,
-                        );
-                    }
+                let elapsed_ms = started.elapsed().as_millis();
+                let message = format!("{} ({} ms)", outcome.message, elapsed_ms);
+                let Some(saver) = self.background_saver.as_ref() else {
+                    self.queue_action_status(ActionStatusRequest::WorldFailed {
+                        request: request.clone(),
+                        message: "background saver unavailable".to_owned(),
+                    });
+                    return;
+                };
+                let Some(completion) = self.world_action_save_tx.as_ref() else {
+                    self.queue_action_status(ActionStatusRequest::WorldFailed {
+                        request: request.clone(),
+                        message: "world-action save channel unavailable".to_owned(),
+                    });
+                    return;
+                };
+                let job = SaveJob::RuntimeData {
+                    map: gs.map.clone(),
+                    items: gs.items.clone(),
+                    characters: gs.characters.clone(),
+                    effects: gs.effects.clone(),
+                    globals: gs.globals.clone(),
+                    completion: completion.clone(),
+                    request_id: request.request_id.clone(),
+                    message: message.clone(),
+                };
+                if let Err(error) = saver.send_checked(job) {
+                    self.queue_action_status(ActionStatusRequest::WorldFailed {
+                        request: request.clone(),
+                        message: format!("queue save after action failed: {}", error),
+                    });
+                    return;
                 }
+                self.pending_world_action_saves
+                    .insert(request.request_id.clone(), request.clone());
+                log::info!(
+                    "world action {} queued for persistence: {}",
+                    request.request_id,
+                    message
+                );
             }
             Err(error) => {
-                self.write_world_action_failure(status_connection.as_mut(), &request, &error);
+                self.queue_action_status(ActionStatusRequest::WorldFailed {
+                    request: request.clone(),
+                    message: error,
+                });
             }
         }
     }
 
-    fn write_world_action_failure(
-        &self,
-        status_connection: Option<&mut redis::Connection>,
-        request: &core::world_action_store::WorldActionRequest,
-        message: &str,
-    ) {
-        if let Some(connection) = status_connection
-            && let Err(error) =
-                server::keydb::world_action::write_failed_status(connection, request, message)
-        {
-            log::warn!(
-                "world action {}: failed status write failed: {}",
-                request.request_id,
-                error
-            );
+    fn drain_world_action_save_completions(&mut self) {
+        let Some(receiver) = self.world_action_save_rx.as_ref() else {
+            return;
+        };
+        let mut completions = Vec::new();
+        while let Ok(completion) = receiver.try_recv() {
+            completions.push(completion);
         }
-        log::warn!("world action {} failed: {}", request.request_id, message);
+        for completion in completions {
+            let Some(request) = self
+                .pending_world_action_saves
+                .remove(&completion.request_id)
+            else {
+                log::warn!(
+                    "Discarding world-action save completion for unknown request {}",
+                    completion.request_id
+                );
+                continue;
+            };
+            match completion.result {
+                Ok(()) => self.queue_action_status(ActionStatusRequest::WorldApplied {
+                    request,
+                    message: completion.message,
+                }),
+                Err(error) => self.queue_action_status(ActionStatusRequest::WorldFailed {
+                    request,
+                    message: format!("save after action failed: {}", error),
+                }),
+            }
+        }
+    }
+
+    fn queue_action_status(&self, request: ActionStatusRequest) {
+        let request_id = match &request {
+            ActionStatusRequest::WorldRunning(request)
+            | ActionStatusRequest::WorldApplied { request, .. }
+            | ActionStatusRequest::WorldFailed { request, .. } => request.request_id.clone(),
+            ActionStatusRequest::BanRunning(request)
+            | ActionStatusRequest::BanApplied { request, .. } => request.request_id.clone(),
+        };
+        let Some(worker) = self.tick_keydb_worker.as_ref() else {
+            log::warn!("Cannot queue admin action status {request_id}: worker unavailable");
+            return;
+        };
+        if worker.submit_action_status(request).is_err() {
+            log::warn!("Failed to queue admin action status {request_id}");
+        }
     }
 
     /// Drain pending live ban actions and execute them on the tick thread.
@@ -1778,28 +1984,7 @@ impl Server {
             request.request_id,
             request.action.name()
         );
-        let mut status_connection = match server::keydb::connection::connect() {
-            Ok(connection) => Some(connection),
-            Err(error) => {
-                log::warn!(
-                    "ban action {}: keydb connect for status failed: {}",
-                    request.request_id,
-                    error
-                );
-                None
-            }
-        };
-
-        if let Some(connection) = status_connection.as_mut()
-            && let Err(error) =
-                server::keydb::ban_action::write_running_status(connection, &request)
-        {
-            log::warn!(
-                "ban action {}: running status write failed: {}",
-                request.request_id,
-                error
-            );
-        }
+        self.queue_action_status(ActionStatusRequest::BanRunning(request.clone()));
 
         let message = match &request.action {
             BanActionKind::ApplyBan {
@@ -1823,16 +2008,10 @@ impl Server {
             BanActionKind::ReloadBans => "ban reload acknowledged".to_owned(),
         };
 
-        if let Some(connection) = status_connection.as_mut()
-            && let Err(error) =
-                server::keydb::ban_action::write_applied_status(connection, &request, &message)
-        {
-            log::warn!(
-                "ban action {}: applied status write failed: {}",
-                request.request_id,
-                error
-            );
-        }
+        self.queue_action_status(ActionStatusRequest::BanApplied {
+            request: request.clone(),
+            message: message.clone(),
+        });
         log::info!("ban action {} applied: {}", request.request_id, message);
     }
 
@@ -1849,6 +2028,10 @@ impl Server {
     ///
     /// Call this during server shutdown, after the game loop has exited.
     pub fn shutdown_background_saver(&mut self) {
+        if let Some(mut worker) = self.tick_keydb_worker.take() {
+            log::info!("Stopping tick-loop KeyDB worker...");
+            worker.shutdown();
+        }
         if let Some(mut watcher) = self.template_reload_watcher.take() {
             log::info!("Stopping template reload watcher...");
             watcher.shutdown();

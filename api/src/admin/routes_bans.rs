@@ -53,6 +53,8 @@ pub(crate) struct CharacterSearchQuery {
 const DEFAULT_CHARACTER_SEARCH_LIMIT: usize = 20;
 const MAX_CHARACTER_SEARCH_LIMIT: usize = 50;
 
+type ResponseResult<T> = Result<T, Box<Response>>;
+
 /// GET `/admin/bans`.
 pub(crate) async fn list_bans(
     State(state): State<ApiState>,
@@ -61,11 +63,11 @@ pub(crate) async fn list_bans(
     let mut con = state.con.clone();
     let records = match load_bans(&mut con).await {
         Ok(records) => records,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let version = match load_ban_version(&mut con).await {
         Ok(version) => version,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let now = now_secs();
     let scope = query
@@ -129,12 +131,12 @@ pub(crate) async fn create_ban(
     let mut con = state.con.clone();
     let target = match resolve_target(&mut con, request.target).await {
         Ok(target) => target,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let now = now_secs();
     let expires_at = match resolve_expires_at(now, request.expires_at, request.duration_seconds) {
         Ok(expires_at) => expires_at,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let record = BanRecord {
         id: generate_request_id(),
@@ -149,14 +151,14 @@ pub(crate) async fn create_ban(
     let lock_token = match acquire_ban_lock(&mut con).await {
         Ok(Some(token)) => token,
         Ok(None) => return conflict("busy", "Another ban mutation is already in progress"),
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     let result = upsert_ban(&mut con, &record).await;
     release_ban_lock(&mut con, &lock_token).await;
     let version = match result {
         Ok(version) => version,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let live_request_id = enqueue_live_action(
         &mut con,
@@ -290,7 +292,7 @@ async fn get_ban(state: ApiState, target: BanTarget) -> Response {
     match load_ban(&mut con, &target).await {
         Ok(Some(record)) => Json(record_response(record, now_secs())).into_response(),
         Ok(None) => not_found("not_found", "No active ban for target"),
-        Err(response) => response,
+        Err(response) => *response,
     }
 }
 
@@ -299,14 +301,14 @@ async fn delete_ban(state: ApiState, target: BanTarget) -> Response {
     let lock_token = match acquire_ban_lock(&mut con).await {
         Ok(Some(token)) => token,
         Ok(None) => return conflict("busy", "Another ban mutation is already in progress"),
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     let result = remove_ban(&mut con, &target).await;
     release_ban_lock(&mut con, &lock_token).await;
     let (removed, version) = match result {
         Ok(value) => value,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
     let live_request_id = enqueue_live_action(
         &mut con,
@@ -329,7 +331,7 @@ async fn delete_ban(state: ApiState, target: BanTarget) -> Response {
 async fn resolve_target(
     con: &mut redis::aio::ConnectionManager,
     request: BanTargetRequest,
-) -> Result<BanTarget, Response> {
+) -> ResponseResult<BanTarget> {
     match request {
         BanTargetRequest::Account {
             account_id,
@@ -339,62 +341,67 @@ async fn resolve_target(
                 return Ok(BanTarget::Account { account_id });
             }
             let Some(username) = username.map(|value| value.trim().to_ascii_lowercase()) else {
-                return Err(bad_request(
+                return Err(Box::new(bad_request(
                     "missing_account_target",
                     "Provide account_id or username",
-                ));
+                )));
             };
             match pipelines::get_account_id_by_username(con, &username).await {
                 Ok(Some(account_id)) => Ok(BanTarget::Account { account_id }),
-                Ok(None) => Err(not_found("account_not_found", "Account username not found")),
+                Ok(None) => Err(Box::new(not_found(
+                    "account_not_found",
+                    "Account username not found",
+                ))),
                 Err(error) => {
                     warn!("admin ban account lookup failed: {}", error);
-                    Err(internal_error("keydb_error", "Failed to resolve account"))
+                    Err(Box::new(internal_error(
+                        "keydb_error",
+                        "Failed to resolve account",
+                    )))
                 }
             }
         }
         BanTargetRequest::Character { character_id } => Ok(BanTarget::Character { character_id }),
         BanTargetRequest::Ipv4 { address } => parse_ipv4(&address)
             .map(|address| BanTarget::Ipv4 { address })
-            .map_err(|error| bad_request("invalid_ipv4", error.to_string())),
+            .map_err(|error| Box::new(bad_request("invalid_ipv4", error.to_string()))),
     }
 }
 
-#[allow(clippy::result_large_err)]
 fn resolve_expires_at(
     now: u64,
     expires_at: Option<u64>,
     duration_seconds: Option<u64>,
-) -> Result<Option<u64>, Response> {
+) -> ResponseResult<Option<u64>> {
     match (expires_at, duration_seconds) {
-        (Some(_), Some(_)) => Err(bad_request(
+        (Some(_), Some(_)) => Err(Box::new(bad_request(
             "conflicting_expiration",
             "Provide expires_at or duration_seconds, not both",
-        )),
-        (Some(value), None) if value <= now => Err(bad_request(
+        ))),
+        (Some(value), None) if value <= now => Err(Box::new(bad_request(
             "expired_ban",
             "expires_at must be in the future",
-        )),
+        ))),
         (Some(value), None) => Ok(Some(value)),
-        (None, Some(0)) => Err(bad_request(
+        (None, Some(0)) => Err(Box::new(bad_request(
             "invalid_duration",
             "duration_seconds must be greater than zero",
-        )),
+        ))),
         (None, Some(value)) => Ok(Some(now.saturating_add(value))),
         (None, None) => Ok(None),
     }
 }
 
-async fn load_bans(con: &mut redis::aio::ConnectionManager) -> Result<Vec<BanRecord>, Response> {
+async fn load_bans(con: &mut redis::aio::ConnectionManager) -> ResponseResult<Vec<BanRecord>> {
     let keys: Vec<String> = con.smembers(BAN_ACTIVE_INDEX_KEY).await.map_err(|error| {
         warn!("admin bans SMEMBERS failed: {}", error);
-        internal_error("keydb_error", "Failed to read bans")
+        Box::new(internal_error("keydb_error", "Failed to read bans"))
     })?;
     let mut records = Vec::with_capacity(keys.len());
     for key in keys {
         let bytes: Option<Vec<u8>> = con.get(&key).await.map_err(|error| {
             warn!("admin bans GET {} failed: {}", key, error);
-            internal_error("keydb_error", "Failed to read ban")
+            Box::new(internal_error("keydb_error", "Failed to read ban"))
         })?;
         let Some(bytes) = bytes else {
             let _: Result<i64, _> = con.srem(BAN_ACTIVE_INDEX_KEY, &key).await;
@@ -417,17 +424,17 @@ async fn load_bans(con: &mut redis::aio::ConnectionManager) -> Result<Vec<BanRec
 async fn load_ban(
     con: &mut redis::aio::ConnectionManager,
     target: &BanTarget,
-) -> Result<Option<BanRecord>, Response> {
+) -> ResponseResult<Option<BanRecord>> {
     let key = target.active_key();
     let bytes: Option<Vec<u8>> = con.get(&key).await.map_err(|error| {
         warn!("admin bans GET {} failed: {}", key, error);
-        internal_error("keydb_error", "Failed to read ban")
+        Box::new(internal_error("keydb_error", "Failed to read ban"))
     })?;
     let Some(bytes) = bytes else {
         return Ok(None);
     };
     let record = BanRecord::from_bytes(&bytes)
-        .map_err(|error| internal_error("decode_error", error.to_string()))?;
+        .map_err(|error| Box::new(internal_error("decode_error", error.to_string())))?;
     if record.is_active_at(now_secs()) {
         Ok(Some(record))
     } else {
@@ -454,20 +461,20 @@ async fn target_is_banned(
 async fn upsert_ban(
     con: &mut redis::aio::ConnectionManager,
     record: &BanRecord,
-) -> Result<u64, Response> {
+) -> ResponseResult<u64> {
     let key = record.target.active_key();
     let bytes = record
         .to_bytes()
-        .map_err(|error| internal_error("encode_error", error.to_string()))?;
+        .map_err(|error| Box::new(internal_error("encode_error", error.to_string())))?;
     con.set::<_, _, ()>(&key, bytes).await.map_err(|error| {
         warn!("admin bans SET {} failed: {}", key, error);
-        internal_error("keydb_error", "Failed to write ban")
+        Box::new(internal_error("keydb_error", "Failed to write ban"))
     })?;
     con.sadd::<_, _, ()>(BAN_ACTIVE_INDEX_KEY, &key)
         .await
         .map_err(|error| {
             warn!("admin bans SADD failed: {}", error);
-            internal_error("keydb_error", "Failed to index ban")
+            Box::new(internal_error("keydb_error", "Failed to index ban"))
         })?;
     bump_version(con).await
 }
@@ -475,18 +482,18 @@ async fn upsert_ban(
 async fn remove_ban(
     con: &mut redis::aio::ConnectionManager,
     target: &BanTarget,
-) -> Result<(Option<BanRecord>, u64), Response> {
+) -> ResponseResult<(Option<BanRecord>, u64)> {
     let key = target.active_key();
     let existing = load_ban(con, target).await?;
     con.del::<_, ()>(&key).await.map_err(|error| {
         warn!("admin bans DEL {} failed: {}", key, error);
-        internal_error("keydb_error", "Failed to delete ban")
+        Box::new(internal_error("keydb_error", "Failed to delete ban"))
     })?;
     con.srem::<_, _, ()>(BAN_ACTIVE_INDEX_KEY, &key)
         .await
         .map_err(|error| {
             warn!("admin bans SREM failed: {}", error);
-            internal_error("keydb_error", "Failed to deindex ban")
+            Box::new(internal_error("keydb_error", "Failed to deindex ban"))
         })?;
     let version = if existing.is_some() {
         bump_version(con).await?
@@ -496,20 +503,20 @@ async fn remove_ban(
     Ok((existing, version))
 }
 
-async fn load_ban_version(con: &mut redis::aio::ConnectionManager) -> Result<u64, Response> {
+async fn load_ban_version(con: &mut redis::aio::ConnectionManager) -> ResponseResult<u64> {
     con.get::<_, Option<u64>>(BAN_VERSION_KEY)
         .await
         .map(|value| value.unwrap_or(0))
         .map_err(|error| {
             warn!("admin bans version GET failed: {}", error);
-            internal_error("keydb_error", "Failed to read ban version")
+            Box::new(internal_error("keydb_error", "Failed to read ban version"))
         })
 }
 
-async fn bump_version(con: &mut redis::aio::ConnectionManager) -> Result<u64, Response> {
+async fn bump_version(con: &mut redis::aio::ConnectionManager) -> ResponseResult<u64> {
     con.incr(BAN_VERSION_KEY, 1_u64).await.map_err(|error| {
         warn!("admin bans version INCR failed: {}", error);
-        internal_error("keydb_error", "Failed to bump ban version")
+        Box::new(internal_error("keydb_error", "Failed to bump ban version"))
     })
 }
 
@@ -560,7 +567,7 @@ async fn enqueue_live_action(
 
 async fn acquire_ban_lock(
     con: &mut redis::aio::ConnectionManager,
-) -> Result<Option<String>, Response> {
+) -> ResponseResult<Option<String>> {
     let token = generate_request_id();
     let result: Option<String> = redis::cmd("SET")
         .arg(BAN_MUTATION_LOCK_KEY)
@@ -572,7 +579,7 @@ async fn acquire_ban_lock(
         .await
         .map_err(|error| {
             warn!("admin bans lock SET failed: {}", error);
-            internal_error("keydb_error", "Failed to acquire ban lock")
+            Box::new(internal_error("keydb_error", "Failed to acquire ban lock"))
         })?;
     Ok(result.map(|_| token))
 }

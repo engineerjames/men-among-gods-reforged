@@ -53,16 +53,18 @@ enum MutationKind {
     Remove,
 }
 
+type ResponseResult<T> = Result<T, Box<Response>>;
+
 /// GET `/admin/text/badwords`.
 pub(crate) async fn get_badwords(State(state): State<ApiState>) -> Response {
     let mut con = state.con.clone();
     let words = match load_badwords(&mut con).await {
         Ok(words) => words,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
     let version = match load_badwords_version(&mut con).await {
         Ok(version) => version,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     Json(BadwordsListResponse {
@@ -86,7 +88,7 @@ pub(crate) async fn get_badword_entry(
     let mut con = state.con.clone();
     let words = match load_badwords(&mut con).await {
         Ok(words) => words,
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     Json(BadwordEntryResponse {
@@ -242,7 +244,7 @@ async fn mutate_badwords(state: ApiState, kind: MutationKind, raw_words: Vec<Str
             )
                 .into_response();
         }
-        Err(resp) => return resp,
+        Err(resp) => return *resp,
     };
 
     let result = apply_badwords_mutation(&mut con, kind, requested).await;
@@ -250,7 +252,7 @@ async fn mutate_badwords(state: ApiState, kind: MutationKind, raw_words: Vec<Str
 
     match result {
         Ok(response) => Json(response).into_response(),
-        Err(resp) => resp,
+        Err(resp) => *resp,
     }
 }
 
@@ -258,7 +260,7 @@ async fn apply_badwords_mutation(
     con: &mut redis::aio::ConnectionManager,
     kind: MutationKind,
     requested: Vec<String>,
-) -> Result<BadwordsMutationResponse, Response> {
+) -> ResponseResult<BadwordsMutationResponse> {
     let current = load_badwords(con).await?;
     let mut next = current.clone();
     let mut added = Vec::new();
@@ -307,11 +309,14 @@ async fn apply_badwords_mutation(
     let version = if changed {
         let bytes = match encode_badwords(&next) {
             Ok(bytes) => bytes,
-            Err(err) => return Err(text_error_response(err)),
+            Err(err) => return Err(Box::new(text_error_response(err))),
         };
         if let Err(err) = con.set::<_, _, ()>(BADWORDS_KEY, bytes).await {
             warn!("admin badwords SET {} failed: {}", BADWORDS_KEY, err);
-            return Err(internal_error("keydb_error", "Failed to write badwords"));
+            return Err(Box::new(internal_error(
+                "keydb_error",
+                "Failed to write badwords",
+            )));
         }
         match con.incr(BADWORDS_VERSION_KEY, 1_i64).await {
             Ok(version) => version,
@@ -320,7 +325,10 @@ async fn apply_badwords_mutation(
                     "admin badwords INCR {} failed: {}",
                     BADWORDS_VERSION_KEY, err
                 );
-                return Err(internal_error("keydb_error", "Failed to bump version"));
+                return Err(Box::new(internal_error(
+                    "keydb_error",
+                    "Failed to bump version",
+                )));
             }
         }
     } else {
@@ -342,30 +350,35 @@ async fn apply_badwords_mutation(
     })
 }
 
-async fn load_badwords(con: &mut redis::aio::ConnectionManager) -> Result<Vec<String>, Response> {
+async fn load_badwords(con: &mut redis::aio::ConnectionManager) -> ResponseResult<Vec<String>> {
     let bytes: Option<Vec<u8>> = match con.get(BADWORDS_KEY).await {
         Ok(value) => value,
         Err(err) => {
             warn!("admin badwords GET {} failed: {}", BADWORDS_KEY, err);
-            return Err(internal_error("keydb_error", "Failed to read badwords"));
+            return Err(Box::new(internal_error(
+                "keydb_error",
+                "Failed to read badwords",
+            )));
         }
     };
 
     let Some(bytes) = bytes else {
-        return Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::new(
-                "not_seeded",
-                "Missing game:badwords; seed the world snapshot into KeyDB first",
-            )),
-        )
-            .into_response());
+        return Err(Box::new(
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse::new(
+                    "not_seeded",
+                    "Missing game:badwords; seed the world snapshot into KeyDB first",
+                )),
+            )
+                .into_response(),
+        ));
     };
 
-    decode_badwords(&bytes).map_err(text_error_response)
+    decode_badwords(&bytes).map_err(|error| Box::new(text_error_response(error)))
 }
 
-async fn load_badwords_version(con: &mut redis::aio::ConnectionManager) -> Result<u64, Response> {
+async fn load_badwords_version(con: &mut redis::aio::ConnectionManager) -> ResponseResult<u64> {
     match con.get::<_, Option<u64>>(BADWORDS_VERSION_KEY).await {
         Ok(value) => Ok(value.unwrap_or(0)),
         Err(err) => {
@@ -373,17 +386,17 @@ async fn load_badwords_version(con: &mut redis::aio::ConnectionManager) -> Resul
                 "admin badwords version GET {} failed: {}",
                 BADWORDS_VERSION_KEY, err
             );
-            Err(internal_error(
+            Err(Box::new(internal_error(
                 "keydb_error",
                 "Failed to read badwords version",
-            ))
+            )))
         }
     }
 }
 
 async fn acquire_badwords_lock(
     con: &mut redis::aio::ConnectionManager,
-) -> Result<Option<String>, Response> {
+) -> ResponseResult<Option<String>> {
     let token = generate_request_id();
     let result: Option<String> = match redis::cmd("SET")
         .arg(BADWORDS_LOCK_KEY)
@@ -397,10 +410,10 @@ async fn acquire_badwords_lock(
         Ok(value) => value,
         Err(err) => {
             warn!("admin badwords lock SET failed: {}", err);
-            return Err(internal_error(
+            return Err(Box::new(internal_error(
                 "keydb_error",
                 "Failed to acquire badwords lock",
-            ));
+            )));
         }
     };
 

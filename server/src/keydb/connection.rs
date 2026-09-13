@@ -6,8 +6,11 @@ use redis::Commands;
 use std::collections::HashMap;
 use std::env;
 use std::sync::Once;
+use std::time::Duration;
 
 static LOAD_DOTENV_ONCE: Once = Once::new();
+
+const KEYDB_IO_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Load project `.env` exactly once for local utility binaries.
 ///
@@ -89,9 +92,16 @@ pub fn connect() -> Result<redis::Connection, String> {
     let url = keydb_url();
     let client = redis::Client::open(url.as_str())
         .map_err(|err| format!("Failed to open KeyDB client: {err}"))?;
-    client
+    let connection = client
         .get_connection()
-        .map_err(|err| format!("Failed to connect to KeyDB: {err}"))
+        .map_err(|err| format!("Failed to connect to KeyDB: {err}"))?;
+    connection
+        .set_read_timeout(Some(KEYDB_IO_TIMEOUT))
+        .map_err(|err| format!("Failed to set KeyDB read timeout: {err}"))?;
+    connection
+        .set_write_timeout(Some(KEYDB_IO_TIMEOUT))
+        .map_err(|err| format!("Failed to set KeyDB write timeout: {err}"))?;
+    Ok(connection)
 }
 
 /// Load the current game MOTD value from KeyDB.

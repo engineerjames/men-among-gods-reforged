@@ -12,6 +12,7 @@ use core::{
 };
 
 use server::keydb::ban as keydb_ban;
+use server::keydb::tick_worker::{BanWriteAction, BanWriteRequest};
 
 use crate::{
     area, chlog, driver, effect::EffectManager, game_state::GameState, helpers, player, populate,
@@ -4538,22 +4539,26 @@ impl God {
             return;
         };
 
-        match keydb_ban::remove_ban_target(&target) {
-            Ok(true) => gs.do_character_log(
-                cn,
-                core::types::FontColor::Green,
-                &format!("Removed {} ban for {}.\n", target.scope(), target.value()),
-            ),
-            Ok(false) => gs.do_character_log(
+        let request = BanWriteRequest {
+            issuer_character: cn,
+            action: BanWriteAction::Remove(target.clone()),
+        };
+        if gs.submit_ban_write(request).is_ok() {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Yellow,
-                &format!("No active {} ban for {}.\n", target.scope(), target.value()),
-            ),
-            Err(error) => gs.do_character_log(
+                &format!(
+                    "Removing {} ban for {}...\n",
+                    target.scope(),
+                    target.value()
+                ),
+            );
+        } else {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
-                &format!("Failed to remove ban: {}\n", error),
-            ),
+                "Unable to queue ban removal: KeyDB worker unavailable.\n",
+            );
         }
     }
 
@@ -4636,58 +4641,27 @@ impl God {
             source: "game_command".to_owned(),
         };
 
-        match keydb_ban::upsert_ban_record(&record) {
-            Ok(_) => {
-                let kicked = Self::kick_matching_ban_target(gs, &target);
-                let target_value = match &target {
-                    BanTarget::Ipv4 { address } => ipv4_to_string(*address),
-                    _ => target.value(),
-                };
-                gs.do_character_log(
-                    cn,
-                    core::types::FontColor::Green,
-                    &format!(
-                        "Added {} ban for {} ({} online session(s) kicked).\n",
-                        target.scope(),
-                        target_value,
-                        kicked
-                    ),
-                );
-            }
-            Err(error) => gs.do_character_log(
+        let request = BanWriteRequest {
+            issuer_character: cn,
+            action: BanWriteAction::Upsert(record),
+        };
+        if gs.submit_ban_write(request).is_ok() {
+            let target_value = match &target {
+                BanTarget::Ipv4 { address } => ipv4_to_string(*address),
+                _ => target.value(),
+            };
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Yellow,
+                &format!("Adding {} ban for {}...\n", target.scope(), target_value),
+            );
+        } else {
+            gs.do_character_log(
                 cn,
                 core::types::FontColor::Red,
-                &format!("Failed to add ban: {}\n", error),
-            ),
+                "Unable to queue ban: KeyDB worker unavailable.\n",
+            );
         }
-    }
-
-    fn kick_matching_ban_target(gs: &mut GameState, target: &BanTarget) -> usize {
-        let mut players_to_kick = Vec::new();
-        for player_id in 1..core::constants::MAXPLAYER.min(gs.players.len()) {
-            if gs.players[player_id].sock.is_none() {
-                continue;
-            }
-            let matches = match target {
-                BanTarget::Account { account_id } => {
-                    gs.players[player_id].api_account_id == *account_id
-                }
-                BanTarget::Character { character_id } => {
-                    gs.players[player_id].api_character_id == *character_id
-                }
-                BanTarget::Ipv4 { address } => gs.players[player_id].addr == *address,
-            };
-            if matches {
-                players_to_kick.push(player_id);
-            }
-        }
-
-        let kicked = players_to_kick.len();
-        for player_id in players_to_kick {
-            let character_id = gs.players[player_id].usnr;
-            player::connection::plr_logout(gs, character_id, player_id, LogoutReason::Kicked);
-        }
-        kicked
     }
 
     /// Delete a ban list entry by its index `nr`.

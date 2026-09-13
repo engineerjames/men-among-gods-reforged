@@ -379,8 +379,7 @@ impl GameState {
         // Handle player death
         let is_player = self.characters[character_id].flags & CharacterFlags::Player.bits() != 0;
 
-        let corpse_id: usize;
-        if is_player {
+        let corpse_id: usize = if is_player {
             // Update player death statistics
             self.globals.players_died += 1;
 
@@ -413,7 +412,7 @@ impl GameState {
             if force_save {
                 return;
             }
-            corpse_id = 0;
+            0
         } else {
             // Handle NPC death
             let is_labkeeper =
@@ -427,8 +426,8 @@ impl GameState {
             }
             self.handle_npc_death(character_id, killer_id);
 
-            corpse_id = character_id;
-        }
+            character_id
+        };
 
         // Schedule respawn and show death animation
 

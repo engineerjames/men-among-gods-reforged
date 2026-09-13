@@ -7,6 +7,7 @@ use flate2::write::ZlibEncoder;
 
 use crate::{tls::GameStream, types::cmap::CMap};
 use core::constants::{OBUFSIZE, SPR_EMPTY, TBUFSIZE, TILEX, TILEY};
+use server::keydb::tick_worker::{LoginFailure, LoginResolution};
 
 // Server side player data
 pub struct ServerPlayer {
@@ -37,6 +38,20 @@ pub struct ServerPlayer {
     pub usnr: usize, // character number this player controls
     /// One-time API login ticket used for account-managed character login.
     pub login_ticket: u64,
+    /// Session generation used to reject results from an earlier connection.
+    pub login_session_generation: u64,
+    /// Worker request currently resolving this player's login.
+    pub login_request_id: Option<u64>,
+    /// Tick at which the pending login should be rejected.
+    pub login_deadline_tick: u32,
+    /// Successful worker result waiting for local tick-thread application.
+    pub login_resolution: Option<LoginResolution>,
+    /// Failed worker result waiting for local tick-thread application.
+    pub login_failure: Option<LoginFailure>,
+    /// Whether the post-login metadata writes have been queued.
+    pub login_persistence_queued: bool,
+    /// Whether this login created a new gameplay character slot.
+    pub login_needs_server_id: bool,
     /// API-side account id currently linked to this session.
     pub api_account_id: u64,
     /// API-side character id currently linked to this session.
@@ -121,6 +136,13 @@ impl ServerPlayer {
             lasttick2: 0,
             usnr: 0,
             login_ticket: 0,
+            login_session_generation: 0,
+            login_request_id: None,
+            login_deadline_tick: 0,
+            login_resolution: None,
+            login_failure: None,
+            login_persistence_queued: true,
+            login_needs_server_id: false,
             api_account_id: 0,
             api_character_id: 0,
             ltick: 0,
