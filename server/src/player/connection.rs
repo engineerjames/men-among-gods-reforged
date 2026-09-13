@@ -5,10 +5,13 @@ use core::{
     skills,
     string_operations::write_ascii_into_fixed,
     traits::get_race_integer,
-    types::{CharacterSummary, Sex, api::GameLoginTicketMetadata},
+    types::{CharacterSummary, Sex},
 };
 
 use server::keydb::tick_worker::LoginFailureKind;
+
+#[cfg(test)]
+use core::types::api::GameLoginTicketMetadata;
 
 use crate::{game_state::GameState, god::God, network_manager};
 

@@ -63,11 +63,40 @@ pub enum SaveJob {
         /// The single global state value (`game:global`).
         globals: core::types::Global,
     },
+    /// Persist a complete runtime snapshot and report completion asynchronously.
+    RuntimeData {
+        /// All map tiles.
+        map: Vec<core::types::Map>,
+        /// All runtime items.
+        items: Vec<core::types::Item>,
+        /// All runtime characters.
+        characters: Vec<core::types::Character>,
+        /// All effects.
+        effects: Vec<core::types::Effect>,
+        /// Global runtime state.
+        globals: core::types::Global,
+        /// Completion channel carrying the request id, message, and result.
+        completion: mpsc::Sender<SaveCompletion>,
+        /// Admin request identifier.
+        request_id: String,
+        /// Outcome message to publish after the save succeeds.
+        message: String,
+    },
     /// Request a synchronous flush — the saver thread will ack via the
     /// provided one-shot channel once the write completes.
     Flush(mpsc::Sender<Result<(), String>>),
     /// Shut down the background thread cleanly.
     Shutdown,
+}
+
+/// Completion payload for an asynchronously persisted full snapshot.
+pub struct SaveCompletion {
+    /// Admin request identifier associated with the snapshot.
+    pub request_id: String,
+    /// Outcome message produced by the tick-thread mutation.
+    pub message: String,
+    /// Result of the KeyDB write.
+    pub result: Result<(), String>,
 }
 
 /// Handle for the background saver thread.
@@ -92,6 +121,13 @@ impl BackgroundSaver {
         if let Err(e) = self.tx.send(job) {
             log::error!("Failed to send save job to background saver: {e}");
         }
+    }
+
+    /// Enqueue a save job and report whether the saver accepted it.
+    pub fn send_checked(&self, job: SaveJob) -> Result<(), String> {
+        self.tx
+            .send(job)
+            .map_err(|_| "background saver channel closed".to_owned())
     }
 
     /// Request a synchronous flush: blocks the caller until the
@@ -166,22 +202,20 @@ pub fn spawn() -> BackgroundSaver {
 //  Background thread main loop
 // ---------------------------------------------------------------------------
 
-/// Establish a KeyDB connection, retrying every 5 seconds on failure.
-///
-/// # Returns
-///
-/// * A live [`redis::Connection`].  This function never returns `Err`;
-///   it loops until a connection succeeds.
-fn connect_with_retry() -> redis::Connection {
-    loop {
+/// Make a bounded number of KeyDB connection attempts for one save job.
+fn connect_for_job() -> Option<redis::Connection> {
+    for attempt in 1..=3 {
         match connection::connect() {
-            Ok(con) => return con,
-            Err(e) => {
-                log::error!("Background saver: KeyDB connect failed ({e}), retrying in 5s...");
-                thread::sleep(std::time::Duration::from_secs(5));
+            Ok(con) => return Some(con),
+            Err(error) => {
+                log::error!("Background saver: KeyDB connect attempt {attempt}/3 failed: {error}");
+                if attempt < 3 {
+                    thread::sleep(std::time::Duration::from_millis(100));
+                }
             }
         }
     }
+    None
 }
 
 /// Entry point for the background saver thread.
@@ -195,7 +229,7 @@ fn connect_with_retry() -> redis::Connection {
 /// * `rx` - The receiving end of the job channel.
 fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
     log::info!("Background saver thread started.");
-    let mut con = connect_with_retry();
+    let mut con: Option<redis::Connection> = None;
 
     loop {
         let job = match rx.recv() {
@@ -206,64 +240,116 @@ fn saver_thread_main(rx: mpsc::Receiver<SaveJob>) {
             }
         };
 
+        if !matches!(&job, SaveJob::Flush(_) | SaveJob::Shutdown) && con.is_none() {
+            con = connect_for_job();
+        }
+
         match job {
             SaveJob::Characters(data) => {
                 let t = std::time::Instant::now();
-                if let Err(e) = store::save_characters(&mut con, &data) {
-                    log::error!("Background save characters failed: {e}");
-                    con = connect_with_retry();
+                if let Some(connection) = con.as_mut() {
+                    if let Err(e) = store::save_characters(connection, &data) {
+                        log::error!("Background save characters failed: {e}");
+                        con = None;
+                    } else {
+                        log::debug!(
+                            "Background save: {} characters in {:.2?}",
+                            data.len(),
+                            t.elapsed()
+                        );
+                    }
                 } else {
-                    log::debug!(
-                        "Background save: {} characters in {:.2?}",
-                        data.len(),
-                        t.elapsed()
-                    );
+                    log::warn!("Background save characters skipped: KeyDB unavailable");
                 }
             }
             SaveJob::Items(data, start_idx) => {
                 let t = std::time::Instant::now();
-                if let Err(e) =
-                    store::save_indexed_entities_range(&mut con, "game:item:", &data, start_idx)
-                {
-                    log::error!("Background save items failed: {e}");
-                    con = connect_with_retry();
+                if let Some(connection) = con.as_mut() {
+                    if let Err(e) = store::save_indexed_entities_range(
+                        connection,
+                        "game:item:",
+                        &data,
+                        start_idx,
+                    ) {
+                        log::error!("Background save items failed: {e}");
+                        con = None;
+                    } else {
+                        log::debug!(
+                            "Background save: {} items (start {start_idx}) in {:.2?}",
+                            data.len(),
+                            t.elapsed()
+                        );
+                    }
                 } else {
-                    log::debug!(
-                        "Background save: {} items (start {start_idx}) in {:.2?}",
-                        data.len(),
-                        t.elapsed()
-                    );
+                    log::warn!("Background save items skipped: KeyDB unavailable");
                 }
             }
             SaveJob::MapTiles(data, start_linear) => {
                 let t = std::time::Instant::now();
-                if let Err(e) = store::save_map_range(&mut con, &data, start_linear) {
-                    log::error!("Background save map tiles failed: {e}");
-                    con = connect_with_retry();
+                if let Some(connection) = con.as_mut() {
+                    if let Err(e) = store::save_map_range(connection, &data, start_linear) {
+                        log::error!("Background save map tiles failed: {e}");
+                        con = None;
+                    } else {
+                        log::debug!(
+                            "Background save: {} map tiles (start {start_linear}) in {:.2?}",
+                            data.len(),
+                            t.elapsed()
+                        );
+                    }
                 } else {
-                    log::debug!(
-                        "Background save: {} map tiles (start {start_linear}) in {:.2?}",
-                        data.len(),
-                        t.elapsed()
-                    );
+                    log::warn!("Background save map tiles skipped: KeyDB unavailable");
                 }
             }
             SaveJob::SmallData { effects, globals } => {
                 let t = std::time::Instant::now();
-                let mut ok = true;
-                if let Err(e) = store::save_effects(&mut con, &effects) {
-                    log::error!("Background save effects failed: {e}");
-                    ok = false;
-                }
-                if let Err(e) = store::save_globals(&mut con, &globals) {
-                    log::error!("Background save globals failed: {e}");
-                    ok = false;
-                }
-                if !ok {
-                    con = connect_with_retry();
+                if let Some(connection) = con.as_mut() {
+                    let effects_result = store::save_effects(connection, &effects);
+                    let globals_result = store::save_globals(connection, &globals);
+                    if let Err(error) = effects_result {
+                        log::error!("Background save effects failed: {error}");
+                        con = None;
+                    } else if let Err(error) = globals_result {
+                        log::error!("Background save globals failed: {error}");
+                        con = None;
+                    } else {
+                        log::debug!("Background save: small data in {:.2?}", t.elapsed());
+                    }
                 } else {
-                    log::debug!("Background save: small data in {:.2?}", t.elapsed());
+                    log::warn!("Background save small data skipped: KeyDB unavailable");
                 }
+            }
+            SaveJob::RuntimeData {
+                map,
+                items,
+                characters,
+                effects,
+                globals,
+                completion,
+                request_id,
+                message,
+            } => {
+                let result = if let Some(connection) = con.as_mut() {
+                    store::save_runtime_data(
+                        connection,
+                        &map,
+                        &items,
+                        &characters,
+                        &effects,
+                        &globals,
+                    )
+                } else {
+                    Err("KeyDB unavailable for full runtime save".to_owned())
+                };
+                if let Err(error) = &result {
+                    log::error!("Background full runtime save failed: {error}");
+                    con = None;
+                }
+                let _ = completion.send(SaveCompletion {
+                    request_id,
+                    message,
+                    result,
+                });
             }
             SaveJob::Flush(ack) => {
                 // All prior jobs have already been processed (channel is FIFO).
