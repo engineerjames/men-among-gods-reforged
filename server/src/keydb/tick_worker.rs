@@ -6,6 +6,7 @@
 use super::{ban, connection};
 use core::ban_store::{BanRecord, BanTarget};
 use core::types::{CharacterSummary, api::GameLoginTicketMetadata};
+use std::fmt;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::thread::{self, JoinHandle};
 
@@ -74,6 +75,18 @@ pub enum BanWriteAction {
     /// Remove a durable ban record.
     Remove(BanTarget),
 }
+
+/// Error returned when the KeyDB worker is no longer accepting requests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TickKeyDbSendError;
+
+impl fmt::Display for TickKeyDbSendError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("KeyDB tick worker is unavailable")
+    }
+}
+
+impl std::error::Error for TickKeyDbSendError {}
 
 /// KeyDB status entry written after an admin request is applied.
 #[derive(Clone, Debug)]
@@ -160,7 +173,7 @@ pub enum TickKeyDbRequest {
         /// API-side character identifier.
         character_id: u64,
         /// Gameplay character whose metadata should be mirrored.
-        character: core::types::Character,
+        character: Box<core::types::Character>,
     },
     /// Persist or remove a durable ban record.
     BanWrite(BanWriteRequest),
@@ -249,41 +262,51 @@ impl TickKeyDbClient {
         &self,
         character_id: u64,
         character: core::types::Character,
-    ) -> Result<(), ()> {
+    ) -> Result<(), TickKeyDbSendError> {
         self.tx
             .send(TickKeyDbRequest::SyncCharacterSelectionMetadata {
                 character_id,
-                character,
+                character: Box::new(character),
             })
-            .map_err(|_| ())
+            .map_err(|_| TickKeyDbSendError)
     }
 
     /// Queue a durable ban operation.
-    pub fn submit_ban_write(&self, request: BanWriteRequest) -> Result<(), BanWriteRequest> {
+    pub fn submit_ban_write(&self, request: BanWriteRequest) -> Result<(), Box<BanWriteRequest>> {
         self.tx
             .send(TickKeyDbRequest::BanWrite(request.clone()))
-            .map_err(|_| request)
+            .map_err(|_| Box::new(request))
     }
 
     /// Queue an admin data load.
-    pub fn submit_admin_reload(&self, request: AdminReloadRequest) -> Result<(), ()> {
+    pub fn submit_admin_reload(
+        &self,
+        request: AdminReloadRequest,
+    ) -> Result<(), TickKeyDbSendError> {
         self.tx
             .send(TickKeyDbRequest::AdminReload { request })
-            .map_err(|_| ())
+            .map_err(|_| TickKeyDbSendError)
     }
 
     /// Queue an admin applied-status write.
-    pub fn submit_admin_status(&self, kind: AdminStatusKind, request_id: String) -> Result<(), ()> {
+    pub fn submit_admin_status(
+        &self,
+        kind: AdminStatusKind,
+        request_id: String,
+    ) -> Result<(), TickKeyDbSendError> {
         self.tx
             .send(TickKeyDbRequest::AdminStatus { kind, request_id })
-            .map_err(|_| ())
+            .map_err(|_| TickKeyDbSendError)
     }
 
     /// Queue an admin action status update.
-    pub fn submit_action_status(&self, request: ActionStatusRequest) -> Result<(), ()> {
+    pub fn submit_action_status(
+        &self,
+        request: ActionStatusRequest,
+    ) -> Result<(), TickKeyDbSendError> {
         self.tx
             .send(TickKeyDbRequest::ActionStatus(request))
-            .map_err(|_| ())
+            .map_err(|_| TickKeyDbSendError)
     }
 }
 
@@ -353,13 +376,17 @@ impl TickKeyDbWorker {
     ///
     /// * `Ok(())` when the request was queued.
     /// * `Err(())` when the worker has already stopped.
-    pub fn submit_server_id(&self, character_id: u64, server_id: u32) -> Result<(), ()> {
+    pub fn submit_server_id(
+        &self,
+        character_id: u64,
+        server_id: u32,
+    ) -> Result<(), TickKeyDbSendError> {
         self.tx
             .send(TickKeyDbRequest::SetCharacterServerId {
                 character_id,
                 server_id,
             })
-            .map_err(|_| ())
+            .map_err(|_| TickKeyDbSendError)
     }
 
     /// Queue persistence of selection-screen metadata.
@@ -377,28 +404,38 @@ impl TickKeyDbWorker {
         &self,
         character_id: u64,
         character: core::types::Character,
-    ) -> Result<(), ()> {
+    ) -> Result<(), TickKeyDbSendError> {
         self.client()
             .submit_selection_metadata(character_id, character)
     }
 
     /// Queue a durable ban operation without waiting for KeyDB.
-    pub fn submit_ban_write(&self, request: BanWriteRequest) -> Result<(), BanWriteRequest> {
+    pub fn submit_ban_write(&self, request: BanWriteRequest) -> Result<(), Box<BanWriteRequest>> {
         self.client().submit_ban_write(request)
     }
 
     /// Queue an admin data load without waiting for KeyDB.
-    pub fn submit_admin_reload(&self, request: AdminReloadRequest) -> Result<(), ()> {
+    pub fn submit_admin_reload(
+        &self,
+        request: AdminReloadRequest,
+    ) -> Result<(), TickKeyDbSendError> {
         self.client().submit_admin_reload(request)
     }
 
     /// Queue an admin applied-status write without waiting for KeyDB.
-    pub fn submit_admin_status(&self, kind: AdminStatusKind, request_id: String) -> Result<(), ()> {
+    pub fn submit_admin_status(
+        &self,
+        kind: AdminStatusKind,
+        request_id: String,
+    ) -> Result<(), TickKeyDbSendError> {
         self.client().submit_admin_status(kind, request_id)
     }
 
     /// Queue an admin action status update without waiting for KeyDB.
-    pub fn submit_action_status(&self, request: ActionStatusRequest) -> Result<(), ()> {
+    pub fn submit_action_status(
+        &self,
+        request: ActionStatusRequest,
+    ) -> Result<(), TickKeyDbSendError> {
         self.client().submit_action_status(request)
     }
 

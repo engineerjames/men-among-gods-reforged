@@ -217,7 +217,7 @@ impl PerfProfiler {
     pub fn end_frame(&mut self) {
         if let Some(frame_start) = self.frame_start.take() {
             let sample = FrameSample {
-                function_times: self.current_times.drain(..).collect(),
+                function_times: std::mem::take(&mut self.current_times),
                 total_frame_time: frame_start.elapsed(),
             };
             self.frame_samples.push(sample);

@@ -682,9 +682,12 @@ impl GameState {
     ///
     /// * `Ok(())` when the worker accepted the request.
     /// * `Err(request)` when the worker is unavailable.
-    pub(crate) fn submit_ban_write(&self, request: BanWriteRequest) -> Result<(), BanWriteRequest> {
+    pub(crate) fn submit_ban_write(
+        &self,
+        request: BanWriteRequest,
+    ) -> Result<(), Box<BanWriteRequest>> {
         let Some(client) = self.tick_keydb_client.as_ref() else {
-            return Err(request);
+            return Err(Box::new(request));
         };
         client.submit_ban_write(request)
     }

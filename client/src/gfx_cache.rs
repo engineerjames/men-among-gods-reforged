@@ -295,7 +295,7 @@ impl<'tc> GraphicsCache<'tc> {
         let mut total_b: u64 = 0;
 
         let mut pixels_counted: u64 = 0;
-        for pixel in pixels.chunks_exact(4) {
+        for pixel in pixels.as_chunks::<4>().0 {
             if pixel[3] == 0 {
                 continue; // Skip fully transparent pixels
             }
