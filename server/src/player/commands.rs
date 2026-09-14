@@ -1989,8 +1989,8 @@ mod tests {
     use super::*;
     use core::{
         constants::{
-            CharacterFlags, ItemFlags, MF_BANK, MF_MOVEBLOCK, MF_SIGHTBLOCK, ST_EXIT, USE_ACTIVE,
-            USE_EMPTY, USE_NONACTIVE,
+            CharacterFlags, ItemFlags, MF_BANK, MF_MOVEBLOCK, MF_SIGHTBLOCK, PL_SHIELD, PL_TWOHAND,
+            PL_WEAPON, ST_EXIT, USE_ACTIVE, USE_EMPTY, USE_NONACTIVE, WN_LHAND, WN_RHAND,
         },
         server_commands::ServerCommandType,
         skills,
@@ -2075,6 +2075,14 @@ mod tests {
         let mut packet = [0u8; 5];
         packet[1..5].copy_from_slice(&value.to_le_bytes());
         packet
+    }
+
+    fn equip_from_cursor(gs: &mut GameState, nr: usize, worn_slot: usize) {
+        let mut packet = [0u8; 13];
+        packet[1..5].copy_from_slice(&1u32.to_le_bytes());
+        packet[5..9].copy_from_slice(&(worn_slot as u32).to_le_bytes());
+        write_inbuf(gs, nr, &packet);
+        plr_cmd_inv(gs, nr);
     }
 
     #[test]
@@ -2697,6 +2705,152 @@ mod tests {
             write_inbuf(gs, nr, &packet);
             plr_cmd_inv(gs, nr);
             assert!(gs.players[nr].tptr > 0);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_inv_equips_twohanded_item_and_stores_both_hand_items() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            configure_item(
+                gs,
+                10,
+                "Pickaxe",
+                "pickaxe",
+                "A two-handed pickaxe.",
+                0,
+                458,
+                None,
+            );
+            configure_item(
+                gs,
+                11,
+                "Dagger",
+                "dagger",
+                "A one-handed dagger.",
+                0,
+                11,
+                None,
+            );
+            configure_item(gs, 12, "Torch", "torch", "A hand-held torch.", 0, 12, None);
+            gs.items[10].placement = PL_WEAPON | PL_TWOHAND;
+            gs.items[11].placement = PL_WEAPON;
+            gs.items[12].placement = PL_SHIELD;
+
+            gs.characters[cn].citem = 10;
+            gs.characters[cn].worn[WN_RHAND] = 11;
+            gs.characters[cn].worn[WN_LHAND] = 12;
+
+            equip_from_cursor(gs, nr, WN_RHAND);
+
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 10);
+            assert_eq!(gs.characters[cn].worn[WN_LHAND], 0);
+            assert!(gs.characters[cn].item.contains(&11));
+            assert!(gs.characters[cn].item.contains(&12));
+        });
+    }
+
+    #[test]
+    fn plr_cmd_inv_equips_twohanded_item_with_empty_hands() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            configure_item(
+                gs,
+                10,
+                "Pickaxe",
+                "pickaxe",
+                "A two-handed pickaxe.",
+                0,
+                458,
+                None,
+            );
+            gs.items[10].placement = PL_WEAPON | PL_TWOHAND;
+            gs.characters[cn].citem = 10;
+
+            equip_from_cursor(gs, nr, WN_RHAND);
+
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 10);
+            assert_eq!(gs.characters[cn].worn[WN_LHAND], 0);
+            assert!(!gs.characters[cn].item.contains(&10));
+        });
+    }
+
+    #[test]
+    fn plr_cmd_inv_twohanded_equip_uses_exact_inventory_capacity() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            configure_item(
+                gs,
+                10,
+                "Pickaxe",
+                "pickaxe",
+                "A two-handed pickaxe.",
+                0,
+                458,
+                None,
+            );
+            configure_item(gs, 11, "Torch", "torch", "A hand-held torch.", 0, 12, None);
+            gs.items[10].placement = PL_WEAPON | PL_TWOHAND;
+            gs.items[11].placement = PL_SHIELD;
+
+            gs.characters[cn].item.fill(99);
+            gs.characters[cn].item[39] = 0;
+            gs.characters[cn].citem = 10;
+            gs.characters[cn].worn[WN_LHAND] = 11;
+
+            equip_from_cursor(gs, nr, WN_RHAND);
+
+            assert_eq!(gs.characters[cn].citem, 0);
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 10);
+            assert_eq!(gs.characters[cn].worn[WN_LHAND], 0);
+            assert_eq!(gs.characters[cn].item[39], 11);
+        });
+    }
+
+    #[test]
+    fn plr_cmd_inv_twohanded_equip_fails_atomically_without_inventory_space() {
+        with_test_gs(|gs| {
+            let (cn, nr) = add_test_player(gs);
+            configure_item(
+                gs,
+                10,
+                "Pickaxe",
+                "pickaxe",
+                "A two-handed pickaxe.",
+                0,
+                458,
+                None,
+            );
+            configure_item(
+                gs,
+                11,
+                "Dagger",
+                "dagger",
+                "A one-handed dagger.",
+                0,
+                11,
+                None,
+            );
+            configure_item(gs, 12, "Torch", "torch", "A hand-held torch.", 0, 12, None);
+            gs.items[10].placement = PL_WEAPON | PL_TWOHAND;
+            gs.items[11].placement = PL_WEAPON;
+            gs.items[12].placement = PL_SHIELD;
+
+            gs.characters[cn].item.fill(99);
+            gs.characters[cn].item[39] = 0;
+            gs.characters[cn].citem = 10;
+            gs.characters[cn].worn[WN_RHAND] = 11;
+            gs.characters[cn].worn[WN_LHAND] = 12;
+            let inventory_before = gs.characters[cn].item;
+
+            equip_from_cursor(gs, nr, WN_RHAND);
+
+            assert_eq!(gs.characters[cn].citem, 10);
+            assert_eq!(gs.characters[cn].worn[WN_RHAND], 11);
+            assert_eq!(gs.characters[cn].worn[WN_LHAND], 12);
+            assert_eq!(gs.characters[cn].item, inventory_before);
         });
     }
 

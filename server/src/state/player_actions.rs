@@ -15,9 +15,10 @@ use crate::helpers;
 impl GameState {
     /// Port of `do_swap_item(int cn, int n)` from `svr_do.cpp`
     ///
-    /// Swap the carried item (citem) with an equipment slot.
+    /// Equip or swap the carried item (`citem`) with an equipment slot.
     /// Performs various prerequisite checks including attributes, skills, HP/END/MANA requirements,
-    /// faction restrictions, rank requirements, and placement validation.
+    /// faction restrictions, rank requirements, and placement validation. A two-handed weapon
+    /// replaces occupied hand items by moving them into the inventory atomically.
     ///
     /// # Arguments
     /// * `cn` - Character index
@@ -198,14 +199,7 @@ impl GameState {
                         !(rhand_item != 0 && (self.items[rhand_item].placement & PL_TWOHAND) != 0)
                     }
                 }
-                WN_RHAND => {
-                    if (self.items[tmp].placement & PL_WEAPON) == 0 {
-                        false
-                    } else {
-                        !((self.items[tmp].placement & PL_TWOHAND) != 0
-                            && self.characters[cn].worn[WN_LHAND] != 0)
-                    }
-                }
+                WN_RHAND => (self.items[tmp].placement & PL_WEAPON) != 0,
                 WN_CLOAK => (self.items[tmp].placement & PL_CLOAK) != 0,
                 WN_RRING | WN_LRING => (self.items[tmp].placement & PL_RING) != 0,
                 _ => false,
@@ -213,6 +207,46 @@ impl GameState {
 
             if !placement_ok {
                 return -1;
+            }
+
+            if n == WN_RHAND && (self.items[tmp].placement & PL_TWOHAND) != 0 {
+                let displaced_items = [
+                    self.characters[cn].worn[WN_RHAND],
+                    self.characters[cn].worn[WN_LHAND],
+                ];
+                let displaced_count = displaced_items
+                    .iter()
+                    .filter(|&&item_id| item_id != 0)
+                    .count();
+                let mut inventory_slots = [0usize; 2];
+                let mut free_slot_count = 0;
+
+                for (slot, &item_id) in self.characters[cn].item.iter().enumerate() {
+                    if item_id == 0 && free_slot_count < displaced_count {
+                        inventory_slots[free_slot_count] = slot;
+                        free_slot_count += 1;
+                    }
+                }
+
+                if free_slot_count < displaced_count {
+                    return -1;
+                }
+
+                let carried_item = self.characters[cn].citem;
+                let ch = &mut self.characters[cn];
+                let mut destination = 0;
+                for item_id in displaced_items {
+                    if item_id != 0 {
+                        ch.item[inventory_slots[destination]] = item_id;
+                        destination += 1;
+                    }
+                }
+                ch.worn[WN_LHAND] = 0;
+                ch.worn[WN_RHAND] = carried_item;
+                ch.citem = 0;
+                ch.set_do_update_flags();
+
+                return n as i32;
             }
         }
 
