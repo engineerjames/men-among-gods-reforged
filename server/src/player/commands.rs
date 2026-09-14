@@ -705,6 +705,11 @@ pub fn plr_cmd_inv(gs: &mut GameState, nr: usize) {
     if what == 1 {
         let stunned = gs.characters[cn].stunned > 0;
         if stunned {
+            gs.do_character_log(
+                cn,
+                core::types::FontColor::Red,
+                "You have been stunned. You cannot swap items.\n",
+            );
             return;
         }
         let _ = gs.do_swap_item(cn, n);

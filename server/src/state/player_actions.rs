@@ -206,6 +206,11 @@ impl GameState {
             };
 
             if !placement_ok {
+                self.do_character_log(
+                    cn,
+                    FontColor::Red,
+                    "That item cannot be equipped in that slot.\n",
+                );
                 return -1;
             }
 
@@ -229,6 +234,11 @@ impl GameState {
                 }
 
                 if free_slot_count < displaced_count {
+                    self.do_character_log(
+                        cn,
+                        FontColor::Red,
+                        "You need more room in your inventory to equip that.\n",
+                    );
                     return -1;
                 }
 
