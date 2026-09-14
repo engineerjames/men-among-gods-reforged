@@ -4,7 +4,6 @@ mod driver;
 mod effect;
 mod game_state;
 mod god;
-mod types;
 
 #[cfg(test)]
 mod test_helpers;

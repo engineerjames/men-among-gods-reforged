@@ -1,5 +1,6 @@
 use crate::path_finding::PathFinder;
-use crate::types::server_player::ServerPlayer;
+use crate::server::ServerPlayer;
+
 use core::constants::{CharacterFlags, ItemFlags, USE_EMPTY};
 use core::talent_trees::total_points_spent;
 use redis::Commands;
