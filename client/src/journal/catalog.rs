@@ -67,6 +67,10 @@ pub static JOURNAL_CATALOG: &[JournalCategory] = &[
                 label: "Lab Three: Wizards",
                 content_file: "labyrinth/lab_three_wizards.md",
             },
+            JournalSubcategory {
+                label: "Lab Four",
+                content_file: "labyrinth/lab_four.md",
+            },
         ],
     },
     JournalCategory {
@@ -132,14 +136,15 @@ mod tests {
     }
 
     #[test]
-    fn labyrinth_has_overview_plus_three_lab_subcategories() {
+    fn labyrinth_has_overview_plus_four_lab_subcategories() {
         let labyrinth = JOURNAL_CATALOG
             .iter()
             .find(|c| c.label == "Labyrinth")
             .expect("Labyrinth category should exist");
-        assert_eq!(labyrinth.subcategories.len(), 4);
+        assert_eq!(labyrinth.subcategories.len(), 5);
         assert_eq!(labyrinth.subcategories[0].label, "Overview");
         assert_eq!(labyrinth.subcategories[3].label, "Lab Three: Wizards");
+        assert_eq!(labyrinth.subcategories[4].label, "Lab Four");
     }
 
     #[test]
