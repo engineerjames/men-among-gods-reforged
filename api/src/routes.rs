@@ -34,7 +34,7 @@ use mag_core::types::ResetPasswordRequest;
 use mag_core::types::ResetPasswordRequestResponse;
 use mag_core::types::UpdateCharacterRequest;
 use mag_core::{constants, traits};
-use rand::RngCore;
+use rand::TryRngCore;
 use rand::rngs::OsRng;
 use redis::AsyncCommands;
 use subtle::ConstantTimeEq;
@@ -486,7 +486,7 @@ pub(crate) async fn create_game_login_ticket(
             );
         }
 
-        let mut ticket = OsRng.next_u64();
+        let mut ticket = OsRng.try_next_u64().expect("OS random source unavailable");
         if ticket == 0 {
             ticket = 1;
         }
@@ -1197,7 +1197,10 @@ pub(crate) async fn request_password_reset(
     }
 
     // ── Generate 6-digit code ────────────────────────────────────────
-    let code = format!("{:06}", OsRng.next_u32() % 1_000_000);
+    let code = format!(
+        "{:06}",
+        OsRng.try_next_u32().expect("OS random source unavailable") % 1_000_000
+    );
 
     // ── Store in KeyDB (one active per account) ──────────────────────
     let reset_key = format!("password_reset:{}", account_id);

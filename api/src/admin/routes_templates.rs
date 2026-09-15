@@ -21,7 +21,7 @@ use mag_core::template_store::{
 };
 use mag_core::types::{Character, Item};
 use mag_core::{string_operations, template_store};
-use rand::RngCore;
+use rand::TryRngCore;
 use rand::rngs::OsRng;
 use redis::AsyncCommands;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -437,7 +437,9 @@ pub(crate) async fn get_reload_status(
 
 fn generate_request_id() -> String {
     let mut bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut bytes);
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .expect("OS random source unavailable");
     let mut out = String::with_capacity(24);
     for b in bytes {
         out.push_str(&format!("{:02x}", b));

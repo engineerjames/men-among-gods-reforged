@@ -34,6 +34,7 @@ use mag_core::client_commands::ClientCommand;
 use mag_core::constants::{SERVER_MAPX, SERVER_MAPY, TILEX, TILEY};
 use mag_core::server_commands::{ServerCommand, ServerCommandData};
 use rand::Rng;
+use rand::SeedableRng;
 use rand::rngs::StdRng;
 use tokio::io::{AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::broadcast;
@@ -254,7 +255,7 @@ async fn game_loop(
 
     let mut state = ClientState::new();
     let mut framed = FramedReader::new();
-    let mut rng = StdRng::from_entropy();
+    let mut rng = StdRng::from_os_rng();
 
     let mut move_timer = interval(Duration::from_millis(config.movement.interval_ms));
     move_timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -353,8 +354,8 @@ async fn game_loop(
             _ = move_timer.tick(), if has_position => {
                 let (x, y) = (state.self_x.unwrap(), state.self_y.unwrap());
                 let radius = config.movement.radius;
-                let dx: i16 = rng.gen_range(-radius..=radius);
-                let dy: i16 = rng.gen_range(-radius..=radius);
+                let dx: i16 = rng.random_range(-radius..=radius);
+                let dy: i16 = rng.random_range(-radius..=radius);
                 let tx = x.saturating_add(dx);
                 let ty = y.saturating_add(dy);
                 let cmd = ClientCommand::new_move(tx, i32::from(ty));
@@ -667,8 +668,6 @@ async fn maybe_send_commands(
 
 #[cfg(test)]
 mod tests {
-    use rand::SeedableRng;
-
     use super::*;
 
     #[test]

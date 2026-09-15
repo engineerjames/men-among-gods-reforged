@@ -14,8 +14,9 @@
 //! performs internally.
 use argon2::{
     Argon2,
-    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
 };
+use rand::{TryRngCore, rngs::OsRng};
 
 /// Wraps the client-supplied PHC string in a fresh server-side Argon2 envelope.
 ///
@@ -30,7 +31,12 @@ use argon2::{
 ///   storage.
 /// * `Err(String)` if the hash could not be generated.
 pub(crate) fn hash_for_storage(client_phc: &str) -> Result<String, String> {
-    let salt = SaltString::generate(&mut OsRng);
+    let mut salt_bytes = [0u8; 16];
+    OsRng
+        .try_fill_bytes(&mut salt_bytes)
+        .map_err(|err| format!("Failed to generate password salt: {err}"))?;
+    let salt = SaltString::encode_b64(&salt_bytes)
+        .map_err(|err| format!("Failed to encode password salt: {err}"))?;
     let argon2 = Argon2::default();
     argon2
         .hash_password(client_phc.as_bytes(), &salt)
