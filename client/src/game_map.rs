@@ -425,6 +425,7 @@ impl GameMap {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mag_core::constants::{DANGER_GLYPH_MASK, DangerGlyph, MF_INDOORS};
 
     #[test]
     fn new_map_len() {
@@ -542,6 +543,34 @@ mod tests {
         );
         let tile = map.tile_at_index(15).unwrap();
         assert_eq!(tile.ba_sprite, 99);
+    }
+
+    #[test]
+    fn apply_set_map_preserves_and_decodes_danger_flags() {
+        let mut map = GameMap::new();
+        let flags2 = MF_INDOORS | DangerGlyph::Skull.bits();
+        map.apply_set_map(
+            0,
+            Some(10),
+            None,
+            None,
+            Some(flags2),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let tile = map.tile_at_index(10).unwrap();
+        assert_eq!(tile.danger_glyph(), DangerGlyph::Skull);
+        assert_ne!(tile.flags2 & MF_INDOORS, 0);
+        assert_eq!(tile.flags2 & DANGER_GLYPH_MASK, DangerGlyph::Skull.bits());
     }
 
     #[test]

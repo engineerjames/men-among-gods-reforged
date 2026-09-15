@@ -429,6 +429,64 @@ pub const MF_ARENA: u32 = 1 << 11;
 pub const MF_NOEXPIRE: u32 = 1 << 13;
 pub const MF_NOFIGHT: u64 = 1 << 14;
 
+/// Starting bit for the danger-glyph value carried in a tile's `flags2`.
+pub const DANGER_GLYPH_SHIFT: u32 = 16;
+/// Mask covering the danger-glyph value carried in a tile's `flags2`.
+pub const DANGER_GLYPH_MASK: u32 = 0b111 << DANGER_GLYPH_SHIFT;
+
+/// Danger glyph classification for a visible NPC nameplate.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum DangerGlyph {
+    /// No glyph should be shown.
+    #[default]
+    None = 0,
+    /// The target is substantially below the viewer's rank.
+    Lamb = 1,
+    /// The target is close to the viewer's rank.
+    Swords = 2,
+    /// The target is moderately above the viewer's rank.
+    Skull = 3,
+    /// The target is substantially above the viewer's rank.
+    FlamingSkull = 4,
+}
+
+impl DangerGlyph {
+    /// Returns the encoded value for the `flags2` danger-glyph field.
+    pub const fn bits(self) -> u32 {
+        (self as u32) << DANGER_GLYPH_SHIFT
+    }
+
+    /// Decodes a `flags2` danger-glyph field, treating unknown values as none.
+    ///
+    /// # Arguments
+    ///
+    /// * `flags2` - Raw tile flags containing the encoded danger value.
+    pub const fn from_flags2(flags2: u32) -> Self {
+        match (flags2 & DANGER_GLYPH_MASK) >> DANGER_GLYPH_SHIFT {
+            1 => Self::Lamb,
+            2 => Self::Swords,
+            3 => Self::Skull,
+            4 => Self::FlamingSkull,
+            _ => Self::None,
+        }
+    }
+
+    /// Classifies a target by its signed rank difference from the viewer.
+    ///
+    /// # Arguments
+    ///
+    /// * `rank_delta` - Target rank minus viewer rank.
+    pub const fn from_rank_delta(rank_delta: i32) -> Self {
+        match rank_delta {
+            i32::MIN..=-3 => Self::Lamb,
+            -2..=2 => Self::Swords,
+            3..=4 => Self::Skull,
+            _ => Self::FlamingSkull,
+        }
+    }
+}
+
 // Dynamic map flags (32 bits offset)
 pub const MF_GFX_INJURED: u64 = 1 << 32;
 pub const MF_GFX_INJURED1: u64 = 1 << 33;

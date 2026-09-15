@@ -1,17 +1,52 @@
 use sdl2::{pixels::Color, render::Canvas, video::Window};
 
 use mag_core::constants::{
-    CMAGIC, DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, EMAGIC, GMAGIC, INJURED, INJURED1,
-    INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, SPR_EMPTY, TILEX, TILEY, TOMB,
+    CMAGIC, DEATH, DR_DROP, DR_GIVE, DR_PICKUP, DR_USE, DangerGlyph, EMAGIC, GMAGIC, INJURED,
+    INJURED1, INJURED2, INVIS, ISCHAR, ISITEM, ISUSABLE, SPR_EMPTY, TILEX, TILEY, TOMB,
 };
 
 use crate::{
-    font_cache, gfx_cache::GraphicsCache, player_state::PlayerState, types::map::SUBPIXEL_UNIT,
+    filepaths, font_cache, gfx_cache::GraphicsCache, player_state::PlayerState,
+    types::map::SUBPIXEL_UNIT,
 };
 
 use super::{FLOOR_TILE_HEIGHT, FLOOR_TILE_WIDTH, GameScene};
 
 const PERCENT_HEALTH_TEXT_OFFSET_Y: i32 = 47;
+const DANGER_GLYPH_SIZE: i32 = 16;
+const DANGER_GLYPH_GAP: i32 = 2;
+
+#[derive(Debug, PartialEq, Eq)]
+struct NameplateLayout {
+    left: i32,
+    glyph_x: Option<i32>,
+    text_x: i32,
+}
+
+/// Computes the centered positions for a nameplate's optional icon and text.
+fn nameplate_layout(center_x: i32, text: &str, has_glyph: bool) -> NameplateLayout {
+    let text_width = font_cache::text_width(text) as i32;
+    let glyph_width = if has_glyph { DANGER_GLYPH_SIZE } else { 0 };
+    let glyph_gap = if has_glyph { DANGER_GLYPH_GAP } else { 0 };
+    let left = center_x - (glyph_width + glyph_gap + text_width) / 2;
+
+    NameplateLayout {
+        left,
+        glyph_x: has_glyph.then_some(left),
+        text_x: left + glyph_width + glyph_gap,
+    }
+}
+
+/// Returns the placeholder asset filename for a danger classification.
+fn danger_glyph_asset(glyph: DangerGlyph) -> Option<&'static str> {
+    match glyph {
+        DangerGlyph::None => None,
+        DangerGlyph::Lamb => Some("wimpy_icon.png"),
+        DangerGlyph::Swords => Some("stun_icon.png"),
+        DangerGlyph::Skull => Some("deliver_death_icon.png"),
+        DangerGlyph::FlamingSkull => Some("lava_blast_icon.png"),
+    }
+}
 
 #[derive(Copy, Clone)]
 enum HoverHighlight {
@@ -37,6 +72,40 @@ enum HoverHighlight {
 impl GameScene {
     /// Default gamma-based LEFFECT value matching C client: gamma=5000, LEFFECT=gamma-4880=120.
     const LEFFECT: i32 = 120;
+
+    /// Loads and caches the placeholder texture for a danger glyph.
+    fn danger_glyph_texture(
+        &mut self,
+        gfx: &mut GraphicsCache<'_>,
+        glyph: DangerGlyph,
+    ) -> Option<usize> {
+        let slot = match glyph {
+            DangerGlyph::None => return None,
+            DangerGlyph::Lamb => 0,
+            DangerGlyph::Swords => 1,
+            DangerGlyph::Skull => 2,
+            DangerGlyph::FlamingSkull => 3,
+        };
+        if let Some(id) = self.danger_glyph_ids[slot] {
+            return Some(id);
+        }
+
+        let filename = danger_glyph_asset(glyph)?;
+        let path = filepaths::get_asset_directory()
+            .join("gfx")
+            .join("spells")
+            .join(filename);
+        match gfx.load_texture_from_path(&path) {
+            Ok(id) => {
+                self.danger_glyph_ids[slot] = Some(id);
+                Some(id)
+            }
+            Err(error) => {
+                log::warn!("Failed to load danger glyph {}: {}", path.display(), error);
+                None
+            }
+        }
+    }
 
     /// Draw a single world sprite at `(tile_x, tile_y)` with camera and sub-tile offsets.
     /// Camera and sprite offsets are in [`SUBPIXEL_UNIT`] units.
@@ -509,7 +578,7 @@ impl GameScene {
     /// objects/characters/effects). This is the main world-drawing entry point.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_world(
-        &self,
+        &mut self,
         canvas: &mut Canvas<Window>,
         gfx: &mut GraphicsCache<'_>,
         ps: &PlayerState,
@@ -517,6 +586,7 @@ impl GameScene {
         spell_effects_enabled: bool,
         show_names: bool,
         show_proz: bool,
+        show_danger_glyphs: bool,
         hide: bool,
         camera_shake: (i32, i32),
     ) -> Result<(), String> {
@@ -777,15 +847,33 @@ impl GameScene {
                             cam_xoff + ch_xoff,
                             cam_yoff + ch_yoff,
                         );
-                        let text_len = text.len() as i32;
-                        let np_rx = np_ground_x - (text_len * 5 / 2);
+                        let glyph_id = if show_danger_glyphs {
+                            self.danger_glyph_texture(gfx, tile.danger_glyph())
+                        } else {
+                            None
+                        };
+                        let layout = nameplate_layout(np_ground_x, &text, glyph_id.is_some());
                         let np_ry = np_ground_y - PERCENT_HEALTH_TEXT_OFFSET_Y;
+                        if let (Some(glyph_id), Some(glyph_x)) = (glyph_id, layout.glyph_x) {
+                            let glyph_y =
+                                np_ry - (DANGER_GLYPH_SIZE - font_cache::BITMAP_GLYPH_H as i32) / 2;
+                            canvas.copy(
+                                gfx.get_texture(glyph_id),
+                                None,
+                                Some(sdl2::rect::Rect::new(
+                                    glyph_x,
+                                    glyph_y,
+                                    DANGER_GLYPH_SIZE as u32,
+                                    DANGER_GLYPH_SIZE as u32,
+                                )),
+                            )?;
+                        }
                         font_cache::draw_text(
                             canvas,
                             gfx,
                             1,
                             &text,
-                            np_rx,
+                            layout.text_x,
                             np_ry,
                             font_cache::TextStyle::drop_shadow(),
                         )?;
@@ -894,5 +982,48 @@ impl GameScene {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DANGER_GLYPH_GAP, DANGER_GLYPH_SIZE, nameplate_layout};
+    use crate::font_cache::{self, BITMAP_GLYPH_ADVANCE};
+
+    #[test]
+    fn nameplate_layout_centers_text_only() {
+        let layout = nameplate_layout(100, "Grolm 100%", false);
+
+        assert_eq!(layout.left, 70);
+        assert_eq!(layout.glyph_x, None);
+        assert_eq!(layout.text_x, 70);
+    }
+
+    #[test]
+    fn nameplate_layout_places_glyph_before_text() {
+        let layout = nameplate_layout(100, "Grolm 100%", true);
+        let text_width = font_cache::text_width("Grolm 100%") as i32;
+        let group_width = DANGER_GLYPH_SIZE + DANGER_GLYPH_GAP + text_width;
+
+        assert_eq!(layout.left, 100 - group_width / 2);
+        assert_eq!(layout.glyph_x, Some(layout.left));
+        assert_eq!(
+            layout.text_x,
+            layout.left + DANGER_GLYPH_SIZE + DANGER_GLYPH_GAP
+        );
+    }
+
+    #[test]
+    fn nameplate_layout_keeps_long_health_plate_centered() {
+        let text = "A very long NPC name 100%";
+        let layout = nameplate_layout(320, text, true);
+        let group_width =
+            DANGER_GLYPH_SIZE + DANGER_GLYPH_GAP + text.len() as i32 * BITMAP_GLYPH_ADVANCE as i32;
+
+        assert_eq!(layout.left, 320 - group_width / 2);
+        assert_eq!(
+            layout.text_x - layout.left,
+            DANGER_GLYPH_SIZE + DANGER_GLYPH_GAP
+        );
     }
 }

@@ -8,6 +8,8 @@
 /// positions every frame.
 pub const SUBPIXEL_UNIT: i32 = 256;
 
+use mag_core::constants::DangerGlyph;
+
 /// A single tile in the visible map grid, matching the original C `cmap`
 /// struct (64 bytes).
 ///
@@ -50,4 +52,16 @@ pub struct CMapTile {
     pub movement_start_pending: bool,
     /// Number of cadence ticks inferred before the current movement began.
     pub movement_start_lead_ticks: u8,
+}
+
+impl CMapTile {
+    /// Returns the danger glyph encoded in this tile's map flags.
+    ///
+    /// # Returns
+    ///
+    /// The decoded danger classification, or [`DangerGlyph::None`] when the
+    /// tile carries no recognized danger value.
+    pub fn danger_glyph(&self) -> DangerGlyph {
+        DangerGlyph::from_flags2(self.flags2)
+    }
 }

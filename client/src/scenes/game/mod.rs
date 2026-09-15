@@ -596,6 +596,8 @@ pub struct GameScene {
     pub(super) spell_effect_icons: SpellEffectIcons,
     pub(super) skill_bar: SkillBar,
     pub(super) skill_picker: SkillPickerPopup,
+    /// Lazily loaded placeholder textures for NPC danger glyphs.
+    pub(super) danger_glyph_ids: [Option<usize>; 4],
     pub(super) last_synced_log_len: usize,
     pub(super) pending_exit: Option<String>,
     pub(super) certificate_mismatch: Option<cert_trust::FingerprintMismatch>,
@@ -837,6 +839,7 @@ impl GameScene {
             ),
             skill_bar: SkillBar::new(),
             skill_picker: SkillPickerPopup::new(),
+            danger_glyph_ids: [None; 4],
             last_synced_log_len: 0,
             pending_exit: None,
             certificate_mismatch: None,
@@ -960,6 +963,7 @@ impl GameScene {
             weather_intensity: app_state.settings.weather_intensity,
             show_names: app_state.settings.show_names,
             show_health_pct: app_state.settings.show_proz,
+            show_danger_glyphs: app_state.settings.show_danger_glyphs,
             hide_walls: app_state.settings.hide,
             show_helper_text: app_state.settings.show_helper_text,
             show_positions: app_state.settings.show_positions,
@@ -1160,6 +1164,10 @@ impl GameScene {
                 }
                 WidgetAction::SetShowHealthPct(v) => {
                     app_state.settings.show_proz = v;
+                    profile_changed = true;
+                }
+                WidgetAction::SetShowDangerGlyphs(v) => {
+                    app_state.settings.show_danger_glyphs = v;
                     profile_changed = true;
                 }
                 WidgetAction::SetHideWalls(v) => {
@@ -2682,6 +2690,7 @@ impl Scene for GameScene {
             effects_on,
             settings.show_names,
             settings.show_proz,
+            settings.show_danger_glyphs,
             settings.hide,
             camera_shake,
         )?;

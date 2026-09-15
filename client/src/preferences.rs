@@ -189,6 +189,9 @@ pub struct Settings {
     /// Overhead health percentage display toggle.
     #[serde(default = "default_true")]
     pub show_proz: bool,
+    /// Overhead danger glyph display toggle for hostile NPCs.
+    #[serde(default = "default_true")]
+    pub show_danger_glyphs: bool,
     /// Whether context-sensitive helper text is shown near the cursor.
     #[serde(default = "default_true")]
     pub show_helper_text: bool,
@@ -215,6 +218,7 @@ impl Default for Settings {
             hide: false,
             show_names: true,
             show_proz: true,
+            show_danger_glyphs: true,
             show_helper_text: true,
             show_positions: false,
             character: CharacterSettings::default(),
@@ -284,6 +288,7 @@ fn global_settings_only(settings: &Settings) -> Settings {
         hide: settings.hide,
         show_names: settings.show_names,
         show_proz: settings.show_proz,
+        show_danger_glyphs: settings.show_danger_glyphs,
         show_helper_text: settings.show_helper_text,
         show_positions: settings.show_positions,
         character: CharacterSettings::default(),
@@ -577,6 +582,7 @@ mod tests {
         );
         assert_eq!(deserialized.show_helper_text, s.show_helper_text);
         assert_eq!(deserialized.show_positions, s.show_positions);
+        assert_eq!(deserialized.show_danger_glyphs, s.show_danger_glyphs);
     }
 
     #[test]
@@ -591,6 +597,7 @@ mod tests {
         assert!((deserialized.master_volume - defaults.master_volume).abs() < f32::EPSILON);
         assert_eq!(deserialized.show_helper_text, defaults.show_helper_text);
         assert_eq!(deserialized.show_positions, defaults.show_positions);
+        assert_eq!(deserialized.show_danger_glyphs, defaults.show_danger_glyphs);
         assert_eq!(
             deserialized.character.skill_keybinds,
             defaults.character.skill_keybinds

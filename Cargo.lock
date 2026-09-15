@@ -4386,7 +4386,6 @@ name = "server"
 version = "1.4.0"
 dependencies = [
  "bincode",
- "bitflags 2.11.0",
  "chrono",
  "core",
  "ctrlc",

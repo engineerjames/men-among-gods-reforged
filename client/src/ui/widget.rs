@@ -339,6 +339,8 @@ pub enum WidgetAction {
     SetShowNames(bool),
     /// Toggle overhead health percentage display.
     SetShowHealthPct(bool),
+    /// Toggle overhead danger glyph display for hostile NPCs.
+    SetShowDangerGlyphs(bool),
     /// Toggle wall hiding.
     SetHideWalls(bool),
     /// Change the master volume (0.0 = muted, 1.0 = full).
