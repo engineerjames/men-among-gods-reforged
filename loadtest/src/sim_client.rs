@@ -34,7 +34,6 @@ use mag_core::client_commands::ClientCommand;
 use mag_core::constants::{SERVER_MAPX, SERVER_MAPY, TILEX, TILEY};
 use mag_core::server_commands::{ServerCommand, ServerCommandData};
 use rand::Rng;
-use rand::SeedableRng;
 use rand::rngs::StdRng;
 use tokio::io::{AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::sync::broadcast;
@@ -585,8 +584,8 @@ async fn maybe_send_dispersion(
 ///
 /// * A random `(x, y)` pair within the safe map bounds.
 fn random_dispersion_target(rng: &mut StdRng) -> (i32, i32) {
-    let x = rng.gen_range(DISPERSION_MARGIN..SERVER_MAPX - DISPERSION_MARGIN);
-    let y = rng.gen_range(DISPERSION_MARGIN..SERVER_MAPY - DISPERSION_MARGIN);
+    let x = rng.random_range(DISPERSION_MARGIN..SERVER_MAPX - DISPERSION_MARGIN);
+    let y = rng.random_range(DISPERSION_MARGIN..SERVER_MAPY - DISPERSION_MARGIN);
     (x, y)
 }
 
@@ -668,6 +667,8 @@ async fn maybe_send_commands(
 
 #[cfg(test)]
 mod tests {
+    use rand::SeedableRng;
+
     use super::*;
 
     #[test]

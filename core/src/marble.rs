@@ -67,7 +67,7 @@ impl MarbleBag {
         // to the percent passed in here.
         let mut marble_bag = vec![false; draw_count];
         marble_bag[draw_count - successes..].fill(true);
-        marble_bag.shuffle(&mut rand::thread_rng());
+        marble_bag.shuffle(&mut rand::rng());
 
         MarbleBag {
             bag: marble_bag,
@@ -88,7 +88,7 @@ impl MarbleBag {
 
     fn reset(&mut self) {
         self.marble = 0;
-        self.bag.shuffle(&mut rand::thread_rng());
+        self.bag.shuffle(&mut rand::rng());
     }
 }
 
