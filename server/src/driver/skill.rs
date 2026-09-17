@@ -32,7 +32,7 @@ use crate::{
     effect::EffectManager,
     game_state::{ElementSwitchState, GameState},
     god::God,
-    helpers, points, populate,
+    helpers, player_logging, points, populate,
 };
 use core::types::Character;
 
@@ -104,6 +104,7 @@ pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     }
     let a_mana = gs.characters[cn].a_mana;
     if cost * 1000 > a_mana {
+        player_logging::log_event(cn, "spell", "rejected", "insufficient_mana");
         gs.do_character_log(
             cn,
             core::types::FontColor::Red,
@@ -129,6 +130,7 @@ pub fn spellcost(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
 pub fn spellcost_endurance(gs: &mut GameState, cn: usize, cost: i32) -> i32 {
     let a_end = gs.characters[cn].a_end;
     if cost * 1000 > a_end {
+        player_logging::log_event(cn, "spell", "rejected", "insufficient_endurance");
         gs.do_character_log(cn, FontColor::Red, "You're too exhausted!\n");
         return -1;
     }
@@ -2397,7 +2399,7 @@ pub fn warcry(gs: &mut GameState, cn: usize, co: usize, power: i32) -> bool {
     add_spell(gs, co, in2);
 
     let co_name = gs.characters[co].get_name().to_owned();
-    log::info!("Character {} cast Warcry on {}", cn, co_name);
+    chlog!(cn, "Cast Warcry on {}", co_name);
 
     EffectManager::fx_add_effect(
         gs,
@@ -4671,6 +4673,7 @@ pub fn is_back(cn: &Character, co: &Character) -> bool {
 ///
 /// * Panics if `cn` is not a valid character index.
 pub fn nomagic(gs: &mut GameState, cn: usize) {
+    player_logging::log_event(cn, "spell", "rejected", "magic_disabled");
     gs.do_character_log(
         cn,
         FontColor::Green,
@@ -6544,8 +6547,21 @@ pub fn skill_war_banner_aura(gs: &mut GameState, cn: usize) {
 ///
 /// * Panics if `cn` is invalid or `nr` cannot be used as a skill-table index.
 pub fn skill_driver(gs: &mut GameState, cn: usize, nr: i32) {
+    let target = gs.characters[cn].skill_target1;
+    player_logging::log_event(
+        cn,
+        "spell",
+        "attempt",
+        &format!("skill={nr} target={target}"),
+    );
     // Check whether the character can use this skill/spell
     if gs.characters[cn].skill[nr as usize][0] == 0 {
+        player_logging::log_event(
+            cn,
+            "spell",
+            "rejected",
+            &format!("skill_not_available={nr}"),
+        );
         gs.do_character_log(cn, FontColor::Green, "You cannot use this skill/spell.\n");
         return;
     }

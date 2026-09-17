@@ -13,6 +13,7 @@ use crate::{
         map::{plr_map_remove, plr_map_set},
         notify_character_tile,
     },
+    player_logging,
 };
 
 /// Port of `plr_cmd_look` from `svr_tick.cpp`
@@ -463,15 +464,23 @@ pub fn plr_cmd_skill(gs: &mut GameState, nr: usize) {
 
     // sanity checks: skill index must be within available skill table
     if n >= core::types::Character::default().skill.len() {
+        player_logging::log_event(cn, "spell", "rejected", &format!("invalid_skill={n}"));
         return;
     }
     if co >= core::constants::MAXCHARS {
+        player_logging::log_event(cn, "spell", "rejected", &format!("invalid_target={co}"));
         return;
     }
 
     // ensure skill exists for this character
     let has_skill = gs.characters[cn].skill[n][0] != 0;
     if !has_skill {
+        player_logging::log_event(
+            cn,
+            "spell",
+            "rejected",
+            &format!("skill_not_known={n} target={co}"),
+        );
         return;
     }
 

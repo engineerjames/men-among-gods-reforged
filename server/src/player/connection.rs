@@ -13,7 +13,7 @@ use server::keydb::tick_worker::LoginFailureKind;
 #[cfg(test)]
 use core::types::api::GameLoginTicketMetadata;
 
-use crate::{game_state::GameState, god::God, network_manager};
+use crate::{game_state::GameState, god::God, network_manager, player_logging};
 
 /// Port of `plr_login` from `svr_tick.cpp`
 /// Handles existing player login (stub - to be implemented)
@@ -59,6 +59,14 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     // version check
     let version = gs.players[nr].version as u32;
     if version < core::constants::MINVERSION {
+        player_logging::log_identity_event(
+            nr,
+            login_ticket_data.character_id,
+            &character.name,
+            "login",
+            "rejected",
+            &format!("client_version_too_old version={version}"),
+        );
         log::warn!("Client too old ({}). Logout demanded", version);
         plr_logout(gs, 0, nr, LogoutReason::VersionMismatch);
         return;
@@ -67,6 +75,14 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     let (cn, is_brand_new_character) = match apply_api_login_character_record(gs, &character) {
         Ok(value) => value,
         Err(reason) => {
+            player_logging::log_identity_event(
+                nr,
+                login_ticket_data.character_id,
+                &character.name,
+                "login",
+                "rejected",
+                &format!("character_validation_failed reason={reason:?}"),
+            );
             log::warn!("API login denied: {:?}", reason);
             plr_logout(gs, 0, nr, reason);
             return;
@@ -80,6 +96,9 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
 
     // get character number requested by player
     let cn = gs.players[nr].usnr;
+
+    player_logging::bind_player(cn, nr, login_ticket_data.character_id, &character.name);
+    player_logging::log_event(cn, "login", "attempt", "character record accepted");
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("Login as {} denied (illegal cn)", cn);
@@ -265,6 +284,7 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     gs.really_update_char(cn);
 
     log::info!("Login successful");
+    player_logging::log_event(cn, "login", "success", "login completed");
 
     // intro messages
     let intro1 = "Welcome to Men Among Gods, my friend!\n";
@@ -480,13 +500,21 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
         crate::aura::logic::remove_aura(gs, character_id);
     }
 
-    if valid_character && reason != LogoutReason::Shutdown {
+    if valid_character {
         let character_name = gs.characters[character_id].get_name().to_owned();
-        log::info!(
-            "Logging out character '{}' for reason: {:?}",
-            character_name,
-            reason
+        player_logging::log_event(
+            character_id,
+            "logout",
+            "success",
+            &format!("reason={reason:?} name=\"{character_name}\""),
         );
+        if reason != LogoutReason::Shutdown {
+            log::info!(
+                "Logging out character '{}' for reason: {:?}",
+                character_name,
+                reason
+            );
+        }
     }
 
     let character_matches_player = valid_character
@@ -761,6 +789,10 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
     gs.players[player_id].login_deadline_tick = 0;
     gs.players[player_id].login_resolution = None;
     gs.players[player_id].login_failure = None;
+    let previous_character_id = gs.players[player_id].usnr;
+    if previous_character_id != 0 {
+        player_logging::unbind_player(previous_character_id);
+    }
     gs.players[player_id].api_account_id = 0;
     gs.players[player_id].api_character_id = 0;
 

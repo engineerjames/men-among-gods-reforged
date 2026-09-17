@@ -7,6 +7,19 @@ The details here are based on the current Rust implementation in the `server` cr
 For map editing rollout and rollback procedures, see
 `docs/server/MAP_EDITOR_OPERATIONS.md`.
 
+## Logging
+
+The server writes its rotating process logs and player audit logs beneath
+`MAG_LOG_DIR`, defaulting to `logs` for local runs. The process log files are
+`server.log` and `server_perf.log`; player audit files use the stable API
+character ID and sanitized name, for example `<id>_<name>.log`.
+
+Each active log is limited to 100 MiB and retains five fixed-window archives.
+The server container sets `MAG_LOG_DIR=/var/mag/logs` and mounts
+`./server/logs` so logs survive container replacement. Player audit records
+include login/logout, communication, and spell/action outcomes; credentials,
+login tickets, and password contents are redacted or omitted.
+
 ## High-Level Architecture
 
 At runtime the server is a single main loop that:

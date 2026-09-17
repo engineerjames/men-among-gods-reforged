@@ -14,6 +14,7 @@ mod lab9;
 mod network_manager;
 mod path_finding;
 mod player;
+mod player_logging;
 mod points;
 mod populate;
 mod quest_completion;
@@ -24,6 +25,8 @@ mod tls;
 
 use core::logout_reasons::LogoutReason;
 use std::env;
+use std::fs;
+use std::path::PathBuf;
 use std::process;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -33,10 +36,32 @@ use crate::game_state::GameState;
 fn main() -> Result<(), String> {
     let _: Vec<String> = env::args().collect();
 
-    core::initialize_logger(
+    let log_dir = env::var_os("MAG_LOG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("logs"));
+    fs::create_dir_all(&log_dir).map_err(|error| {
+        format!(
+            "Failed to create server log directory '{}': {}",
+            log_dir.display(),
+            error
+        )
+    })?;
+    player_logging::initialize(&log_dir).map_err(|error| {
+        format!(
+            "Failed to initialize player log directory '{}': {}",
+            log_dir.display(),
+            error
+        )
+    })?;
+    let log_path = log_dir.join("server.log");
+    let perf_log_path = log_dir.join("server_perf.log");
+    let log_path = log_path.to_string_lossy();
+    let perf_log_path = perf_log_path.to_string_lossy();
+
+    core::initialize_rotating_logger(
         log::LevelFilter::Info,
-        Some("server.log"),
-        Some("server_perf.log"),
+        Some(log_path.as_ref()),
+        Some(perf_log_path.as_ref()),
     )
     .unwrap_or_else(|e| {
         eprintln!("Failed to initialize logger: {}. Exiting.", e);

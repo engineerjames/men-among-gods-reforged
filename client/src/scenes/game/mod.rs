@@ -249,6 +249,54 @@ fn newest_log_slice_for_upload(log_bytes: &[u8], retained_bytes: usize) -> (&[u8
     }
 }
 
+/// Reads the active client log and the newest retained rotated files in
+/// chronological order, bounded to the diagnostics upload window.
+///
+/// # Arguments
+///
+/// * `log_path` - Path to the active client log.
+///
+/// # Returns
+///
+/// * The newest bounded log history, or an error if the active log cannot be
+///   read.
+fn read_client_log_history(log_path: &std::path::Path) -> Result<Vec<u8>, String> {
+    let active = std::fs::read(log_path)
+        .map_err(|error| format!("failed to read active log {}: {error}", log_path.display()))?;
+    let mut remaining = MAX_CLIENT_LOG_UPLOAD_BYTES;
+    let mut chunks = VecDeque::new();
+
+    let append_newest_chunk =
+        |bytes: Vec<u8>, remaining: &mut usize, chunks: &mut VecDeque<Vec<u8>>| {
+            if *remaining == 0 {
+                return;
+            }
+            let start = bytes.len().saturating_sub(*remaining);
+            *remaining -= bytes.len().min(*remaining);
+            chunks.push_front(bytes[start..].to_vec());
+        };
+
+    append_newest_chunk(active, &mut remaining, &mut chunks);
+    for index in 0..mag_core::ROTATING_LOG_BACKUPS {
+        if remaining == 0 {
+            break;
+        }
+        let rotated_path = std::path::PathBuf::from(format!("{}.{}", log_path.display(), index));
+        if let Ok(bytes) = std::fs::read(rotated_path) {
+            append_newest_chunk(bytes, &mut remaining, &mut chunks);
+        }
+    }
+
+    let mut history = Vec::new();
+    for chunk in chunks {
+        if !history.is_empty() && history.last() != Some(&b'\n') {
+            history.push(b'\n');
+        }
+        history.extend_from_slice(&chunk);
+    }
+    Ok(history)
+}
+
 /// Compresses the newest slice of the client log so it fits the diagnostics API.
 ///
 /// # Arguments
@@ -1285,11 +1333,11 @@ impl GameScene {
         let character_id = login_target.character_id;
 
         let log_path = preferences::log_file_path();
-        let log_bytes = match std::fs::read(&log_path) {
+        let log_bytes = match read_client_log_history(&log_path) {
             Ok(value) => value,
             Err(err) => {
                 log::warn!(
-                    "Diagnostics upload failed reading log {}: {err}",
+                    "Diagnostics upload failed reading log history {}: {err}",
                     log_path.display()
                 );
                 if let Some(ps) = app_state.player_state.as_mut() {
@@ -2944,7 +2992,7 @@ mod tests {
         NETWORK_TEST_CLIENT_PAYLOAD_BYTES, base64_encoded_len, build_network_test_client_payload,
         classify_network_quality, compress_log_for_upload, estimate_jitter_ms, helper_text_origin,
         network_test_server_payload_bytes, newest_log_slice_for_upload,
-        normalize_replacement_skill_keybind_arrays,
+        normalize_replacement_skill_keybind_arrays, read_client_log_history,
     };
     use flate2::read::GzDecoder;
     use mag_core::skills::{
@@ -3182,5 +3230,22 @@ mod tests {
 
         assert!(decoded.starts_with("2026-05-02"));
         assert!(!decoded.starts_with("=0"));
+    }
+
+    #[test]
+    fn read_client_log_history_orders_rotated_files_before_active_log() {
+        let directory =
+            std::env::temp_dir().join(format!("mag-client-history-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let active_path = directory.join("mag_client.log");
+        std::fs::write(&active_path, b"active\n").unwrap();
+        std::fs::write(directory.join("mag_client.log.0"), b"newest-rotated\n").unwrap();
+        std::fs::write(directory.join("mag_client.log.1"), b"oldest-rotated\n").unwrap();
+
+        let history = read_client_log_history(&active_path).unwrap();
+
+        assert_eq!(history, b"oldest-rotated\nnewest-rotated\nactive\n");
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
