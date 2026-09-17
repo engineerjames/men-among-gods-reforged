@@ -19,7 +19,7 @@ use crate::config::ImpairmentConfig;
 ///
 /// * `true` if the packet should be dropped.
 pub fn should_drop<R: Rng>(cfg: &ImpairmentConfig, rng: &mut R) -> bool {
-    cfg.drop_pct > 0.0 && rng.r#gen::<f64>() < cfg.drop_pct.clamp(0.0, 1.0)
+    cfg.drop_pct > 0.0 && rng.random::<f64>() < cfg.drop_pct.clamp(0.0, 1.0)
 }
 
 /// Computes the outgoing send delay for a packet.
@@ -41,7 +41,7 @@ pub fn send_delay<R: Rng>(cfg: &ImpairmentConfig, rng: &mut R) -> Duration {
 
     let jitter_offset: i64 = if cfg.jitter_ms > 0 {
         let half = cfg.jitter_ms as i64 / 2;
-        rng.gen_range(-half..=half)
+        rng.random_range(-half..=half)
     } else {
         0
     };

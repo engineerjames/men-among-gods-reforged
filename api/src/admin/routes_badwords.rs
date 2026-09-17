@@ -20,7 +20,7 @@ use mag_core::text_store::{
     TextStoreError, decode_badwords, encode_badwords, normalize_badword, normalize_badwords,
     text_reload_status_key,
 };
-use rand::RngCore;
+use rand::TryRngCore;
 use rand::rngs::OsRng;
 use redis::AsyncCommands;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -459,7 +459,9 @@ fn internal_error(code: &str, message: impl Into<String>) -> Response {
 
 fn generate_request_id() -> String {
     let mut bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut bytes);
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .expect("OS random source unavailable");
     let mut out = String::with_capacity(24);
     for byte in bytes {
         out.push_str(&format!("{:02x}", byte));

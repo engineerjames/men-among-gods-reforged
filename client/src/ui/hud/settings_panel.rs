@@ -65,7 +65,8 @@ const DS_Y_SHADOWS: i32 = TITLE_BAR_H + 8;
 const DS_Y_SPELL_FX: i32 = DS_Y_SHADOWS + DS_ROW_H;
 const DS_Y_NAMES: i32 = DS_Y_SPELL_FX + DS_ROW_H;
 const DS_Y_HEALTH: i32 = DS_Y_NAMES + DS_ROW_H;
-const DS_Y_HELPER_TEXT: i32 = DS_Y_HEALTH + DS_ROW_H;
+const DS_Y_DANGER: i32 = DS_Y_HEALTH + DS_ROW_H;
+const DS_Y_HELPER_TEXT: i32 = DS_Y_DANGER + DS_ROW_H;
 const DS_Y_WALLS: i32 = DS_Y_HELPER_TEXT + DS_ROW_H;
 const DS_Y_SEP: i32 = DS_Y_WALLS + DS_ROW_H + 4;
 const DS_Y_DISPLAY_MODE: i32 = DS_Y_SEP + 8;
@@ -258,6 +259,7 @@ struct DisplaySettingsSubPanel {
     chk_spell_effects: Checkbox,
     chk_show_names: Checkbox,
     chk_show_health: Checkbox,
+    chk_show_danger: Checkbox,
     chk_helper_text: Checkbox,
     chk_hide_walls: Checkbox,
     drp_display_mode: Dropdown,
@@ -271,8 +273,8 @@ struct DisplaySettingsSubPanel {
     /// via controller navigation.
     weather_adjusting: bool,
     /// Controller focus index. 0=Shadows, 1=SpellEffects, 2=ShowNames,
-    /// 3=ShowHealth, 4=HelperText, 5=HideWalls, 6=DisplayMode,
-    /// 7=PixelPerfect, 8=VSync, 9=Weather, 10=WeatherIntensity, 11=Close.
+    /// 3=ShowHealth, 4=Danger, 5=HelperText, 6=HideWalls, 7=DisplayMode,
+    /// 8=PixelPerfect, 9=VSync, 10=Weather, 11=WeatherIntensity, 12=Close.
     controller_focused: Option<usize>,
 }
 
@@ -314,6 +316,11 @@ impl DisplaySettingsSubPanel {
             chk_show_health: Checkbox::new(
                 Bounds::new(x, origin_y + DS_Y_HEALTH, w, DS_ROW_H as u32),
                 "Show % Health",
+                0,
+            ),
+            chk_show_danger: Checkbox::new(
+                Bounds::new(x, origin_y + DS_Y_DANGER, w, DS_ROW_H as u32),
+                "Show NPC Danger Glyphs",
                 0,
             ),
             chk_helper_text: Checkbox::new(
@@ -365,7 +372,7 @@ impl DisplaySettingsSubPanel {
     }
 
     /// Number of focusable elements in the display sub-panel.
-    const FOCUSABLE_COUNT: usize = 12;
+    const FOCUSABLE_COUNT: usize = 13;
 
     /// Applies controller focus highlighting.
     fn apply_controller_focus(&mut self) {
@@ -374,16 +381,17 @@ impl DisplaySettingsSubPanel {
         self.chk_spell_effects.set_hovered(f == Some(1));
         self.chk_show_names.set_hovered(f == Some(2));
         self.chk_show_health.set_hovered(f == Some(3));
-        self.chk_helper_text.set_hovered(f == Some(4));
-        self.chk_hide_walls.set_hovered(f == Some(5));
-        self.drp_display_mode.set_hovered(f == Some(6));
-        self.chk_pixel_perfect.set_hovered(f == Some(7));
-        self.chk_vsync.set_hovered(f == Some(8));
-        self.chk_weather.set_hovered(f == Some(9));
-        self.sld_weather_intensity.set_hovered(f == Some(10));
+        self.chk_show_danger.set_hovered(f == Some(4));
+        self.chk_helper_text.set_hovered(f == Some(5));
+        self.chk_hide_walls.set_hovered(f == Some(6));
+        self.drp_display_mode.set_hovered(f == Some(7));
+        self.chk_pixel_perfect.set_hovered(f == Some(8));
+        self.chk_vsync.set_hovered(f == Some(9));
+        self.chk_weather.set_hovered(f == Some(10));
+        self.sld_weather_intensity.set_hovered(f == Some(11));
         self.sld_weather_intensity
-            .set_active(f == Some(10) && self.weather_adjusting);
-        self.btn_close.set_hovered(f == Some(11));
+            .set_active(f == Some(11) && self.weather_adjusting);
+        self.btn_close.set_hovered(f == Some(12));
     }
 
     /// Loads widget values from the data snapshot.
@@ -397,6 +405,7 @@ impl DisplaySettingsSubPanel {
             .set_checked(data.spell_effects_enabled);
         self.chk_show_names.set_checked(data.show_names);
         self.chk_show_health.set_checked(data.show_health_pct);
+        self.chk_show_danger.set_checked(data.show_danger_glyphs);
         self.chk_helper_text.set_checked(data.show_helper_text);
         self.chk_hide_walls.set_checked(data.hide_walls);
         self.chk_pixel_perfect
@@ -431,6 +440,11 @@ impl DisplaySettingsSubPanel {
         if self.chk_show_health.was_toggled() {
             self.pending_actions.push(WidgetAction::SetShowHealthPct(
                 self.chk_show_health.is_checked(),
+            ));
+        }
+        if self.chk_show_danger.was_toggled() {
+            self.pending_actions.push(WidgetAction::SetShowDangerGlyphs(
+                self.chk_show_danger.is_checked(),
             ));
         }
         if self.chk_hide_walls.was_toggled() {
@@ -479,6 +493,7 @@ impl DisplaySettingsSubPanel {
         shift(&mut self.chk_spell_effects, dx, dy);
         shift(&mut self.chk_show_names, dx, dy);
         shift(&mut self.chk_show_health, dx, dy);
+        shift(&mut self.chk_show_danger, dx, dy);
         shift(&mut self.chk_helper_text, dx, dy);
         shift(&mut self.chk_hide_walls, dx, dy);
         shift(&mut self.drp_display_mode, dx, dy);
@@ -563,17 +578,23 @@ impl DisplaySettingsSubPanel {
                         self.pending_actions.push(WidgetAction::SetShowHealthPct(v));
                     }
                     Some(4) => {
+                        let v = !self.chk_show_danger.is_checked();
+                        self.chk_show_danger.set_checked(v);
+                        self.pending_actions
+                            .push(WidgetAction::SetShowDangerGlyphs(v));
+                    }
+                    Some(5) => {
                         let v = !self.chk_helper_text.is_checked();
                         self.chk_helper_text.set_checked(v);
                         self.pending_actions
                             .push(WidgetAction::SetShowHelperText(v));
                     }
-                    Some(5) => {
+                    Some(6) => {
                         let v = !self.chk_hide_walls.is_checked();
                         self.chk_hide_walls.set_checked(v);
                         self.pending_actions.push(WidgetAction::SetHideWalls(v));
                     }
-                    Some(6) => {
+                    Some(7) => {
                         // Cycle display mode dropdown.
                         let next =
                             (self.drp_display_mode.selected_index() + 1) % DisplayMode::ALL.len();
@@ -581,30 +602,30 @@ impl DisplaySettingsSubPanel {
                         self.pending_actions
                             .push(WidgetAction::SetDisplayMode(DisplayMode::ALL[next]));
                     }
-                    Some(7) => {
+                    Some(8) => {
                         let v = !self.chk_pixel_perfect.is_checked();
                         self.chk_pixel_perfect.set_checked(v);
                         self.pending_actions
                             .push(WidgetAction::SetPixelPerfectScaling(v));
                     }
-                    Some(8) => {
+                    Some(9) => {
                         let v = !self.chk_vsync.is_checked();
                         self.chk_vsync.set_checked(v);
                         self.pending_actions.push(WidgetAction::SetVSync(v));
                     }
-                    Some(9) => {
+                    Some(10) => {
                         let v = !self.chk_weather.is_checked();
                         self.chk_weather.set_checked(v);
                         self.sld_weather_intensity.set_enabled(v);
                         self.pending_actions.push(WidgetAction::SetWeather(v));
                     }
-                    Some(10) => {
+                    Some(11) => {
                         // Enter weather-intensity adjust mode if enabled.
                         if self.sld_weather_intensity.is_enabled() {
                             self.weather_adjusting = true;
                         }
                     }
-                    Some(11) => {
+                    Some(12) => {
                         self.visible = false;
                         self.controller_focused = None;
                     }
@@ -650,6 +671,7 @@ impl DisplaySettingsSubPanel {
             self.chk_spell_effects.handle_event(event),
             self.chk_show_names.handle_event(event),
             self.chk_show_health.handle_event(event),
+            self.chk_show_danger.handle_event(event),
             self.chk_helper_text.handle_event(event),
             self.chk_hide_walls.handle_event(event),
             if !self.drp_display_mode.is_expanded() {
@@ -693,6 +715,7 @@ impl DisplaySettingsSubPanel {
         self.chk_spell_effects.render(ctx)?;
         self.chk_show_names.render(ctx)?;
         self.chk_show_health.render(ctx)?;
+        self.chk_show_danger.render(ctx)?;
         self.chk_helper_text.render(ctx)?;
         self.chk_hide_walls.render(ctx)?;
         self.chk_pixel_perfect.render(ctx)?;
@@ -2083,6 +2106,8 @@ pub struct SettingsPanelData {
     pub show_names: bool,
     /// Whether overhead health percentages are shown.
     pub show_health_pct: bool,
+    /// Whether danger glyphs are shown for hostile NPCs.
+    pub show_danger_glyphs: bool,
     /// Whether walls are hidden.
     pub hide_walls: bool,
     /// Whether context-sensitive helper text is shown near the cursor.
@@ -2848,6 +2873,7 @@ mod tests {
             weather_intensity: 0.75,
             show_names: true,
             show_health_pct: true,
+            show_danger_glyphs: true,
             hide_walls: false,
             show_helper_text: true,
             show_positions: true,

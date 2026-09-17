@@ -24,24 +24,24 @@ const SYL3: [&str; 5] = ["a", "e", "i", "o", "u"];
 ///
 /// * A random name string (e.g. `"Arturo"`, `"Nimkan"`).
 pub fn randomly_generate_name() -> String {
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     let mut name = String::new();
 
-    let n = rng.gen_range(0..SYL1.len());
+    let n = rng.random_range(0..SYL1.len());
     name.push_str(SYL1[n]);
     if let Some(first_char) = name.chars().next() {
         name.replace_range(0..1, &first_char.to_uppercase().to_string());
     }
 
-    let n = rng.gen_range(0..SYL2.len());
+    let n = rng.random_range(0..SYL2.len());
     name.push_str(SYL2[n]);
 
-    if rng.gen_range(0..2) == 0 {
+    if rng.random_range(0..2) == 0 {
         return name;
     }
 
-    let n = rng.gen_range(0..SYL3.len());
+    let n = rng.random_range(0..SYL3.len());
     name.push_str(SYL3[n]);
 
     name

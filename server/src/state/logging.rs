@@ -4,8 +4,8 @@ use std::cmp;
 use std::sync::OnceLock;
 
 use crate::game_state::GameState;
+use crate::server::ServerPlayer;
 use crate::talk::npc_hear;
-use crate::types::server_player::ServerPlayer;
 
 impl GameState {
     /// Port of `do_character_log(character_id, font, message)` from the original

@@ -22,7 +22,7 @@ use mag_core::item_store::{
 };
 use mag_core::string_operations;
 use mag_core::types::Item;
-use rand::RngCore;
+use rand::TryRngCore;
 use rand::rngs::OsRng;
 use redis::AsyncCommands;
 use redis::pipe;
@@ -409,7 +409,9 @@ pub(crate) async fn get_items_reload_status(
 
 fn generate_request_id() -> String {
     let mut bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut bytes);
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .expect("OS random source unavailable");
     let mut out = String::with_capacity(24);
     for b in bytes {
         out.push_str(&format!("{:02x}", b));

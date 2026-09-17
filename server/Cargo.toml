@@ -24,7 +24,6 @@ core = { path = "../core" }
 flate2.workspace = true
 zstd = "0.13"
 chrono = "0.4"
-bitflags.workspace = true
 log.workspace = true
 bincode.workspace = true
 rand.workspace = true

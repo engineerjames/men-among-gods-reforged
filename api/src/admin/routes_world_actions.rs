@@ -12,7 +12,7 @@ use mag_core::world_action_store::{
     WORLD_ACTION_STATUS_TTL_SECS, WorldActionKind, WorldActionRequest, WorldActionResponse,
     WorldActionStatusResponse, world_action_status_key,
 };
-use rand::RngCore;
+use rand::TryRngCore;
 use rand::rngs::OsRng;
 use redis::AsyncCommands;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -165,7 +165,9 @@ fn format_status_value(status: &str, action: &str, message: &str, updated_at: u6
 
 fn generate_request_id() -> String {
     let mut bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut bytes);
+    OsRng
+        .try_fill_bytes(&mut bytes)
+        .expect("OS random source unavailable");
     let mut out = String::with_capacity(24);
     for byte in bytes {
         out.push_str(&format!("{:02x}", byte));

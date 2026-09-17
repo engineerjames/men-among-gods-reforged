@@ -255,7 +255,7 @@ async fn game_loop(
 
     let mut state = ClientState::new();
     let mut framed = FramedReader::new();
-    let mut rng = StdRng::from_entropy();
+    let mut rng = StdRng::from_os_rng();
 
     let mut move_timer = interval(Duration::from_millis(config.movement.interval_ms));
     move_timer.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -354,8 +354,8 @@ async fn game_loop(
             _ = move_timer.tick(), if has_position => {
                 let (x, y) = (state.self_x.unwrap(), state.self_y.unwrap());
                 let radius = config.movement.radius;
-                let dx: i16 = rng.gen_range(-radius..=radius);
-                let dy: i16 = rng.gen_range(-radius..=radius);
+                let dx: i16 = rng.random_range(-radius..=radius);
+                let dy: i16 = rng.random_range(-radius..=radius);
                 let tx = x.saturating_add(dx);
                 let ty = y.saturating_add(dy);
                 let cmd = ClientCommand::new_move(tx, i32::from(ty));
@@ -585,8 +585,8 @@ async fn maybe_send_dispersion(
 ///
 /// * A random `(x, y)` pair within the safe map bounds.
 fn random_dispersion_target(rng: &mut StdRng) -> (i32, i32) {
-    let x = rng.gen_range(DISPERSION_MARGIN..SERVER_MAPX - DISPERSION_MARGIN);
-    let y = rng.gen_range(DISPERSION_MARGIN..SERVER_MAPY - DISPERSION_MARGIN);
+    let x = rng.random_range(DISPERSION_MARGIN..SERVER_MAPX - DISPERSION_MARGIN);
+    let y = rng.random_range(DISPERSION_MARGIN..SERVER_MAPY - DISPERSION_MARGIN);
     (x, y)
 }
 

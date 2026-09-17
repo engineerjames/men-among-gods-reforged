@@ -266,7 +266,7 @@ impl PanningBackground {
             return self.current_idx;
         }
         // Generate an offset in [1, len-1] to guarantee we skip current_idx.
-        let offset = rand::thread_rng().gen_range(1..len);
+        let offset = rand::rng().random_range(1..len);
         (self.current_idx + offset) % len
     }
 }

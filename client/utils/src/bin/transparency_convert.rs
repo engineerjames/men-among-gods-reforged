@@ -1,4 +1,4 @@
-use image::{DynamicImage, ImageError, ImageOutputFormat, RgbaImage};
+use image::{DynamicImage, ImageError, ImageFormat, RgbaImage};
 use std::env;
 use std::fs::File;
 use std::io::BufWriter;
@@ -54,7 +54,7 @@ fn convert_file(input_path: &Path, output_path: &Path) -> Result<(), ImageError>
     // Save as PNG, enforcing PNG format
     let fout = File::create(output_path).map_err(ImageError::IoError)?;
     let mut w = BufWriter::new(fout);
-    out.write_to(&mut w, ImageOutputFormat::Png)?;
+    out.write_to(&mut w, ImageFormat::Png)?;
     println!("Wrote {}", output_path.display());
     Ok(())
 }

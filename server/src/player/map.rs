@@ -1,9 +1,9 @@
 use core::{
     constants::{
-        CharacterFlags, INFRARED, INJURED, INJURED1, INJURED2, INVIS, IS_GRAVE, ISCHAR, ISITEM,
-        ISUSABLE, ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH, MF_GFX_EMAGIC, MF_GFX_GMAGIC,
-        MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2, MF_GFX_TOMB, MF_UWATER, STONED, STUNNED,
-        UWATER,
+        CharacterFlags, DANGER_GLYPH_MASK, DangerGlyph, INFRARED, INJURED, INJURED1, INJURED2,
+        INVIS, IS_GRAVE, ISCHAR, ISITEM, ISUSABLE, ItemFlags, MF_GFX_CMAGIC, MF_GFX_DEATH,
+        MF_GFX_EMAGIC, MF_GFX_GMAGIC, MF_GFX_INJURED, MF_GFX_INJURED1, MF_GFX_INJURED2,
+        MF_GFX_TOMB, MF_UWATER, STONED, STUNNED, UWATER,
     },
     logout_reasons::LogoutReason,
     server_commands::ServerCommandType,
@@ -11,8 +11,54 @@ use core::{
 
 use crate::{
     driver, game_state::GameState, helpers, network_manager, player::connection::plr_logout,
-    types::cmap::CMap,
 };
+
+/// Client-side map tile
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct CMap {
+    // for background
+    pub ba_sprite: i16, // background image
+    pub light: u8,
+    pub flags: u32,
+    pub flags2: u32,
+
+    // for character
+    pub ch_sprite: i16, // basic sprite of character
+    pub ch_status2: u8,
+    pub ch_status: u8, // what the character is doing, animation-wise
+    pub ch_speed: u8,  // speed of animation (movement/turn frames)
+    pub ch_aspeed: u8, // speed of attack/misc-action animation
+    pub ch_nr: u16,
+    pub ch_id: u16,
+    pub ch_proz: u8, // health in percent
+
+    // for item
+    pub it_sprite: i16, // basic sprite of item
+    pub it_status: u8,  // for items with animation (burning torches etc)
+}
+
+/// Classifies a visible NPC relative to the viewing character.
+///
+/// Players, merchants, and bodies never receive a danger glyph. NPCs are
+/// classified from their rank difference rather than transient combat state,
+/// so the nameplate remains stable while the target is visible.
+fn danger_glyph_for(
+    viewer: &core::types::Character,
+    target: &core::types::Character,
+) -> DangerGlyph {
+    if target.flags
+        & (CharacterFlags::Player.bits()
+            | CharacterFlags::Merchant.bits()
+            | CharacterFlags::Body.bits())
+        != 0
+    {
+        return DangerGlyph::None;
+    }
+
+    let viewer_rank = core::ranks::points2rank(viewer.points_tot.max(0) as u32) as i32;
+    let target_rank = core::ranks::points2rank(target.points_tot.max(0) as u32) as i32;
+    DangerGlyph::from_rank_delta(target_rank - viewer_rank)
+}
 
 /// Port of `plr_map_remove` from `svr_act.cpp`
 ///
@@ -471,7 +517,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
                 // rendering/effects off them; GFX_* bits (>=32) are dropped by
                 // the truncation and are already surfaced via `smap[n].flags`
                 // above.
-                smap[n].flags2 = map_flags as u32;
+                smap[n].flags2 = (map_flags as u32) & !DANGER_GLYPH_MASK;
 
                 let rel_x = x - current_x + core::constants::VISI_CENTER;
                 let rel_y = y - current_y + core::constants::VISI_CENTER;
@@ -544,6 +590,7 @@ pub fn plr_getmap_complete(gs: &mut GameState, nr: usize) {
 
                 if tmp_see != 0 {
                     let char_co = gs.characters[co];
+                    smap[n].flags2 |= danger_glyph_for(&gs.characters[cn], &char_co).bits();
                     if char_co.sprite_override != 0 {
                         smap[n].ch_sprite = char_co.sprite_override;
                     } else {
@@ -1063,7 +1110,7 @@ mod tests {
             CharacterFlags, ItemFlags, MF_DEATHTRAP, MF_NOMAGIC, MF_TAVERN, ST_EXIT, TILEX, TILEY,
             USE_ACTIVE,
         },
-        types::Map,
+        types::{Character, Map},
     };
 
     fn attach_test_socket(gs: &mut GameState, nr: usize) {
@@ -1099,6 +1146,48 @@ mod tests {
             ba_sprite: sprite,
             light,
             ..CMap::default()
+        }
+    }
+
+    #[test]
+    fn danger_glyph_for_only_marks_severe_rank_buckets() {
+        let mut viewer = Character::default();
+        let mut target = Character::default();
+
+        viewer.points_tot = 48_950;
+        target.points_tot = 0;
+        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+
+        viewer.points_tot = 850;
+        target.points_tot = 17_700;
+        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
+
+        viewer.points_tot = 0;
+        target.points_tot = 17_700;
+        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::Skull);
+
+        target.points_tot = 48_950;
+        assert_eq!(
+            danger_glyph_for(&viewer, &target),
+            DangerGlyph::FlamingSkull
+        );
+    }
+
+    #[test]
+    fn danger_glyph_for_excludes_players_merchants_and_bodies() {
+        let viewer = Character::default();
+        let mut target = Character {
+            points_tot: i32::MAX,
+            ..Character::default()
+        };
+
+        for excluded_flag in [
+            CharacterFlags::Player,
+            CharacterFlags::Merchant,
+            CharacterFlags::Body,
+        ] {
+            target.flags = excluded_flag.bits();
+            assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
         }
     }
 
