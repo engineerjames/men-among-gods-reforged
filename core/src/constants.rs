@@ -479,8 +479,7 @@ impl DangerGlyph {
     /// * `rank_delta` - Target rank minus viewer rank.
     pub const fn from_rank_delta(rank_delta: i32) -> Self {
         match rank_delta {
-            i32::MIN..=-3 => Self::Lamb,
-            -2..=2 => Self::Swords,
+            i32::MIN..=2 => Self::None,
             3..=4 => Self::Skull,
             _ => Self::FlamingSkull,
         }
@@ -992,6 +991,17 @@ mod tests {
     use crate::logout_reasons::{LogoutReason, get_exit_reason};
 
     use super::*;
+
+    #[test]
+    fn danger_glyph_rank_classification_only_marks_severe_targets() {
+        for rank_delta in [i32::MIN, -3, -2, 0, 2] {
+            assert_eq!(DangerGlyph::from_rank_delta(rank_delta), DangerGlyph::None);
+        }
+        for rank_delta in [3, 4] {
+            assert_eq!(DangerGlyph::from_rank_delta(rank_delta), DangerGlyph::Skull);
+        }
+        assert_eq!(DangerGlyph::from_rank_delta(5), DangerGlyph::FlamingSkull);
+    }
 
     #[test]
     fn smoothed_speed_rows_preserve_advance_counts() {

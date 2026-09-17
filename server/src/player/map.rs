@@ -1150,17 +1150,17 @@ mod tests {
     }
 
     #[test]
-    fn danger_glyph_for_uses_rank_buckets() {
+    fn danger_glyph_for_only_marks_severe_rank_buckets() {
         let mut viewer = Character::default();
         let mut target = Character::default();
 
         viewer.points_tot = 48_950;
         target.points_tot = 0;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::Lamb);
+        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
 
         viewer.points_tot = 850;
         target.points_tot = 17_700;
-        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::Swords);
+        assert_eq!(danger_glyph_for(&viewer, &target), DangerGlyph::None);
 
         viewer.points_tot = 0;
         target.points_tot = 17_700;
