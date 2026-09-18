@@ -19,10 +19,10 @@ macro_rules! chlog {
         let raw_message = format!($fmt $(, $args)*);
         let message = raw_message.trim_end_matches(['\r', '\n']);
         log::info!("{}{}", prefix, message);
-        crate::player_logging::log_event(
+        $crate::player_logging::log_event(
             $cn,
-            crate::player_logging::PlayerLogCategory::Gameplay,
-            crate::player_logging::PlayerLogOutcome::Success,
+            $crate::player_logging::PlayerLogCategory::Gameplay,
+            $crate::player_logging::PlayerLogOutcome::Success,
             &message,
         );
     }};

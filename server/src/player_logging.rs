@@ -81,6 +81,18 @@ struct ActivePlayerLog {
     file: File,
 }
 
+#[derive(Clone, Copy)]
+struct PlayerLogEvent<'a> {
+    api_character_id: u64,
+    character_slot: Option<usize>,
+    name: &'a str,
+    server_slot: usize,
+    category: PlayerLogCategory,
+    outcome: PlayerLogOutcome,
+    message: &'a str,
+    location: &'static std::panic::Location<'static>,
+}
+
 /// Initializes the server's player-log directory.
 ///
 /// The logger is process-global because gameplay event helpers do not all have
@@ -205,15 +217,17 @@ pub fn log_identity_event(
 
     let location = std::panic::Location::caller();
     with_manager(|manager| {
-        if let Err(error) = manager.write_identity_event(
-            server_slot,
+        let event = PlayerLogEvent {
             api_character_id,
+            character_slot: None,
             name,
+            server_slot,
             category,
             outcome,
             message,
             location,
-        ) {
+        };
+        if let Err(error) = manager.write_identity_event(event) {
             eprintln!("Warning: could not write player identity log: {}", error);
         }
     });
@@ -260,31 +274,18 @@ impl PlayerLogManager {
         Ok(())
     }
 
-    fn write_identity_event(
-        &self,
-        server_slot: usize,
-        api_character_id: u64,
-        name: &str,
-        category: PlayerLogCategory,
-        outcome: PlayerLogOutcome,
-        message: &str,
-        location: &'static std::panic::Location<'static>,
-    ) -> io::Result<()> {
-        let sanitized_name = sanitize_name(name);
-        let path = self.log_path(api_character_id, &sanitized_name);
-        reconcile_name_history(&self.directory, api_character_id, &path)?;
+    fn write_identity_event(&self, event: PlayerLogEvent<'_>) -> io::Result<()> {
+        let sanitized_name = sanitize_name(event.name);
+        let path = self.log_path(event.api_character_id, &sanitized_name);
+        reconcile_name_history(&self.directory, event.api_character_id, &path)?;
         let mut file = open_append(&path)?;
         write_event(
             &mut file,
             &path,
-            api_character_id,
-            None,
-            &sanitized_name,
-            server_slot,
-            category,
-            outcome,
-            message,
-            location,
+            PlayerLogEvent {
+                name: &sanitized_name,
+                ..event
+            },
         )
     }
 
@@ -302,48 +303,37 @@ impl ActivePlayerLog {
         message: &str,
         location: &'static std::panic::Location<'static>,
     ) -> io::Result<()> {
-        write_event(
-            &mut self.file,
-            &self.path,
-            self.api_character_id,
-            Some(self.character_slot),
-            &self.name,
-            self.server_slot,
+        let event = PlayerLogEvent {
+            api_character_id: self.api_character_id,
+            character_slot: Some(self.character_slot),
+            name: &self.name,
+            server_slot: self.server_slot,
             category,
             outcome,
             message,
             location,
-        )
+        };
+        write_event(&mut self.file, &self.path, event)
     }
 }
 
-fn write_event(
-    file: &mut File,
-    path: &Path,
-    api_character_id: u64,
-    character_slot: Option<usize>,
-    name: &str,
-    server_slot: usize,
-    category: PlayerLogCategory,
-    outcome: PlayerLogOutcome,
-    message: &str,
-    location: &'static std::panic::Location<'static>,
-) -> io::Result<()> {
-    let message = sanitize_message(message);
-    let character_slot =
-        character_slot.map_or_else(|| "unknown".to_owned(), |slot| slot.to_string());
-    let source = source_location(location);
+fn write_event(file: &mut File, path: &Path, event: PlayerLogEvent<'_>) -> io::Result<()> {
+    let message = sanitize_message(event.message);
+    let character_slot = event
+        .character_slot
+        .map_or_else(|| "unknown".to_owned(), |slot| slot.to_string());
+    let source = source_location(event.location);
     let line = format!(
         "{} {} [{}][{}] - {} (api_character_id={} character_slot={} server_slot={} name=\"{}\")\n",
         Utc::now().format("%Y-%m-%dT%H:%M:%S%.f"),
         source,
-        category,
-        outcome,
+        event.category,
+        event.outcome,
         escape_field(&message),
-        api_character_id,
+        event.api_character_id,
         character_slot,
-        server_slot,
-        escape_field(name),
+        event.server_slot,
+        escape_field(event.name),
     );
 
     if file.metadata()?.len().saturating_add(line.len() as u64) > MAX_LOG_BYTES {
@@ -357,7 +347,7 @@ fn write_event(
 }
 
 fn source_location(location: &'static std::panic::Location<'static>) -> String {
-    let file = location.file();
+    let file = location.file().replace('\\', "/");
     let file = file
         .rsplit_once("/server/")
         .map_or_else(|| file.to_owned(), |(_, suffix)| format!("server/{suffix}"));
