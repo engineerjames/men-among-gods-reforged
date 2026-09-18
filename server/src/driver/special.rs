@@ -13,7 +13,6 @@ struct Seen {
     help: i32,
 }
 
-/// TODO: Document the purpose, inputs, and outputs of this function.
 ///
 /// # Arguments
 ///

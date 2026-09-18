@@ -117,8 +117,10 @@ services:
       MAG_ADMIN_RELOAD_DISABLED: ${MAG_ADMIN_RELOAD_DISABLED:-}
       MAG_PLAYTEST: ${MAG_PLAYTEST:-}
       MAG_GOD_PASSWORD: ${MAG_GOD_PASSWORD:?MAG_GOD_PASSWORD is required}
+      MAG_LOG_DIR: /var/mag/logs
     volumes:
       - tls-certs:/certs:ro
+      - ./server/logs:/var/mag/logs
     ports:
       - "5555:5555"
     stop_signal: SIGINT

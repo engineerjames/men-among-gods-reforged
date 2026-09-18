@@ -265,7 +265,7 @@ impl From<SkillCategory> for char {
 pub enum Skill {
     Hand = SK_HAND,
     Karate = SK_KARATE,
-    Dagger = SK_DAGGER, // TODO: Clean this up before merging.
+    Dagger = SK_DAGGER,
     Sword = SK_SWORD,
     Axe = SK_AXE,
     Staff = SK_STAFF,

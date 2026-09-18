@@ -3,12 +3,27 @@ use log4rs::{
     append::{
         console::{ConsoleAppender, Target},
         file::FileAppender,
+        rolling_file::{
+            RollingFileAppender,
+            policy::compound::{
+                CompoundPolicy, roll::fixed_window::FixedWindowRollerBuilder,
+                trigger::size::SizeTrigger,
+            },
+        },
     },
     config::{Appender, Config, Logger, Root},
     encode::{Encode, pattern::PatternEncoder},
     filter::threshold::ThresholdFilter,
 };
 use std::{backtrace, env};
+
+/// Maximum size of an active rotating log file before it is archived.
+pub const ROTATING_LOG_MAX_BYTES: u64 = 100 * 1024 * 1024;
+
+/// Number of archived files retained beside an active rotating log.
+pub const ROTATING_LOG_BACKUPS: u32 = 5;
+
+const LOGGING_PATTERN: &str = "{d(%Y-%m-%dT%H:%M:%S%.f)(utc)} {l} {f}:{L} - {m}\n";
 
 pub mod result {
     pub use std::result::*;
@@ -107,8 +122,6 @@ pub fn initialize_logger(
     file_path: Option<&str>,
     perf_file_path: Option<&str>,
 ) -> Result<(), SetLoggerError> {
-    const LOGGING_PATTERN: &str = "{d} {l} {f}:{L} - {m}\n";
-
     // Build a stderr logger - always on.
     let stderr = ConsoleAppender::builder()
         .target(Target::Stderr)
@@ -117,8 +130,6 @@ pub fn initialize_logger(
 
     let mut config_builder = Config::builder();
     let mut root_builder = Root::builder().appender("stderr");
-    let mut file_appender_added = false;
-
     if let Some(path) = file_path {
         match FileAppender::builder()
             // Pattern: https://docs.rs/log4rs/*/log4rs/encode/pattern/index.html
@@ -129,7 +140,6 @@ pub fn initialize_logger(
                 config_builder = config_builder
                     .appender(Appender::builder().build("logfile", Box::new(logfile)));
                 root_builder = root_builder.appender("logfile");
-                file_appender_added = true;
             }
             Err(e) => {
                 // Cannot write to the requested log file (e.g. permission denied
@@ -163,9 +173,6 @@ pub fn initialize_logger(
         );
     }
 
-    if file_appender_added {
-        root_builder = root_builder.appender("logfile");
-    }
     let config = config_builder
         .appender(
             Appender::builder()
@@ -181,5 +188,99 @@ pub fn initialize_logger(
     // once you are done.
     let _handle = log4rs::init_config(config)?;
 
+    Ok(())
+}
+
+fn rolling_file_appender(
+    path: &str,
+    encoder: BacktracePatternEncoder,
+) -> anyhow::Result<RollingFileAppender> {
+    let roller =
+        FixedWindowRollerBuilder::default().build(&format!("{path}.{{}}"), ROTATING_LOG_BACKUPS)?;
+    let policy = CompoundPolicy::new(
+        Box::new(SizeTrigger::new(ROTATING_LOG_MAX_BYTES)),
+        Box::new(roller),
+    );
+
+    Ok(RollingFileAppender::builder()
+        .encoder(Box::new(encoder))
+        .build(path, Box::new(policy))?)
+}
+
+/// Initializes the global logger with fixed-window rotating file output.
+///
+/// Stderr always receives messages at `log_level`. Each configured file keeps
+/// its active file plus [`ROTATING_LOG_BACKUPS`] archived files, rotating when
+/// the active file exceeds [`ROTATING_LOG_MAX_BYTES`]. The `perf` target is
+/// routed only to its dedicated file, matching [`initialize_logger`].
+///
+/// # Arguments
+///
+/// * `log_level` - Minimum severity that reaches stderr and the main file.
+/// * `file_path` - Optional path to the rotating main log file.
+/// * `perf_file_path` - Optional path to the rotating performance log file.
+///
+/// # Returns
+///
+/// * `Ok(())` on success, or an error if logger construction or installation fails.
+pub fn initialize_rotating_logger(
+    log_level: LevelFilter,
+    file_path: Option<&str>,
+    perf_file_path: Option<&str>,
+) -> anyhow::Result<()> {
+    let stderr = ConsoleAppender::builder()
+        .target(Target::Stderr)
+        .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
+        .build();
+
+    let mut config_builder = Config::builder();
+    let mut root_builder = Root::builder().appender("stderr");
+
+    if let Some(path) = file_path {
+        match rolling_file_appender(path, BacktracePatternEncoder::new(LOGGING_PATTERN)) {
+            Ok(logfile) => {
+                config_builder = config_builder
+                    .appender(Appender::builder().build("logfile", Box::new(logfile)));
+                root_builder = root_builder.appender("logfile");
+            }
+            Err(error) => {
+                eprintln!(
+                    "Warning: could not open rotating log file '{}': {}. Logging to stderr only.",
+                    path, error
+                );
+            }
+        }
+    }
+
+    if let Some(path) = perf_file_path {
+        match rolling_file_appender(path, BacktracePatternEncoder::new(LOGGING_PATTERN)) {
+            Ok(perf_file) => {
+                config_builder = config_builder
+                    .appender(Appender::builder().build("perf_file", Box::new(perf_file)));
+                config_builder = config_builder.logger(
+                    Logger::builder()
+                        .appender("perf_file")
+                        .additive(false)
+                        .build("perf", LevelFilter::Info),
+                );
+            }
+            Err(error) => {
+                eprintln!(
+                    "Warning: could not open rotating perf log file '{}': {}. Perf logging disabled.",
+                    path, error
+                );
+            }
+        }
+    }
+
+    let config = config_builder
+        .appender(
+            Appender::builder()
+                .filter(Box::new(ThresholdFilter::new(log_level)))
+                .build("stderr", Box::new(stderr)),
+        )
+        .build(root_builder.build(log_level))?;
+
+    log4rs::init_config(config)?;
     Ok(())
 }

@@ -13,7 +13,7 @@ use server::keydb::tick_worker::LoginFailureKind;
 #[cfg(test)]
 use core::types::api::GameLoginTicketMetadata;
 
-use crate::{game_state::GameState, god::God, network_manager};
+use crate::{game_state::GameState, god::God, network_manager, player_logging};
 
 /// Port of `plr_login` from `svr_tick.cpp`
 /// Handles existing player login (stub - to be implemented)
@@ -59,6 +59,14 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     // version check
     let version = gs.players[nr].version as u32;
     if version < core::constants::MINVERSION {
+        player_logging::log_identity_event(
+            nr,
+            login_ticket_data.character_id,
+            &character.name,
+            player_logging::PlayerLogCategory::Login,
+            player_logging::PlayerLogOutcome::Rejected,
+            &format!("client_version_too_old version={version}"),
+        );
         log::warn!("Client too old ({}). Logout demanded", version);
         plr_logout(gs, 0, nr, LogoutReason::VersionMismatch);
         return;
@@ -67,6 +75,14 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     let (cn, is_brand_new_character) = match apply_api_login_character_record(gs, &character) {
         Ok(value) => value,
         Err(reason) => {
+            player_logging::log_identity_event(
+                nr,
+                login_ticket_data.character_id,
+                &character.name,
+                player_logging::PlayerLogCategory::Login,
+                player_logging::PlayerLogOutcome::Rejected,
+                &format!("character_validation_failed reason={reason:?}"),
+            );
             log::warn!("API login denied: {:?}", reason);
             plr_logout(gs, 0, nr, reason);
             return;
@@ -80,6 +96,14 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
 
     // get character number requested by player
     let cn = gs.players[nr].usnr;
+
+    player_logging::bind_player(cn, nr, login_ticket_data.character_id, &character.name);
+    player_logging::log_event(
+        cn,
+        player_logging::PlayerLogCategory::Login,
+        player_logging::PlayerLogOutcome::Attempt,
+        "character record accepted",
+    );
 
     if cn == 0 || cn >= core::constants::MAXCHARS {
         log::warn!("Login as {} denied (illegal cn)", cn);
@@ -265,6 +289,12 @@ fn plr_login_with_resolution(gs: &mut GameState, nr: usize) {
     gs.really_update_char(cn);
 
     log::info!("Login successful");
+    player_logging::log_event(
+        cn,
+        player_logging::PlayerLogCategory::Login,
+        player_logging::PlayerLogOutcome::Success,
+        "login completed",
+    );
 
     // intro messages
     let intro1 = "Welcome to Men Among Gods, my friend!\n";
@@ -480,13 +510,21 @@ pub fn plr_logout(gs: &mut GameState, character_id: usize, player_id: usize, rea
         crate::aura::logic::remove_aura(gs, character_id);
     }
 
-    if valid_character && reason != LogoutReason::Shutdown {
+    if valid_character {
         let character_name = gs.characters[character_id].get_name().to_owned();
-        log::info!(
-            "Logging out character '{}' for reason: {:?}",
-            character_name,
-            reason
+        player_logging::log_event(
+            character_id,
+            player_logging::PlayerLogCategory::Logout,
+            player_logging::PlayerLogOutcome::Success,
+            &format!("reason={reason:?} name=\"{character_name}\""),
         );
+        if reason != LogoutReason::Shutdown {
+            log::info!(
+                "Logging out character '{}' for reason: {:?}",
+                character_name,
+                reason
+            );
+        }
     }
 
     let character_matches_player = valid_character
@@ -761,6 +799,10 @@ pub fn player_exit(gs: &mut GameState, player_id: usize) {
     gs.players[player_id].login_deadline_tick = 0;
     gs.players[player_id].login_resolution = None;
     gs.players[player_id].login_failure = None;
+    let previous_character_id = gs.players[player_id].usnr;
+    if previous_character_id != 0 {
+        player_logging::unbind_player(previous_character_id);
+    }
     gs.players[player_id].api_account_id = 0;
     gs.players[player_id].api_character_id = 0;
 
@@ -821,26 +863,6 @@ pub fn plr_api_login(gs: &mut GameState, nr: usize) {
     gs.players[nr].api_character_id = 0;
 
     log::info!("Player {} api login ticket accepted for resolution", nr);
-
-    send_mod(gs, nr);
-}
-
-/// Port of `send_mod` from `svr_tick.cpp`
-/// Sends mod data to the client (8 packets of 15 bytes each)
-fn send_mod(gs: &mut GameState, nr: usize) {
-    // TODO: Implement mod sending when mod data is available
-    // For now, this is a stub - mod data would be loaded from somewhere
-    // In the original code, this sends 8 SV_MOD packets with mod data
-    let _mod_data: [u8; 120] = [0; 120]; // placeholder
-
-    for n in 0..8u8 {
-        let mut buf: [u8; 16] = [0; 16];
-        buf[0] = ServerCommandType::Mod1 as u8 + n;
-        // Copy 15 bytes of mod data (placeholder zeros for now)
-        // buf[1..16].copy_from_slice(&mod_data[(n as usize * 15)..((n as usize + 1) * 15)]);
-
-        network_manager::csend(gs, nr, &buf, 16);
-    }
 }
 
 #[cfg(test)]
@@ -907,13 +929,6 @@ mod tests {
         write_ascii_into_fixed(&mut gs.characters[cn].name, name);
         write_ascii_into_fixed(&mut gs.characters[cn].reference, name);
         gs.map[map_index(10, 10)].ch = cn as u32;
-    }
-
-    fn count_obuf_packets(gs: &GameState, nr: usize, packet_id: u8) -> usize {
-        gs.players[nr].obuf[..gs.players[nr].iptr]
-            .chunks(16)
-            .filter(|chunk| !chunk.is_empty() && chunk[0] == packet_id)
-            .count()
     }
 
     #[test]
@@ -1139,7 +1154,7 @@ mod tests {
     }
 
     #[test]
-    fn plr_api_login_stores_ticket_and_sends_mods() {
+    fn plr_api_login_stores_ticket_without_sending_packets() {
         with_test_gs(|gs| {
             let (_, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
@@ -1154,21 +1169,7 @@ mod tests {
             assert_eq!(gs.players[nr].login_ticket, 0x1122334455667788);
             assert_eq!(gs.players[nr].usnr, 0);
             assert_eq!(gs.players[nr].api_character_id, 0);
-            assert_eq!(gs.players[nr].iptr, 16 * 8);
-        });
-    }
-
-    #[test]
-    fn send_mod_queues_all_eight_packets() {
-        with_test_gs(|gs| {
-            let (_, nr) = add_test_player(gs);
-            attach_test_socket(gs, nr);
-
-            send_mod(gs, nr);
-
-            assert_eq!(gs.players[nr].iptr, 16 * 8);
-            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod1 as u8), 1);
-            assert_eq!(count_obuf_packets(gs, nr, ServerCommandType::Mod8 as u8), 1);
+            assert_eq!(gs.players[nr].iptr, 0);
         });
     }
 }

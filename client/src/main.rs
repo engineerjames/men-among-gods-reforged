@@ -33,7 +33,7 @@ fn main() -> Result<(), String> {
 
     let perf_log_path_str = perf_log_path.to_string_lossy();
     let log_path_str = log_path.to_string_lossy();
-    mag_core::initialize_logger(
+    mag_core::initialize_rotating_logger(
         log::LevelFilter::Info,
         Some(log_path_str.as_ref()),
         Some(perf_log_path_str.as_ref()),
