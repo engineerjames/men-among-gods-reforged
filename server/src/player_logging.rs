@@ -3,7 +3,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+
+use chrono::Utc;
 
 const MAX_LOG_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_ROTATED_LOGS: usize = 5;
@@ -250,7 +251,7 @@ fn write_event(
     let message = sanitize_message(message);
     let line = format!(
         "{} api_character_id={} name=\"{}\" player_slot={} category={} outcome={} message=\"{}\"\n",
-        unix_timestamp(),
+        Utc::now().format("%Y-%m-%dT%H:%M:%S%.f"),
         api_character_id,
         escape_field(name),
         player_slot,
@@ -371,12 +372,6 @@ fn escape_field(value: &str) -> String {
             character => character.to_string(),
         })
         .collect()
-}
-
-fn unix_timestamp() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs())
 }
 
 #[cfg(test)]

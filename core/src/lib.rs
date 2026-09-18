@@ -23,6 +23,8 @@ pub const ROTATING_LOG_MAX_BYTES: u64 = 100 * 1024 * 1024;
 /// Number of archived files retained beside an active rotating log.
 pub const ROTATING_LOG_BACKUPS: u32 = 5;
 
+const LOGGING_PATTERN: &str = "{d(%Y-%m-%dT%H:%M:%S%.f)(utc)} {l} {f}:{L} - {m}\n";
+
 pub mod result {
     pub use std::result::*;
 }
@@ -120,8 +122,6 @@ pub fn initialize_logger(
     file_path: Option<&str>,
     perf_file_path: Option<&str>,
 ) -> Result<(), SetLoggerError> {
-    const LOGGING_PATTERN: &str = "{d} {l} {f}:{L} - {m}\n";
-
     // Build a stderr logger - always on.
     let stderr = ConsoleAppender::builder()
         .target(Target::Stderr)
@@ -228,8 +228,6 @@ pub fn initialize_rotating_logger(
     file_path: Option<&str>,
     perf_file_path: Option<&str>,
 ) -> anyhow::Result<()> {
-    const LOGGING_PATTERN: &str = "{d} {l} {f}:{L} - {m}\n";
-
     let stderr = ConsoleAppender::builder()
         .target(Target::Stderr)
         .encoder(Box::new(BacktracePatternEncoder::new(LOGGING_PATTERN)))
