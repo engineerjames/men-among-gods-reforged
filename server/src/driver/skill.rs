@@ -2902,32 +2902,6 @@ pub(crate) fn compute_blast_damage(gs: &mut GameState, cn: usize, co: usize) -> 
 /// * `power` - Effective Blast power from [`compute_blast_damage`], used only for the cast log line.
 /// * `dam` - Damage amount from [`compute_blast_damage`].
 pub fn cast_blast_effect(gs: &mut GameState, cn: usize, co: usize, power: i32, mut dam: i32) {
-    if chance(gs, cn, 18) != 0 {
-        if cn != co
-            && gs.characters[co].skill[SK_SENSE][5] > gs.characters[cn].skill[SK_BLAST][5] + 5
-        {
-            gs.do_character_log(
-                co,
-                FontColor::Green,
-                &format!(
-                    "{} tried to cast blast on you but failed.\n",
-                    c_string_to_str(&gs.characters[cn].reference)
-                ),
-            );
-            if gs.characters[co].flags & CharacterFlags::SpellIgnore.bits() == 0 {
-                gs.do_notify_character(
-                    co as u32,
-                    i32::from(core::constants::NT_GOTMISS),
-                    cn as i32,
-                    0,
-                    0,
-                    0,
-                );
-            }
-        }
-        return;
-    }
-
     gs.do_area_sound(
         co,
         0,
