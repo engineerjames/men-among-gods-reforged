@@ -1154,7 +1154,7 @@ mod tests {
     }
 
     #[test]
-    fn plr_api_login_stores_ticket_and_sends_mods() {
+    fn plr_api_login_stores_ticket_without_sending_packets() {
         with_test_gs(|gs| {
             let (_, nr) = add_test_player(gs);
             attach_test_socket(gs, nr);
@@ -1169,7 +1169,7 @@ mod tests {
             assert_eq!(gs.players[nr].login_ticket, 0x1122334455667788);
             assert_eq!(gs.players[nr].usnr, 0);
             assert_eq!(gs.players[nr].api_character_id, 0);
-            assert_eq!(gs.players[nr].iptr, 16 * 8);
+            assert_eq!(gs.players[nr].iptr, 0);
         });
     }
 }
