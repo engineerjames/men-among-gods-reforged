@@ -931,13 +931,6 @@ mod tests {
         gs.map[map_index(10, 10)].ch = cn as u32;
     }
 
-    fn count_obuf_packets(gs: &GameState, nr: usize, packet_id: u8) -> usize {
-        gs.players[nr].obuf[..gs.players[nr].iptr]
-            .chunks(16)
-            .filter(|chunk| !chunk.is_empty() && chunk[0] == packet_id)
-            .count()
-    }
-
     #[test]
     fn apply_api_login_character_record_covers_existing_and_new_slots() {
         with_test_gs(|gs| {
